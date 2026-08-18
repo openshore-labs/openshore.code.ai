@@ -13,6 +13,8 @@ export interface SlashContext {
   exit(): void;
   setWebEnabled?: (on: boolean) => void;
   webEnabled?: () => boolean;
+  /** Search the session transcript (the renderer keeps the history). */
+  find?: (query: string) => void;
 }
 
 export interface SlashCommand {
@@ -77,6 +79,24 @@ export const SLASH_COMMANDS: SlashCommand[] = [
       } else {
         ctx.print(`Web access is ${ctx.webEnabled() ? 'on' : 'off'}. Use /web on or /web off.`);
       }
+    },
+  },
+  {
+    name: '/find',
+    description: 'search this session transcript',
+    run(args, ctx) {
+      const query = args.trim();
+      if (!query) {
+        ctx.print(
+          'Usage: /find <text>. Your terminal scrollback holds the full history; this jumps to the lines that match.',
+        );
+        return;
+      }
+      if (!ctx.find) {
+        ctx.print('Transcript search is not available in this view.');
+        return;
+      }
+      ctx.find(query);
     },
   },
   {

@@ -5,7 +5,17 @@ import { spawn } from 'node:child_process';
 import type { CatalogModel } from './schema.js';
 
 export interface InstallProgress {
+  /** The raw status line, e.g. "pulling manifest" or "downloading". */
   line: string;
+  /** 0..100 when the source reports byte totals (the API path does). */
+  percent?: number;
+  completed?: number;
+  total?: number;
+}
+
+export interface InstallOptions {
+  /** Ollama base URL for the structured pull. Defaults to localhost. */
+  baseUrl?: string;
 }
 
 /** The license block a user sees before the pull starts. */
@@ -20,27 +30,92 @@ export function licenseNotice(model: CatalogModel): string {
 }
 
 /**
- * Pull an Ollama-sourced model, streaming progress lines. Hugging Face
- * sources get the exact command printed instead (llama.cpp and vLLM setups
- * vary too much to guess at).
+ * Pull an Ollama-sourced model, streaming progress. The structured Ollama
+ * /api/pull endpoint is tried first: it reports exact byte totals, which drive
+ * a real progress bar. If the daemon is not answering the HTTP API, this falls
+ * back to spawning `ollama pull`. Either way the weights come straight from
+ * the Ollama library, never from OpenShore. Hugging Face sources get the exact
+ * command printed instead (llama.cpp and vLLM setups vary too much to guess).
  */
-export function installModel(
+export async function installModel(
   model: CatalogModel,
   onProgress: (progress: InstallProgress) => void,
+  options: InstallOptions = {},
 ): Promise<{ ok: boolean; detail: string }> {
   if (model.source.kind !== 'ollama') {
-    return Promise.resolve({
+    return {
       ok: false,
       detail: `This model comes from Hugging Face. Fetch it with:\n  ${model.source.pullCommand}\nthen point your stack at wherever your server loads it.`,
-    });
+    };
   }
-  return new Promise((resolve) => {
-    const child = spawn('ollama', ['pull', model.source.ref], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+  const baseUrl = (options.baseUrl ?? 'http://localhost:11434').replace(/\/$/, '');
+  const viaApi = await pullViaApi(model.source.ref, baseUrl, onProgress);
+  if (viaApi) return viaApi;
+  return pullViaCli(model.source.ref, onProgress);
+}
+
+/** Structured pull over /api/pull. Returns null if the API is unreachable. */
+async function pullViaApi(
+  ref: string,
+  baseUrl: string,
+  onProgress: (progress: InstallProgress) => void,
+): Promise<{ ok: boolean; detail: string } | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/api/pull`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: ref, stream: true }),
     });
+  } catch {
+    return null; // daemon not answering the API; let the CLI try
+  }
+  if (!res.ok || !res.body) return null;
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (!line) continue;
+      let obj: Record<string, unknown>;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (typeof obj.error === 'string') {
+        return { ok: false, detail: `Ollama could not pull ${ref}: ${obj.error}` };
+      }
+      const status = String(obj.status ?? '');
+      const total = typeof obj.total === 'number' ? obj.total : undefined;
+      const completed = typeof obj.completed === 'number' ? obj.completed : undefined;
+      const percent = total && completed !== undefined ? (completed / total) * 100 : undefined;
+      onProgress({ line: status, percent, total, completed });
+    }
+  }
+  return { ok: true, detail: `${ref} is pulled and ready.` };
+}
+
+/** CLI fallback: spawn `ollama pull` and forward its lines (no byte totals). */
+function pullViaCli(
+  ref: string,
+  onProgress: (progress: InstallProgress) => void,
+): Promise<{ ok: boolean; detail: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('ollama', ['pull', ref], { stdio: ['ignore', 'pipe', 'pipe'] });
     const forward = (chunk: Buffer) => {
       for (const line of chunk.toString().split(/\r?\n/)) {
-        if (line.trim()) onProgress({ line: line.trim() });
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const m = /(\d+)%/.exec(trimmed);
+        onProgress({ line: trimmed, percent: m ? Number(m[1]) : undefined });
       }
     };
     child.stdout.on('data', forward);
@@ -55,7 +130,7 @@ export function installModel(
     child.on('close', (code) => {
       resolve(
         code === 0
-          ? { ok: true, detail: `${model.source.ref} is pulled and ready.` }
+          ? { ok: true, detail: `${ref} is pulled and ready.` }
           : {
               ok: false,
               detail: `ollama pull exited with code ${code}. Check connectivity and disk space, then try again.`,

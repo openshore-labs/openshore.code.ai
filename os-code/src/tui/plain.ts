@@ -19,7 +19,18 @@ export interface PlainOptions {
 export async function runPlain(options: PlainOptions): Promise<void> {
   const { driver } = options;
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const out = (text: string) => process.stdout.write(`${text}\n`);
+  // A plain-text log of everything shown, so /find works here too. Bounded so
+  // a long session never grows without limit.
+  const log: string[] = [];
+  const LOG_CAP = 5000;
+  const record = (line: string) => {
+    log.push(line);
+    if (log.length > LOG_CAP) log.shift();
+  };
+  const out = (text: string) => {
+    record(text);
+    process.stdout.write(`${text}\n`);
+  };
   let dollars = 0;
   let pendingApproval: ApprovalRequest | undefined;
   let taskResolve: (() => void) | undefined;
@@ -31,12 +42,16 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     ),
   );
 
+  let streamBuf = '';
   const unsubscribe = driver.subscribe((event: DriverEvent) => {
     switch (event.type) {
       case 'text-delta':
+        streamBuf += event.text;
         process.stdout.write(event.text);
         break;
       case 'text-final':
+        if (streamBuf.trim()) record(streamBuf.trim());
+        streamBuf = '';
         process.stdout.write('\n');
         break;
       case 'tool-start':
@@ -123,6 +138,19 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     },
     setWebEnabled: options.setWebEnabled,
     webEnabled: options.webEnabled,
+    find: (query) => {
+      const needle = query.toLowerCase();
+      const hits = log
+        .flatMap((line) => line.split('\n'))
+        .filter((line) => line.toLowerCase().includes(needle))
+        .slice(-20);
+      if (hits.length) {
+        out(t.muted(`Found "${query}" in ${hits.length} line${hits.length === 1 ? '' : 's'}:`));
+        for (const hit of hits) out(`  ${hit.trim().slice(0, 100)}`);
+      } else {
+        out(t.muted(`No transcript line contains "${query}".`));
+      }
+    },
   };
 
   function cleanup(): void {

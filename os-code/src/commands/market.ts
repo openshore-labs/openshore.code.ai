@@ -5,12 +5,21 @@
 // downloads.
 import { t, GLYPHS } from '../brand/theme.js';
 import { loadConfig, saveGlobalConfig } from '../config/load.js';
+import type { OscConfig } from '../config/schema.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { budgetFor, detectHardware } from '../router/resourceBudget.js';
 import { findModel, loadCatalog, rateModels } from '../market/catalog.js';
 import { installModel, licenseNotice } from '../market/install.js';
 import { CAPABILITIES } from '../router/roles.js';
-import { confirm, header, okLine, out, warnLine } from './util.js';
+import { confirm, fmtBytes, header, okLine, out, progressBar, warnLine } from './util.js';
+
+/** The base URL of the first local (openai-compatible) provider, for pulls. */
+function ollamaBaseUrl(config: OscConfig): string {
+  for (const endpoint of Object.values(config.providers)) {
+    if (endpoint.kind === 'openai-compatible') return endpoint.baseUrl;
+  }
+  return 'http://localhost:11434';
+}
 
 export async function marketBrowseCommand(): Promise<void> {
   const { config } = loadConfig();
@@ -101,13 +110,23 @@ export async function marketInstallCommand(id: string): Promise<void> {
     out(t.muted('Nothing downloaded.'));
     return;
   }
-  let last = '';
-  const result = await installModel(model, ({ line }) => {
-    if (line !== last) {
-      process.stdout.write(`\r  ${t.muted(line.slice(0, 70).padEnd(70))}`);
-      last = line;
-    }
-  });
+  const result = await installModel(
+    model,
+    (p) => {
+      if (p.percent !== undefined) {
+        const size =
+          p.total && p.completed !== undefined
+            ? `${fmtBytes(p.completed)}/${fmtBytes(p.total)}`
+            : p.line;
+        process.stdout.write(
+          `\r  ${progressBar(p.percent, 22)}  ${t.muted(String(size).slice(0, 30).padEnd(30))}`,
+        );
+      } else {
+        process.stdout.write(`\r  ${t.muted(p.line.slice(0, 54).padEnd(54))}`);
+      }
+    },
+    { baseUrl: ollamaBaseUrl(config) },
+  );
   process.stdout.write('\n');
   if (result.ok) {
     okLine(result.detail);

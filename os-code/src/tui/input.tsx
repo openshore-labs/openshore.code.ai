@@ -1,9 +1,9 @@
 // The input box: hand-rolled so it behaves over SSH from a phone. History
 // with up/down, a live slash-command hint line, Esc to stop a run, Ctrl+C
 // (twice) to leave.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { GLYPHS, TOKENS } from '../brand/theme.js';
+import { GLYPHS, TOKENS, colorEnabled } from '../brand/theme.js';
 import { SLASH_COMMANDS } from './slash.js';
 
 export interface InputProps {
@@ -18,6 +18,19 @@ export function InputBox({ busy, onSubmit, onAbort, onExit }: InputProps): React
   const [history, setHistory] = useState<string[]>([]);
   const [, setHistoryIndex] = useState(-1);
   const [exitArmed, setExitArmed] = useState(false);
+  const [cursorOn, setCursorOn] = useState(true);
+
+  // A gentle blinking cursor at the classic ~530ms rhythm. While the agent is
+  // busy the prompt holds a steady cursor (nothing to type into yet), so the
+  // blink only marks a live, waiting prompt.
+  useEffect(() => {
+    if (busy || !colorEnabled()) {
+      setCursorOn(true);
+      return;
+    }
+    const timer = setInterval(() => setCursorOn((on) => !on), 530);
+    return () => clearInterval(timer);
+  }, [busy]);
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
@@ -96,7 +109,7 @@ export function InputBox({ busy, onSubmit, onAbort, onExit }: InputProps): React
           {GLYPHS.arrow}{' '}
         </Text>
         <Text color={TOKENS.text}>{value}</Text>
-        <Text color={TOKENS.local}>{'█'}</Text>
+        <Text color={TOKENS.local}>{cursorOn ? '█' : '▏'}</Text>
         {busy ? <Text color={TOKENS.muted}> (Esc stops the run)</Text> : null}
         {exitArmed ? <Text color={TOKENS.warn}> press Ctrl+C again to quit</Text> : null}
       </Box>

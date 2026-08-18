@@ -6,12 +6,34 @@ import { banner, t } from '../brand/theme.js';
 import { loadConfig, saveGlobalConfig } from '../config/load.js';
 import { budgetFor, detectHardware, fitsBudget } from '../router/resourceBudget.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
-import { installModel, licenseNotice } from '../market/install.js';
+import { installModel, licenseNotice, type InstallProgress } from '../market/install.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import type { Catalog, CatalogPreset } from '../market/schema.js';
-import { ask, confirm, header, okLine, out, pick, warnLine } from './util.js';
+import {
+  ask,
+  confirm,
+  fmtBytes,
+  header,
+  okLine,
+  out,
+  pick,
+  progressBar,
+  warnLine,
+} from './util.js';
 
 const OLLAMA_URL = 'http://localhost:11434';
+
+/** One in-place pull status line: a real bar when byte totals are known. */
+function renderPull(p: InstallProgress): string {
+  if (p.percent !== undefined) {
+    const size =
+      p.total && p.completed !== undefined
+        ? `${fmtBytes(p.completed)}/${fmtBytes(p.total)}`
+        : p.line;
+    return `${progressBar(p.percent, 22)}  ${t.muted(String(size).slice(0, 30).padEnd(30))}`;
+  }
+  return t.muted(p.line.slice(0, 54).padEnd(54));
+}
 
 async function ollamaUp(): Promise<boolean> {
   try {
@@ -150,13 +172,11 @@ export async function initCommand(): Promise<void> {
           if (fit === 'tight')
             warnLine('This one is a tight fit; expect slower responses when context runs long.');
           if (!(await confirm('Pull it now?', true))) continue;
-          let lastLine = '';
-          const result = await installModel(model, ({ line }) => {
-            if (line !== lastLine) {
-              process.stdout.write(`\r  ${t.muted(line.slice(0, 70).padEnd(70))}`);
-              lastLine = line;
-            }
-          });
+          const result = await installModel(
+            model,
+            (p) => process.stdout.write(`\r  ${renderPull(p)}`),
+            { baseUrl: OLLAMA_URL },
+          );
           process.stdout.write('\n');
           if (result.ok) okLine(result.detail);
           else warnLine(result.detail);
