@@ -5,6 +5,15 @@ Shore Code; CLI command: `osc`): a terminal coding agent that gives local LLMs
 the same complete, polished, genuinely delightful experience a developer gets
 from Claude Code. This is not a stubbed skeleton. Build real, working software.
 
+## Where this builds (do this in the OpenShore Code repo)
+Build into the repository **`openshore-labs/openshore.code.ai`**, in a new
+**`os-code/`** directory at the repo root, on the branch
+**`claude/local-llm-code-prompt-ghgztb`**. The repo already holds `README.md` and
+`docs/` at its root; leave those in place and put ALL application code under
+`os-code/`. Commit as you complete each layer of the build sequence and push to
+that branch. Do not create other repositories or branches, and do not open a pull
+request unless asked.
+
 ## The one priority that overrides the rest
 **Index on a complete and incredibly delightful clone of the Claude Code
 experience for local LLMs. Do not economize on tokens, scope, or polish to get
@@ -141,7 +150,7 @@ Never leave a half-broken build.
 - **Linux-first.** Assume Ollama at `http://localhost:11434`.
 - **Housekeeping:** `.gitignore`, `README.md`, `DECISIONS.md`, `PROGRESS.md`, a
   `LICENSE` marked `TODO: business decision`, `os-code.config.example.json`,
-  `catalog.sample.json`.
+  `catalog.sample.json`. (These live under `os-code/`, not the repo root.)
 
 ## Directory tree (build this; add files freely where completeness needs them)
 ```
@@ -491,10 +500,13 @@ the whole TUI.
 6. Accessible by default: a brand-new user reaches a working single-model agent
    from `osc init` alone (guided Ollama install, a plain-language preset, starter
    model pull), with no manual config editing, and specialists stay opt-in.
-7. `README.md`, `DECISIONS.md`, and `PROGRESS.md` reflect the real state.
+7. `README.md`, `DECISIONS.md`, and `PROGRESS.md` (under `os-code/`) reflect the
+   real state.
 
 Build OS Code now, non-stop, depth-first along the build sequence, to a complete
-and delightful state. Index on completeness and delight, not token count. Record
-ambiguous decisions in `DECISIONS.md`, leave anything unfinished in `PROGRESS.md`
-with working software at the current layer, and close with a summary of what
-works and how to run it.
+and delightful state, into the `os-code/` directory of the
+`openshore-labs/openshore.code.ai` repo on the
+`claude/local-llm-code-prompt-ghgztb` branch. Index on completeness and delight,
+not token count. Record ambiguous decisions in `DECISIONS.md`, leave anything
+unfinished in `PROGRESS.md` with working software at the current layer, and close
+with a summary of what works and how to run it.
