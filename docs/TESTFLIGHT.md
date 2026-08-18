@@ -82,8 +82,17 @@ build stays live for 90 days.
   integration name in Codemagic must match the yaml exactly, and the API
   key needs the **Admin** role (App Manager can't create certificates or
   provisioning profiles, only manage app metadata and TestFlight).
-- **"No matching profiles"**: the bundle ID in App Store Connect must be
-  exactly `ai.openshore.oscode` (explicit, not wildcard).
+- **"No matching profiles found for bundle identifier ... and
+  distribution type app_store"**: this is a code-signing config conflict,
+  not a real missing profile. It means the yaml mixes Codemagic's two
+  signing modes: an `ios_signing:` block under `environment:` (automatic)
+  cannot coexist with the manual CLI commands (`keychain initialize`,
+  `app-store-connect fetch-signing-files`, `keychain add-certificates`,
+  `xcode-project use-profiles`) in the scripts. The automatic block runs
+  at environment setup, before scripts, and fails there. Ours uses the
+  manual scripts only, with no `ios_signing:` block; keep it that way.
+  `fetch-signing-files --create` creates the certificate and profile from
+  scratch on a brand-new account.
 - **Swift package resolution fails**: retry the build first; it is nearly
   always a transient fetch. LLM.swift is pinned to v3.0.3 in
   `app/plugins/oscode-llama/Package.swift`.
