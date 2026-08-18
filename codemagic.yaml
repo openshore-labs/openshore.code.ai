@@ -13,9 +13,12 @@ workflows:
       xcode: latest
       vars:
         BUNDLE_ID: ai.openshore.oscode
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: ai.openshore.oscode
+      # No `ios_signing:` block here on purpose. That block is Codemagic's
+      # AUTOMATIC signing, which runs at environment setup (before scripts).
+      # It cannot coexist with the manual CLI signing in the scripts below;
+      # mixing the two is what raised "No matching profiles found" on every
+      # run, and it failed before our script steps ever executed. Signing is
+      # owned entirely by the "Set up code signing" step.
     triggering:
       events:
         - push
