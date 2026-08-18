@@ -1,20 +1,22 @@
 # OS Code (Open Shore Code)
 
-A local-first coding agent, familiar to Claude Code users, that runs a
-personally curated stack of local LLMs and connects a cloud Claude account as a
-deliberate fallback. Runs on Linux desktop and is driven from a phone over SSH
+A local-first coding agent that gives local LLMs a complete, genuinely
+delightful clone of the Claude Code experience. It runs a personally curated
+stack of local models, searches the web, and connects a cloud Claude account as
+a deliberate fallback. Runs on Linux desktop and is driven from a phone over SSH
 (Termius) across a private Tailscale network.
 
 ## Status
 
 Pre-scaffold. This repository currently holds the build brief only. The
-application shell is generated from it.
+application is generated from it.
 
 - **Build brief:** [`docs/os-code-fable-prompt.md`](docs/os-code-fable-prompt.md)
 
-The brief is written to be handed to a code-generation agent (Fable) to scaffold
-the `os-code/` shell in one non-stop pass. It is the single source of truth for
-the architecture, the pinned stack, the scope fence, and the definition of done.
+The brief is written to be handed to a code-generation agent (Fable) to build
+the `os-code/` application in one non-stop, depth-first pass. It is the single
+source of truth for the architecture, the pinned stack, the delight bar, and the
+definition of done. It indexes on completeness and delight, not token thrift.
 
 ## Product shape (summary)
 
@@ -24,6 +26,10 @@ the architecture, the pinned stack, the scope fence, and the definition of done.
 - **A curated stack of local models** (planner, coder, fast-edit, apply, vision,
   embedder) routed by task, with cloud Claude as a deliberate, confirmed
   escalation.
+- **Web access is a first-class tool.** Local models cannot browse on their own,
+  so OS Code ships `webSearch` and `webFetch` with a pluggable backend
+  (DuckDuckGo by default, Brave, self-hosted SearXNG, or Tavily), readability
+  extraction, and citations in the TUI.
 - **Marketplace is a catalog, not a weight host:** a static manifest pointing at
   Hugging Face and Ollama, with license flags.
 - **Phone on the go:** Tailscale plus an SSH client, orchestrated with a pairing
@@ -32,4 +38,4 @@ the architecture, the pinned stack, the scope fence, and the definition of done.
   and updates, server-side.
 
 See the build brief for the full architecture and the load-bearing build
-sequence (prove the core behind an eval harness before building the breadth).
+sequence (prove the core end to end before building the breadth).

@@ -1,88 +1,120 @@
-# BUILD BRIEF FOR FABLE: "OS Code" (Open Shore Code) - a local-first coding agent, familiar to Claude Code users
+# BUILD BRIEF FOR FABLE: "OS Code" (Open Shore Code) - a complete, delightful local-LLM coding agent
 
-You are a principal engineer at OpenShore. Scaffold a new product called
-**OS Code** (long form: Open Shore Code; CLI command: `osc`). Build the
-**empty shell only**: the full directory structure, typed interfaces, config
-schemas, branded TUI chrome, and STUBBED implementations with clear `// TODO`
-extension points. It must install and compile, and the onboarding commands
-(`osc init`, `osc login`, `osc doctor`, `osc pair`) must actually work. Do NOT
-implement the full agent loop, model inference, or GitHub write operations.
-Leave those as well-documented stubs.
+You are a principal engineer at OpenShore. Build **OS Code** (long form: Open
+Shore Code; CLI command: `osc`): a terminal coding agent that gives local LLMs
+the same complete, polished, genuinely delightful experience a developer gets
+from Claude Code. This is not a stubbed skeleton. Build real, working software.
+
+## The one priority that overrides the rest
+**Index on a complete and incredibly delightful clone of the Claude Code
+experience for local LLMs. Do not economize on tokens, scope, or polish to get
+there.** When you must trade off, choose completeness and delight over brevity
+every time. Take the tokens you need. The measure of success is that a developer
+who loves Claude Code opens OS Code, points it at their local models, and feels
+at home and delighted, not that the build was cheap.
 
 ## The product in one sentence
-OS Code is a terminal-first coding agent with an interaction model **familiar to
-Claude Code users** (streaming transcript, slash commands, tool-approval
-prompts), whose purpose is to run a **personally curated stack of local LLMs that
-services the majority of your coding work**. It is **local-first and
-self-hosted**: compute runs on the user's own machine, and cloud models run on
-the user's own account or key. You connect your Claude account the way you sign
-into Cursor or VS Code, so cloud is one deliberate keystroke away for the hardest
-tasks or as a fallback, while the local fleet stays the default engine. It runs
-on Linux desktop and is driven from an iPhone over SSH (Termius) across a private
-Tailscale network, so you can do real coding on the go.
+OS Code is a terminal-first coding agent with the interaction model developers
+know from Claude Code (streaming transcript, slash commands, tool-approval
+prompts, web search, repo-aware editing), whose purpose is to run a **personally
+curated stack of local LLMs that services the majority of your coding work**. It
+is **local-first and self-hosted**: compute runs on the user's own machine, and
+cloud models run on the user's own account or key. You connect your Claude
+account the way you sign into Cursor or VS Code, so cloud is one deliberate
+keystroke away for the hardest tasks or as a fallback, while the local fleet
+stays the default engine. It runs on Linux desktop and is driven from an iPhone
+over SSH (Termius) across a private Tailscale network, so you can do real coding
+on the go.
 
-## Build sequence (this ordering is load-bearing, do not reorder)
-Prove the narrow core before the seductive breadth. If the fleet router,
-mixture-of-agents, marketplace, and vision are built before the core is proven,
+## Completeness and quality bar (this is where to index)
+- **Build working software, not stubs.** Implement every capability for real.
+  The ONLY things allowed to remain stubs are the few that genuinely cannot run
+  in this environment: the hosted license-verification server, the subscription
+  OAuth token exchange, and any secret you do not have. Everything else, the
+  agent loop, the tools (including web search), the edit engine, the local
+  provider talking to Ollama, the router, RAG, the TUI, the daemon, pairing,
+  and the marketplace, is real and functioning.
+- **It must actually run.** `osc` installs, builds, and drives a real local model
+  through Ollama end to end: read files, search the web, edit code, run tests,
+  commit. Where this environment has no Ollama, wire it fully, cover it with
+  tests against a mock provider, and make it work with one real command on the
+  user's machine.
+- **Delight is a requirement, not a finish.** See the Delight bar below.
+- **Test what protects the experience.** Write real tests for the agent loop,
+  tool-call parsing, the edit engine, routing, and web tools, not just the three
+  policy tests. Quality over token count.
+
+## The Delight bar (what "incredibly delightful" means in a terminal)
+- **Instant, smooth streaming.** Tokens render as they arrive, no janky
+  repaints. Thoughtful, quiet spinners and progress for tool calls and model
+  loads. GPU/model load time is surfaced, never a silent hang.
+- **Beautiful, legible chrome.** A gorgeous `osc doctor`, a crisp status line
+  (active model role, local vs cloud, cost, context used), and a wordmark banner,
+  all from the brand tokens. Great typography and color, with a clean `--plain`
+  fallback that still feels considered.
+- **Zero-friction onboarding.** `osc init`, `osc login`, and `osc pair` feel like
+  a premium setup: autodetect everything possible, explain each step in one warm
+  sentence, and never dump a wall of config.
+- **Microcopy that respects the user.** Every prompt, error, and empty state is
+  clear, human, and actionable. Errors name the exact broken link and the fix.
+  No stack traces in the user's face.
+- **Keyboard ergonomics.** Fast, discoverable slash commands, sensible defaults,
+  reversible actions, and a diff-approval flow that is a pleasure, not a chore.
+- **It feels alive on a phone.** Over SSH from Termius the app is responsive,
+  compact, and never loses your place when the connection blips.
+- **Honesty as a feature.** Confirm-before-spend on cloud, show citations for web
+  results, and never pretend a local model did something it did not.
+
+## Build sequence (depth-first: finish and polish each layer before widening)
+Prove the narrow core, fully working and delightful, before the breadth. If the
+fleet router, marketplace, and vision are built before the core genuinely works,
 the result is a clever demo, not a product.
-1. Core loop + tools + tool-call bridge + edit engine + the **eval harness**.
-2. Security: daemon threat model + permissions + guardrails.
-3. Providers + a single local model working end to end + cloud API-key fallback.
-4. Only then: fleet router, marketplace catalog, vision, mixture-of-agents.
-Scaffold all modules now (this is the shell), but mark this sequence in the
-README so implementation follows it.
+1. **Core, fully working:** the agent loop + tools (including web search) + edit
+   engine + one local provider driving Ollama end to end + a delightful TUI.
+2. **Security, enforced:** daemon threat model + permissions + guardrails.
+3. **Breadth, each working before the next:** fleet router and stacking, cloud
+   Claude escalation, RAG/code-map, marketplace catalog, connectivity/daemon and
+   pairing, vision.
+Build depth-first. If you cannot reach the end in one pass, leave working,
+polished software at the current layer plus a `PROGRESS.md` note of what remains.
+Never leave a half-broken build.
 
 ## Autonomous execution contract (run non-stop, do not pause)
 - **Do not ask for approval or clarification. Do not stop until the Definition of
   Done is met.** If a choice is ambiguous, pick the default in "Pinned stack and
-  defaults" below, or the most conventional option, record it in one line in
-  `DECISIONS.md`, and keep going.
-- **No planning or exploration phase.** The directory tree and specs below ARE
-  the plan. Write files directly, top to bottom through the tree, in one pass.
-- **One build cycle, at the very end.** Do not build/typecheck/lint after each
-  file. Write everything, then run `pnpm install`, `pnpm build`, `pnpm typecheck`,
-  `pnpm lint` once, fix compile/type/lint errors until green, then stop.
-- **Do not echo file contents into chat and do not narrate each file.** End with:
-  the final tree, a one-line status per command (works / stubbed), and run
-  instructions. Nothing else.
-
-## Token discipline (spend as little as possible)
-- **Minimal stubs.** Each stubbed function is a typed signature plus one
-  `// TODO:` line describing the real implementation, and a body that either
-  returns a typed placeholder or `throw new NotImplemented("<what>")`. Keep each
-  stub file under about 30 lines. No elaborate placeholder logic.
-- **Only the three required tests** (see below). No other tests.
-- **No boilerplate beyond what is needed to compile.** No duplicate config, no
-  speculative abstractions, no commentary essays in code.
-- Obey the scope fence. Everything outside it is wasted tokens.
+  defaults" below, or the most conventional and highest-quality option, record it
+  in one line in `DECISIONS.md`, and keep going.
+- **The directory tree and specs below are the plan.** Follow the build sequence;
+  build, run, and test iteratively until each layer genuinely works. Fix compile,
+  type, lint, and test failures as you go; the final state is green and runnable.
+- End with a clear closing summary: what works, how to run it, and anything left
+  in `PROGRESS.md`.
 
 ## Pinned stack and defaults (do not deviate, do not research alternatives)
 - **Runtime:** Node 20 LTS. **Module system:** ESM (`"type":"module"`).
   **Language:** TypeScript 5.x, `strict: true`, target ES2022,
   `moduleResolution: "NodeNext"`. **Package manager:** pnpm.
 - **Deps:** `commander` (CLI), `ink` v5 + `react` (TUI), `zod` (schemas),
-  `simple-git` (git), `@octokit/rest` (GitHub), native `fetch` (HTTP). A tiny
-  hand-rolled logger, no logging dependency. Pin concrete versions in
-  `package.json`.
+  `simple-git` (git), `@octokit/rest` (GitHub), native `fetch` (HTTP),
+  `@mozilla/readability` + `jsdom` or `linkedom` (web page extraction),
+  `turndown` (HTML to markdown). A tiny hand-rolled logger. Pin concrete versions.
 - **Build:** `tsc` to `dist/`, `bin/osc` shim with a shebang. **Test:** `vitest`.
-  **Lint/format:** `eslint` + `prettier` with standard configs (add the config
-  files).
-- **Tests to write (exactly three, no more):** (1) `em-dash-policy.test.ts` fails
-  on any em dash in a user-facing string; (2) `connectorMap.test.ts` fails on
-  drift in the connector/secret manifest; (3) `doctor.smoke.test.ts` asserts
-  `osc doctor` runs and exits cleanly.
+  **Lint/format:** `eslint` + `prettier` with standard configs.
+- **Policy tests (at minimum, plus real functional tests):**
+  `em-dash-policy.test.ts` (no em dash in user-facing strings) and
+  `connectorMap.test.ts` (no drift in the connector/secret manifest). Add
+  functional tests for the loop, parser, edit engine, router, and web tools.
 - **No telemetry, no analytics, no phone-home.** Privacy is a feature.
-- **Linux-first.** No Windows or macOS special-casing. Assume Ollama at
-  `http://localhost:11434`.
-- **Housekeeping files:** `.gitignore`, `README.md`, `DECISIONS.md`, a `LICENSE`
-  file marked `TODO: business decision` (do not block on the license choice),
-  `os-code.config.example.json`, `catalog.sample.json`.
+- **Linux-first.** Assume Ollama at `http://localhost:11434`.
+- **Housekeeping:** `.gitignore`, `README.md`, `DECISIONS.md`, `PROGRESS.md`, a
+  `LICENSE` marked `TODO: business decision`, `os-code.config.example.json`,
+  `catalog.sample.json`.
 
-## Exact directory tree (build this, do not redesign it)
+## Directory tree (build this; add files freely where completeness needs them)
 ```
 os-code/
   package.json  tsconfig.json  .eslintrc.json  .prettierrc  .gitignore
-  LICENSE  README.md  DECISIONS.md
+  LICENSE  README.md  DECISIONS.md  PROGRESS.md
   os-code.config.example.json  catalog.sample.json
   bin/osc.ts
   src/
@@ -92,11 +124,12 @@ os-code/
     commands/{init,login,pair,doctor,run,attach,serve,fleet,market,license,eval,authGithub,attachImage}.ts
     core/
       agent/{loop.ts,types.ts,registry.ts}
-      tools/{index.ts,readFile.ts,writeFile.ts,editFile.ts,runShell.ts,grep.ts,glob.ts,git.ts,parser.ts}
+      tools/{index.ts,readFile.ts,writeFile.ts,editFile.ts,runShell.ts,grep.ts,glob.ts,git.ts,webSearch.ts,webFetch.ts,parser.ts}
+      tools/search/{index.ts,duckduckgo.ts,brave.ts,searxng.ts,tavily.ts,readability.ts}
       edit/{apply.ts,searchReplace.ts,verify.ts}
       permissions/index.ts
       guardrails/index.ts
-      security/{daemonAuth.ts,jail.ts,redaction.ts,profiles.ts}
+      security/{daemonAuth.ts,jail.ts,redaction.ts,profiles.ts,egress.ts}
     providers/{types.ts,registry.ts,openaiCompatible.ts,anthropic.ts,capabilities.ts}
     providers/adapters/{index.ts,qwen.ts,llama.ts}
     router/{router.ts,fleet.ts,roles.ts,resourceBudget.ts}
@@ -111,311 +144,261 @@ os-code/
     license/{verify.ts,entitlement.ts}
     server/connectorMap.ts
     eval/harness.ts
-    tui/{app.tsx,transcript.tsx,statusLine.tsx,input.tsx,approval.tsx,plain.ts}
-  test/{em-dash-policy.test.ts,connectorMap.test.ts,doctor.smoke.test.ts}
+    tui/{app.tsx,transcript.tsx,statusLine.tsx,input.tsx,approval.tsx,citations.tsx,plain.ts}
+  test/{em-dash-policy.test.ts,connectorMap.test.ts,agentLoop.test.ts,parser.test.ts,edit.test.ts,router.test.ts,webSearch.test.ts,doctor.smoke.test.ts}
 ```
 
-## Scope fence (do NOT build any of this)
-No real inference or model calls, no real network calls to providers, no auth
-server, no payment integration, no web dashboard, no marketing site, no mobile
-app, no Docker/k8s, no CI beyond nothing (skip CI entirely for now), no tests
-beyond the three named. The fleet routing logic, RAG indexing, constrained
-decoding, edit verification, and license verification are INTERFACES PLUS STUBS
-only. Building anything here is out of scope and wastes tokens.
-
-## Definition of Done (stop when all are true)
-1. The directory tree above exists and `pnpm install && pnpm build` is green.
-2. `pnpm typecheck` and `pnpm lint` pass; the three tests pass.
-3. `osc init`, `osc login`, `osc pair`, `osc doctor` run for real; every other
-   command runs and prints "not yet implemented" with its intended behavior.
-4. `README.md` and `DECISIONS.md` exist. Then STOP and print the closing summary.
-
-## Positioning and economics constraints (these shape the architecture, honor them)
-- **Local-first, not "decentralized."** No P2P, no chain, no consensus. The
-  framing is "your machine, your models, your keys."
-- **Familiar to Claude Code, not a clone.** Match the interaction model. Do NOT
-  copy the Claude Code name or branding, and do NOT imply any Anthropic
-  affiliation anywhere user-facing. Marketing says "familiar to Claude Code
-  users," never "exactly like Claude Code."
+## Positioning and economics constraints (honor these)
+- **Local-first, not "decentralized."** No P2P, no chain. "Your machine, your
+  models, your keys."
+- **Familiar to Claude Code, not a clone of its name or brand.** Match the
+  experience. Do NOT copy the Claude Code name or branding, and do NOT imply any
+  Anthropic affiliation anywhere user-facing.
 - **Never host model weights and never proxy inference.** OpenShore's hosting
-  cost must stay near zero. Any design that routes inference through our servers
-  or serves weights from our infrastructure is forbidden.
-- **The marketplace is a CATALOG, not a weight host.** A small static JSON
-  manifest we publish (Cloudflare/GitHub Pages) that points at Hugging Face and
-  the Ollama registry, with license flags. Weights are pulled by the client
-  directly from those sources.
-- **iOS is an SSH client, not an App Store app.** No native iOS app. The phone
-  experience is Termius over Tailscale into the desktop daemon.
-- **We orchestrate Tailscale and the SSH client, we do not embed them.** OS Code
-  provides a first-run pairing wizard that guides install and links an existing
-  tailnet.
+  cost stays near zero. No routing inference through our servers, no serving
+  weights from our infrastructure.
+- **The marketplace is a CATALOG, not a weight host:** a static JSON manifest we
+  publish, pointing at Hugging Face and Ollama with license flags. The client
+  pulls weights directly from those sources.
+- **iOS is an SSH client, not an App Store app.** The phone experience is Termius
+  over Tailscale into the desktop daemon.
+- **We orchestrate Tailscale and the SSH client, we do not embed them.** A
+  first-run pairing wizard guides install and links an existing tailnet.
 - **The paywall gates what we control:** the curated catalog, the cloud-connector
-  configs, and updates. The shell itself is local and open-ish. Sold on the web,
-  so no App Store cut.
+  configs, and updates. The shell is local and open-ish. Sold on the web.
 
-## Non-negotiables (read before writing code)
-1. **Empty shell.** Scaffold, interfaces, stubs, TODOs. `osc init`, `osc login`,
-   `osc doctor`, `osc pair` run for real; everything else is stubbed.
-2. **Interaction parity with Claude Code** (familiar, not cloned): streaming
-   transcript, slash commands, the same tool-approval rhythm and status line. A
-   Claude Code user should feel at home. Local vs cloud is the only visible
-   difference, surfaced in the status line.
-3. **Local-first is the whole point.** The local fleet is the default engine and
-   handles the majority of work. Cloud is deliberate, never silent.
-4. **Stack: TypeScript + Node (pnpm).** Ink TUI, `commander` CLI, `simple-git`,
-   `@octokit/*`, `zod`, OpenAI SDK shape for providers.
-5. **SSH / Termius first.** Keyboard-only TUI, degrades to plain stdout on dumb
-   terminals or `--plain`, survives dropped connections, low bandwidth, small
-   phone screen.
-6. **No em dashes in any user-facing string.** Use periods or commas. OpenShore
-   house rule.
+## Non-negotiables
+1. **Working software.** Real implementations everywhere except the few
+   environment-blocked stubs named above.
+2. **Interaction parity with Claude Code** (familiar, delightful, not cloned):
+   streaming transcript, slash commands, tool-approval rhythm, web search,
+   repo-aware editing, a status line. A Claude Code user feels at home instantly.
+3. **Local-first is the whole point.** The local fleet is the default engine.
+   Cloud is deliberate, never silent.
+4. **Stack as pinned above.**
+5. **SSH / Termius first.** Keyboard-only TUI, `--plain` fallback, survives
+   dropped connections, low bandwidth, small phone screen.
+6. **No em dashes in any user-facing string.** Periods or commas. OpenShore rule.
 7. **Permission model like Claude Code**, plus a separate confirm-before-spend
-   prompt on any step that would consume the user's cloud quota.
-8. **Security is not a later phase.** The daemon threat model (section 12) is
-   scaffolded and enforced in the shell, not deferred.
+   prompt on any step that consumes the user's cloud quota.
+8. **Security is enforced in the shell, not deferred** (section 12).
 
-## Architecture (build each as a typed shell)
+## Architecture (build each for real)
 
 ### 1. Agent loop and tools - `src/core/agent/`, `src/core/tools/`
-ReAct-style tool-use loop. Define the loop, message and turn types, and the tool
-registry. Stub the stepping.
-- Tools: `readFile`, `writeFile`, `editFile`, `runShell`, `grep`, `glob`,
-  `gitStatus`, `gitDiff`, `gitCommit`. Typed zod schemas, real signatures,
-  stubbed bodies. **Validate every tool input with zod at the boundary.**
+A working ReAct-style tool-use loop: system prompt to model, model returns tool
+calls, tools run, observations feed back, repeat until done, with streaming.
+- Tools, all functioning: `readFile`, `writeFile`, `editFile`, `runShell`,
+  `grep`, `glob`, `gitStatus`, `gitDiff`, `gitCommit`, plus the web tools below.
+  Typed zod schemas, validated at the boundary.
 - **Tool-call bridge** (`src/core/tools/parser.ts`), the make-or-break component
   for local models. Support native OpenAI tool-calling AND a JSON-in-text
-  fallback, with a bounded repair-and-retry pass and, on repeated failure, a
-  cloud fallback. Add **constrained / grammar-based decoding** to force valid
-  tool JSON, but do NOT assume one uniform API: the backends differ (llama.cpp
-  GBNF, vLLM json-schema/outlines, Ollama structured-output, LM Studio its own).
-  Build **per-backend capability detection**, use grammar decoding where
-  available, and fall back to validate-plus-repair where it is not.
+  fallback, with a bounded repair-and-retry pass and, on repeated failure, cloud
+  escalation. Add **constrained / grammar-based decoding** to force valid tool
+  JSON; the backends differ (llama.cpp GBNF, vLLM json-schema/outlines, Ollama
+  structured-output, LM Studio its own), so implement **per-backend capability
+  detection**, use grammar decoding where available, and validate-plus-repair
+  where it is not.
 
-### 2. Edit engine - `src/core/edit/`  (top failure mode, guard it hard)
+### 2. Web access - `src/core/tools/webSearch.ts`, `webFetch.ts`, `src/core/tools/search/`
+Local models have a knowledge cutoff and NO network access on their own, so web
+access is a first-class tool the agent provides, exactly like Claude Code.
+- **`webSearch(query, {count})`**: returns ranked results (title, url, snippet)
+  via a pluggable `SearchProvider`. Implement providers: **DuckDuckGo** (default,
+  zero-config, no key), **Brave Search API**, **self-hosted SearXNG** (the
+  privacy/local-first choice), and **Tavily**. Backend and key are config; the
+  app works out of the box on DuckDuckGo.
+- **`webFetch(url)`**: fetches a page and returns clean, readable **markdown**
+  via `@mozilla/readability` + `turndown`, stripped of nav/ads, size-capped for
+  small local context windows.
+- **Citations**: the TUI shows sources for web-derived answers
+  (`tui/citations.tsx`), the way Claude Code surfaces them.
+- **Privacy and permission**: web queries leave the machine, so gate the web
+  tools through the egress policy (section 12), on by default but visible and
+  disableable, and note the privacy tradeoff. SearXNG self-host keeps the whole
+  path private.
+- Make these real and tested against a mocked HTTP layer.
+
+### 3. Edit engine - `src/core/edit/`  (top failure mode, guard it hard)
 Local models fail exact-string edits, so naive old_string/new_string edits break
-constantly. But a tolerant matcher that lands a hunk in the WRONG place produces
-silent corruption that compiles and ships a bug. So:
-- **Structured search/replace blocks** as the primary edit format (not
-  exact-string and not whole-file rewrites).
-- **Context-anchored fuzzy match**: anchor on surrounding lines, never match on
-  the changed text alone.
-- **Post-apply verification**: re-read the file, run a cheap structural / lint /
-  compile check where available, and reject on mismatch.
-- **Diff-for-approval**: show the resulting diff before it lands.
+constantly, and a tolerant matcher that lands a hunk in the WRONG place is silent
+corruption. Build it right:
+- **Structured search/replace blocks** as the primary edit format.
+- **Context-anchored fuzzy match**: anchor on surrounding lines, never on the
+  changed text alone.
+- **Post-apply verification**: re-read, run a cheap structural/lint/compile check
+  where available, reject on mismatch.
+- **Diff-for-approval** before it lands.
 - A **fast-apply model role** (see Fleet): a small model that merges a rough edit
-  into the file (the Cursor/Morph and Aider search-replace pattern). Interface
-  plus stub.
-
-### 3. Eval harness - `src/eval/`  (the go/no-go instrument, build it early)
-The entire product depends on the median local model reliably driving tools and
-applying edits. Ship a harness that measures, across a small set of target local
-models: **tool-call success rate**, **edit-apply success rate**, and **retrieval
-accuracy** on a fixture repo. Output a short list of **blessed model profiles**
-that actually pass, rather than infinite flexibility over a shaky base. Stub the
-fixtures and scoring; make the command real (`osc eval`).
+  into the file (the Cursor/Morph and Aider search-replace pattern).
 
 ### 4. Provider layer - `src/providers/`
 One `Provider` interface: streaming `chat()`, tool-calling, capability flags
 (`supportsTools`, `supportsVision`, `supportsGrammar`, `contextTokens`,
-`costTier: "local"|"cloud"`, `latencyTier`). Stubs:
-- `OpenAICompatibleProvider` - one adapter, configurable base URL: Ollama, LM
-  Studio, llama.cpp server, vLLM. The default engine. Include the per-backend
-  capability probe from section 1.
-- `AnthropicProvider` - cloud Claude, TWO auth modes: a **bring-your-own
-  Anthropic API key** (the dependable, documented, marketed path) and a Claude
-  **account** subscription sign-in that is an **experimental, clearly-labeled
-  stub only** and appears in NO marketing surface (driving a consumer
+`costTier`, `latencyTier`).
+- `OpenAICompatibleProvider`, fully working against Ollama, LM Studio, llama.cpp,
+  vLLM. The default engine, with the per-backend capability probe from section 1.
+- `AnthropicProvider`, cloud Claude, TWO auth modes: a **bring-your-own Anthropic
+  API key** (the dependable, documented, marketed path, implemented for real) and
+  a Claude **account** subscription sign-in that is an **experimental, clearly
+  labeled stub** appearing in NO marketing surface (driving a consumer
   subscription from a third-party client is a ToS gray area and a user-ban /
-  overnight-breakage risk). The app must fully work on the API-key path alone.
+  overnight-breakage risk). The app fully works on the API-key path alone.
 - `providers/registry.ts` instantiates providers from config.
 
 ### 5. Per-model prompt adapters - `src/providers/adapters/`
-Claude-tuned prompts and tool schemas port poorly to local models. Provide a
+Claude-tuned prompts and tool schemas port poorly to local models. Implement a
 **per-model adapter**: chat template, stop tokens, system-prompt phrasing, tool
-format per model family. Interface plus a couple of stubbed adapters.
+format per model family, with adapters for the common local families.
 
 ### 6. Accounts and auth - `src/auth/`
-- `osc login` (MUST WORK as a flow shell): connect the Claude account (paste an
-  **Anthropic API key**, the primary path; the subscription OAuth is the
-  experimental stub above). Tokens in the OS keychain interface or an encrypted
-  `~/.os-code/credentials`.
+- `osc login`: connect the Claude account (paste an **Anthropic API key**, the
+  primary implemented path; subscription OAuth is the experimental stub). Tokens
+  in the OS keychain, or an encrypted `~/.os-code/credentials`.
 - `osc auth github`: GitHub device-flow OAuth plus PAT fallback, same store.
-- A `usage` interface tracking cloud calls so the TUI warns before spending
-  quota. Stub the accounting.
+- A `usage` tracker for cloud calls so the TUI warns before spending quota.
 
 ### 7. The Fleet and Router - `src/router/`  (the "stack multiple LLMs" feature)
 Roles: **Planner**, **Coder**, **Fast-edit**, **Apply**, **Vision**,
 **Embedder**. Router inputs: input modality, output type (plan/diff/answer/
 search), estimated difficulty and context size, confidence/escalation signal.
 Two modes per task: **route** (one model) and **chain / mixture-of-agents**.
-- **Default policy: local-first.** Cloud fires only on opt-in or an escalation
-  rule (local low-confidence, repeated tool failures, task over a difficulty
+- **Default policy: local-first.** Cloud fires on opt-in or an escalation rule
+  (local low-confidence, repeated tool failures, task over a difficulty
   threshold) AND the account is connected AND confirm-before-spend is accepted.
-- **VRAM profile selection at first run (REQUIRED, or the fleet feels broken).**
-  Stacking causes Ollama load/unload thrash (tens of seconds per role hop on a
-  consumer GPU). At first run, detect total VRAM and pick a profile. **Default to
-  route-one with roles COLLAPSED onto one resident model** when VRAM is tight;
-  make multi-model and mixture-of-agents **opt-in** for users with headroom. Keep
-  the **embedder small and persistent** (CPU is fine). Ship a `resourceBudget` in
-  config (VRAM budget, `keep_alive` tuning, quantization notes). Never let the
-  router assume it can hold five models hot.
+- **VRAM profile selection at first run (or the fleet feels broken).** Stacking
+  causes Ollama load/unload thrash (tens of seconds per role hop). Detect total
+  VRAM at first run and pick a profile. Default to **route-one with roles
+  collapsed onto one resident model** when VRAM is tight; make multi-model and
+  mixture-of-agents opt-in for users with headroom. Keep the embedder small and
+  persistent. Ship a `resourceBudget` (VRAM budget, `keep_alive`, quantization).
 
 ### 8. Repo context and RAG - `src/context/`  (retrieval accuracy is core correctness)
 Bad retrieval feeds the wrong context and causes the wrong edit, so on
-small-context local models this is correctness, not a nice-to-have (and it is part
-of the eval harness).
-- Ripgrep/glob **code map** (tree + symbol outline via a tree-sitter stub).
-- **Embedding index** (Embedder role) at `~/.os-code/index/<repo-hash>/`;
-  retrieves only relevant slices.
+small-context local models this is correctness.
+- Ripgrep/glob **code map** (tree + symbol outline; tree-sitter where practical).
+- **Embedding index** (Embedder role) at `~/.os-code/index/<repo-hash>/`,
+  retrieving only relevant slices.
 - **Context compaction**: summarize old turns and file reads to fit small windows.
 
 ### 9. Git and GitHub - `src/git/`, `src/github/`
 Local ops via `simple-git`; GitHub via Octokit using the token from `src/auth/`.
-Verbs familiar from Claude Code. Stub writes.
+The full Claude Code verb set, working: clone, branch, status, diff, commit,
+push, open PR.
 
 ### 10. Connectivity and daemon - `src/connect/`, `src/daemon/`
-- `osc pair` (MUST WORK as a wizard shell): detect Tailscale, guide install if
-  missing, show tailnet status, print a QR / copy-paste to connect the phone SSH
-  client. It **orchestrates**, it does not embed Tailscale or an SSH server.
-  **Include a sleep-inhibit step** (caffeinate / power-setting guidance with
-  detect-and-warn), because desktop sleep silently kills a phone user's in-flight
-  run.
-- `osc serve` (**daemon owns the generation**): the run lives in the background
-  daemon, not the TUI, so a dropped phone connection reattaches to an in-flight
-  run via `osc attach <id>`. Sessions persist to `~/.os-code/sessions/`. See
-  section 12 for how the daemon binds and authenticates. It must NOT bind
-  `0.0.0.0`.
-- **Health layer with a per-link error taxonomy**: detect and NAME the specific
-  broken link (desktop asleep, Ollama down, tailnet down, SSH unreachable, model
-  not loaded), never a generic "connection failed."
+- `osc pair`: a delightful first-run wizard that detects Tailscale, guides
+  install if missing, shows tailnet status, and prints a QR / copy-paste to
+  connect the phone SSH client. It **orchestrates**, it does not embed Tailscale
+  or an SSH server. Include a **sleep-inhibit** step (caffeinate / power-setting
+  guidance with detect-and-warn), since desktop sleep silently kills a phone
+  user's in-flight run.
+- `osc serve`: the **daemon owns the generation**, so a dropped phone connection
+  reattaches to an in-flight run via `osc attach <id>`. Sessions persist to
+  `~/.os-code/sessions/`. Binds loopback or the Tailscale interface only, never
+  `0.0.0.0` (section 12).
+- **Health layer with a per-link error taxonomy**: detect and NAME the broken
+  link (desktop asleep, Ollama down, tailnet down, SSH unreachable, model not
+  loaded), never a generic "connection failed."
 
 ### 11. Marketplace catalog - `src/market/`
-- `osc market` / `osc models`: browse and install from a **curated catalog**.
-- The catalog is a **remote static JSON manifest** (configurable URL), per model:
-  name, roles it suits, source (Hugging Face or Ollama), pull command, size,
-  quantization options, context window, **license flag**, curation note/rank, and
-  whether it is a **blessed profile** from the eval harness. Ship a typed schema
-  and a small bundled sample manifest.
+- `osc market` / `osc models`: browse and install from a **curated catalog**, a
+  delightful picker.
+- The catalog is a **remote static JSON manifest** (configurable URL): per model,
+  name, roles, source (Hugging Face or Ollama), pull command, size, quantization,
+  context window, **license flag**, curation note/rank, and whether it is a
+  **blessed profile** from the eval harness. Ship a typed schema and a real
+  bundled sample manifest.
 - Install triggers a **direct pull from the source** (`ollama pull`, etc.), never
   from OpenShore. Show the license before install. Never rehost weights.
 
-### 12. Security: daemon threat model + permissions + guardrails - `src/core/security/`, `src/core/permissions/`, `src/core/guardrails/`
+### 12. Security: daemon threat model + permissions + guardrails + egress - `src/core/security/`, `permissions/`, `guardrails/`
 A phone-reachable shell-executing agent is remote code execution by design.
-"Reachable over Tailscale" is transport, not authorization. Treat this as the
-highest-severity surface and scaffold it enforced, not deferred.
-- **Daemon binding + authN**: bind to loopback or the Tailscale interface only,
-  never `0.0.0.0`. Authenticate the control channel with its own credential,
+"Reachable over Tailscale" is transport, not authorization. Enforce, do not defer.
+- **Daemon binding + authN**: loopback or Tailscale interface only, never
+  `0.0.0.0`. Authenticate the control channel with its own credential,
   independent of Tailscale reachability.
-- **Command policy**: default-deny for `runShell` with explicit approval, not
-  just step caps. A **working-directory jail** for file tools. **Secret
-  redaction** from the transcript and logs.
-- **Profiles**: define phone/headless as a MORE restrictive profile than
-  local-interactive, not less (auto-approve is never the phone default).
+- **Command policy**: default-deny for `runShell` with explicit approval. A
+  **working-directory jail** for file tools. **Secret redaction** from transcript
+  and logs.
+- **Egress policy** (`security/egress.ts`): govern the web tools and any outbound
+  request; allowlist-capable, visible, on by default for web search but
+  disableable.
+- **Profiles**: phone/headless is MORE restrictive than local-interactive, not
+  less (auto-approve is never the phone default).
 - **Permissions**: allow / ask / deny per tool, glob-scoped for writes, a
-  "trusted repo" concept, and the separate cloud-spend confirmation. Safe
-  defaults: reads allow, writes ask, shell asks, push asks, cloud step asks.
+  "trusted repo" concept, and the cloud-spend confirmation. Defaults: reads
+  allow, web search allow, writes ask, shell asks, push asks, cloud step asks.
 - **Guardrails**: hard **max-step caps**, **loop/repeat detection with a real
-  stop**, and per-task **wall-clock, token, and dollar budgets** that halt a
-  runaway and hand control back. Structurally impossible to leave a `runShell`
-  loop running unattended.
+  stop**, per-task **wall-clock, token, and dollar budgets** that halt a runaway
+  and hand control back. A `runShell` loop cannot be left running unattended.
 
 ### 13. Licensing and entitlement - `src/license/`
 - The paid gate lives **server-side on the surfaces we control**: the curated
   catalog feed, the signed cloud-connector configs, and the update channel. Do
-  NOT build client-side DRM (crackable, user-hostile, wasted effort). Accept that
-  a determined user with the code can bypass; price for the honest majority.
-- Support **two entitlement types** in the schema: a **subscription** and a
-  **one-time perpetual-fallback** license (keeps working, connectors freeze after
-  the update window). Price and tiers are config, not hardcoded.
-- `osc license`: activate/show/deactivate a key against a tiny serverless
-  endpoint (configurable URL) with an **offline grace-period cache** so a flaky
-  network never locks the user out. Stub the verify call with the documented
-  request/response shape.
+  NOT build client-side DRM. Price for the honest majority.
+- Support **two entitlement types**: a **subscription** and a **one-time
+  perpetual-fallback** license (keeps working, connectors freeze after the update
+  window). Price and tiers are config, not hardcoded.
+- `osc license`: activate/show/deactivate a key against a serverless endpoint
+  (configurable URL) with an **offline grace-period cache**. The hosted verify
+  server is a documented stub with its request/response shape; the client side is
+  real.
 
 ### 14. Connector + secret manifest - `src/server/connectorMap.ts`
-Mirror Uki's guardrail discipline from day one, before connectors multiply. A
-single **source-of-truth manifest** for every cloud connector and where each
-secret lives, plus a classification test that fails CI on drift. Cheap now,
-whack-a-mole later. Interface plus a starter manifest and test.
+A single **source-of-truth manifest** for every cloud connector and where each
+secret lives, plus a classification test that fails on drift. Real manifest and
+test from day one, before connectors multiply.
 
 ### 15. Vision ingest - `src/context/vision/`
 `osc attach-image <path>` and a watched drop folder (`~/.os-code/inbox/`) that
-feeds the Vision role. Interface plus stub.
+feeds the Vision role. Real ingest, wired to the vision-capable provider path.
 
 ### 16. TUI and session - `src/tui/`
-Ink app: scrollable transcript, status line showing active model role AND
-local-vs-cloud with a cost indicator, input box, slash commands, tool-approval
-prompt, and a distinct cloud-spend confirmation prompt. Runs over SSH with no
-mouse; `--plain` line renderer for dumb terminals; resumes via `osc attach`.
+The heart of the delight. Ink app: scrollable streaming transcript, a status line
+(active model role, local vs cloud, cost, context used), input box with slash
+commands, tool-approval prompt, a distinct cloud-spend confirmation, and a
+citations panel for web results. Runs over SSH with no mouse; a considered
+`--plain` renderer; resumes via `osc attach`. Make it feel premium.
 
 ### 17. Config and onboarding - `src/config/`, `src/commands/`
 - Config in `os-code.config.json` (project) and `~/.os-code/config.json`
-  (global). Full **zod schema**: providers/endpoints, the fleet (role to model),
-  routing rules and mode, fallback policy, `resourceBudget` (VRAM/keep-alive),
-  VRAM profile, catalog URL, license/entitlement, permissions, guardrail limits,
-  daemon bind/auth settings.
-- `osc init` - MUST WORK: autodetect Ollama, list installed models
-  (`GET /api/tags`), pick a VRAM profile, write a starter fleet config.
-- `osc login` - MUST WORK as a flow shell (see Auth).
-- `osc pair` - MUST WORK as a wizard shell (see Connectivity), including
-  sleep-inhibit.
-- `osc doctor` - MUST WORK: local server reachable, models present, Claude API
-  key connected, GitHub token present, tailnet up, daemon bind is not `0.0.0.0`,
-  license status, and every fleet role resolves. Branded, actionable report with
-  the per-link error taxonomy.
-- Scaffold (stubbed): `osc run`, `osc attach`, `osc serve`, `osc fleet`,
-  `osc market`, `osc license`, `osc eval`, `osc auth github`, `osc attach-image`.
+  (global). Full **zod schema**: providers/endpoints, the fleet, routing rules
+  and mode, fallback policy, `resourceBudget`, VRAM profile, search backend,
+  egress policy, catalog URL, license/entitlement, permissions, guardrail limits,
+  daemon bind/auth.
+- `osc init`: autodetect Ollama, list installed models (`GET /api/tags`), pick a
+  VRAM profile, write a starter fleet config. Delightful.
+- `osc login`, `osc pair`: real, premium onboarding flows.
+- `osc doctor`: check local server, models, Claude API key, GitHub token, tailnet,
+  daemon bind, search backend, license, and every fleet role, in a beautiful,
+  actionable report with the per-link error taxonomy.
+- All other commands (`osc run`, `attach`, `serve`, `fleet`, `market`, `license`,
+  `eval`, `auth github`, `attach-image`) implemented and working.
 
 ### 18. Branding - `src/brand/`
 Centralize ALL theme tokens. OpenShore theme with PLACEHOLDER values marked
-`// OPENSHORE: replace with real brand tokens`:
-- Palette: deep ocean navy background, off-white text, one bright signal accent
-  (default cyan/teal) for local, warm amber for cloud/escalation, muted gray for
-  secondary.
-- An ASCII/Unicode **OS Code** wordmark banner on launch and in `osc doctor`. Do
-  not imitate Claude Code branding.
-- A theming function so the whole TUI reads from these tokens.
+`// OPENSHORE: replace with real brand tokens`: deep ocean navy background,
+off-white text, a bright signal accent (default cyan/teal) for local, warm amber
+for cloud/escalation, muted gray for secondary. An ASCII/Unicode **OS Code**
+wordmark banner. Do not imitate Claude Code branding. One theming function feeds
+the whole TUI.
 
-## Deliverables
-1. Complete directory tree with every module present.
-2. `package.json` with real deps and scripts (`build`, `dev`, `lint`,
-   `typecheck`, `osc` bin).
-3. Working `osc init`, `osc login`, `osc pair`, `osc doctor`. Every other command
-   scaffolded and printing a clear "not yet implemented" with intended behavior.
-4. Full zod config schema plus a commented **example `os-code.config.json`** with
-   a realistic local fleet (planner, coder, fast-edit, apply, embedder) on an
-   Ollama endpoint, a cloud Claude API-key entry, a `resourceBudget` + VRAM
-   profile, a catalog URL, entitlement config, daemon bind/auth defaults, and
-   local-first routing with escalation.
-5. A bundled **sample catalog manifest** and its zod schema, and a starter
-   **connectorMap** with its classification test.
-6. A `README.md`: the concept, an ASCII architecture diagram, the **build
-   sequence** above, a quickstart (install Ollama, pull models, `osc init`,
-   `osc login`, `osc doctor`, `osc run`), the marketplace flow, and the
-   phone-on-the-go workflow (`osc pair`, Tailscale, Termius, `osc serve` +
-   `osc attach`).
-7. Inline `// TODO` at every stub marking the extension point and what a real
-   implementation must do.
+## Definition of Done (all true)
+1. `pnpm install && pnpm build` is green; `pnpm typecheck`, `pnpm lint`, and the
+   test suite pass.
+2. `osc` drives a real local model through Ollama end to end (read, web search,
+   edit with approval, run a command, commit), and where Ollama is absent the
+   same path passes against a mock provider and runs with one real command.
+3. Every command works; web search returns real results and citations render.
+4. Security is enforced: daemon never binds `0.0.0.0`, `runShell` is default-deny
+   with approval, egress governs the web tools, guardrails halt runaways.
+5. The experience is delightful per the Delight bar: streaming, status line,
+   onboarding, microcopy, `--plain` fallback.
+6. `README.md`, `DECISIONS.md`, and `PROGRESS.md` reflect the real state.
 
-## Acceptance criteria
-- `pnpm install && pnpm build` succeeds; `npx osc doctor` reports status;
-  `npx osc init` writes a valid config; `npx osc login` and `npx osc pair` run
-  their flows.
-- No em dash in any user-facing string. No copy implies Anthropic affiliation.
-- The daemon never binds `0.0.0.0`; `runShell` is default-deny with approval; the
-  phone/headless profile is more restrictive than local-interactive.
-- Guardrails (step cap, loop detection, wall-clock/token/dollar budgets) are
-  enforced so a runaway agent over SSH is structurally prevented.
-- The fuzzy edit path is context-anchored, verifies post-apply, and shows a diff
-  for approval before landing.
-- The marketplace installs by pulling from the source (Ollama/HF), never from
-  OpenShore, and shows the license first.
-- The subscription-OAuth path is an experimental stub and appears in no
-  user-facing marketing copy.
-- All branding reads from `src/brand/`; changing one token restyles the app.
-
-Do not wait for approval. Build the shell now, in one non-stop pass, following
-the build sequence, the pinned stack, and the exact directory tree above. Record
-any ambiguous decision in `DECISIONS.md` and keep going. Run a single build pass
-at the end, fix until green, and stop at the Definition of Done with the closing
-summary. Do not echo file contents or narrate individual files.
+Build OS Code now, non-stop, depth-first along the build sequence, to a complete
+and delightful state. Index on completeness and delight, not token count. Record
+ambiguous decisions in `DECISIONS.md`, leave anything unfinished in `PROGRESS.md`
+with working software at the current layer, and close with a summary of what
+works and how to run it.
