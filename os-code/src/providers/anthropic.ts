@@ -68,7 +68,11 @@ export class AnthropicProvider implements Provider {
         headers: this.headers(),
         signal: AbortSignal.timeout(5000),
       });
-      if (res.status === 401) return { ok: false, detail: 'The Anthropic API key was rejected. Run osc login to replace it.' };
+      if (res.status === 401)
+        return {
+          ok: false,
+          detail: 'The Anthropic API key was rejected. Run osc login to replace it.',
+        };
       if (!res.ok) return { ok: false, detail: `Anthropic API answered ${res.status}.` };
       return { ok: true, detail: `Claude connected (${this.endpoint.model})` };
     } catch (err) {
@@ -193,7 +197,11 @@ export class AnthropicProvider implements Provider {
             case 'message_delta':
               if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
               if (evt.usage?.output_tokens !== undefined) {
-                yield { type: 'usage', promptTokens: 0, completionTokens: Number(evt.usage.output_tokens) };
+                yield {
+                  type: 'usage',
+                  promptTokens: 0,
+                  completionTokens: Number(evt.usage.output_tokens),
+                };
               }
               break;
           }
@@ -224,8 +232,10 @@ export class AnthropicProvider implements Provider {
 
 function anthropicErrorHint(status: number, text: string): string {
   if (status === 401) return 'The Anthropic API key was rejected. Run osc login to replace it.';
-  if (status === 429) return 'The Anthropic API is rate limiting this key right now. Give it a moment, or check your plan limits at console.anthropic.com.';
-  if (status === 529 || status === 503) return 'The Anthropic API is overloaded right now. The local stack still works; try the cloud step again shortly.';
+  if (status === 429)
+    return 'The Anthropic API is rate limiting this key right now. Give it a moment, or check your plan limits at console.anthropic.com.';
+  if (status === 529 || status === 503)
+    return 'The Anthropic API is overloaded right now. The local stack still works; try the cloud step again shortly.';
   return `Anthropic API error ${status}: ${text.slice(0, 300)}`;
 }
 
@@ -253,7 +263,10 @@ export function toAnthropicMessages(messages: ChatMessage[]): {
   const out: Array<Record<string, unknown>> = [];
   for (const m of messages) {
     if (m.role === 'system') {
-      const text = typeof m.content === 'string' ? m.content : (m.content.find((p) => p.type === 'text')?.text ?? '');
+      const text =
+        typeof m.content === 'string'
+          ? m.content
+          : (m.content.find((p) => p.type === 'text')?.text ?? '');
       system = system ? `${system}\n\n${text}` : text;
       continue;
     }
@@ -272,7 +285,10 @@ export function toAnthropicMessages(messages: ChatMessage[]): {
     }
     if (m.role === 'assistant' && m.toolCalls?.length) {
       const blocks: unknown[] = [];
-      const text = typeof m.content === 'string' ? m.content : (m.content.find((p) => p.type === 'text')?.text ?? '');
+      const text =
+        typeof m.content === 'string'
+          ? m.content
+          : (m.content.find((p) => p.type === 'text')?.text ?? '');
       if (text) blocks.push({ type: 'text', text });
       for (const c of m.toolCalls) {
         blocks.push({

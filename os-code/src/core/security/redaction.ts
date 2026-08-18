@@ -17,7 +17,10 @@ const RULES: RedactionRule[] = [
   { kind: 'google-key', pattern: /AIza[0-9A-Za-z_-]{30,}/g },
   { kind: 'slack-token', pattern: /xox[baprs]-[A-Za-z0-9-]{10,}/g },
   { kind: 'jwt', pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
-  { kind: 'private-key', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+  {
+    kind: 'private-key',
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  },
   { kind: 'bearer', pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/g },
   {
     kind: 'assignment',

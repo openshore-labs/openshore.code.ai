@@ -21,10 +21,16 @@ export const readFileTool: ToolDef<typeof schema> = {
     try {
       stat = statSync(abs);
     } catch {
-      return { ok: false, content: `No file at ${args.path}. Check the path with glob or gitStatus.` };
+      return {
+        ok: false,
+        content: `No file at ${args.path}. Check the path with glob or gitStatus.`,
+      };
     }
     if (stat.isDirectory()) {
-      return { ok: false, content: `${args.path} is a directory. Use glob to list what is inside it.` };
+      return {
+        ok: false,
+        content: `${args.path} is a directory. Use glob to list what is inside it.`,
+      };
     }
     if (stat.size > 2_000_000) {
       return {

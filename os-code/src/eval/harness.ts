@@ -39,7 +39,12 @@ const EDIT_SAMPLE = [
   '}',
 ].join('\n');
 
-async function completeText(provider: Provider, model: string, system: string, user: string): Promise<string> {
+async function completeText(
+  provider: Provider,
+  model: string,
+  system: string,
+  user: string,
+): Promise<string> {
   let out = '';
   for await (const event of provider.chat({
     model,
@@ -138,6 +143,9 @@ export async function runEval(
 
   const dir = join(oscHome(), 'eval');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, `${model.replace(/[^A-Za-z0-9._-]/g, '_')}.json`), JSON.stringify(report, null, 2));
+  writeFileSync(
+    join(dir, `${model.replace(/[^A-Za-z0-9._-]/g, '_')}.json`),
+    JSON.stringify(report, null, 2),
+  );
   return report;
 }

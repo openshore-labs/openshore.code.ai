@@ -1,0 +1,115 @@
+{
+  "$comment": "Every knob OS Code has, with its default. An EMPTY config is valid: defaults give you a working single-model setup once osc init picks your orchestrator. Copy this file to os-code.config.json (per project) or ~/.os-code/config.json (global) and keep only what you change.",
+
+  "providers": {
+    "ollama": {
+      "kind": "openai-compatible",
+      "baseUrl": "http://localhost:11434",
+      "$comment": "Also speaks LM Studio (http://localhost:1234), llama.cpp server, and vLLM. apiKeyEnv names an env var if the server wants a key."
+    },
+    "anthropic": {
+      "kind": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "auth": "api-key",
+      "model": "claude-sonnet-5",
+      "$comment": "Added automatically by osc login. auth 'subscription' is an experimental stub; 'api-key' is the real path."
+    }
+  },
+
+  "imageGen": {
+    "kind": "a1111",
+    "baseUrl": "http://localhost:7860",
+    "$comment": "Optional diffusion server for the image-generation specialist. Kinds: a1111, openai-images, comfyui (comfyui pending a workflow file)."
+  },
+
+  "stack": {
+    "orchestrator": { "provider": "ollama", "model": "qwen2.5-coder:14b" },
+    "specialists": {
+      "coding": { "provider": "ollama", "model": "qwen2.5-coder:14b" },
+      "vision": { "provider": "ollama", "model": "llava:7b" },
+      "embedding": { "provider": "ollama", "model": "nomic-embed-text" },
+      "fast": { "provider": "ollama", "model": "qwen2.5-coder:1.5b" },
+      "imageGen": { "endpoint": "imageGen" }
+    },
+    "$comment": "The orchestrator is the one required role and can point at ollama OR anthropic. Every specialist is optional; missing ones degrade quietly to the orchestrator."
+  },
+
+  "routing": {
+    "mode": "auto",
+    "escalation": {
+      "enabled": false,
+      "afterToolFailures": 3,
+      "onModelRequest": true
+    },
+    "$comment": "mode 'orchestrator-only' never delegates. Escalation to cloud requires enabled:true AND a connected account AND your per-task approval."
+  },
+
+  "resourceBudget": {
+    "vramProfile": "auto",
+    "keepAlive": "10m",
+    "maxResidentModels": 1,
+    "$comment": "auto detects VRAM and picks single/dual/fleet. vramOverrideGB forces a number on headless boxes."
+  },
+
+  "search": {
+    "backend": "duckduckgo",
+    "searxngUrl": "http://localhost:8888",
+    "braveKeyEnv": "BRAVE_API_KEY",
+    "tavilyKeyEnv": "TAVILY_API_KEY",
+    "resultCount": 5,
+    "fetchMaxChars": 18000,
+    "$comment": "duckduckgo needs no key. searxng is the fully private, self-hosted path."
+  },
+
+  "egress": {
+    "webEnabled": true,
+    "allowlist": [],
+    "blocklist": [],
+    "$comment": "Governs every outbound request the agent makes. Local endpoints are always allowed. A non-empty allowlist restricts the web to those hosts."
+  },
+
+  "permissions": {
+    "defaults": {
+      "read": "allow",
+      "network": "allow",
+      "write": "ask",
+      "shell": "ask",
+      "push": "ask",
+      "cloud-spend": "ask"
+    },
+    "rules": [
+      { "tool": "writeFile", "decision": "allow", "pathGlob": "src/**" },
+      { "tool": "writeFile", "decision": "deny", "pathGlob": "**/*.env" }
+    ],
+    "trustedRepos": [],
+    "$comment": "Rules run top down, first match wins. trustedRepos lists absolute paths where writes flow without asking."
+  },
+
+  "guardrails": {
+    "maxSteps": 40,
+    "maxRepeats": 3,
+    "wallClockSeconds": 900,
+    "maxTokens": 400000,
+    "maxDollars": 2.0
+  },
+
+  "daemon": {
+    "bind": "loopback",
+    "port": 4816,
+    "$comment": "bind 'tailscale' serves your tailnet interface. 0.0.0.0 is refused, always."
+  },
+
+  "catalog": {
+    "url": "https://openshore.ai/os-code/catalog.json",
+    "refreshHours": 24
+  },
+
+  "license": {
+    "verifyUrl": "https://openshore.ai/api/os-code/license/verify",
+    "graceDays": 14
+  },
+
+  "ui": {
+    "plain": false
+  }
+}

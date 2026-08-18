@@ -2,16 +2,19 @@
 // (Ink TUI, plain, remote attach) speaks; the LocalDriver wraps a live
 // AgentSession and journals every event to ~/.os-code/sessions/<id>/ so a
 // dropped phone connection reattaches to the in-flight run with nothing lost.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { oscHome } from '../config/load.js';
 import type { AgentSession } from '../core/agent/loop.js';
-import type {
-  AgentEvent,
-  ApprovalAnswer,
-  ApprovalRequest,
-} from '../core/agent/types.js';
+import type { AgentEvent, ApprovalAnswer, ApprovalRequest } from '../core/agent/types.js';
 import { redactSecrets } from '../core/security/redaction.js';
 
 export type DriverEvent =
@@ -65,7 +68,8 @@ export class LocalDriver implements SessionDriver {
   private seq = 0;
   private sinks = new Set<(event: DriverEvent, seq: number) => void>();
   private pendingApprovals = new Map<string, (answer: ApprovalAnswer) => void>();
-  private queue: Array<{ text: string; images?: Array<{ base64: string; mediaType: string }> }> = [];
+  private queue: Array<{ text: string; images?: Array<{ base64: string; mediaType: string }> }> =
+    [];
   private running = false;
   private agent?: AgentSession;
   private persist: boolean;
@@ -124,7 +128,10 @@ export class LocalDriver implements SessionDriver {
     this.events.push(entry);
     if (this.persist) {
       try {
-        appendFileSync(join(this.dir(), 'events.jsonl'), `${redactSecrets(JSON.stringify(entry))}\n`);
+        appendFileSync(
+          join(this.dir(), 'events.jsonl'),
+          `${redactSecrets(JSON.stringify(entry))}\n`,
+        );
         const infoPath = join(this.dir(), 'info.json');
         const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
         info.updatedAt = new Date().toISOString();

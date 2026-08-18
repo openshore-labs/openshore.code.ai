@@ -4,7 +4,7 @@
 // refresh incrementally by file mtime. With no embedder enabled, callers fall
 // back to grep, which is a supported (degraded) mode, not an error.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { oscHome } from '../config/load.js';
 import type { EmbeddingProvider } from '../providers/types.js';
@@ -28,7 +28,8 @@ const CHUNK_OVERLAP = 20;
 const EMBED_BATCH = 16;
 const MAX_FILE_BYTES = 250_000;
 
-const TEXT_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|java|kt|swift|scala|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|html|css|scss|json|yaml|yml|toml|md|txt|vue|svelte)$/;
+const TEXT_EXT =
+  /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|java|kt|swift|scala|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|html|css|scss|json|yaml|yml|toml|md|txt|vue|svelte)$/;
 
 export class RepoIndex {
   private readonly dir: string;
@@ -69,7 +70,10 @@ export class RepoIndex {
   private save(): void {
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(join(this.dir, 'meta.json'), JSON.stringify(this.meta));
-    writeFileSync(join(this.dir, 'chunks.jsonl'), this.chunks.map((c) => JSON.stringify(c)).join('\n'));
+    writeFileSync(
+      join(this.dir, 'chunks.jsonl'),
+      this.chunks.map((c) => JSON.stringify(c)).join('\n'),
+    );
   }
 
   /** How stale the index is: files changed since last refresh. */
@@ -115,7 +119,10 @@ export class RepoIndex {
       const pieces = chunkText(rel, text);
       for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
         const batch = pieces.slice(i, i + EMBED_BATCH);
-        const vectors = await this.embedder.embed(this.model, batch.map((p) => p.text));
+        const vectors = await this.embedder.embed(
+          this.model,
+          batch.map((p) => p.text),
+        );
         batch.forEach((p, j) => {
           const vector = vectors[j];
           if (vector) this.chunks.push({ ...p, vector });
@@ -142,7 +149,10 @@ export class RepoIndex {
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
     return scored
-      .map(({ c, score }) => `### ${c.file}:${c.startLine}-${c.endLine} (relevance ${score.toFixed(2)})\n${c.text}`)
+      .map(
+        ({ c, score }) =>
+          `### ${c.file}:${c.startLine}-${c.endLine} (relevance ${score.toFixed(2)})\n${c.text}`,
+      )
       .join('\n\n');
   }
 

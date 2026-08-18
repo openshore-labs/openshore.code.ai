@@ -10,7 +10,12 @@
 //     the desk, never looser.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
-import { assertSafeBind, bearerFrom, loadOrCreateToken, tokenMatches } from '../core/security/daemonAuth.js';
+import {
+  assertSafeBind,
+  bearerFrom,
+  loadOrCreateToken,
+  tokenMatches,
+} from '../core/security/daemonAuth.js';
 import { oscHome } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
@@ -61,7 +66,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const presented = bearerFrom(req.headers.authorization);
     if (!tokenMatches(presented, token)) {
-      sendJson(res, 401, { error: 'Missing or wrong daemon token. It lives in ~/.os-code/daemon.token on the desktop.' });
+      sendJson(res, 401, {
+        error: 'Missing or wrong daemon token. It lives in ~/.os-code/daemon.token on the desktop.',
+      });
       return;
     }
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'daemon'}`);
@@ -176,7 +183,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const text = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) });
+  res.writeHead(status, {
+    'content-type': 'application/json',
+    'content-length': Buffer.byteLength(text),
+  });
   res.end(text);
 }
 

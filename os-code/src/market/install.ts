@@ -10,12 +10,12 @@ export interface InstallProgress {
 
 /** The license block a user sees before the pull starts. */
 export function licenseNotice(model: CatalogModel): string {
-  const lines = [
-    `${model.name} is licensed under ${model.license.name} (${model.license.id}).`,
-  ];
+  const lines = [`${model.name} is licensed under ${model.license.name} (${model.license.id}).`];
   if (model.license.note) lines.push(model.license.note);
   if (model.license.url) lines.push(`Full text: ${model.license.url}`);
-  lines.push(`Weights come straight from ${model.source.kind === 'ollama' ? 'the Ollama library' : 'Hugging Face'}, never from OpenShore.`);
+  lines.push(
+    `Weights come straight from ${model.source.kind === 'ollama' ? 'the Ollama library' : 'Hugging Face'}, never from OpenShore.`,
+  );
   return lines.join('\n');
 }
 
@@ -35,7 +35,9 @@ export function installModel(
     });
   }
   return new Promise((resolve) => {
-    const child = spawn('ollama', ['pull', model.source.ref], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('ollama', ['pull', model.source.ref], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     const forward = (chunk: Buffer) => {
       for (const line of chunk.toString().split(/\r?\n/)) {
         if (line.trim()) onProgress({ line: line.trim() });
@@ -46,14 +48,18 @@ export function installModel(
     child.on('error', () => {
       resolve({
         ok: false,
-        detail: 'Could not run ollama. Install it first: curl -fsSL https://ollama.com/install.sh | sh',
+        detail:
+          'Could not run ollama. Install it first: curl -fsSL https://ollama.com/install.sh | sh',
       });
     });
     child.on('close', (code) => {
       resolve(
         code === 0
           ? { ok: true, detail: `${model.source.ref} is pulled and ready.` }
-          : { ok: false, detail: `ollama pull exited with code ${code}. Check connectivity and disk space, then try again.` },
+          : {
+              ok: false,
+              detail: `ollama pull exited with code ${code}. Check connectivity and disk space, then try again.`,
+            },
       );
     });
   });

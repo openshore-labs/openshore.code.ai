@@ -87,7 +87,7 @@ export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
 export function saveGlobalConfig(partial: unknown): string {
   const path = globalConfigPath();
   mkdirSync(oscHome(), { recursive: true });
-  const current = existsSync(path) ? readJson(path).value ?? {} : {};
+  const current = existsSync(path) ? (readJson(path).value ?? {}) : {};
   const next = deepMerge(current, partial);
   // Validate before writing so a bad save can never brick the CLI.
   ConfigSchema.parse(next);

@@ -8,14 +8,30 @@
       "tagline": "Great at code for its size. The best small starting point.",
       "categories": ["coding", "reasoning"],
       "orchestratorCapable": true,
-      "source": { "kind": "ollama", "ref": "qwen2.5-coder:7b", "pullCommand": "ollama pull qwen2.5-coder:7b" },
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5-coder:7b",
+        "pullCommand": "ollama pull qwen2.5-coder:7b"
+      },
       "sizeGB": 4.7,
       "quantization": "Q4_K_M",
       "contextTokens": 32768,
-      "license": { "id": "Apache-2.0", "name": "Apache License 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0", "note": "Free for commercial use." },
-      "curation": { "rank": 1, "note": "The default starter: strong tool calling, honest edits, runs on 8 GB." },
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 1,
+        "note": "The default starter: strong tool calling, honest edits, runs on 8 GB."
+      },
       "blessed": true,
-      "benchmarks": { "HumanEval": "88.4", "BFCL": "strong native tool calling", "LiveCodeBench": "competitive at 7B" }
+      "benchmarks": {
+        "HumanEval": "88.4",
+        "BFCL": "strong native tool calling",
+        "LiveCodeBench": "competitive at 7B"
+      }
     },
     {
       "id": "qwen2.5-coder-14b",
@@ -23,12 +39,24 @@
       "tagline": "Great at code, with more headroom for planning. The sweet spot on 16 GB.",
       "categories": ["coding", "reasoning"],
       "orchestratorCapable": true,
-      "source": { "kind": "ollama", "ref": "qwen2.5-coder:14b", "pullCommand": "ollama pull qwen2.5-coder:14b" },
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5-coder:14b",
+        "pullCommand": "ollama pull qwen2.5-coder:14b"
+      },
       "sizeGB": 9.0,
       "quantization": "Q4_K_M",
       "contextTokens": 32768,
-      "license": { "id": "Apache-2.0", "name": "Apache License 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0", "note": "Free for commercial use." },
-      "curation": { "rank": 2, "note": "The recommended orchestrator when the machine has 16 GB of VRAM." },
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 2,
+        "note": "The recommended orchestrator when the machine has 16 GB of VRAM."
+      },
       "blessed": true,
       "benchmarks": { "HumanEval": "89.6", "BFCL": "strong native tool calling" }
     },
@@ -38,12 +66,24 @@
       "tagline": "Big-rig coding brain. Close to cloud quality on hard edits.",
       "categories": ["coding", "reasoning"],
       "orchestratorCapable": true,
-      "source": { "kind": "ollama", "ref": "qwen2.5-coder:32b", "pullCommand": "ollama pull qwen2.5-coder:32b" },
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5-coder:32b",
+        "pullCommand": "ollama pull qwen2.5-coder:32b"
+      },
       "sizeGB": 20.0,
       "quantization": "Q4_K_M",
       "contextTokens": 32768,
-      "license": { "id": "Apache-2.0", "name": "Apache License 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0", "note": "Free for commercial use." },
-      "curation": { "rank": 3, "note": "Needs 24 GB of VRAM. The strongest local orchestrator in the catalog." },
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 3,
+        "note": "Needs 24 GB of VRAM. The strongest local orchestrator in the catalog."
+      },
       "blessed": true,
       "benchmarks": { "HumanEval": "92.7", "SWE-bench (assisted)": "strongest local option here" }
     },
@@ -53,12 +93,24 @@
       "tagline": "A solid all-rounder that thinks clearly and follows instructions.",
       "categories": ["reasoning"],
       "orchestratorCapable": true,
-      "source": { "kind": "ollama", "ref": "llama3.1:8b", "pullCommand": "ollama pull llama3.1:8b" },
+      "source": {
+        "kind": "ollama",
+        "ref": "llama3.1:8b",
+        "pullCommand": "ollama pull llama3.1:8b"
+      },
       "sizeGB": 4.9,
       "quantization": "Q4_K_M",
       "contextTokens": 131072,
-      "license": { "id": "Llama-3.1-Community", "name": "Llama 3.1 Community License", "url": "https://www.llama.com/llama3_1/license/", "note": "Free for most use; special terms above 700M monthly users." },
-      "curation": { "rank": 4, "note": "Prefer Qwen Coder for code work; pick this for prose-heavy or general tasks." },
+      "license": {
+        "id": "Llama-3.1-Community",
+        "name": "Llama 3.1 Community License",
+        "url": "https://www.llama.com/llama3_1/license/",
+        "note": "Free for most use; special terms above 700M monthly users."
+      },
+      "curation": {
+        "rank": 4,
+        "note": "Prefer Qwen Coder for code work; pick this for prose-heavy or general tasks."
+      },
       "blessed": false,
       "benchmarks": { "MMLU": "69.4", "context": "128k tokens" }
     },
@@ -68,12 +120,19 @@
       "tagline": "Thinks things through, out loud. Strong on tricky logic.",
       "categories": ["reasoning"],
       "orchestratorCapable": true,
-      "source": { "kind": "ollama", "ref": "deepseek-r1:14b", "pullCommand": "ollama pull deepseek-r1:14b" },
+      "source": {
+        "kind": "ollama",
+        "ref": "deepseek-r1:14b",
+        "pullCommand": "ollama pull deepseek-r1:14b"
+      },
       "sizeGB": 9.0,
       "quantization": "Q4_K_M",
       "contextTokens": 131072,
       "license": { "id": "MIT", "name": "MIT License", "note": "Free for commercial use." },
-      "curation": { "rank": 5, "note": "Slower per answer (it reasons at length); pair with a fast specialist." },
+      "curation": {
+        "rank": 5,
+        "note": "Slower per answer (it reasons at length); pair with a fast specialist."
+      },
       "blessed": false,
       "benchmarks": { "GPQA": "strong for size", "MATH-500": "93.9" }
     },
@@ -87,8 +146,15 @@
       "sizeGB": 4.7,
       "quantization": "Q4_0",
       "contextTokens": 32768,
-      "license": { "id": "Apache-2.0", "name": "Apache License 2.0", "note": "Model weights Apache 2.0; built on Llama and CLIP lineage." },
-      "curation": { "rank": 6, "note": "The vision specialist: attach a screenshot and ask what is on it." },
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "note": "Model weights Apache 2.0; built on Llama and CLIP lineage."
+      },
+      "curation": {
+        "rank": 6,
+        "note": "The vision specialist: attach a screenshot and ask what is on it."
+      },
       "blessed": true,
       "benchmarks": { "MMMU": "capable", "ChartQA": "reads most charts" }
     },
@@ -102,7 +168,11 @@
       "sizeGB": 1.7,
       "quantization": "Q4",
       "contextTokens": 2048,
-      "license": { "id": "Apache-2.0", "name": "Apache License 2.0", "note": "Free for commercial use." },
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "note": "Free for commercial use."
+      },
       "curation": { "rank": 7, "note": "Not as sharp as LLaVA, but it fits almost anywhere." },
       "blessed": false
     },
@@ -112,12 +182,23 @@
       "tagline": "Finds the right files. Powers repo search, tiny and always resident.",
       "categories": ["embedding"],
       "orchestratorCapable": false,
-      "source": { "kind": "ollama", "ref": "nomic-embed-text", "pullCommand": "ollama pull nomic-embed-text" },
+      "source": {
+        "kind": "ollama",
+        "ref": "nomic-embed-text",
+        "pullCommand": "ollama pull nomic-embed-text"
+      },
       "sizeGB": 0.3,
       "quantization": "F16",
       "contextTokens": 8192,
-      "license": { "id": "Apache-2.0", "name": "Apache License 2.0", "note": "Free for commercial use." },
-      "curation": { "rank": 8, "note": "The embedder: enable it and searchRepo starts finding code by meaning." },
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 8,
+        "note": "The embedder: enable it and searchRepo starts finding code by meaning."
+      },
       "blessed": true,
       "benchmarks": { "MTEB": "strong open embedder" }
     },
@@ -127,12 +208,23 @@
       "tagline": "Fast for small edits and instant answers.",
       "categories": ["fast", "coding"],
       "orchestratorCapable": false,
-      "source": { "kind": "ollama", "ref": "qwen2.5-coder:1.5b", "pullCommand": "ollama pull qwen2.5-coder:1.5b" },
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5-coder:1.5b",
+        "pullCommand": "ollama pull qwen2.5-coder:1.5b"
+      },
       "sizeGB": 1.0,
       "quantization": "Q4_K_M",
       "contextTokens": 32768,
-      "license": { "id": "Apache-2.0", "name": "Apache License 2.0", "note": "Free for commercial use." },
-      "curation": { "rank": 9, "note": "The latency helper: trivial renames and quick lookups without waking the big model." },
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 9,
+        "note": "The latency helper: trivial renames and quick lookups without waking the big model."
+      },
       "blessed": false
     }
   ],
@@ -161,7 +253,11 @@
       "minVramGB": 16,
       "stack": {
         "orchestrator": "qwen2.5-coder-14b",
-        "specialists": { "vision": "llava-7b", "embedding": "nomic-embed-text", "fast": "qwen2.5-coder-1.5b" }
+        "specialists": {
+          "vision": "llava-7b",
+          "embedding": "nomic-embed-text",
+          "fast": "qwen2.5-coder-1.5b"
+        }
       }
     },
     {
@@ -171,7 +267,11 @@
       "minVramGB": 24,
       "stack": {
         "orchestrator": "qwen2.5-coder-32b",
-        "specialists": { "vision": "llava-7b", "embedding": "nomic-embed-text", "fast": "qwen2.5-coder-1.5b" }
+        "specialists": {
+          "vision": "llava-7b",
+          "embedding": "nomic-embed-text",
+          "fast": "qwen2.5-coder-1.5b"
+        }
       }
     }
   ]

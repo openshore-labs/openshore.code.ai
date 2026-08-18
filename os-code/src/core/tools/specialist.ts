@@ -8,8 +8,15 @@ import { z } from 'zod';
 import type { ToolDef } from './index.js';
 
 const delegateSchema = z.object({
-  role: z.enum(['coding', 'fast']).describe('Which specialist: coding (hard code subtasks) or fast (trivial edits, quick answers)'),
-  task: z.string().min(1).describe('The complete, self-contained subtask, including any code it needs to see'),
+  role: z
+    .enum(['coding', 'fast'])
+    .describe(
+      'Which specialist: coding (hard code subtasks) or fast (trivial edits, quick answers)',
+    ),
+  task: z
+    .string()
+    .min(1)
+    .describe('The complete, self-contained subtask, including any code it needs to see'),
 });
 
 export const delegateTool: ToolDef<typeof delegateSchema> = {
@@ -20,7 +27,10 @@ export const delegateTool: ToolDef<typeof delegateSchema> = {
   risk: 'read',
   async execute(args, ctx) {
     if (!ctx.delegate) {
-      return { ok: false, content: 'Delegation is not available in this session; do the subtask yourself.' };
+      return {
+        ok: false,
+        content: 'Delegation is not available in this session; do the subtask yourself.',
+      };
     }
     try {
       const answer = await ctx.delegate(args.role, args.task);
@@ -35,7 +45,9 @@ export const delegateTool: ToolDef<typeof delegateSchema> = {
 };
 
 const analyzeSchema = z.object({
-  path: z.string().describe('Path to the image file (workspace-relative, or a file from the inbox)'),
+  path: z
+    .string()
+    .describe('Path to the image file (workspace-relative, or a file from the inbox)'),
   question: z.string().min(1).describe('What to find out about the image'),
 });
 
@@ -60,7 +72,10 @@ export const analyzeImageTool: ToolDef<typeof analyzeSchema> = {
     }
     const mediaType = MEDIA[extname(args.path).toLowerCase()];
     if (!mediaType) {
-      return { ok: false, content: `Unsupported image type "${extname(args.path)}". Use png, jpg, gif, or webp.` };
+      return {
+        ok: false,
+        content: `Unsupported image type "${extname(args.path)}". Use png, jpg, gif, or webp.`,
+      };
     }
     let base64: string;
     try {
@@ -98,9 +113,15 @@ export const searchRepoTool: ToolDef<typeof searchRepoSchema> = {
     }
     try {
       const found = await ctx.searchRepo(args.query, args.k ?? 6);
-      return { ok: true, content: found || 'Nothing relevant found; try grep with concrete symbols.' };
+      return {
+        ok: true,
+        content: found || 'Nothing relevant found; try grep with concrete symbols.',
+      };
     } catch (err) {
-      return { ok: false, content: `Repo search failed: ${(err as Error).message}. Use grep instead.` };
+      return {
+        ok: false,
+        content: `Repo search failed: ${(err as Error).message}. Use grep instead.`,
+      };
     }
   },
 };

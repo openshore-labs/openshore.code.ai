@@ -48,7 +48,8 @@ export class Router {
     for (const [, provider] of this.registry.all()) {
       if (provider.kind === 'cloud') {
         const endpoint = this.config.providers[provider.id];
-        const model = endpoint && endpoint.kind === 'anthropic' ? endpoint.model : 'claude-sonnet-5';
+        const model =
+          endpoint && endpoint.kind === 'anthropic' ? endpoint.model : 'claude-sonnet-5';
         return { provider, model };
       }
     }
@@ -90,7 +91,14 @@ export class Router {
         : 'You are a focused specialist. Complete exactly the subtask you are given and return only the result, no preamble.',
     );
     const content: string | ContentPart[] = images?.length
-      ? [{ type: 'text', text: task }, ...images.map((i): ContentPart => ({ type: 'image', imageBase64: i.base64, mediaType: i.mediaType }))]
+      ? [
+          { type: 'text', text: task },
+          ...images.map((i): ContentPart => ({
+            type: 'image',
+            imageBase64: i.base64,
+            mediaType: i.mediaType,
+          })),
+        ]
       : task;
     const messages: ChatMessage[] = [
       { role: 'system', content: system },

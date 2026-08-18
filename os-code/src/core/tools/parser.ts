@@ -13,9 +13,7 @@ export interface ParsedToolCall {
   args: Record<string, unknown>;
 }
 
-export type ValidationResult =
-  | { ok: true; call: ParsedToolCall }
-  | { ok: false; problem: string };
+export type ValidationResult = { ok: true; call: ParsedToolCall } | { ok: false; problem: string };
 
 let idSeq = 0;
 function nextId(): string {
@@ -26,11 +24,17 @@ function nextId(): string {
 // Native path: transport gave us a name and an argument string.
 // ---------------------------------------------------------------------------
 
-export function validateNativeCall(call: ToolCallRequest, registry: ToolRegistry): ValidationResult {
+export function validateNativeCall(
+  call: ToolCallRequest,
+  registry: ToolRegistry,
+): ValidationResult {
   const tool = registry.get(call.name);
   if (!tool) {
     const known = registry.names().join(', ');
-    return { ok: false, problem: `There is no tool named "${call.name}". The available tools are: ${known}.` };
+    return {
+      ok: false,
+      problem: `There is no tool named "${call.name}". The available tools are: ${known}.`,
+    };
   }
   let args: unknown = call.args;
   if (args === undefined) {
@@ -47,7 +51,10 @@ export function validateNativeCall(call: ToolCallRequest, registry: ToolRegistry
   if (!result.success) {
     return { ok: false, problem: describeZodIssues(call.name, result.error) };
   }
-  return { ok: true, call: { id: call.id, name: call.name, args: result.data as Record<string, unknown> } };
+  return {
+    ok: true,
+    call: { id: call.id, name: call.name, args: result.data as Record<string, unknown> },
+  };
 }
 
 function describeZodIssues(toolName: string, error: z.ZodError): string {
@@ -83,7 +90,9 @@ export function extractTextCalls(text: string, registry: ToolRegistry): TextExtr
     const rawArgs = firstObject(obj, ['args', 'arguments', 'parameters', 'input']) ?? {};
     const tool = registry.get(name);
     if (!tool) {
-      problems.push(`There is no tool named "${name}". The available tools are: ${registry.names().join(', ')}.`);
+      problems.push(
+        `There is no tool named "${name}". The available tools are: ${registry.names().join(', ')}.`,
+      );
       spansToRemove.push([candidate.start, candidate.end]);
       continue;
     }
@@ -163,10 +172,14 @@ function firstString(obj: Record<string, unknown>, keys: string[]): string | und
   return undefined;
 }
 
-function firstObject(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> | undefined {
+function firstObject(
+  obj: Record<string, unknown>,
+  keys: string[],
+): Record<string, unknown> | undefined {
   for (const k of keys) {
     const v = obj[k];
-    if (typeof v === 'object' && v !== null && !Array.isArray(v)) return v as Record<string, unknown>;
+    if (typeof v === 'object' && v !== null && !Array.isArray(v))
+      return v as Record<string, unknown>;
     if (typeof v === 'string') {
       const parsed = parseJsonLoose(v);
       if (typeof parsed === 'object' && parsed !== null) return parsed as Record<string, unknown>;
@@ -201,7 +214,10 @@ export function repairJson(text: string): string {
   // Smart quotes to straight quotes.
   s = s.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'");
   // Python-isms.
-  s = s.replace(/\bTrue\b/g, 'true').replace(/\bFalse\b/g, 'false').replace(/\bNone\b/g, 'null');
+  s = s
+    .replace(/\bTrue\b/g, 'true')
+    .replace(/\bFalse\b/g, 'false')
+    .replace(/\bNone\b/g, 'null');
   // Trailing commas before } or ].
   s = s.replace(/,\s*([}\]])/g, '$1');
   // Unquoted object keys: {tool: "x"} -> {"tool": "x"}.

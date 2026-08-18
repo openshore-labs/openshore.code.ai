@@ -29,7 +29,8 @@ export function _setRipgrep(v: boolean | undefined): void {
 
 export const grepTool: ToolDef<typeof schema> = {
   name: 'grep',
-  description: 'Search file contents across the workspace with a regex. Returns file:line: matches.',
+  description:
+    'Search file contents across the workspace with a regex. Returns file:line: matches.',
   schema,
   risk: 'read',
   async execute(args, ctx) {
@@ -45,7 +46,10 @@ export const grepTool: ToolDef<typeof schema> = {
         return { ok: true, content: capContent(lines.join('\n')) };
       }
       if (res.status === 1) return { ok: true, content: `No matches for /${args.pattern}/.` };
-      return { ok: false, content: `Search failed: ${res.stderr?.trim() || 'ripgrep error'}. Check the regex.` };
+      return {
+        ok: false,
+        content: `Search failed: ${res.stderr?.trim() || 'ripgrep error'}. Check the regex.`,
+      };
     }
 
     // Pure-JS fallback.

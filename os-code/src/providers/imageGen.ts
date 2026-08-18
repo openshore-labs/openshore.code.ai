@@ -49,7 +49,11 @@ export class ImageGenProvider implements ImageProvider {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ prompt, width, height, steps: 24 }),
       });
-      if (!res.ok) throw new ProviderError(this.id, `Image generation failed: ${res.status} ${await res.text()}`);
+      if (!res.ok)
+        throw new ProviderError(
+          this.id,
+          `Image generation failed: ${res.status} ${await res.text()}`,
+        );
       const body = (await res.json()) as { images?: string[] };
       const image = body.images?.[0];
       if (!image) throw new ProviderError(this.id, 'The image server returned no image.');
@@ -66,7 +70,11 @@ export class ImageGenProvider implements ImageProvider {
           response_format: 'b64_json',
         }),
       });
-      if (!res.ok) throw new ProviderError(this.id, `Image generation failed: ${res.status} ${await res.text()}`);
+      if (!res.ok)
+        throw new ProviderError(
+          this.id,
+          `Image generation failed: ${res.status} ${await res.text()}`,
+        );
       const body = (await res.json()) as { data?: Array<{ b64_json?: string }> };
       const image = body.data?.[0]?.b64_json;
       if (!image) throw new ProviderError(this.id, 'The image server returned no image.');

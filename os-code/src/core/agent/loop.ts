@@ -58,6 +58,7 @@ export class AgentSession {
   private active: ActiveModel;
   private escalated = false;
   private cloudApprovedForSession = false;
+  private cloudApprovedForTask = false;
   private abortController?: AbortController;
 
   constructor(private readonly deps: AgentDeps) {
@@ -88,7 +89,7 @@ export class AgentSession {
   private systemPrompt(toolMode: 'native' | 'text'): string {
     const { toolContext, codeMap } = this.deps;
     const parts = [
-      'You are OS Code, a careful, capable coding agent running on the user\'s own machine.',
+      "You are OS Code, a careful, capable coding agent running on the user's own machine.",
       `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
       'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
       'Use webSearch and webFetch for anything after your knowledge cutoff or specific to a library version.',
@@ -111,13 +112,18 @@ export class AgentSession {
   async run(input: string, images?: Array<{ base64: string; mediaType: string }>): Promise<void> {
     const { config, guardrails } = this.deps;
     guardrails.startTask();
+    this.cloudApprovedForTask = false;
     this.abortController = new AbortController();
     this.emit({ type: 'task-start', input });
 
     const content: string | ContentPart[] = images?.length
       ? [
           { type: 'text', text: input },
-          ...images.map((i): ContentPart => ({ type: 'image', imageBase64: i.base64, mediaType: i.mediaType })),
+          ...images.map((i): ContentPart => ({
+            type: 'image',
+            imageBase64: i.base64,
+            mediaType: i.mediaType,
+          })),
         ]
       : input;
     this.history.push({ role: 'user', content });
@@ -196,7 +202,9 @@ export class AgentSession {
             tools: toolMode === 'native' ? this.deps.tools.specs() : undefined,
             temperature: this.active.adapter.temperature(),
             maxTokens: 8192,
-            stop: this.active.adapter.stopTokens().length ? this.active.adapter.stopTokens() : undefined,
+            stop: this.active.adapter.stopTokens().length
+              ? this.active.adapter.stopTokens()
+              : undefined,
             jsonSchema: useGrammar ? toolCallJsonSchema(this.deps.tools) : undefined,
             keepAlive: config.resourceBudget.keepAlive,
           },
@@ -245,7 +253,10 @@ export class AgentSession {
         promptTokens,
         completionTokens,
         dollars,
-        contextPercent: Math.min(100, Math.round((estimateMessages(this.history) / caps.contextTokens) * 100)),
+        contextPercent: Math.min(
+          100,
+          Math.round((estimateMessages(this.history) / caps.contextTokens) * 100),
+        ),
       });
 
       // ------------------------------------------------------------------
@@ -276,7 +287,10 @@ export class AgentSession {
         this.history.push({ role: 'assistant', content: streamedText });
         this.history.push({ role: 'user', content: repairPrompt(problems) });
         if (repairAttempts <= 2) {
-          this.emit({ type: 'status', message: 'The model sent a malformed tool call; asking it to fix the format.' });
+          this.emit({
+            type: 'status',
+            message: 'The model sent a malformed tool call; asking it to fix the format.',
+          });
           continue;
         }
         const escalated = await this.maybeEscalate(parseFailStreak);
@@ -310,7 +324,12 @@ export class AgentSession {
         this.history.push({
           role: 'assistant',
           content: streamedText,
-          toolCalls: calls.map((c) => ({ id: c.id, name: c.name, argsText: JSON.stringify(c.args), args: c.args })),
+          toolCalls: calls.map((c) => ({
+            id: c.id,
+            name: c.name,
+            argsText: JSON.stringify(c.args),
+            args: c.args,
+          })),
         });
         if (displayText.trim()) this.emit({ type: 'text-final', text: displayText.trim() });
       } else {
@@ -425,7 +444,11 @@ export class AgentSession {
     return result.ok ? 'ok' : 'failed';
   }
 
-  private pushObservation(call: ParsedToolCall, content: string, toolMode: 'native' | 'text'): void {
+  private pushObservation(
+    call: ParsedToolCall,
+    content: string,
+    toolMode: 'native' | 'text',
+  ): void {
     if (toolMode === 'native') {
       this.history.push({ role: 'tool', content, toolCallId: call.id, name: call.name });
     } else {
@@ -451,7 +474,11 @@ export class AgentSession {
     if (!approved) return false;
 
     this.escalated = true;
-    this.active = { provider: target.provider, model: target.model, adapter: adapterFor(target.model) };
+    this.active = {
+      provider: target.provider,
+      model: target.model,
+      adapter: adapterFor(target.model),
+    };
     this.emit({
       type: 'model-switch',
       model: target.model,
@@ -462,7 +489,7 @@ export class AgentSession {
   }
 
   private async confirmCloudSpend(reason: string): Promise<boolean> {
-    if (this.cloudApprovedForSession) return true;
+    if (this.cloudApprovedForSession || this.cloudApprovedForTask) return true;
     const { usage, approver, permissions, profile } = this.deps;
     const model = this.deps.router.escalationTarget()?.model ?? this.active.model;
     const promptGuess = estimateMessages(this.history) + 2000;
@@ -476,6 +503,7 @@ export class AgentSession {
       summary: reason,
       detail: `Estimated cost: about $${estimate.toFixed(3)} per call on ${model}. Spent this session: $${spent.toFixed(2)}. Nothing is sent without this approval.`,
     });
+    if (answer.approve) this.cloudApprovedForTask = true;
     if (answer.approve && answer.alwaysThisSession && profile.allowCloudAutoApprove) {
       this.cloudApprovedForSession = true;
       permissions.allowForSession('cloud');

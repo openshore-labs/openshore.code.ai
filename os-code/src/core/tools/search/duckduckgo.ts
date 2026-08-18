@@ -17,7 +17,9 @@ export function duckduckgoProvider(): SearchProvider {
         signal: AbortSignal.timeout(12_000),
       });
       if (!res.ok) {
-        throw new Error(`DuckDuckGo answered ${res.status}. It may be rate limiting; try again in a moment or switch search.backend.`);
+        throw new Error(
+          `DuckDuckGo answered ${res.status}. It may be rate limiting; try again in a moment or switch search.backend.`,
+        );
       }
       const html = await res.text();
       const { document } = parseHTML(html);
@@ -43,7 +45,9 @@ export function duckduckgoProvider(): SearchProvider {
 export function unwrapDdg(href: string): string | undefined {
   if (!href) return undefined;
   try {
-    const url = href.startsWith('//') ? new URL(`https:${href}`) : new URL(href, 'https://duckduckgo.com');
+    const url = href.startsWith('//')
+      ? new URL(`https:${href}`)
+      : new URL(href, 'https://duckduckgo.com');
     const uddg = url.searchParams.get('uddg');
     if (uddg) return decodeURIComponent(uddg);
     if (url.hostname.includes('duckduckgo.com')) return undefined;

@@ -33,6 +33,7 @@ export interface BootstrapResult {
   agent: AgentSession;
   router: Router;
   config: OscConfig;
+  toolContext: ReturnType<typeof buildToolContext>;
   warnings: string[];
 }
 
@@ -51,7 +52,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const router = new Router(config, providers, stack);
 
   const tools = buildToolRegistry({
-    stackHasVision: Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
+    stackHasVision:
+      Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
     stackHasImageGen: stack.imageGen,
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
   });
@@ -85,5 +87,5 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   });
   driver.attachAgent(agent);
 
-  return { driver, agent, router, config, warnings };
+  return { driver, agent, router, config, toolContext, warnings };
 }

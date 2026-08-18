@@ -66,7 +66,9 @@ function deepestRealpath(abs: string): string {
     } catch {
       const parent = dirname(existing);
       if (parent === existing) return abs;
-      tail = tail ? `${existing.slice(parent.length + 1)}${sep}${tail}` : existing.slice(parent.length + 1);
+      tail = tail
+        ? `${existing.slice(parent.length + 1)}${sep}${tail}`
+        : existing.slice(parent.length + 1);
       existing = parent;
     }
   }

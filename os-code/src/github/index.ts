@@ -6,7 +6,9 @@ import { getGithubToken } from '../auth/github.js';
 export function octokit(): Octokit {
   const token = getGithubToken();
   if (!token) {
-    throw new Error('GitHub is not connected. Run osc auth github (device flow or a personal access token).');
+    throw new Error(
+      'GitHub is not connected. Run osc auth github (device flow or a personal access token).',
+    );
   }
   return new Octokit({ auth: token });
 }
@@ -34,7 +36,8 @@ export interface OpenPrOptions {
 export async function openPullRequest(opts: OpenPrOptions): Promise<string> {
   const client = octokit();
   const base =
-    opts.base ?? (await client.rest.repos.get({ owner: opts.owner, repo: opts.repo })).data.default_branch;
+    opts.base ??
+    (await client.rest.repos.get({ owner: opts.owner, repo: opts.repo })).data.default_branch;
   const { data } = await client.rest.pulls.create({
     owner: opts.owner,
     repo: opts.repo,
@@ -48,5 +51,7 @@ export async function openPullRequest(opts: OpenPrOptions): Promise<string> {
 
 export async function listOpenPullRequests(owner: string, repo: string): Promise<string[]> {
   const { data } = await octokit().rest.pulls.list({ owner, repo, state: 'open', per_page: 20 });
-  return data.map((pr) => `#${pr.number} ${pr.title} (${pr.head.ref} -> ${pr.base.ref}) ${pr.html_url}`);
+  return data.map(
+    (pr) => `#${pr.number} ${pr.title} (${pr.head.ref} -> ${pr.base.ref}) ${pr.html_url}`,
+  );
 }

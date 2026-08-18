@@ -22,7 +22,10 @@ export interface LinkReport {
   fix?: string;
 }
 
-export async function checkLinks(config: OscConfig, providers: ProviderRegistry): Promise<LinkReport[]> {
+export async function checkLinks(
+  config: OscConfig,
+  providers: ProviderRegistry,
+): Promise<LinkReport[]> {
   const reports: LinkReport[] = [];
 
   // Desktop power: sleep silently kills a phone user's in-flight run.
@@ -45,7 +48,9 @@ export async function checkLinks(config: OscConfig, providers: ProviderRegistry)
     if (orchestratorRef && health.ok) {
       try {
         const models = await providers.get(localProviderId).listModels();
-        const present = models.some((m) => m === orchestratorRef.model || m.startsWith(`${orchestratorRef.model}:`));
+        const present = models.some(
+          (m) => m === orchestratorRef.model || m.startsWith(`${orchestratorRef.model}:`),
+        );
         reports.push({
           id: 'model',
           label: `Orchestrator (${orchestratorRef.model})`,
@@ -82,7 +87,11 @@ export async function checkLinks(config: OscConfig, providers: ProviderRegistry)
     detail: ts.running
       ? `Up as ${ts.dnsName ?? ts.ip ?? 'this machine'}.`
       : (ts.hint ?? 'Not running.'),
-    fix: ts.running ? undefined : ts.installed ? 'sudo tailscale up' : 'curl -fsSL https://tailscale.com/install.sh | sh',
+    fix: ts.running
+      ? undefined
+      : ts.installed
+        ? 'sudo tailscale up'
+        : 'curl -fsSL https://tailscale.com/install.sh | sh',
   });
 
   // SSH server, the phone's way in.
@@ -135,10 +144,14 @@ function checkSsh(): LinkReport {
 
 function checkSleep(): LinkReport {
   // GNOME: suspend on AC power kills in-flight runs for remote users.
-  const res = spawnSync('gsettings', ['get', 'org.gnome.settings-daemon.plugins.power', 'sleep-inactive-ac-type'], {
-    encoding: 'utf8',
-    timeout: 3000,
-  });
+  const res = spawnSync(
+    'gsettings',
+    ['get', 'org.gnome.settings-daemon.plugins.power', 'sleep-inactive-ac-type'],
+    {
+      encoding: 'utf8',
+      timeout: 3000,
+    },
+  );
   if (res.status === 0) {
     const value = res.stdout.trim().replace(/'/g, '');
     if (value !== 'nothing') {

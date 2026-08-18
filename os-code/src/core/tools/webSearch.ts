@@ -8,7 +8,13 @@ import { EgressBlocked } from '../security/egress.js';
 
 const schema = z.object({
   query: z.string().min(1).describe('What to search the web for'),
-  count: z.number().int().min(1).max(10).optional().describe('How many results (default from config)'),
+  count: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe('How many results (default from config)'),
 });
 
 export const webSearchTool: ToolDef<typeof schema> = {
@@ -25,8 +31,14 @@ export const webSearchTool: ToolDef<typeof schema> = {
       if (!results.length) {
         return { ok: true, content: `No results for "${args.query}". Try different words.` };
       }
-      const lines = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`.trim());
-      const citations: Citation[] = results.map((r) => ({ title: r.title, url: r.url, snippet: r.snippet }));
+      const lines = results.map((r, i) =>
+        `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`.trim(),
+      );
+      const citations: Citation[] = results.map((r) => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet,
+      }));
       return {
         ok: true,
         content: `Results for "${args.query}" (via ${provider.id}):\n${lines.join('\n')}`,

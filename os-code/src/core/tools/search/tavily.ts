@@ -22,9 +22,9 @@ export function tavilyProvider(config: SearchConfig): SearchProvider {
       const body = (await res.json()) as {
         results?: Array<{ title: string; url: string; content?: string }>;
       };
-      return (body.results ?? []).slice(0, count).map(
-        (r): SearchResult => ({ title: r.title, url: r.url, snippet: r.content ?? '' }),
-      );
+      return (body.results ?? [])
+        .slice(0, count)
+        .map((r): SearchResult => ({ title: r.title, url: r.url, snippet: r.content ?? '' }));
     },
   };
 }

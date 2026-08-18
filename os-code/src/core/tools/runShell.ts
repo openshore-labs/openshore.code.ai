@@ -9,7 +9,13 @@ import { redactSecrets } from '../security/redaction.js';
 
 const schema = z.object({
   command: z.string().describe('The shell command to run (bash -c)'),
-  timeoutSeconds: z.number().int().min(1).max(600).optional().describe('Kill after this many seconds (default 120)'),
+  timeoutSeconds: z
+    .number()
+    .int()
+    .min(1)
+    .max(600)
+    .optional()
+    .describe('Kill after this many seconds (default 120)'),
 });
 
 export const runShellTool: ToolDef<typeof schema> = {
@@ -19,7 +25,10 @@ export const runShellTool: ToolDef<typeof schema> = {
   schema,
   risk: 'shell',
   async preview(args) {
-    return { summary: `Run: ${args.command}`, detail: `Working directory: workspace root. Timeout: ${args.timeoutSeconds ?? 120}s.` };
+    return {
+      summary: `Run: ${args.command}`,
+      detail: `Working directory: workspace root. Timeout: ${args.timeoutSeconds ?? 120}s.`,
+    };
   },
   async execute(args, ctx) {
     const timeoutMs = (args.timeoutSeconds ?? 120) * 1000;

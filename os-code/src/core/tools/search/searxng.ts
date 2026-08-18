@@ -5,7 +5,8 @@ import type { SearchConfig, SearchProvider, SearchResult } from './index.js';
 export function searxngProvider(config: SearchConfig): SearchProvider {
   return {
     id: 'searxng',
-    describe: () => `SearXNG at ${config.searxngUrl ?? '(searxngUrl not set)'} (self-hosted, fully private)`,
+    describe: () =>
+      `SearXNG at ${config.searxngUrl ?? '(searxngUrl not set)'} (self-hosted, fully private)`,
     async search(query, count, egress) {
       if (!config.searxngUrl) {
         throw new Error(
@@ -26,9 +27,9 @@ export function searxngProvider(config: SearchConfig): SearchProvider {
       const body = (await res.json()) as {
         results?: Array<{ title: string; url: string; content?: string }>;
       };
-      return (body.results ?? []).slice(0, count).map(
-        (r): SearchResult => ({ title: r.title, url: r.url, snippet: r.content ?? '' }),
-      );
+      return (body.results ?? [])
+        .slice(0, count)
+        .map((r): SearchResult => ({ title: r.title, url: r.url, snippet: r.content ?? '' }));
     },
   };
 }

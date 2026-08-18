@@ -58,7 +58,9 @@ export const SpecialistsSchema = z.object({
   embedding: ModelRefSchema.optional(),
   fast: ModelRefSchema.optional(),
   /** Image generation runs through the imageGen endpoint, not a chat provider. */
-  imageGen: z.object({ endpoint: z.literal('imageGen').prefault('imageGen'), model: z.string().optional() }).optional(),
+  imageGen: z
+    .object({ endpoint: z.literal('imageGen').prefault('imageGen'), model: z.string().optional() })
+    .optional(),
 });
 
 export const StackSchema = z.object({

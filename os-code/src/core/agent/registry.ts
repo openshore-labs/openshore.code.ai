@@ -59,7 +59,11 @@ export function buildToolContext(options: {
   const embeddingRole = router.embeddingRole();
   let searchRepo: ToolContext['searchRepo'];
   if (embeddingRole) {
-    const index = new RepoIndex(cwd, providers.embedder(embeddingRole.ref.provider), embeddingRole.ref.model);
+    const index = new RepoIndex(
+      cwd,
+      providers.embedder(embeddingRole.ref.provider),
+      embeddingRole.ref.model,
+    );
     searchRepo = async (query, k) => {
       await index.refresh();
       const hits = await index.search(query, k);

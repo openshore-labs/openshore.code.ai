@@ -1,0 +1,9 @@
+TODO: business decision.
+
+The license for OS Code has not been chosen yet. The positioning intent
+(see the build brief and DECISIONS.md): the shell is local and open-ish;
+the paid gate lives server-side on surfaces OpenShore controls (the curated
+catalog feed, signed cloud-connector configs, and the update channel), sold
+on the web, priced for the honest majority, with a subscription and a
+one-time perpetual-fallback option. Pick the license that fits that model
+before any public release.

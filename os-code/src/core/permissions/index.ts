@@ -72,8 +72,10 @@ export class PermissionEngine {
   decide(q: PermissionQuery): PermissionResult {
     // Session grants never apply to shell or cloud spend on restrictive profiles.
     if (this.sessionAllows.has(q.toolName)) {
-      const shellBlocked = q.risk === 'shell' && this.profile && !this.profile.allowShellAutoApprove;
-      const cloudBlocked = q.risk === 'cloud-spend' && this.profile && !this.profile.allowCloudAutoApprove;
+      const shellBlocked =
+        q.risk === 'shell' && this.profile && !this.profile.allowShellAutoApprove;
+      const cloudBlocked =
+        q.risk === 'cloud-spend' && this.profile && !this.profile.allowCloudAutoApprove;
       if (!shellBlocked && !cloudBlocked) {
         return { decision: 'allow', reason: 'allowed for this session' };
       }
