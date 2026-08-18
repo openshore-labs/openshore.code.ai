@@ -801,7 +801,7 @@ textarea {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   padding: 18px 18px calc(18px + var(--safe-bottom));
-  animation: sheet-up 0.26s cubic-bezier(0.32, 0.72, 0.28, 1);
+  animation: sheet-up 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (min-width: 720px) {
@@ -811,13 +811,15 @@ textarea {
   }
 }
 
+/* A touch of overshoot on the rise, the way a real sheet settles into place
+   rather than just easing to a stop. */
 @keyframes sheet-up {
   from {
-    transform: translateY(26px);
-    opacity: 0.5;
+    transform: translateY(34px) scale(0.97);
+    opacity: 0.4;
   }
   to {
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
