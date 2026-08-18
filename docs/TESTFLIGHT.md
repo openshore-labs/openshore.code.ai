@@ -36,7 +36,10 @@ Codemagic uses this key to sign the app and upload builds.
 
 1. App Store Connect -> Users and Access -> Integrations tab -> App Store
    Connect API -> Team Keys -> Generate API Key.
-2. Name: `codemagic`. Access: **App Manager**.
+2. Name: `codemagic`. Access: **Admin** (not App Manager — Codemagic's
+   automatic code signing creates certificates and provisioning profiles
+   via the Developer Portal API, which App Manager can't reach; it only
+   covers app metadata and TestFlight).
 3. Download the `.p8` file (one chance only; keep it safe).
 4. Note the **Key ID** and the **Issuer ID** shown on that page.
 
