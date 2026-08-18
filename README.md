@@ -23,6 +23,11 @@ definition of done. It indexes on completeness and delight, not token thrift.
 - **Local-first, self-hosted.** Compute runs on the user's machine. Cloud models
   run on the user's own key or account. OpenShore never hosts weights or proxies
   inference.
+- **Built to be accessible.** Lowering the barrier to stacking local LLMs is a
+  core principle: `osc init` autodetects your hardware, guides the Ollama
+  install, and offers plain-language preset stacks, so a newcomer reaches a
+  working agent in minutes and grows into a multi-model stack only when they
+  want to. The familiar Claude Code UX is the accessibility lever.
 - **A stack that scales from one model to many.** One mandatory reasoning model
   (local or cloud) does the heavy lifting and delegates to optional specialists
   (coding, vision, image generation, embeddings), each tagged by standard

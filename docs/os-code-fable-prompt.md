@@ -13,6 +13,37 @@ every time. Take the tokens you need. The measure of success is that a developer
 who loves Claude Code opens OS Code, points it at their local models, and feels
 at home and delighted, not that the build was cheap.
 
+## Core principle: accessibility (lower the barrier to stacking local LLMs)
+Running local LLMs, let alone stacking several, is intimidating today: endpoints,
+quantization, VRAM math, prompt templates, tool formats. **OS Code exists to
+lower that barrier, and accessibility is a first-class design principle, equal to
+completeness and delight.** The Claude Code interaction model is the main lever:
+it turns a fiddly infrastructure chore into a familiar conversation. Someone who
+has never run a local model should reach a working agent quickly, and grow into
+a multi-model stack only as they want to. Hold this bar everywhere:
+- **Zero-to-working fast.** A first-time user gets from nothing to a chatting
+  agent on one local model in a few minutes; `osc init` does the heavy lifting.
+- **Sensible defaults, complexity opt-in (progressive disclosure).** The
+  single-orchestrator stack is the default. Specialists, routing modes, and
+  advanced config are opt-in and hidden until wanted. Nobody must understand
+  roles or benchmarks to start.
+- **Autodetect over ask.** Detect Ollama, installed models, GPU, and VRAM; never
+  ask what the machine can tell you. If Ollama is missing, offer to guide the
+  install and pull a recommended starter model.
+- **Recommended presets, not a blank canvas.** Ship curated starter stacks (for
+  example "a good coding setup", "coding plus screenshots", "everything, big
+  rig") that pick models to fit the detected hardware from the blessed catalog.
+  One choice, done.
+- **Plain language on the surface, benchmarks underneath.** The UI describes
+  models by what they do ("great at code", "can read screenshots", "fast for
+  small edits"), not MMLU or BFCL. The standard taxonomy powers matching under
+  the hood; it never becomes the user's vocabulary unless they open the details.
+- **Hardware-aware guidance.** Tell users what their machine can comfortably run,
+  recommend accordingly, and warn before a too-large pull. Turn "which
+  quantization, how much VRAM" from a research project into a guided choice.
+- **Recover gracefully.** Errors name the exact broken link and the one action
+  that fixes it (`osc doctor`), runnable in place where possible.
+
 ## The product in one sentence
 OS Code is a terminal-first coding agent with the interaction model developers
 know from Claude Code (streaming transcript, slash commands, tool-approval
@@ -184,6 +215,9 @@ os-code/
 7. **Permission model like Claude Code**, plus a separate confirm-before-spend
    prompt on any step that consumes the user's cloud quota.
 8. **Security is enforced in the shell, not deferred** (section 12).
+9. **Accessibility by default** (see the core principle above): zero-to-working
+   in minutes, single-model default, presets over blank config, plain-language
+   model descriptions, autodetect over ask, complexity opt-in.
 
 ## Architecture (build each for real)
 
@@ -347,7 +381,12 @@ push, open PR.
 
 ### 11. Marketplace catalog - `src/market/`
 - `osc market` / `osc models`: browse and install from a **curated catalog**, a
-  delightful picker.
+  delightful picker that lists models in **plain language** (what each is good
+  at) with the benchmark detail one keystroke away, filtered to what the user's
+  hardware can run. Accessibility over completeness of choice.
+- **Preset starter stacks**: ship a few curated, named presets (a coding setup, a
+  coding-plus-vision setup, a maximal setup) that `osc init` and the picker can
+  apply in one selection, so a novice never faces a blank canvas.
 - The catalog is a **remote static JSON manifest** (configurable URL): per model,
   name, **capability categories** it is strong in (the standard taxonomy from
   section 7, so users pick a specialist by what it is actually good at), whether
@@ -414,9 +453,13 @@ citations panel for web results. Runs over SSH with no mouse; a considered
   rules and mode, fallback policy, `resourceBudget`, VRAM profile, search backend,
   egress policy, catalog URL, license/entitlement, permissions, guardrail limits,
   daemon bind/auth.
-- `osc init`: autodetect Ollama, list installed models (`GET /api/tags`), pick a
-  VRAM profile, and write a starter stack config (defaulting to a single
-  orchestrator, with specialists suggested if VRAM allows). Delightful.
+- `osc init`: the accessibility centerpiece. Autodetect Ollama, GPU, and VRAM;
+  if Ollama is missing, offer to guide the install. List installed models
+  (`GET /api/tags`). Offer a small set of **recommended preset stacks** described
+  in plain language and filtered to what the detected hardware can run, defaulting
+  to a single orchestrator; on selection, pull the recommended starter model(s)
+  and write the stack config. A brand-new user reaches a working agent from this
+  one command. Specialists are suggested, never required.
 - `osc login`, `osc pair`: real, premium onboarding flows.
 - `osc doctor`: check local server, models, Claude API key, GitHub token, tailnet,
   daemon bind, search backend, license, the mandatory reasoning orchestrator, and
@@ -445,7 +488,10 @@ the whole TUI.
    with approval, egress governs the web tools, guardrails halt runaways.
 5. The experience is delightful per the Delight bar: streaming, status line,
    onboarding, microcopy, `--plain` fallback.
-6. `README.md`, `DECISIONS.md`, and `PROGRESS.md` reflect the real state.
+6. Accessible by default: a brand-new user reaches a working single-model agent
+   from `osc init` alone (guided Ollama install, a plain-language preset, starter
+   model pull), with no manual config editing, and specialists stay opt-in.
+7. `README.md`, `DECISIONS.md`, and `PROGRESS.md` reflect the real state.
 
 Build OS Code now, non-stop, depth-first along the build sequence, to a complete
 and delightful state. Index on completeness and delight, not token count. Record
