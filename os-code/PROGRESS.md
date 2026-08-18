@@ -63,6 +63,17 @@ Layer status:
 
 ## Log
 
+- **2026-08-18: native app pivot.** Founder direction: OS Code is a native
+  app for iOS and the Linux desktop, cloning the Claude app experience on a
+  local stack; the CLI is parked. The repo became a pnpm workspace: this
+  package is now the shared ENGINE (browser-safe `os-code/protocol`
+  subpath, daemon CORS + phone endpoints, quarterback taxonomy with
+  writing/analysis slots, pocket-class on-device models in the catalog).
+  `app/` holds the React app, the Electron shell with the engine embedded,
+  the Capacitor iOS project, and the `oscode-llama` Swift plugin (llama.cpp
+  via LLM.swift v3.0.3). CI to TestFlight via `codemagic.yaml`; founder
+  walkthrough in `docs/TESTFLIGHT.md`. Workspace gate green: 97 engine
+  tests + 10 app tests. Root README is the product front door now.
 - **2026-08-18: delight polish pass.** Streaming smoother, model-load ticker,
   syntax-tinted diffs, cursor blink, approval pressed-state, real download
   progress bar (Ollama `/api/pull`), low-color terminal fallback, and `/find`
