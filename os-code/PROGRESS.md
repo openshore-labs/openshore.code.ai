@@ -43,6 +43,21 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **First desktop run on the founder's machine** (`pnpm install` then
+      `pnpm desktop`) against real Ollama models.
+- [ ] **First Codemagic build to TestFlight** (walkthrough in
+      `docs/TESTFLIGHT.md`); the Swift side compiles for the first time
+      there, so expect one round of fixes.
+- [ ] **Slim git history** (founder call): commit `23d8c67` accidentally
+      carried node_modules (~170MB, since untracked). A one-time
+      force-push rewrite removes it from history for good; needs the
+      founder's explicit go-ahead.
+- [ ] **Real openshore.ai brand palette**: swap at the `OPENSHORE:` markers
+      in `app/src/theme.css` and `app/scripts/gen-icon.py` when the real
+      hexes land.
+- [ ] **App polish bundle** (proposed, awaiting founder pick): launch
+      continuity, sheet spring physics, phone haptics, token-stream
+      smoothing in the app transcript.
 - [ ] **Live-fire pass on a machine with Ollama + a GPU.** Everything is
       wired and covered by tests against the mock and mocked HTTP; the first
       session against real weights should confirm streaming feel and the
