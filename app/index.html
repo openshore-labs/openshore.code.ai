@@ -7,6 +7,15 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
     />
     <meta name="color-scheme" content="dark" />
+    <!--
+      One CSP for both shells (Electron window and the iOS WebView). Scripts
+      only from the bundle; connect-src stays open because the phone talks to
+      the desktop daemon on Tailscale IPs and to providers the user connects.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *"
+    />
     <title>OS Code</title>
   </head>
   <body>

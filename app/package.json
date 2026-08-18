@@ -4,13 +4,15 @@
   "version": "0.1.0",
   "description": "OS Code: the native app. Chat and build with your own stack of local LLMs.",
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -p electron/tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "lint": "eslint src electron --ext .ts,.tsx --max-warnings 0",
     "test": "vitest run",
-    "desktop": "vite build && tsc -p electron/tsconfig.json && electron dist-electron/main.js",
+    "desktop": "vite build && tsc -p electron/tsconfig.json && electron .",
+    "package:linux": "vite build && tsc -p electron/tsconfig.json && electron-builder --linux",
     "ios:sync": "vite build && cap sync ios"
   },
   "dependencies": {
@@ -19,6 +21,7 @@
     "@capacitor/preferences": "8.0.1",
     "highlight.js": "11.12.0",
     "os-code": "workspace:*",
+    "oscode-llama": "file:./plugins/oscode-llama",
     "qrcode": "1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
@@ -30,6 +33,7 @@
   "devDependencies": {
     "@capacitor/cli": "8.5.0",
     "@capacitor/ios": "8.5.0",
+    "@types/node": "20.19.43",
     "@types/qrcode": "1.5.6",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
@@ -40,9 +44,30 @@
     "electron-builder": "26.15.3",
     "eslint": "8.57.0",
     "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "4.6.2",
     "prettier": "3.9.6",
     "typescript": "5.9.3",
     "vite": "8.2.1",
     "vitest": "4.1.10"
+  },
+  "build": {
+    "appId": "ai.openshore.oscode",
+    "productName": "OS Code",
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "electron/preload.cjs"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "maintainer": "OpenShore Labs"
+    }
   }
 }
