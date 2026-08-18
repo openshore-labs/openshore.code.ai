@@ -9,7 +9,8 @@ workflows:
     integrations:
       app_store_connect: os_code_app_store
     environment:
-      node: 20.19.4
+      # Capacitor 8 CLI requires Node >= 22; anything lower fails cap sync.
+      node: 22.11.0
       xcode: latest
       vars:
         BUNDLE_ID: ai.openshore.oscode
