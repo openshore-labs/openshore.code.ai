@@ -2,8 +2,25 @@
 // streaming, tool cards, quiet status lines, and citations at the end.
 import { useEffect, useRef } from 'react';
 import type { ThreadState } from '../state/types.js';
+import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
+import { hapticTick } from '../lib/haptics.js';
 import { Markdown } from './Markdown.js';
 import { ToolCard } from './ToolCard.js';
+
+function AssistantBubble({ text, streaming }: { text: string; streaming: boolean }) {
+  const shown = useSmoothedReveal(text, streaming);
+  // Fires once per bubble mount, i.e. right as its first token lands.
+  useEffect(() => {
+    if (streaming) hapticTick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="msg-assistant">
+      <Markdown text={shown} />
+      {streaming ? <span className="cursor-caret" /> : null}
+    </div>
+  );
+}
 
 export function MessageList({ thread }: { thread: ThreadState }) {
   const endRef = useRef<HTMLDivElement>(null);
@@ -28,12 +45,7 @@ export function MessageList({ thread }: { thread: ThreadState }) {
                 </div>
               );
             case 'assistant':
-              return (
-                <div key={item.id} className="msg-assistant">
-                  <Markdown text={item.text} />
-                  {item.streaming ? <span className="cursor-caret" /> : null}
-                </div>
-              );
+              return <AssistantBubble key={item.id} text={item.text} streaming={item.streaming} />;
             case 'tool':
               return <ToolCard key={item.id} item={item} />;
             case 'status':

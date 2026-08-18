@@ -9,6 +9,7 @@ import { loadAppCatalog } from '../lib/catalog.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
+import { hapticSuccess } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 
 interface DownloadState {
@@ -66,6 +67,7 @@ export function MarketplaceScreen() {
       await saveSettings({
         deviceModels: { ...settings.deviceModels, [model.id]: model.name },
       });
+      hapticSuccess();
       showToast(`${model.name} is on this device. Fully private.`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Download failed. Try again.');
@@ -91,6 +93,7 @@ export function MarketplaceScreen() {
       delete next[model.id];
       return next;
     });
+    if (result.ok) hapticSuccess();
     showToast(result.detail);
   };
 

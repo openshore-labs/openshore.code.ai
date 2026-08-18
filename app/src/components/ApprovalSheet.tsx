@@ -1,7 +1,9 @@
 // The approval moment, as a bottom sheet: what the agent wants to do, the
 // exact diff or command, and three honest buttons. Cloud spend gets its own
 // amber identity so spending money never looks like writing a file.
+import { useEffect } from 'react';
 import type { ApprovalRequest } from 'os-code/protocol';
+import { hapticApproval } from '../lib/haptics.js';
 import { DiffBlock } from './ToolCard.js';
 
 export function ApprovalSheet({
@@ -12,6 +14,8 @@ export function ApprovalSheet({
   onAnswer: (approve: boolean, always?: boolean) => void;
 }) {
   const isSpend = request.kind === 'cloud-spend';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => hapticApproval(), [request.id]);
   return (
     <div className="sheet-scrim" onClick={() => onAnswer(false)}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
