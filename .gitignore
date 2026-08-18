@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Build output
+os-code/dist/
+app/dist/
+app/dist-electron/
+app/release/
+app/ios/App/App/public/
+
+# Local state
+*.log
+.DS_Store
