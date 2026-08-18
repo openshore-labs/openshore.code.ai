@@ -1,0 +1,54 @@
+# OS Code: iOS build to TestFlight.
+# One-time setup lives in docs/TESTFLIGHT.md (App Store Connect app record,
+# Codemagic App Store Connect API-key integration named "appstore").
+workflows:
+  ios-testflight:
+    name: OS Code iOS (TestFlight)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: appstore
+    environment:
+      node: 20.19.4
+      xcode: latest
+      vars:
+        BUNDLE_ID: ai.openshore.oscode
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: ai.openshore.oscode
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Install workspace dependencies
+        script: |
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Build the engine and the web app, sync the iOS project
+        script: |
+          pnpm --filter os-code build
+          cd app
+          npx vite build
+          npx cap sync ios
+      - name: Stamp the build number
+        script: |
+          cd app/ios/App
+          agvtool new-version -all "$BUILD_NUMBER"
+      - name: Build the signed IPA
+        script: |
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --project app/ios/App/App.xcodeproj \
+            --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integrations
+        submit_to_testflight: true

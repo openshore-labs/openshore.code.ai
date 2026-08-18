@@ -38,6 +38,9 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OS Code connects to the OS Code daemon running on your own desktop over your local network or Tailscale.</string>
+	<!-- Only standard TLS; skips the export-compliance question on each TestFlight build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
