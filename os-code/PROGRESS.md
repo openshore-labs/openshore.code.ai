@@ -48,10 +48,13 @@ Layer status:
 - [ ] **First Codemagic build to TestFlight** (walkthrough in
       `docs/TESTFLIGHT.md`); the Swift side compiles for the first time
       there, so expect one round of fixes.
-- [ ] **Slim git history** (founder call): commit `23d8c67` accidentally
-      carried node_modules (~170MB, since untracked). A one-time
-      force-push rewrite removes it from history for good; needs the
-      founder's explicit go-ahead.
+- [x] **Slim git history:** done, founder approved. `git filter-repo`
+      stripped node_modules from every commit on `main` and this session
+      branch (verified: identical tree hash at HEAD before/after, file
+      lists match, workspace gate still green post-rewrite). Fresh clone
+      is now 680K instead of ~177MB. Anyone with an existing local clone
+      needs to re-clone or hard-reset to the new hashes; a third,
+      unrelated branch on the remote was left untouched.
 - [ ] **Real openshore.ai brand palette**: swap at the `OPENSHORE:` markers
       in `app/src/theme.css` and `app/scripts/gen-icon.py` when the real
       hexes land.
