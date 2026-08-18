@@ -195,10 +195,13 @@ program
   .argument('[path]')
   .action(attachImageCommand);
 
+program.hook('preAction', () => {
+  if (program.opts().color === false) setColorEnabled(false);
+});
+
 async function main(): Promise<void> {
   try {
     await program.parseAsync(process.argv);
-    if (program.opts().color === false) setColorEnabled(false);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error('command failed', { message });
