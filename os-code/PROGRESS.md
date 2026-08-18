@@ -55,9 +55,12 @@ Layer status:
 - [ ] **Real openshore.ai brand palette**: swap at the `OPENSHORE:` markers
       in `app/src/theme.css` and `app/scripts/gen-icon.py` when the real
       hexes land.
-- [ ] **App polish bundle** (proposed, awaiting founder pick): launch
-      continuity, sheet spring physics, phone haptics, token-stream
-      smoothing in the app transcript.
+- [x] **App polish bundle, Tier 1:** done. Navy launch continuity (iOS),
+      sheet spring physics, haptics (first token, approval, download
+      success), token-stream smoothing in the app transcript.
+- [ ] **App polish, Tier 2** (proposed, not yet picked): drag-to-dismiss
+      with rubber-banding on sheets, a "new tokens" scroll pill, dark/
+      tinted iOS 18 icon variants, model-chip shared-element morph.
 - [ ] **Live-fire pass on a machine with Ollama + a GPU.** Everything is
       wired and covered by tests against the mock and mocked HTTP; the first
       session against real weights should confirm streaming feel and the
