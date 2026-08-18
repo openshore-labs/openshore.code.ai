@@ -30,10 +30,12 @@ workflows:
     scripts:
       - name: Install workspace dependencies
         script: |
-          # corepack reads the root package.json "packageManager" field to
-          # pick pnpm@10.33.0. Without that field it walks up to the build
-          # machine's ~/package.json (which pins yarn) and refuses to run.
-          corepack enable
+          # Install pnpm directly with npm instead of via corepack. The
+          # corepack bundled on the build image ships stale npm registry
+          # signing keys and dies with "Cannot find matching keyid" when it
+          # provisions pnpm. npm has no such problem. The version matches the
+          # root package.json "packageManager" field, so pnpm stays happy.
+          npm install -g pnpm@10.33.0
           pnpm install --frozen-lockfile
       - name: Build the engine and the web app, sync the iOS project
         script: |
