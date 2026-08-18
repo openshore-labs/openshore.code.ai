@@ -29,8 +29,10 @@ workflows:
     scripts:
       - name: Install workspace dependencies
         script: |
+          # corepack reads the root package.json "packageManager" field to
+          # pick pnpm@10.33.0. Without that field it walks up to the build
+          # machine's ~/package.json (which pins yarn) and refuses to run.
           corepack enable
-          corepack prepare pnpm@10.33.0 --activate
           pnpm install --frozen-lockfile
       - name: Build the engine and the web app, sync the iOS project
         script: |

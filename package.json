@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "OS Code: native iOS and Linux desktop apps for building with your own stack of local LLMs. Your machine, your models, your keys.",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
