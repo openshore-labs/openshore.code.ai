@@ -1,0 +1,11 @@
+dist/
+dist-electron/
+node_modules/
+release/
+*.log
+
+# Capacitor build products (the project itself IS committed)
+ios/App/App/public/
+ios/App/build/
+ios/App/output/
+ios/DerivedData/

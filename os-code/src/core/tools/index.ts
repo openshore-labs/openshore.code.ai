@@ -41,7 +41,7 @@ export interface ToolContext {
   imageProvider?: ImageProvider;
   /** One-shot delegation to a specialist chat model, provided by the router. */
   delegate?: (
-    role: 'coding' | 'fast' | 'vision',
+    role: 'coding' | 'writing' | 'analysis' | 'fast' | 'vision',
     task: string,
     images?: Array<{ base64: string; mediaType: string }>,
   ) => Promise<string>;

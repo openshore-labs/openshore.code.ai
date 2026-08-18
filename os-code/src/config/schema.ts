@@ -54,6 +54,8 @@ export const ModelRefSchema = z.object({
 
 export const SpecialistsSchema = z.object({
   coding: ModelRefSchema.optional(),
+  writing: ModelRefSchema.optional(),
+  analysis: ModelRefSchema.optional(),
   vision: ModelRefSchema.optional(),
   embedding: ModelRefSchema.optional(),
   fast: ModelRefSchema.optional(),

@@ -44,5 +44,12 @@
     "prettier": "3.9.6",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
+  },
+  "main": "./dist/src/index.js",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./protocol": "./dist/src/protocol.js",
+    "./package.json": "./package.json",
+    "./catalog.sample.json": "./catalog.sample.json"
   }
 }

@@ -75,7 +75,7 @@ describe('delegation', () => {
     const answer = await router.delegate('coding', 'write a function');
     expect(answer).toBe('orchestrator answer');
     expect(orchestrator.requests).toHaveLength(1);
-    expect(router.notes[0]!.message).toContain('orchestrator handled it');
+    expect(router.notes[0]!.message).toContain('quarterback handled it');
   });
 
   it('refuses vision delegation to a text-only model with a fix hint', async () => {

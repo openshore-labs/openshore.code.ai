@@ -9,7 +9,9 @@
 //   - Sessions run on the remote-attached profile: stricter than sitting at
 //     the desk, never looser.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { homedir } from 'node:os';
+import { existsSync, mkdirSync } from 'node:fs';
 import {
   assertSafeBind,
   bearerFrom,
@@ -21,7 +23,20 @@ import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { LocalDriver, listSessions } from './session.js';
+import { clone } from '../git/index.js';
+import { loadCatalog } from '../market/catalog.js';
+import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
+
+// The phone app runs in a WebView, so the daemon must speak CORS: a
+// capacitor://localhost origin preflights every authorized request. The
+// bearer token still gates everything; CORS is transport manners, not auth.
+const CORS_HEADERS: Record<string, string> = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-max-age': '600',
+};
 
 const log = logger('daemon');
 
@@ -64,6 +79,13 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   });
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // CORS preflights carry no Authorization header by design; answer them
+    // before the auth gate so the WebView can proceed to the real request.
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, CORS_HEADERS);
+      res.end();
+      return;
+    }
     const presented = bearerFrom(req.headers.authorization);
     if (!tokenMatches(presented, token)) {
       sendJson(res, 401, {
@@ -76,6 +98,63 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
 
     if (req.method === 'GET' && url.pathname === '/health') {
       sendJson(res, 200, { ok: true, sessions: drivers.size, version: '0.1.0' });
+      return;
+    }
+
+    // ---- Phone-app surfaces: workspaces, the stack, the catalog. ----
+    if (req.method === 'GET' && url.pathname === '/workspaces') {
+      sendJson(res, 200, { workspaces: recentWorkspaces() });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/workspaces/clone') {
+      const body = await readJson(req);
+      const gitUrl = typeof body.url === 'string' ? body.url.trim() : '';
+      if (!/^(https:\/\/|git@)/.test(gitUrl)) {
+        sendJson(res, 400, { error: 'Send {"url": "https://github.com/owner/repo"}.' });
+        return;
+      }
+      const name = basename(gitUrl.replace(/\.git$/, '')) || 'repo';
+      const parent = join(homedir(), 'OSCode');
+      mkdirSync(parent, { recursive: true });
+      const target = join(parent, name);
+      try {
+        if (!existsSync(target)) await clone(gitUrl, target);
+        sendJson(res, 200, { cwd: target, name });
+      } catch (err) {
+        sendJson(res, 400, { error: `Could not clone: ${(err as Error).message}` });
+      }
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/stack') {
+      const stack = options.config.stack;
+      const orchestrator = stack.orchestrator
+        ? {
+            model: stack.orchestrator.model,
+            provider: stack.orchestrator.provider,
+            kind: (options.config.providers[stack.orchestrator.provider]?.kind === 'anthropic'
+              ? 'cloud'
+              : 'local') as 'local' | 'cloud',
+          }
+        : undefined;
+      const specialists = Object.entries(stack.specialists)
+        .filter(([role]) => role !== 'imageGen')
+        .map(([role, ref]) => ({ role, model: (ref as { model?: string }).model ?? '' }));
+      sendJson(res, 200, {
+        description: orchestrator
+          ? `${orchestrator.model}${specialists.length ? ` + ${specialists.map((s) => s.role).join(', ')}` : ', solo'}`
+          : 'not set up yet',
+        orchestrator,
+        specialists,
+      });
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/catalog') {
+      try {
+        const loaded = await loadCatalog(options.config, new EgressPolicy(options.config.egress));
+        sendJson(res, 200, { catalog: loaded.catalog, source: loaded.source, note: loaded.note });
+      } catch (err) {
+        sendJson(res, 500, { error: (err as Error).message });
+      }
       return;
     }
     if (req.method === 'GET' && url.pathname === '/sessions') {
@@ -155,6 +234,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',
           connection: 'keep-alive',
+          ...CORS_HEADERS,
         });
         res.write(':ok\n\n');
         const unsubscribe = driver.subscribe((event, seq) => {
@@ -186,8 +266,22 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, {
     'content-type': 'application/json',
     'content-length': Buffer.byteLength(text),
+    ...CORS_HEADERS,
   });
   res.end(text);
+}
+
+/** Recent workspaces: session cwds, newest first, deduped, existing only. */
+function recentWorkspaces(): Array<{ cwd: string; name: string; lastUsed?: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ cwd: string; name: string; lastUsed?: string }> = [];
+  for (const session of listSessions()) {
+    if (seen.has(session.cwd) || !existsSync(session.cwd)) continue;
+    seen.add(session.cwd);
+    out.push({ cwd: session.cwd, name: basename(session.cwd), lastUsed: session.updatedAt });
+    if (out.length >= 12) break;
+  }
+  return out;
 }
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {

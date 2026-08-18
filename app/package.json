@@ -1,0 +1,48 @@
+{
+  "name": "oscode-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "OS Code: the native app. Chat and build with your own stack of local LLMs.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -p electron/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
+    "lint": "eslint src electron --ext .ts,.tsx --max-warnings 0",
+    "test": "vitest run",
+    "desktop": "vite build && tsc -p electron/tsconfig.json && electron dist-electron/main.js",
+    "ios:sync": "vite build && cap sync ios"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.117.1",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/preferences": "8.0.1",
+    "highlight.js": "11.12.0",
+    "os-code": "workspace:*",
+    "qrcode": "1.5.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-markdown": "10.1.0",
+    "rehype-highlight": "7.0.2",
+    "remark-gfm": "4.0.1",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.0",
+    "@capacitor/ios": "8.5.0",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@typescript-eslint/eslint-plugin": "7.18.0",
+    "@typescript-eslint/parser": "7.18.0",
+    "@vitejs/plugin-react": "6.0.5",
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3",
+    "eslint": "8.57.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
+  }
+}

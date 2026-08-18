@@ -6,7 +6,10 @@
       "id": "qwen2.5-coder-7b",
       "name": "Qwen 2.5 Coder 7B",
       "tagline": "Great at code for its size. The best small starting point.",
-      "categories": ["coding", "reasoning"],
+      "categories": [
+        "coding",
+        "reasoning"
+      ],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -37,7 +40,10 @@
       "id": "qwen2.5-coder-14b",
       "name": "Qwen 2.5 Coder 14B",
       "tagline": "Great at code, with more headroom for planning. The sweet spot on 16 GB.",
-      "categories": ["coding", "reasoning"],
+      "categories": [
+        "coding",
+        "reasoning"
+      ],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -58,13 +64,19 @@
         "note": "The recommended orchestrator when the machine has 16 GB of VRAM."
       },
       "blessed": true,
-      "benchmarks": { "HumanEval": "89.6", "BFCL": "strong native tool calling" }
+      "benchmarks": {
+        "HumanEval": "89.6",
+        "BFCL": "strong native tool calling"
+      }
     },
     {
       "id": "qwen2.5-coder-32b",
       "name": "Qwen 2.5 Coder 32B",
       "tagline": "Big-rig coding brain. Close to cloud quality on hard edits.",
-      "categories": ["coding", "reasoning"],
+      "categories": [
+        "coding",
+        "reasoning"
+      ],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -85,13 +97,19 @@
         "note": "Needs 24 GB of VRAM. The strongest local orchestrator in the catalog."
       },
       "blessed": true,
-      "benchmarks": { "HumanEval": "92.7", "SWE-bench (assisted)": "strongest local option here" }
+      "benchmarks": {
+        "HumanEval": "92.7",
+        "SWE-bench (assisted)": "strongest local option here"
+      }
     },
     {
       "id": "llama3.1-8b",
       "name": "Llama 3.1 8B",
-      "tagline": "A solid all-rounder that thinks clearly and follows instructions.",
-      "categories": ["reasoning"],
+      "tagline": "A solid all-rounder that writes clean prose and follows instructions.",
+      "categories": [
+        "reasoning",
+        "writing"
+      ],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -112,13 +130,19 @@
         "note": "Prefer Qwen Coder for code work; pick this for prose-heavy or general tasks."
       },
       "blessed": false,
-      "benchmarks": { "MMLU": "69.4", "context": "128k tokens" }
+      "benchmarks": {
+        "MMLU": "69.4",
+        "context": "128k tokens"
+      }
     },
     {
       "id": "deepseek-r1-14b",
       "name": "DeepSeek R1 14B",
       "tagline": "Thinks things through, out loud. Strong on tricky logic.",
-      "categories": ["reasoning"],
+      "categories": [
+        "reasoning",
+        "analysis"
+      ],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -128,21 +152,34 @@
       "sizeGB": 9.0,
       "quantization": "Q4_K_M",
       "contextTokens": 131072,
-      "license": { "id": "MIT", "name": "MIT License", "note": "Free for commercial use." },
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "note": "Free for commercial use."
+      },
       "curation": {
         "rank": 5,
         "note": "Slower per answer (it reasons at length); pair with a fast specialist."
       },
       "blessed": false,
-      "benchmarks": { "GPQA": "strong for size", "MATH-500": "93.9" }
+      "benchmarks": {
+        "GPQA": "strong for size",
+        "MATH-500": "93.9"
+      }
     },
     {
       "id": "llava-7b",
       "name": "LLaVA 7B",
       "tagline": "Can read screenshots, charts, and photos of whiteboards.",
-      "categories": ["vision"],
+      "categories": [
+        "vision"
+      ],
       "orchestratorCapable": false,
-      "source": { "kind": "ollama", "ref": "llava:7b", "pullCommand": "ollama pull llava:7b" },
+      "source": {
+        "kind": "ollama",
+        "ref": "llava:7b",
+        "pullCommand": "ollama pull llava:7b"
+      },
       "sizeGB": 4.7,
       "quantization": "Q4_0",
       "contextTokens": 32768,
@@ -156,15 +193,25 @@
         "note": "The vision specialist: attach a screenshot and ask what is on it."
       },
       "blessed": true,
-      "benchmarks": { "MMMU": "capable", "ChartQA": "reads most charts" }
+      "benchmarks": {
+        "MMMU": "capable",
+        "ChartQA": "reads most charts"
+      }
     },
     {
       "id": "moondream",
       "name": "Moondream 2",
       "tagline": "A tiny screenshot reader for machines with little room to spare.",
-      "categories": ["vision", "fast"],
+      "categories": [
+        "vision",
+        "fast"
+      ],
       "orchestratorCapable": false,
-      "source": { "kind": "ollama", "ref": "moondream", "pullCommand": "ollama pull moondream" },
+      "source": {
+        "kind": "ollama",
+        "ref": "moondream",
+        "pullCommand": "ollama pull moondream"
+      },
       "sizeGB": 1.7,
       "quantization": "Q4",
       "contextTokens": 2048,
@@ -173,14 +220,19 @@
         "name": "Apache License 2.0",
         "note": "Free for commercial use."
       },
-      "curation": { "rank": 7, "note": "Not as sharp as LLaVA, but it fits almost anywhere." },
+      "curation": {
+        "rank": 7,
+        "note": "Not as sharp as LLaVA, but it fits almost anywhere."
+      },
       "blessed": false
     },
     {
       "id": "nomic-embed-text",
       "name": "Nomic Embed Text",
       "tagline": "Finds the right files. Powers repo search, tiny and always resident.",
-      "categories": ["embedding"],
+      "categories": [
+        "embedding"
+      ],
       "orchestratorCapable": false,
       "source": {
         "kind": "ollama",
@@ -200,13 +252,18 @@
         "note": "The embedder: enable it and searchRepo starts finding code by meaning."
       },
       "blessed": true,
-      "benchmarks": { "MTEB": "strong open embedder" }
+      "benchmarks": {
+        "MTEB": "strong open embedder"
+      }
     },
     {
       "id": "qwen2.5-coder-1.5b",
       "name": "Qwen 2.5 Coder 1.5B",
       "tagline": "Fast for small edits and instant answers.",
-      "categories": ["fast", "coding"],
+      "categories": [
+        "fast",
+        "coding"
+      ],
       "orchestratorCapable": false,
       "source": {
         "kind": "ollama",
@@ -226,6 +283,107 @@
         "note": "The latency helper: trivial renames and quick lookups without waking the big model."
       },
       "blessed": false
+    },
+    {
+      "id": "qwen2.5-1.5b-phone",
+      "name": "Qwen 2.5 1.5B (pocket)",
+      "tagline": "A capable pocket model that runs fully on your iPhone. No desktop, no cloud.",
+      "categories": [
+        "reasoning",
+        "fast"
+      ],
+      "orchestratorCapable": true,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+        "pullCommand": "downloads in-app on iOS"
+      },
+      "sizeGB": 1.1,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 10,
+        "note": "The iPhone starter: quick, coherent, and fully private on the phone."
+      },
+      "blessed": false,
+      "onDevice": {
+        "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "sizeGB": 1.1,
+        "minRamGB": 4
+      }
+    },
+    {
+      "id": "llama3.2-1b-phone",
+      "name": "Llama 3.2 1B (pocket)",
+      "tagline": "Meta's tiny chat model, tuned for phones. Fast answers on the go.",
+      "categories": [
+        "fast",
+        "reasoning"
+      ],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "bartowski/Llama-3.2-1B-Instruct-GGUF",
+        "pullCommand": "downloads in-app on iOS"
+      },
+      "sizeGB": 0.8,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "Llama-3.2-Community",
+        "name": "Llama 3.2 Community License",
+        "url": "https://www.llama.com/llama3_2/license/",
+        "note": "Free for most use; special terms above 700M monthly users."
+      },
+      "curation": {
+        "rank": 11,
+        "note": "Smallest and fastest; pick Qwen 1.5B when you want sharper answers."
+      },
+      "blessed": false,
+      "onDevice": {
+        "url": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        "sizeGB": 0.8,
+        "minRamGB": 3
+      }
+    },
+    {
+      "id": "smollm2-1.7b-phone",
+      "name": "SmolLM2 1.7B (pocket)",
+      "tagline": "Hugging Face's small model that punches above its size on the phone.",
+      "categories": [
+        "reasoning",
+        "fast"
+      ],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF",
+        "pullCommand": "downloads in-app on iOS"
+      },
+      "sizeGB": 1.1,
+      "quantization": "Q4_K_M",
+      "contextTokens": 8192,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 12,
+        "note": "A friendly conversationalist; smaller context than Qwen."
+      },
+      "blessed": false,
+      "onDevice": {
+        "url": "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
+        "sizeGB": 1.1,
+        "minRamGB": 4
+      }
     }
   ],
   "presets": [
@@ -234,7 +392,10 @@
       "name": "A good start",
       "tagline": "One strong coding model that does everything. Perfect first stack.",
       "minVramGB": 0,
-      "stack": { "orchestrator": "qwen2.5-coder-7b", "specialists": {} }
+      "stack": {
+        "orchestrator": "qwen2.5-coder-7b",
+        "specialists": {}
+      }
     },
     {
       "id": "coding",
@@ -243,7 +404,10 @@
       "minVramGB": 12,
       "stack": {
         "orchestrator": "qwen2.5-coder-14b",
-        "specialists": { "embedding": "nomic-embed-text", "fast": "qwen2.5-coder-1.5b" }
+        "specialists": {
+          "embedding": "nomic-embed-text",
+          "fast": "qwen2.5-coder-1.5b"
+        }
       }
     },
     {
