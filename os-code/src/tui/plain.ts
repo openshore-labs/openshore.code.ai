@@ -133,10 +133,26 @@ export async function runPlain(options: PlainOptions): Promise<void> {
 
   if (options.initialPrompt) {
     await runTask(options.initialPrompt);
+    // One-shot mode: with no interactive stdin (scripts, pipes, cron), the
+    // task IS the session. Finish clean instead of prompting the void.
+    if (!process.stdin.isTTY) {
+      cleanup();
+      return;
+    }
   }
 
-  for (;;) {
-    const line = await question(rl, t.local(`\n${GLYPHS.arrow} `));
+  let closed = false;
+  rl.on('close', () => {
+    closed = true;
+  });
+
+  while (!closed) {
+    let line: string;
+    try {
+      line = await question(rl, t.local(`\n${GLYPHS.arrow} `));
+    } catch {
+      break; // stdin ended (Ctrl+D or a pipe ran dry): leave quietly
+    }
     const text = line.trim();
     if (!text) continue;
     if (text.startsWith('/')) {
@@ -147,8 +163,16 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     }
     await runTask(text);
   }
+  cleanup();
 }
 
 function question(rl: Interface, prompt: string): Promise<string> {
-  return new Promise((resolve) => rl.question(prompt, resolve));
+  return new Promise((resolve, reject) => {
+    const onClose = () => reject(new Error('stdin closed'));
+    rl.once('close', onClose);
+    rl.question(prompt, (answer) => {
+      rl.off('close', onClose);
+      resolve(answer);
+    });
+  });
 }
