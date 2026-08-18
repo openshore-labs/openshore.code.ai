@@ -1,0 +1,99 @@
+// Git tools for the agent: status, diff, commit. Backed by simple-git in the
+// workspace root. Push stays a human-facing command (or an approved shell
+// call); the agent's commit never pushes.
+import { simpleGit } from 'simple-git';
+import { z } from 'zod';
+import { capContent, type ToolDef } from './index.js';
+
+const statusSchema = z.object({});
+
+export const gitStatusTool: ToolDef<typeof statusSchema> = {
+  name: 'gitStatus',
+  description: 'Show git status: current branch, staged, modified, and untracked files.',
+  schema: statusSchema,
+  risk: 'read',
+  async execute(_args, ctx) {
+    try {
+      const git = simpleGit(ctx.cwd);
+      const status = await git.status();
+      const lines = [
+        `branch: ${status.current ?? '(detached)'}${status.tracking ? ` (tracks ${status.tracking})` : ''}`,
+        status.staged.length ? `staged: ${status.staged.join(', ')}` : '',
+        status.modified.length ? `modified: ${status.modified.join(', ')}` : '',
+        status.not_added.length ? `untracked: ${status.not_added.join(', ')}` : '',
+        status.deleted.length ? `deleted: ${status.deleted.join(', ')}` : '',
+        status.isClean() ? 'working tree clean' : '',
+      ].filter(Boolean);
+      return { ok: true, content: lines.join('\n') };
+    } catch (err) {
+      return { ok: false, content: gitHint(err) };
+    }
+  },
+};
+
+const diffSchema = z.object({
+  path: z.string().optional().describe('Limit the diff to one path'),
+  staged: z.boolean().optional().describe('Show the staged diff instead of the working tree'),
+});
+
+export const gitDiffTool: ToolDef<typeof diffSchema> = {
+  name: 'gitDiff',
+  description: 'Show the git diff of the working tree (or staged changes).',
+  schema: diffSchema,
+  risk: 'read',
+  async execute(args, ctx) {
+    try {
+      const git = simpleGit(ctx.cwd);
+      const params: string[] = [];
+      if (args.staged) params.push('--staged');
+      if (args.path) params.push('--', args.path);
+      const diff = await git.diff(params);
+      return { ok: true, content: diff.trim() ? capContent(diff) : 'No changes.' };
+    } catch (err) {
+      return { ok: false, content: gitHint(err) };
+    }
+  },
+};
+
+const commitSchema = z.object({
+  message: z.string().min(1).describe('Commit message'),
+  paths: z
+    .array(z.string())
+    .optional()
+    .describe('Paths to stage; omit to stage every change in the workspace'),
+});
+
+export const gitCommitTool: ToolDef<typeof commitSchema> = {
+  name: 'gitCommit',
+  description: 'Stage the given paths (or all changes) and create a git commit. Never pushes.',
+  schema: commitSchema,
+  risk: 'write',
+  async preview(args) {
+    const scope = args.paths?.length ? args.paths.join(', ') : 'all changes';
+    return { summary: `git commit (${scope})`, detail: `Message: ${args.message}` };
+  },
+  async execute(args, ctx) {
+    try {
+      const git = simpleGit(ctx.cwd);
+      await git.add(args.paths?.length ? args.paths : ['-A']);
+      const result = await git.commit(args.message);
+      if (!result.commit) {
+        return { ok: false, content: 'Nothing to commit. The working tree is clean.' };
+      }
+      return {
+        ok: true,
+        content: `Committed ${result.commit.slice(0, 10)} on ${result.branch}: ${args.message} (${result.summary.changes} files, +${result.summary.insertions} -${result.summary.deletions})`,
+      };
+    } catch (err) {
+      return { ok: false, content: gitHint(err) };
+    }
+  },
+};
+
+function gitHint(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/not a git repository/i.test(msg)) {
+    return 'This workspace is not a git repository. Run git init first if version control is wanted.';
+  }
+  return `git failed: ${msg.split('\n')[0]}`;
+}
