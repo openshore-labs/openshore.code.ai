@@ -1,7 +1,12 @@
-# OS Code
+# OS Code engine
 
-**A terminal coding agent for your own stack of local LLMs.**
+**The brain of the OS Code apps: agent loop, router, marketplace, security.**
 Your machine, your models, your keys.
+
+> STATUS (2026-08-18): this package is now the shared ENGINE behind the native
+> OS Code apps (Linux desktop and iOS, in `../app`). The terminal CLI/TUI
+> (`osc`) below still works but is PARKED: no new features land on it. The
+> founder's call; the native apps are the product.
 
 OS Code (`osc`) gives local models the complete, polished experience developers
 know from the best cloud coding agents: a streaming transcript, slash commands,

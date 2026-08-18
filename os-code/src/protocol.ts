@@ -1,0 +1,45 @@
+// The browser-safe protocol surface. The native apps (React UI in Electron,
+// Capacitor iOS) import ONLY this subpath ('os-code/protocol'): event and
+// approval types, the catalog schema, and the capability taxonomy. Every
+// value export here is pure (zod and plain data); every runtime import chain
+// stays free of Node built-ins, so it bundles cleanly for a WebView.
+export type {
+  AgentEvent,
+  ApprovalAnswer,
+  ApprovalRequest,
+  DriverEvent,
+  StopReason,
+} from './core/agent/types.js';
+
+export {
+  CatalogSchema,
+  CatalogModelSchema,
+  CatalogPresetSchema,
+  type Catalog,
+  type CatalogModel,
+  type CatalogPreset,
+} from './market/schema.js';
+
+export { CAPABILITIES, SPECIALIST_ROLES, ROLE_CATEGORY, plainLabel } from './router/roles.js';
+export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
+
+/** Wire shapes the daemon serves that are not agent events. */
+export interface DaemonSessionInfo {
+  id: string;
+  cwd: string;
+  title?: string;
+  busy?: boolean;
+  updatedAt?: string;
+}
+
+export interface DaemonWorkspace {
+  cwd: string;
+  name: string;
+  lastUsed?: string;
+}
+
+export interface DaemonStackInfo {
+  description: string;
+  orchestrator?: { model: string; provider: string; kind: 'local' | 'cloud' };
+  specialists: Array<{ role: string; model: string }>;
+}

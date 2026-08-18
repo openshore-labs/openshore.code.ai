@@ -5,8 +5,10 @@
 // Extend here as the standard evolves; everything else imports from here.
 
 export type CapabilityCategory =
-  | 'reasoning' // the orchestrator dimension
+  | 'reasoning' // the quarterback dimension
   | 'coding'
+  | 'writing'
+  | 'analysis'
   | 'vision'
   | 'image-gen'
   | 'embedding'
@@ -27,8 +29,9 @@ export interface CapabilityInfo {
 export const CAPABILITIES: Record<CapabilityCategory, CapabilityInfo> = {
   reasoning: {
     id: 'reasoning',
-    plain: 'thinks things through',
-    blurb: 'Plans, reasons, and runs the show. Every stack has exactly one of these in charge.',
+    plain: 'runs the show',
+    blurb:
+      'The quarterback: plans, reasons, and decides which model gets each play. Every stack has exactly one in charge.',
     benchmarks: ['MMLU', 'GPQA', 'ARC-AGI'],
     orchestratorDimension: true,
   },
@@ -37,6 +40,20 @@ export const CAPABILITIES: Record<CapabilityCategory, CapabilityInfo> = {
     plain: 'great at code',
     blurb: 'Writes and edits code, calls tools reliably, and sticks to a diff.',
     benchmarks: ['SWE-bench', 'HumanEval', 'LiveCodeBench', 'BFCL'],
+    orchestratorDimension: false,
+  },
+  writing: {
+    id: 'writing',
+    plain: 'writes beautifully',
+    blurb: 'Long-form prose, docs, and copy with a human ear.',
+    benchmarks: ['Chatbot Arena (writing)', 'EQ-Bench', 'MT-Bench'],
+    orchestratorDimension: false,
+  },
+  analysis: {
+    id: 'analysis',
+    plain: 'good with numbers',
+    blurb: 'Math, data analysis, and careful step-by-step calculation.',
+    benchmarks: ['MATH-500', 'GSM8K', 'AIME', 'TableBench'],
     orchestratorDimension: false,
   },
   vision: {
@@ -69,13 +86,26 @@ export const CAPABILITIES: Record<CapabilityCategory, CapabilityInfo> = {
   },
 };
 
-/** The specialist slots a stack can fill (everything except the orchestrator). */
-export const SPECIALIST_ROLES = ['coding', 'vision', 'imageGen', 'embedding', 'fast'] as const;
+/** The specialist slots a stack can fill (everything except the quarterback). */
+export const SPECIALIST_ROLES = [
+  'coding',
+  'writing',
+  'analysis',
+  'vision',
+  'imageGen',
+  'embedding',
+  'fast',
+] as const;
 export type SpecialistRole = (typeof SPECIALIST_ROLES)[number];
+
+/** Chat-delegable roles (everything a specialist chat model can take on). */
+export type DelegableRole = 'coding' | 'writing' | 'analysis' | 'fast' | 'vision';
 
 /** Map a specialist slot to the capability category it needs. */
 export const ROLE_CATEGORY: Record<SpecialistRole, CapabilityCategory> = {
   coding: 'coding',
+  writing: 'writing',
+  analysis: 'analysis',
   vision: 'vision',
   imageGen: 'image-gen',
   embedding: 'embedding',

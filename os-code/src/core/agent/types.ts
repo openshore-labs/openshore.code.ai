@@ -49,3 +49,14 @@ export type AgentEvent =
   | { type: 'task-done'; reason: StopReason; message?: string };
 
 export type EventSink = (event: AgentEvent) => void;
+
+/**
+ * The full driver-level event stream: agent events plus the approval
+ * hand-off. This is the wire protocol between an engine session and any
+ * renderer (the desktop app over IPC, the phone app over SSE), so it lives
+ * here in a pure module both sides can import.
+ */
+export type DriverEvent =
+  | AgentEvent
+  | { type: 'approval-request'; request: ApprovalRequest }
+  | { type: 'approval-resolved'; id: string; approved: boolean };

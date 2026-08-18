@@ -14,13 +14,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { oscHome } from '../config/load.js';
 import type { AgentSession } from '../core/agent/loop.js';
-import type { AgentEvent, ApprovalAnswer, ApprovalRequest } from '../core/agent/types.js';
+import type { ApprovalAnswer, ApprovalRequest, DriverEvent } from '../core/agent/types.js';
 import { redactSecrets } from '../core/security/redaction.js';
 
-export type DriverEvent =
-  | AgentEvent
-  | { type: 'approval-request'; request: ApprovalRequest }
-  | { type: 'approval-resolved'; id: string; approved: boolean };
+// DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
+// remote driver can share the exact protocol type; re-exported here so
+// existing engine imports keep working.
+export type { DriverEvent } from '../core/agent/types.js';
 
 export interface SessionDriver {
   readonly id: string;

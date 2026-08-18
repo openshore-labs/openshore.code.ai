@@ -1,0 +1,13 @@
+{
+  "name": "openshore-code",
+  "private": true,
+  "version": "0.1.0",
+  "description": "OS Code: native iOS and Linux desktop apps for building with your own stack of local LLMs. Your machine, your models, your keys.",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "desktop": "pnpm --filter os-code build && pnpm --filter oscode-app desktop"
+  }
+}

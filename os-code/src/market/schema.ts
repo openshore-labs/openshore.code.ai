@@ -26,7 +26,7 @@ export const CatalogModelSchema = z.object({
   /** Plain language: what this model is good at, no benchmark names. */
   tagline: z.string(),
   /** Standard capability categories (router/roles.ts taxonomy). */
-  categories: z.array(z.enum(['reasoning', 'coding', 'vision', 'image-gen', 'embedding', 'fast'])),
+  categories: z.array(z.enum(['reasoning', 'coding', 'writing', 'analysis', 'vision', 'image-gen', 'embedding', 'fast'])),
   /** May this model serve as the mandatory reasoning orchestrator? */
   orchestratorCapable: z.boolean(),
   source: CatalogSourceSchema,
@@ -42,6 +42,19 @@ export const CatalogModelSchema = z.object({
   blessed: z.boolean().default(false),
   /** Benchmark detail, one keystroke away in the picker, never the headline. */
   benchmarks: z.record(z.string(), z.string()).optional(),
+  /**
+   * Set when this model can run ON the phone: a direct, public GGUF download
+   * (straight from the source, never rehosted) the iOS app pulls in-app.
+   */
+  onDevice: z
+    .object({
+      /** Direct GGUF URL (Hugging Face resolve link, public, no auth). */
+      url: z.string(),
+      sizeGB: z.number().positive(),
+      /** Honest floor: phones under this RAM will struggle or crash. */
+      minRamGB: z.number().positive(),
+    })
+    .optional(),
 });
 
 export const CatalogPresetSchema = z.object({

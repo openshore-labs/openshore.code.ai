@@ -9,9 +9,9 @@ import type { ToolDef } from './index.js';
 
 const delegateSchema = z.object({
   role: z
-    .enum(['coding', 'fast'])
+    .enum(['coding', 'writing', 'analysis', 'fast'])
     .describe(
-      'Which specialist: coding (hard code subtasks) or fast (trivial edits, quick answers)',
+      'Which specialist: coding (hard code subtasks), writing (prose and docs), analysis (math and data), or fast (trivial edits, quick answers)',
     ),
   task: z
     .string()
@@ -22,7 +22,7 @@ const delegateSchema = z.object({
 export const delegateTool: ToolDef<typeof delegateSchema> = {
   name: 'delegate',
   description:
-    'Hand a self-contained subtask to an enabled specialist model and get its answer back. Use coding for hard code generation, fast for trivial work.',
+    'Hand a self-contained subtask to an enabled specialist model and get its answer back: coding for hard code generation, writing for prose, analysis for math and data, fast for trivial work.',
   schema: delegateSchema,
   risk: 'read',
   async execute(args, ctx) {
