@@ -28,10 +28,15 @@ function normalize(text: string): string {
 }
 
 function trackedFiles(): string[] {
-  return execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' })
-    .split('\0')
-    .filter(Boolean)
-    .filter((f) => EXTENSIONS.has(extname(f)));
+  return (
+    execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' })
+      .split('\0')
+      .filter(Boolean)
+      .filter((f) => EXTENSIONS.has(extname(f)))
+      // The guard must not read its own dash definitions, and test files are
+      // developer-facing, mirroring the Uki scanner's scope decision.
+      .filter((f) => !f.includes('.test.') && !f.includes('.spec.'))
+  );
 }
 
 describe('em dash policy', () => {
