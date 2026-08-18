@@ -1,0 +1,14 @@
+# build output
+dist/
+
+# dependencies
+node_modules/
+
+# logs and scratch
+*.log
+coverage/
+.vitest/
+
+# local state (never commit credentials or sessions)
+.os-code/
+os-code.config.json
