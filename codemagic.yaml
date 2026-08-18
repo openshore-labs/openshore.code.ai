@@ -39,9 +39,16 @@ workflows:
         script: |
           cd app/ios/App
           agvtool new-version -all "$BUILD_NUMBER"
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Build the signed IPA
         script: |
-          xcode-project use-profiles
           xcode-project build-ipa \
             --project app/ios/App/App.xcodeproj \
             --scheme App
