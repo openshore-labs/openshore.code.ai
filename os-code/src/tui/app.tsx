@@ -14,6 +14,8 @@ import { ApprovalPrompt } from './approval.js';
 import { CitationsPanel } from './citations.js';
 import { InputBox } from './input.js';
 import { runSlash, type SlashContext } from './slash.js';
+import { nextRevealLength } from './smoothing.js';
+import { searchTranscript } from './transcriptSearch.js';
 
 export interface AppProps {
   driver: SessionDriver;
@@ -45,7 +47,11 @@ export function App(props: AppProps): React.ReactElement {
     }),
   ]);
   const [streamText, setStreamText] = useState('');
-  const streamRef = useRef('');
+  // targetRef holds the full text streamed so far; shownLenRef is how much the
+  // smoother has revealed. The reveal timer walks shown toward target so bursty
+  // local token streams read as calm typing (see tui/smoothing.ts).
+  const targetRef = useRef('');
+  const shownLenRef = useRef(0);
   const [runningTools, setRunningTools] = useState<RunningTool[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -55,13 +61,37 @@ export function App(props: AppProps): React.ReactElement {
   const [model, setModel] = useState(props.driver.describeModel());
   const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [stepNote, setStepNote] = useState<string | undefined>();
+  // Model-load / first-token tracking: loading is true from turn start until
+  // the first token or tool call, so the status line can surface warmup time.
+  const [loading, setLoading] = useState(false);
+  const turnStartRef = useRef(0);
 
   const push = (item: TranscriptItem) => setFinished((prev) => [...prev, keyed(item)]);
+
+  const resetStream = () => {
+    targetRef.current = '';
+    shownLenRef.current = 0;
+    setStreamText('');
+  };
+  const markFirstToken = () => setLoading(false);
 
   // Spinner heartbeat, only while working.
   useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => setSpinnerFrame((f) => f + 1), 90);
+    return () => clearInterval(timer);
+  }, [busy]);
+
+  // Reveal timer: a smooth ~40fps cadence that drains the stream backlog.
+  useEffect(() => {
+    if (!busy) return;
+    const timer = setInterval(() => {
+      const nextLen = nextRevealLength(shownLenRef.current, targetRef.current.length);
+      if (nextLen !== shownLenRef.current) {
+        shownLenRef.current = nextLen;
+        setStreamText(targetRef.current.slice(0, nextLen));
+      }
+    }, 24);
     return () => clearInterval(timer);
   }, [busy]);
 
@@ -76,22 +106,25 @@ export function App(props: AppProps): React.ReactElement {
         case 'turn-start':
           setModel({ model: event.model, kind: event.providerKind });
           setStepNote('thinking');
+          turnStartRef.current = Date.now();
+          setLoading(true);
           break;
         case 'text-delta':
-          streamRef.current += event.text;
-          setStreamText(streamRef.current);
+          markFirstToken();
+          targetRef.current += event.text;
           break;
         case 'thinking-delta':
+          markFirstToken();
           setStepNote('reasoning');
           break;
         case 'text-final':
-          streamRef.current = '';
-          setStreamText('');
+          markFirstToken();
+          resetStream();
           if (event.text) push({ kind: 'assistant', text: event.text });
           break;
         case 'tool-start':
-          streamRef.current = '';
-          setStreamText('');
+          markFirstToken();
+          resetStream();
           setStepNote(event.call.name);
           setRunningTools((prev) => [
             ...prev,
@@ -137,13 +170,13 @@ export function App(props: AppProps): React.ReactElement {
           break;
         case 'task-done':
           setBusy(false);
+          setLoading(false);
           setStepNote(undefined);
           setRunningTools([]);
-          if (streamRef.current.trim()) {
-            push({ kind: 'assistant', text: streamRef.current.trim() });
+          if (targetRef.current.trim()) {
+            push({ kind: 'assistant', text: targetRef.current.trim() });
           }
-          streamRef.current = '';
-          setStreamText('');
+          resetStream();
           if (event.reason !== 'complete') {
             push({ kind: 'done', ok: false, message: event.message ?? `stopped: ${event.reason}` });
           }
@@ -176,6 +209,15 @@ export function App(props: AppProps): React.ReactElement {
     exit: () => exit(),
     setWebEnabled: props.setWebEnabled,
     webEnabled: props.webEnabled,
+    find: (query) => {
+      const matches = searchTranscript(finished, query);
+      push({
+        kind: 'status',
+        text: matches.length
+          ? `Found "${query}" in ${matches.length} line${matches.length === 1 ? '' : 's'}:\n${matches.join('\n')}`
+          : `No transcript line contains "${query}".`,
+      });
+    },
   };
 
   const onSubmit = (text: string) => {
@@ -227,6 +269,8 @@ export function App(props: AppProps): React.ReactElement {
           busy={busy}
           spinnerFrame={spinnerFrame}
           stepNote={stepNote}
+          loading={loading}
+          loadElapsedSec={loading ? (Date.now() - turnStartRef.current) / 1000 : 0}
         />
         {!activeApproval ? (
           <InputBox

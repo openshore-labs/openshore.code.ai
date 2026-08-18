@@ -4,6 +4,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { GLYPHS, TOKENS } from '../brand/theme.js';
+import { tokenizeCodeLine, type TokenKind } from './syntax.js';
 
 export type TranscriptItem =
   | { kind: 'banner'; lines: string[]; tagline: string }
@@ -105,18 +106,61 @@ export function DetailBlock({ detail }: { detail: string }): React.ReactElement 
   return (
     <Box flexDirection="column" marginLeft={2}>
       {shown.map((line, i) => (
-        <Text key={i} color={diffColor(line)}>
-          {line || ' '}
-        </Text>
+        <DiffLine key={i} line={line} />
       ))}
       {hidden > 0 ? <Text color={TOKENS.muted}>... {hidden} more lines</Text> : null}
     </Box>
   );
 }
 
-function diffColor(line: string): string {
-  if (line.startsWith('+') && !line.startsWith('+++')) return TOKENS.ok;
-  if (line.startsWith('-') && !line.startsWith('---')) return TOKENS.danger;
-  if (line.startsWith('@@')) return TOKENS.link;
-  return TOKENS.muted;
+type LineType = 'add' | 'del' | 'hunk' | 'context' | 'meta';
+
+function classifyLine(line: string): LineType {
+  if (line.startsWith('+++') || line.startsWith('---')) return 'meta';
+  if (line.startsWith('@@')) return 'hunk';
+  if (line.startsWith('+')) return 'add';
+  if (line.startsWith('-')) return 'del';
+  return 'context';
+}
+
+// Diff semantics own the base color (added green, removed red). Within a line,
+// syntax gives the eye handholds: strings warm, keywords teal, comments dim.
+// On context lines syntax leads (it is the code being read); on +/- lines the
+// diff color leads and only comments soften, so the change stays obvious.
+function segColor(lineType: LineType, kind: TokenKind): string {
+  const base =
+    lineType === 'add'
+      ? TOKENS.ok
+      : lineType === 'del'
+        ? TOKENS.danger
+        : lineType === 'hunk'
+          ? TOKENS.link
+          : TOKENS.muted;
+  if (kind === 'comment') return TOKENS.muted;
+  if (kind === 'string') return lineType === 'context' ? TOKENS.cloud : base;
+  if (kind === 'keyword') return lineType === 'context' ? TOKENS.link : base;
+  return base;
+}
+
+/** One diff line, diff-colored and lightly syntax-tinted. */
+export function DiffLine({ line }: { line: string }): React.ReactElement {
+  const lineType = classifyLine(line);
+  if (line === '') return <Text> </Text>;
+  if (lineType === 'hunk' || lineType === 'meta') {
+    return <Text color={lineType === 'hunk' ? TOKENS.link : TOKENS.muted}>{line}</Text>;
+  }
+  // Keep the leading +/- sign in the pure diff color, tint only the code after.
+  const sign = lineType === 'add' || lineType === 'del' ? line[0]! : '';
+  const body = sign ? line.slice(1) : line;
+  const tokens = tokenizeCodeLine(body);
+  return (
+    <Text>
+      {sign ? <Text color={lineType === 'add' ? TOKENS.ok : TOKENS.danger}>{sign}</Text> : null}
+      {tokens.map((tok, i) => (
+        <Text key={i} color={segColor(lineType, tok.kind)}>
+          {tok.text}
+        </Text>
+      ))}
+    </Text>
+  );
 }

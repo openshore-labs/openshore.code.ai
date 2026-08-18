@@ -49,3 +49,18 @@ execution contract. Newest at the bottom.
   or the git helpers, keeping the `push` risk class distinct.
 - **`imageGen` ComfyUI support is a named follow-up** (needs a workflow
   graph); A1111 and OpenAI-images endpoints are implemented.
+- **Streaming smoothing reveals at ~40fps with a bounded lag,** rather than
+  painting every delta verbatim: bursty local token streams read as calm
+  typing, and a large cloud burst still drains in a few hundred milliseconds.
+- **Download progress uses the Ollama `/api/pull` stream** (structured byte
+  totals for a real bar) with a `ollama pull` CLI fallback. Both pull straight
+  from the Ollama library, so this stays true to "direct from source, never
+  from OpenShore."
+- **Low-color terminals: downsample, do not drop color.** Ink already
+  downsamples truecolor; the hand-rolled ANSI surfaces now detect color depth
+  (COLORTERM / TERM) and emit truecolor, xterm-256, or nearest ANSI-16. A bare
+  `xterm` with no COLORTERM is assumed truecolor (the modern default) so we do
+  not strip color from capable terminals that simply advertise nothing.
+- **No custom scrollback pager.** Over SSH the terminal's own scrollback pages
+  natively and a custom pager fights it; `/find` (transcript search, TUI and
+  plain) is the additive capability instead.

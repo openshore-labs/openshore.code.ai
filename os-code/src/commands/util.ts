@@ -117,3 +117,30 @@ export function warnLine(text: string, fix?: string): void {
 export function skipLine(text: string): void {
   out(`  ${t.muted(GLYPHS.skip)} ${t.muted(text)}`);
 }
+
+/** The bar glyphs only, no color: filled blocks then light shade, for tests. */
+export function progressBarPlain(percent: number, width = 24): string {
+  const p = Math.max(0, Math.min(100, percent));
+  const filled = Math.round((p / 100) * width);
+  return '█'.repeat(filled) + '░'.repeat(Math.max(0, width - filled));
+}
+
+/** A colored progress bar with its percentage and an optional trailing label. */
+export function progressBar(percent: number, width = 24, label?: string): string {
+  const bar = progressBarPlain(percent, width);
+  const pct = `${Math.max(0, Math.min(100, percent)).toFixed(0)}%`.padStart(4);
+  return `${t.local(bar)} ${t.text(pct)}${label ? ` ${t.muted(label)}` : ''}`;
+}
+
+/** Human byte size, e.g. 4.7 GB. Base-1000 to match how downloads are quoted. */
+export function fmtBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let n = bytes;
+  let u = 0;
+  while (n >= 1000 && u < units.length - 1) {
+    n /= 1000;
+    u += 1;
+  }
+  return `${n.toFixed(u === 0 ? 0 : 1)} ${units[u]}`;
+}
