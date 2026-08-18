@@ -17,7 +17,9 @@ at home and delighted, not that the build was cheap.
 OS Code is a terminal-first coding agent with the interaction model developers
 know from Claude Code (streaming transcript, slash commands, tool-approval
 prompts, web search, repo-aware editing), whose purpose is to run a **personally
-curated stack of local LLMs that services the majority of your coding work**. It
+curated stack of local LLMs that services the majority of your coding work**,
+where a stack can be a single general model or a mandatory reasoning model that
+delegates to optional specialists. It
 is **local-first and self-hosted**: compute runs on the user's own machine, and
 cloud models run on the user's own account or key. You connect your Claude
 account the way you sign into Cursor or VS Code, so cloud is one deliberate
@@ -121,18 +123,18 @@ os-code/
     index.ts
     brand/theme.ts
     config/{schema.ts,load.ts}
-    commands/{init,login,pair,doctor,run,attach,serve,fleet,market,license,eval,authGithub,attachImage}.ts
+    commands/{init,login,pair,doctor,run,attach,serve,stack,market,license,eval,authGithub,attachImage}.ts
     core/
       agent/{loop.ts,types.ts,registry.ts}
-      tools/{index.ts,readFile.ts,writeFile.ts,editFile.ts,runShell.ts,grep.ts,glob.ts,git.ts,webSearch.ts,webFetch.ts,parser.ts}
+      tools/{index.ts,readFile.ts,writeFile.ts,editFile.ts,runShell.ts,grep.ts,glob.ts,git.ts,webSearch.ts,webFetch.ts,generateImage.ts,parser.ts}
       tools/search/{index.ts,duckduckgo.ts,brave.ts,searxng.ts,tavily.ts,readability.ts}
       edit/{apply.ts,searchReplace.ts,verify.ts}
       permissions/index.ts
       guardrails/index.ts
       security/{daemonAuth.ts,jail.ts,redaction.ts,profiles.ts,egress.ts}
-    providers/{types.ts,registry.ts,openaiCompatible.ts,anthropic.ts,capabilities.ts}
+    providers/{types.ts,registry.ts,openaiCompatible.ts,anthropic.ts,imageGen.ts,capabilities.ts}
     providers/adapters/{index.ts,qwen.ts,llama.ts}
-    router/{router.ts,fleet.ts,roles.ts,resourceBudget.ts}
+    router/{router.ts,stack.ts,roles.ts,resourceBudget.ts}
     context/{codeMap.ts,index.ts,compaction.ts}
     context/vision/ingest.ts
     auth/{claude.ts,github.ts,store.ts,usage.ts}
@@ -229,13 +231,16 @@ corruption. Build it right:
 - **Post-apply verification**: re-read, run a cheap structural/lint/compile check
   where available, reject on mismatch.
 - **Diff-for-approval** before it lands.
-- A **fast-apply model role** (see Fleet): a small model that merges a rough edit
+- A **fast-apply model role** (an optional specialist, see section 7): a small model that merges a rough edit
   into the file (the Cursor/Morph and Aider search-replace pattern).
 
 ### 4. Provider layer - `src/providers/`
 One `Provider` interface: streaming `chat()`, tool-calling, capability flags
 (`supportsTools`, `supportsVision`, `supportsGrammar`, `contextTokens`,
-`costTier`, `latencyTier`).
+`costTier`, `latencyTier`, and a `capabilities` list of the standard categories
+from section 7 so the router can match task-need to model). Specialists may be
+NON-chat providers: include an `ImageProvider` path for the image-generation
+category (a local diffusion server), invoked as a tool, not through `chat()`.
 - `OpenAICompatibleProvider`, fully working against Ollama, LM Studio, llama.cpp,
   vLLM. The default engine, with the per-backend capability probe from section 1.
 - `AnthropicProvider`, cloud Claude, TWO auth modes: a **bring-your-own Anthropic
@@ -258,20 +263,59 @@ format per model family, with adapters for the common local families.
 - `osc auth github`: GitHub device-flow OAuth plus PAT fallback, same store.
 - A `usage` tracker for cloud calls so the TUI warns before spending quota.
 
-### 7. The Fleet and Router - `src/router/`  (the "stack multiple LLMs" feature)
-Roles: **Planner**, **Coder**, **Fast-edit**, **Apply**, **Vision**,
-**Embedder**. Router inputs: input modality, output type (plan/diff/answer/
-search), estimated difficulty and context size, confidence/escalation signal.
-Two modes per task: **route** (one model) and **chain / mixture-of-agents**.
-- **Default policy: local-first.** Cloud fires on opt-in or an escalation rule
-  (local low-confidence, repeated tool failures, task over a difficulty
-  threshold) AND the account is connected AND confirm-before-spend is accepted.
-- **VRAM profile selection at first run (or the fleet feels broken).** Stacking
-  causes Ollama load/unload thrash (tens of seconds per role hop). Detect total
-  VRAM at first run and pick a profile. Default to **route-one with roles
-  collapsed onto one resident model** when VRAM is tight; make multi-model and
-  mixture-of-agents opt-in for users with headroom. Keep the embedder small and
-  persistent. Ship a `resourceBudget` (VRAM budget, `keep_alive`, quantization).
+### 7. The Stack: a mandatory reasoning orchestrator plus optional specialists - `src/router/`
+A "stack" ranges from a **single general model** to a set of specialists. The
+design centers on ONE **mandatory reasoning/orchestrator model** that does the
+heavy lifting: it plans, reasons, drives the tool loop, and decides when to
+delegate a subtask to a specialist. **If it is the only model enabled, it does
+every part of the job itself.** It can be a **local** model (Ollama) OR a
+**cloud** model (Claude, via the connected account). This is the one required
+piece of any stack; a user with room for only one large local model, or who
+prefers cloud for reasoning, has a complete, working setup.
+
+**Specialists are optional plug-ins.** The user downloads and enables only the
+ones they have room for and need. Tag each by the capability category it is
+strong in, using the **industry-standard assessment dimensions** so tagging is
+objective and matches how models are actually benchmarked (store the taxonomy in
+one place, `router/roles.ts`, and extend it as the standard evolves):
+- **Reasoning / general** (the orchestrator): MMLU, GPQA, general reasoning.
+  Mandatory.
+- **Coding + tool use**: SWE-bench, HumanEval / LiveCodeBench, Berkeley
+  Function-Calling (BFCL).
+- **Vision / visual analysis** (multimodal understanding): MMMU, MathVista,
+  chart and screenshot understanding.
+- **Image generation / illustrative output**: a diffusion specialist (NOT a chat
+  LLM), reached as a tool via a local image server (ComfyUI / Automatic1111 / an
+  OpenAI-image-compatible endpoint).
+- **Embeddings / retrieval**: MTEB, powering the RAG index.
+- **Fast / lightweight** (optional latency helper): a small model for trivial
+  edits and quick answers.
+
+**Delegation is the orchestrator's job.** It calls a specialist the way it calls
+any tool ("analyze this screenshot", "generate this illustration", "embed these
+files", "write this function"), passes the subtask, and folds the result back
+into its reasoning. The router provides the mechanism: match the task need to an
+enabled specialist by capability, or fall back to the orchestrator itself when no
+specialist is enabled.
+
+**Graceful degradation is a first-class requirement, not an edge case:**
+- One model enabled: it is the orchestrator and does everything. Fully supported.
+- Orchestrator local or cloud: both supported. The mandatory role can point at
+  Ollama or at the connected Claude account.
+- A needed specialist missing: the orchestrator does that part itself, with a
+  quiet note, rather than failing.
+
+**Cloud escalation (unchanged default: local-first).** When the orchestrator is
+local, a hard subtask can still escalate to cloud Claude on opt-in or an
+escalation rule (low local confidence, repeated tool failures, difficulty over a
+threshold) AND the account is connected AND confirm-before-spend is accepted.
+
+**VRAM profile selection at first run (or the stack feels broken).** Running
+several large local models at once thrashes as Ollama loads and unloads per hop.
+Detect total VRAM at first run and pick a profile: tight VRAM defaults to the
+**single-orchestrator stack**; more headroom unlocks resident specialists. Keep
+the embedder small and persistent. Ship a `resourceBudget` (VRAM budget,
+`keep_alive`, quantization). Never assume several large models are hot at once.
 
 ### 8. Repo context and RAG - `src/context/`  (retrieval accuracy is core correctness)
 Bad retrieval feeds the wrong context and causes the wrong edit, so on
@@ -305,10 +349,12 @@ push, open PR.
 - `osc market` / `osc models`: browse and install from a **curated catalog**, a
   delightful picker.
 - The catalog is a **remote static JSON manifest** (configurable URL): per model,
-  name, roles, source (Hugging Face or Ollama), pull command, size, quantization,
-  context window, **license flag**, curation note/rank, and whether it is a
-  **blessed profile** from the eval harness. Ship a typed schema and a real
-  bundled sample manifest.
+  name, **capability categories** it is strong in (the standard taxonomy from
+  section 7, so users pick a specialist by what it is actually good at), whether
+  it can serve as the mandatory reasoning orchestrator, source (Hugging Face or
+  Ollama), pull command, size, quantization, context window, **license flag**,
+  curation note/rank, and whether it is a **blessed profile** from the eval
+  harness. Ship a typed schema and a real bundled sample manifest.
 - Install triggers a **direct pull from the source** (`ollama pull`, etc.), never
   from OpenShore. Show the license before install. Never rehost weights.
 
@@ -363,18 +409,22 @@ citations panel for web results. Runs over SSH with no mouse; a considered
 
 ### 17. Config and onboarding - `src/config/`, `src/commands/`
 - Config in `os-code.config.json` (project) and `~/.os-code/config.json`
-  (global). Full **zod schema**: providers/endpoints, the fleet, routing rules
-  and mode, fallback policy, `resourceBudget`, VRAM profile, search backend,
+  (global). Full **zod schema**: providers/endpoints, the stack (the mandatory
+  reasoning orchestrator plus optional specialists mapped by capability), routing
+  rules and mode, fallback policy, `resourceBudget`, VRAM profile, search backend,
   egress policy, catalog URL, license/entitlement, permissions, guardrail limits,
   daemon bind/auth.
 - `osc init`: autodetect Ollama, list installed models (`GET /api/tags`), pick a
-  VRAM profile, write a starter fleet config. Delightful.
+  VRAM profile, and write a starter stack config (defaulting to a single
+  orchestrator, with specialists suggested if VRAM allows). Delightful.
 - `osc login`, `osc pair`: real, premium onboarding flows.
 - `osc doctor`: check local server, models, Claude API key, GitHub token, tailnet,
-  daemon bind, search backend, license, and every fleet role, in a beautiful,
-  actionable report with the per-link error taxonomy.
-- All other commands (`osc run`, `attach`, `serve`, `fleet`, `market`, `license`,
-  `eval`, `auth github`, `attach-image`) implemented and working.
+  daemon bind, search backend, license, the mandatory reasoning orchestrator, and
+  every enabled specialist, in a beautiful, actionable report with the per-link
+  error taxonomy.
+- All other commands (`osc run`, `attach`, `serve`, `stack`, `market`, `license`,
+  `eval`, `auth github`, `attach-image`) implemented and working. `osc stack`
+  views and edits the stack: the orchestrator and any enabled specialists.
 
 ### 18. Branding - `src/brand/`
 Centralize ALL theme tokens. OpenShore theme with PLACEHOLDER values marked

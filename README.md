@@ -23,15 +23,17 @@ definition of done. It indexes on completeness and delight, not token thrift.
 - **Local-first, self-hosted.** Compute runs on the user's machine. Cloud models
   run on the user's own key or account. OpenShore never hosts weights or proxies
   inference.
-- **A curated stack of local models** (planner, coder, fast-edit, apply, vision,
-  embedder) routed by task, with cloud Claude as a deliberate, confirmed
-  escalation.
+- **A stack that scales from one model to many.** One mandatory reasoning model
+  (local or cloud) does the heavy lifting and delegates to optional specialists
+  (coding, vision, image generation, embeddings), each tagged by standard
+  capability benchmarks. A single general model is a complete setup; a missing
+  specialist falls back to the orchestrator.
 - **Web access is a first-class tool.** Local models cannot browse on their own,
   so OS Code ships `webSearch` and `webFetch` with a pluggable backend
   (DuckDuckGo by default, Brave, self-hosted SearXNG, or Tavily), readability
   extraction, and citations in the TUI.
 - **Marketplace is a catalog, not a weight host:** a static manifest pointing at
-  Hugging Face and Ollama, with license flags.
+  Hugging Face and Ollama, tagged by capability, with license flags.
 - **Phone on the go:** Tailscale plus an SSH client, orchestrated with a pairing
   wizard, not embedded.
 - **The paid gate** sits on the curated catalog, the cloud-connector configs,
