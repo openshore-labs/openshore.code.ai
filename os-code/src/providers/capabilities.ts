@@ -58,7 +58,11 @@ export async function probeBackend(baseUrl: string): Promise<BackendProfile> {
       flavor = 'lmstudio';
     } else {
       const props = await tryJson(`${baseUrl}/props`);
-      if (props && typeof props === 'object' && ('default_generation_settings' in props || 'total_slots' in props)) {
+      if (
+        props &&
+        typeof props === 'object' &&
+        ('default_generation_settings' in props || 'total_slots' in props)
+      ) {
         flavor = 'llamacpp';
       } else {
         const version = await tryJson(`${baseUrl}/version`);

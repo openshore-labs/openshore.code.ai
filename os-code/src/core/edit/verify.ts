@@ -16,7 +16,10 @@ export function verifyWritten(path: string, expected: string): VerifyResult {
   try {
     actual = readFileSync(path, 'utf8');
   } catch (err) {
-    return { ok: false, detail: `Could not re-read ${path} after writing: ${(err as Error).message}` };
+    return {
+      ok: false,
+      detail: `Could not re-read ${path} after writing: ${(err as Error).message}`,
+    };
   }
   if (sha(actual) !== sha(expected)) {
     return {
@@ -42,9 +45,15 @@ export function structuralCheck(path: string, content: string): VerifyResult {
     }
   }
   if (/\.(mjs|cjs|js)$/.test(path)) {
-    const res = spawnSync(process.execPath, ['--check', path], { encoding: 'utf8', timeout: 10_000 });
+    const res = spawnSync(process.execPath, ['--check', path], {
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
     if (res.status === 0) return { ok: true, detail: 'JavaScript syntax check passed.' };
-    return { ok: false, detail: `Syntax check failed: ${(res.stderr || res.stdout).trim().slice(0, 400)}` };
+    return {
+      ok: false,
+      detail: `Syntax check failed: ${(res.stderr || res.stdout).trim().slice(0, 400)}`,
+    };
   }
   // Balanced-brace sanity for brace languages; heuristic on purpose, cheap on purpose.
   if (/\.(ts|tsx|jsx|c|h|cpp|hpp|java|go|rs|swift|kt|scala|css)$/.test(path)) {

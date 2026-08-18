@@ -33,7 +33,10 @@ export function unifiedDiff(
   const TOO_BIG = 4000;
   let ops: Array<{ tag: 'eq' | 'del' | 'add'; line: string }>;
   if (midA.length * midB.length > TOO_BIG * TOO_BIG) {
-    ops = [...midA.map((line) => ({ tag: 'del' as const, line })), ...midB.map((line) => ({ tag: 'add' as const, line }))];
+    ops = [
+      ...midA.map((line) => ({ tag: 'del' as const, line })),
+      ...midB.map((line) => ({ tag: 'add' as const, line })),
+    ];
   } else {
     ops = lcsOps(midA, midB);
   }

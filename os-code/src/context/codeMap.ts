@@ -33,11 +33,18 @@ const RULES: SymbolRule[] = [
   },
   {
     extensions: ['.rs'],
-    patterns: [/^\s*(?:pub\s+)?fn\s+([A-Za-z0-9_]+)/, /^\s*(?:pub\s+)?(?:struct|enum|trait)\s+([A-Za-z0-9_]+)/, /^\s*impl(?:<[^>]*>)?\s+([A-Za-z0-9_]+)/],
+    patterns: [
+      /^\s*(?:pub\s+)?fn\s+([A-Za-z0-9_]+)/,
+      /^\s*(?:pub\s+)?(?:struct|enum|trait)\s+([A-Za-z0-9_]+)/,
+      /^\s*impl(?:<[^>]*>)?\s+([A-Za-z0-9_]+)/,
+    ],
   },
   {
     extensions: ['.java', '.kt', '.swift', '.scala'],
-    patterns: [/^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface|enum|object|struct)\s+([A-Za-z0-9_]+)/, /^\s*(?:public|private|protected)?\s*(?:static\s+)?[A-Za-z0-9_<>[\]]+\s+([A-Za-z0-9_]+)\s*\(/],
+    patterns: [
+      /^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?(?:class|interface|enum|object|struct)\s+([A-Za-z0-9_]+)/,
+      /^\s*(?:public|private|protected)?\s*(?:static\s+)?[A-Za-z0-9_<>[\]]+\s+([A-Za-z0-9_]+)\s*\(/,
+    ],
   },
   {
     extensions: ['.rb'],

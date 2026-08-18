@@ -21,9 +21,9 @@ export function braveProvider(config: SearchConfig): SearchProvider {
       const body = (await res.json()) as {
         web?: { results?: Array<{ title: string; url: string; description?: string }> };
       };
-      return (body.web?.results ?? []).slice(0, count).map(
-        (r): SearchResult => ({ title: r.title, url: r.url, snippet: r.description ?? '' }),
-      );
+      return (body.web?.results ?? [])
+        .slice(0, count)
+        .map((r): SearchResult => ({ title: r.title, url: r.url, snippet: r.description ?? '' }));
     },
   };
 }

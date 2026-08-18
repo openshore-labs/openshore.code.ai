@@ -60,7 +60,10 @@ export class Guardrails {
 
   /** Record a tool call; returns how many times this exact call has happened. */
   noteToolCall(toolName: string, args: unknown): number {
-    const key = createHash('sha256').update(toolName).update(JSON.stringify(args ?? {})).digest('hex');
+    const key = createHash('sha256')
+      .update(toolName)
+      .update(JSON.stringify(args ?? {}))
+      .digest('hex');
     const n = (this.callCounts.get(key) ?? 0) + 1;
     this.callCounts.set(key, n);
     return n;
@@ -75,7 +78,11 @@ export class Guardrails {
   }
 
   /** Check every rail. Returns the first violation, or null when clear. */
-  check(lastCall?: { toolName: string; args: unknown; repeats: number }): GuardrailViolation | null {
+  check(lastCall?: {
+    toolName: string;
+    args: unknown;
+    repeats: number;
+  }): GuardrailViolation | null {
     const ceiling = Math.min(this.config.maxSteps, this.hardStepCeiling ?? Infinity);
     if (this.steps >= ceiling) {
       return {

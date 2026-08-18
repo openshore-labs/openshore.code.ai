@@ -95,7 +95,10 @@ export interface EmbeddingProvider {
 export interface ImageProvider {
   id: string;
   label: string;
-  generate(prompt: string, opts?: { width?: number; height?: number; model?: string }): Promise<{
+  generate(
+    prompt: string,
+    opts?: { width?: number; height?: number; model?: string },
+  ): Promise<{
     imageBase64: string;
     mediaType: string;
   }>;

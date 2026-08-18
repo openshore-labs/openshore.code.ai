@@ -19,18 +19,30 @@ export const DEFAULT_EGRESS: EgressConfig = {
   blocklist: [],
 };
 
-export type EgressPurpose = 'web-search' | 'web-fetch' | 'cloud-api' | 'catalog' | 'license' | 'model-pull';
+export type EgressPurpose =
+  'web-search' | 'web-fetch' | 'cloud-api' | 'catalog' | 'license' | 'model-pull';
 
 export interface EgressDecision {
   allowed: boolean;
   reason: string;
 }
 
-const PRIVATE_V4 = [/^10\./, /^127\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./];
+const PRIVATE_V4 = [
+  /^10\./,
+  /^127\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
+];
 
 export function isLocalHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.ts.net')) {
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.ts.net')
+  ) {
     return true;
   }
   if (isIP(host) === 4) return PRIVATE_V4.some((re) => re.test(host));
@@ -50,6 +62,11 @@ export class EgressPolicy {
     return this.config.webEnabled;
   }
 
+  /** Runtime toggle for the /web slash command; config on disk is unchanged. */
+  setWebEnabled(on: boolean): void {
+    this.config.webEnabled = on;
+  }
+
   check(url: string, purpose: EgressPurpose): EgressDecision {
     let parsed: URL;
     try {
@@ -66,15 +83,22 @@ export class EgressPolicy {
       return { allowed: false, reason: `Only http(s) egress is supported, got ${parsed.protocol}` };
     }
     if (this.config.blocklist.some((b) => hostMatches(host, b))) {
-      return { allowed: false, reason: `${host} is on your egress blocklist. Edit egress.blocklist in your config to change that.` };
+      return {
+        allowed: false,
+        reason: `${host} is on your egress blocklist. Edit egress.blocklist in your config to change that.`,
+      };
     }
     if ((purpose === 'web-search' || purpose === 'web-fetch') && !this.config.webEnabled) {
       return {
         allowed: false,
-        reason: 'Web access is switched off (egress.webEnabled: false). Turn it back on with /web on or in your config.',
+        reason:
+          'Web access is switched off (egress.webEnabled: false). Turn it back on with /web on or in your config.',
       };
     }
-    if (this.config.allowlist.length > 0 && !this.config.allowlist.some((a) => hostMatches(host, a))) {
+    if (
+      this.config.allowlist.length > 0 &&
+      !this.config.allowlist.some((a) => hostMatches(host, a))
+    ) {
       return {
         allowed: false,
         reason: `${host} is not on your egress allowlist. Add it to egress.allowlist in your config to reach it.`,

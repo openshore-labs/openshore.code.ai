@@ -340,7 +340,8 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       if (choice.finish_reason) finish = choice.finish_reason;
       const delta = choice.delta ?? {};
       if (delta.content) yield { type: 'text', delta: String(delta.content) };
-      if (delta.reasoning_content) yield { type: 'thinking', delta: String(delta.reasoning_content) };
+      if (delta.reasoning_content)
+        yield { type: 'thinking', delta: String(delta.reasoning_content) };
       if (Array.isArray(delta.tool_calls)) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index ?? 0;
@@ -361,7 +362,11 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       };
     }
     const stopReason =
-      finish === 'length' ? 'length' : sawToolCall || finish === 'tool_calls' ? 'tool-calls' : 'end';
+      finish === 'length'
+        ? 'length'
+        : sawToolCall || finish === 'tool_calls'
+          ? 'tool-calls'
+          : 'end';
     yield { type: 'done', stopReason };
   }
 
@@ -377,7 +382,8 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
         headers: this.headers(),
         body: JSON.stringify({ model, input: texts }),
       });
-      if (!res.ok) throw new ProviderError(this.id, `Embedding failed: ${res.status} ${await res.text()}`);
+      if (!res.ok)
+        throw new ProviderError(this.id, `Embedding failed: ${res.status} ${await res.text()}`);
       const body = (await res.json()) as { embeddings: number[][] };
       return body.embeddings;
     }
@@ -386,7 +392,8 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       headers: this.headers(),
       body: JSON.stringify({ model, input: texts }),
     });
-    if (!res.ok) throw new ProviderError(this.id, `Embedding failed: ${res.status} ${await res.text()}`);
+    if (!res.ok)
+      throw new ProviderError(this.id, `Embedding failed: ${res.status} ${await res.text()}`);
     const body = (await res.json()) as { data: Array<{ embedding: number[] }> };
     return body.data.map((d) => d.embedding);
   }
@@ -407,7 +414,9 @@ function partsText(content: string | ContentPart[]): string {
 function toOllamaMessage(m: ChatMessage): Record<string, unknown> {
   const out: Record<string, unknown> = { role: m.role, content: partsText(m.content) };
   if (Array.isArray(m.content)) {
-    const images = m.content.filter((p) => p.type === 'image' && p.imageBase64).map((p) => p.imageBase64);
+    const images = m.content
+      .filter((p) => p.type === 'image' && p.imageBase64)
+      .map((p) => p.imageBase64);
     if (images.length) out.images = images;
   }
   if (m.toolCalls?.length) {
@@ -424,7 +433,10 @@ function toOpenAIMessage(m: ChatMessage): Record<string, unknown> {
   if (Array.isArray(m.content)) {
     out.content = m.content.map((p) =>
       p.type === 'image'
-        ? { type: 'image_url', image_url: { url: `data:${p.mediaType ?? 'image/png'};base64,${p.imageBase64}` } }
+        ? {
+            type: 'image_url',
+            image_url: { url: `data:${p.mediaType ?? 'image/png'};base64,${p.imageBase64}` },
+          }
         : { type: 'text', text: p.text ?? '' },
     );
   } else {
@@ -469,7 +481,11 @@ async function* sseData(res: Response, signal?: AbortSignal): AsyncGenerator<str
   }
 }
 
-async function* splitStream(res: Response, sep: string, signal?: AbortSignal): AsyncGenerator<string> {
+async function* splitStream(
+  res: Response,
+  sep: string,
+  signal?: AbortSignal,
+): AsyncGenerator<string> {
   if (!res.body) return;
   const reader = res.body.getReader();
   const decoder = new TextDecoder();

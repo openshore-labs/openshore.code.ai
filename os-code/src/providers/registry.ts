@@ -50,7 +50,9 @@ export class ProviderRegistry {
   embedder(id: string): EmbeddingProvider {
     const p = this.get(id);
     if (p instanceof OpenAICompatibleProvider) return p;
-    throw new Error(`Provider "${id}" cannot serve embeddings. Point the embedding specialist at a local endpoint.`);
+    throw new Error(
+      `Provider "${id}" cannot serve embeddings. Point the embedding specialist at a local endpoint.`,
+    );
   }
 
   imageProvider(): ImageProvider | undefined {

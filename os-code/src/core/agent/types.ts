@@ -24,12 +24,7 @@ export interface ApprovalAnswer {
 
 export type Approver = (request: ApprovalRequest) => Promise<ApprovalAnswer>;
 
-export type StopReason =
-  | 'complete'
-  | 'guardrail'
-  | 'aborted'
-  | 'declined'
-  | 'error';
+export type StopReason = 'complete' | 'guardrail' | 'aborted' | 'declined' | 'error';
 
 export type AgentEvent =
   | { type: 'task-start'; input: string }

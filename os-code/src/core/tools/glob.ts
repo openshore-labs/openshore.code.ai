@@ -23,7 +23,10 @@ export const globTool: ToolDef<typeof schema> = {
       }
     }
     if (!matches.length) {
-      return { ok: true, content: `Nothing matches ${args.pattern}. Try a broader pattern like **/*name*.` };
+      return {
+        ok: true,
+        content: `Nothing matches ${args.pattern}. Try a broader pattern like **/*name*.`,
+      };
     }
     matches.sort();
     return { ok: true, content: capContent(matches.join('\n')) };

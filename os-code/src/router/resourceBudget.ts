@@ -35,10 +35,14 @@ export function detectHardware(): Hardware {
   const systemRamGB = Math.round(totalmem() / 1024 ** 3);
 
   // NVIDIA first: nvidia-smi is the reliable path.
-  const nv = spawnSync('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], {
-    encoding: 'utf8',
-    timeout: 4000,
-  });
+  const nv = spawnSync(
+    'nvidia-smi',
+    ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'],
+    {
+      encoding: 'utf8',
+      timeout: 4000,
+    },
+  );
   if (nv.status === 0 && nv.stdout.trim()) {
     const gpus: GpuInfo[] = nv.stdout
       .trim()
@@ -47,7 +51,12 @@ export function detectHardware(): Hardware {
         const [name, mem] = line.split(',').map((s) => s.trim());
         return { name: name ?? 'NVIDIA GPU', vramGB: Math.round(Number(mem ?? 0) / 1024) };
       });
-    return { gpus, totalVramGB: gpus.reduce((a, g) => a + g.vramGB, 0), systemRamGB, source: 'nvidia-smi' };
+    return {
+      gpus,
+      totalVramGB: gpus.reduce((a, g) => a + g.vramGB, 0),
+      systemRamGB,
+      source: 'nvidia-smi',
+    };
   }
 
   // AMD: sysfs exposes VRAM totals without extra tooling.
@@ -56,12 +65,19 @@ export function detectHardware(): Hardware {
     for (const card of readdirSync('/sys/class/drm')) {
       if (!/^card\d+$/.test(card)) continue;
       try {
-        const bytes = Number(readFileSync(`/sys/class/drm/${card}/device/mem_info_vram_total`, 'utf8').trim());
+        const bytes = Number(
+          readFileSync(`/sys/class/drm/${card}/device/mem_info_vram_total`, 'utf8').trim(),
+        );
         if (bytes > 0) gpus.push({ name: `GPU (${card})`, vramGB: Math.round(bytes / 1024 ** 3) });
       } catch {}
     }
     if (gpus.length) {
-      return { gpus, totalVramGB: gpus.reduce((a, g) => a + g.vramGB, 0), systemRamGB, source: 'rocm-sysfs' };
+      return {
+        gpus,
+        totalVramGB: gpus.reduce((a, g) => a + g.vramGB, 0),
+        systemRamGB,
+        source: 'rocm-sysfs',
+      };
     }
   } catch {}
 
@@ -76,10 +92,14 @@ export function pickProfile(vramGB: number): VramProfile {
 
 export function budgetFor(hardware: Hardware, profileOverride?: VramProfile): ResourceBudget {
   // With no GPU, Ollama runs on CPU from system RAM; be honest and conservative.
-  const effectiveGB = hardware.totalVramGB > 0 ? hardware.totalVramGB : Math.floor(hardware.systemRamGB / 2);
+  const effectiveGB =
+    hardware.totalVramGB > 0 ? hardware.totalVramGB : Math.floor(hardware.systemRamGB / 2);
   const profile = profileOverride ?? pickProfile(effectiveGB);
 
-  const budgets: Record<VramProfile, { resident: number; keepAlive: string; modelFraction: number }> = {
+  const budgets: Record<
+    VramProfile,
+    { resident: number; keepAlive: string; modelFraction: number }
+  > = {
     single: { resident: 1, keepAlive: '10m', modelFraction: 0.75 },
     dual: { resident: 2, keepAlive: '10m', modelFraction: 0.55 },
     fleet: { resident: 3, keepAlive: '30m', modelFraction: 0.5 },
@@ -100,7 +120,10 @@ export function budgetFor(hardware: Hardware, profileOverride?: VramProfile): Re
 }
 
 /** Can a model of this download size run comfortably on this budget? */
-export function fitsBudget(modelSizeGB: number, budget: ResourceBudget): 'fits' | 'tight' | 'too-big' {
+export function fitsBudget(
+  modelSizeGB: number,
+  budget: ResourceBudget,
+): 'fits' | 'tight' | 'too-big' {
   // Runtime footprint runs a bit above download size (KV cache, buffers).
   const needed = modelSizeGB * 1.2;
   if (needed <= budget.maxModelGB) return 'fits';

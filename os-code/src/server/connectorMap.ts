@@ -10,11 +10,11 @@
 // credential drifts out of the store/env it claims to live in.
 //
 // Secret HOMES:
-//   'credential-store' — the OS keychain via secret-tool, or the encrypted
-//                        file at ~/.os-code/credentials (see src/auth/store.ts).
-//   'env'              — an environment variable the user exports.
-//   'file'             — a mode-600 file under ~/.os-code/.
-//   'none'             — the connector needs no secret at all.
+//   'credential-store': the OS keychain via secret-tool, or the encrypted
+//                       file at ~/.os-code/credentials (see src/auth/store.ts).
+//   'env':              an environment variable the user exports.
+//   'file':             a mode-600 file under ~/.os-code/.
+//   'none':             the connector needs no secret at all.
 
 export interface Connector {
   id: string;
@@ -51,7 +51,7 @@ export const CONNECTORS: Connector[] = [
   {
     id: 'anthropic',
     nickname: 'Claude cloud',
-    purpose: 'Cloud escalation and the optional cloud orchestrator, on the user\'s own key.',
+    purpose: "Cloud escalation and the optional cloud orchestrator, on the user's own key.",
     secrets: [
       {
         name: 'Anthropic API key',
@@ -119,10 +119,13 @@ export const CONNECTORS: Connector[] = [
     id: 'openshore-license',
     nickname: 'OpenShore licensing',
     purpose: 'License activation for the curated feed and update channel.',
-    secrets: [
-      { name: 'License key + cached entitlement', homes: ['file'], file: 'license.json' },
+    secrets: [{ name: 'License key + cached entitlement', homes: ['file'], file: 'license.json' }],
+    consumers: [
+      'license/verify',
+      'license/entitlement',
+      'commands/license',
+      'market/catalog (gating)',
     ],
-    consumers: ['license/verify', 'license/entitlement', 'commands/license', 'market/catalog (gating)'],
     optional: true,
   },
   {
@@ -154,6 +157,14 @@ export function declaredStoreKeys(): string[] {
 }
 
 /** Public-safe projection: nicknames and purposes only, never names or homes. */
-export function publicProjection(): Array<{ nickname: string; purpose: string; optional: boolean }> {
-  return CONNECTORS.map((c) => ({ nickname: c.nickname, purpose: c.purpose, optional: c.optional }));
+export function publicProjection(): Array<{
+  nickname: string;
+  purpose: string;
+  optional: boolean;
+}> {
+  return CONNECTORS.map((c) => ({
+    nickname: c.nickname,
+    purpose: c.purpose,
+    optional: c.optional,
+  }));
 }

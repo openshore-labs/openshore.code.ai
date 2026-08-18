@@ -36,7 +36,7 @@ export function parseEditBlocks(text: string): ParseResult {
   for (const raw of lines) {
     // Strip code-fence lines; models love wrapping the blocks in ``` fences.
     const line = raw;
-    if (/^```/.test(line.trim()) ) continue;
+    if (/^```/.test(line.trim())) continue;
 
     if (state === 'outside') {
       if (OPEN.test(line.trim())) {

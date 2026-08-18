@@ -90,7 +90,9 @@ export async function pollDeviceFlow(
 }
 
 /** PAT fallback: validate the token, then store it. */
-export async function loginWithPat(token: string): Promise<{ ok: boolean; detail: string; login?: string }> {
+export async function loginWithPat(
+  token: string,
+): Promise<{ ok: boolean; detail: string; login?: string }> {
   const trimmed = token.trim();
   try {
     const res = await fetch('https://api.github.com/user', {
@@ -98,12 +100,20 @@ export async function loginWithPat(token: string): Promise<{ ok: boolean; detail
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 401) {
-      return { ok: false, detail: 'GitHub rejected that token. Check it has not expired and has repo scope.' };
+      return {
+        ok: false,
+        detail: 'GitHub rejected that token. Check it has not expired and has repo scope.',
+      };
     }
-    if (!res.ok) return { ok: false, detail: `GitHub answered ${res.status}; try again in a moment.` };
+    if (!res.ok)
+      return { ok: false, detail: `GitHub answered ${res.status}; try again in a moment.` };
     const body = (await res.json()) as { login?: string };
     setCredential(TOKEN_NAME, trimmed);
-    return { ok: true, detail: `Connected to GitHub as ${body.login ?? 'you'}.`, login: body.login };
+    return {
+      ok: true,
+      detail: `Connected to GitHub as ${body.login ?? 'you'}.`,
+      login: body.login,
+    };
   } catch (err) {
     return { ok: false, detail: `Could not reach GitHub: ${(err as Error).message}` };
   }

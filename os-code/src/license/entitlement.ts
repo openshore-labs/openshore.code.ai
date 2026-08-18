@@ -10,7 +10,10 @@ export interface EntitlementCheck {
   detail: string;
 }
 
-export function checkEntitlement(feature: GatedFeature, state = readLicenseState()): EntitlementCheck {
+export function checkEntitlement(
+  feature: GatedFeature,
+  state = readLicenseState(),
+): EntitlementCheck {
   if (!state || state.status !== 'active') {
     return {
       entitled: false,
@@ -20,7 +23,10 @@ export function checkEntitlement(feature: GatedFeature, state = readLicenseState
   }
   if (state.entitlement?.type === 'perpetual' && state.entitlement.updatesUntil) {
     const frozen = Date.parse(state.entitlement.updatesUntil) < Date.now();
-    if (frozen && (feature === 'curated-catalog' || feature === 'connector-configs' || feature === 'updates')) {
+    if (
+      frozen &&
+      (feature === 'curated-catalog' || feature === 'connector-configs' || feature === 'updates')
+    ) {
       return {
         entitled: false,
         detail: `Your perpetual license's update window ended ${state.entitlement.updatesUntil.slice(0, 10)}. Everything you have keeps working; renew at openshore.ai for fresh ${feature.replace('-', ' ')}.`,
@@ -31,5 +37,7 @@ export function checkEntitlement(feature: GatedFeature, state = readLicenseState
 }
 
 function describeShort(state: LicenseState): string {
-  return state.entitlement?.type === 'perpetual' ? 'Perpetual license active.' : 'Subscription active.';
+  return state.entitlement?.type === 'perpetual'
+    ? 'Perpetual license active.'
+    : 'Subscription active.';
 }

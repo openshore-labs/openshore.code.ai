@@ -97,7 +97,10 @@ export class RemoteDriver implements SessionDriver {
         if (this.closed) return;
         log.debug('stream dropped, reconnecting', { err: String(err), backoffMs });
         for (const sink of this.sinks) {
-          sink({ type: 'status', message: 'Connection blipped; reattaching to the run.' }, this.lastSeq);
+          sink(
+            { type: 'status', message: 'Connection blipped; reattaching to the run.' },
+            this.lastSeq,
+          );
         }
         await new Promise((r) => setTimeout(r, backoffMs));
         backoffMs = Math.min(backoffMs * 2, 10_000);
@@ -152,7 +155,10 @@ export class RemoteDriver implements SessionDriver {
     void fetch(`${this.target.baseUrl}/sessions/${this.id}/approvals/${id}`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.target.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ approve: answer.approve, alwaysThisSession: answer.alwaysThisSession }),
+      body: JSON.stringify({
+        approve: answer.approve,
+        alwaysThisSession: answer.alwaysThisSession,
+      }),
     }).catch(() => {});
   }
 

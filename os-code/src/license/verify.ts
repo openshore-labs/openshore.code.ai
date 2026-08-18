@@ -84,7 +84,10 @@ export async function verifyKey(
       signal: AbortSignal.timeout(8000),
     });
     if (res.ok) {
-      const body = (await res.json()) as { status: LicenseState['status']; entitlement?: Entitlement };
+      const body = (await res.json()) as {
+        status: LicenseState['status'];
+        entitlement?: Entitlement;
+      };
       const state: LicenseState = {
         key,
         status: body.status,
@@ -106,7 +109,11 @@ export async function verifyKey(
     }
     return graceFallback(key, `The license server answered ${res.status}.`, config);
   } catch (err) {
-    return graceFallback(key, `Could not reach the license server (${(err as Error).message}).`, config);
+    return graceFallback(
+      key,
+      `Could not reach the license server (${(err as Error).message}).`,
+      config,
+    );
   }
 }
 

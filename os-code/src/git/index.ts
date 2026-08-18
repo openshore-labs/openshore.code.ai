@@ -59,5 +59,7 @@ export async function push(cwd: string, remote = 'origin', branch?: string): Pro
 
 export async function log(cwd: string, count = 10): Promise<string> {
   const entries = await git(cwd).log({ maxCount: count });
-  return entries.all.map((e) => `${e.hash.slice(0, 8)} ${e.date.slice(0, 10)} ${e.message}`).join('\n');
+  return entries.all
+    .map((e) => `${e.hash.slice(0, 8)} ${e.date.slice(0, 10)} ${e.message}`)
+    .join('\n');
 }

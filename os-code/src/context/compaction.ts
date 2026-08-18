@@ -12,14 +12,18 @@ export function estimateTokens(text: string): number {
 export function estimateMessages(messages: ChatMessage[]): number {
   let total = 0;
   for (const m of messages) {
-    const text = typeof m.content === 'string' ? m.content : m.content.map((p) => p.text ?? '[image]').join(' ');
+    const text =
+      typeof m.content === 'string'
+        ? m.content
+        : m.content.map((p) => p.text ?? '[image]').join(' ');
     total += estimateTokens(text) + 8;
     if (m.toolCalls) total += estimateTokens(JSON.stringify(m.toolCalls));
   }
   return total;
 }
 
-const TRIMMED_NOTE = '[an earlier tool output was trimmed to save context; re-run the tool if it is needed again]';
+const TRIMMED_NOTE =
+  '[an earlier tool output was trimmed to save context; re-run the tool if it is needed again]';
 
 /** Stage 1: replace old, large tool observations with a stub. */
 export function trimOldObservations(messages: ChatMessage[], keepRecent = 6): ChatMessage[] {
@@ -64,7 +68,10 @@ export async function compactHistory(
 
   const transcript = toSummarize
     .map((m) => {
-      const text = typeof m.content === 'string' ? m.content : m.content.map((p) => p.text ?? '[image]').join(' ');
+      const text =
+        typeof m.content === 'string'
+          ? m.content
+          : m.content.map((p) => p.text ?? '[image]').join(' ');
       return `${m.role}: ${text.slice(0, 1500)}`;
     })
     .join('\n');
@@ -75,12 +82,16 @@ export async function compactHistory(
       `Summarize this coding-session history in under 300 words. Keep: the user's goal, decisions made, files touched and how, and anything still unresolved.\n\n${transcript}`,
     );
   } catch {
-    summary = '(earlier turns were dropped to fit the context window; ask the user to restate anything missing)';
+    summary =
+      '(earlier turns were dropped to fit the context window; ask the user to restate anything missing)';
   }
 
   out = [
     ...system,
-    { role: 'user', content: `[Conversation so far, summarized to fit the context window]\n${summary}` },
+    {
+      role: 'user',
+      content: `[Conversation so far, summarized to fit the context window]\n${summary}`,
+    },
     ...tail,
   ];
   return { messages: out, compacted: true };

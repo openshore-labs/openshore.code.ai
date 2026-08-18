@@ -24,12 +24,16 @@ export interface LoginResult {
 }
 
 /** Validate the key against the API, then store it locally. */
-export async function loginWithApiKey(key: string, baseUrl = 'https://api.anthropic.com'): Promise<LoginResult> {
+export async function loginWithApiKey(
+  key: string,
+  baseUrl = 'https://api.anthropic.com',
+): Promise<LoginResult> {
   const trimmed = key.trim();
   if (!/^sk-ant-/.test(trimmed)) {
     return {
       ok: false,
-      detail: 'That does not look like an Anthropic API key (they start with sk-ant-). Copy it from console.anthropic.com under API Keys.',
+      detail:
+        'That does not look like an Anthropic API key (they start with sk-ant-). Copy it from console.anthropic.com under API Keys.',
     };
   }
   try {
@@ -38,13 +42,22 @@ export async function loginWithApiKey(key: string, baseUrl = 'https://api.anthro
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 401) {
-      return { ok: false, detail: 'The API rejected that key. Check for a missing character, or create a fresh key.' };
+      return {
+        ok: false,
+        detail: 'The API rejected that key. Check for a missing character, or create a fresh key.',
+      };
     }
     if (!res.ok) {
-      return { ok: false, detail: `The Anthropic API answered ${res.status}; try again in a moment.` };
+      return {
+        ok: false,
+        detail: `The Anthropic API answered ${res.status}; try again in a moment.`,
+      };
     }
   } catch (err) {
-    return { ok: false, detail: `Could not reach the Anthropic API to validate the key: ${(err as Error).message}` };
+    return {
+      ok: false,
+      detail: `Could not reach the Anthropic API to validate the key: ${(err as Error).message}`,
+    };
   }
   const backend = setCredential(KEY_NAME, trimmed);
   return { ok: true, detail: 'Claude is connected.', backend };

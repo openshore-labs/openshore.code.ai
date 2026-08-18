@@ -62,7 +62,9 @@ export function resolveStack(config: OscConfig, registry: ProviderRegistry): Res
 
   const imageGen = Boolean(stackConfig.specialists.imageGen && registry.imageProvider());
   if (stackConfig.specialists.imageGen && !registry.imageProvider()) {
-    notes.push('The imageGen specialist is enabled but no imageGen endpoint is configured; image generation is off.');
+    notes.push(
+      'The imageGen specialist is enabled but no imageGen endpoint is configured; image generation is off.',
+    );
   }
 
   return { orchestrator, specialists, imageGen, notes };
@@ -71,7 +73,9 @@ export function resolveStack(config: OscConfig, registry: ProviderRegistry): Res
 /** One-line stack description for the status line and osc stack. */
 export function describeStack(stack: ResolvedStack): string {
   const orch = `${stack.orchestrator.ref.model} (${stack.orchestrator.provider.kind})`;
-  const specialists = Object.entries(stack.specialists).map(([role, r]) => `${role}: ${r!.ref.model}`);
+  const specialists = Object.entries(stack.specialists).map(
+    ([role, r]) => `${role}: ${r!.ref.model}`,
+  );
   if (stack.imageGen) specialists.push('imageGen: local image server');
   return specialists.length ? `${orch} + ${specialists.join(', ')}` : `${orch}, solo`;
 }

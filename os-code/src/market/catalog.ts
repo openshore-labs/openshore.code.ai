@@ -67,10 +67,18 @@ export async function loadCatalog(config: OscConfig, egress: EgressPolicy): Prom
   // Stale cache beats bundled; bundled beats nothing.
   try {
     const catalog = CatalogSchema.parse(JSON.parse(readFileSync(cachePath(), 'utf8')));
-    return { catalog, source: 'cache', note: 'Could not refresh the catalog; showing the cached copy.' };
+    return {
+      catalog,
+      source: 'cache',
+      note: 'Could not refresh the catalog; showing the cached copy.',
+    };
   } catch {}
   const catalog = CatalogSchema.parse(JSON.parse(readFileSync(bundledCatalogPath(), 'utf8')));
-  return { catalog, source: 'bundled', note: 'Showing the built-in starter catalog (offline or feed unreachable).' };
+  return {
+    catalog,
+    source: 'bundled',
+    note: 'Showing the built-in starter catalog (offline or feed unreachable).',
+  };
 }
 
 export type FitLabel = 'fits' | 'tight' | 'too-big';
