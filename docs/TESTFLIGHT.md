@@ -51,8 +51,8 @@ Codemagic uses this key to sign the app and upload builds.
    repo root by itself.
 3. Teams -> your team -> Integrations -> Developer Portal -> Manage keys ->
    add the API key: upload the `.p8`, paste the Key ID and Issuer ID, and
-   name the integration exactly **`appstore`** (the yaml refers to it by
-   that name).
+   name the integration exactly **`os_code_app_store`** (the yaml refers
+   to it by that name).
 
 ## 4. First build
 
@@ -78,9 +78,10 @@ build stays live for 90 days.
 
 ## Troubleshooting
 
-- **Signing errors on the first build**: the `appstore` integration name
-  in Codemagic must match the yaml exactly, and the API key needs the App
-  Manager role.
+- **Signing errors on the first build**: the `os_code_app_store`
+  integration name in Codemagic must match the yaml exactly, and the API
+  key needs the **Admin** role (App Manager can't create certificates or
+  provisioning profiles, only manage app metadata and TestFlight).
 - **"No matching profiles"**: the bundle ID in App Store Connect must be
   exactly `ai.openshore.oscode` (explicit, not wildcard).
 - **Swift package resolution fails**: retry the build first; it is nearly
