@@ -23,6 +23,12 @@ automatically. Work through the steps in order; each one is small.
    - Language: English (U.S.)
    - Bundle ID: pick `ai.openshore.oscode`
    - SKU: `oscode-ios`
+4. Once the app record exists: App Information (left sidebar) -> Subtitle
+   -> `Localized stack. No limits.` (27/30 chars). Save.
+   - Brand call (CMO + Brand Exec, founder sign-off 2026-08-18): leads
+     with "Localized" (runs on your machine, tailored to you) and
+     "limits" (the cloud pain point) over spelling out "cost" or
+     "curate", which cost too many characters for what they added.
 
 ## 2. Create an App Store Connect API key
 
