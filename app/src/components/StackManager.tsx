@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from './BackBar.js';
 import { PROFILES, autoProfile, effectiveProfile } from '../lib/profiles.js';
+import { PROVIDERS } from '../lib/providers.js';
 import {
   STACK_CATEGORIES,
   categoryLabel,
@@ -21,27 +22,47 @@ import {
 } from '../lib/stack.js';
 
 export function StackManager() {
-  const { settings, connectivity, setReasoning, placeSpecialist, benchSpecialist, setView, showToast } =
-    useApp();
+  const {
+    settings,
+    connectivity,
+    connectedProviders,
+    setReasoning,
+    placeSpecialist,
+    benchSpecialist,
+    setView,
+    showToast,
+  } = useApp();
 
   const profile = effectiveProfile(autoProfile(connectivity), settings.profileOverride);
   const stack = settings.stack ?? emptyStack();
   const reasoning = stack.reasoning ?? harborRef();
 
-  const available: StackModelRef[] = [
+  const deviceRefs: StackModelRef[] = [
     ...(settings.harborReady ? [harborRef()] : []),
     ...Object.entries(settings.deviceModels).map(
       ([modelId, modelName]): StackModelRef => ({ kind: 'device', modelId, modelName }),
     ),
   ];
+  const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap((p) =>
+    p.models.map((m): StackModelRef => ({ kind: 'cloud', provider: p.id, model: m.id, label: m.label })),
+  );
+  const available: StackModelRef[] = [...deviceRefs, ...cloudRefs];
   const activeKeys = new Set(stack.active.map((m) => refKey(m.ref)));
   const reasoningKey = refKey(reasoning);
-  const bench = available.filter((r) => refKey(r) !== reasoningKey && !activeKeys.has(refKey(r)));
+  const placed = (r: StackModelRef) => refKey(r) === reasoningKey || activeKeys.has(refKey(r));
+  const bench = deviceRefs.filter((r) => !placed(r));
+  const cloudBench = PROVIDERS.filter((p) => connectedProviders[p.id])
+    .map((p) => ({
+      provider: p,
+      models: p.models.filter((m) => !placed({ kind: 'cloud', provider: p.id, model: m.id, label: m.label })),
+    }))
+    .filter((g) => g.models.length > 0);
 
   // Placement sheet: configuring a bench model into the stack, or editing one.
   const [config, setConfig] = useState<{ ref: StackModelRef; placement: Placement } | undefined>();
   const [pickReasoning, setPickReasoning] = useState(false);
   const [menuKey, setMenuKey] = useState<string | undefined>();
+  const [cloudPick, setCloudPick] = useState<Record<string, string>>({});
 
   const openPlacement = (ref: StackModelRef, existing?: Placement) =>
     setConfig({ ref, placement: existing ?? { category: 'coding' } });
@@ -123,7 +144,7 @@ export function StackManager() {
         )}
 
         <h3 style={{ margin: '18px 0 10px' }}>Bench</h3>
-        {bench.length === 0 ? (
+        {bench.length === 0 && cloudBench.length === 0 ? (
           <p className="hint">
             Models you download from the{' '}
             <button
@@ -154,6 +175,56 @@ export function StackManager() {
             </div>
           ))
         )}
+
+        {/* Connected cloud providers: pick a model, then place it. */}
+        {cloudBench.map(({ provider, models }) => {
+          const picked = cloudPick[provider.id] ?? models[0]!.id;
+          const ref: StackModelRef = {
+            kind: 'cloud',
+            provider: provider.id,
+            model: picked,
+            label: models.find((m) => m.id === picked)?.label ?? picked,
+          };
+          return (
+            <div className="card" key={`cloud-${provider.id}`}>
+              <div className="card-row">
+                <div className="grow">
+                  <h3>{provider.name} <span className="sub">(cloud)</span></h3>
+                  <div className="field" style={{ margin: '8px 0 0' }}>
+                    <select
+                      value={picked}
+                      onChange={(e) =>
+                        setCloudPick({ ...cloudPick, [provider.id]: e.target.value })
+                      }
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-raised)',
+                        border: '1px solid var(--border-strong)',
+                        borderRadius: 10,
+                        padding: '10px 12px',
+                        fontSize: 15,
+                        color: 'var(--ink)',
+                      }}
+                    >
+                      {models.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  className="btn ghost"
+                  style={{ padding: '8px 14px' }}
+                  onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
+                >
+                  Add to stack
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Ellipses menu for an active specialist. */}

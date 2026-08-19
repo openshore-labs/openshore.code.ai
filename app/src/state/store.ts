@@ -16,6 +16,7 @@ import {
   type DaemonTarget,
 } from '../drivers/remoteDriver.js';
 import { type Connectivity, type ProfileId } from '../lib/profiles.js';
+import { PROVIDERS, providerSecretKey } from '../lib/providers.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
@@ -103,6 +104,8 @@ interface AppState {
   settings: AppSettings;
   /** Phone-side Claude key presence (the key itself never sits in state). */
   cloudKeyPresent: boolean;
+  /** Which cloud providers are connected (keys live in the Keychain). */
+  connectedProviders: Record<string, boolean>;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
   /** When true, the Marketplace intro walkthrough is showing over the library. */
@@ -136,6 +139,10 @@ interface AppState {
   saveSettings(patch: Partial<AppSettings>): Promise<void>;
   setCloudKey(key: string): Promise<void>;
   clearCloudKey(): Promise<void>;
+  /** Connect a cloud provider by API key (Keychain), surfacing its models. */
+  connectProvider(id: string, key: string): Promise<void>;
+  /** Disconnect a cloud provider and forget its key. */
+  disconnectProvider(id: string): Promise<void>;
 
   /** Re-check home reachability + internet, updating the connectivity signals. */
   refreshConnectivity(): Promise<void>;
@@ -238,6 +245,7 @@ export const useApp = create<AppState>((set, get) => {
     order: [],
     settings: { onboarded: false, claudeModel: DEFAULT_CLAUDE_MODEL, deviceModels: {} },
     cloudKeyPresent: false,
+    connectedProviders: {},
     connectivity: { homeReachable: false, online: true },
 
     async init() {
@@ -261,6 +269,10 @@ export const useApp = create<AppState>((set, get) => {
         };
       }
       const cloudKeyPresent = Boolean(await secretGet(ANTHROPIC_KEY_KEY));
+      const connectedProviders: Record<string, boolean> = {};
+      for (const p of PROVIDERS) {
+        connectedProviders[p.id] = Boolean(await secretGet(providerSecretKey(p.id)));
+      }
       await loadInsights(settings.insightsOptIn ?? false);
       // On iOS the filesystem is the truth for on-device models: if a model
       // (or Harbor) is gone, drop its label / ready flag so nothing advertises
@@ -292,6 +304,7 @@ export const useApp = create<AppState>((set, get) => {
         conversations,
         order: persisted.order.filter((id) => conversations[id]),
         cloudKeyPresent,
+        connectedProviders,
         ready: true,
         view: settings.onboarded ? 'chat' : 'onboarding',
       });
@@ -544,6 +557,24 @@ export const useApp = create<AppState>((set, get) => {
     async clearCloudKey() {
       await secretDelete(ANTHROPIC_KEY_KEY);
       set({ cloudKeyPresent: false });
+    },
+
+    async connectProvider(id, key) {
+      await secretSet(providerSecretKey(id), key.trim());
+      set((s) => ({
+        connectedProviders: { ...s.connectedProviders, [id]: true },
+        cloudKeyPresent: id === 'anthropic' ? true : s.cloudKeyPresent,
+      }));
+      logEvent('provider_connected', { provider: id });
+    },
+
+    async disconnectProvider(id) {
+      await secretDelete(providerSecretKey(id));
+      set((s) => ({
+        connectedProviders: { ...s.connectedProviders, [id]: false },
+        cloudKeyPresent: id === 'anthropic' ? false : s.cloudKeyPresent,
+      }));
+      logEvent('provider_disconnected', { provider: id });
     },
 
     async setReasoning(ref) {
