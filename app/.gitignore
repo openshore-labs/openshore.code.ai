@@ -9,3 +9,8 @@ ios/App/App/public/
 ios/App/build/
 ios/App/output/
 ios/DerivedData/
+
+# Local env (never commit keys)
+.env
+.env.local
+.env.*.local
