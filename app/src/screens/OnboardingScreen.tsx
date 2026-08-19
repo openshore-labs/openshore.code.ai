@@ -7,7 +7,7 @@ import { HARBOR_APPROX_LABEL } from '../lib/harbor.js';
 import { BrandMark } from '../components/BrandMark.js';
 
 export function OnboardingScreen() {
-  const { setView, saveSettings, startGuide, settings, harborDownload } = useApp();
+  const { setView, saveSettings, startGuide, cancelHarbor, settings, harborDownload } = useApp();
 
   const done = async (view?: Parameters<typeof setView>[0]) => {
     await saveSettings({ onboarded: true });
@@ -60,6 +60,13 @@ export function OnboardingScreen() {
           <div className="hint" style={{ marginTop: 6 }}>
             {harborDownload.label}. A one-time download, then you chat offline.
           </div>
+          <button
+            className="btn quiet"
+            style={{ width: '100%', marginTop: 8 }}
+            onClick={() => cancelHarbor()}
+          >
+            Cancel, I will connect my own stack
+          </button>
         </>
       ) : (
         <>

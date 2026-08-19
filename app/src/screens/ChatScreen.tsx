@@ -19,6 +19,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     newConversation,
     startGuide,
     harborDownload,
+    cancelHarbor,
     setDrawer,
   } = useApp();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -105,6 +106,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                   <div className="hint" style={{ marginTop: 6 }}>
                     Getting Harbor. {harborDownload.label}.
                   </div>
+                  <button
+                    className="btn quiet"
+                    style={{ width: '100%', marginTop: 8 }}
+                    onClick={() => cancelHarbor()}
+                  >
+                    Cancel
+                  </button>
                 </>
               )}
             </div>

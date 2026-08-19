@@ -96,6 +96,8 @@ interface AppState {
   newConversation(source: ConversationSource): Promise<string>;
   /** Download the Harbor guide model if it is not here yet. Returns success. */
   ensureHarbor(): Promise<boolean>;
+  /** Cancel an in-progress Harbor download (returning users can skip it). */
+  cancelHarbor(): void;
   /** Open a fresh chat with Harbor, downloading it first if needed. */
   startGuide(): Promise<string | undefined>;
   openConversation(id: string): void;
@@ -318,17 +320,27 @@ export const useApp = create<AppState>((set, get) => {
         set({ harborDownload: undefined });
         return true;
       } catch (err) {
-        set({
-          harborDownload: {
-            percent: 0,
-            label: err instanceof Error ? err.message : 'Download failed.',
-            failed: true,
-          },
-        });
+        // If the user cancelled, harborDownload was already cleared; leave it
+        // cleared rather than flashing a failure.
+        if (get().harborDownload) {
+          set({
+            harborDownload: {
+              percent: 0,
+              label: err instanceof Error ? err.message : 'Download failed.',
+              failed: true,
+            },
+          });
+        }
         return false;
       } finally {
         void handle.remove();
       }
+    },
+
+    cancelHarbor() {
+      void Llama.cancelDownload({ id: HARBOR_MODEL_ID }).catch(() => {});
+      logEvent('harbor_download_cancel');
+      set({ harborDownload: undefined });
     },
 
     async startGuide() {
