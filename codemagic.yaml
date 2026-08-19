@@ -18,12 +18,18 @@ workflows:
       xcode: latest
       vars:
         BUNDLE_ID: ai.openshore.oscode
-      # No `ios_signing:` block here on purpose. That block is Codemagic's
-      # AUTOMATIC signing, which runs at environment setup (before scripts).
-      # It cannot coexist with the manual CLI signing in the scripts below;
-      # mixing the two is what raised "No matching profiles found" on every
-      # run, and it failed before our script steps ever executed. Signing is
-      # owned entirely by the "Set up code signing" step.
+      # Automatic signing. Codemagic creates the distribution certificate,
+      # stores and REUSES its private key in its own managed storage, creates
+      # the App Store provisioning profile, and assigns it, all before the
+      # scripts run. This is why we do NOT do manual CLI signing: a fresh
+      # Apple account has no distribution certificate, and its private key
+      # cannot be downloaded, so `fetch-signing-files --create` fails with
+      # "Cannot save Signing Certificates without certificate private key".
+      # Automatic signing owns the whole thing and never proliferates certs.
+      # (This needs the API key to have Admin rights, which it now does.)
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: ai.openshore.oscode
     triggering:
       events:
         - push
@@ -56,24 +62,6 @@ workflows:
         script: |
           cd app/ios/App
           agvtool new-version -all "$BUILD_NUMBER"
-      - name: Set up code signing
-        script: |
-          set -e
-          keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create \
-            --verbose
-          keychain add-certificates
-          echo "===== provisioning profiles on disk ====="
-          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/" || echo "(no profiles dir)"
-          # Target the exact Capacitor project so nothing is left to a glob.
-          xcode-project use-profiles \
-            --project "app/ios/App/App.xcodeproj" \
-            --verbose
-          echo "===== App target signing after use-profiles ====="
-          xcodebuild -project app/ios/App/App.xcodeproj -scheme App -showBuildSettings 2>/dev/null \
-            | grep -iE "CODE_SIGN|PROVISIONING_PROFILE|DEVELOPMENT_TEAM" | sort -u || true
       - name: Build the signed IPA
         script: |
           # The OscodeLlama plugin depends on LLM.swift, which is macro-based
