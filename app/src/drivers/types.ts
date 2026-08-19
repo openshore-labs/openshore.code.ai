@@ -7,7 +7,7 @@ import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
 export type DriverEventSink = (event: DriverEvent, seq: number) => void;
 
 export interface ChatDriver {
-  readonly kind: 'desktop' | 'device' | 'cloud' | 'mock';
+  readonly kind: 'desktop' | 'device' | 'cloud' | 'mock' | 'stack';
   send(text: string): void;
   abort(): void;
   answerApproval(approvalId: string, answer: ApprovalAnswer): void;

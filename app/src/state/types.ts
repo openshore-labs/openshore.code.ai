@@ -54,6 +54,7 @@ export type ConversationSource =
   | { kind: 'desktop'; sessionId?: string; cwd?: string; repoName?: string }
   | { kind: 'device'; modelId: string; modelName: string }
   | { kind: 'cloud'; provider: 'anthropic'; model: string }
+  | { kind: 'stack' }
   | { kind: 'mock' };
 
 export interface Conversation {
@@ -75,6 +76,8 @@ export function sourceLabel(source: ConversationSource): string {
         : `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
     case 'cloud':
       return `Claude · ${source.model}`;
+    case 'stack':
+      return 'Your stack';
     case 'mock':
       return 'Demo';
   }
