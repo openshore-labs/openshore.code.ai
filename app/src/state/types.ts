@@ -148,6 +148,48 @@ export interface Account {
   previewAsMember?: boolean;
 }
 
+// Launch: getting a built app to the App Store or Google Play through
+// Codemagic, guided from inside the app. A target names the Codemagic app and
+// workflow; each build attempt is a run whose result the model reads directly.
+export type BuildStatusLite =
+  | 'queued'
+  | 'preparing'
+  | 'building'
+  | 'finished'
+  | 'failed'
+  | 'canceled'
+  | 'timeout'
+  | 'unknown';
+
+export interface LaunchTarget {
+  id: string;
+  platform: 'ios' | 'android';
+  /** Codemagic application id. */
+  appId: string;
+  /** Codemagic workflow id within that app. */
+  workflowId: string;
+  branch: string;
+  label?: string;
+}
+
+export interface BuildRun {
+  id: string;
+  buildId?: string;
+  status: BuildStatusLite;
+  startedAt: string;
+  finishedAt?: string;
+  /** Redacted, extracted log excerpt for a failed build (model-ready). */
+  excerpt?: string;
+  /** The chat where the model diagnosed this run, if opened. */
+  diagnosisConvId?: string;
+  error?: string;
+}
+
+export interface LaunchState {
+  target?: LaunchTarget;
+  runs: BuildRun[];
+}
+
 export function sourceLabel(source: ConversationSource): string {
   switch (source.kind) {
     case 'desktop':

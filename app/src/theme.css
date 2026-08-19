@@ -1332,6 +1332,23 @@ textarea {
   line-height: 1.35;
 }
 
+/* A failed build's redacted log excerpt on the Launch screen */
+.log-excerpt {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 .progress-track {
   height: 6px;
   border-radius: 3px;

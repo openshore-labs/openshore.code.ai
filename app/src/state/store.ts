@@ -8,15 +8,25 @@ import type { DriverEvent } from 'os-code/protocol';
 import {
   emptyThread,
   type Account,
+  type BuildRun,
   type Conversation,
   type ConversationSource,
   type CrewAgent,
+  type LaunchState,
+  type LaunchTarget,
   type Org,
   type OrgMember,
   type OrgRole,
   type Project,
 } from './types.js';
 import { tierForSeats, type AccountType } from '../lib/plans.js';
+import {
+  CODEMAGIC_SECRET_KEY,
+  buildLogExcerpt,
+  getBuild,
+  isTerminal,
+  triggerBuild,
+} from '../lib/codemagic.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
@@ -73,6 +83,7 @@ export type ViewName =
   | 'projects'
   | 'crew'
   | 'admin'
+  | 'launch'
   | 'pair'
   | 'settings'
   | 'onboarding';
@@ -97,6 +108,8 @@ export interface AppSettings {
   crew?: CrewAgent[];
   /** Account: personal, or a commercial org with members and a plan. */
   account?: Account;
+  /** Launch: the Codemagic target and this project's build-run history. */
+  launch?: LaunchState;
   /** Manual connectivity-profile override; only ever steps down from auto. */
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
@@ -135,6 +148,8 @@ interface AppState {
   cloudKeyPresent: boolean;
   /** Which cloud providers are connected (keys live in the Keychain). */
   connectedProviders: Record<string, boolean>;
+  /** Whether a Codemagic API token is connected (the token lives in Keychain). */
+  codemagicConnected: boolean;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
   /** When true, the Marketplace intro walkthrough is showing over the library. */
@@ -176,6 +191,17 @@ interface AppState {
   setMemberRole(id: string, role: OrgRole): Promise<void>;
   /** Admin: toggle a read-only preview of the member experience. */
   setPreviewAsMember(on: boolean): Promise<void>;
+
+  // Launch (Codemagic).
+  /** Connect Codemagic by API token (stored in the Keychain). */
+  connectCodemagic(token: string): Promise<void>;
+  disconnectCodemagic(): Promise<void>;
+  /** Save (or replace) the launch target. */
+  saveLaunchTarget(target: Omit<LaunchTarget, 'id'> & { id?: string }): Promise<void>;
+  /** Trigger a Codemagic build and follow it to a result. */
+  startBuild(): Promise<void>;
+  /** Open a chat where the model reads a failed build and proposes a fix. */
+  diagnoseBuild(runId: string): Promise<void>;
 
   // My Crew: user-authored agents.
   /** Create a crew agent and return its id. */
@@ -361,6 +387,7 @@ export const useApp = create<AppState>((set, get) => {
     settings: { onboarded: false, claudeModel: DEFAULT_CLAUDE_MODEL, deviceModels: {} },
     cloudKeyPresent: false,
     connectedProviders: {},
+    codemagicConnected: false,
     connectivity: { homeReachable: false, online: true },
 
     async init() {
@@ -388,6 +415,7 @@ export const useApp = create<AppState>((set, get) => {
       for (const p of PROVIDERS) {
         connectedProviders[p.id] = Boolean(await secretGet(providerSecretKey(p.id)));
       }
+      const codemagicConnected = Boolean(await secretGet(CODEMAGIC_SECRET_KEY));
       await loadInsights(settings.insightsOptIn ?? false);
       // On iOS the filesystem is the truth for on-device models: if a model
       // (or Harbor) is gone, drop its label / ready flag so nothing advertises
@@ -420,6 +448,7 @@ export const useApp = create<AppState>((set, get) => {
         order: persisted.order.filter((id) => conversations[id]),
         cloudKeyPresent,
         connectedProviders,
+        codemagicConnected,
         ready: true,
         view: settings.onboarded ? 'chat' : 'onboarding',
       });
@@ -650,6 +679,111 @@ export const useApp = create<AppState>((set, get) => {
       const account = get().settings.account;
       if (!account || !isOrgAdmin(account)) return;
       await get().saveSettings({ account: { ...account, previewAsMember: on } });
+    },
+
+    async connectCodemagic(token) {
+      await secretSet(CODEMAGIC_SECRET_KEY, token.trim());
+      set({ codemagicConnected: true });
+      logEvent('codemagic_connected');
+    },
+
+    async disconnectCodemagic() {
+      await secretDelete(CODEMAGIC_SECRET_KEY);
+      set({ codemagicConnected: false });
+      logEvent('codemagic_disconnected');
+    },
+
+    async saveLaunchTarget(target) {
+      const id = target.id ?? `l${Date.now().toString(36)}${(convSeq++).toString(36)}`;
+      const launch: LaunchState = { ...(get().settings.launch ?? { runs: [] }), target: { ...target, id } };
+      await get().saveSettings({ launch });
+      logEvent('launch_target_saved', { platform: target.platform });
+    },
+
+    async startBuild() {
+      const launch = get().settings.launch;
+      const target = launch?.target;
+      if (!target) {
+        get().showToast('Set up your launch target first.');
+        return;
+      }
+      const runId = `b${Date.now().toString(36)}${(convSeq++).toString(36)}`;
+      const run: BuildRun = { id: runId, status: 'queued', startedAt: new Date().toISOString() };
+      // Newest run first, keep the last 10.
+      const withRun = (patch: Partial<BuildRun>) => {
+        const cur = get().settings.launch ?? { runs: [] };
+        const runs = cur.runs.map((r) => (r.id === runId ? { ...r, ...patch } : r));
+        return get().saveSettings({ launch: { ...cur, runs } });
+      };
+      await get().saveSettings({
+        launch: { ...launch, runs: [run, ...(launch?.runs ?? [])].slice(0, 10) },
+      });
+      logEvent('build_start', { platform: target.platform });
+
+      try {
+        const buildId = await triggerBuild({
+          appId: target.appId,
+          workflowId: target.workflowId,
+          branch: target.branch,
+        });
+        await withRun({ buildId, status: 'building' });
+
+        // Poll to a terminal state with gentle backoff. The daemon/engine is a
+        // better home for this later; for now the app follows the build.
+        let delay = 5000;
+        for (let i = 0; i < 240; i++) {
+          await new Promise((r) => setTimeout(r, delay));
+          delay = Math.min(delay + 3000, 30000);
+          let info;
+          try {
+            info = await getBuild(buildId);
+          } catch {
+            continue; // a transient read failure; keep polling
+          }
+          await withRun({ status: info.status });
+          if (isTerminal(info.status)) {
+            const patch: Partial<BuildRun> = { finishedAt: new Date().toISOString() };
+            if (info.status !== 'finished') {
+              try {
+                patch.excerpt = await buildLogExcerpt(info);
+              } catch {
+                patch.excerpt = 'The build failed, and its logs could not be read automatically.';
+              }
+            }
+            await withRun(patch);
+            logEvent('build_done', { status: info.status });
+            return;
+          }
+        }
+        await withRun({ status: 'unknown', error: 'Timed out following this build.' });
+      } catch (err) {
+        await withRun({ status: 'failed', error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+
+    async diagnoseBuild(runId) {
+      const launch = get().settings.launch;
+      const run = launch?.runs.find((r) => r.id === runId);
+      if (!run?.excerpt) {
+        get().showToast('No readable build log for this run yet.');
+        return;
+      }
+      const target = launch?.target;
+      const convId = await get().newConversation({ kind: 'stack' });
+      const prompt = [
+        'A Codemagic build failed. Read this redacted build log and tell me, in order:',
+        '1) the single root cause, 2) the exact fix, 3) which file or setting to change.',
+        'Then say to run the build again. Be concrete and brief.',
+        target ? `\nPlatform: ${target.platform}. Branch: ${target.branch}.` : '',
+        '\nBuild log excerpt (secrets already redacted):\n```\n' + run.excerpt + '\n```',
+      ].join('\n');
+      // Give the driver a beat to attach, then send.
+      setTimeout(() => useApp.getState().send(prompt), 350);
+      const runs = (get().settings.launch?.runs ?? []).map((r) =>
+        r.id === runId ? { ...r, diagnosisConvId: convId } : r,
+      );
+      await get().saveSettings({ launch: { ...get().settings.launch!, runs } });
+      logEvent('build_diagnose');
     },
 
     async createCrewAgent(input) {
