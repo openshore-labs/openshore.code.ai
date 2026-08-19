@@ -66,15 +66,33 @@ Codemagic uses this key to sign the app and upload builds.
 
 Every later push to `main` triggers this automatically.
 
-## 5. Onto your iPhone
+## 5. Onto your iPhone (internal testing, no review)
+
+The pipeline uploads each build to App Store Connect but does NOT submit
+it for external beta review (`submit_to_testflight: false`), so it never
+blocks on the Beta App Information form. Internal testers automatically
+receive every uploaded build.
 
 1. App Store Connect -> your app -> TestFlight -> Internal Testing ->
    create a group (`founders`), add your own Apple ID as a tester.
 2. Install **TestFlight** from the App Store on your iPhone.
-3. Accept the email invite; OS Code appears in TestFlight; tap Install.
+3. Once a build finishes processing it appears in TestFlight; tap Install.
+   (Internal testers get new builds automatically, no per-build step.)
 
-Internal testing needs no App Review, updates land in minutes, and the
+Internal testing needs no App Review, updates land in minutes, and each
 build stays live for 90 days.
+
+## 6. External testers (optional, later)
+
+External testing (up to 10,000 people) needs a one-time Apple review and
+some contact info first:
+
+1. App Store Connect -> your app -> TestFlight -> Test Information: fill in
+   the **Feedback Email** (Beta App Information) and the **First/Last name,
+   Phone, Email** (Beta App Review Information). Save.
+2. In `codemagic.yaml`, set `submit_to_testflight: true` (optionally add
+   `beta_groups: [<external group name>]`). Ask Claude to make this change.
+3. Push; the next build auto-submits for beta review.
 
 ## Troubleshooting
 
