@@ -85,6 +85,51 @@ export async function daemonStack(target: DaemonTarget) {
   return (await res.json()) as import('os-code/protocol').DaemonStackInfo;
 }
 
+// ---- outbox apply (buffered commit-intents land as real commits) ----------
+
+export interface OutboxApplyWire {
+  cwd: string;
+  clientOpId: string;
+  itemId: string;
+  deviceId: string;
+  branch: string;
+  message: string;
+  baseCommit: string;
+  files: Array<{ path: string; mode: 'upsert' | 'delete'; contentBase64?: string }>;
+}
+
+export type OutboxApplyResult =
+  | { ok: true; resultCommit: string; idempotentReplay?: boolean }
+  | { ok: false; conflict: true; resultCommit: string; rescueBranch: string }
+  | { ok: false; error: string };
+
+/** Ask the desktop to materialize one buffered commit-intent into a commit. */
+export async function daemonApplyOutbox(
+  target: DaemonTarget,
+  req: OutboxApplyWire,
+): Promise<OutboxApplyResult> {
+  const res = await fetch(`${target.baseUrl}/outbox/apply`, {
+    method: 'POST',
+    headers: { ...headers(target), 'content-type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  const body = (await res.json().catch(() => ({ ok: false, error: `Apply failed (${res.status}).` }))) as OutboxApplyResult;
+  return body;
+}
+
+/** Independent confirmation: does the commit exist and sit on the branch? */
+export async function daemonVerifyCommit(
+  target: DaemonTarget,
+  cwd: string,
+  commit: string,
+  branch?: string,
+): Promise<{ exists: boolean; onBranch: boolean }> {
+  const qs = new URLSearchParams({ cwd, commit, ...(branch ? { branch } : {}) });
+  const res = await fetch(`${target.baseUrl}/outbox/verify?${qs.toString()}`, { headers: headers(target) });
+  if (!res.ok) return { exists: false, onBranch: false };
+  return (await res.json()) as { exists: boolean; onBranch: boolean };
+}
+
 /** Parse one SSE frame ("id: N\ndata: {...}") into an event; null if not data. */
 export function parseSseFrame(frame: string): { seq: number; event: DriverEvent } | null {
   let seq = 0;
