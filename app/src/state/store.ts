@@ -20,6 +20,13 @@ import {
   HARBOR_MODEL_URL,
 } from '../lib/harbor.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
+import {
+  emptyStack,
+  refKey as stackRefKey,
+  type AppStack,
+  type Placement,
+  type StackModelRef,
+} from '../lib/stack.js';
 import { bridge } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -50,8 +57,10 @@ export interface AppSettings {
   deviceModels: Record<string, string>;
   /** Whether the built-in guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
-  /** Whether the LLM Library intro walkthrough has been shown. */
+  /** Whether the Marketplace intro walkthrough has been shown. */
   libraryIntroSeen?: boolean;
+  /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata. */
+  stack?: AppStack;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
 }
@@ -117,6 +126,16 @@ interface AppState {
   saveSettings(patch: Partial<AppSettings>): Promise<void>;
   setCloudKey(key: string): Promise<void>;
   clearCloudKey(): Promise<void>;
+
+  // Stack management (the app-side Reasoning LLM + specialists + bench).
+  /** Set the Reasoning LLM anchor (from the bench or a cloud model). */
+  setReasoning(ref: StackModelRef): Promise<void>;
+  /** Move a bench model into the active stack under a category placement. */
+  placeSpecialist(ref: StackModelRef, placement: Placement): Promise<void>;
+  /** Move an active specialist back to the bench, keeping its metadata. */
+  benchSpecialist(key: string): Promise<void>;
+  /** Edit a model's category / trigger / persona, active or benched. */
+  editPlacement(key: string, placement: Placement): Promise<void>;
 }
 
 let convSeq = 0;
@@ -475,6 +494,50 @@ export const useApp = create<AppState>((set, get) => {
     async clearCloudKey() {
       await secretDelete(ANTHROPIC_KEY_KEY);
       set({ cloudKeyPresent: false });
+    },
+
+    async setReasoning(ref) {
+      const stack = get().settings.stack ?? emptyStack();
+      const key = stackRefKey(ref);
+      // A model promoted to Reasoning leaves the active specialists.
+      const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
+      await get().saveSettings({ stack: { ...stack, reasoning: ref, active } });
+      logEvent('stack_reasoning_set', { kind: ref.kind });
+    },
+
+    async placeSpecialist(ref, placement) {
+      const stack = get().settings.stack ?? emptyStack();
+      const key = stackRefKey(ref);
+      const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
+      active.push({ ref, placement });
+      const saved = { ...stack.saved };
+      delete saved[key];
+      await get().saveSettings({ stack: { ...stack, active, saved } });
+      logEvent('stack_place', { category: placement.category });
+    },
+
+    async benchSpecialist(key) {
+      const stack = get().settings.stack ?? emptyStack();
+      const member = stack.active.find((m) => stackRefKey(m.ref) === key);
+      const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
+      const saved = { ...stack.saved };
+      if (member) saved[key] = member.placement; // keep placement, trigger, persona
+      await get().saveSettings({ stack: { ...stack, active, saved } });
+      logEvent('stack_bench');
+    },
+
+    async editPlacement(key, placement) {
+      const stack = get().settings.stack ?? emptyStack();
+      if (stack.active.some((m) => stackRefKey(m.ref) === key)) {
+        const active = stack.active.map((m) =>
+          stackRefKey(m.ref) === key ? { ...m, placement } : m,
+        );
+        await get().saveSettings({ stack: { ...stack, active } });
+      } else {
+        await get().saveSettings({
+          stack: { ...stack, saved: { ...stack.saved, [key]: placement } },
+        });
+      }
     },
   };
 });

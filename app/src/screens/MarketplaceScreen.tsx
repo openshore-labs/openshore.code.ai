@@ -99,7 +99,7 @@ export function MarketplaceScreen() {
       });
       hapticSuccess();
       logEvent('model_downloaded', { id: model.id, target: 'device' });
-      showToast(`${model.name} is on this device. Fully private.`);
+      showToast(`${model.name} is on your bench. Place it in your stack.`);
       clearDownload(model.id);
     } catch (err) {
       // Hold the card in a failed state so the user can retry in place.
