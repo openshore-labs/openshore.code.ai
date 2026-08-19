@@ -1,6 +1,7 @@
 // App-level models. Every conversation, whatever powers it, renders through
 // the same ThreadState so the UI has exactly one chat implementation.
 import type { ApprovalRequest } from 'os-code/protocol';
+import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
 
 export type ThreadItem =
@@ -103,6 +104,48 @@ export interface CrewAgent {
   /** Projects this agent is active in. Empty means all projects. */
   projectIds: string[];
   createdAt: string;
+}
+
+// Account and organization. OS Code is used solo (Personal) or by a company
+// (Commercial). A commercial org has an admin who provisions members by email
+// and owns the shared stack and storage locations. Members use everything else
+// as their own (chats, projects, crew), but see the stack read-only.
+//
+// IMPORTANT: this model is a local-first scaffold. Client-side roles are a UX
+// affordance, not a security boundary. Real identity, billing, and role
+// enforcement must live server-side later; the shapes here are chosen so a
+// backend can enforce them without a rewrite.
+export type OrgRole = 'admin' | 'member';
+
+export interface OrgMember {
+  id: string;
+  email: string;
+  displayName?: string;
+  role: OrgRole;
+  addedAt: string;
+}
+
+export interface Org {
+  id: string;
+  name: string;
+  /** Raw declared seat count; drives the plan band (see plans.ts). */
+  seatCount: number;
+  /** Plan snapshot chosen at signup, persisted so pricing stays auditable. */
+  tierId: PlanTierId;
+  /** Priced snapshot in whole dollars/year at signup (auditable). */
+  priceYear: number;
+  members: OrgMember[];
+  createdAt: string;
+}
+
+export interface Account {
+  type: AccountType;
+  /** The commercial org, when type is 'commercial'. */
+  org?: Org;
+  /** The email this device signed in as (which member "I" am). */
+  selfEmail?: string;
+  /** Admin-only preview of the member (read-only) experience. */
+  previewAsMember?: boolean;
 }
 
 export function sourceLabel(source: ConversationSource): string {

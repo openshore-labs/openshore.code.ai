@@ -5,7 +5,7 @@
 // can move back to the Bench keeping their metadata, and everything is editable
 // from the ellipses.
 import { useState } from 'react';
-import { useApp } from '../state/store.js';
+import { stackAdmin, useApp } from '../state/store.js';
 import { BackBar } from './BackBar.js';
 import { PROFILES, autoProfile, effectiveProfile } from '../lib/profiles.js';
 import { PROVIDERS } from '../lib/providers.js';
@@ -33,6 +33,7 @@ export function StackManager() {
     showToast,
   } = useApp();
 
+  const admin = stackAdmin(settings.account);
   const profile = effectiveProfile(autoProfile(connectivity), settings.profileOverride);
   const stack = settings.stack ?? emptyStack();
   const reasoning = stack.reasoning ?? harborRef();
@@ -81,10 +82,11 @@ export function StackManager() {
     <div className="screen">
       <BackBar title="Your stack" />
       <div className="screen-inner">
-        <h1>Your stack</h1>
+        <h1>{admin ? 'Your stack' : 'The stack'}</h1>
         <p className="lead">
-          Your Reasoning LLM plans every task and routes it to the specialist whose category fits.
-          When nothing is placed for a task, the Reasoning LLM does it itself.
+          {admin
+            ? 'Your Reasoning LLM plans every task and routes it to the specialist whose category fits. When nothing is placed for a task, the Reasoning LLM does it itself.'
+            : 'Your admin sets the shared stack for the company. It plans every task and routes it to the specialist whose category fits. You can talk with your admin about changing it.'}
         </p>
 
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -105,13 +107,15 @@ export function StackManager() {
               <div className="sub">{refName(reasoning)}</div>
             </div>
             <span className="pill local">anchor</span>
-            <button
-              className="btn ghost"
-              style={{ padding: '8px 14px' }}
-              onClick={() => setPickReasoning(true)}
-            >
-              Change
-            </button>
+            {admin ? (
+              <button
+                className="btn ghost"
+                style={{ padding: '8px 14px' }}
+                onClick={() => setPickReasoning(true)}
+              >
+                Change
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -131,18 +135,27 @@ export function StackManager() {
                     {m.placement.whenCalled ? ` · ${m.placement.whenCalled}` : ''}
                   </div>
                 </div>
-                <button
-                  className="icon-btn"
-                  aria-label="Options"
-                  onClick={() => setMenuKey(refKey(m.ref))}
-                >
-                  {'⋯'}
-                </button>
+                {admin ? (
+                  <button
+                    className="icon-btn"
+                    aria-label="Options"
+                    onClick={() => setMenuKey(refKey(m.ref))}
+                  >
+                    {'⋯'}
+                  </button>
+                ) : null}
               </div>
             </div>
           ))
         )}
 
+        {!admin ? (
+          <p className="hint" style={{ marginTop: 12 }}>
+            The bench and stack controls are managed by your admin. Everything else in OS Code,
+            your chats, projects, and crew, is yours to set up as you like.
+          </p>
+        ) : (
+          <>
         <h3 style={{ margin: '18px 0 10px' }}>Bench</h3>
         {bench.length === 0 && cloudBench.length === 0 ? (
           <p className="hint">
@@ -225,6 +238,8 @@ export function StackManager() {
             </div>
           );
         })}
+          </>
+        )}
       </div>
 
       {/* Ellipses menu for an active specialist. */}

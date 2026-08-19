@@ -5,10 +5,14 @@ import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
 import { HARBOR_APPROX_LABEL } from '../lib/harbor.js';
 import { BrandMark } from '../components/BrandMark.js';
+import { AccountSetup } from '../components/AccountSetup.js';
 
 export function OnboardingScreen() {
   const { setView, saveSettings, startGuide, cancelHarbor, beginHarborWithIntro, settings, harborDownload } =
     useApp();
+
+  // First of all, choose Personal or Commercial. Everything else follows.
+  if (!settings.account) return <AccountSetup />;
 
   const done = async (view?: Parameters<typeof setView>[0]) => {
     await saveSettings({ onboarded: true });

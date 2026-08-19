@@ -10,6 +10,7 @@ import { ConnectionsScreen } from './screens/ConnectionsScreen.js';
 import { ReposScreen } from './screens/ReposScreen.js';
 import { ProjectsScreen } from './screens/ProjectsScreen.js';
 import { CrewScreen } from './screens/CrewScreen.js';
+import { AdminScreen } from './screens/AdminScreen.js';
 import { PairScreen } from './screens/PairScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
@@ -57,6 +58,8 @@ export function App() {
       <ProjectsScreen />
     ) : view === 'crew' ? (
       <CrewScreen />
+    ) : view === 'admin' ? (
+      <AdminScreen />
     ) : view === 'pair' ? (
       <PairScreen />
     ) : view === 'settings' ? (
