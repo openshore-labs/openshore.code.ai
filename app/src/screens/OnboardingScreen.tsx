@@ -7,7 +7,8 @@ import { HARBOR_APPROX_LABEL } from '../lib/harbor.js';
 import { BrandMark } from '../components/BrandMark.js';
 
 export function OnboardingScreen() {
-  const { setView, saveSettings, startGuide, cancelHarbor, settings, harborDownload } = useApp();
+  const { setView, saveSettings, startGuide, cancelHarbor, beginHarborWithIntro, settings, harborDownload } =
+    useApp();
 
   const done = async (view?: Parameters<typeof setView>[0]) => {
     await saveSettings({ onboarded: true });
@@ -72,11 +73,11 @@ export function OnboardingScreen() {
         <>
           <h3>Start with Harbor, your free guide</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            Download a small assistant ({HARBOR_APPROX_LABEL}) that runs on this iPhone. It gets you
-            set up and answers questions, offline once it is here.
+            The first model in your stack ({HARBOR_APPROX_LABEL}), running on this iPhone. It gets
+            you set up and answers questions, offline once it is here.
           </div>
-          <button className="btn primary" style={{ width: '100%' }} onClick={() => void getHarborAndGo()}>
-            Get Harbor and start chatting
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => beginHarborWithIntro()}>
+            Get Harbor
           </button>
         </>
       )}
