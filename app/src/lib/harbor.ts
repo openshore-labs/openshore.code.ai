@@ -1,23 +1,33 @@
-// Harbor: the built-in, on-device guide. A tiny model (Qwen2.5-0.5B, bundled)
-// that greets a brand-new user, answers setup and "how do I" questions
-// offline, and hands off to a real model for actual work. It is a concierge,
-// never a stack member: it is not a quarterback, not a specialist, and never
-// competes with the models the user chooses.
+// Harbor: the built-in, on-device guide. A tiny model (Qwen2.5-0.5B) that a
+// brand-new user is prompted to download on first launch, then greets them and
+// answers setup and "how do I" questions offline, handing off to a real model
+// for actual work. It is a concierge, never a stack member: not a quarterback,
+// not a specialist, and never competes with the models the user chooses.
 //
-// Harbor is delivered as an on-device model under a reserved id, so it flows
-// through the existing OnDeviceDriver / llama plugin with no new source kind.
+// Harbor is a reserved on-device model id, so it flows through the existing
+// OnDeviceDriver / llama plugin and the same download path as any pocket model.
+// Its weights come straight from Hugging Face, so "downloads come from the
+// source, never from OpenShore" holds for the guide too.
 
 export const HARBOR_MODEL_ID = 'harbor';
 export const HARBOR_MODEL_NAME = 'Harbor';
+
+// The starter weights: Qwen2.5-0.5B-Instruct, Q4_K_M (Apache-2.0), from the
+// Qwen team on Hugging Face. VERIFY the exact filename/casing resolves (200)
+// before a build; this sandbox cannot reach the network to check it.
+export const HARBOR_MODEL_URL =
+  'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+export const HARBOR_APPROX_LABEL = 'about 380 MB';
 
 export function isHarbor(modelId: string): boolean {
   return modelId === HARBOR_MODEL_ID;
 }
 
-/** The instant, seeded first message. Not model-generated, so it is reliable
- *  and appears with zero wait. Honest about what Harbor is. No em dashes. */
+/** The instant, seeded first message, shown once Harbor is downloaded. Not
+ *  model-generated, so it is reliable and appears with zero wait. Honest about
+ *  what Harbor is. No em dashes. */
 export const HARBOR_GREETING = [
-  "Hi, I'm Harbor, your built-in guide. I run right here on your device, offline, so we can talk before you download or connect a thing.",
+  "Hi, I'm Harbor, your built-in guide. I run on your device, so now that I'm here we can talk offline, no account and no cloud.",
   '',
   "I'm small and fast, here to get you set up, not to do the heavy lifting. Ask me how any of this works, or tell me what you want to build and I'll point you to the right model.",
 ].join('\n');

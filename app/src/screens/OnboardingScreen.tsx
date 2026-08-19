@@ -3,10 +3,11 @@
 import { useApp } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
+import { HARBOR_APPROX_LABEL } from '../lib/harbor.js';
 import { BrandMark } from '../components/BrandMark.js';
 
 export function OnboardingScreen() {
-  const { setView, saveSettings, startGuide } = useApp();
+  const { setView, saveSettings, startGuide, settings, harborDownload } = useApp();
 
   const done = async (view?: Parameters<typeof setView>[0]) => {
     await saveSettings({ onboarded: true });
@@ -14,6 +15,66 @@ export function OnboardingScreen() {
     if (view) setView(view);
     else setView('chat');
   };
+
+  // Get Harbor here (progress shows in the card below), then drop into its
+  // chat. startGuide downloads first if needed and only opens once ready.
+  const getHarborAndGo = async () => {
+    const id = await startGuide();
+    if (id) {
+      await saveSettings({ onboarded: true });
+      logEvent('onboarding_done', { next: 'harbor' });
+    }
+  };
+
+  const harborCard = (
+    <div className="card">
+      {settings.harborReady ? (
+        <>
+          <h3>Chat with Harbor</h3>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            Your built-in guide is ready. It runs on this iPhone, offline.
+          </div>
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => void getHarborAndGo()}>
+            Open Harbor
+          </button>
+        </>
+      ) : harborDownload?.failed ? (
+        <>
+          <h3>Start with Harbor</h3>
+          <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+            {harborDownload.label} Check your connection and try again.
+          </div>
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => void getHarborAndGo()}>
+            Retry
+          </button>
+        </>
+      ) : harborDownload ? (
+        <>
+          <h3>Getting Harbor</h3>
+          <div className="progress-track" style={{ marginTop: 4 }}>
+            <div
+              className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
+              style={harborDownload.indeterminate ? undefined : { width: `${harborDownload.percent}%` }}
+            />
+          </div>
+          <div className="hint" style={{ marginTop: 6 }}>
+            {harborDownload.label}. A one-time download, then you chat offline.
+          </div>
+        </>
+      ) : (
+        <>
+          <h3>Start with Harbor, your free guide</h3>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            Download a small assistant ({HARBOR_APPROX_LABEL}) that runs on this iPhone. It gets you
+            set up and answers questions, offline once it is here.
+          </div>
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => void getHarborAndGo()}>
+            Get Harbor and start chatting
+          </button>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div className="shell-main">
@@ -34,6 +95,8 @@ export function OnboardingScreen() {
               whenever you want.
             </p>
           </div>
+
+          {!isDesktop() ? harborCard : null}
 
           {isDesktop() ? (
             <>
@@ -60,13 +123,13 @@ export function OnboardingScreen() {
           ) : (
             <>
               <div className="card">
-                <h3>Put a model in your pocket</h3>
+                <h3>Add a bigger pocket model</h3>
                 <div className="sub" style={{ marginBottom: 10 }}>
-                  Download a small model that runs fully on this iPhone. Private by construction,
-                  works in airplane mode.
+                  When you want more than a guide, download a larger model that runs fully on this
+                  iPhone. Private by construction, works in airplane mode.
                 </div>
-                <button className="btn primary" style={{ width: '100%' }} onClick={() => void done('marketplace')}>
-                  Get a pocket model
+                <button className="btn ghost" style={{ width: '100%' }} onClick={() => void done('marketplace')}>
+                  Browse pocket models
                 </button>
               </div>
               <div className="card">
@@ -92,19 +155,12 @@ export function OnboardingScreen() {
             </button>
           </div>
 
-          <div className="sub" style={{ textAlign: 'center', marginTop: 18, marginBottom: 8 }}>
-            Not sure where to start? Harbor, our built-in guide, is already here.
-            It runs on this device, offline, and can walk you through any of it.
-          </div>
           <button
-            className="btn ghost"
-            style={{ width: '100%' }}
-            onClick={async () => {
-              await done();
-              await startGuide();
-            }}
+            className="btn quiet"
+            style={{ width: '100%', marginTop: 6 }}
+            onClick={() => void done()}
           >
-            Chat with Harbor
+            Skip for now
           </button>
         </div>
       </div>

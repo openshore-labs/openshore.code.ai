@@ -18,6 +18,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     answerApproval,
     newConversation,
     startGuide,
+    harborDownload,
     setDrawer,
   } = useApp();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -83,6 +84,31 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               </button>
             ) : null}
           </div>
+          {harborDownload ? (
+            <div style={{ maxWidth: 400, width: '100%', marginTop: 14 }}>
+              {harborDownload.failed ? (
+                <div className="hint" style={{ color: 'var(--danger)' }}>
+                  {harborDownload.label} Tap Ask Harbor to retry.
+                </div>
+              ) : (
+                <>
+                  <div className="progress-track">
+                    <div
+                      className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
+                      style={
+                        harborDownload.indeterminate
+                          ? undefined
+                          : { width: `${harborDownload.percent}%` }
+                      }
+                    />
+                  </div>
+                  <div className="hint" style={{ marginTop: 6 }}>
+                    Getting Harbor. {harborDownload.label}.
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
       )}
 
