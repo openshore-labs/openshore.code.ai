@@ -5,6 +5,7 @@ import { platform } from '../lib/platform.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
+import { SignInCard } from '../components/SignInCard.js';
 
 function keyStoreLabel(): string {
   switch (platform()) {
@@ -48,6 +49,8 @@ export function SettingsScreen() {
             it. No telemetry, no analytics, no phone-home, ever.
           </div>
         </div>
+
+        <SignInCard />
 
         {account ? (
           <div className="card">

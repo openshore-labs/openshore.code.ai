@@ -46,6 +46,24 @@ import {
 } from '../drivers/remoteDriver.js';
 import { applyResult, confirm, pendingForRepo, stopsBatch } from '../lib/repoSync.js';
 import {
+  getUser,
+  isConfigured as authConfigured,
+  parseAuthCallback,
+  rpc as supabaseRpc,
+  select as supabaseSelect,
+  signInWithOtp,
+  signInWithPassword,
+  signOut as supabaseSignOut,
+  signUp as supabaseSignUp,
+  type Session,
+} from '../lib/supabase.js';
+import {
+  clearSession,
+  freshSession,
+  loadStoredSession,
+  saveSession,
+} from '../lib/authSession.js';
+import {
   autoProfile,
   effectiveProfile,
   type Connectivity,
@@ -165,6 +183,12 @@ interface AppState {
   codemagicConnected: boolean;
   /** Which repo platforms are connected (tokens live in the Keychain). */
   connectedRepoPlatforms: Record<string, boolean>;
+  /** The signed-in Supabase session, when accounts are configured + signed in. */
+  authSession?: Session;
+  /** Whether this build has sign-in configured at all. */
+  authConfigured: boolean;
+  /** The server-verified org role for the signed-in user, when known. */
+  serverRole?: 'admin' | 'member';
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
   /** When true, the Marketplace intro walkthrough is showing over the library. */
@@ -211,6 +235,23 @@ interface AppState {
   setMemberRole(id: string, role: OrgRole): Promise<void>;
   /** Admin: toggle a read-only preview of the member experience. */
   setPreviewAsMember(on: boolean): Promise<void>;
+
+  // Sign-in (Supabase). All no-op gracefully when accounts are not configured.
+  /** Sign in with email + password. */
+  signIn(email: string, password: string): Promise<void>;
+  /** Create an account with email + password. Returns whether email
+   *  confirmation is required before the account can sign in. */
+  signUpAccount(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
+  /** Send a magic-link email that returns to the app's deep-link origin. */
+  sendMagicLink(email: string): Promise<void>;
+  /** Finish a magic-link sign-in from the callback URL the app was opened with. */
+  completeAuthCallback(url: string): Promise<boolean>;
+  /** Sign out and forget the session. */
+  signOutAccount(): Promise<void>;
+  /** Re-read the signed-in user's server role into serverRole. */
+  refreshOrgRole(): Promise<void>;
+  /** Authorize an admin action: server role when signed in, else local UX. */
+  authorizeAdmin(): Promise<boolean>;
 
   // Launch (Codemagic).
   /** Connect Codemagic by API token (stored in the Keychain). */
@@ -419,6 +460,39 @@ export const useApp = create<AppState>((set, get) => {
     for (const id of stale) get().deleteConversation(id);
   }
 
+  // Where a magic-link sign-in returns to. Each shell has its own origin the
+  // token must land on (Uki's "auth callbacks stay on the app's own origin").
+  function authRedirectTo(): string {
+    switch (platform()) {
+      case 'ios':
+        return 'oscode://auth-callback';
+      case 'electron':
+        return 'http://127.0.0.1:4817/auth-callback';
+      default:
+        return typeof window !== 'undefined'
+          ? `${window.location.origin}/auth-callback`
+          : 'http://localhost/auth-callback';
+    }
+  }
+
+  // After any successful sign-in: persist the session, bind this device to the
+  // verified email, claim any invited org seat, and read the server role.
+  async function onSignedIn(session: Session): Promise<void> {
+    await saveSession(session);
+    set({ authSession: session });
+    const account = get().settings.account;
+    if (account && session.user.email && account.selfEmail !== session.user.email) {
+      await get().saveSettings({ account: { ...account, selfEmail: session.user.email } });
+    }
+    try {
+      await supabaseRpc('claim_membership', session.accessToken);
+    } catch {
+      // No invited seat, or offline: role stays whatever the server says next.
+    }
+    await get().refreshOrgRole();
+    logEvent('auth_sign_in');
+  }
+
   return {
     ready: false,
     view: 'chat',
@@ -430,6 +504,7 @@ export const useApp = create<AppState>((set, get) => {
     connectedProviders: {},
     codemagicConnected: false,
     connectedRepoPlatforms: {},
+    authConfigured: authConfigured(),
     connectivity: { homeReachable: false, online: true },
 
     async init() {
@@ -559,6 +634,17 @@ export const useApp = create<AppState>((set, get) => {
 
       // Upgrade any pre-encryption data to sealed-at-rest, in the background.
       void sealExistingKeys([SETTINGS_KEY, CONVERSATIONS_KEY, ANTHROPIC_KEY_KEY]);
+
+      // Restore a signed-in session and refresh the server-verified role.
+      if (authConfigured()) {
+        void (async () => {
+          const stored = await loadStoredSession();
+          if (stored) {
+            set({ authSession: stored });
+            await get().refreshOrgRole();
+          }
+        })();
+      }
 
       // Watch the connection so the profile status is always live.
       void get().refreshConnectivity();
@@ -809,6 +895,77 @@ export const useApp = create<AppState>((set, get) => {
       const account = get().settings.account;
       if (!account || !isOrgAdmin(account)) return;
       await get().saveSettings({ account: { ...account, previewAsMember: on } });
+    },
+
+    async signIn(email, password) {
+      const session = await signInWithPassword(email.trim(), password);
+      await onSignedIn(session);
+    },
+
+    async signUpAccount(email, password) {
+      const session = await supabaseSignUp(email.trim(), password);
+      if (session) {
+        await onSignedIn(session);
+        return { needsConfirmation: false };
+      }
+      return { needsConfirmation: true };
+    },
+
+    async sendMagicLink(email) {
+      await signInWithOtp(email.trim(), authRedirectTo());
+    },
+
+    async completeAuthCallback(url) {
+      const parsed = parseAuthCallback(url);
+      if (!parsed) return false;
+      // Fill the user id/email the callback URL does not carry.
+      const user = await getUser(parsed.accessToken);
+      const session: Session = { ...parsed, user: user ?? parsed.user };
+      await onSignedIn(session);
+      return true;
+    },
+
+    async signOutAccount() {
+      const session = get().authSession;
+      if (session) await supabaseSignOut(session.accessToken);
+      await clearSession();
+      set({ authSession: undefined, serverRole: undefined });
+      logEvent('auth_sign_out');
+    },
+
+    async refreshOrgRole() {
+      const session = get().authSession;
+      const account = get().settings.account;
+      if (!session || !authConfigured()) return;
+      try {
+        const fresh = await freshSession(session);
+        if (fresh !== session) set({ authSession: fresh });
+        const rows = await supabaseSelect<{ role: 'admin' | 'member'; status: string }>(
+          'org_members',
+          fresh.accessToken,
+          `select=role,status&user_id=eq.${fresh.user.id}&status=eq.active`,
+        );
+        const role = rows.find((r) => r.role === 'admin') ? 'admin' : rows.length ? 'member' : undefined;
+        set({ serverRole: role });
+        // Mirror the verified email onto the account so the UI reflects it.
+        if (account && fresh.user.email && account.selfEmail !== fresh.user.email) {
+          await get().saveSettings({ account: { ...account, selfEmail: fresh.user.email } });
+        }
+      } catch {
+        // Offline or transient: keep whatever role we last knew.
+      }
+    },
+
+    async authorizeAdmin() {
+      // Server truth when signed in; the local UX check otherwise. The server
+      // (RLS + role-gated daemon) is the real enforcement; this gate only
+      // decides whether to attempt the action.
+      if (authConfigured() && get().authSession) {
+        await get().refreshOrgRole();
+        const role = get().serverRole;
+        if (role) return role === 'admin';
+      }
+      return isOrgAdmin(get().settings.account);
     },
 
     async connectCodemagic(token) {
