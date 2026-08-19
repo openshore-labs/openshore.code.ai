@@ -15,6 +15,14 @@ import { BackBar } from '../components/BackBar.js';
 interface DownloadState {
   percent: number;
   label: string;
+  /** No meaningful percent yet (connecting / verifying): show a shimmer. */
+  indeterminate?: boolean;
+  /** Terminal failure: hold the card so the user can retry. */
+  failed?: boolean;
+}
+
+function gb(bytes: number): string {
+  return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
 export function MarketplaceScreen() {
@@ -40,7 +48,10 @@ export function MarketplaceScreen() {
         ...d,
         [id]: {
           percent: total ? (completed / total) * 100 : 0,
-          label: `${(completed / 1e9).toFixed(1)} of ${(total / 1e9).toFixed(1)} GB`,
+          label: total
+            ? `${Math.round((completed / total) * 100)}% · ${gb(completed)} of ${gb(total)}`
+            : 'Downloading',
+          indeterminate: !total,
         },
       }));
     });
@@ -51,32 +62,51 @@ export function MarketplaceScreen() {
           percent: p.percent ?? 0,
           label:
             p.total && p.completed !== undefined
-              ? `${(p.completed / 1e9).toFixed(1)} of ${(p.total / 1e9).toFixed(1)} GB`
+              ? `${Math.round(p.percent ?? 0)}% · ${gb(p.completed)} of ${gb(p.total)}`
               : p.line,
+          indeterminate: p.percent === undefined,
         },
       }));
     });
     return () => off?.();
   }, []);
 
+  const clearDownload = (id: string) =>
+    setDownloads((d) => {
+      const next = { ...d };
+      delete next[id];
+      return next;
+    });
+
   const pullToDevice = async (model: CatalogModel) => {
     if (!model.onDevice) return;
-    setDownloads((d) => ({ ...d, [model.id]: { percent: 0, label: 'starting' } }));
+    setDownloads((d) => ({
+      ...d,
+      [model.id]: { percent: 0, label: 'Connecting', indeterminate: true },
+    }));
     try {
       await Llama.downloadModel({ id: model.id, url: model.onDevice.url });
+      // Bytes are down; the native side checks the file before it counts.
+      setDownloads((d) => ({
+        ...d,
+        [model.id]: { percent: 100, label: 'Verifying', indeterminate: true },
+      }));
       await saveSettings({
         deviceModels: { ...settings.deviceModels, [model.id]: model.name },
       });
       hapticSuccess();
       showToast(`${model.name} is on this device. Fully private.`);
+      clearDownload(model.id);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Download failed. Try again.');
-    } finally {
-      setDownloads((d) => {
-        const next = { ...d };
-        delete next[model.id];
-        return next;
-      });
+      // Hold the card in a failed state so the user can retry in place.
+      setDownloads((d) => ({
+        ...d,
+        [model.id]: {
+          percent: d[model.id]?.percent ?? 0,
+          label: err instanceof Error ? err.message : 'Download failed.',
+          failed: true,
+        },
+      }));
     }
   };
 
@@ -86,15 +116,25 @@ export function MarketplaceScreen() {
       showToast('Desktop models install from the desktop app. This phone can browse them.');
       return;
     }
-    setDownloads((d) => ({ ...d, [model.id]: { percent: 0, label: 'starting' } }));
-    const result = await b.installModel(model.id);
-    setDownloads((d) => {
-      const next = { ...d };
-      delete next[model.id];
-      return next;
-    });
-    if (result.ok) hapticSuccess();
-    showToast(result.detail);
+    setDownloads((d) => ({
+      ...d,
+      [model.id]: { percent: 0, label: 'Connecting', indeterminate: true },
+    }));
+    try {
+      const result = await b.installModel(model.id);
+      clearDownload(model.id);
+      if (result.ok) hapticSuccess();
+      showToast(result.detail);
+    } catch (err) {
+      setDownloads((d) => ({
+        ...d,
+        [model.id]: {
+          percent: d[model.id]?.percent ?? 0,
+          label: err instanceof Error ? err.message : 'Install failed.',
+          failed: true,
+        },
+      }));
+    }
   };
 
   if (!catalog) {
@@ -111,19 +151,26 @@ export function MarketplaceScreen() {
   const pocket = catalog.models.filter((m) => m.onDevice);
   const desktop = catalog.models.filter((m) => !m.onDevice);
 
-  const renderModel = (model: CatalogModel, target: 'device' | 'desktop') => {
+  const renderModel = (model: CatalogModel, target: 'device' | 'desktop', recommended = false) => {
     const dl = downloads[model.id];
     const owned = target === 'device' && Boolean(settings.deviceModels[model.id]);
     return (
       <div className="card" key={model.id}>
         <div className="card-row">
           <div className="grow">
-            <h3>{model.name}</h3>
+            <h3>
+              {model.name}
+              {recommended && !owned ? (
+                <span className="pill fits" style={{ marginLeft: 8, verticalAlign: 'middle' }}>
+                  Start here
+                </span>
+              ) : null}
+            </h3>
             <div className="sub">{model.tagline}</div>
           </div>
           {owned ? (
             <span className="pill local">on device</span>
-          ) : dl ? null : (
+          ) : dl && !dl.failed ? null : (
             <button
               className="btn ghost"
               style={{ padding: '8px 14px' }}
@@ -131,14 +178,21 @@ export function MarketplaceScreen() {
                 target === 'device' ? void pullToDevice(model) : void pullToDesktop(model)
               }
             >
-              Get
+              {dl?.failed ? 'Retry' : 'Get'}
             </button>
           )}
         </div>
-        {dl ? (
+        {dl && dl.failed ? (
+          <div className="hint" style={{ marginTop: 8, color: 'var(--danger)' }}>
+            {dl.label}
+          </div>
+        ) : dl ? (
           <>
             <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${dl.percent}%` }} />
+              <div
+                className={`progress-fill${dl.indeterminate ? ' indeterminate' : ''}`}
+                style={dl.indeterminate ? undefined : { width: `${dl.percent}%` }}
+              />
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
               {dl.label}
@@ -190,7 +244,7 @@ export function MarketplaceScreen() {
         {isPhone() || pocket.length ? (
           <>
             <h3 style={{ marginBottom: 10 }}>For this {isPhone() ? 'iPhone' : 'device'}</h3>
-            {pocket.map((m) => renderModel(m, 'device'))}
+            {pocket.map((m, i) => renderModel(m, 'device', i === 0))}
             <div className="divider" />
           </>
         ) : null}
