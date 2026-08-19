@@ -115,7 +115,11 @@ export function StackManager() {
               >
                 Change
               </button>
-            ) : null}
+            ) : (
+              <span className="lock-hint" aria-label="Admin owned">
+                <span className="lock-glyph" aria-hidden="true" />
+              </span>
+            )}
           </div>
         </div>
 
@@ -143,7 +147,11 @@ export function StackManager() {
                   >
                     {'⋯'}
                   </button>
-                ) : null}
+                ) : (
+                  <span className="lock-hint" aria-label="Admin owned">
+                    <span className="lock-glyph" aria-hidden="true" />
+                  </span>
+                )}
               </div>
             </div>
           ))

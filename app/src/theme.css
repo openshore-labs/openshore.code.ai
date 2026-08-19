@@ -1349,6 +1349,194 @@ textarea {
   overflow-y: auto;
 }
 
+/* ---------------------------------------------------------------------------
+   Apple-polish pass. Motion is GPU-friendly (transform/opacity) and every
+   animation yields to prefers-reduced-motion.
+   --------------------------------------------------------------------------- */
+
+/* Popover entrance: the project switcher and the projects multi-select. */
+@keyframes menu-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.project-menu,
+.multiselect-panel {
+  transform-origin: top center;
+  animation: menu-pop 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+/* Ephemeral (quick chat) affordance: a hollow, dashed dot before the title. */
+.ephemeral-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
+  border: 1px dashed var(--muted);
+  background: transparent;
+}
+
+/* Multi-select rows: a gentle pressed state. */
+.multiselect-row {
+  transition:
+    transform 0.06s ease,
+    background 0.12s ease;
+}
+.multiselect-row:active {
+  transform: scale(0.99);
+}
+
+/* Crew monogram: an identity tile tinted by activity level. */
+.crew-monogram {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+.crew-monogram.review {
+  background: var(--local-soft);
+  color: var(--local);
+}
+.crew-monogram.auto {
+  background: var(--surface);
+  border: 1px solid var(--cloud);
+  color: var(--cloud);
+}
+.crew-monogram.request {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+}
+
+/* Launch: a pulsing dot on the building state, a shimmer under an active run. */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
+  background: currentColor;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: -160% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+.build-shimmer {
+  height: 4px;
+  border-radius: 2px;
+  margin-top: 12px;
+  background: linear-gradient(90deg, var(--surface) 20%, var(--local-soft) 50%, var(--surface) 80%);
+  background-size: 200% 100%;
+  animation: shimmer 1.25s linear infinite;
+}
+
+/* Account-type cards: pressed scale and a selected ring. */
+.account-card {
+  transition:
+    transform 0.07s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
+}
+.account-card:active {
+  transform: scale(0.992);
+}
+.account-card.selected {
+  border-color: var(--local);
+  box-shadow: 0 0 0 2px var(--local-soft);
+}
+
+/* A crisp, drawn padlock for admin-owned, member-read-only surfaces. */
+.lock-glyph {
+  position: relative;
+  display: inline-block;
+  width: 13px;
+  height: 11px;
+  margin-top: 5px;
+  border: 1.6px solid var(--muted);
+  border-radius: 2px;
+}
+.lock-glyph::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 1.7px;
+  width: 8px;
+  height: 6px;
+  border: 1.6px solid var(--muted);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+}
+.lock-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Outbox item state, in the connectivity-dot language. */
+.state-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+  background: var(--muted);
+}
+.state-dot.pending,
+.state-dot.offloading {
+  background: var(--cloud);
+}
+.state-dot.confirmed {
+  background: var(--ok);
+}
+.state-dot.conflict,
+.state-dot.failed {
+  background: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-menu,
+  .multiselect-panel,
+  .pulse-dot,
+  .build-shimmer {
+    animation: none;
+  }
+}
+
 .progress-track {
   height: 6px;
   border-radius: 3px;

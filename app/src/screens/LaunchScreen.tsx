@@ -251,7 +251,14 @@ export function LaunchScreen() {
           disabled={!codemagicConnected || !target || busy}
           onClick={() => void startBuild()}
         >
-          {busy ? 'Building...' : 'Build in Codemagic'}
+          {busy ? (
+            <>
+              <span className="pulse-dot" aria-hidden="true" />
+              Building
+            </>
+          ) : (
+            'Build in Codemagic'
+          )}
         </button>
         {!codemagicConnected || !target ? (
           <p className="hint" style={{ marginTop: 8 }}>
@@ -281,6 +288,7 @@ function RunCard({
   busy: boolean;
 }) {
   const failed = run.status === 'failed' || run.status === 'timeout';
+  const inProgress = ['queued', 'preparing', 'building'].includes(run.status);
   return (
     <div className="card">
       <div className="card-row">
@@ -293,6 +301,7 @@ function RunCard({
         </div>
         <span className={statusPill(run.status)}>{STATUS_LABEL[run.status] ?? run.status}</span>
       </div>
+      {inProgress ? <div className="build-shimmer" aria-hidden="true" /> : null}
       {run.error ? <p className="hint" style={{ marginTop: 6 }}>{run.error}</p> : null}
       {failed && run.excerpt ? (
         <>

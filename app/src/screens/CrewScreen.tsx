@@ -99,6 +99,9 @@ export function CrewScreen() {
           crew.map((a) => (
             <div className="card" key={a.id} style={{ marginTop: 12 }}>
               <div className="card-row">
+                <span className={`crew-monogram ${a.activityLevel}`} aria-hidden="true">
+                  {(a.name.trim()[0] ?? '?').toUpperCase()}
+                </span>
                 <div className="grow">
                   <h3>{a.name}</h3>
                   <div className="sub">

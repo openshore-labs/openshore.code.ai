@@ -219,15 +219,14 @@ export function ReposScreen() {
                   </div>
                   {outbox.map((item) => (
                     <div className="card-row" key={item.id} style={{ marginTop: 6 }}>
+                      <span className={`state-dot ${item.state}`} aria-hidden="true" />
                       <div className="grow">
                         <div style={{ fontSize: 14 }}>{item.message}</div>
                         <div className="sub">
                           {item.branch} · {item.files.length} file{item.files.length > 1 ? 's' : ''}
                         </div>
                       </div>
-                      <span className={`pill ${item.state === 'confirmed' ? 'local' : 'muted'}`}>
-                        {item.state}
-                      </span>
+                      <span className="sub" style={{ textTransform: 'capitalize' }}>{item.state}</span>
                     </div>
                   ))}
                 </>
