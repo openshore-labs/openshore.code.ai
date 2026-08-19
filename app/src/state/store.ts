@@ -27,6 +27,12 @@ import {
   isTerminal,
   triggerBuild,
 } from '../lib/codemagic.js';
+import {
+  REPO_CONNECTORS,
+  repoSecretKey,
+  type HomeRepo,
+  type RepoState,
+} from '../lib/repos.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
@@ -110,6 +116,8 @@ export interface AppSettings {
   account?: Account;
   /** Launch: the Codemagic target and this project's build-run history. */
   launch?: LaunchState;
+  /** Repositories: the admin-owned home repo and the buffered outbox. */
+  repo?: RepoState;
   /** Manual connectivity-profile override; only ever steps down from auto. */
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
@@ -150,6 +158,8 @@ interface AppState {
   connectedProviders: Record<string, boolean>;
   /** Whether a Codemagic API token is connected (the token lives in Keychain). */
   codemagicConnected: boolean;
+  /** Which repo platforms are connected (tokens live in the Keychain). */
+  connectedRepoPlatforms: Record<string, boolean>;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
   /** When true, the Marketplace intro walkthrough is showing over the library. */
@@ -202,6 +212,13 @@ interface AppState {
   startBuild(): Promise<void>;
   /** Open a chat where the model reads a failed build and proposes a fix. */
   diagnoseBuild(runId: string): Promise<void>;
+
+  // Repositories.
+  /** Connect a repo platform (GitHub, etc.) by token, stored in the Keychain. */
+  connectRepoPlatform(id: string, token: string): Promise<void>;
+  disconnectRepoPlatform(id: string): Promise<void>;
+  /** Admin: set the home repo the whole system works through. */
+  setHomeRepo(home: HomeRepo): Promise<void>;
 
   // My Crew: user-authored agents.
   /** Create a crew agent and return its id. */
@@ -388,6 +405,7 @@ export const useApp = create<AppState>((set, get) => {
     cloudKeyPresent: false,
     connectedProviders: {},
     codemagicConnected: false,
+    connectedRepoPlatforms: {},
     connectivity: { homeReachable: false, online: true },
 
     async init() {
@@ -416,6 +434,10 @@ export const useApp = create<AppState>((set, get) => {
         connectedProviders[p.id] = Boolean(await secretGet(providerSecretKey(p.id)));
       }
       const codemagicConnected = Boolean(await secretGet(CODEMAGIC_SECRET_KEY));
+      const connectedRepoPlatforms: Record<string, boolean> = {};
+      for (const c of REPO_CONNECTORS) {
+        connectedRepoPlatforms[c.id] = Boolean(await secretGet(repoSecretKey(c.id)));
+      }
       await loadInsights(settings.insightsOptIn ?? false);
       // On iOS the filesystem is the truth for on-device models: if a model
       // (or Harbor) is gone, drop its label / ready flag so nothing advertises
@@ -449,6 +471,7 @@ export const useApp = create<AppState>((set, get) => {
         cloudKeyPresent,
         connectedProviders,
         codemagicConnected,
+        connectedRepoPlatforms,
         ready: true,
         view: settings.onboarded ? 'chat' : 'onboarding',
       });
@@ -784,6 +807,29 @@ export const useApp = create<AppState>((set, get) => {
       );
       await get().saveSettings({ launch: { ...get().settings.launch!, runs } });
       logEvent('build_diagnose');
+    },
+
+    async connectRepoPlatform(id, token) {
+      await secretSet(repoSecretKey(id), token.trim());
+      set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: true } }));
+      logEvent('repo_platform_connected', { platform: id });
+    },
+
+    async disconnectRepoPlatform(id) {
+      await secretDelete(repoSecretKey(id));
+      set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: false } }));
+      logEvent('repo_platform_disconnected', { platform: id });
+    },
+
+    async setHomeRepo(home) {
+      // The home repo is a shared, admin-owned location (like the stack).
+      if (!isOrgAdmin(get().settings.account)) {
+        get().showToast('Only an admin sets the home repo.');
+        return;
+      }
+      const repo: RepoState = { ...(get().settings.repo ?? { outbox: [] }), homeRepo: home };
+      await get().saveSettings({ repo });
+      logEvent('home_repo_set', { kind: home.kind });
     },
 
     async createCrewAgent(input) {
