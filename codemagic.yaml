@@ -94,4 +94,11 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # Upload the build to App Store Connect but do NOT auto-submit it for
+        # EXTERNAL TestFlight beta review. Internal testers automatically
+        # receive every uploaded build with no review and no Beta App
+        # Information form, so this gets it to your own phone cleanly.
+        # To enable external testers later: fill in the Beta App Information
+        # + Beta App Review contact details in App Store Connect, then set
+        # this back to `true` (optionally add `beta_groups: [<group name>]`).
+        submit_to_testflight: false
