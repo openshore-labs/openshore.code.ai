@@ -19,9 +19,9 @@ interface Beat {
 const BEATS: Beat[] = [
   {
     id: 'library',
-    eyebrow: 'The Library',
+    eyebrow: 'The Marketplace',
     headline: 'Every model, in plain language.',
-    body: 'The LLM Library is where you choose the models you own. Each one downloads straight from its source and runs on your hardware, never ours.',
+    body: 'The Marketplace is where you choose the models you own. Each one downloads straight from its source and runs on your hardware, never ours.',
     art: 'library',
   },
   {
@@ -110,7 +110,7 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
       : undefined;
 
   return (
-    <div className="lib-intro" role="dialog" aria-label="The LLM Library">
+    <div className="lib-intro" role="dialog" aria-label="The Marketplace and your stack">
       <div className="lib-masthead">
         <span className="brand-lockup">
           <BrandMark size={24} />

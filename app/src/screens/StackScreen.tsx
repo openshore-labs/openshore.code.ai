@@ -7,6 +7,7 @@ import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
+import { StackManager } from '../components/StackManager.js';
 
 const ROLES: Array<{ role: string; plain: string }> = [
   { role: 'coding', plain: 'great at code' },
@@ -54,6 +55,10 @@ export function StackScreen() {
   const stack = status?.stack;
   const specialists = stack?.specialists ?? remote?.specialists ?? [];
   const orchestrator = stack?.orchestrator ?? remote?.orchestrator;
+
+  // The phone manages its own app-side stack (Reasoning LLM + bench). The
+  // desktop keeps its live daemon-driven view below.
+  if (!isDesktop()) return <StackManager />;
 
   return (
     <div className="screen">
