@@ -16,7 +16,16 @@ import { MockDriver } from '../drivers/mockDriver.js';
 import { HARBOR_GREETING, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import { bridge } from '../lib/electronBridge.js';
-import { isDesktop, storeGet, storeGetJson, storeSet, storeSetJson } from '../lib/platform.js';
+import { Llama } from '../lib/llamaPlugin.js';
+import {
+  isDesktop,
+  platform,
+  secretDelete,
+  secretGet,
+  secretSet,
+  storeGetJson,
+  storeSetJson,
+} from '../lib/platform.js';
 
 export type ViewName =
   | 'chat'
@@ -149,7 +158,7 @@ export const useApp = create<AppState>((set, get) => {
       case 'device':
         return new OnDeviceDriver(conv.source.modelId, conv.source.modelName);
       case 'cloud': {
-        const key = await storeGet(ANTHROPIC_KEY_KEY);
+        const key = await secretGet(ANTHROPIC_KEY_KEY);
         if (!key) throw new Error('Add your Claude API key under Connections first.');
         return new CloudClaudeDriver(key, conv.source.model);
       }
@@ -187,8 +196,26 @@ export const useApp = create<AppState>((set, get) => {
           thread: row.source.kind === 'desktop' ? emptyThread() : (row.thread ?? emptyThread()),
         };
       }
-      const cloudKeyPresent = Boolean(await storeGet(ANTHROPIC_KEY_KEY));
+      const cloudKeyPresent = Boolean(await secretGet(ANTHROPIC_KEY_KEY));
       await loadInsights(settings.insightsOptIn ?? false);
+      // On iOS the filesystem is the truth for on-device models: if the OS
+      // purged one (ODR eviction, storage pressure) drop its label so the
+      // picker never advertises a model that will not load.
+      if (platform() === 'ios' && Object.keys(settings.deviceModels).length) {
+        try {
+          const { models } = await Llama.listModels();
+          const present = new Set(models.map((m) => m.id));
+          const kept = Object.fromEntries(
+            Object.entries(settings.deviceModels).filter(([id]) => present.has(id)),
+          );
+          if (Object.keys(kept).length !== Object.keys(settings.deviceModels).length) {
+            settings.deviceModels = kept;
+            await storeSetJson(SETTINGS_KEY, settings);
+          }
+        } catch {
+          // Native side unreachable: keep the labels as they are.
+        }
+      }
       set({
         settings,
         conversations,
@@ -337,13 +364,13 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async setCloudKey(key) {
-      await storeSet(ANTHROPIC_KEY_KEY, key.trim());
+      await secretSet(ANTHROPIC_KEY_KEY, key.trim());
       set({ cloudKeyPresent: true });
       logEvent('cloud_key_added');
     },
 
     async clearCloudKey() {
-      await storeSet(ANTHROPIC_KEY_KEY, '');
+      await secretDelete(ANTHROPIC_KEY_KEY);
       set({ cloudKeyPresent: false });
     },
   };
