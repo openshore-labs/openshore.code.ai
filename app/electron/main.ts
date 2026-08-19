@@ -21,7 +21,7 @@ function createWindow(): void {
     height: 800,
     minWidth: 720,
     minHeight: 520,
-    backgroundColor: '#0b1b2b',
+    backgroundColor: '#f6f4ef',
     autoHideMenuBar: true,
     title: 'OS Code',
     webPreferences: {

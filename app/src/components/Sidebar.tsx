@@ -2,6 +2,7 @@
 // Persistent on desktop, a slide-over drawer on the phone.
 import { sourceLabel } from '../state/types.js';
 import { useApp, type ViewName } from '../state/store.js';
+import { BrandMark } from './BrandMark.js';
 
 const NAV: Array<{ view: ViewName; glyph: string; label: string }> = [
   { view: 'marketplace', glyph: '⬡', label: 'Marketplace' },
@@ -18,8 +19,11 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   const body = (
     <aside className={`sidebar${drawer ? ' drawer' : ''}`}>
       <div className="sidebar-head">
-        <span className="wordmark">
-          <span className="accent">OS</span> CODE
+        <span className="brand-lockup">
+          <BrandMark size={26} />
+          <span className="wordmark">
+            <span className="accent">OS</span> Code
+          </span>
         </span>
       </div>
       <button
