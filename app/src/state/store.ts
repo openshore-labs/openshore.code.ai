@@ -13,6 +13,7 @@ import { RemoteDriver, daemonCreateSession, type DaemonTarget } from '../drivers
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
+import { HARBOR_GREETING, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, storeGet, storeGetJson, storeSet, storeSetJson } from '../lib/platform.js';
 
@@ -64,6 +65,8 @@ interface AppState {
   showToast(message: string): void;
 
   newConversation(source: ConversationSource): Promise<string>;
+  /** Open a fresh chat with Harbor, the built-in guide, greeting seeded. */
+  startGuide(): Promise<string>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
   send(text: string): void;
@@ -220,6 +223,34 @@ export const useApp = create<AppState>((set, get) => {
       } catch (err) {
         get().showToast(err instanceof Error ? err.message : String(err));
       }
+      void persistConversations(get());
+      return id;
+    },
+
+    async startGuide() {
+      const id = await get().newConversation({
+        kind: 'device',
+        modelId: HARBOR_MODEL_ID,
+        modelName: HARBOR_MODEL_NAME,
+      });
+      // Seed Harbor's greeting directly (not model-generated) so first launch
+      // is a warm, instant, reliable hello with zero wait.
+      set((s) => {
+        const conv = s.conversations[id];
+        if (!conv) return s;
+        const greeting = {
+          kind: 'assistant' as const,
+          id: `${id}-hello`,
+          text: HARBOR_GREETING,
+          streaming: false,
+        };
+        const next: Conversation = {
+          ...conv,
+          title: HARBOR_MODEL_NAME,
+          thread: { ...conv.thread, items: [greeting] },
+        };
+        return { conversations: { ...s.conversations, [id]: next } };
+      });
       void persistConversations(get());
       return id;
     },

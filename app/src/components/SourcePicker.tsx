@@ -17,7 +17,7 @@ export function SourcePicker({
   onPick: (source: ConversationSource) => void;
   onClose: () => void;
 }) {
-  const { settings, cloudKeyPresent, setView, showToast } = useApp();
+  const { settings, cloudKeyPresent, setView, showToast, startGuide } = useApp();
   const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
   const [stage, setStage] = useState<'sources' | 'repo' | 'claude-model' | 'device-model'>(
     'sources',
@@ -48,6 +48,15 @@ export function SourcePicker({
               Local first. Cloud is deliberate, always on your own account.
             </p>
             <div className="sheet-actions">
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  void startGuide();
+                  onClose();
+                }}
+              >
+                Harbor, the built-in guide (no setup)
+              </button>
               <button
                 className="btn primary"
                 onClick={() => {
@@ -88,7 +97,7 @@ export function SourcePicker({
                 Claude (your account)
               </button>
               <button className="btn quiet" onClick={() => onPick({ kind: 'mock' })}>
-                Show me a demo first
+                Watch a scripted tour
               </button>
             </div>
           </>
