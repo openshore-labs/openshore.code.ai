@@ -39,7 +39,7 @@ export function AccountSetup() {
 
           {choice === 'none' ? (
             <>
-              <div className="card">
+              <div className="card account-card">
                 <h3>Personal</h3>
                 <div className="sub" style={{ marginBottom: 10 }}>
                   Personal. Free. For your own work. The full app, your models, your keys.
@@ -53,7 +53,7 @@ export function AccountSetup() {
                 </button>
               </div>
 
-              <div className="card">
+              <div className="card account-card">
                 <h3>Commercial</h3>
                 <div className="sub" style={{ marginBottom: 10 }}>
                   For a team. You become the admin: add people by email, and own the shared stack
@@ -76,7 +76,7 @@ export function AccountSetup() {
               </div>
             </>
           ) : (
-            <div className="card">
+            <div className="card account-card selected">
               <h3>Set up your company</h3>
               <div className="field" style={{ marginTop: 10 }}>
                 <label>Company name</label>

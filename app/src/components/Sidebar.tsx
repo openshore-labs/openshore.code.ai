@@ -141,6 +141,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
                 className={`conv-item${id === activeId && view === 'chat' ? ' active' : ''}`}
                 onClick={() => openConversation(id)}
               >
+                {conv.ephemeral ? <span className="ephemeral-dot" aria-hidden="true" /> : null}
                 {conv.title}
                 <span className="conv-source">
                   {conv.ephemeral ? 'Quick chat · not saved' : sourceLabel(conv.source)}
