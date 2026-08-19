@@ -3,7 +3,7 @@
 // app's few rooms. Persistent on desktop, a slide-over drawer on the phone.
 import { useState } from 'react';
 import { sourceLabel } from '../state/types.js';
-import { useApp, type ViewName } from '../state/store.js';
+import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { BrandMark } from './BrandMark.js';
 
 const NAV: Array<{ view: ViewName; glyph: string; label: string }> = [
@@ -150,6 +150,15 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
         )}
       </div>
       <nav className="sidebar-nav">
+        {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
+          <button
+            className={`nav-item${view === 'admin' ? ' active' : ''}`}
+            onClick={() => setView('admin')}
+          >
+            <span className="glyph">{'♦'}</span>
+            Admin
+          </button>
+        ) : null}
         {NAV.map((item) => (
           <button
             key={item.view}

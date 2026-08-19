@@ -2,7 +2,7 @@
 // Editable on the desktop; the phone shows the live picture from the daemon.
 import { useCallback, useEffect, useState } from 'react';
 import type { DaemonStackInfo } from 'os-code/protocol';
-import { useApp } from '../state/store.js';
+import { stackAdmin, useApp } from '../state/store.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
@@ -55,6 +55,8 @@ export function StackScreen() {
   const stack = status?.stack;
   const specialists = stack?.specialists ?? remote?.specialists ?? [];
   const orchestrator = stack?.orchestrator ?? remote?.orchestrator;
+  const admin = stackAdmin(settings.account);
+  const canEdit = isDesktop() && admin;
 
   // The phone manages its own app-side stack (Reasoning LLM + bench). The
   // desktop keeps its live daemon-driven view below.
@@ -83,7 +85,7 @@ export function StackScreen() {
             {orchestrator ? (
               <span className={`pill ${orchestrator.kind}`}>{orchestrator.kind}</span>
             ) : null}
-            {isDesktop() ? (
+            {canEdit ? (
               <button
                 className="btn ghost"
                 style={{ padding: '8px 14px' }}
@@ -108,7 +110,7 @@ export function StackScreen() {
                     {enabled ? enabled.model : 'Off. The orchestrator handles this itself.'}
                   </div>
                 </div>
-                {isDesktop() ? (
+                {canEdit ? (
                   enabled ? (
                     <button
                       className="btn ghost"
@@ -141,6 +143,11 @@ export function StackScreen() {
             {settings.daemon
               ? 'The stack lives on your desktop; edit it there. This phone rides it over Tailscale.'
               : 'Connect your desktop (Menu, then Desktop + phone) to see and use its stack.'}
+          </p>
+        ) : !admin ? (
+          <p className="hint">
+            Your admin sets the shared stack for the company. You can talk with your admin about
+            changing it.
           </p>
         ) : null}
       </div>

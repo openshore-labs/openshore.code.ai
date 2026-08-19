@@ -7,11 +7,16 @@ import { create } from 'zustand';
 import type { DriverEvent } from 'os-code/protocol';
 import {
   emptyThread,
+  type Account,
   type Conversation,
   type ConversationSource,
   type CrewAgent,
+  type Org,
+  type OrgMember,
+  type OrgRole,
   type Project,
 } from './types.js';
+import { tierForSeats, type AccountType } from '../lib/plans.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
@@ -67,6 +72,7 @@ export type ViewName =
   | 'repos'
   | 'projects'
   | 'crew'
+  | 'admin'
   | 'pair'
   | 'settings'
   | 'onboarding';
@@ -89,6 +95,8 @@ export interface AppSettings {
   activeProjectId?: string;
   /** My Crew: user-authored agents with personas and call rules. */
   crew?: CrewAgent[];
+  /** Account: personal, or a commercial org with members and a plan. */
+  account?: Account;
   /** Manual connectivity-profile override; only ever steps down from auto. */
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
@@ -150,6 +158,25 @@ interface AppState {
   /** Remove a project; its chats stay but drop back to no project. */
   deleteProject(id: string): Promise<void>;
 
+  // Account & organization.
+  /** Set up the account: personal, or commercial with an owner email + seats. */
+  setupAccount(input: {
+    type: AccountType;
+    ownerEmail?: string;
+    orgName?: string;
+    seatCount?: number;
+  }): Promise<void>;
+  /** Update the declared seat count; re-bands the plan tier. */
+  setSeatCount(seatCount: number): Promise<void>;
+  /** Admin: add a member by email (default role member). */
+  addMember(email: string, displayName?: string): Promise<void>;
+  /** Admin: remove a member. */
+  removeMember(id: string): Promise<void>;
+  /** Admin: grant or revoke another member's admin role. */
+  setMemberRole(id: string, role: OrgRole): Promise<void>;
+  /** Admin: toggle a read-only preview of the member experience. */
+  setPreviewAsMember(on: boolean): Promise<void>;
+
   // My Crew: user-authored agents.
   /** Create a crew agent and return its id. */
   createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
@@ -201,6 +228,36 @@ interface AppState {
 let convSeq = 0;
 function newId(): string {
   return `c${Date.now().toString(36)}${(convSeq++).toString(36)}`;
+}
+
+/**
+ * The signed-in member's TRUE authority: a personal account owns everything; in
+ * a commercial org, only an admin does. This ignores the preview toggle, so an
+ * admin previewing the member view can still exit it and run admin actions.
+ * Client-side only: a real backend must enforce this, never the UI alone. Every
+ * admin mutation routes through this one seam (authorizeAdmin below) so it can
+ * become a server round-trip later without scattering role checks.
+ */
+export function isOrgAdmin(account?: Account): boolean {
+  if (!account || account.type === 'personal') return true;
+  const me = account.org?.members.find((m) => m.email === account.selfEmail);
+  return me?.role === 'admin';
+}
+
+/**
+ * Who sees the shared stack and storage as editable. Same as isOrgAdmin, but an
+ * admin can flip previewAsMember to view the read-only member experience. Use
+ * this for UI gating; use isOrgAdmin to authorize a change.
+ */
+export function stackAdmin(account?: Account): boolean {
+  if (account?.previewAsMember) return false;
+  return isOrgAdmin(account);
+}
+
+/** The signed-in member's role in a commercial org, if any. */
+export function selfMember(account?: Account): OrgMember | undefined {
+  if (!account || account.type !== 'commercial') return undefined;
+  return account.org?.members.find((m) => m.email === account.selfEmail);
 }
 
 export const useApp = create<AppState>((set, get) => {
@@ -506,6 +563,93 @@ export const useApp = create<AppState>((set, get) => {
       });
       void persistConversations(get());
       logEvent('project_delete');
+    },
+
+    async setupAccount(input) {
+      if (input.type === 'personal') {
+        await get().saveSettings({ account: { type: 'personal' } });
+        logEvent('account_setup', { type: 'personal' });
+        return;
+      }
+      const seatCount = Math.max(1, Math.floor(input.seatCount ?? 1));
+      const tier = tierForSeats(seatCount);
+      const ownerEmail = (input.ownerEmail ?? '').trim();
+      const owner: OrgMember = {
+        id: `m${Date.now().toString(36)}${(convSeq++).toString(36)}`,
+        email: ownerEmail,
+        role: 'admin',
+        addedAt: new Date().toISOString(),
+      };
+      const org: Org = {
+        id: `o${Date.now().toString(36)}${(convSeq++).toString(36)}`,
+        name: input.orgName?.trim() || 'My company',
+        seatCount,
+        tierId: tier.id,
+        priceYear: tier.priceYear,
+        members: ownerEmail ? [owner] : [],
+        createdAt: new Date().toISOString(),
+      };
+      await get().saveSettings({
+        account: { type: 'commercial', org, selfEmail: ownerEmail || undefined },
+      });
+      logEvent('account_setup', { type: 'commercial', tier: tier.id });
+    },
+
+    async setSeatCount(seatCount) {
+      const account = get().settings.account;
+      if (!account?.org || !isOrgAdmin(account)) return;
+      const seats = Math.max(1, Math.floor(seatCount));
+      const tier = tierForSeats(seats);
+      const org: Org = { ...account.org, seatCount: seats, tierId: tier.id, priceYear: tier.priceYear };
+      await get().saveSettings({ account: { ...account, org } });
+      logEvent('org_seats_set', { tier: tier.id });
+    },
+
+    async addMember(email, displayName) {
+      const account = get().settings.account;
+      if (!account?.org || !isOrgAdmin(account)) return;
+      const clean = email.trim().toLowerCase();
+      if (!clean || account.org.members.some((m) => m.email.toLowerCase() === clean)) return;
+      const member: OrgMember = {
+        id: `m${Date.now().toString(36)}${(convSeq++).toString(36)}`,
+        email: email.trim(),
+        displayName: displayName?.trim() || undefined,
+        role: 'member',
+        addedAt: new Date().toISOString(),
+      };
+      const org: Org = { ...account.org, members: [...account.org.members, member] };
+      await get().saveSettings({ account: { ...account, org } });
+      logEvent('org_member_add');
+    },
+
+    async removeMember(id) {
+      const account = get().settings.account;
+      if (!account?.org || !isOrgAdmin(account)) return;
+      const org: Org = {
+        ...account.org,
+        members: account.org.members.filter((m) => m.id !== id),
+      };
+      await get().saveSettings({ account: { ...account, org } });
+      logEvent('org_member_remove');
+    },
+
+    async setMemberRole(id, role) {
+      const account = get().settings.account;
+      if (!account?.org || !isOrgAdmin(account)) return;
+      const members = account.org.members.map((m) => (m.id === id ? { ...m, role } : m));
+      // Never leave an org with no admin.
+      if (!members.some((m) => m.role === 'admin')) {
+        get().showToast('Keep at least one admin. Grant another before removing this one.');
+        return;
+      }
+      await get().saveSettings({ account: { ...account, org: { ...account.org, members } } });
+      logEvent('org_member_role', { role });
+    },
+
+    async setPreviewAsMember(on) {
+      const account = get().settings.account;
+      if (!account || !isOrgAdmin(account)) return;
+      await get().saveSettings({ account: { ...account, previewAsMember: on } });
     },
 
     async createCrewAgent(input) {

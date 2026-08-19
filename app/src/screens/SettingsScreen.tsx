@@ -1,7 +1,8 @@
 // Settings: the honest page. What this app is, where your data lives, and a
 // couple of careful switches. No telemetry to toggle because there is none.
-import { useApp } from '../state/store.js';
+import { isOrgAdmin, useApp } from '../state/store.js';
 import { platform } from '../lib/platform.js';
+import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
 
@@ -19,6 +20,8 @@ function keyStoreLabel(): string {
 export function SettingsScreen() {
   const { order, settings, deleteConversation, showToast, saveSettings, setView } = useApp();
   const insightsOn = Boolean(settings.insightsOptIn);
+  const account = settings.account;
+  const org = account?.org;
 
   const copyLog = async () => {
     const text = insightsAsText();
@@ -45,6 +48,30 @@ export function SettingsScreen() {
             it. No telemetry, no analytics, no phone-home, ever.
           </div>
         </div>
+
+        {account ? (
+          <div className="card">
+            <div className="card-row">
+              <div className="grow">
+                <h3>{account.type === 'commercial' ? (org?.name ?? 'Company account') : 'Personal account'}</h3>
+                <div className="sub">
+                  {account.type === 'commercial' && org
+                    ? `${tierById(org.tierId).name} plan · ${priceLabel(tierById(org.tierId))} · ${org.members.length} ${org.members.length === 1 ? 'person' : 'people'}`
+                    : 'Free. For your own work.'}
+                </div>
+              </div>
+              {account.type === 'commercial' && isOrgAdmin(account) ? (
+                <button
+                  className="btn ghost"
+                  style={{ padding: '8px 14px' }}
+                  onClick={() => setView('admin')}
+                >
+                  Manage
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="card">
           <h3>Encrypted on this device</h3>
