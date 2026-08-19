@@ -1,5 +1,7 @@
-// Top bar for the non-chat rooms: back to chat, plus the room's name.
+// Top bar for the non-chat rooms: back to chat, the room's name, and the
+// always-visible connectivity status.
 import { useApp } from '../state/store.js';
+import { ProfileStatus } from './ProfileStatus.js';
 
 export function BackBar({ title }: { title: string }) {
   const { setView, setDrawer } = useApp();
@@ -9,6 +11,7 @@ export function BackBar({ title }: { title: string }) {
         {'‹'}
       </button>
       <div className="topbar-title">{title}</div>
+      <ProfileStatus />
       <button className="icon-btn" onClick={() => setDrawer(true)} aria-label="Menu">
         {'☰'}
       </button>

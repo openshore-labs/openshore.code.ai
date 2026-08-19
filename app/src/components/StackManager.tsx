@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from './BackBar.js';
+import { PROFILES, autoProfile, effectiveProfile } from '../lib/profiles.js';
 import {
   STACK_CATEGORIES,
   categoryLabel,
@@ -20,8 +21,10 @@ import {
 } from '../lib/stack.js';
 
 export function StackManager() {
-  const { settings, setReasoning, placeSpecialist, benchSpecialist, setView, showToast } = useApp();
+  const { settings, connectivity, setReasoning, placeSpecialist, benchSpecialist, setView, showToast } =
+    useApp();
 
+  const profile = effectiveProfile(autoProfile(connectivity), settings.profileOverride);
   const stack = settings.stack ?? emptyStack();
   const reasoning = stack.reasoning ?? harborRef();
 
@@ -62,6 +65,14 @@ export function StackManager() {
           Your Reasoning LLM plans every task and routes it to the specialist whose category fits.
           When nothing is placed for a task, the Reasoning LLM does it itself.
         </p>
+
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span className="profile-dot" style={{ background: PROFILES[profile].dot }} />
+          <div className="sub" style={{ margin: 0 }}>
+            <strong style={{ color: 'var(--ink)' }}>{PROFILES[profile].label}.</strong>{' '}
+            {PROFILES[profile].blurb}
+          </div>
+        </div>
 
         {/* Reasoning LLM anchor. Required and immovable, but replaceable. */}
         <div className="card">
