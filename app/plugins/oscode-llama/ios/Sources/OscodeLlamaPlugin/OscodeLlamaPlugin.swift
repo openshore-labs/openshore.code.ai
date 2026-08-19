@@ -17,11 +17,16 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "load", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "unload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "generate", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "secureGet", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "secureSet", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "secureDelete", returnType: CAPPluginReturnPromise)
     ]
 
     private let store = ModelStore()
     private let runner = LlamaRunner()
+    private let harbor = HarborResource()
+    private static let harborId = "harbor"
     private var pendingDownloads = [String: CAPPluginCall]()
     private let downloadsLock = NSLock()
 
@@ -55,8 +60,11 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         #if targetEnvironment(simulator)
         call.resolve(["supported": true, "reason": "Simulator run: slower than a real iPhone."])
         #else
+        // Harbor (0.5B) and other pocket models run comfortably on ~3GB
+        // phones; keep this gate low so the built-in guide is available broadly.
+        // The marketplace is where larger pocket models get sized per device.
         let ramGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
-        if ramGB < 3.5 {
+        if ramGB < 2.9 {
             call.resolve([
                 "supported": false,
                 "reason": "This iPhone does not have enough memory to run a local model well."
@@ -113,7 +121,12 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         if runner.loadedId == id { runner.unload() }
-        store.delete(id: id)
+        if id == Self.harborId {
+            // Harbor is an On-Demand Resource: let iOS reclaim the space.
+            harbor.release()
+        } else {
+            store.delete(id: id)
+        }
         call.resolve()
     }
 
@@ -125,6 +138,27 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let contextSize = Int32(call.getInt("contextSize") ?? 4096)
+
+        // Harbor's weights come from its On-Demand Resource, not the downloads
+        // directory. Resolve the tag, then load off the plugin queue.
+        if id == Self.harborId {
+            harbor.ensure { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success(let url):
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let loaded = self.runner.load(id: id, path: url.path, contextSize: contextSize)
+                        var payload: [String: Any] = ["ok": loaded.ok]
+                        if let detail = loaded.detail { payload["detail"] = detail }
+                        call.resolve(payload)
+                    }
+                case .failure(let error):
+                    call.resolve(["ok": false, "detail": "Harbor could not load: \(error.localizedDescription)"])
+                }
+            }
+            return
+        }
+
         let path = store.localURL(for: id).path
         guard FileManager.default.fileExists(atPath: path) else {
             call.resolve(["ok": false, "detail": "That model is not on this iPhone yet. Download it first."])
@@ -188,6 +222,34 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         runner.stop(requestId: requestId)
+        call.resolve()
+    }
+
+    // ---------------------------------------------------------------- secrets
+
+    @objc func secureGet(_ call: CAPPluginCall) {
+        guard let key = call.getString("key") else {
+            call.reject("secureGet needs a key.")
+            return
+        }
+        call.resolve(["value": Keychain.get(key) ?? NSNull()])
+    }
+
+    @objc func secureSet(_ call: CAPPluginCall) {
+        guard let key = call.getString("key"), let value = call.getString("value") else {
+            call.reject("secureSet needs a key and a value.")
+            return
+        }
+        Keychain.set(value, for: key)
+        call.resolve()
+    }
+
+    @objc func secureDelete(_ call: CAPPluginCall) {
+        guard let key = call.getString("key") else {
+            call.reject("secureDelete needs a key.")
+            return
+        }
+        Keychain.delete(key)
         call.resolve()
     }
 }

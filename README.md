@@ -64,6 +64,9 @@ belong to. No telemetry. The phone profile is stricter than the desktop.
 
 ## Brand note
 
-Colors and type follow the OpenShore direction (deep ocean navy, signal
-teal, amber for cloud moments) with `OPENSHORE:` markers at every token
-site, so the real openshore.ai palette is a two-file swap when it lands.
+The app wears the openshore.ai brand: cream paper, deep ink, deep-water
+teal, Fraunces and Inter, and the wave-mark tile, matching the marketing
+site 1:1. Local work carries the water teal; cloud and spend carry amber.
+Tokens live in `app/src/theme.css`; the CLI mirror is
+`os-code/src/brand/theme.ts`. Harbor, the built-in guide model, is
+documented in `docs/HARBOR.md`.

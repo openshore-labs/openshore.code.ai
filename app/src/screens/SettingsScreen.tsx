@@ -36,6 +36,16 @@ export function SettingsScreen() {
         </div>
 
         <div className="card">
+          <h3>Local models, honestly</h3>
+          <div className="sub">
+            Harbor and any model you run on this device are AI. They can be confidently wrong, and
+            OpenShore does not filter what a local model says. Harbor is a small built-in guide, not
+            a coder. For real work, connect a bigger model. What you type to a local model stays on
+            this device. Harbor is Qwen2.5-0.5B-Instruct, used under the Apache License 2.0.
+          </div>
+        </div>
+
+        <div className="card">
           <div className="card-row">
             <div className="grow">
               <h3>Help improve the test build</h3>
