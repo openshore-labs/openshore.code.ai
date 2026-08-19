@@ -69,29 +69,28 @@ Three sections:
       one-time) and Msty ($149/yr or $349 lifetime); Cursor (~$240/yr) is the
       anchor, not a direct comp. CFO flagged, and founder accepted, that $25/yr
       is a deliberate low-friction entry price, not a revenue-maximizing one.
-- [ ] **P1 · Reconcile the revenue goal with the $25 price.** Founder's target
-      is $100k in year one. At $25/yr that implies **~4,000 paying users**
-      (not the ~1,000 discussed at higher prices). The binding constraint is
-      top-of-funnel/distribution, not price. Open: confirm the year-one number
-      the founder wants to run at, then size the download/conversion funnel to
-      match (at ~3% conversion, 4,000 payers needs ~130k qualified downloads).
-- [ ] **P1 · Positioning: CMO straight-answer verdict in (2026-08-19) =
-      PARTLY / "thin." Founder decision pending.** Every piece of OS Code
-      already exists and most is free. Desktop local coding agents are a
-      saturated free/OSS field (Continue.dev, Cline/Roo Code, Aider, and
-      especially Zed, now a polished native app with local models built in).
-      iOS is all chat apps (Private LLM, localLLM), none are coding agents,
-      which is the one real gap. Phone-to-desktop pairing is now crowded and
-      Cursor entered it (iOS beta, June 2026). The honest edge: truly-serverless
-      differentiates OS Code against paid cloud tools (even Cursor's "local"
-      mode routes through its servers), not against the free local ones. Most
-      defensible-and-needed slice: the native on-device iOS coding agent (thin
-      field, but also thin demand). CMO sharpen-or-kill call: bet the
-      positioning on the on-device iPhone coding agent (desktop as an optional
-      paired engine), or do not charge for it. **Open founder decision:** (a)
-      sharpen to the mobile-agent wedge, (b) reposition on compliance/air-gapped,
-      or (c) treat OS Code as a personal tool (free/OSS), not a paid product.
-      Seed the OS Code business doc in `openshore-hq/finance` once decided.
+- [ ] **P2 · Revenue goal is now "give it a shot and see" (founder,
+      2026-08-19).** Launching and learning comes before the dollar target. At
+      $25/yr, $100k would need ~4,000 payers, so distribution is the constraint,
+      not price. Keep the price simple ($25/yr flat) for launch; revisit the
+      revenue target once there is real funnel data.
+- [x] **P1 · Positioning DECIDED (founder, 2026-08-19): mobile-first.** OS Code
+      is a **native on-device iPhone coding agent**, with the desktop as the
+      optional bigger engine it pairs to. This is the founder's own primary use:
+      staying productive with AI from the phone. It is the one lane the CMO
+      teardown found genuinely open (iOS local apps today are all chat, none are
+      coding agents; the desktop side is a saturated free/OSS field led by Zed).
+      Value framing: $25/yr is cheap versus paying for expensive cloud models
+      (e.g. Anthropic) for everything, because on-device inference is free.
+      Honesty guardrail for the copy: on-device phone models are small (3-7B),
+      so lead with "the fast on-the-go coding you already do on your phone," and
+      keep BYO cloud key as the escape hatch for heavy tasks. Do not overclaim a
+      phone replaces a workstation GPU.
+- [ ] **P1 · Sharpen the mobile-first positioning for launch surfaces.** Rework
+      the landing/store copy around the on-device iPhone coding agent wedge and
+      the honest offline / own-your-keys edge (the truly-serverless claim even
+      Cursor cannot make). Then seed the OS Code business doc in
+      `openshore-hq/finance`. Not started; awaiting founder go.
 - [ ] **P2 · The license-verify endpoint becomes production infra the moment
       activation is paywalled.** Today it is a documented stub (client is real;
       server contract in `os-code/src/license/verify.ts`). Any paid tier needs
