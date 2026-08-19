@@ -9,7 +9,13 @@ import { emptyThread, type Conversation, type ConversationSource } from './types
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
-import { RemoteDriver, daemonCreateSession, type DaemonTarget } from '../drivers/remoteDriver.js';
+import {
+  RemoteDriver,
+  daemonCreateSession,
+  daemonHealth,
+  type DaemonTarget,
+} from '../drivers/remoteDriver.js';
+import { type Connectivity, type ProfileId } from '../lib/profiles.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
@@ -61,6 +67,8 @@ export interface AppSettings {
   libraryIntroSeen?: boolean;
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata. */
   stack?: AppStack;
+  /** Manual connectivity-profile override; only ever steps down from auto. */
+  profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
 }
@@ -97,8 +105,10 @@ interface AppState {
   cloudKeyPresent: boolean;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
-  /** When true, the LLM Library intro walkthrough is showing over the library. */
+  /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
+  /** Live reach signals that drive the active connectivity profile. */
+  connectivity: Connectivity;
   toast?: string;
 
   init(): Promise<void>;
@@ -126,6 +136,11 @@ interface AppState {
   saveSettings(patch: Partial<AppSettings>): Promise<void>;
   setCloudKey(key: string): Promise<void>;
   clearCloudKey(): Promise<void>;
+
+  /** Re-check home reachability + internet, updating the connectivity signals. */
+  refreshConnectivity(): Promise<void>;
+  /** Manually step down to a more restrictive profile, or clear (auto). */
+  setProfileOverride(profile?: ProfileId): Promise<void>;
 
   // Stack management (the app-side Reasoning LLM + specialists + bench).
   /** Set the Reasoning LLM anchor (from the bench or a cloud model). */
@@ -223,6 +238,7 @@ export const useApp = create<AppState>((set, get) => {
     order: [],
     settings: { onboarded: false, claudeModel: DEFAULT_CLAUDE_MODEL, deviceModels: {} },
     cloudKeyPresent: false,
+    connectivity: { homeReachable: false, online: true },
 
     async init() {
       const settings = (await storeGetJson<AppSettings>(SETTINGS_KEY)) ?? {
@@ -280,6 +296,40 @@ export const useApp = create<AppState>((set, get) => {
         view: settings.onboarded ? 'chat' : 'onboarding',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
+
+      // Watch the connection so the profile status is always live.
+      void get().refreshConnectivity();
+      if (typeof window !== 'undefined') {
+        window.addEventListener('online', () => void get().refreshConnectivity());
+        window.addEventListener('offline', () => void get().refreshConnectivity());
+        setInterval(() => void get().refreshConnectivity(), 20000);
+      }
+    },
+
+    async refreshConnectivity() {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      let homeReachable = false;
+      const daemon = get().settings.daemon;
+      if (daemon && online) {
+        try {
+          const res = await Promise.race([
+            daemonHealth(daemon),
+            new Promise<{ ok: boolean }>((r) => setTimeout(() => r({ ok: false }), 3000)),
+          ]);
+          homeReachable = Boolean(res.ok);
+        } catch {
+          homeReachable = false;
+        }
+      }
+      const prev = get().connectivity;
+      if (prev.online !== online || prev.homeReachable !== homeReachable) {
+        set({ connectivity: { online, homeReachable } });
+      }
+    },
+
+    async setProfileOverride(profile) {
+      await get().saveSettings({ profileOverride: profile });
+      logEvent('profile_override', { profile: profile ?? 'auto' });
     },
 
     setView(view) {

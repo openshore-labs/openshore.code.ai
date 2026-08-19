@@ -7,6 +7,7 @@ import { MessageList } from '../components/MessageList.js';
 import { Composer } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
 import { SourcePicker } from '../components/SourcePicker.js';
+import { ProfileStatus } from '../components/ProfileStatus.js';
 import { isPhone } from '../lib/platform.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
@@ -58,6 +59,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               : 'Your machine. Your models. Your keys.'}
           </div>
         </div>
+        <ProfileStatus />
       </header>
 
       {conv && thread && thread.items.length > 0 ? (

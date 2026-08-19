@@ -1153,6 +1153,61 @@ textarea {
   text-overflow: ellipsis;
 }
 
+/* --------------------------------------------------- connectivity profile */
+
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  transition: background 0.12s ease;
+}
+
+.profile-chip:hover {
+  background: var(--surface-hover);
+}
+
+.profile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.profile-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.profile-row.active {
+  border-color: var(--local);
+  background: var(--local-soft);
+}
+
+.profile-row:disabled {
+  opacity: 0.45;
+}
+
+.profile-row-title {
+  display: block;
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+
 /* ---------------------------------------------------- library intro (enablement)
    The OpenShore take on the house enablement pattern shared with Uki: an art
    stage over a dark caption dock, eyebrow -> serif headline -> benefit body,
