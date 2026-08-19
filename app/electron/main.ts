@@ -5,9 +5,105 @@ import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electro
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { EngineHost } from './engineHost.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// ------------------------------------------------------------ outbound HTTP
+// The renderer cannot reach CORS-hostile third-party APIs directly, so it asks
+// the main process to fetch on its behalf. Because the renderer is untrusted,
+// this handler is locked down: https only, GET/POST only, a header allowlist,
+// an SSRF block that refuses private/loopback targets (re-checked on every
+// redirect hop), a response-size cap, and a timeout.
+const ALLOWED_HEADERS = new Set(['content-type', 'x-auth-token', 'authorization']);
+const MAX_HTTP_BYTES = 25 * 1024 * 1024;
+
+function isPrivateAddress(ip: string): boolean {
+  const v = isIP(ip);
+  if (v === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    if (a === 127 || a === 10 || a === 0) return true; // loopback, private, this-host
+    if (a === 169 && b === 254) return true; // link-local
+    if (a === 172 && b! >= 16 && b! <= 31) return true; // private
+    if (a === 192 && b === 168) return true; // private
+    if (a === 100 && b! >= 64 && b! <= 127) return true; // CGNAT (Tailscale range)
+    return false;
+  }
+  if (v === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === '::1' || lower === '::') return true; // loopback / unspecified
+    if (lower.startsWith('fe80') || lower.startsWith('fc') || lower.startsWith('fd')) return true;
+    if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice(7)); // v4-mapped
+    return false;
+  }
+  return true; // unresolvable: refuse
+}
+
+async function assertPublicHttps(rawUrl: string): Promise<URL> {
+  const u = new URL(rawUrl);
+  if (u.protocol !== 'https:') throw new Error('blocked: https only');
+  if (/(^|\.)(localhost|local)$/i.test(u.hostname)) throw new Error('blocked: local host');
+  const { address } = await lookup(u.hostname);
+  if (isPrivateAddress(address)) throw new Error('blocked: private address');
+  return u;
+}
+
+async function readCapped(res: Response): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    if (total + value.length > MAX_HTTP_BYTES) {
+      chunks.push(value.slice(0, Math.max(0, MAX_HTTP_BYTES - total)));
+      await reader.cancel();
+      break;
+    }
+    total += value.length;
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8');
+}
+
+interface HttpFetchReq {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+async function handleHttpFetch(req: HttpFetchReq): Promise<{ ok: boolean; status: number; body: string }> {
+  const method = req.method === 'POST' ? 'POST' : 'GET';
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.headers ?? {})) {
+    if (ALLOWED_HEADERS.has(k.toLowerCase())) headers[k] = v;
+  }
+  let target = req.url;
+  for (let hop = 0; hop < 5; hop++) {
+    await assertPublicHttps(target);
+    const res = await fetch(target, {
+      method,
+      headers,
+      body: method === 'POST' ? req.body : undefined,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30000),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('location');
+      if (loc) {
+        target = new URL(loc, target).toString();
+        continue;
+      }
+    }
+    return { ok: res.ok, status: res.status, body: await readCapped(res) };
+  }
+  throw new Error('blocked: too many redirects');
+}
 
 // A small OS-encrypted secret store: values (like the app's data-encryption
 // key) are sealed by the OS keychain via safeStorage, then persisted to a file
@@ -145,6 +241,14 @@ ipcMain.handle('osc:secureDelete', (_e, key: string): void => {
   const all = readSecrets();
   delete all[key];
   writeSecrets(all);
+});
+
+ipcMain.handle('osc:httpFetch', async (_e, req: HttpFetchReq) => {
+  try {
+    return await handleHttpFetch(req);
+  } catch (err) {
+    return { ok: false, status: 0, body: err instanceof Error ? err.message : String(err) };
+  }
 });
 
 // -------------------------------------------------------------- app lifecycle

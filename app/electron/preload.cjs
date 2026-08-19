@@ -49,4 +49,6 @@ contextBridge.exposeInMainWorld('oscode', {
   secureGet: invoke('osc:secureGet'),
   secureSet: invoke('osc:secureSet'),
   secureDelete: invoke('osc:secureDelete'),
+
+  httpFetch: invoke('osc:httpFetch'),
 });

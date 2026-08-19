@@ -1,8 +1,9 @@
 // A multi-select checkbox dropdown of projects, with search. "All" is the
 // first option and the default: an empty selection means every project, now
 // and any added later. Picking specific projects narrows to just those.
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { Project } from '../state/types.js';
+import { useDismissable } from '../lib/useDismissable.js';
 
 export function ProjectMultiSelect({
   projects,
@@ -16,6 +17,8 @@ export function ProjectMultiSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  useDismissable(ref, open, () => setOpen(false));
 
   const sorted = useMemo(
     () => [...projects].sort((a, b) => a.name.localeCompare(b.name)),
@@ -42,7 +45,7 @@ export function ProjectMultiSelect({
   };
 
   return (
-    <div className="multiselect">
+    <div className="multiselect" ref={ref}>
       <button
         type="button"
         className="multiselect-btn"

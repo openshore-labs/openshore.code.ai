@@ -34,6 +34,7 @@ export function LaunchScreen() {
     disconnectCodemagic,
     saveLaunchTarget,
     startBuild,
+    reviewBuild,
     diagnoseBuild,
     newConversation,
     showToast,
@@ -43,6 +44,15 @@ export function LaunchScreen() {
   const target = launch?.target;
   const runs = launch?.runs ?? [];
   const busy = runs[0] ? ['queued', 'preparing', 'building'].includes(runs[0].status) : false;
+
+  // "Review builds" crew scoped to the active project, if any.
+  const activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  const hasReviewers = (settings.crew ?? []).some(
+    (a) =>
+      a.activityLevel === 'review' &&
+      (a.projectIds.length === 0 ||
+        (activeProjectId != null && a.projectIds.includes(activeProjectId))),
+  );
 
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -56,7 +66,7 @@ export function LaunchScreen() {
   const [editingTarget, setEditingTarget] = useState(!target);
 
   const guideMe = async () => {
-    await newConversation({ kind: 'stack' });
+    const id = await newConversation({ kind: 'stack' });
     const prompt = [
       'Walk me through launching my app to the app stores using Codemagic, step by step.',
       'Cover, in order and concretely:',
@@ -67,7 +77,7 @@ export function LaunchScreen() {
       '5) how to trigger the first build and what a successful release looks like.',
       'Ask me what I have set up already before assuming. Keep each step short.',
     ].join('\n');
-    setTimeout(() => useApp.getState().send(prompt), 350);
+    useApp.getState().sendWhenAttached(id, prompt);
   };
 
   const saveTarget = async () => {
@@ -244,10 +254,20 @@ export function LaunchScreen() {
           ) : null}
         </div>
 
-        {/* Build. */}
+        {/* Build. A pre-deploy crew review is offered but never required. */}
+        {hasReviewers ? (
+          <button
+            className="btn ghost"
+            style={{ width: '100%', marginTop: 4 }}
+            disabled={busy}
+            onClick={() => void reviewBuild()}
+          >
+            Review with your crew first
+          </button>
+        ) : null}
         <button
           className="btn primary"
-          style={{ width: '100%', marginTop: 4 }}
+          style={{ width: '100%', marginTop: hasReviewers ? 8 : 4 }}
           disabled={!codemagicConnected || !target || busy}
           onClick={() => void startBuild()}
         >

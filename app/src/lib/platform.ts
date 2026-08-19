@@ -125,6 +125,15 @@ export async function storeGet(key: string): Promise<string | null> {
 
 export async function storeSet(key: string, value: string): Promise<void> {
   const dek = await getDek();
+  // Never silently overwrite sealed data we cannot read: if the stored value is
+  // sealed but the current key fails to open it (a rotated or lost DEK), copy it
+  // aside first so the ciphertext is recoverable rather than lost forever.
+  if (dek && !key.includes('.recovery.')) {
+    const existing = await storeGetRaw(key);
+    if (existing && isSealed(existing) && (await open(dek, existing)) === null) {
+      await storeSetRaw(`${key}.recovery.${Date.now()}`, existing);
+    }
+  }
   await storeSetRaw(key, dek ? await seal(dek, value) : value);
 }
 
