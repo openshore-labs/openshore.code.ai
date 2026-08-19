@@ -3,6 +3,7 @@
 // connection), private by construction: nothing ever leaves the phone.
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
+import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 
@@ -24,10 +25,13 @@ export class OnDeviceDriver implements ChatDriver {
   private listenersReady: Promise<void>;
   private loaded = false;
 
+  private readonly guide: boolean;
+
   constructor(
     private readonly modelId: string,
     private readonly modelName: string,
   ) {
+    this.guide = isHarbor(modelId);
     this.listenersReady = this.attachListeners();
   }
 
@@ -94,10 +98,13 @@ export class OnDeviceDriver implements ChatDriver {
       this.activeRequestId = `req_${requestSeq++}`;
       await Llama.generate({
         requestId: this.activeRequestId,
-        system: SYSTEM_PROMPT,
+        // Harbor gets its grounded guide persona; a chosen pocket model gets
+        // the general companion prompt. Harbor answers short and cool so a
+        // 0.5B stays accurate and on-rails.
+        system: this.guide ? buildHarborSystemPrompt() : SYSTEM_PROMPT,
         messages: this.history,
-        maxTokens: 1024,
-        temperature: 0.7,
+        maxTokens: this.guide ? 512 : 1024,
+        temperature: this.guide ? 0.4 : 0.7,
       });
     } catch (err) {
       this.activeRequestId = undefined;

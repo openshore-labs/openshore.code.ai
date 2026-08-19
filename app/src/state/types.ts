@@ -1,6 +1,7 @@
 // App-level models. Every conversation, whatever powers it, renders through
 // the same ThreadState so the UI has exactly one chat implementation.
 import type { ApprovalRequest } from 'os-code/protocol';
+import { isHarbor } from '../lib/harbor.js';
 
 export type ThreadItem =
   | { kind: 'user'; id: string; text: string }
@@ -69,7 +70,9 @@ export function sourceLabel(source: ConversationSource): string {
     case 'desktop':
       return source.repoName ? `Desktop · ${source.repoName}` : 'Desktop stack';
     case 'device':
-      return `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
+      return isHarbor(source.modelId)
+        ? 'Harbor · built-in guide'
+        : `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
     case 'cloud':
       return `Claude · ${source.model}`;
     case 'mock':

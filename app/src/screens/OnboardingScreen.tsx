@@ -5,7 +5,7 @@ import { isDesktop } from '../lib/platform.js';
 import { BrandMark } from '../components/BrandMark.js';
 
 export function OnboardingScreen() {
-  const { setView, saveSettings, newConversation } = useApp();
+  const { setView, saveSettings, startGuide } = useApp();
 
   const done = async (view?: Parameters<typeof setView>[0]) => {
     await saveSettings({ onboarded: true });
@@ -90,16 +90,19 @@ export function OnboardingScreen() {
             </button>
           </div>
 
+          <div className="sub" style={{ textAlign: 'center', marginTop: 18, marginBottom: 8 }}>
+            Not sure where to start? Harbor, our built-in guide, is already here.
+            It runs on this device, offline, and can walk you through any of it.
+          </div>
           <button
-            className="btn quiet"
-            style={{ width: '100%', marginTop: 6 }}
+            className="btn ghost"
+            style={{ width: '100%' }}
             onClick={async () => {
               await done();
-              await newConversation({ kind: 'mock' });
-              useApp.getState().send('Show me how this works.');
+              await startGuide();
             }}
           >
-            Just show me a demo
+            Chat with Harbor
           </button>
         </div>
       </div>

@@ -17,6 +17,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     abort,
     answerApproval,
     newConversation,
+    startGuide,
     setDrawer,
   } = useApp();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -67,17 +68,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             away, on your own account.
           </p>
           <div className="suggestion-row">
+            <button className="suggestion" onClick={() => void startGuide()}>
+              Ask Harbor
+            </button>
             <button className="suggestion" onClick={() => setPickerOpen(true)}>
               Pick a model
-            </button>
-            <button
-              className="suggestion"
-              onClick={() => {
-                setPendingText('Walk me through what you can do.');
-                setPickerOpen(true);
-              }}
-            >
-              What can you do?
             </button>
             {isPhone() ? (
               <button
