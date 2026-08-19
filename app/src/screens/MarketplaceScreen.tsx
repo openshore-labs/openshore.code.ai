@@ -12,6 +12,7 @@ import { isDesktop, isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { logEvent } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
+import { LibraryIntro } from '../components/LibraryIntro.js';
 
 interface DownloadState {
   percent: number;
@@ -27,7 +28,8 @@ function gb(bytes: number): string {
 }
 
 export function MarketplaceScreen() {
-  const { settings, saveSettings, showToast } = useApp();
+  const { settings, saveSettings, showToast, libraryIntro, endLibraryIntro, harborDownload } =
+    useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
@@ -235,6 +237,7 @@ export function MarketplaceScreen() {
   };
 
   return (
+    <>
     <div className="screen">
       <BackBar title="Marketplace" />
       <div className="screen-inner">
@@ -242,6 +245,37 @@ export function MarketplaceScreen() {
         <p className="lead">
           Curated for what they are actually good at. {note ?? ''}
         </p>
+
+        {settings.harborReady || harborDownload ? (
+          <div className="card">
+            <div className="card-row">
+              <div className="grow">
+                <h3>
+                  Harbor <span className="sub">(your guide)</span>
+                </h3>
+                <div className="sub">The first model in your stack. Built to be replaced.</div>
+              </div>
+              {settings.harborReady ? <span className="pill local">on device</span> : null}
+            </div>
+            {harborDownload && !harborDownload.failed ? (
+              <>
+                <div className="progress-track" style={{ marginTop: 10 }}>
+                  <div
+                    className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
+                    style={
+                      harborDownload.indeterminate
+                        ? undefined
+                        : { width: `${harborDownload.percent}%` }
+                    }
+                  />
+                </div>
+                <div className="hint" style={{ marginTop: 6 }}>
+                  {harborDownload.label}
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
 
         {isPhone() || pocket.length ? (
           <>
@@ -261,5 +295,7 @@ export function MarketplaceScreen() {
         {desktop.map((m) => renderModel(m, 'desktop'))}
       </div>
     </div>
+    {libraryIntro ? <LibraryIntro onDone={endLibraryIntro} /> : null}
+    </>
   );
 }

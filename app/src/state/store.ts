@@ -50,6 +50,8 @@ export interface AppSettings {
   deviceModels: Record<string, string>;
   /** Whether the built-in guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
+  /** Whether the LLM Library intro walkthrough has been shown. */
+  libraryIntroSeen?: boolean;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
 }
@@ -86,6 +88,8 @@ interface AppState {
   cloudKeyPresent: boolean;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
+  /** When true, the LLM Library intro walkthrough is showing over the library. */
+  libraryIntro?: boolean;
   toast?: string;
 
   init(): Promise<void>;
@@ -98,6 +102,10 @@ interface AppState {
   ensureHarbor(): Promise<boolean>;
   /** Cancel an in-progress Harbor download (returning users can skip it). */
   cancelHarbor(): void;
+  /** First-run: start Harbor's download and open the LLM Library intro. */
+  beginHarborWithIntro(): void;
+  /** Close the Library intro and return to setup; download keeps going. */
+  endLibraryIntro(): void;
   /** Open a fresh chat with Harbor, downloading it first if needed. */
   startGuide(): Promise<string | undefined>;
   openConversation(id: string): void;
@@ -341,6 +349,22 @@ export const useApp = create<AppState>((set, get) => {
       void Llama.cancelDownload({ id: HARBOR_MODEL_ID }).catch(() => {});
       logEvent('harbor_download_cancel');
       set({ harborDownload: undefined });
+    },
+
+    beginHarborWithIntro() {
+      logEvent('library_intro_open');
+      // Kick the download in the background, then walk the Library intro over
+      // the marketplace. ensureHarbor manages harborDownload / harborReady.
+      void get().ensureHarbor();
+      set({ libraryIntro: true, view: 'marketplace', drawerOpen: false });
+    },
+
+    endLibraryIntro() {
+      logEvent('library_intro_done');
+      // Back to the setup page; Harbor keeps downloading in the background.
+      // Leave onboarded alone so a mid-setup relaunch still lands on setup.
+      set({ libraryIntro: false, view: 'onboarding' });
+      void get().saveSettings({ libraryIntroSeen: true });
     },
 
     async startGuide() {

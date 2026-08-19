@@ -1153,7 +1153,225 @@ textarea {
   text-overflow: ellipsis;
 }
 
-/* Reduce motion: everything settles instantly. */
+/* ---------------------------------------------------- library intro (enablement)
+   The OpenShore take on the house enablement pattern shared with Uki: an art
+   stage over a dark caption dock, eyebrow -> serif headline -> benefit body,
+   an expanding-dot pager, one spring easing. Same grammar, OS Code palette. */
+
+.lib-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: fade-in 0.2s ease;
+}
+
+.lib-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(16px + var(--safe-top)) 20px 8px;
+}
+
+.lib-skip {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 6px 4px;
+}
+
+.lib-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.lib-dock {
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 22px 22px 0 0;
+  padding: 20px 22px calc(20px + var(--safe-bottom));
+  box-shadow: 0 -8px 30px rgba(28, 42, 51, 0.16);
+  animation: lib-dock-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) 0.08s both;
+}
+
+@keyframes lib-dock-in {
+  from {
+    transform: translateY(18px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.lib-caption {
+  animation: lib-caption-in 0.42s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes lib-caption-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.lib-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--wave);
+}
+
+.lib-headline {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.014em;
+  line-height: 1.12;
+  margin-top: 8px;
+  text-wrap: balance;
+}
+
+.lib-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(246, 244, 239, 0.82);
+  margin-top: 10px;
+}
+
+.lib-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+.lib-pager {
+  display: flex;
+  gap: 6px;
+}
+
+.lib-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(246, 244, 239, 0.24);
+  transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.lib-dot.active {
+  width: 18px;
+  background: var(--wave);
+}
+
+.lib-next,
+.lib-cta {
+  background: var(--wave);
+  color: var(--ink);
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: transform 0.08s ease;
+}
+
+.lib-next {
+  padding: 10px 18px;
+}
+
+.lib-cta {
+  width: 100%;
+  padding: 13px 18px;
+  margin-top: 4px;
+}
+
+.lib-next:active,
+.lib-cta:active {
+  transform: scale(0.97);
+}
+
+/* Stage art: simple, on-brand motifs per beat. */
+.lib-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.lib-art-tiles {
+  position: relative;
+  width: 150px;
+  height: 120px;
+}
+
+.lib-art-tiles span {
+  position: absolute;
+  width: 104px;
+  height: 84px;
+  border-radius: 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 6px 20px rgba(28, 42, 51, 0.08);
+}
+
+.lib-art-tiles span:nth-child(1) {
+  left: 0;
+  top: 16px;
+  transform: rotate(-7deg);
+}
+.lib-art-tiles span:nth-child(2) {
+  left: 23px;
+  top: 8px;
+  transform: rotate(4deg);
+}
+.lib-art-tiles span:nth-child(3) {
+  left: 46px;
+  top: 0;
+  transform: rotate(-2deg);
+  background: var(--local-soft);
+  border-color: var(--local);
+}
+
+.lib-art-qb {
+  width: 92px;
+  height: 92px;
+  border-radius: 20px;
+  background: var(--local);
+  display: grid;
+  place-items: center;
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-size: 15px;
+  box-shadow: 0 10px 30px rgba(47, 90, 102, 0.28);
+}
+
+.lib-art-specialists {
+  display: flex;
+  gap: 10px;
+}
+
+.lib-art-specialists i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
+}
+
+.lib-art-progress {
+  width: min(280px, 72vw);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
