@@ -9,8 +9,12 @@ workflows:
     integrations:
       app_store_connect: os_code_app_store
     environment:
-      # Capacitor 8 CLI requires Node >= 22; anything lower fails cap sync.
-      node: 22.11.0
+      # Node >= 22.12.0 is required: Capacitor 8's CLI needs >= 22, and the
+      # rolldown darwin-arm64 native binding (vite 8's bundler) declares
+      # engines node ">=22.12.0", so 22.11 makes pnpm silently skip that
+      # binding and the vite build dies with "Cannot find native binding".
+      # Pinned to 22.22.2 to match the version the lockfile was built on.
+      node: 22.22.2
       xcode: latest
       vars:
         BUNDLE_ID: ai.openshore.oscode
