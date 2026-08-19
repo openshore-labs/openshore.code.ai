@@ -48,6 +48,9 @@ export function SourcePicker({
               Local first. Cloud is deliberate, always on your own account.
             </p>
             <div className="sheet-actions">
+              <button className="btn primary" onClick={() => onPick({ kind: 'stack' })}>
+                Your stack (Reasoning LLM routes)
+              </button>
               <button
                 className="btn ghost"
                 onClick={() => {
@@ -58,7 +61,7 @@ export function SourcePicker({
                 Harbor, the built-in guide (no setup)
               </button>
               <button
-                className="btn primary"
+                className="btn ghost"
                 onClick={() => {
                   if (!desktopAvailable) {
                     setView('pair');

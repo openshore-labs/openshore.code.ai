@@ -15,11 +15,17 @@ import {
   daemonHealth,
   type DaemonTarget,
 } from '../drivers/remoteDriver.js';
-import { type Connectivity, type ProfileId } from '../lib/profiles.js';
+import {
+  autoProfile,
+  effectiveProfile,
+  type Connectivity,
+  type ProfileId,
+} from '../lib/profiles.js';
 import { PROVIDERS, providerSecretKey } from '../lib/providers.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
+import { StackDriver } from '../drivers/stackDriver.js';
 import {
   HARBOR_GREETING,
   HARBOR_MODEL_ID,
@@ -231,6 +237,11 @@ export const useApp = create<AppState>((set, get) => {
         const key = await secretGet(ANTHROPIC_KEY_KEY);
         if (!key) throw new Error('Add your Claude API key under Connections first.');
         return new CloudClaudeDriver(key, conv.source.model);
+      }
+      case 'stack': {
+        const s = get();
+        const profile = effectiveProfile(autoProfile(s.connectivity), s.settings.profileOverride);
+        return new StackDriver(s.settings.stack ?? emptyStack(), profile);
       }
       case 'mock':
         return new MockDriver();
