@@ -1,12 +1,30 @@
 // The Electron main process: one window, one EngineHost, and an IPC surface
 // that mirrors OscodeBridge method for method. The renderer stays Node-free;
 // everything engine-shaped happens here.
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { EngineHost } from './engineHost.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// A small OS-encrypted secret store: values (like the app's data-encryption
+// key) are sealed by the OS keychain via safeStorage, then persisted to a file
+// in userData. Only this machine's login can unseal them.
+function secretsPath(): string {
+  return join(app.getPath('userData'), 'oscode-secrets.json');
+}
+function readSecrets(): Record<string, string> {
+  try {
+    return JSON.parse(readFileSync(secretsPath(), 'utf8')) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+function writeSecrets(all: Record<string, string>): void {
+  writeFileSync(secretsPath(), JSON.stringify(all), { mode: 0o600 });
+}
 
 let win: BrowserWindow | undefined;
 
@@ -104,6 +122,30 @@ ipcMain.handle('osc:recentWorkspaces', () => host.recentWorkspaces());
 ipcMain.handle('osc:daemonInfo', () => host.daemonInfo());
 ipcMain.handle('osc:daemonStart', () => host.daemonStart());
 ipcMain.handle('osc:daemonStop', () => host.daemonStop());
+
+// OS-encrypted secret store (used for the app's data-encryption key).
+ipcMain.handle('osc:secureGet', (_e, key: string): string | null => {
+  const sealed = readSecrets()[key];
+  if (!sealed) return null;
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    return safeStorage.decryptString(Buffer.from(sealed, 'base64'));
+  } catch {
+    return null;
+  }
+});
+ipcMain.handle('osc:secureSet', (_e, key: string, value: string): boolean => {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  const all = readSecrets();
+  all[key] = safeStorage.encryptString(value).toString('base64');
+  writeSecrets(all);
+  return true;
+});
+ipcMain.handle('osc:secureDelete', (_e, key: string): void => {
+  const all = readSecrets();
+  delete all[key];
+  writeSecrets(all);
+});
 
 // -------------------------------------------------------------- app lifecycle
 

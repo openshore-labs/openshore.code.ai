@@ -5,6 +5,17 @@ import { platform } from '../lib/platform.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
 
+function keyStoreLabel(): string {
+  switch (platform()) {
+    case 'ios':
+      return 'iOS Keychain';
+    case 'electron':
+      return 'system keychain';
+    default:
+      return 'browser store';
+  }
+}
+
 export function SettingsScreen() {
   const { order, settings, deleteConversation, showToast, saveSettings, setView } = useApp();
   const insightsOn = Boolean(settings.insightsOptIn);
@@ -32,6 +43,17 @@ export function SettingsScreen() {
             Local models run on your hardware and nothing leaves it. Cloud models run on your own
             keys and only with your approval. Web search leaves your machine when the agent uses
             it. No telemetry, no analytics, no phone-home, ever.
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>Encrypted on this device</h3>
+          <div className="sub">
+            Your chats, projects, crew, and settings are sealed at rest with AES-256. The key that
+            unlocks them lives in this device's secure store, the {keyStoreLabel()}, and never
+            leaves it. API keys are held there too. When you send a turn to a cloud provider, that
+            one provider sees that one request on your own account. We do not, and there is nothing
+            in between.
           </div>
         </div>
 

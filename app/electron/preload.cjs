@@ -45,4 +45,8 @@ contextBridge.exposeInMainWorld('oscode', {
   daemonInfo: invoke('osc:daemonInfo'),
   daemonStart: invoke('osc:daemonStart'),
   daemonStop: invoke('osc:daemonStop'),
+
+  secureGet: invoke('osc:secureGet'),
+  secureSet: invoke('osc:secureSet'),
+  secureDelete: invoke('osc:secureDelete'),
 });
