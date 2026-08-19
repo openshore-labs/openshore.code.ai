@@ -77,6 +77,11 @@ export interface OscodeBridge {
   daemonInfo(): Promise<DaemonInfo>;
   daemonStart(): Promise<DaemonInfo | { error: string }>;
   daemonStop(): Promise<void>;
+
+  // OS-encrypted secret store (safeStorage), for the data-encryption key.
+  secureGet(key: string): Promise<string | null>;
+  secureSet(key: string, value: string): Promise<boolean>;
+  secureDelete(key: string): Promise<void>;
 }
 
 export function bridge(): OscodeBridge | undefined {

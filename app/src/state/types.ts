@@ -61,9 +61,48 @@ export interface Conversation {
   id: string;
   title: string;
   source: ConversationSource;
+  /** The project this chat belongs to, if any. */
+  projectId?: string;
+  /** A throwaway quick chat: never persisted, gone when it closes. */
+  ephemeral?: boolean;
   createdAt: string;
   updatedAt: string;
   thread: ThreadState;
+}
+
+// A project buckets related chats and keeps their context together. Repos can
+// be shared across projects, so what was built is available where it is needed.
+export interface Project {
+  id: string;
+  name: string;
+  /** Standing instructions/context injected into every chat in the project. */
+  instructions?: string;
+  /** Repos attached to this project (shareable across projects). */
+  repoIds: string[];
+  createdAt: string;
+}
+
+// One member of "My Crew": a user-authored agent with a name, a persona, and a
+// rule for how and when it is called. Crew members can be scoped to specific
+// projects, or left to run across all of them.
+export type CrewActivityLevel = 'review' | 'auto' | 'request';
+
+export interface CrewAgent {
+  id: string;
+  name: string;
+  /** Who this agent is and how it should think and speak. */
+  persona: string;
+  /** How and when the agent is brought in, in the user's own words. */
+  whenCalled?: string;
+  /**
+   * review  - runs automatically before a feature deploys (build review).
+   * auto    - the Reasoning LLM may call it on its own when useful.
+   * request - dormant until the user asks for it by name in chat.
+   */
+  activityLevel: CrewActivityLevel;
+  /** Projects this agent is active in. Empty means all projects. */
+  projectIds: string[];
+  createdAt: string;
 }
 
 export function sourceLabel(source: ConversationSource): string {

@@ -3,6 +3,8 @@
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { Llama } from './llamaPlugin.js';
+import { bridge } from './electronBridge.js';
+import { generateRawDek, importDek, isSealed, open, seal } from './crypto.js';
 
 export type Platform = 'electron' | 'ios' | 'web';
 
@@ -18,11 +20,12 @@ export const isDesktop = () => platform() === 'electron';
 export const isPhone = () => platform() === 'ios';
 
 // ---------------------------------------------------------------------------
-// Small async key-value storage that uses the right home per platform:
-// Capacitor Preferences on iOS (survives app updates), localStorage elsewhere.
+// Raw key-value storage: the right home per platform, no encryption. iOS uses
+// Capacitor Preferences (survives app updates); everywhere else, localStorage.
+// The public store* wrappers below seal values on top of these.
 // ---------------------------------------------------------------------------
 
-export async function storeGet(key: string): Promise<string | null> {
+async function storeGetRaw(key: string): Promise<string | null> {
   if (platform() === 'ios') {
     const { value } = await Preferences.get({ key });
     return value;
@@ -30,7 +33,7 @@ export async function storeGet(key: string): Promise<string | null> {
   return localStorage.getItem(key);
 }
 
-export async function storeSet(key: string, value: string): Promise<void> {
+async function storeSetRaw(key: string, value: string): Promise<void> {
   if (platform() === 'ios') {
     await Preferences.set({ key, value });
     return;
@@ -44,6 +47,100 @@ export async function storeDelete(key: string): Promise<void> {
     return;
   }
   localStorage.removeItem(key);
+}
+
+// ---------------------------------------------------------------------------
+// Encryption at rest. A single data-encryption key (DEK) lives in the most
+// secure store each platform offers: the iOS Keychain, the Electron OS keychain
+// (safeStorage), or, in a plain browser for dev, localStorage. Everything the
+// app persists locally is sealed with it. If the key is ever unavailable (a
+// platform without WebCrypto, say), the app degrades to a plaintext store
+// rather than failing to boot. Data written before encryption reads back fine
+// and is resealed the next time it is written (or by sealExistingKeys).
+// ---------------------------------------------------------------------------
+
+const DEK_STORE_KEY = 'oscode.dek.v1';
+let dekPromise: Promise<CryptoKey | undefined> | undefined;
+
+async function dekSecretGet(): Promise<string | null> {
+  switch (platform()) {
+    case 'ios':
+      return (await Llama.secureGet({ key: DEK_STORE_KEY })).value ?? null;
+    case 'electron': {
+      const b = bridge();
+      if (b) return b.secureGet(DEK_STORE_KEY);
+      return localStorage.getItem(DEK_STORE_KEY);
+    }
+    default:
+      return localStorage.getItem(DEK_STORE_KEY);
+  }
+}
+
+async function dekSecretSet(value: string): Promise<void> {
+  switch (platform()) {
+    case 'ios':
+      await Llama.secureSet({ key: DEK_STORE_KEY, value });
+      return;
+    case 'electron': {
+      const b = bridge();
+      if (b && (await b.secureSet(DEK_STORE_KEY, value))) return;
+      localStorage.setItem(DEK_STORE_KEY, value);
+      return;
+    }
+    default:
+      localStorage.setItem(DEK_STORE_KEY, value);
+  }
+}
+
+/** The device's data-encryption key, generated once and cached. Undefined if
+ *  crypto is unavailable, so callers fall back to a plaintext store. */
+async function getDek(): Promise<CryptoKey | undefined> {
+  if (!dekPromise) {
+    dekPromise = (async () => {
+      try {
+        if (typeof crypto === 'undefined' || !crypto.subtle) return undefined;
+        let raw = await dekSecretGet();
+        if (!raw) {
+          raw = generateRawDek();
+          await dekSecretSet(raw);
+        }
+        return await importDek(raw);
+      } catch {
+        return undefined;
+      }
+    })();
+  }
+  return dekPromise;
+}
+
+export async function storeGet(key: string): Promise<string | null> {
+  const raw = await storeGetRaw(key);
+  if (raw == null) return null;
+  const dek = await getDek();
+  // No key: a sealed value cannot be read (return null, never delete it);
+  // a plaintext value passes through.
+  if (!dek) return isSealed(raw) ? null : raw;
+  return open(dek, raw);
+}
+
+export async function storeSet(key: string, value: string): Promise<void> {
+  const dek = await getDek();
+  await storeSetRaw(key, dek ? await seal(dek, value) : value);
+}
+
+/** Reseal any plaintext values left from before encryption. Best-effort: a key
+ *  that is missing, already sealed, or unreadable is skipped, never lost. */
+export async function sealExistingKeys(keys: string[]): Promise<void> {
+  const dek = await getDek();
+  if (!dek) return;
+  for (const key of keys) {
+    try {
+      const raw = await storeGetRaw(key);
+      if (raw != null && !isSealed(raw)) await storeSetRaw(key, await seal(dek, raw));
+    } catch {
+      // Leave this key as-is; a resealing hiccup must never lose data.
+    }
+  }
 }
 
 export async function storeGetJson<T>(key: string): Promise<T | undefined> {

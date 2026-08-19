@@ -5,7 +5,13 @@
 // desktop can both close and reopen with nothing lost.
 import { create } from 'zustand';
 import type { DriverEvent } from 'os-code/protocol';
-import { emptyThread, type Conversation, type ConversationSource } from './types.js';
+import {
+  emptyThread,
+  type Conversation,
+  type ConversationSource,
+  type CrewAgent,
+  type Project,
+} from './types.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
@@ -45,6 +51,7 @@ import { Llama } from '../lib/llamaPlugin.js';
 import {
   isDesktop,
   platform,
+  sealExistingKeys,
   secretDelete,
   secretGet,
   secretSet,
@@ -58,6 +65,8 @@ export type ViewName =
   | 'stack'
   | 'connections'
   | 'repos'
+  | 'projects'
+  | 'crew'
   | 'pair'
   | 'settings'
   | 'onboarding';
@@ -74,6 +83,12 @@ export interface AppSettings {
   libraryIntroSeen?: boolean;
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata. */
   stack?: AppStack;
+  /** Project buckets; a saved chat belongs to one. */
+  projects?: Project[];
+  /** The project new saved chats go into. */
+  activeProjectId?: string;
+  /** My Crew: user-authored agents with personas and call rules. */
+  crew?: CrewAgent[];
   /** Manual connectivity-profile override; only ever steps down from auto. */
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
@@ -125,7 +140,24 @@ interface AppState {
   setDrawer(open: boolean): void;
   showToast(message: string): void;
 
-  newConversation(source: ConversationSource): Promise<string>;
+  newConversation(source: ConversationSource, opts?: { ephemeral?: boolean }): Promise<string>;
+  /** A throwaway chat with the stack for a quick lookup. Not saved. */
+  quickChat(): Promise<string>;
+  /** Create a project and make it active. */
+  createProject(name: string): Promise<string>;
+  setActiveProject(id: string): void;
+  updateProject(id: string, patch: Partial<Pick<Project, 'name' | 'instructions' | 'repoIds'>>): Promise<void>;
+  /** Remove a project; its chats stay but drop back to no project. */
+  deleteProject(id: string): Promise<void>;
+
+  // My Crew: user-authored agents.
+  /** Create a crew agent and return its id. */
+  createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
+  updateCrewAgent(
+    id: string,
+    patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>,
+  ): Promise<void>;
+  deleteCrewAgent(id: string): Promise<void>;
   /** Download the Harbor guide model if it is not here yet. Returns success. */
   ensureHarbor(): Promise<boolean>;
   /** Cancel an in-progress Harbor download (returning users can skip it). */
@@ -241,7 +273,22 @@ export const useApp = create<AppState>((set, get) => {
       case 'stack': {
         const s = get();
         const profile = effectiveProfile(autoProfile(s.connectivity), s.settings.profileOverride);
-        return new StackDriver(s.settings.stack ?? emptyStack(), profile);
+        const project = conv.projectId
+          ? s.settings.projects?.find((p) => p.id === conv.projectId)
+          : undefined;
+        // Crew that applies to this chat: scoped to the project (or all
+        // projects), and only the levels that speak inside a chat. "review"
+        // agents fire at deploy time, not here.
+        const crew = (s.settings.crew ?? []).filter(
+          (a) =>
+            a.activityLevel !== 'review' &&
+            (a.projectIds.length === 0 || (conv.projectId != null && a.projectIds.includes(conv.projectId))),
+        );
+        return new StackDriver(s.settings.stack ?? emptyStack(), profile, {
+          projectName: project?.name,
+          projectInstructions: project?.instructions,
+          crew,
+        });
       }
       case 'mock':
         return new MockDriver();
@@ -321,6 +368,9 @@ export const useApp = create<AppState>((set, get) => {
       });
       logEvent('app_open', { onboarded: settings.onboarded });
 
+      // Upgrade any pre-encryption data to sealed-at-rest, in the background.
+      void sealExistingKeys([SETTINGS_KEY, CONVERSATIONS_KEY, ANTHROPIC_KEY_KEY]);
+
       // Watch the connection so the profile status is always live.
       void get().refreshConnectivity();
       if (typeof window !== 'undefined') {
@@ -369,13 +419,22 @@ export const useApp = create<AppState>((set, get) => {
       setTimeout(() => set((s) => (s.toast === message ? { toast: undefined } : s)), 3200);
     },
 
-    async newConversation(source) {
+    async newConversation(source, opts) {
       logEvent('source_chosen', { kind: source.kind });
       const id = newId();
+      const ephemeral = opts?.ephemeral ?? false;
+      // Saved chats belong to the active project (or the first one). If none
+      // exists yet, make a default so a saved chat is never orphaned from every
+      // bucket. Quick chats stay project-less on purpose.
+      const s0 = get().settings;
+      let projectId = ephemeral ? undefined : (s0.activeProjectId ?? s0.projects?.[0]?.id);
+      if (!ephemeral && !projectId) projectId = await get().createProject('My work');
       const conv: Conversation = {
         id,
         title: 'New chat',
         source,
+        projectId,
+        ephemeral,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         thread: emptyThread(),
@@ -395,6 +454,78 @@ export const useApp = create<AppState>((set, get) => {
       }
       void persistConversations(get());
       return id;
+    },
+
+    async quickChat() {
+      logEvent('quick_chat');
+      return get().newConversation({ kind: 'stack' }, { ephemeral: true });
+    },
+
+    async createProject(name) {
+      const id = `p${Date.now().toString(36)}${(convSeq++).toString(36)}`;
+      const project: Project = {
+        id,
+        name: name.trim() || 'Untitled project',
+        repoIds: [],
+        createdAt: new Date().toISOString(),
+      };
+      const projects = [...(get().settings.projects ?? []), project];
+      await get().saveSettings({ projects, activeProjectId: id });
+      logEvent('project_create');
+      return id;
+    },
+
+    setActiveProject(id) {
+      void get().saveSettings({ activeProjectId: id });
+      logEvent('project_activate');
+    },
+
+    async updateProject(id, patch) {
+      const projects = (get().settings.projects ?? []).map((p) =>
+        p.id === id ? { ...p, ...patch } : p,
+      );
+      await get().saveSettings({ projects });
+    },
+
+    async deleteProject(id) {
+      const projects = (get().settings.projects ?? []).filter((p) => p.id !== id);
+      const activeProjectId =
+        get().settings.activeProjectId === id ? undefined : get().settings.activeProjectId;
+      await get().saveSettings({ projects, activeProjectId });
+      // Chats that lived in the project stay, but drop their now-dead link.
+      set((s) => {
+        const conversations = { ...s.conversations };
+        let touched = false;
+        for (const [cid, conv] of Object.entries(conversations)) {
+          if (conv.projectId === id) {
+            conversations[cid] = { ...conv, projectId: undefined };
+            touched = true;
+          }
+        }
+        return touched ? { conversations } : s;
+      });
+      void persistConversations(get());
+      logEvent('project_delete');
+    },
+
+    async createCrewAgent(input) {
+      const id = `a${Date.now().toString(36)}${(convSeq++).toString(36)}`;
+      const agent: CrewAgent = { ...input, id, createdAt: new Date().toISOString() };
+      const crew = [...(get().settings.crew ?? []), agent];
+      await get().saveSettings({ crew });
+      logEvent('crew_create', { activityLevel: input.activityLevel });
+      return id;
+    },
+
+    async updateCrewAgent(id, patch) {
+      const crew = (get().settings.crew ?? []).map((a) => (a.id === id ? { ...a, ...patch } : a));
+      await get().saveSettings({ crew });
+    },
+
+    async deleteCrewAgent(id) {
+      const crew = (get().settings.crew ?? []).filter((a) => a.id !== id);
+      await get().saveSettings({ crew });
+      logEvent('crew_delete');
     },
 
     async ensureHarbor() {
@@ -641,7 +772,9 @@ interface PersistedConversations {
 
 async function persistConversations(state: Pick<AppState, 'order' | 'conversations'>) {
   const conversations: Record<string, Conversation> = {};
-  for (const id of state.order.slice(0, 50)) {
+  // Quick chats are ephemeral by design: they never touch the disk.
+  const savedOrder = state.order.filter((id) => !state.conversations[id]?.ephemeral).slice(0, 50);
+  for (const id of savedOrder) {
     const conv = state.conversations[id];
     if (!conv) continue;
     conversations[id] = {
@@ -650,7 +783,7 @@ async function persistConversations(state: Pick<AppState, 'order' | 'conversatio
       thread: conv.source.kind === 'desktop' ? emptyThread() : trimThread(conv.thread),
     };
   }
-  await storeSetJson(CONVERSATIONS_KEY, { order: state.order.slice(0, 50), conversations });
+  await storeSetJson(CONVERSATIONS_KEY, { order: savedOrder, conversations });
 }
 
 function trimThread(thread: Conversation['thread']): Conversation['thread'] {

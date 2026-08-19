@@ -8,6 +8,8 @@ import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
 import { StackScreen } from './screens/StackScreen.js';
 import { ConnectionsScreen } from './screens/ConnectionsScreen.js';
 import { ReposScreen } from './screens/ReposScreen.js';
+import { ProjectsScreen } from './screens/ProjectsScreen.js';
+import { CrewScreen } from './screens/CrewScreen.js';
 import { PairScreen } from './screens/PairScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
@@ -51,6 +53,10 @@ export function App() {
       <ConnectionsScreen />
     ) : view === 'repos' ? (
       <ReposScreen />
+    ) : view === 'projects' ? (
+      <ProjectsScreen />
+    ) : view === 'crew' ? (
+      <CrewScreen />
     ) : view === 'pair' ? (
       <PairScreen />
     ) : view === 'settings' ? (

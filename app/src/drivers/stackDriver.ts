@@ -26,8 +26,17 @@ import {
   type StackCategory,
   type StackModelRef,
 } from '../lib/stack.js';
+import type { CrewAgent } from '../state/types.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
+
+/** Extra context a chat carries into the router: its project and its crew. */
+export interface StackContext {
+  projectName?: string;
+  projectInstructions?: string;
+  /** Crew that speaks in this chat (already scoped to project + level). */
+  crew?: CrewAgent[];
+}
 
 const BASE_SYSTEM = [
   'You are OS Code, a warm, capable coding companion.',
@@ -67,6 +76,7 @@ export class StackDriver implements ChatDriver {
   constructor(
     private readonly stack: AppStack,
     private readonly profile: ProfileId,
+    private readonly context: StackContext = {},
   ) {
     this.listenersReady = this.attachDeviceListeners();
   }
@@ -107,10 +117,41 @@ export class StackDriver implements ChatDriver {
 
   private systemFor(ref: StackModelRef, placement?: Placement): string {
     const parts = [ref.kind === 'device' && isHarbor(ref.modelId) ? buildHarborSystemPrompt() : BASE_SYSTEM];
+    // Project context: name + standing instructions, injected into every turn.
+    const proj = this.context.projectInstructions?.trim();
+    if (this.context.projectName || proj) {
+      const head = this.context.projectName ? `You are working in the project "${this.context.projectName}".` : '';
+      parts.push([head, proj].filter(Boolean).join('\n'));
+    }
+    const crewNote = this.crewGuidance();
+    if (crewNote) parts.push(crewNote);
     if (placement?.persona && placement.persona.trim()) {
       parts.push(`Persona for this specialist: ${placement.persona.trim()}`);
     }
     return parts.join('\n\n');
+  }
+
+  /** Describe the crew this chat can draw on. "auto" members may be consulted
+   *  by the Reasoning LLM on its own; "request" members wait to be named. */
+  private crewGuidance(): string | undefined {
+    const crew = this.context.crew ?? [];
+    if (!crew.length) return undefined;
+    const describe = (a: CrewAgent) => {
+      const when = a.whenCalled?.trim() ? ` Called when: ${a.whenCalled.trim()}.` : '';
+      return `- ${a.name}: ${a.persona.trim()}.${when}`;
+    };
+    const auto = crew.filter((a) => a.activityLevel === 'auto');
+    const request = crew.filter((a) => a.activityLevel === 'request');
+    const lines: string[] = ['Your crew (user-authored perspectives you can bring in):'];
+    if (auto.length) {
+      lines.push('You may consult these on your own when they would help. Speak in their voice when you do, and say which crew member you are channeling:');
+      lines.push(...auto.map(describe));
+    }
+    if (request.length) {
+      lines.push('These wait to be summoned. Bring one in only when the user names it:');
+      lines.push(...request.map(describe));
+    }
+    return lines.join('\n');
   }
 
   // ---- turn ---------------------------------------------------------------
