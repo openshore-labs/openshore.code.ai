@@ -63,13 +63,22 @@ workflows:
           # distribution cert's private key is never downloadable. Provide a
           # private key so fetch-signing-files can CREATE the certificate from
           # it (the missing piece before), then create the App Store profile.
-          # NOTE: this key is generated per build, so a new certificate is
-          # created each run. Fine to get to TestFlight; before regular use,
-          # persist this key as an encrypted Codemagic env var and read it
-          # with @env: so the same cert is reused (Apple caps distribution
-          # certs). See docs/TESTFLIGHT.md.
+          # The key is PERSISTED as the encrypted env var CERTIFICATE_PRIVATE_KEY
+          # (Team -> env vars, secure), so the same distribution certificate is
+          # reused every build instead of minting a new one each run (Apple
+          # caps how many you can have). Falls back to a fresh one-off key only
+          # if that var is not set yet, so this cannot break a build before you
+          # have pasted it in. See docs/TESTFLIGHT.md.
           KEY=/tmp/oscode_signing_key
-          ssh-keygen -t rsa -b 2048 -m PEM -f "$KEY" -q -N ""
+          if [ -n "$CERTIFICATE_PRIVATE_KEY" ]; then
+            printf '%s' "$CERTIFICATE_PRIVATE_KEY" > "$KEY"
+          else
+            echo "WARNING: CERTIFICATE_PRIVATE_KEY is not set. Generating a one-off key," \
+                 "which mints a NEW distribution certificate this run. Apple caps how many" \
+                 "you can have. Set CERTIFICATE_PRIVATE_KEY (see docs/TESTFLIGHT.md) before" \
+                 "your next build."
+            openssl genrsa -out "$KEY" 2048
+          fi
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --certificate-key @file:"$KEY" \
