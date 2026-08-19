@@ -10,6 +10,7 @@ import { Llama } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
+import { logEvent } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
 
 interface DownloadState {
@@ -95,6 +96,7 @@ export function MarketplaceScreen() {
         deviceModels: { ...settings.deviceModels, [model.id]: model.name },
       });
       hapticSuccess();
+      logEvent('model_downloaded', { id: model.id, target: 'device' });
       showToast(`${model.name} is on this device. Fully private.`);
       clearDownload(model.id);
     } catch (err) {

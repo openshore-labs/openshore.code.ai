@@ -2,6 +2,7 @@
 // a working chat in minutes, complexity strictly opt-in.
 import { useApp } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
+import { logEvent } from '../lib/insights.js';
 import { BrandMark } from '../components/BrandMark.js';
 
 export function OnboardingScreen() {
@@ -9,6 +10,7 @@ export function OnboardingScreen() {
 
   const done = async (view?: Parameters<typeof setView>[0]) => {
     await saveSettings({ onboarded: true });
+    logEvent('onboarding_done', { next: view ?? 'chat' });
     if (view) setView(view);
     else setView('chat');
   };
