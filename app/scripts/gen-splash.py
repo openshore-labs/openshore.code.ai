@@ -1,60 +1,51 @@
-# Regenerates the iOS launch-screen images: a cream paper field matching the
-# app's own --bg token, with the OpenShore wave-mark tile centered, so cold
-# launch reads as one continuous brand surface instead of a white flash before
-# the WebView paints. Run: python3 scripts/gen-splash.py
+# Renders the iOS launch-screen images from scripts/brand/osc-splash.svg: the
+# glossy wave-mark tile centered on a cream paper field that matches the app's
+# --bg token, so cold launch reads as one continuous brand surface. Run:
+# python3 scripts/gen-splash.py
 #
-# Colors mirror src/theme.css / BrandMark.tsx. Keep in step with gen-icon.py.
-from PIL import Image, ImageDraw
+# Like gen-icon.py, the glossy SVG filters need a real renderer, so we rasterize
+# with headless Chromium. Point OSC_CHROME at a browser binary if needed.
+import glob
+import os
+import shutil
+import subprocess
+import sys
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+SVG = os.path.join(HERE, "brand", "osc-splash.svg")
+OUT_DIR = os.path.join(HERE, "..", "ios", "App", "App", "Assets.xcassets", "Splash.imageset")
 SIZE = 2732
-SS = 2  # supersample the tile, then downscale for clean edges
-PAPER = (246, 244, 239)  # #f6f4ef  --bg
-INK = (28, 42, 51)       # #1c2a33  tile field / --ink
-CREAM = (246, 244, 239)  # #f6f4ef  horizon line
-WAVE = (75, 144, 163)    # #4b90a3  shore wave
-
-TILE = 760  # rendered tile size on the splash
 
 
-def quad(p0, p1, p2, n=120):
-    out = []
-    for i in range(n + 1):
-        t = i / n
-        mt = 1 - t
-        x = mt * mt * p0[0] + 2 * mt * t * p1[0] + t * t * p2[0]
-        y = mt * mt * p0[1] + 2 * mt * t * p1[1] + t * t * p2[1]
-        out.append((x, y))
-    return out
+def find_chrome():
+    if os.environ.get("OSC_CHROME"):
+        return os.environ["OSC_CHROME"]
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
+        p = shutil.which(name)
+        if p:
+            return p
+    for pat in ("/opt/pw-browsers/chromium-*/chrome-linux/chrome",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[-1]
+    return None
 
 
-def build_tile(px):
-    """The rounded wave-mark tile as an RGBA image of side `px`."""
-    big = px * SS
-    u = big / 32.0
-    stroke_w = 2 * u
-    tile = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    d = ImageDraw.Draw(tile)
-    # rx=7.5 on a 32 tile -> radius as a fraction of the side.
-    d.rounded_rectangle([0, 0, big - 1, big - 1], radius=7.5 * u, fill=INK)
+chrome = find_chrome()
+if not chrome:
+    sys.exit("No Chrome/Chromium found. Set OSC_CHROME to a browser binary.")
 
-    def stroke(pts, color):
-        r = stroke_w / 2
-        for x, y in pts:
-            cx, cy = x * u, y * u
-            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color)
+first = os.path.join(OUT_DIR, "splash-2732x2732.png")
+subprocess.run(
+    [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+     f"--window-size={SIZE},{SIZE}", f"--screenshot={first}", f"file://{os.path.abspath(SVG)}"],
+    check=True,
+    stderr=subprocess.DEVNULL,
+)
 
-    stroke(quad((7, 13), (16, 13), (25, 13)), CREAM)
-    stroke(quad((7, 19), (11.5, 15.7), (16, 19)) + quad((16, 19), (20.5, 22.3), (25, 19)), WAVE)
-    return tile.resize((px, px), Image.LANCZOS)
-
-
-img = Image.new("RGB", (SIZE, SIZE), PAPER)
-tile = build_tile(TILE)
-pos = ((SIZE - TILE) // 2, (SIZE - TILE) // 2)
-img.paste(tile, pos, tile)
-
-out_dir = "ios/App/App/Assets.xcassets/Splash.imageset"
+# The imageset points at three files (1x/2x/3x); they are identical.
+for name in ("splash-2732x2732-1.png", "splash-2732x2732-2.png"):
+    shutil.copyfile(first, os.path.join(OUT_DIR, name))
 for name in ("splash-2732x2732.png", "splash-2732x2732-1.png", "splash-2732x2732-2.png"):
-    path = f"{out_dir}/{name}"
-    img.save(path, "PNG")
-    print(f"wrote {path}")
+    print(f"wrote {os.path.join(OUT_DIR, name)}")
