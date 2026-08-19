@@ -70,7 +70,10 @@ export interface OutboxFile {
   path: string;
   mode: 'upsert' | 'delete';
   sha256: string;
+  /** A sealed-blob reference for large content (content-addressed at rest). */
   blobRef?: string;
+  /** Inline post-image content, base64, for a self-contained item. */
+  contentBase64?: string;
 }
 
 export type OutboxState = 'pending' | 'offloading' | 'confirmed' | 'conflict' | 'failed';

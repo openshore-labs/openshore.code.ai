@@ -38,10 +38,13 @@ import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
 import {
   RemoteDriver,
+  daemonApplyOutbox,
   daemonCreateSession,
   daemonHealth,
+  daemonVerifyCommit,
   type DaemonTarget,
 } from '../drivers/remoteDriver.js';
+import { applyResult, confirm, pendingForRepo, stopsBatch } from '../lib/repoSync.js';
 import {
   autoProfile,
   effectiveProfile,
@@ -118,6 +121,8 @@ export interface AppSettings {
   launch?: LaunchState;
   /** Repositories: the admin-owned home repo and the buffered outbox. */
   repo?: RepoState;
+  /** A stable per-device id, for rescue-branch naming and sync bookkeeping. */
+  deviceId?: string;
   /** Manual connectivity-profile override; only ever steps down from auto. */
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
@@ -227,6 +232,9 @@ interface AppState {
   disconnectRepoPlatform(id: string): Promise<void>;
   /** Admin: set the home repo the whole system works through. */
   setHomeRepo(home: HomeRepo): Promise<void>;
+  /** Offload buffered commit-intents to the home repo and confirm each. Does
+   *  NOT clear confirmed items (that awaits the device-loss decision). */
+  syncOutbox(): Promise<void>;
 
   // My Crew: user-authored agents.
   /** Create a crew agent and return its id. */
@@ -483,6 +491,12 @@ export const useApp = create<AppState>((set, get) => {
         }
       }
       let settingsDirty = false;
+
+      // A stable device id, generated once, for rescue-branch names and sync.
+      if (!settings.deviceId) {
+        settings.deviceId = `dev_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        settingsDirty = true;
+      }
 
       // Bucket migration: a saved chat with no project would vanish from every
       // list once any project exists. Assign orphans to the active (or first)
@@ -961,6 +975,75 @@ export const useApp = create<AppState>((set, get) => {
       const repo: RepoState = { ...(get().settings.repo ?? { outbox: [] }), homeRepo: home };
       await get().saveSettings({ repo });
       logEvent('home_repo_set', { kind: home.kind });
+    },
+
+    async syncOutbox() {
+      const s = get().settings;
+      const daemon = s.daemon;
+      const home = s.repo?.homeRepo;
+      const outbox = s.repo?.outbox ?? [];
+      if (!daemon) {
+        get().showToast('Connect your desktop to sync your buffered work.');
+        return;
+      }
+      if (!home?.homePath) {
+        get().showToast('Set your home repo location on the desktop first.');
+        return;
+      }
+      const pending = pendingForRepo(outbox, home.id);
+      if (!pending.length) return;
+      const deviceId = s.deviceId ?? 'dev_unknown';
+      let items = [...outbox];
+      const patch = (id: string, next: (typeof outbox)[number]) => {
+        items = items.map((i) => (i.id === id ? next : i));
+      };
+
+      for (const item of pending) {
+        let current = item;
+        try {
+          const res = await daemonApplyOutbox(daemon, {
+            cwd: home.homePath,
+            clientOpId: item.clientOpId,
+            itemId: item.id,
+            deviceId,
+            branch: item.branch,
+            message: item.message,
+            baseCommit: item.baseCommit,
+            files: item.files.map((f) => ({
+              path: f.path,
+              mode: f.mode,
+              contentBase64: f.contentBase64,
+            })),
+          });
+          current = applyResult(item, res);
+        } catch (err) {
+          current = {
+            ...item,
+            state: 'failed',
+            attempts: item.attempts + 1,
+            lastError: err instanceof Error ? err.message : String(err),
+          };
+        }
+        patch(current.id, current);
+
+        // Independent confirmation before an item is ever considered done. A 200
+        // is not confirmation; the ref re-read is.
+        if (current.state === 'offloading' && current.resultCommit) {
+          const v = await daemonVerifyCommit(daemon, home.homePath, current.resultCommit, current.branch);
+          current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
+          patch(current.id, current);
+        }
+
+        // A conflict or failure halts this repo's batch: later items were
+        // composed assuming the earlier ones landed.
+        if (stopsBatch(current)) break;
+      }
+
+      // Confirmed items are intentionally NOT cleared here. Deleting a buffered
+      // item's sealed content is gated on the device-loss decision (S2); until
+      // then they stay, marked confirmed, so nothing is ever lost.
+      await get().saveSettings({ repo: { ...s.repo!, outbox: items } });
+      logEvent('outbox_sync', { pending: pending.length });
     },
 
     async createCrewAgent(input) {

@@ -24,6 +24,8 @@ import { tailscaleIp } from '../connect/tailscale.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { LocalDriver, listSessions } from './session.js';
 import { clone } from '../git/index.js';
+import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
+import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog } from '../market/catalog.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
@@ -125,6 +127,55 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       return;
     }
+    // Apply a buffered commit-intent from a phone into a real commit + push.
+    // Serialized per repo so the temp-index build is atomic; idempotent on
+    // clientOpId; a conflict lands on a rescue branch (never a force-push).
+    if (req.method === 'POST' && url.pathname === '/outbox/apply') {
+      const body = await readJson(req);
+      const cwd = typeof body.cwd === 'string' ? body.cwd : '';
+      if (!cwd || !existsSync(cwd)) {
+        sendJson(res, 400, { ok: false, error: 'Send a valid repo cwd.' });
+        return;
+      }
+      const request = body as unknown as OutboxApplyRequest;
+      if (
+        !request.clientOpId ||
+        !request.itemId ||
+        !request.branch ||
+        !request.baseCommit ||
+        !Array.isArray(request.files)
+      ) {
+        sendJson(res, 400, { ok: false, error: 'Missing clientOpId, itemId, branch, baseCommit, or files.' });
+        return;
+      }
+      try {
+        const result = await withKeyLock(cwd, () => applyOutboxItem(request));
+        const status = result.ok ? 200 : 'conflict' in result && result.conflict ? 409 : 400;
+        sendJson(res, status, result);
+      } catch (err) {
+        sendJson(res, 500, { ok: false, error: (err as Error).message });
+      }
+      return;
+    }
+
+    // Independent confirmation: does a committed result exist and sit on the
+    // branch? The phone calls this after an apply, before clearing its buffer.
+    if (req.method === 'GET' && url.pathname === '/outbox/verify') {
+      const cwd = url.searchParams.get('cwd') ?? '';
+      const commit = url.searchParams.get('commit') ?? '';
+      const branch = url.searchParams.get('branch') ?? undefined;
+      if (!cwd || !existsSync(cwd) || !commit) {
+        sendJson(res, 400, { error: 'Send cwd and commit.' });
+        return;
+      }
+      try {
+        sendJson(res, 200, await verifyCommit({ cwd, commit, branch }));
+      } catch {
+        sendJson(res, 200, { exists: false, onBranch: false });
+      }
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/stack') {
       const stack = options.config.stack;
       const orchestrator = stack.orchestrator
