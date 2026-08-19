@@ -16,6 +16,13 @@ workflows:
       # Pinned to 22.22.2 to match the version the lockfile was built on.
       node: 22.22.2
       xcode: latest
+      # Import the variable group that holds CERTIFICATE_PRIVATE_KEY (the
+      # persisted iOS signing key). Without this line the group's secrets are
+      # not exposed to the build and the signing step falls back to a one-off
+      # key. The group is named in the Codemagic UI (Team/App -> Environment
+      # variables).
+      groups:
+        - Harbor-os-code
       vars:
         BUNDLE_ID: ai.openshore.oscode
       # Manual signing. No `ios_signing:` block (that is automatic signing,
