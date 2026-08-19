@@ -25,8 +25,6 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private let store = ModelStore()
     private let runner = LlamaRunner()
-    private let harbor = HarborResource()
-    private static let harborId = "harbor"
     private var pendingDownloads = [String: CAPPluginCall]()
     private let downloadsLock = NSLock()
 
@@ -121,12 +119,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         if runner.loadedId == id { runner.unload() }
-        if id == Self.harborId {
-            // Harbor is an On-Demand Resource: let iOS reclaim the space.
-            harbor.release()
-        } else {
-            store.delete(id: id)
-        }
+        store.delete(id: id)
         call.resolve()
     }
 
@@ -138,27 +131,6 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let contextSize = Int32(call.getInt("contextSize") ?? 4096)
-
-        // Harbor's weights come from its On-Demand Resource, not the downloads
-        // directory. Resolve the tag, then load off the plugin queue.
-        if id == Self.harborId {
-            harbor.ensure { [weak self] result in
-                guard let self else { return }
-                switch result {
-                case .success(let url):
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        let loaded = self.runner.load(id: id, path: url.path, contextSize: contextSize)
-                        var payload: [String: Any] = ["ok": loaded.ok]
-                        if let detail = loaded.detail { payload["detail"] = detail }
-                        call.resolve(payload)
-                    }
-                case .failure(let error):
-                    call.resolve(["ok": false, "detail": "Harbor could not load: \(error.localizedDescription)"])
-                }
-            }
-            return
-        }
-
         let path = store.localURL(for: id).path
         guard FileManager.default.fileExists(atPath: path) else {
             call.resolve(["ok": false, "detail": "That model is not on this iPhone yet. Download it first."])

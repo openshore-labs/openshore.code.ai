@@ -13,7 +13,12 @@ import { RemoteDriver, daemonCreateSession, type DaemonTarget } from '../drivers
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
-import { HARBOR_GREETING, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
+import {
+  HARBOR_GREETING,
+  HARBOR_MODEL_ID,
+  HARBOR_MODEL_NAME,
+  HARBOR_MODEL_URL,
+} from '../lib/harbor.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import { bridge } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
@@ -43,8 +48,18 @@ export interface AppSettings {
   claudeModel: string;
   /** Downloaded on-device models: catalog id -> friendly name. */
   deviceModels: Record<string, string>;
+  /** Whether the built-in guide (Harbor) has been downloaded to this device. */
+  harborReady?: boolean;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
+}
+
+/** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
+export interface HarborDownload {
+  percent: number;
+  label: string;
+  indeterminate?: boolean;
+  failed?: boolean;
 }
 
 const SETTINGS_KEY = 'oscode.settings.v1';
@@ -69,6 +84,8 @@ interface AppState {
   settings: AppSettings;
   /** Phone-side Claude key presence (the key itself never sits in state). */
   cloudKeyPresent: boolean;
+  /** Live progress while Harbor downloads for the first time. */
+  harborDownload?: HarborDownload;
   toast?: string;
 
   init(): Promise<void>;
@@ -77,8 +94,10 @@ interface AppState {
   showToast(message: string): void;
 
   newConversation(source: ConversationSource): Promise<string>;
-  /** Open a fresh chat with Harbor, the built-in guide, greeting seeded. */
-  startGuide(): Promise<string>;
+  /** Download the Harbor guide model if it is not here yet. Returns success. */
+  ensureHarbor(): Promise<boolean>;
+  /** Open a fresh chat with Harbor, downloading it first if needed. */
+  startGuide(): Promise<string | undefined>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
   send(text: string): void;
@@ -198,20 +217,27 @@ export const useApp = create<AppState>((set, get) => {
       }
       const cloudKeyPresent = Boolean(await secretGet(ANTHROPIC_KEY_KEY));
       await loadInsights(settings.insightsOptIn ?? false);
-      // On iOS the filesystem is the truth for on-device models: if the OS
-      // purged one (ODR eviction, storage pressure) drop its label so the
-      // picker never advertises a model that will not load.
-      if (platform() === 'ios' && Object.keys(settings.deviceModels).length) {
+      // On iOS the filesystem is the truth for on-device models: if a model
+      // (or Harbor) is gone, drop its label / ready flag so nothing advertises
+      // a model that will not load and we can re-prompt the Harbor download.
+      if (platform() === 'ios') {
         try {
           const { models } = await Llama.listModels();
           const present = new Set(models.map((m) => m.id));
+          let changed = false;
           const kept = Object.fromEntries(
             Object.entries(settings.deviceModels).filter(([id]) => present.has(id)),
           );
           if (Object.keys(kept).length !== Object.keys(settings.deviceModels).length) {
             settings.deviceModels = kept;
-            await storeSetJson(SETTINGS_KEY, settings);
+            changed = true;
           }
+          const harborHere = present.has(HARBOR_MODEL_ID);
+          if (Boolean(settings.harborReady) !== harborHere) {
+            settings.harborReady = harborHere;
+            changed = true;
+          }
+          if (changed) await storeSetJson(SETTINGS_KEY, settings);
         } catch {
           // Native side unreachable: keep the labels as they are.
         }
@@ -268,7 +294,48 @@ export const useApp = create<AppState>((set, get) => {
       return id;
     },
 
+    async ensureHarbor() {
+      if (get().settings.harborReady) return true;
+      logEvent('harbor_download_start');
+      set({ harborDownload: { percent: 0, label: 'Connecting', indeterminate: true } });
+      const handle = await Llama.addListener('downloadProgress', ({ id, completed, total }) => {
+        if (id !== HARBOR_MODEL_ID) return;
+        set({
+          harborDownload: {
+            percent: total ? (completed / total) * 100 : 0,
+            label: total
+              ? `${Math.round((completed / total) * 100)}% of ${(total / 1e9).toFixed(1)} GB`
+              : 'Downloading',
+            indeterminate: !total,
+          },
+        });
+      });
+      try {
+        await Llama.downloadModel({ id: HARBOR_MODEL_ID, url: HARBOR_MODEL_URL });
+        set({ harborDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
+        await get().saveSettings({ harborReady: true });
+        logEvent('harbor_ready');
+        set({ harborDownload: undefined });
+        return true;
+      } catch (err) {
+        set({
+          harborDownload: {
+            percent: 0,
+            label: err instanceof Error ? err.message : 'Download failed.',
+            failed: true,
+          },
+        });
+        return false;
+      } finally {
+        void handle.remove();
+      }
+    },
+
     async startGuide() {
+      if (!get().settings.harborReady) {
+        const ok = await get().ensureHarbor();
+        if (!ok) return undefined;
+      }
       logEvent('harbor_started');
       const id = await get().newConversation({
         kind: 'device',
