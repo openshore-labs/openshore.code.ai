@@ -109,14 +109,19 @@ some contact info first:
   (an `ios_signing:` block) does NOT work here: it only fetches profiles
   and raises "No matching profiles found" on a fresh account. Never run
   both modes at once.
-- **⚠️ Persist the signing key (do before regular use).** The step
-  currently generates a NEW key each build, so Apple mints a NEW
-  distribution certificate every run, and Apple caps how many you can
-  have. To fix: generate one key, store it as an encrypted Codemagic env
-  var `CERTIFICATE_PRIVATE_KEY` (Team → env vars, secure), and change the
-  step to read `--certificate-key @env:CERTIFICATE_PRIVATE_KEY`. Then the
-  same certificate is reused forever. (Ask Claude to make this change once
-  you have the env var set.)
+- **Persist the signing key — done in the script, one manual step left.**
+  The "Set up code signing" step now reads the private key from the
+  encrypted Codemagic env var `CERTIFICATE_PRIVATE_KEY` when it is set, so
+  the same distribution certificate is reused every build. It still falls
+  back to generating a fresh one-off key (and prints a warning) if that var
+  is not set, so an unconfigured pipeline still builds, it just keeps
+  minting certificates. **To finish this once:** add `CERTIFICATE_PRIVATE_KEY`
+  as an encrypted variable under Codemagic → your app → Environment
+  variables (mark it Secure), pasting in a PEM RSA private key. If Apple
+  already rejects new certificates because you are at the cap from earlier
+  ad-hoc runs, revoke an old, unused "iOS Distribution" certificate at
+  [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/certificates/list)
+  first, then add the var and rebuild.
 - **"No matching profiles found ... distribution type app_store"**: an
   `ios_signing:` block is present (automatic signing) but the profile/cert
   do not exist and it will not create them. Use the manual signing step
