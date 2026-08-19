@@ -11,6 +11,7 @@ import { ReposScreen } from './screens/ReposScreen.js';
 import { ProjectsScreen } from './screens/ProjectsScreen.js';
 import { CrewScreen } from './screens/CrewScreen.js';
 import { AdminScreen } from './screens/AdminScreen.js';
+import { LaunchScreen } from './screens/LaunchScreen.js';
 import { PairScreen } from './screens/PairScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
@@ -60,6 +61,8 @@ export function App() {
       <CrewScreen />
     ) : view === 'admin' ? (
       <AdminScreen />
+    ) : view === 'launch' ? (
+      <LaunchScreen />
     ) : view === 'pair' ? (
       <PairScreen />
     ) : view === 'settings' ? (
