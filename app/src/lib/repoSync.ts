@@ -90,3 +90,56 @@ export function unsyncedCount(items: OutboxItem[]): number {
 export function rescueBranch(deviceId: string, item: OutboxItem): string {
   return `oscode/outbox/${deviceId}/${item.id}`;
 }
+
+// ---- buffer safety (the S2 posture: protect the pending window) ------------
+//
+// Confirmed items are already in the home repo, so clearing them loses nothing.
+// The risk is the PENDING window: a device lost before docking cannot be read
+// back. We never delete pending work; instead we cap how much can pile up
+// (refuse, never truncate), and surface how much is at risk so the user docks.
+export const MAX_OUTBOX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB per file
+export const MAX_OUTBOX_TOTAL_BYTES = 50 * 1024 * 1024; // 50 MB buffered
+/** Warn once buffered work has waited this long unsynced. */
+export const BUFFER_STALE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+/** Approximate byte size of a buffered item's inline content. */
+export function itemBytes(item: OutboxItem): number {
+  let total = 0;
+  for (const f of item.files) {
+    if (f.contentBase64) total += Math.floor((f.contentBase64.length * 3) / 4);
+  }
+  return total;
+}
+
+export interface BufferHealth {
+  pendingCount: number;
+  totalBytes: number;
+  /** Age of the oldest unsynced item, ms; undefined if none pending. */
+  oldestMs?: number;
+  stale: boolean;
+  overCap: boolean;
+}
+
+export function bufferHealth(items: OutboxItem[], now: number): BufferHealth {
+  const pending = items.filter((i) => i.state !== 'confirmed');
+  let totalBytes = 0;
+  let oldest: number | undefined;
+  for (const i of pending) {
+    totalBytes += itemBytes(i);
+    const age = now - Date.parse(i.createdAt);
+    if (Number.isFinite(age) && (oldest === undefined || age > oldest)) oldest = age;
+  }
+  return {
+    pendingCount: pending.length,
+    totalBytes,
+    oldestMs: oldest,
+    stale: oldest !== undefined && oldest > BUFFER_STALE_MS,
+    overCap: totalBytes > MAX_OUTBOX_TOTAL_BYTES,
+  };
+}
+
+/** Would adding these bytes exceed a cap? Callers refuse rather than truncate. */
+export function withinCaps(currentTotalBytes: number, addBytes: number, largestFileBytes: number): boolean {
+  if (largestFileBytes > MAX_OUTBOX_FILE_BYTES) return false;
+  return currentTotalBytes + addBytes <= MAX_OUTBOX_TOTAL_BYTES;
+}

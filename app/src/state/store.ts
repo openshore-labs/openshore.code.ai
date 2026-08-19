@@ -31,6 +31,8 @@ import {
   REPO_CONNECTORS,
   repoSecretKey,
   type HomeRepo,
+  type OutboxFile,
+  type OutboxItem,
   type RepoState,
 } from '../lib/repos.js';
 import { reduceEvent, titleFrom } from './transcript.js';
@@ -44,7 +46,14 @@ import {
   daemonVerifyCommit,
   type DaemonTarget,
 } from '../drivers/remoteDriver.js';
-import { applyResult, confirm, pendingForRepo, stopsBatch } from '../lib/repoSync.js';
+import {
+  applyResult,
+  confirm,
+  itemBytes,
+  pendingForRepo,
+  stopsBatch,
+  withinCaps,
+} from '../lib/repoSync.js';
 import {
   getUser,
   isConfigured as authConfigured,
@@ -273,9 +282,20 @@ interface AppState {
   disconnectRepoPlatform(id: string): Promise<void>;
   /** Admin: set the home repo the whole system works through. */
   setHomeRepo(home: HomeRepo): Promise<void>;
-  /** Offload buffered commit-intents to the home repo and confirm each. Does
-   *  NOT clear confirmed items (that awaits the device-loss decision). */
+  /** Offload buffered commit-intents to the home repo, confirm each, and clear
+   *  the ones now safely in the home repo. Pending work is never deleted. */
   syncOutbox(): Promise<void>;
+  /** The producer: compose a set of edits into a buffered commit-intent. Refuses
+   *  (returns undefined) rather than truncate when it would exceed a cap. */
+  bufferCommitIntent(input: {
+    repoId: string;
+    branch: string;
+    message: string;
+    baseCommit: string;
+    files: Array<{ path: string; mode: 'upsert' | 'delete'; content?: string }>;
+  }): Promise<string | undefined>;
+  /** A portable JSON backup of everything not yet synced (the S2 escape hatch). */
+  exportBuffer(): string;
 
   // My Crew: user-authored agents.
   /** Create a crew agent and return its id. */
@@ -328,6 +348,31 @@ interface AppState {
 let convSeq = 0;
 function newId(): string {
   return `c${Date.now().toString(36)}${(convSeq++).toString(36)}`;
+}
+
+/** Standard base64 of bytes (chunked, so large content does not overflow the
+ *  argument stack). The daemon decodes this with Buffer.from(x, 'base64'). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const buf = new Uint8Array(new ArrayBuffer(bytes.length));
+  buf.set(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** An immutable idempotency key for a buffered commit-intent. */
+function outboxOpId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `op_${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
 /**
@@ -1196,11 +1241,75 @@ export const useApp = create<AppState>((set, get) => {
         if (stopsBatch(current)) break;
       }
 
-      // Confirmed items are intentionally NOT cleared here. Deleting a buffered
-      // item's sealed content is gated on the device-loss decision (S2); until
-      // then they stay, marked confirmed, so nothing is ever lost.
-      await get().saveSettings({ repo: { ...s.repo!, outbox: items } });
-      logEvent('outbox_sync', { pending: pending.length });
+      // Confirmed items are already in the home repo, so clearing their buffered
+      // copy loses nothing. Everything not confirmed (pending, conflict, failed)
+      // stays, so no unsynced work is ever deleted.
+      const kept = items.filter((i) => i.state !== 'confirmed');
+      const cleared = items.length - kept.length;
+      await get().saveSettings({ repo: { ...s.repo!, outbox: kept } });
+      logEvent('outbox_sync', { pending: pending.length, cleared });
+    },
+
+    async bufferCommitIntent(input) {
+      const s = get().settings;
+      const existing = s.repo?.outbox ?? [];
+      const files: OutboxFile[] = [];
+      let addBytes = 0;
+      let largest = 0;
+      for (const f of input.files) {
+        if (f.mode === 'delete') {
+          files.push({ path: f.path, mode: 'delete', sha256: '' });
+          continue;
+        }
+        const bytes = new Uint8Array(new TextEncoder().encode(f.content ?? ''));
+        addBytes += bytes.length;
+        largest = Math.max(largest, bytes.length);
+        files.push({
+          path: f.path,
+          mode: 'upsert',
+          sha256: await sha256Hex(bytes),
+          contentBase64: bytesToBase64(bytes),
+        });
+      }
+      // Enforce the caps that protect the pending window: refuse, never truncate.
+      const currentTotal = existing
+        .filter((i) => i.state !== 'confirmed')
+        .reduce((n, i) => n + itemBytes(i), 0);
+      if (!withinCaps(currentTotal, addBytes, largest)) {
+        get().showToast('That change is too large to buffer offline. Dock to sync, or split it up.');
+        return undefined;
+      }
+      const item: OutboxItem = {
+        id: `o${Date.now().toString(36).padStart(9, '0')}${(convSeq++).toString(36)}`,
+        clientOpId: outboxOpId(),
+        repoId: input.repoId,
+        branch: input.branch,
+        message: input.message,
+        baseCommit: input.baseCommit,
+        files,
+        state: 'pending',
+        attempts: 0,
+        createdAt: new Date().toISOString(),
+      };
+      await get().saveSettings({
+        repo: { ...(s.repo ?? { outbox: [] }), outbox: [...existing, item] },
+      });
+      logEvent('outbox_buffered', { files: files.length });
+      return item.id;
+    },
+
+    exportBuffer() {
+      const pending = (get().settings.repo?.outbox ?? []).filter((i) => i.state !== 'confirmed');
+      return JSON.stringify(
+        {
+          version: 1,
+          deviceId: get().settings.deviceId,
+          exportedAt: new Date().toISOString(),
+          items: pending,
+        },
+        null,
+        2,
+      );
     },
 
     async createCrewAgent(input) {

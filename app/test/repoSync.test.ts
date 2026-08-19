@@ -5,11 +5,16 @@ import { describe, expect, it } from 'vitest';
 import type { OutboxItem } from '../src/lib/repos.js';
 import {
   applyResult,
+  bufferHealth,
   confirm,
+  itemBytes,
+  MAX_OUTBOX_FILE_BYTES,
+  MAX_OUTBOX_TOTAL_BYTES,
   pendingForRepo,
   resettableIds,
   stopsBatch,
   unsyncedCount,
+  withinCaps,
 } from '../src/lib/repoSync.js';
 
 function item(id: string, over: Partial<OutboxItem> = {}): OutboxItem {
@@ -89,5 +94,38 @@ describe('repo sync protocol', () => {
   it('does not confirm an item that was never offloaded', () => {
     const pending = item('b1', { state: 'pending' });
     expect(confirm(pending, { refExists: true, treeMatches: true })).toBe(pending);
+  });
+});
+
+describe('buffer safety (S2 pending-window protection)', () => {
+  const withContent = (id: string, bytes: number, over: Partial<OutboxItem> = {}) =>
+    item(id, {
+      files: [{ path: 'a.ts', mode: 'upsert', sha256: 'h', contentBase64: 'A'.repeat(Math.ceil((bytes * 4) / 3)) }],
+      ...over,
+    });
+
+  it('sizes an item from its inline content', () => {
+    expect(itemBytes(withContent('b1', 300))).toBeGreaterThan(200);
+  });
+
+  it('reports pending count and total, ignoring confirmed', () => {
+    const health = bufferHealth(
+      [withContent('b1', 1000), withContent('b2', 1000, { state: 'confirmed' })],
+      Date.parse('2026-01-01T00:00:00Z'),
+    );
+    expect(health.pendingCount).toBe(1);
+    expect(health.totalBytes).toBeGreaterThan(500);
+  });
+
+  it('flags a stale buffered item', () => {
+    const old = withContent('b1', 100, { createdAt: '2026-01-01T00:00:00Z' });
+    const health = bufferHealth([old], Date.parse('2026-01-10T00:00:00Z')); // 9 days later
+    expect(health.stale).toBe(true);
+  });
+
+  it('refuses to buffer past the caps rather than truncate', () => {
+    expect(withinCaps(0, 1000, 1000)).toBe(true);
+    expect(withinCaps(MAX_OUTBOX_TOTAL_BYTES, 1, 1)).toBe(false);
+    expect(withinCaps(0, MAX_OUTBOX_FILE_BYTES + 1, MAX_OUTBOX_FILE_BYTES + 1)).toBe(false);
   });
 });

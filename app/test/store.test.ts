@@ -126,3 +126,51 @@ describe('project bucketing and quick chats', () => {
     expect(useApp.getState().conversations[quickId]).toBeUndefined();
   });
 });
+
+describe('outbox producer', () => {
+  beforeEach(resetStore);
+
+  it('buffers a commit-intent with content-addressed files', async () => {
+    const id = await useApp.getState().bufferCommitIntent({
+      repoId: 'r1',
+      branch: 'main',
+      message: 'add a file',
+      baseCommit: 'base',
+      files: [{ path: 'a.ts', mode: 'upsert', content: 'hello' }],
+    });
+    expect(id).toBeDefined();
+    const outbox = useApp.getState().settings.repo?.outbox ?? [];
+    expect(outbox).toHaveLength(1);
+    const item = outbox[0]!;
+    expect(item.state).toBe('pending');
+    expect(item.clientOpId).toBeTruthy();
+    expect(item.files[0]!.sha256).toHaveLength(64);
+    expect(item.files[0]!.contentBase64).toBe(Buffer.from('hello').toString('base64'));
+  });
+
+  it('refuses a file past the per-file cap rather than truncate', async () => {
+    const big = 'x'.repeat(2 * 1024 * 1024 + 1); // over MAX_OUTBOX_FILE_BYTES
+    const id = await useApp.getState().bufferCommitIntent({
+      repoId: 'r1',
+      branch: 'main',
+      message: 'huge',
+      baseCommit: 'base',
+      files: [{ path: 'big.bin', mode: 'upsert', content: big }],
+    });
+    expect(id).toBeUndefined();
+    expect(useApp.getState().settings.repo?.outbox ?? []).toHaveLength(0);
+  });
+
+  it('exports only unsynced work as a portable backup', async () => {
+    await useApp.getState().bufferCommitIntent({
+      repoId: 'r1',
+      branch: 'main',
+      message: 'one',
+      baseCommit: 'base',
+      files: [{ path: 'a.ts', mode: 'upsert', content: 'x' }],
+    });
+    const backup = JSON.parse(useApp.getState().exportBuffer());
+    expect(backup.version).toBe(1);
+    expect(backup.items).toHaveLength(1);
+  });
+});
