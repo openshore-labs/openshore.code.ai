@@ -14,6 +14,7 @@ import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeD
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
 import { HARBOR_GREETING, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
+import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, storeGet, storeGetJson, storeSet, storeSetJson } from '../lib/platform.js';
 
@@ -33,6 +34,8 @@ export interface AppSettings {
   claudeModel: string;
   /** Downloaded on-device models: catalog id -> friendly name. */
   deviceModels: Record<string, string>;
+  /** Opt-in, on-device, manual-export activity log for the test run. */
+  insightsOptIn?: boolean;
 }
 
 const SETTINGS_KEY = 'oscode.settings.v1';
@@ -105,6 +108,14 @@ export const useApp = create<AppState>((set, get) => {
       });
       // Persist quiet-moment snapshots for phone-local conversations.
       if (event.type === 'task-done') void persistConversations(get());
+      // Funnel milestones (opt-in only; no-ops otherwise).
+      const srcKind = get().conversations[conversationId]?.source.kind;
+      if (event.type === 'text-final' && srcKind && srcKind !== 'mock') {
+        logOnce('first_local_reply', { source: srcKind });
+      }
+      if (event.type === 'tool-end' && event.result?.ok && /edit|write|apply/i.test(event.call.name)) {
+        logOnce('first_accepted_edit', { tool: event.call.name });
+      }
     });
     unsubscribers.set(conversationId, off);
   }
@@ -177,6 +188,7 @@ export const useApp = create<AppState>((set, get) => {
         };
       }
       const cloudKeyPresent = Boolean(await storeGet(ANTHROPIC_KEY_KEY));
+      await loadInsights(settings.insightsOptIn ?? false);
       set({
         settings,
         conversations,
@@ -185,6 +197,7 @@ export const useApp = create<AppState>((set, get) => {
         ready: true,
         view: settings.onboarded ? 'chat' : 'onboarding',
       });
+      logEvent('app_open', { onboarded: settings.onboarded });
     },
 
     setView(view) {
@@ -201,6 +214,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async newConversation(source) {
+      logEvent('source_chosen', { kind: source.kind });
       const id = newId();
       const conv: Conversation = {
         id,
@@ -228,6 +242,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async startGuide() {
+      logEvent('harbor_started');
       const id = await get().newConversation({
         kind: 'device',
         modelId: HARBOR_MODEL_ID,
@@ -317,12 +332,14 @@ export const useApp = create<AppState>((set, get) => {
     async saveSettings(patch) {
       const settings = { ...get().settings, ...patch };
       set({ settings });
+      setInsightsEnabled(settings.insightsOptIn ?? false);
       await storeSetJson(SETTINGS_KEY, settings);
     },
 
     async setCloudKey(key) {
       await storeSet(ANTHROPIC_KEY_KEY, key.trim());
       set({ cloudKeyPresent: true });
+      logEvent('cloud_key_added');
     },
 
     async clearCloudKey() {
