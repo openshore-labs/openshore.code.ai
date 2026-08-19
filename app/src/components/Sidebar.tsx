@@ -8,7 +8,7 @@ const NAV: Array<{ view: ViewName; glyph: string; label: string }> = [
   { view: 'marketplace', glyph: '⬡', label: 'Marketplace' },
   { view: 'stack', glyph: '≡', label: 'Your stack' },
   { view: 'repos', glyph: '⌥', label: 'Repositories' },
-  { view: 'connections', glyph: '⚡', label: 'Connections' },
+  { view: 'connections', glyph: '⚡', label: 'Cloud Connections' },
   { view: 'pair', glyph: '☍', label: 'Desktop + phone' },
   { view: 'settings', glyph: '⚙', label: 'Settings' },
 ];
