@@ -25,8 +25,8 @@ export function BrandMark({ size = 28 }: { size?: number }) {
     >
       <defs>
         <linearGradient id={id('tile')} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#263a49" />
-          <stop offset="1" stopColor="#131c23" />
+          <stop offset="0" stopColor="#223039" />
+          <stop offset="1" stopColor="#162028" />
         </linearGradient>
         <linearGradient id={id('sheen')} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#ffffff" stopOpacity="0.16" />
@@ -45,9 +45,9 @@ export function BrandMark({ size = 28 }: { size?: number }) {
           <stop offset="1" stopColor="#c2bbad" />
         </linearGradient>
         <linearGradient id={id('teal')} x1="0" y1="0" x2="0.14" y2="1">
-          <stop offset="0" stopColor="#9ccedd" />
+          <stop offset="0" stopColor="#5e9dad" />
           <stop offset="0.5" stopColor="#4b90a3" />
-          <stop offset="1" stopColor="#2c5866" />
+          <stop offset="1" stopColor="#2f5c6a" />
         </linearGradient>
         <filter id={id('tube')} filterUnits="userSpaceOnUse" x="120" y="330" width="784" height="430">
           <feGaussianBlur in="SourceAlpha" stdDeviation="18" result="shb" />
