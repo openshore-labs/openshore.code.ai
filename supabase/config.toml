@@ -1,0 +1,53 @@
+# Supabase project config for OS Code. `project_id` is a local name; the remote
+# project is bound by `supabase link --project-ref <ref>`. Redirect URLs list
+# every origin a magic-link sign-in may return to (also set these in the hosted
+# project's Auth settings). Email confirmations are off for easy testing; turn
+# them on for production.
+project_id = "os-code"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = [
+  "oscode://auth-callback",
+  "http://127.0.0.1:4817/auth-callback",
+  "http://localhost:5173/auth-callback",
+]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[functions.claim-membership]
+verify_jwt = true
+
+[functions.entitlement-claim]
+verify_jwt = true
+
+[functions.stripe-checkout]
+verify_jwt = true
+
+[functions.stripe-portal]
+verify_jwt = true
+
+# The Stripe webhook is called by Stripe, not a signed-in user, so no JWT.
+[functions.stripe-webhook]
+verify_jwt = false
