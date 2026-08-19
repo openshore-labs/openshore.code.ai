@@ -15,8 +15,9 @@ import { existsSync, mkdirSync } from 'node:fs';
 import {
   assertSafeBind,
   bearerFrom,
+  hasRole,
   loadOrCreateToken,
-  tokenMatches,
+  resolveAuth,
 } from '../core/security/daemonAuth.js';
 import { oscHome } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
@@ -89,17 +90,34 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       return;
     }
     const presented = bearerFrom(req.headers.authorization);
-    if (!tokenMatches(presented, token)) {
+    const auth = resolveAuth(presented, token);
+    if (!auth) {
       sendJson(res, 401, {
-        error: 'Missing or wrong daemon token. It lives in ~/.os-code/daemon.token on the desktop.',
+        error: 'Missing or wrong daemon credential. The shared token lives in ~/.os-code/daemon.token; per-user tokens come from `osc token mint`.',
       });
       return;
     }
+    // requireAdmin gates a mutating admin route (403 for a member). Read routes
+    // and a member's own session/outbox actions stay open to any valid member.
+    // Wired here so an admin-only route (stack config, home-repo/storage config)
+    // enforces server-side the moment it moves off the app and onto the daemon.
+    const requireAdmin = (): boolean => {
+      if (hasRole(auth, 'admin')) return true;
+      sendJson(res, 403, { error: 'This needs an admin credential. Ask a company admin.' });
+      return false;
+    };
+
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'daemon'}`);
     const parts = url.pathname.split('/').filter(Boolean);
 
     if (req.method === 'GET' && url.pathname === '/health') {
-      sendJson(res, 200, { ok: true, sessions: drivers.size, version: '0.1.0' });
+      sendJson(res, 200, {
+        ok: true,
+        sessions: drivers.size,
+        version: '0.1.0',
+        role: auth.role,
+        user: auth.userId,
+      });
       return;
     }
 
@@ -109,6 +127,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/workspaces/clone') {
+      // Cloning a repo onto the home machine provisions shared storage: an admin
+      // action. A personal account authenticates with the legacy token as admin,
+      // so solo users are unaffected.
+      if (!requireAdmin()) return;
       const body = await readJson(req);
       const gitUrl = typeof body.url === 'string' ? body.url.trim() : '';
       if (!/^(https:\/\/|git@)/.test(gitUrl)) {

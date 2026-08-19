@@ -5,6 +5,7 @@ import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { detectTailscale, type TailscaleStatus } from './tailscale.js';
 import { loadOrCreateToken } from '../core/security/daemonAuth.js';
+import { mintCredential, type Role } from '../core/security/credentials.js';
 import { oscHome } from '../config/load.js';
 
 export interface PairPlan {
@@ -14,8 +15,16 @@ export interface PairPlan {
   sshUser: string;
   /** The command the phone runs after connecting. */
   attachCommand: string;
+  /** The token the paired device presents. Per-user when minted, else shared. */
   daemonToken: string;
+  /** The role that token carries. */
+  role: Role;
   steps: PairStep[];
+}
+
+export interface PairOptions {
+  /** Mint a per-user credential for this device instead of the shared token. */
+  mint?: { role: Role; label: string };
 }
 
 export interface PairStep {
@@ -26,12 +35,16 @@ export interface PairStep {
   done: boolean;
 }
 
-export function buildPairPlan(): PairPlan {
+export function buildPairPlan(options: PairOptions = {}): PairPlan {
   const tailscale = detectTailscale();
   const sshUser = userInfo().username;
   const host = tailscale.dnsName ?? tailscale.ip;
   const sshTarget = host ? `${sshUser}@${host}` : undefined;
-  const daemonToken = loadOrCreateToken(join(oscHome(), 'daemon.token'));
+  // Owner pairing their own phone uses the shared token (admin). Inviting a
+  // teammate mints a per-user credential carrying their role.
+  const minted = options.mint ? mintCredential(options.mint) : undefined;
+  const daemonToken = minted?.token ?? loadOrCreateToken(join(oscHome(), 'daemon.token'));
+  const role: Role = minted?.credential.role ?? 'admin';
 
   const steps: PairStep[] = [
     {
@@ -79,6 +92,7 @@ export function buildPairPlan(): PairPlan {
     sshUser,
     attachCommand: 'osc attach',
     daemonToken,
+    role,
     steps,
   };
 }
