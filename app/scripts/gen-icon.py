@@ -1,12 +1,11 @@
 # Renders the 1024x1024 iOS app icon from scripts/brand/osc-tile-icon.svg: the
-# OpenShore wave-mark with the glossy "glass tube" treatment (specular lighting
-# + a floating drop shadow) over a gradient ink tile, full-bleed so iOS masks
-# its own corners. Run: python3 scripts/gen-icon.py
+# exact openshore.ai wave-mark, full-bleed so iOS masks its own corners. Run:
+# python3 scripts/gen-icon.py
 #
-# The SVG uses feSpecularLighting / feDistantLight, which PIL cannot render, so
-# we rasterize with headless Chromium. Point OSC_CHROME at a Chrome/Chromium
-# binary if it is not found automatically. The committed PNG is what ships;
-# regenerate only when the brand SVG changes.
+# We rasterize the SVG with headless Chromium so the geometry stays 1:1 with the
+# marketing-site mark. Point OSC_CHROME at a Chrome/Chromium binary if it is not
+# found automatically. The committed PNG is what ships; regenerate only when the
+# brand SVG changes.
 import glob
 import os
 import subprocess

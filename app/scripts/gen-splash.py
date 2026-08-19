@@ -1,10 +1,10 @@
 # Renders the iOS launch-screen images from scripts/brand/osc-splash.svg: the
-# glossy wave-mark tile centered on a cream paper field that matches the app's
-# --bg token, so cold launch reads as one continuous brand surface. Run:
+# openshore.ai wave-mark tile centered on a cream paper field that matches the
+# app's --bg token, so cold launch reads as one continuous brand surface. Run:
 # python3 scripts/gen-splash.py
 #
-# Like gen-icon.py, the glossy SVG filters need a real renderer, so we rasterize
-# with headless Chromium. Point OSC_CHROME at a browser binary if needed.
+# Rasterized with headless Chromium (same pipeline as gen-icon.py). Point
+# OSC_CHROME at a browser binary if needed.
 import glob
 import os
 import shutil
