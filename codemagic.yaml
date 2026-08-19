@@ -58,12 +58,22 @@ workflows:
           agvtool new-version -all "$BUILD_NUMBER"
       - name: Set up code signing
         script: |
+          set -e
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --verbose
           keychain add-certificates
-          xcode-project use-profiles
+          echo "===== provisioning profiles on disk ====="
+          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/" || echo "(no profiles dir)"
+          # Target the exact Capacitor project so nothing is left to a glob.
+          xcode-project use-profiles \
+            --project "app/ios/App/App.xcodeproj" \
+            --verbose
+          echo "===== App target signing after use-profiles ====="
+          xcodebuild -project app/ios/App/App.xcodeproj -scheme App -showBuildSettings 2>/dev/null \
+            | grep -iE "CODE_SIGN|PROVISIONING_PROFILE|DEVELOPMENT_TEAM" | sort -u || true
       - name: Build the signed IPA
         script: |
           # The OscodeLlama plugin depends on LLM.swift, which is macro-based
