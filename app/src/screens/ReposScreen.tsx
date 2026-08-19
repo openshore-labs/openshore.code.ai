@@ -8,7 +8,7 @@ import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonCloneRepo, daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.js';
-import { unsyncedCount } from '../lib/repoSync.js';
+import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 
 export function ReposScreen() {
@@ -18,6 +18,8 @@ export function ReposScreen() {
     connectRepoPlatform,
     disconnectRepoPlatform,
     setHomeRepo,
+    syncOutbox,
+    exportBuffer,
     newConversation,
     showToast,
   } = useApp();
@@ -215,8 +217,23 @@ export function ReposScreen() {
                 <>
                   <div className="sub" style={{ marginBottom: 8 }}>
                     {unsynced} waiting to reach the home repo. They sync on dock and clear only once
-                    confirmed.
+                    the home repo confirms them.
                   </div>
+                  {(() => {
+                    const health = bufferHealth(outbox, Date.now());
+                    if (!health.pendingCount) return null;
+                    const days = health.oldestMs ? Math.floor(health.oldestMs / 86_400_000) : 0;
+                    return (
+                      <p
+                        className="hint"
+                        style={{ marginBottom: 8, color: health.stale || health.overCap ? 'var(--danger)' : undefined }}
+                      >
+                        {(health.totalBytes / 1024).toFixed(0)} KB of work is buffered only on this
+                        device{days >= 1 ? `, the oldest ${days} day${days > 1 ? 's' : ''} old` : ''}. Dock
+                        to sync it safely. If you might lose this device first, export a backup.
+                      </p>
+                    );
+                  })()}
                   {outbox.map((item) => (
                     <div className="card-row" key={item.id} style={{ marginTop: 6 }}>
                       <span className={`state-dot ${item.state}`} aria-hidden="true" />
@@ -229,6 +246,31 @@ export function ReposScreen() {
                       <span className="sub" style={{ textTransform: 'capitalize' }}>{item.state}</span>
                     </div>
                   ))}
+                  <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 10 }}>
+                    <button
+                      className="suggestion"
+                      disabled={!settings.daemon}
+                      onClick={async () => {
+                        await syncOutbox();
+                        showToast('Synced what the home repo could confirm.');
+                      }}
+                    >
+                      Sync now
+                    </button>
+                    <button
+                      className="suggestion"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(exportBuffer());
+                          showToast('Backup copied. Paste it somewhere safe.');
+                        } catch {
+                          showToast('Copy is unavailable here.');
+                        }
+                      }}
+                    >
+                      Export a backup
+                    </button>
+                  </div>
                 </>
               )}
             </div>
