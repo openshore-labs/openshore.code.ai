@@ -4,6 +4,9 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { resolveDeviceCredential, type AuthContext, type Role } from './credentials.js';
+
+export type { AuthContext, Role } from './credentials.js';
 
 export function generateToken(): string {
   return `osc_${randomBytes(32).toString('base64url')}`;
@@ -35,6 +38,27 @@ export function bearerFrom(header: string | undefined): string | undefined {
   if (!header) return undefined;
   const m = /^Bearer\s+(.+)$/i.exec(header.trim());
   return m ? m[1] : undefined;
+}
+
+/**
+ * Resolve a presented token to who is calling and what they may do. Checked in
+ * order: the legacy shared token (implicit admin, kept working through the
+ * migration so an un-repaired phone is never stranded), then a minted per-user
+ * device credential. A Supabase-verified JWT will slot in as a third source.
+ * Returns null when nothing matches (the caller answers 401).
+ */
+export function resolveAuth(presented: string | undefined, legacyToken: string): AuthContext | null {
+  if (!presented) return null;
+  if (tokenMatches(presented, legacyToken)) {
+    return { userId: 'legacy', role: 'admin', label: 'shared token', source: 'legacy' };
+  }
+  return resolveDeviceCredential(presented) ?? null;
+}
+
+/** Does this context hold at least the required role? admin outranks member. */
+export function hasRole(ctx: AuthContext, required: Role): boolean {
+  if (required === 'member') return true;
+  return ctx.role === 'admin';
 }
 
 /**

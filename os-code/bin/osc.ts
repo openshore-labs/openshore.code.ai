@@ -30,6 +30,11 @@ import {
 } from '../src/commands/license.js';
 import { evalCommand } from '../src/commands/eval.js';
 import { attachImageCommand } from '../src/commands/attachImage.js';
+import {
+  tokenListCommand,
+  tokenMintCommand,
+  tokenRevokeCommand,
+} from '../src/commands/token.js';
 import { logger } from '../src/util/log.js';
 
 const log = logger('cli');
@@ -194,6 +199,23 @@ program
   .description('drop an image into the vision inbox (no path lists the inbox)')
   .argument('[path]')
   .action(attachImageCommand);
+
+const tokenCmd = program
+  .command('token')
+  .description('per-user daemon credentials for a team (mint, list, revoke)');
+tokenCmd
+  .command('mint')
+  .description('mint a credential for a teammate, printed once')
+  .option('--role <role>', 'admin or member (default: member)')
+  .option('--label <label>', 'a name for the device, e.g. "Alice iPhone"')
+  .option('--ttl <days>', 'expire after N days (default: never)')
+  .action((options: { role?: string; label?: string; ttl?: string }) => tokenMintCommand(options));
+tokenCmd.command('list', { isDefault: true }).description('list minted credentials').action(tokenListCommand);
+tokenCmd
+  .command('revoke')
+  .description('revoke by label or token-hash prefix')
+  .argument('<match>')
+  .action(tokenRevokeCommand);
 
 program.hook('preAction', () => {
   if (program.opts().color === false) setColorEnabled(false);
