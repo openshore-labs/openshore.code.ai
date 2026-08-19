@@ -75,7 +75,7 @@ workflows:
           xcode-project build-ipa \
             --project app/ios/App/App.xcodeproj \
             --scheme App \
-            --xcargs "-skipMacroValidation -skipPackagePluginValidation"
+            --archive-xcargs "COMPILER_INDEX_STORE_ENABLE=NO -skipMacroValidation -skipPackagePluginValidation"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
