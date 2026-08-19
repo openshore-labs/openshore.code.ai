@@ -30,12 +30,17 @@ workflows:
     scripts:
       - name: Install workspace dependencies
         script: |
-          # Install pnpm directly with npm instead of via corepack. The
-          # corepack bundled on the build image ships stale npm registry
-          # signing keys and dies with "Cannot find matching keyid" when it
-          # provisions pnpm. npm has no such problem. The version matches the
-          # root package.json "packageManager" field, so pnpm stays happy.
+          # The build image pre-enables corepack, so the `pnpm` on PATH is a
+          # corepack shim. That shim self-provisions pnpm through corepack,
+          # whose bundled npm registry signing keys are stale, and dies with
+          # "Cannot find matching keyid". Disable the shims first, then the
+          # real pnpm we install with npm is what actually runs. Belt and
+          # suspenders: also tell corepack to skip signature checks in case a
+          # shim slips through.
+          export COREPACK_INTEGRITY_KEYS=0
+          corepack disable || true
           npm install -g pnpm@10.33.0
+          pnpm --version
           pnpm install --frozen-lockfile
       - name: Build the engine and the web app, sync the iOS project
         script: |
