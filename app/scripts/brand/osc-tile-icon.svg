@@ -35,12 +35,9 @@
         <feMergeNode in="sc"/>
       </feMerge>
     </filter>
-    <clipPath id="round"><rect width="1024" height="1024" rx="240"/></clipPath>
   </defs>
-  <g clip-path="url(#round)">
-    <rect width="1024" height="1024" fill="url(#tile)"/>
-    <rect width="1024" height="1024" fill="url(#sheen)"/>
-  </g>
+  <rect width="1024" height="1024" fill="url(#tile)"/>
+  <rect width="1024" height="1024" fill="url(#sheen)"/>
   <path d="M224 416 L800 416" fill="none" stroke="url(#cream)" stroke-width="64"
         stroke-linecap="round" filter="url(#tube)"/>
   <path d="M224 608 Q368 502.4 512 608 T800 608" fill="none" stroke="url(#teal)" stroke-width="64"
