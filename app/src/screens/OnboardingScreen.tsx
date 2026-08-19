@@ -2,6 +2,7 @@
 // a working chat in minutes, complexity strictly opt-in.
 import { useApp } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
+import { BrandMark } from '../components/BrandMark.js';
 
 export function OnboardingScreen() {
   const { setView, saveSettings, newConversation } = useApp();
@@ -17,8 +18,11 @@ export function OnboardingScreen() {
       <div className="screen">
         <div className="screen-inner" style={{ paddingTop: 'calc(40px + var(--safe-top))' }}>
           <div style={{ textAlign: 'center', marginBottom: 26 }}>
-            <span className="wordmark" style={{ fontSize: 22 }}>
-              <span className="accent">OS</span> CODE
+            <span className="brand-lockup">
+              <BrandMark size={30} />
+              <span className="wordmark" style={{ fontSize: 22 }}>
+                <span className="accent">OS</span> Code
+              </span>
             </span>
             <h1 style={{ marginTop: 14, fontFamily: 'var(--font-display)', fontWeight: 500 }}>
               Your machine. Your models. Your keys.

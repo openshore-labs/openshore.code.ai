@@ -1,10 +1,12 @@
 // OS Code brand theme. Every color, glyph, and wordmark in the product comes
 // from this file, so a rebrand is a one-file change.
 //
-// OPENSHORE: replace with real brand tokens. The values below are considered
-// placeholders in the OpenShore palette direction: deep ocean navy ground,
-// off-white text, a bright signal accent for LOCAL work, warm amber for CLOUD
-// escalation, muted gray for secondary chrome.
+// The openshore.ai palette: ink navy, cream paper, a water teal, warm amber.
+// These are painted as FOREGROUND colors over the user's terminal (which owns
+// its own, usually dark, background), so `text` stays paper-light and `local`
+// uses the brand's lighter shore-teal rather than the deep water teal the app
+// UI uses on its cream ground. Status colors stay bright so they read on dark
+// terminals. Keep this in step with app/src/theme.css and BrandMark.tsx.
 
 export interface BrandTokens {
   /** Deep ocean navy. Terminals own their background; this is for reference surfaces. */
@@ -25,11 +27,11 @@ export interface BrandTokens {
 }
 
 export const TOKENS: BrandTokens = {
-  bg: '#0B1B2B', // OPENSHORE: replace with real brand tokens
-  text: '#F2EFE9', // OPENSHORE: replace with real brand tokens
-  local: '#2DD4BF', // OPENSHORE: replace with real brand tokens (signal teal)
-  cloud: '#F5A623', // OPENSHORE: replace with real brand tokens (warm amber)
-  muted: '#8A97A5', // OPENSHORE: replace with real brand tokens
+  bg: '#1C2A33', // brand ink (reference surface)
+  text: '#F6F4EF', // brand paper, legible on dark terminals
+  local: '#4B90A3', // brand shore-teal, LOCAL work
+  cloud: '#F5A623', // warm amber, CLOUD / spend
+  muted: '#8A949A', // brand ink-faint
   ok: '#4ADE80',
   warn: '#FACC15',
   danger: '#F87171',

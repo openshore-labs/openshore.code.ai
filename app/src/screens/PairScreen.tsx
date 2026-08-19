@@ -26,7 +26,7 @@ function DesktopPair() {
     setInfo(next);
     if (next.running && next.host) {
       const payload = JSON.stringify({ u: `http://${next.host}:${next.port}`, t: next.token });
-      setQr(await QRCode.toDataURL(payload, { margin: 1, width: 240, color: { dark: '#0b1b2b', light: '#f2efe9' } }));
+      setQr(await QRCode.toDataURL(payload, { margin: 1, width: 240, color: { dark: '#1c2a33', light: '#f6f4ef' } }));
     } else {
       setQr(undefined);
     }

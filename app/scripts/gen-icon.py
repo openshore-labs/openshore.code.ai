@@ -1,54 +1,57 @@
-# Generates the 1024x1024 iOS app icon: deep ocean navy field, a faint
-# vertical gradient, the OS wordmark in bold mono teal with an amber block
-# cursor. Run: python3 scripts/gen-icon.py
-# OPENSHORE: colors mirror src/theme.css tokens; swap both together when the
-# real openshore.ai palette lands.
-from PIL import Image, ImageDraw, ImageFont
+# Generates the 1024x1024 iOS app icon: the OpenShore wave-mark full-bleed.
+# A deep-ink navy field (iOS masks the corners to its own squircle), a cream
+# horizon line, and the shore wave in teal, all from the exact geometry of the
+# openshore.ai brand tile (viewBox 0 0 32 32). Run: python3 scripts/gen-icon.py
+#
+# Colors mirror src/theme.css / BrandMark.tsx: --ink field, --bg horizon,
+# --wave stroke. Keep the three in step if the brand palette moves.
+from PIL import Image, ImageDraw
 
 SIZE = 1024
-NAVY_TOP = (16, 38, 58)      # slightly lifted at the top
-NAVY_BOTTOM = (8, 20, 32)    # settling into the deep
-TEAL = (45, 212, 191)        # --local
-AMBER = (245, 166, 35)       # --cloud
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+SS = 4  # supersample, then downscale for clean anti-aliased curves
+INK = (28, 42, 51)      # #1c2a33  brand ink field
+CREAM = (246, 244, 239)  # #f6f4ef  horizon line
+WAVE = (75, 144, 163)    # #4b90a3  shore wave
 
-img = Image.new("RGB", (SIZE, SIZE))
+# The mark lives in a 32-unit viewBox; scale it up to the rendered canvas.
+U = (SIZE * SS) / 32.0
+STROKE = 2 * U  # stroke-width 2 in viewBox units
+
+
+def quad(p0, p1, p2, n=120):
+    """Sample a quadratic bezier into n points."""
+    out = []
+    for i in range(n + 1):
+        t = i / n
+        mt = 1 - t
+        x = mt * mt * p0[0] + 2 * mt * t * p1[0] + t * t * p2[0]
+        y = mt * mt * p0[1] + 2 * mt * t * p1[1] + t * t * p2[1]
+        out.append((x, y))
+    return out
+
+
+def stroke(draw, pts, width, color):
+    """Round-capped, round-joined stroke: a disc at every sampled point."""
+    r = width / 2
+    for x, y in pts:
+        px, py = x * U, y * U
+        draw.ellipse([px - r, py - r, px + r, py + r], fill=color)
+
+
+img = Image.new("RGB", (SIZE * SS, SIZE * SS), INK)
 draw = ImageDraw.Draw(img)
 
-# Vertical gradient wash.
-for y in range(SIZE):
-    t = y / (SIZE - 1)
-    color = tuple(round(a + (b - a) * t) for a, b in zip(NAVY_TOP, NAVY_BOTTOM))
-    draw.line([(0, y), (SIZE, y)], fill=color)
+# Horizon line: M7,13 -> 25,13 (cream). Two endpoints are enough for the disc
+# stroke, but sample a few so the caps sit flush.
+stroke(draw, quad((7, 13), (16, 13), (25, 13)), STROKE, CREAM)
 
-# A whisper of a horizon line in teal, low on the field.
-horizon_y = round(SIZE * 0.78)
-for i, alpha in enumerate((10, 22, 10)):
-    overlay = Image.new("RGB", (SIZE, 1), TEAL)
-    img.paste(
-        Image.blend(img.crop((0, horizon_y + i, SIZE, horizon_y + i + 1)), overlay, alpha / 255),
-        (0, horizon_y + i),
-    )
+# Shore wave: M7 19 q4.5 -3.3 9 0 t9 0 (teal). The `t` reflects the control
+# point across the segment join.
+seg1 = quad((7, 19), (11.5, 15.7), (16, 19))
+seg2 = quad((16, 19), (20.5, 22.3), (25, 19))
+stroke(draw, seg1 + seg2, STROKE, WAVE)
 
-# The wordmark: OS + block cursor.
-font = ImageFont.truetype(FONT, 340)
-text = "OS"
-bbox = draw.textbbox((0, 0), text, font=font)
-text_w = bbox[2] - bbox[0]
-text_h = bbox[3] - bbox[1]
-
-cursor_w = round(text_w * 0.22)
-gap = round(cursor_w * 0.42)
-total_w = text_w + gap + cursor_w
-
-x = (SIZE - total_w) // 2 - bbox[0]
-y = (SIZE - text_h) // 2 - bbox[1] - round(SIZE * 0.02)
-draw.text((x, y), text, font=font, fill=TEAL)
-
-cursor_x = x + bbox[0] + text_w + gap
-cursor_top = y + bbox[1] + round(text_h * 0.18)
-cursor_bottom = y + bbox[1] + text_h
-draw.rectangle([cursor_x, cursor_top, cursor_x + cursor_w, cursor_bottom], fill=AMBER)
+img = img.resize((SIZE, SIZE), Image.LANCZOS)
 
 out = "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
 img.save(out, "PNG")
