@@ -59,16 +59,26 @@ Three sections:
 
 ### Business / pricing (open thread, 2026-08-19)
 
-- [ ] **P1 · Pricing decision pending founder sign-off.** Founder's initial
-      thinking: **free download, $20/year to use**, single flat price, built
-      serverless as a pure conduit ("little to no overhead"). Being
-      pressure-tested by the CFO (pricing, tiers, competitive) partnered with
-      the CTO (true overhead and cost-to-serve). Awaiting the synthesized
-      recommendation, then the founder's call. Open questions on the table: is
-      $20/yr right; do we need other tiers (free/paid, monthly, lifetime, a
-      future "OpenShore models" add-on); how do competing local-LLM apps price;
-      where is the revenue-worth-it threshold. **Capture the decision here once
-      made, and seed the business docs in `openshore-hq/finance` for OS Code.**
+- [x] **P1 · Price DECIDED (founder, 2026-08-19): free download, $25/year,
+      conduit-only, purchased on web/desktop via Stripe (no App Store IAP).**
+      Start simple with a single flat annual price while OS Code stays a pure
+      conduit (no hosted models, ~$0 marginal cost, CTO-confirmed). Tiers and
+      the future "OpenShore models" recurring add-on are deferred, not adopted.
+      Prior CFO/CTO/CMO analysis (2026-08-19) is captured for the record: the
+      category is mostly free/OSS; paid local comps are Private LLM ($9.99
+      one-time) and Msty ($149/yr or $349 lifetime); Cursor (~$240/yr) is the
+      anchor, not a direct comp. CFO flagged, and founder accepted, that $25/yr
+      is a deliberate low-friction entry price, not a revenue-maximizing one.
+- [ ] **P1 · Reconcile the revenue goal with the $25 price.** Founder's target
+      is $100k in year one. At $25/yr that implies **~4,000 paying users**
+      (not the ~1,000 discussed at higher prices). The binding constraint is
+      top-of-funnel/distribution, not price. Open: confirm the year-one number
+      the founder wants to run at, then size the download/conversion funnel to
+      match (at ~3% conversion, 4,000 payers needs ~130k qualified downloads).
+- [ ] **P1 · Validate positioning / market need (CMO straight-answer pass, in
+      progress).** Is OS Code genuinely differentiated, or does an existing
+      tool already fill this need? Fold the CMO's blunt read here, then seed the
+      OS Code business doc in `openshore-hq/finance`.
 - [ ] **P2 · The license-verify endpoint becomes production infra the moment
       activation is paywalled.** Today it is a documented stub (client is real;
       server contract in `os-code/src/license/verify.ts`). Any paid tier needs
