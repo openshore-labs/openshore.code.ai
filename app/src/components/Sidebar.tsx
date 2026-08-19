@@ -1,9 +1,10 @@
 // The sidebar: the project bucket at the top-left, a new chat inside it, a
 // throwaway quick chat, the recent conversations in the active project, and the
 // app's few rooms. Persistent on desktop, a slide-over drawer on the phone.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { sourceLabel } from '../state/types.js';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
+import { useDismissable } from '../lib/useDismissable.js';
 import { BrandMark } from './BrandMark.js';
 
 const NAV: Array<{ view: ViewName; glyph: string; label: string }> = [
@@ -30,8 +31,11 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
     settings,
     setActiveProject,
     quickChat,
+    startNewChat,
   } = useApp();
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switcherRef = useRef<HTMLDivElement>(null);
+  useDismissable(switcherRef, switcherOpen, () => setSwitcherOpen(false));
 
   const projects = settings.projects ?? [];
   const activeProject =
@@ -47,18 +51,6 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
     return !conv.projectId;
   });
 
-  const startNewChat = () => {
-    // A saved chat needs a project to live in. Send the user to create one
-    // first if none exists yet; otherwise open a fresh chat in the bucket.
-    if (projects.length === 0) {
-      setView('projects');
-      useApp.setState({ drawerOpen: false });
-      return;
-    }
-    setView('chat');
-    useApp.setState({ activeId: undefined, drawerOpen: false });
-  };
-
   const body = (
     <aside className={`sidebar${drawer ? ' drawer' : ''}`}>
       <div className="sidebar-head">
@@ -71,7 +63,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
       </div>
 
       {/* The project bucket. Everything saved lives inside the active one. */}
-      <div className="project-switch">
+      <div className="project-switch" ref={switcherRef}>
         <button
           className="project-switch-btn"
           onClick={() => setSwitcherOpen((v) => !v)}

@@ -32,12 +32,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   const startWith = async (source: ConversationSource) => {
     setPickerOpen(false);
-    await newConversation(source);
+    const id = await newConversation(source);
     if (pendingText) {
-      // Give the driver a beat to attach, then deliver the queued message.
       const text = pendingText;
       setPendingText(undefined);
-      setTimeout(() => useApp.getState().send(text), 350);
+      useApp.getState().sendWhenAttached(id, text);
     }
   };
 

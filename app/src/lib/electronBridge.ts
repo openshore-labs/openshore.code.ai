@@ -82,6 +82,14 @@ export interface OscodeBridge {
   secureGet(key: string): Promise<string | null>;
   secureSet(key: string, value: string): Promise<boolean>;
   secureDelete(key: string): Promise<void>;
+
+  // Guarded outbound HTTP for CORS-hostile third-party APIs (see main.ts).
+  httpFetch(req: {
+    url: string;
+    method?: 'GET' | 'POST';
+    headers?: Record<string, string>;
+    body?: string;
+  }): Promise<{ ok: boolean; status: number; body: string }>;
 }
 
 export function bridge(): OscodeBridge | undefined {

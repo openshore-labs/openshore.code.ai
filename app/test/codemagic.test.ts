@@ -32,6 +32,17 @@ describe('codemagic redaction', () => {
     expect(out).toContain('[redacted uuid]');
     expect(out).not.toContain('567890abcdef');
   });
+
+  it('strips a plain opaque bearer token in an auth header', () => {
+    const out = redactLog('curl -H "Authorization: Bearer abc123opaquetoken456xyz"');
+    expect(out).not.toContain('abc123opaquetoken456xyz');
+  });
+
+  it('strips a standalone bearer token', () => {
+    const out = redactLog('using Bearer sk-opaque-value-not-a-jwt here');
+    expect(out).not.toContain('sk-opaque-value-not-a-jwt');
+    expect(out).toContain('Bearer [redacted]');
+  });
 });
 
 describe('codemagic extraction', () => {

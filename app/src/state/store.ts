@@ -174,8 +174,13 @@ interface AppState {
   showToast(message: string): void;
 
   newConversation(source: ConversationSource, opts?: { ephemeral?: boolean }): Promise<string>;
+  /** Open a fresh, empty chat (the source picker decides who answers). A
+   *  project is auto-created on first save, so this never dead-ends. */
+  startNewChat(): void;
   /** A throwaway chat with the stack for a quick lookup. Not saved. */
   quickChat(): Promise<string>;
+  /** Send text once the active conversation's driver has attached. */
+  sendWhenAttached(conversationId: string, text: string): void;
   /** Create a project and make it active. */
   createProject(name: string): Promise<string>;
   setActiveProject(id: string): void;
@@ -210,6 +215,9 @@ interface AppState {
   saveLaunchTarget(target: Omit<LaunchTarget, 'id'> & { id?: string }): Promise<void>;
   /** Trigger a Codemagic build and follow it to a result. */
   startBuild(): Promise<void>;
+  /** Run the "review builds" crew as a pre-deploy pass (advisory, non-blocking).
+   *  Returns the chat id, or undefined when no review crew is in scope. */
+  reviewBuild(): Promise<string | undefined>;
   /** Open a chat where the model reads a failed build and proposes a fix. */
   diagnoseBuild(runId: string): Promise<void>;
 
@@ -395,6 +403,14 @@ export const useApp = create<AppState>((set, get) => {
     }
   }
 
+  // Quick (ephemeral) chats are never persisted and must not pile up in memory.
+  // Drop every ephemeral conversation except the one we are keeping (if any).
+  function pruneEphemeral(exceptId?: string): void {
+    const { conversations, order } = get();
+    const stale = order.filter((id) => conversations[id]?.ephemeral && id !== exceptId);
+    for (const id of stale) get().deleteConversation(id);
+  }
+
   return {
     ready: false,
     view: 'chat',
@@ -422,6 +438,8 @@ export const useApp = create<AppState>((set, get) => {
       for (const id of persisted.order) {
         const row = persisted.conversations[id];
         if (!row) continue;
+        // Ephemeral quick chats never persist; drop any that leaked in.
+        if (row.ephemeral) continue;
         conversations[id] = {
           ...row,
           // Desktop threads rebuild from the journal on open; local ones load as saved.
@@ -464,6 +482,54 @@ export const useApp = create<AppState>((set, get) => {
           // Native side unreachable: keep the labels as they are.
         }
       }
+      let settingsDirty = false;
+
+      // Bucket migration: a saved chat with no project would vanish from every
+      // list once any project exists. Assign orphans to the active (or first)
+      // project, creating a default if the user has none yet.
+      const orphanIds = Object.keys(conversations).filter(
+        (id) => !conversations[id]!.ephemeral && !conversations[id]!.projectId,
+      );
+      if (orphanIds.length) {
+        let activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
+        if (!activeProjectId) {
+          const proj: Project = {
+            id: `p${Date.now().toString(36)}${(convSeq++).toString(36)}`,
+            name: 'My work',
+            repoIds: [],
+            createdAt: new Date().toISOString(),
+          };
+          settings.projects = [...(settings.projects ?? []), proj];
+          settings.activeProjectId = proj.id;
+          activeProjectId = proj.id;
+        }
+        for (const id of orphanIds) {
+          conversations[id] = { ...conversations[id]!, projectId: activeProjectId };
+        }
+        settingsDirty = true;
+      }
+
+      // Stale build runs: the poller cannot survive a relaunch, so any run left
+      // in a non-terminal state is orphaned. Settle it so Build is not bricked.
+      if (settings.launch?.runs?.some((r) => !isTerminal(r.status) && r.status !== 'unknown')) {
+        settings.launch = {
+          ...settings.launch,
+          runs: settings.launch.runs.map((r) =>
+            isTerminal(r.status) || r.status === 'unknown'
+              ? r
+              : {
+                  ...r,
+                  status: 'unknown' as const,
+                  error: 'Interrupted before it finished. Check Codemagic for the result.',
+                  finishedAt: r.finishedAt ?? new Date().toISOString(),
+                },
+          ),
+        };
+        settingsDirty = true;
+      }
+
+      if (settingsDirty) await storeSetJson(SETTINGS_KEY, settings);
+
       set({
         settings,
         conversations,
@@ -555,6 +621,8 @@ export const useApp = create<AppState>((set, get) => {
         view: 'chat',
         drawerOpen: false,
       }));
+      // Any earlier quick chat is now off-screen; do not let it linger.
+      pruneEphemeral(id);
       try {
         const driver = await buildDriver(conv);
         attachDriver(id, driver);
@@ -565,9 +633,34 @@ export const useApp = create<AppState>((set, get) => {
       return id;
     },
 
+    startNewChat() {
+      // Any lingering quick chat goes; the greeting + source picker take over.
+      pruneEphemeral();
+      set({ activeId: undefined, view: 'chat', drawerOpen: false });
+    },
+
     async quickChat() {
       logEvent('quick_chat');
       return get().newConversation({ kind: 'stack' }, { ephemeral: true });
+    },
+
+    sendWhenAttached(conversationId, text) {
+      // Drivers attach asynchronously after a conversation is created. Poll
+      // briefly for this one, then deliver, instead of guessing a fixed delay.
+      let tries = 0;
+      const trySend = () => {
+        const driver = drivers.get(conversationId);
+        if (driver) {
+          driver.send(text);
+          return;
+        }
+        if (tries++ > 100) {
+          get().showToast('This chat did not connect. Try sending again.');
+          return;
+        }
+        setTimeout(trySend, 50);
+      };
+      trySend();
     },
 
     async createProject(name) {
@@ -732,12 +825,16 @@ export const useApp = create<AppState>((set, get) => {
       }
       const runId = `b${Date.now().toString(36)}${(convSeq++).toString(36)}`;
       const run: BuildRun = { id: runId, status: 'queued', startedAt: new Date().toISOString() };
-      // Newest run first, keep the last 10.
-      const withRun = (patch: Partial<BuildRun>) => {
+      // Two ways to update the run: memory-only (frequent poll ticks, no disk
+      // churn) and persisted (meaningful transitions worth surviving a relaunch).
+      const applyRun = (patch: Partial<BuildRun>): LaunchState => {
         const cur = get().settings.launch ?? { runs: [] };
-        const runs = cur.runs.map((r) => (r.id === runId ? { ...r, ...patch } : r));
-        return get().saveSettings({ launch: { ...cur, runs } });
+        return { ...cur, runs: cur.runs.map((r) => (r.id === runId ? { ...r, ...patch } : r)) };
       };
+      const touchRun = (patch: Partial<BuildRun>) =>
+        set((s) => ({ settings: { ...s.settings, launch: applyRun(patch) } }));
+      const persistRun = (patch: Partial<BuildRun>) => get().saveSettings({ launch: applyRun(patch) });
+
       await get().saveSettings({
         launch: { ...launch, runs: [run, ...(launch?.runs ?? [])].slice(0, 10) },
       });
@@ -749,11 +846,12 @@ export const useApp = create<AppState>((set, get) => {
           workflowId: target.workflowId,
           branch: target.branch,
         });
-        await withRun({ buildId, status: 'building' });
+        await persistRun({ buildId, status: 'building' }); // worth surviving relaunch
 
-        // Poll to a terminal state with gentle backoff. The daemon/engine is a
-        // better home for this later; for now the app follows the build.
+        // Poll to a terminal state with gentle backoff. Intermediate status
+        // ticks update memory only; we persist on real transitions.
         let delay = 5000;
+        let lastStatus: string = 'building';
         for (let i = 0; i < 240; i++) {
           await new Promise((r) => setTimeout(r, delay));
           delay = Math.min(delay + 3000, 30000);
@@ -763,9 +861,12 @@ export const useApp = create<AppState>((set, get) => {
           } catch {
             continue; // a transient read failure; keep polling
           }
-          await withRun({ status: info.status });
+          if (info.status !== lastStatus) {
+            touchRun({ status: info.status });
+            lastStatus = info.status;
+          }
           if (isTerminal(info.status)) {
-            const patch: Partial<BuildRun> = { finishedAt: new Date().toISOString() };
+            const patch: Partial<BuildRun> = { status: info.status, finishedAt: new Date().toISOString() };
             if (info.status !== 'finished') {
               try {
                 patch.excerpt = await buildLogExcerpt(info);
@@ -773,15 +874,46 @@ export const useApp = create<AppState>((set, get) => {
                 patch.excerpt = 'The build failed, and its logs could not be read automatically.';
               }
             }
-            await withRun(patch);
+            await persistRun(patch);
             logEvent('build_done', { status: info.status });
             return;
           }
         }
-        await withRun({ status: 'unknown', error: 'Timed out following this build.' });
+        await persistRun({ status: 'unknown', error: 'Timed out following this build.' });
       } catch (err) {
-        await withRun({ status: 'failed', error: err instanceof Error ? err.message : String(err) });
+        await persistRun({ status: 'failed', error: err instanceof Error ? err.message : String(err) });
       }
+    },
+
+    async reviewBuild() {
+      const s = get().settings;
+      const target = s.launch?.target;
+      const activeProjectId = s.activeProjectId ?? s.projects?.[0]?.id;
+      const reviewers = (s.crew ?? []).filter(
+        (a) =>
+          a.activityLevel === 'review' &&
+          (a.projectIds.length === 0 ||
+            (activeProjectId != null && a.projectIds.includes(activeProjectId))),
+      );
+      if (!reviewers.length) return undefined;
+      const convId = await get().newConversation({ kind: 'stack' });
+      const list = reviewers
+        .map((a) => {
+          const when = a.whenCalled?.trim() ? ` Focus: ${a.whenCalled.trim()}.` : '';
+          return `- ${a.name}: ${a.persona.trim()}.${when}`;
+        })
+        .join('\n');
+      const prompt = [
+        `You are about to deploy${target ? ` ${target.platform} from branch ${target.branch}` : ''}. Give a short pre-deploy review.`,
+        'Channel each reviewer below in their own voice, one brief perspective each, then a single go or hold call.',
+        'This does not block the build. The user decides whether to proceed.',
+        '',
+        'Reviewers:',
+        list,
+      ].join('\n');
+      get().sendWhenAttached(convId, prompt);
+      logEvent('build_review', { reviewers: reviewers.length });
+      return convId;
     },
 
     async diagnoseBuild(runId) {
@@ -800,8 +932,7 @@ export const useApp = create<AppState>((set, get) => {
         target ? `\nPlatform: ${target.platform}. Branch: ${target.branch}.` : '',
         '\nBuild log excerpt (secrets already redacted):\n```\n' + run.excerpt + '\n```',
       ].join('\n');
-      // Give the driver a beat to attach, then send.
-      setTimeout(() => useApp.getState().send(prompt), 350);
+      get().sendWhenAttached(convId, prompt);
       const runs = (get().settings.launch?.runs ?? []).map((r) =>
         r.id === runId ? { ...r, diagnosisConvId: convId } : r,
       );
@@ -952,6 +1083,8 @@ export const useApp = create<AppState>((set, get) => {
       const conv = get().conversations[id];
       if (!conv) return;
       set({ activeId: id, view: 'chat', drawerOpen: false });
+      // Leaving a quick chat for a saved one: drop the quick chat.
+      pruneEphemeral(id);
       if (!drivers.has(id)) {
         // Reattach lazily; desktop threads replay their journal into the UI.
         if (conv.source.kind === 'desktop') {

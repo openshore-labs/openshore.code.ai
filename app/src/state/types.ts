@@ -1,6 +1,7 @@
 // App-level models. Every conversation, whatever powers it, renders through
 // the same ThreadState so the UI has exactly one chat implementation.
 import type { ApprovalRequest } from 'os-code/protocol';
+import type { BuildStatus } from '../lib/codemagic.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
 
@@ -151,16 +152,7 @@ export interface Account {
 // Launch: getting a built app to the App Store or Google Play through
 // Codemagic, guided from inside the app. A target names the Codemagic app and
 // workflow; each build attempt is a run whose result the model reads directly.
-export type BuildStatusLite =
-  | 'queued'
-  | 'preparing'
-  | 'building'
-  | 'finished'
-  | 'failed'
-  | 'canceled'
-  | 'timeout'
-  | 'unknown';
-
+// The status vocabulary is owned by the Codemagic client (one source of truth).
 export interface LaunchTarget {
   id: string;
   platform: 'ios' | 'android';
@@ -175,7 +167,7 @@ export interface LaunchTarget {
 export interface BuildRun {
   id: string;
   buildId?: string;
-  status: BuildStatusLite;
+  status: BuildStatus;
   startedAt: string;
   finishedAt?: string;
   /** Redacted, extracted log excerpt for a failed build (model-ready). */

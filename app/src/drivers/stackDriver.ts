@@ -12,9 +12,11 @@
 // text and does not yet render images; "home" models require the desktop
 // pairing and are treated as unreachable here.
 import Anthropic from '@anthropic-ai/sdk';
+import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
-import { secretGet } from '../lib/platform.js';
+import { platform, secretGet } from '../lib/platform.js';
+import { nativeFetch } from '../lib/nativeFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
@@ -71,6 +73,8 @@ export class StackDriver implements ChatDriver {
   private answer = '';
   private activeRequestId?: string;
   private listenersReady: Promise<void>;
+  private deviceListeners: PluginListenerHandle[] = [];
+  private abortController?: AbortController;
   private loadedDeviceId?: string;
 
   constructor(
@@ -158,6 +162,7 @@ export class StackDriver implements ChatDriver {
 
   private async run(text: string): Promise<void> {
     this.aborted = false;
+    this.abortController = new AbortController();
     this.history.push({ role: 'user', content: text });
     this.emit({ type: 'task-start', input: text });
 
@@ -204,17 +209,21 @@ export class StackDriver implements ChatDriver {
   // ---- on-device backend --------------------------------------------------
 
   private async attachDeviceListeners(): Promise<void> {
-    await Llama.addListener('token', ({ requestId, delta }) => {
-      if (requestId !== this.activeRequestId) return;
-      this.answer += delta;
-      this.emit({ type: 'text-delta', text: delta });
-    });
-    await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
-      if (requestId !== this.activeRequestId) return;
-      this.activeRequestId = undefined;
-      if (stopReason === 'error') this.finish('error', detail ?? 'The on-device model hit a problem.');
-      else this.finish(stopReason === 'stopped' ? 'aborted' : 'complete');
-    });
+    this.deviceListeners.push(
+      await Llama.addListener('token', ({ requestId, delta }) => {
+        if (requestId !== this.activeRequestId) return;
+        this.answer += delta;
+        this.emit({ type: 'text-delta', text: delta });
+      }),
+    );
+    this.deviceListeners.push(
+      await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
+        if (requestId !== this.activeRequestId) return;
+        this.activeRequestId = undefined;
+        if (stopReason === 'error') this.finish('error', detail ?? 'The on-device model hit a problem.');
+        else this.finish(stopReason === 'stopped' ? 'aborted' : 'complete');
+      }),
+    );
   }
 
   private async runDevice(ref: Extract<StackModelRef, { kind: 'device' }>, placement?: Placement): Promise<void> {
@@ -253,18 +262,29 @@ export class StackDriver implements ChatDriver {
 
   private async runAnthropic(key: string, model: string, system: string): Promise<void> {
     const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
-    const stream = client.messages.stream({
-      model,
-      max_tokens: 2048,
-      system,
-      messages: this.history.map((m) => ({ role: m.role, content: m.content })),
-    });
+    const stream = client.messages.stream(
+      {
+        model,
+        max_tokens: 2048,
+        system,
+        messages: this.history.map((m) => ({ role: m.role, content: m.content })),
+      },
+      { signal: this.abortController?.signal },
+    );
     stream.on('text', (delta) => {
       if (this.aborted) return;
       this.answer += delta;
       this.emit({ type: 'text-delta', text: delta });
     });
-    await stream.finalMessage();
+    try {
+      await stream.finalMessage();
+    } catch (err) {
+      if (this.aborted) {
+        this.finish('aborted');
+        return;
+      }
+      throw err;
+    }
     this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
@@ -275,14 +295,39 @@ export class StackDriver implements ChatDriver {
       this.emit({ type: 'task-done', reason: 'error', message: `No endpoint configured for ${provider}.` });
       return;
     }
+    const messages = [{ role: 'system', content: system }, ...this.history];
+    const authHeaders = { 'content-type': 'application/json', authorization: `Bearer ${key}` };
+
+    // On a device or the desktop shell, these providers send no CORS headers, so
+    // the request goes through the native shim, which cannot stream. Ask for a
+    // whole answer and emit it once. On the web (dev) we keep true streaming.
+    if (platform() === 'ios' || platform() === 'electron') {
+      const res = await nativeFetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ model, stream: false, messages }),
+      });
+      if (!res.ok) {
+        this.emit({ type: 'task-done', reason: 'error', message: `${provider} answered ${res.status}.` });
+        return;
+      }
+      if (!this.aborted) {
+        const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+        const content = data?.choices?.[0]?.message?.content;
+        if (typeof content === 'string' && content) {
+          this.answer += content;
+          this.emit({ type: 'text-delta', text: content });
+        }
+      }
+      this.finish(this.aborted ? 'aborted' : 'complete');
+      return;
+    }
+
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        messages: [{ role: 'system', content: system }, ...this.history],
-      }),
+      headers: authHeaders,
+      body: JSON.stringify({ model, stream: true, messages }),
+      signal: this.abortController?.signal,
     });
     if (!res.ok || !res.body) {
       this.emit({ type: 'task-done', reason: 'error', message: `${provider} answered ${res.status}.` });
@@ -320,6 +365,7 @@ export class StackDriver implements ChatDriver {
 
   abort(): void {
     this.aborted = true;
+    this.abortController?.abort();
     if (this.activeRequestId) void Llama.stop({ requestId: this.activeRequestId });
   }
 
@@ -329,6 +375,8 @@ export class StackDriver implements ChatDriver {
 
   dispose(): void {
     this.abort();
+    for (const h of this.deviceListeners) void h.remove();
+    this.deviceListeners = [];
     this.emitter.clear();
   }
 }

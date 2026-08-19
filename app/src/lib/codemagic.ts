@@ -12,6 +12,7 @@
 // Full logs are not a clean endpoint; they arrive as published log artifacts
 // (codemagic.yaml already publishes xcodebuild logs). We diagnose from those.
 import { secretGet } from './platform.js';
+import { nativeFetch } from './nativeFetch.js';
 
 export const CODEMAGIC_BASE = 'https://api.codemagic.io';
 export const CODEMAGIC_SECRET_KEY = 'oscode.secret.codemagic';
@@ -58,7 +59,7 @@ export async function triggerBuild(input: {
 }): Promise<string> {
   const key = await token();
   if (!key) throw new Error('Connect Codemagic first (add your API token).');
-  const res = await fetch(`${CODEMAGIC_BASE}/builds`, {
+  const res = await nativeFetch(`${CODEMAGIC_BASE}/builds`, {
     method: 'POST',
     headers: headers(key),
     body: JSON.stringify(input),
@@ -73,7 +74,7 @@ export async function triggerBuild(input: {
 export async function getBuild(buildId: string): Promise<BuildInfo> {
   const key = await token();
   if (!key) throw new Error('Connect Codemagic first (add your API token).');
-  const res = await fetch(`${CODEMAGIC_BASE}/builds/${buildId}`, { headers: headers(key) });
+  const res = await nativeFetch(`${CODEMAGIC_BASE}/builds/${buildId}`, { headers: headers(key) });
   if (!res.ok) throw new Error(`Codemagic build lookup failed (${res.status}).`);
   const data = (await res.json()) as { build?: { status?: string; artefacts?: BuildArtifact[] } };
   const raw = (data.build?.status ?? 'unknown').toLowerCase();
@@ -95,15 +96,18 @@ export async function fetchLogText(artifact: BuildArtifact): Promise<string> {
   const key = await token();
   if (!key) throw new Error('Connect Codemagic first (add your API token).');
   let url = artifact.url;
+  // A bare secureFilename (not an http URL) needs a minted temporary URL.
   if (url && !/^https?:/.test(url)) {
-    const res = await fetch(`${CODEMAGIC_BASE}/artifacts/${encodeURIComponent(url)}/public-url`, {
-      method: 'POST',
-      headers: headers(key),
-    });
+    const res = await nativeFetch(
+      `${CODEMAGIC_BASE}/artifacts/${encodeURIComponent(url)}/public-url`,
+      { method: 'POST', headers: headers(key) },
+    );
     if (res.ok) url = ((await res.json()) as { url?: string }).url;
   }
   if (!url) throw new Error('That log has no reachable URL.');
-  const res = await fetch(url);
+  // Send the token: an api.codemagic.io artifact URL requires it (else 401), and
+  // a temporary signed URL simply ignores it.
+  const res = await nativeFetch(url, { responseType: 'text', headers: { 'x-auth-token': key } });
   if (!res.ok) throw new Error(`Could not download the log (${res.status}).`);
   return res.text();
 }
@@ -123,14 +127,17 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/-----BEGIN[\s\S]*?-----END[^-]*-----/g, '[redacted key block]'],
   // JWTs.
   [/eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, '[redacted token]'],
-  // Authorization / bearer / auth-token headers.
-  [/(authorization|x-auth-token|bearer)\s*[:=]\s*\S+/gi, '$1: [redacted]'],
+  // Authorization / auth-token headers, incl. an optional Bearer prefix and its
+  // token, so the token is consumed rather than left dangling after "Bearer".
+  [/(authorization|x-auth-token)\s*[:=]\s*(?:bearer\s+)?\S+/gi, '$1: [redacted]'],
+  // A standalone bearer token anywhere else.
+  [/\bbearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]'],
   // Named secrets: FOO_KEY=..., API_TOKEN: ..., PASSWORD=..., SECRET=...
   [/([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CERTIFICATE)[A-Z0-9_]*)\s*[:=]\s*\S+/gi, '$1=[redacted]'],
   // Provisioning-profile / cert UUIDs.
   [/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g, '[redacted uuid]'],
-  // Long opaque base64 blobs (40+ chars).
-  [/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, '[redacted blob]'],
+  // Long opaque base64 / base64url blobs (40+ chars).
+  [/[A-Za-z0-9+/_-]{40,}={0,2}/g, '[redacted blob]'],
 ];
 
 /** Strip secrets from a build log. Always run before showing a log anywhere. */
