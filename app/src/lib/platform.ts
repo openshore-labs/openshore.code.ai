@@ -2,6 +2,7 @@
 // serves Electron (desktop), Capacitor (iOS), and a plain browser (dev).
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { Llama } from './llamaPlugin.js';
 
 export type Platform = 'electron' | 'ios' | 'web';
 
@@ -57,4 +58,34 @@ export async function storeGetJson<T>(key: string): Promise<T | undefined> {
 
 export async function storeSetJson(key: string, value: unknown): Promise<void> {
   await storeSet(key, JSON.stringify(value));
+}
+
+// ---------------------------------------------------------------------------
+// Secret storage. On iOS, secrets (API keys) go to the Keychain via the native
+// plugin, never the plist that plain Preferences use. Off iOS they fall back
+// to the same local store; a desktop secret store is a follow-up.
+// ---------------------------------------------------------------------------
+
+export async function secretGet(key: string): Promise<string | null> {
+  if (platform() === 'ios') {
+    const { value } = await Llama.secureGet({ key });
+    return value ?? null;
+  }
+  return storeGet(key);
+}
+
+export async function secretSet(key: string, value: string): Promise<void> {
+  if (platform() === 'ios') {
+    await Llama.secureSet({ key, value });
+    return;
+  }
+  await storeSet(key, value);
+}
+
+export async function secretDelete(key: string): Promise<void> {
+  if (platform() === 'ios') {
+    await Llama.secureDelete({ key });
+    return;
+  }
+  await storeDelete(key);
 }

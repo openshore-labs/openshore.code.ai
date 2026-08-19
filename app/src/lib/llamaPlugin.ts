@@ -32,6 +32,11 @@ export interface LlamaPluginContract {
   }): Promise<{ started: boolean }>;
   stop(options: { requestId: string }): Promise<void>;
 
+  /** Keychain-backed secret storage (iOS). Off iOS, unused (see platform.ts). */
+  secureGet(options: { key: string }): Promise<{ value: string | null }>;
+  secureSet(options: { key: string; value: string }): Promise<void>;
+  secureDelete(options: { key: string }): Promise<void>;
+
   addListener(
     eventName: 'downloadProgress',
     listener: (data: { id: string; completed: number; total: number }) => void,
@@ -112,6 +117,18 @@ class LlamaWeb {
 
   async stop({ requestId }: { requestId: string }) {
     this.stopped.add(requestId);
+  }
+
+  async secureGet({ key }: { key: string }) {
+    return { value: localStorage.getItem(key) };
+  }
+
+  async secureSet({ key, value }: { key: string; value: string }) {
+    localStorage.setItem(key, value);
+  }
+
+  async secureDelete({ key }: { key: string }) {
+    localStorage.removeItem(key);
   }
 
   async addListener(eventName: string, listener: (data: any) => void) {

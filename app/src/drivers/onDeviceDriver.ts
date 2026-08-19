@@ -82,7 +82,9 @@ export class OnDeviceDriver implements ChatDriver {
     try {
       if (!this.loaded) {
         this.emitter.emit({ type: 'status', message: `Warming up ${this.modelName} on this device.` });
-        const load = await Llama.load({ id: this.modelId });
+        // Harbor only writes short guidance, so a small context keeps the KV
+        // cache and load time down; a chosen pocket model gets the full window.
+        const load = await Llama.load({ id: this.modelId, contextSize: this.guide ? 2048 : 4096 });
         if (!load.ok) {
           this.emitter.emit({
             type: 'task-done',
