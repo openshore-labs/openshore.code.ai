@@ -82,21 +82,27 @@ build stays live for 90 days.
   integration name in Codemagic must match the yaml exactly, and the API
   key needs the **Admin** role (App Manager can't create certificates or
   provisioning profiles, only manage app metadata and TestFlight).
-- **Signing.** We use Codemagic AUTOMATIC signing (the `ios_signing:`
-  block under `environment:`), which needs the API key to have **Admin**
-  rights. Codemagic creates and reuses the distribution certificate, its
-  private key, and the App Store profile in its own managed storage. Do
-  NOT add manual CLI signing (`keychain initialize`,
-  `app-store-connect fetch-signing-files`, `xcode-project use-profiles`)
-  alongside it: the two modes conflict and raise "No matching profiles
-  found". Manual signing was tried and abandoned because
-  `fetch-signing-files --create` cannot mint a distribution certificate on
-  a fresh account ("Cannot save Signing Certificates without certificate
-  private key"): distribution keys are not downloadable, so the managed
-  automatic flow is the right tool.
-- **"No matching profiles found ... distribution type app_store"**: the
-  yaml is mixing automatic (`ios_signing:`) and manual CLI signing. Keep
-  only the `ios_signing:` block; remove any manual signing scripts.
+- **Signing.** We use MANUAL signing (needs the API key at **Admin**).
+  The "Set up code signing" step creates the distribution certificate from
+  a generated private key, then the App Store profile, then assigns it.
+  The private key is the crux: `fetch-signing-files --create` can only
+  mint a certificate when given one (`--certificate-key`), because a
+  distribution cert's private key is never downloadable. Automatic signing
+  (an `ios_signing:` block) does NOT work here: it only fetches profiles
+  and raises "No matching profiles found" on a fresh account. Never run
+  both modes at once.
+- **⚠️ Persist the signing key (do before regular use).** The step
+  currently generates a NEW key each build, so Apple mints a NEW
+  distribution certificate every run, and Apple caps how many you can
+  have. To fix: generate one key, store it as an encrypted Codemagic env
+  var `CERTIFICATE_PRIVATE_KEY` (Team → env vars, secure), and change the
+  step to read `--certificate-key @env:CERTIFICATE_PRIVATE_KEY`. Then the
+  same certificate is reused forever. (Ask Claude to make this change once
+  you have the env var set.)
+- **"No matching profiles found ... distribution type app_store"**: an
+  `ios_signing:` block is present (automatic signing) but the profile/cert
+  do not exist and it will not create them. Use the manual signing step
+  instead; remove the `ios_signing:` block.
 - **Macro/plugin archive failure at `ComputeTargetDependencyGraph`**:
   LLM.swift is macro-based and pulls a build plugin; a headless archive
   cannot trust them interactively. Handled by

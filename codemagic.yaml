@@ -18,18 +18,11 @@ workflows:
       xcode: latest
       vars:
         BUNDLE_ID: ai.openshore.oscode
-      # Automatic signing. Codemagic creates the distribution certificate,
-      # stores and REUSES its private key in its own managed storage, creates
-      # the App Store provisioning profile, and assigns it, all before the
-      # scripts run. This is why we do NOT do manual CLI signing: a fresh
-      # Apple account has no distribution certificate, and its private key
-      # cannot be downloaded, so `fetch-signing-files --create` fails with
-      # "Cannot save Signing Certificates without certificate private key".
-      # Automatic signing owns the whole thing and never proliferates certs.
-      # (This needs the API key to have Admin rights, which it now does.)
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: ai.openshore.oscode
+      # Manual signing. No `ios_signing:` block (that is automatic signing,
+      # which only FETCHES profiles here and cannot mint the cert on a fresh
+      # account, hence "No matching profiles found"). The "Set up code
+      # signing" step creates the distribution certificate FROM a supplied
+      # private key, which is the piece the earlier attempts were missing.
     triggering:
       events:
         - push
@@ -62,6 +55,27 @@ workflows:
         script: |
           cd app/ios/App
           agvtool new-version -all "$BUILD_NUMBER"
+      - name: Set up code signing
+        script: |
+          set -e
+          keychain initialize
+          # A fresh Apple account has no distribution certificate, and a
+          # distribution cert's private key is never downloadable. Provide a
+          # private key so fetch-signing-files can CREATE the certificate from
+          # it (the missing piece before), then create the App Store profile.
+          # NOTE: this key is generated per build, so a new certificate is
+          # created each run. Fine to get to TestFlight; before regular use,
+          # persist this key as an encrypted Codemagic env var and read it
+          # with @env: so the same cert is reused (Apple caps distribution
+          # certs). See docs/TESTFLIGHT.md.
+          KEY=/tmp/oscode_signing_key
+          ssh-keygen -t rsa -b 2048 -m PEM -f "$KEY" -q -N ""
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key @file:"$KEY" \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles --project "app/ios/App/App.xcodeproj"
       - name: Build the signed IPA
         script: |
           # The OscodeLlama plugin depends on LLM.swift, which is macro-based
