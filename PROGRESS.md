@@ -75,10 +75,23 @@ Three sections:
       top-of-funnel/distribution, not price. Open: confirm the year-one number
       the founder wants to run at, then size the download/conversion funnel to
       match (at ~3% conversion, 4,000 payers needs ~130k qualified downloads).
-- [ ] **P1 · Validate positioning / market need (CMO straight-answer pass, in
-      progress).** Is OS Code genuinely differentiated, or does an existing
-      tool already fill this need? Fold the CMO's blunt read here, then seed the
-      OS Code business doc in `openshore-hq/finance`.
+- [ ] **P1 · Positioning: CMO straight-answer verdict in (2026-08-19) =
+      PARTLY / "thin." Founder decision pending.** Every piece of OS Code
+      already exists and most is free. Desktop local coding agents are a
+      saturated free/OSS field (Continue.dev, Cline/Roo Code, Aider, and
+      especially Zed, now a polished native app with local models built in).
+      iOS is all chat apps (Private LLM, localLLM), none are coding agents,
+      which is the one real gap. Phone-to-desktop pairing is now crowded and
+      Cursor entered it (iOS beta, June 2026). The honest edge: truly-serverless
+      differentiates OS Code against paid cloud tools (even Cursor's "local"
+      mode routes through its servers), not against the free local ones. Most
+      defensible-and-needed slice: the native on-device iOS coding agent (thin
+      field, but also thin demand). CMO sharpen-or-kill call: bet the
+      positioning on the on-device iPhone coding agent (desktop as an optional
+      paired engine), or do not charge for it. **Open founder decision:** (a)
+      sharpen to the mobile-agent wedge, (b) reposition on compliance/air-gapped,
+      or (c) treat OS Code as a personal tool (free/OSS), not a paid product.
+      Seed the OS Code business doc in `openshore-hq/finance` once decided.
 - [ ] **P2 · The license-verify endpoint becomes production infra the moment
       activation is paywalled.** Today it is a documented stub (client is real;
       server contract in `os-code/src/license/verify.ts`). Any paid tier needs
