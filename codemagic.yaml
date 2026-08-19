@@ -66,9 +66,16 @@ workflows:
           xcode-project use-profiles
       - name: Build the signed IPA
         script: |
+          # The OscodeLlama plugin depends on LLM.swift, which is macro-based
+          # (swift-syntax + a compiler-plugin target) and also pulls the
+          # swift-docc build plugin. In a headless xcodebuild archive there is
+          # no GUI to "Trust & Enable" those, so Xcode refuses at
+          # ComputeTargetDependencyGraph. Skipping the validation gates is the
+          # standard way to build macro/plugin SPM packages in CI.
           xcode-project build-ipa \
             --project app/ios/App/App.xcodeproj \
-            --scheme App
+            --scheme App \
+            --xcargs "-skipMacroValidation -skipPackagePluginValidation"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
