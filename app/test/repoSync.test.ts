@@ -40,11 +40,7 @@ describe('repo sync protocol', () => {
   });
 
   it('only lists pending items for the asked repo', () => {
-    const items = [
-      item('b1'),
-      item('b2', { repoId: 'other' }),
-      item('b3', { state: 'confirmed' }),
-    ];
+    const items = [item('b1'), item('b2', { repoId: 'other' }), item('b3', { state: 'confirmed' })];
     expect(pendingForRepo(items, 'r1').map((i) => i.id)).toEqual(['b1']);
   });
 
@@ -100,7 +96,14 @@ describe('repo sync protocol', () => {
 describe('buffer safety (S2 pending-window protection)', () => {
   const withContent = (id: string, bytes: number, over: Partial<OutboxItem> = {}) =>
     item(id, {
-      files: [{ path: 'a.ts', mode: 'upsert', sha256: 'h', contentBase64: 'A'.repeat(Math.ceil((bytes * 4) / 3)) }],
+      files: [
+        {
+          path: 'a.ts',
+          mode: 'upsert',
+          sha256: 'h',
+          contentBase64: 'A'.repeat(Math.ceil((bytes * 4) / 3)),
+        },
+      ],
       ...over,
     });
 

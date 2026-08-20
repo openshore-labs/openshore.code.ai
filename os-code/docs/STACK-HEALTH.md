@@ -14,15 +14,15 @@ makes no network calls.
 
 The load-bearing events (`os-code/src/core/agent/types.ts`):
 
-| Event | What Stack Health takes from it |
-| --- | --- |
-| `task-start` | a task was attempted |
-| `turn-start {model, providerKind}` | a turn ran, on the local or cloud side, on this model |
-| `usage {promptTokens, completionTokens, dollars}` | tokens for the turn just started; cloud dollars are authoritative |
-| `model-switch {providerKind}` | a flip to the cloud (counted when it lands on cloud) |
-| `tool-start` / `tool-denied` | tool runs and denials |
-| `approval-request` / `approval-resolved {approved}` | approvals asked and refused |
-| `task-done {reason}` | outcome: complete / declined / error / other |
+| Event                                               | What Stack Health takes from it                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------- |
+| `task-start`                                        | a task was attempted                                              |
+| `turn-start {model, providerKind}`                  | a turn ran, on the local or cloud side, on this model             |
+| `usage {promptTokens, completionTokens, dollars}`   | tokens for the turn just started; cloud dollars are authoritative |
+| `model-switch {providerKind}`                       | a flip to the cloud (counted when it lands on cloud)              |
+| `tool-start` / `tool-denied`                        | tool runs and denials                                             |
+| `approval-request` / `approval-resolved {approved}` | approvals asked and refused                                       |
+| `task-done {reason}`                                | outcome: complete / declined / error / other                      |
 
 `providerKind` is stamped on every turn by the engine (`loop.ts`), so the
 local-vs-cloud split needs no inference. Each `usage` event is attributed to the

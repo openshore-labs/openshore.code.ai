@@ -93,7 +93,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     const auth = resolveAuth(presented, token);
     if (!auth) {
       sendJson(res, 401, {
-        error: 'Missing or wrong daemon credential. The shared token lives in ~/.os-code/daemon.token; per-user tokens come from `osc token mint`.',
+        error:
+          'Missing or wrong daemon credential. The shared token lives in ~/.os-code/daemon.token; per-user tokens come from `osc token mint`.',
       });
       return;
     }
@@ -167,7 +168,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         !request.baseCommit ||
         !Array.isArray(request.files)
       ) {
-        sendJson(res, 400, { ok: false, error: 'Missing clientOpId, itemId, branch, baseCommit, or files.' });
+        sendJson(res, 400, {
+          ok: false,
+          error: 'Missing clientOpId, itemId, branch, baseCommit, or files.',
+        });
         return;
       }
       try {

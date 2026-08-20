@@ -21,7 +21,11 @@ export function ProfileStatus() {
 
   return (
     <>
-      <button className="profile-chip" onClick={() => setOpen(true)} aria-label={`Connection: ${info.label}`}>
+      <button
+        className="profile-chip"
+        onClick={() => setOpen(true)}
+        aria-label={`Connection: ${info.label}`}
+      >
         <span className="profile-dot" style={{ background: info.dot }} />
         <span>{info.label}</span>
       </button>
@@ -41,10 +45,15 @@ export function ProfileStatus() {
                   setOpen(false);
                 }}
               >
-                <span className="profile-dot" style={{ background: PROFILES[auto].dot, marginTop: 5 }} />
+                <span
+                  className="profile-dot"
+                  style={{ background: PROFILES[auto].dot, marginTop: 5 }}
+                />
                 <span className="grow">
                   <span className="profile-row-title">Automatic</span>
-                  <span className="sub">Follow the connection. Right now: {PROFILES[auto].label}.</span>
+                  <span className="sub">
+                    Follow the connection. Right now: {PROFILES[auto].label}.
+                  </span>
                 </span>
               </button>
 

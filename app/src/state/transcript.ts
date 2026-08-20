@@ -69,7 +69,9 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // cleaned tool-call JSON out of it).
       const idx = currentStreaming(next);
       if (idx === -1) {
-        return event.text ? push(next, { kind: 'assistant', text: event.text, streaming: false }) : next;
+        return event.text
+          ? push(next, { kind: 'assistant', text: event.text, streaming: false })
+          : next;
       }
       const items = [...next.items];
       if (event.text) {
@@ -157,7 +159,10 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       const settled = settleStreaming(next);
       const done: ThreadState = { ...settled, busy: false, pendingApprovals: [] };
       if (event.reason !== 'complete') {
-        return push(done, { kind: 'stopped', message: event.message ?? `Stopped: ${event.reason}` });
+        return push(done, {
+          kind: 'stopped',
+          message: event.message ?? `Stopped: ${event.reason}`,
+        });
       }
       return done;
     }

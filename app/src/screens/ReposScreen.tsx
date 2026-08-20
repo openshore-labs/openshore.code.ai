@@ -226,11 +226,16 @@ export function ReposScreen() {
                     return (
                       <p
                         className="hint"
-                        style={{ marginBottom: 8, color: health.stale || health.overCap ? 'var(--danger)' : undefined }}
+                        style={{
+                          marginBottom: 8,
+                          color: health.stale || health.overCap ? 'var(--danger)' : undefined,
+                        }}
                       >
                         {(health.totalBytes / 1024).toFixed(0)} KB of work is buffered only on this
-                        device{days >= 1 ? `, the oldest ${days} day${days > 1 ? 's' : ''} old` : ''}. Dock
-                        to sync it safely. If you might lose this device first, export a backup.
+                        device
+                        {days >= 1 ? `, the oldest ${days} day${days > 1 ? 's' : ''} old` : ''}.
+                        Dock to sync it safely. If you might lose this device first, export a
+                        backup.
                       </p>
                     );
                   })()}
@@ -243,10 +248,15 @@ export function ReposScreen() {
                           {item.branch} · {item.files.length} file{item.files.length > 1 ? 's' : ''}
                         </div>
                       </div>
-                      <span className="sub" style={{ textTransform: 'capitalize' }}>{item.state}</span>
+                      <span className="sub" style={{ textTransform: 'capitalize' }}>
+                        {item.state}
+                      </span>
                     </div>
                   ))}
-                  <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 10 }}>
+                  <div
+                    className="suggestion-row"
+                    style={{ justifyContent: 'flex-start', marginTop: 10 }}
+                  >
                     <button
                       className="suggestion"
                       disabled={!settings.daemon}
@@ -403,7 +413,11 @@ function HomeRepoEditor({
     <div style={{ marginTop: 12 }}>
       <div className="field">
         <label>Name</label>
-        <input placeholder="e.g. OpenShore mono" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input
+          placeholder="e.g. OpenShore mono"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+        />
       </div>
       <div className="field">
         <label>Where it lives</label>
@@ -439,7 +453,12 @@ function HomeRepoEditor({
       )}
       <div className="field">
         <label>Default branch</label>
-        <input value={branch} onChange={(e) => setBranch(e.target.value)} autoCapitalize="none" autoCorrect="off" />
+        <input
+          value={branch}
+          onChange={(e) => setBranch(e.target.value)}
+          autoCapitalize="none"
+          autoCorrect="off"
+        />
       </div>
       <div className="sheet-actions">
         <button className="btn primary" onClick={save}>

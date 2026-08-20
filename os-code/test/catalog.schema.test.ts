@@ -50,12 +50,18 @@ describe('catalog schema new builder fields', () => {
   });
 
   it('rejects a star that is not on a 0.5 step', () => {
-    const bad = { ...baseModel, ratings: { perCapability: { coding: 4.25 }, osCodeFit: 3, provenance: { coding: ['x'] } } };
+    const bad = {
+      ...baseModel,
+      ratings: { perCapability: { coding: 4.25 }, osCodeFit: 3, provenance: { coding: ['x'] } },
+    };
     expect(() => CatalogModelSchema.parse(bad)).toThrow();
   });
 
   it('rejects a star above 5', () => {
-    const bad = { ...baseModel, ratings: { perCapability: { coding: 6 }, osCodeFit: 3, provenance: { coding: ['x'] } } };
+    const bad = {
+      ...baseModel,
+      ratings: { perCapability: { coding: 6 }, osCodeFit: 3, provenance: { coding: ['x'] } },
+    };
     expect(() => CatalogModelSchema.parse(bad)).toThrow();
   });
 });

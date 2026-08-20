@@ -51,7 +51,9 @@ export class OnDeviceDriver implements ChatDriver {
         this.emitter.emit({
           type: 'task-done',
           reason: 'error',
-          message: detail ?? 'The on-device model hit a problem. Try again, or re-download it from the marketplace.',
+          message:
+            detail ??
+            'The on-device model hit a problem. Try again, or re-download it from the marketplace.',
         });
       } else {
         this.emitter.emit({
@@ -81,7 +83,10 @@ export class OnDeviceDriver implements ChatDriver {
     });
     try {
       if (!this.loaded) {
-        this.emitter.emit({ type: 'status', message: `Warming up ${this.modelName} on this device.` });
+        this.emitter.emit({
+          type: 'status',
+          message: `Warming up ${this.modelName} on this device.`,
+        });
         // Harbor only writes short guidance, so a small context keeps the KV
         // cache and load time down; a chosen pocket model gets the full window.
         const load = await Llama.load({ id: this.modelId, contextSize: this.guide ? 2048 : 4096 });
@@ -89,7 +94,9 @@ export class OnDeviceDriver implements ChatDriver {
           this.emitter.emit({
             type: 'task-done',
             reason: 'error',
-            message: load.detail ?? `${this.modelName} would not load. Re-download it from the marketplace.`,
+            message:
+              load.detail ??
+              `${this.modelName} would not load. Re-download it from the marketplace.`,
           });
           return;
         }

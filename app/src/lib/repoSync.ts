@@ -41,12 +41,23 @@ export function applyResult(item: OutboxItem, res: ApplyResult): OutboxItem {
   if (item.state === 'confirmed') return item;
   const attempts = item.attempts + 1;
   if (res.conflict) {
-    return { ...item, state: 'conflict', attempts, lastError: res.error ?? 'Base is behind the branch tip.' };
+    return {
+      ...item,
+      state: 'conflict',
+      attempts,
+      lastError: res.error ?? 'Base is behind the branch tip.',
+    };
   }
   if (!res.ok || !res.resultCommit) {
     return { ...item, state: 'failed', attempts, lastError: res.error ?? 'Offload failed.' };
   }
-  return { ...item, state: 'offloading', attempts, resultCommit: res.resultCommit, lastError: undefined };
+  return {
+    ...item,
+    state: 'offloading',
+    attempts,
+    resultCommit: res.resultCommit,
+    lastError: undefined,
+  };
 }
 
 export interface Verification {
@@ -67,7 +78,9 @@ export function confirm(item: OutboxItem, v: Verification): OutboxItem {
   return {
     ...item,
     state: 'failed',
-    lastError: v.refExists ? 'The pushed commit did not match the buffered files.' : 'The commit was not found on re-read.',
+    lastError: v.refExists
+      ? 'The pushed commit did not match the buffered files.'
+      : 'The commit was not found on re-read.',
   };
 }
 
@@ -139,7 +152,11 @@ export function bufferHealth(items: OutboxItem[], now: number): BufferHealth {
 }
 
 /** Would adding these bytes exceed a cap? Callers refuse rather than truncate. */
-export function withinCaps(currentTotalBytes: number, addBytes: number, largestFileBytes: number): boolean {
+export function withinCaps(
+  currentTotalBytes: number,
+  addBytes: number,
+  largestFileBytes: number,
+): boolean {
   if (largestFileBytes > MAX_OUTBOX_FILE_BYTES) return false;
   return currentTotalBytes + addBytes <= MAX_OUTBOX_TOTAL_BYTES;
 }

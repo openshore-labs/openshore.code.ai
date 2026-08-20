@@ -79,7 +79,11 @@ export async function nativeFetch(url: string, req: NativeRequest = {}): Promise
     // Fall through to plain fetch if the bridge is somehow absent.
   }
 
-  const res = await fetch(url, { method, headers: req.headers, body: method === 'POST' ? req.body : undefined });
+  const res = await fetch(url, {
+    method,
+    headers: req.headers,
+    body: method === 'POST' ? req.body : undefined,
+  });
   return {
     ok: res.ok,
     status: res.status,

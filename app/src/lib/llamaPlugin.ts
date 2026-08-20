@@ -47,7 +47,11 @@ export interface LlamaPluginContract {
   ): Promise<PluginListenerHandle>;
   addListener(
     eventName: 'generationDone',
-    listener: (data: { requestId: string; stopReason: 'end' | 'stopped' | 'error'; detail?: string }) => void,
+    listener: (data: {
+      requestId: string;
+      stopReason: 'end' | 'stopped' | 'error';
+      detail?: string;
+    }) => void,
   ): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;
 }
@@ -97,7 +101,13 @@ class LlamaWeb {
 
   async unload() {}
 
-  async generate({ requestId, messages }: { requestId: string; messages: Array<{ content: string }> }) {
+  async generate({
+    requestId,
+    messages,
+  }: {
+    requestId: string;
+    messages: Array<{ content: string }>;
+  }) {
     const last = messages[messages.length - 1]?.content ?? '';
     const reply = `(demo) A local model would answer "${last.slice(0, 60)}" right here, fully offline. On an iPhone this streams from llama.cpp on the Metal GPU.`;
     void (async () => {

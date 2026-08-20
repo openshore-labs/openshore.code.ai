@@ -67,8 +67,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <div className="greeting">
           <h1>What are we building?</h1>
           <p>
-            Chat and build with your own stack of local models. Cloud stays one deliberate tap
-            away, on your own account.
+            Chat and build with your own stack of local models. Cloud stays one deliberate tap away,
+            on your own account.
           </p>
           <div className="suggestion-row">
             <button className="suggestion" onClick={() => void startGuide()}>
@@ -78,10 +78,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               Pick a model
             </button>
             {isPhone() ? (
-              <button
-                className="suggestion"
-                onClick={() => useApp.getState().setView('pair')}
-              >
+              <button className="suggestion" onClick={() => useApp.getState().setView('pair')}>
                 Connect my desktop
               </button>
             ) : null}
@@ -144,7 +141,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ) : null}
 
       {pickerOpen ? (
-        <SourcePicker onPick={(source) => void startWith(source)} onClose={() => setPickerOpen(false)} />
+        <SourcePicker
+          onPick={(source) => void startWith(source)}
+          onClose={() => setPickerOpen(false)}
+        />
       ) : null}
     </div>
   );
