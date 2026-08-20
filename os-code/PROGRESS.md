@@ -73,36 +73,51 @@ Layer status:
       to the user's named agents with per-agent stats. Phase 3: one-tap
       suggestions + thumbs feedback.
 - [x] **Catalog builder wired in CI and publishing.**
-      `.github/workflows/catalog.yml` (weekly + on curation/builder/schema change
-      + manual) builds, gates, and publishes `catalog.json` by committing it to
+      `.github/workflows/catalog.yml` (weekly + on curation/builder/schema change + manual) builds, gates, and publishes `catalog.json` by committing it to
       the marketing repo at `src/static/os-code/catalog.json`, which Cloudflare
       Pages serves at `openshore.ai/os-code/catalog.json` (the default
       `config.catalog.url`). Verified end to end: run #3 published commit
       `aca6186` to the marketing `main`. Auth is a classic PAT in the
       `MARKETING_DEPLOY_TOKEN` repo secret (an earlier fine-grained token 403'd
       on a wrong-repo selection; fixed).
-      Follow-ups, both minor: (1) source-metadata enrichment (HF/Ollama
-      downloads/likes) came back EMPTY on the first live run, so the popularity
-      sort has no numbers yet; investigate whether the sample catalog's
-      `source.ref`s resolve against the real HF/Ollama APIs. (2) the builder
-      stamps a fresh `updated` timestamp each run, so every scheduled run commits
-      even when models are unchanged; consider diffing on content only.
-      Seed `os-code/curation/*.json` as the roster grows.
+      Follow-up: (1) the builder stamps a fresh `updated` timestamp each run, so
+      every scheduled run commits even when models are unchanged; consider
+      diffing on content only. Seed `os-code/curation/*.json` as the roster grows.
+- [x] **Marketplace popularity axes + landscape breadth.** Two honest axes plus
+      an editorial shelf, no telemetry. LANDSCAPE ("Popular across local LLMs"):
+      fixed the enrichment that published empty (HF per-segment slash encoding;
+      removed the phantom Ollama JSON endpoint for an optional back-compat
+      `source.popularityRef` naming each Ollama model's HF GGUF home; per-ref
+      resolution logging + soft online-only 0-popularity warning; fixture tests).
+      Broadened the catalog 12 -> 27 (real refs, licenses on the allow-list, no
+      fabricated stars: the 15 new models show "Not yet rated"). INTERNAL ("Your
+      most-used"): fully local, from StackHealth `modelUsage` (existing
+      `turnsByModel`), read via the stackHealth bridge, hidden when no bridge or
+      no usage; never cross-user. EDITORIAL ("Staff picks", "chosen not counted")
+      from recommended/curation. Gates green (os-code 177 tests, app 76, vite
+      build).
+- [ ] **PARKED (founder-gated): cross-user "Popular in OS Code" leaderboard.**
+      A real cross-user popularity number requires a first-ever phone-home and a
+      rewrite of the Stack Health privacy seal, which literally promises "no
+      telemetry." Both CTO and CMO ruled it out without an explicit, anonymized,
+      OPT-IN community-share designed as its own build (edge function + aggregate
+      table + consent UX + state-aware seal). Deliberately NOT built; the three
+      honest axes cover the user job. Build only on the founder's explicit yes.
 - [~] **Stripe went live + email confirmation ON.** Supabase "Confirm email" is
-      ON (verified in the dashboard). Stripe is in live mode: live secret key,
-      the OS Code webhook (`lzlrlfdffwiypzreoldb.../stripe-webhook`) enabled and
-      livemode, and all four prices live and yearly. Caught and fixed a Scale
-      price that was created as $500/MONTH instead of $500/year (a 12x
-      overcharge); its price id is unchanged, so `STRIPE_PRICE_SCALE` needed no
-      update. Verified against the Stripe API directly (key mode, per-price
-      interval, webhook status). NOTE: this account is shared with another
-      product (a second `riziqavmckobtcyiazht` webhook is Uki's); each webhook
-      ignores prices it does not recognize, so cross-talk is safe.
-      **Still open:** one real end-to-end purchase to prove the Supabase
-      function secret VALUES (live key, THIS webhook's signing secret, the four
-      price ids) are wired. Secret values cannot be read back from Supabase; a
-      live transaction (refundable) is the only proof, and its success or its
-      failure point names any stale secret.
+  ON (verified in the dashboard). Stripe is in live mode: live secret key,
+  the OS Code webhook (`lzlrlfdffwiypzreoldb.../stripe-webhook`) enabled and
+  livemode, and all four prices live and yearly. Caught and fixed a Scale
+  price that was created as $500/MONTH instead of $500/year (a 12x
+  overcharge); its price id is unchanged, so `STRIPE_PRICE_SCALE` needed no
+  update. Verified against the Stripe API directly (key mode, per-price
+  interval, webhook status). NOTE: this account is shared with another
+  product (a second `riziqavmckobtcyiazht` webhook is Uki's); each webhook
+  ignores prices it does not recognize, so cross-talk is safe.
+  **Still open:** one real end-to-end purchase to prove the Supabase
+  function secret VALUES (live key, THIS webhook's signing secret, the four
+  price ids) are wired. Secret values cannot be read back from Supabase; a
+  live transaction (refundable) is the only proof, and its success or its
+  failure point names any stale secret.
 - [x] **Slim git history:** done, founder approved. `git filter-repo`
       stripped node_modules from every commit on `main` and this session
       branch (verified: identical tree hash at HEAD before/after, file
