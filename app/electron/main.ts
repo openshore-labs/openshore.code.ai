@@ -190,6 +190,9 @@ ipcMain.handle(
 
 ipcMain.handle('osc:status', () => host.status());
 ipcMain.handle('osc:catalog', () => host.catalog());
+ipcMain.handle('osc:stackHealth', (_e, range?: string) =>
+  host.stackHealth(range as Parameters<typeof host.stackHealth>[0]),
+);
 ipcMain.handle('osc:installModel', (_e, modelId: string) => host.installModel(modelId));
 ipcMain.handle('osc:setOrchestrator', (_e, model: string) => host.setOrchestrator(model));
 ipcMain.handle('osc:enableSpecialist', (_e, role: string, model: string) =>

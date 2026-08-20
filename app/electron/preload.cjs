@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('oscode', {
 
   status: invoke('osc:status'),
   catalog: invoke('osc:catalog'),
+  stackHealth: invoke('osc:stackHealth'),
   installModel: invoke('osc:installModel'),
   onInstallProgress: listen('osc:install-progress'),
   setOrchestrator: invoke('osc:setOrchestrator'),
