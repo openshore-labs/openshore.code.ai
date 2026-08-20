@@ -17,6 +17,7 @@ export function AdminScreen() {
     setSeatCount,
     setPreviewAsMember,
     manageBilling,
+    startCheckout,
     entitlement,
     showToast,
   } = useApp();
@@ -128,7 +129,7 @@ export function AdminScreen() {
             <button
               className={`btn ${entitlement ? 'ghost' : 'primary'}`}
               style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}
-              onClick={() => void manageBilling()}
+              onClick={() => void (entitlement ? manageBilling() : startCheckout(org.tierId))}
             >
               {entitlement ? 'Manage billing' : 'Buy seats'}
             </button>
