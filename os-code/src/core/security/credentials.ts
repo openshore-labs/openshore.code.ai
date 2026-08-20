@@ -97,7 +97,11 @@ export function resolveDeviceCredential(presented: string): AuthContext | undefi
   const presentedHash = Buffer.from(hashToken(presented));
   for (const cred of loadCredentials()) {
     const stored = Buffer.from(cred.tokenHash);
-    if (stored.length === presentedHash.length && timingSafeEqual(stored, presentedHash) && notExpired(cred)) {
+    if (
+      stored.length === presentedHash.length &&
+      timingSafeEqual(stored, presentedHash) &&
+      notExpired(cred)
+    ) {
       return { userId: cred.userId, role: cred.role, label: cred.label, source: 'device' };
     }
   }

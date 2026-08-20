@@ -38,9 +38,7 @@ export function ProjectMultiSelect({
       : `${selectedNames.length} projects`;
 
   const toggle = (id: string) => {
-    const next = selected.includes(id)
-      ? selected.filter((x) => x !== id)
-      : [...selected, id];
+    const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
     onChange(next);
   };
 
@@ -65,11 +63,7 @@ export function ProjectMultiSelect({
             autoFocus
           />
           <label className="multiselect-row">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={() => onChange([])}
-            />
+            <input type="checkbox" checked={allSelected} onChange={() => onChange([])} />
             <span>All projects</span>
           </label>
           <div className="multiselect-list">

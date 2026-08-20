@@ -27,7 +27,8 @@ describe('em dash policy (app)', () => {
       const text = readFileSync(resolve(ROOT, file), 'utf8').replace(ENCODED, EM_DASH);
       if (!text.includes(EM_DASH)) continue;
       text.split('\n').forEach((line, i) => {
-        if (line.includes(EM_DASH)) violations.push(`${file}:${i + 1}: ${line.trim().slice(0, 90)}`);
+        if (line.includes(EM_DASH))
+          violations.push(`${file}:${i + 1}: ${line.trim().slice(0, 90)}`);
       });
     }
     expect(

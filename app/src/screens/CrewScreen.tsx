@@ -112,7 +112,10 @@ export function CrewScreen() {
               <p className="sub" style={{ marginTop: 6 }}>
                 {a.persona.length > 120 ? `${a.persona.slice(0, 120)}...` : a.persona}
               </p>
-              <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
+              <div
+                className="suggestion-row"
+                style={{ justifyContent: 'flex-start', marginTop: 4 }}
+              >
                 <button className="suggestion" onClick={() => setDraft({ ...a })}>
                   Edit
                 </button>

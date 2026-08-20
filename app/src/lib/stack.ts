@@ -10,14 +10,7 @@
 import { HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from './harbor.js';
 
 export type StackCategory =
-  | 'coding'
-  | 'writing'
-  | 'analysis'
-  | 'vision'
-  | 'image-gen'
-  | 'embedding'
-  | 'fast'
-  | 'custom';
+  'coding' | 'writing' | 'analysis' | 'vision' | 'image-gen' | 'embedding' | 'fast' | 'custom';
 
 export interface CategoryInfo {
   id: StackCategory;
@@ -71,9 +64,7 @@ export interface AppStack {
 }
 
 export function refKey(ref: StackModelRef): string {
-  return ref.kind === 'device'
-    ? `device:${ref.modelId}`
-    : `cloud:${ref.provider}:${ref.model}`;
+  return ref.kind === 'device' ? `device:${ref.modelId}` : `cloud:${ref.provider}:${ref.model}`;
 }
 
 export function refName(ref: StackModelRef): string {

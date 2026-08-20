@@ -6,11 +6,7 @@
 export type AccountType = 'personal' | 'commercial';
 
 export type PlanTierId =
-  | 'personal'
-  | 'commercial_micro'
-  | 'commercial_small'
-  | 'commercial_mid'
-  | 'commercial_large';
+  'personal' | 'commercial_micro' | 'commercial_small' | 'commercial_mid' | 'commercial_large';
 
 export interface PlanTier {
   id: PlanTierId;

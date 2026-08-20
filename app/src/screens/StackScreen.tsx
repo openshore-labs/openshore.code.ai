@@ -68,8 +68,8 @@ export function StackScreen() {
       <div className="screen-inner">
         <h1>Your stack</h1>
         <p className="lead">
-          One model is the quarterback: it plans, reasons, and decides which model gets each
-          play. Specialists are optional; anything missing, the quarterback covers itself.
+          One model is the quarterback: it plans, reasons, and decides which model gets each play.
+          Specialists are optional; anything missing, the quarterback covers itself.
         </p>
 
         <div className="card">
@@ -156,7 +156,9 @@ export function StackScreen() {
         <div className="sheet-scrim" onClick={() => setPickFor(undefined)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h2>{pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}</h2>
-            <p className="sheet-sub">Installed on this machine via Ollama. Get more in the marketplace.</p>
+            <p className="sheet-sub">
+              Installed on this machine via Ollama. Get more in the marketplace.
+            </p>
             <div className="sheet-actions">
               {status.ollama.models.length ? (
                 status.ollama.models.map((m) => (
@@ -166,7 +168,8 @@ export function StackScreen() {
                 ))
               ) : (
                 <p className="hint">
-                  No local models yet. {status.ollama.up ? 'Grab one from the marketplace.' : status.ollama.detail}
+                  No local models yet.{' '}
+                  {status.ollama.up ? 'Grab one from the marketplace.' : status.ollama.detail}
                 </p>
               )}
             </div>

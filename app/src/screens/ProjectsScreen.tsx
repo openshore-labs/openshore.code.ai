@@ -99,17 +99,26 @@ export function ProjectsScreen() {
                 <div className="grow">
                   <h3>
                     {p.name}
-                    {p.id === activeId ? <span className="pill local" style={{ marginLeft: 8 }}>active</span> : null}
+                    {p.id === activeId ? (
+                      <span className="pill local" style={{ marginLeft: 8 }}>
+                        active
+                      </span>
+                    ) : null}
                   </h3>
                   <div className="sub">
                     {p.instructions?.trim()
                       ? p.instructions.trim().slice(0, 80)
                       : 'No standing instructions yet.'}
-                    {p.repoIds.length ? ` · ${p.repoIds.length} repo${p.repoIds.length > 1 ? 's' : ''}` : ''}
+                    {p.repoIds.length
+                      ? ` · ${p.repoIds.length} repo${p.repoIds.length > 1 ? 's' : ''}`
+                      : ''}
                   </div>
                 </div>
               </div>
-              <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
+              <div
+                className="suggestion-row"
+                style={{ justifyContent: 'flex-start', marginTop: 4 }}
+              >
                 {p.id === activeId ? null : (
                   <button
                     className="suggestion"
@@ -192,9 +201,7 @@ export function ProjectsScreen() {
                 </div>
               </div>
             ) : (
-              <p className="hint">
-                Connect your desktop to attach repositories to this project.
-              </p>
+              <p className="hint">Connect your desktop to attach repositories to this project.</p>
             )}
 
             <div className="sheet-actions">

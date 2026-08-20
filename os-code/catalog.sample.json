@@ -6,10 +6,7 @@
       "id": "qwen2.5-coder-7b",
       "name": "Qwen 2.5 Coder 7B",
       "tagline": "Great at code for its size. The best small starting point.",
-      "categories": [
-        "coding",
-        "reasoning"
-      ],
+      "categories": ["coding", "reasoning"],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -40,10 +37,7 @@
       "id": "qwen2.5-coder-14b",
       "name": "Qwen 2.5 Coder 14B",
       "tagline": "Great at code, with more headroom for planning. The sweet spot on 16 GB.",
-      "categories": [
-        "coding",
-        "reasoning"
-      ],
+      "categories": ["coding", "reasoning"],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -73,10 +67,7 @@
       "id": "qwen2.5-coder-32b",
       "name": "Qwen 2.5 Coder 32B",
       "tagline": "Big-rig coding brain. Close to cloud quality on hard edits.",
-      "categories": [
-        "coding",
-        "reasoning"
-      ],
+      "categories": ["coding", "reasoning"],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -106,10 +97,7 @@
       "id": "llama3.1-8b",
       "name": "Llama 3.1 8B",
       "tagline": "A solid all-rounder that writes clean prose and follows instructions.",
-      "categories": [
-        "reasoning",
-        "writing"
-      ],
+      "categories": ["reasoning", "writing"],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -139,10 +127,7 @@
       "id": "deepseek-r1-14b",
       "name": "DeepSeek R1 14B",
       "tagline": "Thinks things through, out loud. Strong on tricky logic.",
-      "categories": [
-        "reasoning",
-        "analysis"
-      ],
+      "categories": ["reasoning", "analysis"],
       "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
@@ -171,9 +156,7 @@
       "id": "llava-7b",
       "name": "LLaVA 7B",
       "tagline": "Can read screenshots, charts, and photos of whiteboards.",
-      "categories": [
-        "vision"
-      ],
+      "categories": ["vision"],
       "orchestratorCapable": false,
       "source": {
         "kind": "ollama",
@@ -202,10 +185,7 @@
       "id": "moondream",
       "name": "Moondream 2",
       "tagline": "A tiny screenshot reader for machines with little room to spare.",
-      "categories": [
-        "vision",
-        "fast"
-      ],
+      "categories": ["vision", "fast"],
       "orchestratorCapable": false,
       "source": {
         "kind": "ollama",
@@ -230,9 +210,7 @@
       "id": "nomic-embed-text",
       "name": "Nomic Embed Text",
       "tagline": "Finds the right files. Powers repo search, tiny and always resident.",
-      "categories": [
-        "embedding"
-      ],
+      "categories": ["embedding"],
       "orchestratorCapable": false,
       "source": {
         "kind": "ollama",
@@ -260,10 +238,7 @@
       "id": "qwen2.5-coder-1.5b",
       "name": "Qwen 2.5 Coder 1.5B",
       "tagline": "Fast for small edits and instant answers.",
-      "categories": [
-        "fast",
-        "coding"
-      ],
+      "categories": ["fast", "coding"],
       "orchestratorCapable": false,
       "source": {
         "kind": "ollama",
@@ -288,10 +263,7 @@
       "id": "qwen2.5-1.5b-phone",
       "name": "Qwen 2.5 1.5B (pocket)",
       "tagline": "A capable pocket model that runs fully on your iPhone. No desktop, no cloud.",
-      "categories": [
-        "reasoning",
-        "fast"
-      ],
+      "categories": ["reasoning", "fast"],
       "orchestratorCapable": true,
       "source": {
         "kind": "huggingface",
@@ -322,10 +294,7 @@
       "id": "llama3.2-1b-phone",
       "name": "Llama 3.2 1B (pocket)",
       "tagline": "Meta's tiny chat model, tuned for phones. Fast answers on the go.",
-      "categories": [
-        "fast",
-        "reasoning"
-      ],
+      "categories": ["fast", "reasoning"],
       "orchestratorCapable": false,
       "source": {
         "kind": "huggingface",
@@ -356,10 +325,7 @@
       "id": "smollm2-1.7b-phone",
       "name": "SmolLM2 1.7B (pocket)",
       "tagline": "Hugging Face's small model that punches above its size on the phone.",
-      "categories": [
-        "reasoning",
-        "fast"
-      ],
+      "categories": ["reasoning", "fast"],
       "orchestratorCapable": false,
       "source": {
         "kind": "huggingface",

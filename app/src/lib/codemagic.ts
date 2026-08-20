@@ -18,14 +18,7 @@ export const CODEMAGIC_BASE = 'https://api.codemagic.io';
 export const CODEMAGIC_SECRET_KEY = 'oscode.secret.codemagic';
 
 export type BuildStatus =
-  | 'queued'
-  | 'preparing'
-  | 'building'
-  | 'finished'
-  | 'failed'
-  | 'canceled'
-  | 'timeout'
-  | 'unknown';
+  'queued' | 'preparing' | 'building' | 'finished' | 'failed' | 'canceled' | 'timeout' | 'unknown';
 
 export interface BuildArtifact {
   name: string;
@@ -133,9 +126,15 @@ const REDACTIONS: Array<[RegExp, string]> = [
   // A standalone bearer token anywhere else.
   [/\bbearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]'],
   // Named secrets: FOO_KEY=..., API_TOKEN: ..., PASSWORD=..., SECRET=...
-  [/([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CERTIFICATE)[A-Z0-9_]*)\s*[:=]\s*\S+/gi, '$1=[redacted]'],
+  [
+    /([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CERTIFICATE)[A-Z0-9_]*)\s*[:=]\s*\S+/gi,
+    '$1=[redacted]',
+  ],
   // Provisioning-profile / cert UUIDs.
-  [/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g, '[redacted uuid]'],
+  [
+    /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g,
+    '[redacted uuid]',
+  ],
   // Long opaque base64 / base64url blobs (40+ chars).
   [/[A-Za-z0-9+/_-]{40,}={0,2}/g, '[redacted blob]'],
 ];
@@ -147,14 +146,18 @@ export function redactLog(text: string): string {
   return out;
 }
 
-const SIGNAL = /error[: ]|BUILD FAILED|FAILURE|Code Sign|provisioning|fastlane|altool|xcodebuild|❌|Exit code [1-9]|fatal/i;
+const SIGNAL =
+  /error[: ]|BUILD FAILED|FAILURE|Code Sign|provisioning|fastlane|altool|xcodebuild|❌|Exit code [1-9]|fatal/i;
 
 /**
  * Pull just the interesting regions out of a (already redacted) log: windows
  * around each error signal, plus the tail, capped so a model sees the failure
  * and not megabytes. Returns a compact excerpt.
  */
-export function extractErrors(redacted: string, opts?: { window?: number; maxChars?: number }): string {
+export function extractErrors(
+  redacted: string,
+  opts?: { window?: number; maxChars?: number },
+): string {
   const window = opts?.window ?? 6;
   const maxChars = opts?.maxChars ?? 6000;
   const lines = redacted.split('\n');

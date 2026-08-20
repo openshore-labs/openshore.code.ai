@@ -109,7 +109,11 @@ export function LaunchScreen() {
                 Have the model walk you through every account and setting, in order.
               </div>
             </div>
-            <button className="btn ghost" style={{ padding: '8px 14px' }} onClick={() => void guideMe()}>
+            <button
+              className="btn ghost"
+              style={{ padding: '8px 14px' }}
+              onClick={() => void guideMe()}
+            >
               Guide me
             </button>
           </div>
@@ -247,7 +251,11 @@ export function LaunchScreen() {
                   autoCorrect="off"
                 />
               </div>
-              <button className="btn primary" style={{ width: '100%' }} onClick={() => void saveTarget()}>
+              <button
+                className="btn primary"
+                style={{ width: '100%' }}
+                onClick={() => void saveTarget()}
+              >
                 Save target
               </button>
             </div>
@@ -289,7 +297,13 @@ export function LaunchScreen() {
         {/* Runs. */}
         {runs.length ? <h3 style={{ margin: '18px 0 10px' }}>Builds</h3> : null}
         {runs.map((run) => (
-          <RunCard key={run.id} run={run} onDiagnose={() => void diagnoseBuild(run.id)} onRebuild={() => void startBuild()} busy={busy} />
+          <RunCard
+            key={run.id}
+            run={run}
+            onDiagnose={() => void diagnoseBuild(run.id)}
+            onRebuild={() => void startBuild()}
+            busy={busy}
+          />
         ))}
       </div>
     </div>
@@ -322,7 +336,11 @@ function RunCard({
         <span className={statusPill(run.status)}>{STATUS_LABEL[run.status] ?? run.status}</span>
       </div>
       {inProgress ? <div className="build-shimmer" aria-hidden="true" /> : null}
-      {run.error ? <p className="hint" style={{ marginTop: 6 }}>{run.error}</p> : null}
+      {run.error ? (
+        <p className="hint" style={{ marginTop: 6 }}>
+          {run.error}
+        </p>
+      ) : null}
       {failed && run.excerpt ? (
         <>
           <pre className="log-excerpt">{run.excerpt}</pre>

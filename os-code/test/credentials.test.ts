@@ -79,9 +79,17 @@ describe('resolveAuth', () => {
   });
 
   it('admin outranks member; member does not reach admin', () => {
-    expect(hasRole({ userId: 'u', role: 'admin', label: '', source: 'device' }, 'admin')).toBe(true);
-    expect(hasRole({ userId: 'u', role: 'admin', label: '', source: 'device' }, 'member')).toBe(true);
-    expect(hasRole({ userId: 'u', role: 'member', label: '', source: 'device' }, 'admin')).toBe(false);
-    expect(hasRole({ userId: 'u', role: 'member', label: '', source: 'device' }, 'member')).toBe(true);
+    expect(hasRole({ userId: 'u', role: 'admin', label: '', source: 'device' }, 'admin')).toBe(
+      true,
+    );
+    expect(hasRole({ userId: 'u', role: 'admin', label: '', source: 'device' }, 'member')).toBe(
+      true,
+    );
+    expect(hasRole({ userId: 'u', role: 'member', label: '', source: 'device' }, 'admin')).toBe(
+      false,
+    );
+    expect(hasRole({ userId: 'u', role: 'member', label: '', source: 'device' }, 'member')).toBe(
+      true,
+    );
   });
 });

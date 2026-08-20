@@ -69,7 +69,13 @@ describe('outbox apply', () => {
     expect(status.modified).toContain('README.md');
     expect(readFileSync(join(repo, 'README.md'), 'utf8')).toContain('local uncommitted edit');
     // The commit did NOT include the dirty README (proves no `add -A`).
-    const changed = await simpleGit(repo).raw(['diff-tree', '--no-commit-id', '--name-only', '-r', result.resultCommit]);
+    const changed = await simpleGit(repo).raw([
+      'diff-tree',
+      '--no-commit-id',
+      '--name-only',
+      '-r',
+      result.resultCommit,
+    ]);
     expect(changed.trim()).toBe('new.txt');
   });
 
@@ -104,7 +110,9 @@ describe('outbox apply', () => {
     await simpleGit(repo).commit('divergent tip');
     const movedTip = await head();
 
-    const result = await applyOutboxItem(req({ baseCommit: base, clientOpId: 'op-2', itemId: 'itm-2' }));
+    const result = await applyOutboxItem(
+      req({ baseCommit: base, clientOpId: 'op-2', itemId: 'itm-2' }),
+    );
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect('conflict' in result && result.conflict).toBe(true);
@@ -113,17 +121,26 @@ describe('outbox apply', () => {
     // main is untouched: still the "meanwhile" tip, not force-moved.
     expect(await head()).toBe(movedTip);
     // The work is preserved on the rescue ref.
-    expect(existsSync(join(repo, '.git', 'refs', 'heads', 'oscode', 'outbox', 'dev-1', 'itm-2'))).toBe(true);
+    expect(
+      existsSync(join(repo, '.git', 'refs', 'heads', 'oscode', 'outbox', 'dev-1', 'itm-2')),
+    ).toBe(true);
   });
 
   it('deletes a file through the outbox', async () => {
     const base = await head();
     const result = await applyOutboxItem(
-      req({ baseCommit: base, clientOpId: 'op-del', itemId: 'itm-del', files: [{ path: 'README.md', mode: 'delete' }] }),
+      req({
+        baseCommit: base,
+        clientOpId: 'op-del',
+        itemId: 'itm-del',
+        files: [{ path: 'README.md', mode: 'delete' }],
+      }),
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    await expect(simpleGit(repo).raw(['show', `${result.resultCommit}:README.md`])).rejects.toBeTruthy();
+    await expect(
+      simpleGit(repo).raw(['show', `${result.resultCommit}:README.md`]),
+    ).rejects.toBeTruthy();
   });
 });
 

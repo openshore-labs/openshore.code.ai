@@ -16,7 +16,12 @@ const journal: DriverEvent[] = [
   { type: 'turn-start', turn: 1, model: 'qwen2.5-coder', providerKind: 'local' },
   { type: 'usage', promptTokens: 1000, completionTokens: 500, dollars: 0, contextPercent: 10 },
   { type: 'tool-start', call: { name: 'edit', input: {} } as never },
-  { type: 'tool-end', call: { name: 'edit', input: {} } as never, result: {} as never, durationMs: 5 },
+  {
+    type: 'tool-end',
+    call: { name: 'edit', input: {} } as never,
+    result: {} as never,
+    durationMs: 5,
+  },
   { type: 'turn-start', turn: 2, model: 'qwen2.5-coder', providerKind: 'local' },
   { type: 'usage', promptTokens: 2000, completionTokens: 1000, dollars: 0, contextPercent: 20 },
   { type: 'tool-denied', call: { name: 'bash', input: {} } as never, reason: 'blocked' },

@@ -14,7 +14,14 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash, randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { oscHome } from '../config/load.js';
@@ -79,7 +86,8 @@ async function gitOk(cwd: string, args: string[]): Promise<boolean> {
 export function confinedPath(repoRoot: string, p: string): string {
   if (typeof p !== 'string' || !p) throw new Error('empty path');
   if (isAbsolute(p)) throw new Error(`absolute path rejected: ${p}`);
-  if (p.split(/[\\/]/).some((seg) => seg === '..')) throw new Error(`parent segment rejected: ${p}`);
+  if (p.split(/[\\/]/).some((seg) => seg === '..'))
+    throw new Error(`parent segment rejected: ${p}`);
   const resolved = resolve(repoRoot, p);
   if (resolved !== repoRoot && !resolved.startsWith(repoRoot + sep)) {
     throw new Error(`path escapes repo: ${p}`);
@@ -171,7 +179,12 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
   const prior = lookupReceipt(repoRoot, req.clientOpId);
   if (prior) {
     return prior.conflict
-      ? { ok: false, conflict: true, resultCommit: prior.resultCommit, rescueBranch: prior.rescueBranch ?? '' }
+      ? {
+          ok: false,
+          conflict: true,
+          resultCommit: prior.resultCommit,
+          rescueBranch: prior.rescueBranch ?? '',
+        }
       : { ok: true, resultCommit: prior.resultCommit, idempotentReplay: true };
   }
 
@@ -203,7 +216,11 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
       blobFiles.push(blobFile);
       writeFileSync(blobFile, Buffer.from(f.contentBase64 ?? '', 'base64'));
       const sha = await git(req.cwd, ['hash-object', '-w', blobFile]);
-      await git(req.cwd, ['update-index', '--add', '--cacheinfo', `100644,${sha},${f.path}`], idxEnv);
+      await git(
+        req.cwd,
+        ['update-index', '--add', '--cacheinfo', `100644,${sha},${f.path}`],
+        idxEnv,
+      );
     }
     tree = await git(req.cwd, ['write-tree'], idxEnv);
   } finally {
@@ -212,7 +229,11 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
   }
 
   // Commit the tree onto the branch tip with a fixed bot identity.
-  const resultCommit = await git(req.cwd, ['commit-tree', tree, '-p', branchTip, '-m', req.message], AUTHOR_ENV);
+  const resultCommit = await git(
+    req.cwd,
+    ['commit-tree', tree, '-p', branchTip, '-m', req.message],
+    AUTHOR_ENV,
+  );
 
   const landOnRescue = async (): Promise<OutboxApplyResult> => {
     const rescueBranch = `oscode/outbox/${req.deviceId}/${req.itemId}`;
@@ -237,7 +258,9 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
 
   // Fast-forward: compare-and-swap the branch ref (fails if the tip moved during
   // apply, in which case we also rescue rather than clobber).
-  if (!(await gitOk(req.cwd, ['update-ref', `refs/heads/${req.branch}`, resultCommit, branchTip]))) {
+  if (
+    !(await gitOk(req.cwd, ['update-ref', `refs/heads/${req.branch}`, resultCommit, branchTip]))
+  ) {
     return landOnRescue();
   }
 

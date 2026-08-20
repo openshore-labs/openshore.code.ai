@@ -6,7 +6,8 @@ import { extractErrors, isTerminal, logArtifacts, redactLog } from '../src/lib/c
 
 describe('codemagic redaction', () => {
   it('strips PEM key blocks', () => {
-    const log = 'before\n-----BEGIN PRIVATE KEY-----\nMIIEv...secret...\n-----END PRIVATE KEY-----\nafter';
+    const log =
+      'before\n-----BEGIN PRIVATE KEY-----\nMIIEv...secret...\n-----END PRIVATE KEY-----\nafter';
     const out = redactLog(log);
     expect(out).not.toContain('secret');
     expect(out).toContain('[redacted key block]');

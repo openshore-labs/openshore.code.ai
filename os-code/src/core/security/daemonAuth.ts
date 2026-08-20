@@ -47,7 +47,10 @@ export function bearerFrom(header: string | undefined): string | undefined {
  * device credential. A Supabase-verified JWT will slot in as a third source.
  * Returns null when nothing matches (the caller answers 401).
  */
-export function resolveAuth(presented: string | undefined, legacyToken: string): AuthContext | null {
+export function resolveAuth(
+  presented: string | undefined,
+  legacyToken: string,
+): AuthContext | null {
   if (!presented) return null;
   if (tokenMatches(presented, legacyToken)) {
     return { userId: 'legacy', role: 'admin', label: 'shared token', source: 'legacy' };

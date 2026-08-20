@@ -49,13 +49,26 @@ const BASE_SYSTEM = [
 /** A crude keyword classifier. Placeholder for a real routing model. */
 export function classifyTask(text: string): StackCategory | 'reasoning' {
   const t = text.toLowerCase();
-  if (/\b(code|coding|function|bug|refactor|compile|regex|api|typescript|javascript|python|sql|stack ?trace|npm|git|class|import|debug)\b/.test(t))
+  if (
+    /\b(code|coding|function|bug|refactor|compile|regex|api|typescript|javascript|python|sql|stack ?trace|npm|git|class|import|debug)\b/.test(
+      t,
+    )
+  )
     return 'coding';
-  if (/\b(write|draft|essay|email|blog|copy|rephrase|proofread|paragraph|story|caption|tone)\b/.test(t))
+  if (
+    /\b(write|draft|essay|email|blog|copy|rephrase|proofread|paragraph|story|caption|tone)\b/.test(
+      t,
+    )
+  )
     return 'writing';
-  if (/\b(calculate|analy|data|numbers|statistic|math|equation|spreadsheet|percentage|forecast|chart)\b/.test(t))
+  if (
+    /\b(calculate|analy|data|numbers|statistic|math|equation|spreadsheet|percentage|forecast|chart)\b/.test(
+      t,
+    )
+  )
     return 'analysis';
-  if (/\b(image|picture|draw|illustrat|logo|render|generate an? image)\b/.test(t)) return 'image-gen';
+  if (/\b(image|picture|draw|illustrat|logo|render|generate an? image)\b/.test(t))
+    return 'image-gen';
   return 'reasoning';
 }
 
@@ -103,7 +116,11 @@ export class StackDriver implements ChatDriver {
 
   /** Pick the model for this turn: a placed specialist if reachable, else the
    *  Reasoning LLM, else any reachable model. */
-  private route(text: string): { ref: StackModelRef; placement?: Placement; category: StackCategory | 'reasoning' } {
+  private route(text: string): {
+    ref: StackModelRef;
+    placement?: Placement;
+    category: StackCategory | 'reasoning';
+  } {
     const category = classifyTask(text);
     if (category !== 'reasoning') {
       const specialist = this.stack.active.find(
@@ -120,11 +137,15 @@ export class StackDriver implements ChatDriver {
   }
 
   private systemFor(ref: StackModelRef, placement?: Placement): string {
-    const parts = [ref.kind === 'device' && isHarbor(ref.modelId) ? buildHarborSystemPrompt() : BASE_SYSTEM];
+    const parts = [
+      ref.kind === 'device' && isHarbor(ref.modelId) ? buildHarborSystemPrompt() : BASE_SYSTEM,
+    ];
     // Project context: name + standing instructions, injected into every turn.
     const proj = this.context.projectInstructions?.trim();
     if (this.context.projectName || proj) {
-      const head = this.context.projectName ? `You are working in the project "${this.context.projectName}".` : '';
+      const head = this.context.projectName
+        ? `You are working in the project "${this.context.projectName}".`
+        : '';
       parts.push([head, proj].filter(Boolean).join('\n'));
     }
     const crewNote = this.crewGuidance();
@@ -148,7 +169,9 @@ export class StackDriver implements ChatDriver {
     const request = crew.filter((a) => a.activityLevel === 'request');
     const lines: string[] = ['Your crew (user-authored perspectives you can bring in):'];
     if (auto.length) {
-      lines.push('You may consult these on your own when they would help. Speak in their voice when you do, and say which crew member you are channeling:');
+      lines.push(
+        'You may consult these on your own when they would help. Speak in their voice when you do, and say which crew member you are channeling:',
+      );
       lines.push(...auto.map(describe));
     }
     if (request.length) {
@@ -183,7 +206,10 @@ export class StackDriver implements ChatDriver {
       providerKind: target.ref.kind === 'cloud' ? 'cloud' : 'local',
     });
     if (target.category !== 'reasoning' && target.placement) {
-      this.emit({ type: 'status', message: `Routing this to ${refName(target.ref)} for ${target.category}.` });
+      this.emit({
+        type: 'status',
+        message: `Routing this to ${refName(target.ref)} for ${target.category}.`,
+      });
     }
 
     this.answer = '';
@@ -220,19 +246,30 @@ export class StackDriver implements ChatDriver {
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
         if (requestId !== this.activeRequestId) return;
         this.activeRequestId = undefined;
-        if (stopReason === 'error') this.finish('error', detail ?? 'The on-device model hit a problem.');
+        if (stopReason === 'error')
+          this.finish('error', detail ?? 'The on-device model hit a problem.');
         else this.finish(stopReason === 'stopped' ? 'aborted' : 'complete');
       }),
     );
   }
 
-  private async runDevice(ref: Extract<StackModelRef, { kind: 'device' }>, placement?: Placement): Promise<void> {
+  private async runDevice(
+    ref: Extract<StackModelRef, { kind: 'device' }>,
+    placement?: Placement,
+  ): Promise<void> {
     await this.listenersReady;
     if (this.loadedDeviceId !== ref.modelId) {
       this.emit({ type: 'status', message: `Warming up ${ref.modelName} on this device.` });
-      const load = await Llama.load({ id: ref.modelId, contextSize: isHarbor(ref.modelId) ? 2048 : 4096 });
+      const load = await Llama.load({
+        id: ref.modelId,
+        contextSize: isHarbor(ref.modelId) ? 2048 : 4096,
+      });
       if (!load.ok) {
-        this.emit({ type: 'task-done', reason: 'error', message: load.detail ?? `${ref.modelName} would not load.` });
+        this.emit({
+          type: 'task-done',
+          reason: 'error',
+          message: load.detail ?? `${ref.modelName} would not load.`,
+        });
         return;
       }
       this.loadedDeviceId = ref.modelId;
@@ -249,10 +286,17 @@ export class StackDriver implements ChatDriver {
 
   // ---- cloud backends -----------------------------------------------------
 
-  private async runCloud(ref: Extract<StackModelRef, { kind: 'cloud' }>, placement?: Placement): Promise<void> {
+  private async runCloud(
+    ref: Extract<StackModelRef, { kind: 'cloud' }>,
+    placement?: Placement,
+  ): Promise<void> {
     const key = await secretGet(providerSecretKey(ref.provider));
     if (!key) {
-      this.emit({ type: 'task-done', reason: 'error', message: `Connect ${ref.provider} under Cloud Connections first.` });
+      this.emit({
+        type: 'task-done',
+        reason: 'error',
+        message: `Connect ${ref.provider} under Cloud Connections first.`,
+      });
       return;
     }
     const system = this.systemFor(ref, placement);
@@ -288,11 +332,20 @@ export class StackDriver implements ChatDriver {
     this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
-  private async runOpenAiCompatible(provider: string, key: string, model: string, system: string): Promise<void> {
+  private async runOpenAiCompatible(
+    provider: string,
+    key: string,
+    model: string,
+    system: string,
+  ): Promise<void> {
     const info = providerInfo(provider);
     const base = info?.openaiBaseUrl;
     if (!base) {
-      this.emit({ type: 'task-done', reason: 'error', message: `No endpoint configured for ${provider}.` });
+      this.emit({
+        type: 'task-done',
+        reason: 'error',
+        message: `No endpoint configured for ${provider}.`,
+      });
       return;
     }
     const messages = [{ role: 'system', content: system }, ...this.history];
@@ -308,7 +361,11 @@ export class StackDriver implements ChatDriver {
         body: JSON.stringify({ model, stream: false, messages }),
       });
       if (!res.ok) {
-        this.emit({ type: 'task-done', reason: 'error', message: `${provider} answered ${res.status}.` });
+        this.emit({
+          type: 'task-done',
+          reason: 'error',
+          message: `${provider} answered ${res.status}.`,
+        });
         return;
       }
       if (!this.aborted) {
@@ -330,7 +387,11 @@ export class StackDriver implements ChatDriver {
       signal: this.abortController?.signal,
     });
     if (!res.ok || !res.body) {
-      this.emit({ type: 'task-done', reason: 'error', message: `${provider} answered ${res.status}.` });
+      this.emit({
+        type: 'task-done',
+        reason: 'error',
+        message: `${provider} answered ${res.status}.`,
+      });
       return;
     }
     const reader = res.body.getReader();

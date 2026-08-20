@@ -40,12 +40,20 @@ export function StackManager() {
 
   const deviceRefs: StackModelRef[] = [
     ...(settings.harborReady ? [harborRef()] : []),
-    ...Object.entries(settings.deviceModels).map(
-      ([modelId, modelName]): StackModelRef => ({ kind: 'device', modelId, modelName }),
-    ),
+    ...Object.entries(settings.deviceModels).map(([modelId, modelName]): StackModelRef => ({
+      kind: 'device',
+      modelId,
+      modelName,
+    })),
   ];
-  const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap((p) =>
-    p.models.map((m): StackModelRef => ({ kind: 'cloud', provider: p.id, model: m.id, label: m.label })),
+  const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
+    (p) =>
+      p.models.map((m): StackModelRef => ({
+        kind: 'cloud',
+        provider: p.id,
+        model: m.id,
+        label: m.label,
+      })),
   );
   const available: StackModelRef[] = [...deviceRefs, ...cloudRefs];
   const activeKeys = new Set(stack.active.map((m) => refKey(m.ref)));
@@ -55,7 +63,9 @@ export function StackManager() {
   const cloudBench = PROVIDERS.filter((p) => connectedProviders[p.id])
     .map((p) => ({
       provider: p,
-      models: p.models.filter((m) => !placed({ kind: 'cloud', provider: p.id, model: m.id, label: m.label })),
+      models: p.models.filter(
+        (m) => !placed({ kind: 'cloud', provider: p.id, model: m.id, label: m.label }),
+      ),
     }))
     .filter((g) => g.models.length > 0);
 
@@ -159,93 +169,95 @@ export function StackManager() {
 
         {!admin ? (
           <p className="hint" style={{ marginTop: 12 }}>
-            The bench and stack controls are managed by your admin. Everything else in OS Code,
-            your chats, projects, and crew, is yours to set up as you like.
+            The bench and stack controls are managed by your admin. Everything else in OS Code, your
+            chats, projects, and crew, is yours to set up as you like.
           </p>
         ) : (
           <>
-        <h3 style={{ margin: '18px 0 10px' }}>Bench</h3>
-        {bench.length === 0 && cloudBench.length === 0 ? (
-          <p className="hint">
-            Models you download from the{' '}
-            <button
-              className="hint"
-              style={{ display: 'inline', padding: 0, textDecoration: 'underline' }}
-              onClick={() => setView('marketplace')}
-            >
-              Marketplace
-            </button>{' '}
-            or connect land here, ready to place.
-          </p>
-        ) : (
-          bench.map((ref) => (
-            <div className="card" key={refKey(ref)}>
-              <div className="card-row">
-                <div className="grow">
-                  <h3>{refName(ref)}</h3>
-                  <div className="sub">On the bench. Place it to put it to work.</div>
-                </div>
+            <h3 style={{ margin: '18px 0 10px' }}>Bench</h3>
+            {bench.length === 0 && cloudBench.length === 0 ? (
+              <p className="hint">
+                Models you download from the{' '}
                 <button
-                  className="btn ghost"
-                  style={{ padding: '8px 14px' }}
-                  onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
+                  className="hint"
+                  style={{ display: 'inline', padding: 0, textDecoration: 'underline' }}
+                  onClick={() => setView('marketplace')}
                 >
-                  Add to stack
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-
-        {/* Connected cloud providers: pick a model, then place it. */}
-        {cloudBench.map(({ provider, models }) => {
-          const picked = cloudPick[provider.id] ?? models[0]!.id;
-          const ref: StackModelRef = {
-            kind: 'cloud',
-            provider: provider.id,
-            model: picked,
-            label: models.find((m) => m.id === picked)?.label ?? picked,
-          };
-          return (
-            <div className="card" key={`cloud-${provider.id}`}>
-              <div className="card-row">
-                <div className="grow">
-                  <h3>{provider.name} <span className="sub">(cloud)</span></h3>
-                  <div className="field" style={{ margin: '8px 0 0' }}>
-                    <select
-                      value={picked}
-                      onChange={(e) =>
-                        setCloudPick({ ...cloudPick, [provider.id]: e.target.value })
-                      }
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-raised)',
-                        border: '1px solid var(--border-strong)',
-                        borderRadius: 10,
-                        padding: '10px 12px',
-                        fontSize: 15,
-                        color: 'var(--ink)',
-                      }}
+                  Marketplace
+                </button>{' '}
+                or connect land here, ready to place.
+              </p>
+            ) : (
+              bench.map((ref) => (
+                <div className="card" key={refKey(ref)}>
+                  <div className="card-row">
+                    <div className="grow">
+                      <h3>{refName(ref)}</h3>
+                      <div className="sub">On the bench. Place it to put it to work.</div>
+                    </div>
+                    <button
+                      className="btn ghost"
+                      style={{ padding: '8px 14px' }}
+                      onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
                     >
-                      {models.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
+                      Add to stack
+                    </button>
                   </div>
                 </div>
-                <button
-                  className="btn ghost"
-                  style={{ padding: '8px 14px' }}
-                  onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
-                >
-                  Add to stack
-                </button>
-              </div>
-            </div>
-          );
-        })}
+              ))
+            )}
+
+            {/* Connected cloud providers: pick a model, then place it. */}
+            {cloudBench.map(({ provider, models }) => {
+              const picked = cloudPick[provider.id] ?? models[0]!.id;
+              const ref: StackModelRef = {
+                kind: 'cloud',
+                provider: provider.id,
+                model: picked,
+                label: models.find((m) => m.id === picked)?.label ?? picked,
+              };
+              return (
+                <div className="card" key={`cloud-${provider.id}`}>
+                  <div className="card-row">
+                    <div className="grow">
+                      <h3>
+                        {provider.name} <span className="sub">(cloud)</span>
+                      </h3>
+                      <div className="field" style={{ margin: '8px 0 0' }}>
+                        <select
+                          value={picked}
+                          onChange={(e) =>
+                            setCloudPick({ ...cloudPick, [provider.id]: e.target.value })
+                          }
+                          style={{
+                            width: '100%',
+                            background: 'var(--bg-raised)',
+                            border: '1px solid var(--border-strong)',
+                            borderRadius: 10,
+                            padding: '10px 12px',
+                            fontSize: 15,
+                            color: 'var(--ink)',
+                          }}
+                        >
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <button
+                      className="btn ghost"
+                      style={{ padding: '8px 14px' }}
+                      onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
+                    >
+                      Add to stack
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </>
         )}
       </div>
@@ -333,7 +345,11 @@ export function StackManager() {
                   className="suggestion"
                   style={
                     config.placement.category === c.id
-                      ? { background: 'var(--local-soft)', color: 'var(--local)', borderColor: 'var(--local)' }
+                      ? {
+                          background: 'var(--local-soft)',
+                          color: 'var(--local)',
+                          borderColor: 'var(--local)',
+                        }
                       : undefined
                   }
                   onClick={() =>

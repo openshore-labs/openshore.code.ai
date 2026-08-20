@@ -38,8 +38,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   useDismissable(switcherRef, switcherOpen, () => setSwitcherOpen(false));
 
   const projects = settings.projects ?? [];
-  const activeProject =
-    projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
+  const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
 
   // What shows in the list: saved chats in the active project. A live quick
   // chat is transient, so it appears only while it is the one open.

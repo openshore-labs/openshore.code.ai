@@ -210,13 +210,20 @@ function summarizeStack(): StackSummary {
     .filter(([role]) => role !== 'imageGen')
     .map(([role, ref]) => {
       const r = ref as { provider?: string; model?: string };
-      return { role, model: r.model ?? '', kind: r.provider ? kindOf(r.provider) : ('local' as const) };
+      return {
+        role,
+        model: r.model ?? '',
+        kind: r.provider ? kindOf(r.provider) : ('local' as const),
+      };
     })
     .filter((s) => s.model);
   return { orchestrator, specialists };
 }
 
-function buildCrew(stack: StackSummary, turnsByModel: Map<string, number>): StackHealthCrewMember[] {
+function buildCrew(
+  stack: StackSummary,
+  turnsByModel: Map<string, number>,
+): StackHealthCrewMember[] {
   const crew: StackHealthCrewMember[] = [];
   if (stack.orchestrator) {
     crew.push({
@@ -227,7 +234,12 @@ function buildCrew(stack: StackSummary, turnsByModel: Map<string, number>): Stac
     });
   }
   for (const s of stack.specialists) {
-    crew.push({ role: s.role, model: s.model, kind: s.kind, turns: turnsByModel.get(s.model) ?? 0 });
+    crew.push({
+      role: s.role,
+      model: s.model,
+      kind: s.kind,
+      turns: turnsByModel.get(s.model) ?? 0,
+    });
   }
   return crew;
 }
@@ -238,7 +250,11 @@ function buildCrew(stack: StackSummary, turnsByModel: Map<string, number>): Stac
  *  ships and journals are actually sealed. */
 function buildSeal(cloudTurns: number, encryptedAtRest: boolean): StackHealthSealFact[] {
   return [
-    { key: 'telemetry', state: 'good', label: 'No telemetry. Nothing about your use is collected.' },
+    {
+      key: 'telemetry',
+      state: 'good',
+      label: 'No telemetry. Nothing about your use is collected.',
+    },
     cloudTurns === 0
       ? { key: 'dataLeftDevice', state: 'good', label: 'Nothing left this device this period.' }
       : {
@@ -248,7 +264,11 @@ function buildSeal(cloudTurns: number, encryptedAtRest: boolean): StackHealthSea
         },
     encryptedAtRest
       ? { key: 'encryptedAtRest', state: 'good', label: 'Your sessions are encrypted at rest.' }
-      : { key: 'encryptedAtRest', state: 'pending', label: 'Sessions are not yet encrypted at rest.' },
+      : {
+          key: 'encryptedAtRest',
+          state: 'pending',
+          label: 'Sessions are not yet encrypted at rest.',
+        },
   ];
 }
 
@@ -323,7 +343,10 @@ function bucketIndex(starts: number[], when: number): number {
 
 /** Read every session in range, fold it, and return the dashboard payload.
  *  Pure read: it opens only files the engine already wrote. */
-export function computeStackHealth(range: StackHealthRange = 'week', now: Date = new Date()): StackHealth {
+export function computeStackHealth(
+  range: StackHealthRange = 'week',
+  now: Date = new Date(),
+): StackHealth {
   const dir = sessionsDir();
   const infos = existsSync(dir) ? listSessions() : [];
   const since = cutoff(now, range);

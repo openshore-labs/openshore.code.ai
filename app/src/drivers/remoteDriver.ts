@@ -21,13 +21,18 @@ export async function daemonHealth(target: DaemonTarget): Promise<{ ok: boolean;
       headers: headers(target),
       signal: AbortSignal.timeout(4000),
     });
-    if (res.status === 401) return { ok: false, detail: 'The desktop rejected the pairing token. Re-copy it from the desktop app.' };
+    if (res.status === 401)
+      return {
+        ok: false,
+        detail: 'The desktop rejected the pairing token. Re-copy it from the desktop app.',
+      };
     if (!res.ok) return { ok: false, detail: `The desktop answered ${res.status}.` };
     return { ok: true, detail: 'Connected to your desktop.' };
   } catch {
     return {
       ok: false,
-      detail: 'Could not reach the desktop. Check that Tailscale is on for both devices and the desktop app is open.',
+      detail:
+        'Could not reach the desktop. Check that Tailscale is on for both devices and the desktop app is open.',
     };
   }
 }
@@ -57,7 +62,8 @@ export async function daemonListSessions(target: DaemonTarget): Promise<DaemonSe
     rows.push({ id: s.id, cwd: s.cwd, busy: s.busy });
   }
   for (const s of body.stored) {
-    if (!seen.has(s.id)) rows.push({ id: s.id, cwd: s.cwd, title: s.title, updatedAt: s.updatedAt });
+    if (!seen.has(s.id))
+      rows.push({ id: s.id, cwd: s.cwd, title: s.title, updatedAt: s.updatedAt });
   }
   return rows;
 }
@@ -74,7 +80,11 @@ export async function daemonCloneRepo(target: DaemonTarget, url: string) {
     headers: { ...headers(target), 'content-type': 'application/json' },
     body: JSON.stringify({ url }),
   });
-  const body = (await res.json().catch(() => ({}))) as { cwd?: string; name?: string; error?: string };
+  const body = (await res.json().catch(() => ({}))) as {
+    cwd?: string;
+    name?: string;
+    error?: string;
+  };
   if (!res.ok || !body.cwd) throw new Error(body.error ?? `Clone failed (${res.status}).`);
   return { cwd: body.cwd, name: body.name ?? 'repo' };
 }
@@ -113,7 +123,9 @@ export async function daemonApplyOutbox(
     headers: { ...headers(target), 'content-type': 'application/json' },
     body: JSON.stringify(req),
   });
-  const body = (await res.json().catch(() => ({ ok: false, error: `Apply failed (${res.status}).` }))) as OutboxApplyResult;
+  const body = (await res
+    .json()
+    .catch(() => ({ ok: false, error: `Apply failed (${res.status}).` }))) as OutboxApplyResult;
   return body;
 }
 
@@ -125,7 +137,9 @@ export async function daemonVerifyCommit(
   branch?: string,
 ): Promise<{ exists: boolean; onBranch: boolean }> {
   const qs = new URLSearchParams({ cwd, commit, ...(branch ? { branch } : {}) });
-  const res = await fetch(`${target.baseUrl}/outbox/verify?${qs.toString()}`, { headers: headers(target) });
+  const res = await fetch(`${target.baseUrl}/outbox/verify?${qs.toString()}`, {
+    headers: headers(target),
+  });
   if (!res.ok) return { exists: false, onBranch: false };
   return (await res.json()) as { exists: boolean; onBranch: boolean };
 }
@@ -192,7 +206,10 @@ export class RemoteDriver implements ChatDriver {
       } catch {
         if (this.closed) return;
         for (const sink of [...this.sinks]) {
-          sink({ type: 'status', message: 'Connection blipped. Reattaching to the run.' }, this.lastSeq);
+          sink(
+            { type: 'status', message: 'Connection blipped. Reattaching to the run.' },
+            this.lastSeq,
+          );
         }
         await new Promise((r) => setTimeout(r, backoffMs));
         backoffMs = Math.min(backoffMs * 2, 10_000);
@@ -213,7 +230,10 @@ export class RemoteDriver implements ChatDriver {
     }).catch(() => {
       for (const sink of [...this.sinks]) {
         sink(
-          { type: 'status', message: 'Could not reach the desktop to send that. It will not be lost if you retry.' },
+          {
+            type: 'status',
+            message: 'Could not reach the desktop to send that. It will not be lost if you retry.',
+          },
           this.lastSeq,
         );
       }

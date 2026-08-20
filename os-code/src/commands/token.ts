@@ -30,14 +30,18 @@ export function tokenMintCommand(options: { role?: string; label?: string; ttl?:
   out(t.bold('Paste this token on the paired device. It is shown once:'));
   out(t.local(token));
   out();
-  out(t.muted('It is stored here only as a hash; you cannot recover it later, only mint a new one.'));
+  out(
+    t.muted('It is stored here only as a hash; you cannot recover it later, only mint a new one.'),
+  );
 }
 
 export function tokenListCommand(): void {
   const creds = loadCredentials();
   header('Daemon credentials');
   if (!creds.length) {
-    warnLine('None minted yet. The shared token still works as admin. Run osc token mint to add one.');
+    warnLine(
+      'None minted yet. The shared token still works as admin. Run osc token mint to add one.',
+    );
     return;
   }
   for (const c of creds) {
