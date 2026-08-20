@@ -124,6 +124,10 @@ export interface OrgMember {
   displayName?: string;
   role: OrgRole;
   addedAt: string;
+  /** The org_members row id on the server, once this member is synced. */
+  serverId?: string;
+  /** Server seat state: 'invited' until the person signs in and claims it. */
+  status?: 'invited' | 'active';
 }
 
 export interface Org {
@@ -137,6 +141,8 @@ export interface Org {
   priceYear: number;
   members: OrgMember[];
   createdAt: string;
+  /** The orgs row id on the server, once this org is synced. */
+  serverId?: string;
 }
 
 export interface Account {

@@ -49,7 +49,11 @@ function authHeaders(accessToken?: string): Record<string, string> {
 
 async function readError(res: Response): Promise<string> {
   try {
-    const body = (await res.json()) as { error_description?: string; msg?: string; message?: string };
+    const body = (await res.json()) as {
+      error_description?: string;
+      msg?: string;
+      message?: string;
+    };
     return body.error_description ?? body.msg ?? body.message ?? `Request failed (${res.status}).`;
   } catch {
     return `Request failed (${res.status}).`;
@@ -103,7 +107,10 @@ export async function refreshSession(refreshToken: string): Promise<Session> {
 }
 
 export async function signOut(accessToken: string): Promise<void> {
-  await fetch(`${base()}/auth/v1/logout`, { method: 'POST', headers: authHeaders(accessToken) }).catch(() => {});
+  await fetch(`${base()}/auth/v1/logout`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  }).catch(() => {});
 }
 
 /** Parse the tokens a magic-link callback URL carries (hash or query). */
@@ -135,7 +142,11 @@ export async function getUser(accessToken: string): Promise<{ id: string; email?
 }
 
 /** Call a Postgres RPC (SECURITY DEFINER function) as the signed-in user. */
-export async function rpc<T>(fn: string, accessToken: string, args: Record<string, unknown> = {}): Promise<T> {
+export async function rpc<T>(
+  fn: string,
+  accessToken: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
   const res = await fetch(`${base()}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: authHeaders(accessToken),
@@ -147,7 +158,49 @@ export async function rpc<T>(fn: string, accessToken: string, args: Record<strin
 
 /** A minimal PostgREST select. Pass a query string like "select=*&org_id=eq.123". */
 export async function select<T>(table: string, accessToken: string, query: string): Promise<T[]> {
-  const res = await fetch(`${base()}/rest/v1/${table}?${query}`, { headers: authHeaders(accessToken) });
+  const res = await fetch(`${base()}/rest/v1/${table}?${query}`, {
+    headers: authHeaders(accessToken),
+  });
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as T[];
+}
+
+/** Insert one or more rows, returning the inserted representation. */
+export async function insert<T>(
+  table: string,
+  accessToken: string,
+  rows: Record<string, unknown> | Record<string, unknown>[],
+): Promise<T[]> {
+  const res = await fetch(`${base()}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { ...authHeaders(accessToken), Prefer: 'return=representation' },
+    body: JSON.stringify(rows),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T[];
+}
+
+/** Patch rows matching the query. Pass a query like "id=eq.123". */
+export async function update<T>(
+  table: string,
+  accessToken: string,
+  query: string,
+  patch: Record<string, unknown>,
+): Promise<T[]> {
+  const res = await fetch(`${base()}/rest/v1/${table}?${query}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(accessToken), Prefer: 'return=representation' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T[];
+}
+
+/** Delete rows matching the query. Pass a query like "id=eq.123". */
+export async function del(table: string, accessToken: string, query: string): Promise<void> {
+  const res = await fetch(`${base()}/rest/v1/${table}?${query}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) throw new Error(await readError(res));
 }

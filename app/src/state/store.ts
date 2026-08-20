@@ -55,7 +55,9 @@ import {
   withinCaps,
 } from '../lib/repoSync.js';
 import {
+  del as supabaseDelete,
   getUser,
+  insert as supabaseInsert,
   isConfigured as authConfigured,
   parseAuthCallback,
   rpc as supabaseRpc,
@@ -64,8 +66,15 @@ import {
   signInWithPassword,
   signOut as supabaseSignOut,
   signUp as supabaseSignUp,
+  update as supabaseUpdate,
   type Session,
 } from '../lib/supabase.js';
+import {
+  memberRowsForPush,
+  serverToLocalOrg,
+  type ServerMember,
+  type ServerOrg,
+} from './orgSync.js';
 import { clearSession, freshSession, loadStoredSession, saveSession } from '../lib/authSession.js';
 import {
   autoProfile,
@@ -519,7 +528,112 @@ export const useApp = create<AppState>((set, get) => {
     }
   }
 
-  // After any successful sign-in: persist the session, bind this device to the
+  // Push a locally-created commercial org to the server (owner just signed in),
+  // returning the org rebuilt from the server rows, or undefined if it could not
+  // be created (RLS, offline).
+  async function pushOrgToServer(session: Session, org: Org): Promise<Org | undefined> {
+    const [srv] = await supabaseInsert<ServerOrg>('orgs', session.accessToken, {
+      name: org.name,
+      owner_uid: session.user.id,
+      seat_count: org.seatCount,
+      tier_id: org.tierId,
+      price_year: org.priceYear,
+    });
+    if (!srv) return undefined;
+    const rows = memberRowsForPush(org, srv.id, session);
+    // Guarantee the signed-in owner an active admin seat, even if they set the
+    // org up without listing their own email, so other devices can pull it.
+    if (session.user.email && !rows.some((r) => r.user_id === session.user.id)) {
+      rows.unshift({
+        org_id: srv.id,
+        email: session.user.email,
+        role: 'admin',
+        user_id: session.user.id,
+        status: 'active',
+        invited_by: session.user.id,
+      });
+    }
+    const saved = rows.length
+      ? await supabaseInsert<ServerMember>('org_members', session.accessToken, rows)
+      : [];
+    return serverToLocalOrg(srv, saved, new Date().toISOString());
+  }
+
+  // Rebuild the local org from the server for the signed-in user (any device):
+  // find their active membership, then read the org and its roster.
+  async function pullOrgFromServer(session: Session): Promise<Org | undefined> {
+    const mine = await supabaseSelect<{ org_id: string }>(
+      'org_members',
+      session.accessToken,
+      `select=org_id&user_id=eq.${session.user.id}&status=eq.active&limit=1`,
+    );
+    const orgId = mine[0]?.org_id;
+    if (!orgId) return undefined;
+    const [srv] = await supabaseSelect<ServerOrg>(
+      'orgs',
+      session.accessToken,
+      `select=*&id=eq.${orgId}`,
+    );
+    if (!srv) return undefined;
+    const members = await supabaseSelect<ServerMember>(
+      'org_members',
+      session.accessToken,
+      `select=*&org_id=eq.${orgId}&order=created_at.asc`,
+    );
+    return serverToLocalOrg(srv, members, new Date().toISOString());
+  }
+
+  // Make the org multi-device: an owner who set it up locally pushes it on first
+  // sign-in; everyone else (second device, or an invited member) pulls the
+  // server's copy so the roster and role match everywhere.
+  async function reconcileOrg(session: Session): Promise<void> {
+    if (!authConfigured()) return;
+    const account = get().settings.account;
+    try {
+      // The only holder of an unsynced local commercial org is the owner who
+      // created it, so push it. (If they typed their own email, it must match
+      // the signed-in identity; if they left it blank, we bind them here.)
+      const ownsUnpushed =
+        account?.type === 'commercial' &&
+        account.org &&
+        !account.org.serverId &&
+        (!account.selfEmail ||
+          account.selfEmail.toLowerCase() === (session.user.email ?? '').toLowerCase());
+      if (ownsUnpushed && account?.org) {
+        const pushed = await pushOrgToServer(session, account.org);
+        if (pushed) {
+          await get().saveSettings({ account: { ...account, org: pushed } });
+          return;
+        }
+      }
+      const pulled = await pullOrgFromServer(session);
+      if (pulled) {
+        await get().saveSettings({
+          account: { type: 'commercial', org: pulled, selfEmail: session.user.email },
+        });
+      }
+    } catch {
+      // Offline or transient: keep the local org as-is.
+    }
+  }
+
+  // Best-effort write-through for an admin edit. No-ops (staying local-only)
+  // until the org has been synced to the server and someone is signed in.
+  async function orgWrite(
+    fn: (session: Session, serverOrgId: string) => Promise<void>,
+  ): Promise<void> {
+    const session = get().authSession;
+    const serverId = get().settings.account?.org?.serverId;
+    if (!session || !serverId || !authConfigured()) return;
+    try {
+      const fresh = await freshSession(session);
+      if (fresh !== session) set({ authSession: fresh });
+      await fn(fresh, serverId);
+    } catch (err) {
+      get().showToast(err instanceof Error ? err.message : 'Could not sync to your account.');
+    }
+  }
+
   // verified email, claim any invited org seat, and read the server role.
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
@@ -533,6 +647,7 @@ export const useApp = create<AppState>((set, get) => {
     } catch {
       // No invited seat, or offline: role stays whatever the server says next.
     }
+    await reconcileOrg(session);
     await get().refreshOrgRole();
     logEvent('auth_sign_in');
   }
@@ -893,6 +1008,10 @@ export const useApp = create<AppState>((set, get) => {
         account: { type: 'commercial', org, selfEmail: ownerEmail || undefined },
       });
       logEvent('account_setup', { type: 'commercial', tier: tier.id });
+      // If already signed in, create the org on the server now; otherwise it is
+      // pushed on the owner's next sign-in (reconcileOrg).
+      const session = get().authSession;
+      if (session) await reconcileOrg(session);
     },
 
     async setSeatCount(seatCount) {
@@ -908,6 +1027,13 @@ export const useApp = create<AppState>((set, get) => {
       };
       await get().saveSettings({ account: { ...account, org } });
       logEvent('org_seats_set', { tier: tier.id });
+      void orgWrite((s, orgId) =>
+        supabaseUpdate('orgs', s.accessToken, `id=eq.${orgId}`, {
+          seat_count: seats,
+          tier_id: tier.id,
+          price_year: tier.priceYear,
+        }).then(() => undefined),
+      );
     },
 
     async addMember(email, displayName) {
@@ -925,17 +1051,44 @@ export const useApp = create<AppState>((set, get) => {
       const org: Org = { ...account.org, members: [...account.org.members, member] };
       await get().saveSettings({ account: { ...account, org } });
       logEvent('org_member_add');
+      // Invite the member on the server and stamp the local row with its id.
+      void orgWrite(async (s, orgId) => {
+        const [srv] = await supabaseInsert<ServerMember>('org_members', s.accessToken, {
+          org_id: orgId,
+          email: member.email,
+          role: 'member',
+          status: 'invited',
+          invited_by: s.user.id,
+        });
+        const cur = get().settings.account;
+        if (srv && cur?.org) {
+          const members = cur.org.members.map((m) =>
+            m.id === member.id ? { ...m, serverId: srv.id, status: 'invited' as const } : m,
+          );
+          await get().saveSettings({ account: { ...cur, org: { ...cur.org, members } } });
+        }
+      });
     },
 
     async removeMember(id) {
       const account = get().settings.account;
       if (!account?.org || !isOrgAdmin(account)) return;
+      const removed = account.org.members.find((m) => m.id === id);
       const org: Org = {
         ...account.org,
         members: account.org.members.filter((m) => m.id !== id),
       };
       await get().saveSettings({ account: { ...account, org } });
       logEvent('org_member_remove');
+      if (removed) {
+        void orgWrite((s, orgId) =>
+          supabaseDelete(
+            'org_members',
+            s.accessToken,
+            `org_id=eq.${orgId}&email=eq.${encodeURIComponent(removed.email)}`,
+          ),
+        );
+      }
     },
 
     async setMemberRole(id, role) {
@@ -949,6 +1102,17 @@ export const useApp = create<AppState>((set, get) => {
       }
       await get().saveSettings({ account: { ...account, org: { ...account.org, members } } });
       logEvent('org_member_role', { role });
+      const target = account.org.members.find((m) => m.id === id);
+      if (target) {
+        void orgWrite((s, orgId) =>
+          supabaseUpdate(
+            'org_members',
+            s.accessToken,
+            `org_id=eq.${orgId}&email=eq.${encodeURIComponent(target.email)}`,
+            { role },
+          ).then(() => undefined),
+        );
+      }
     },
 
     async setPreviewAsMember(on) {
