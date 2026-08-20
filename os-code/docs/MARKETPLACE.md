@@ -163,14 +163,42 @@ To admit or promote a model:
    commercial posture) or the model will be dropped fail-closed.
 6. Run `pnpm --filter os-code build:catalog` and review the drop log.
 
-## What the founder must wire
+## CI publishing (built: `.github/workflows/catalog.yml`)
 
-- **CI job**: run `pnpm --filter os-code build:catalog` on a schedule (or on a
-  curation change), then publish `os-code/build/catalog.json` to the catalog
-  URL. Fetch the currently published catalog into `build/catalog.json` before the
-  run so the regression gate has a real previous to compare against; a breach
-  exits non-zero and leaves the live catalog serving.
-- **Catalog publish URL**: point `config.catalog.url` at wherever CI publishes.
+The publish pipeline is wired. `.github/workflows/catalog.yml` runs weekly, on a
+change to the curation inputs / builder / schema, or on demand
+(`workflow_dispatch`). Each run:
+
+1. Builds the engine and runs the builder + isolation guard tests.
+2. Seeds the regression baseline by fetching the currently live catalog from
+   `config.catalog.url` into `os-code/build/catalog.json` (a first-run 404 is
+   fine: no baseline means nothing to regress against).
+3. Runs `pnpm --filter os-code build:catalog` (which reads that baseline as
+   `previous`, gates, and overwrites it on success; a breach exits non-zero and
+   publishes nothing, so the live catalog keeps serving).
+4. Publishes by committing the result to the marketing repo at
+   `src/static/os-code/catalog.json`. openshore.ai is a Cloudflare Pages site
+   built from `Open-Shore-LLC-Homepage`, whose Eleventy build passes
+   `src/static` through to the site root, so that file is served at
+   `openshore.ai/os-code/catalog.json`, which is exactly the default
+   `config.catalog.url`. The Cloudflare Pages deploy ships it.
+5. Always uploads the built catalog as a run artifact, so a no-publish run (no
+   token, or an unchanged catalog) still leaves the output inspectable.
+
+### The one secret the founder must add
+
+- **`MARKETING_DEPLOY_TOKEN`** (repository secret on `openshore.code.ai`): a
+  fine-grained personal access token scoped to `openshore-labs/Open-Shore-LLC-Homepage`
+  with **Contents: read and write**. Without it the job still builds and gates
+  the catalog (and uploads the artifact) but skips the publish step. Nothing
+  else needs wiring: `config.catalog.url` already points at the published URL.
+
+An initial `catalog.json` is committed in the marketing repo alongside this
+change, so the URL is live from the first Cloudflare deploy without waiting for
+a scheduled run.
+
+## What else the founder must wire
+
 - **Seed the curation files**: the committed `curation/*.json` are a working
   sample. Extend them as the roster grows.
 - **A note on the commercial posture mirror**: the shipped license shape carries
