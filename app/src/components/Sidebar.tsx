@@ -7,7 +7,15 @@ import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useDismissable } from '../lib/useDismissable.js';
 import { BrandMark } from './BrandMark.js';
 
-const NAV: Array<{ view: ViewName; label: string }> = [
+// Every view that has a nav glyph: all ViewNames except the two that never
+// appear as a nav item (chat is home; onboarding is a full-screen takeover).
+// 'admin' is already a ViewName, so this is the honest form of the reviewer's
+// `Record<ViewName | 'admin', ...>` without demanding unused chat/onboarding
+// icons. Typing ICON_NODES and NavIcon by it makes a missing or misspelled key
+// a compile error instead of a silently empty SVG (CR3).
+type NavIconName = Exclude<ViewName, 'chat' | 'onboarding'>;
+
+const NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'projects', label: 'Projects' },
   { view: 'crew', label: 'My Crew' },
   { view: 'marketplace', label: 'Marketplace' },
@@ -25,7 +33,7 @@ const NAV: Array<{ view: ViewName; label: string }> = [
 // currentColor so `.nav-item.active` tints them --local with no per-icon color.
 // Each depicts its room in a calm monochrome studio style. Decorative only; the
 // text label beside each carries the name for assistive tech.
-const ICON_NODES: Record<string, JSX.Element> = {
+const ICON_NODES: Record<NavIconName, JSX.Element> = {
   // Stacked project layers (buckets seen edge-on).
   projects: (
     <>
@@ -117,7 +125,7 @@ const ICON_NODES: Record<string, JSX.Element> = {
 
 // Wrap the icon nodes in the shared svg frame. Decorative: aria-hidden, and the
 // stroke is currentColor so the active-state teal flows through untouched.
-function NavIcon({ name }: { name: string }) {
+function NavIcon({ name }: { name: NavIconName }) {
   return (
     <svg
       className="nav-glyph"
@@ -192,7 +200,20 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
               {activeProject ? activeProject.name : 'No project yet'}
             </span>
           </span>
-          <span className="project-switch-caret">{switcherOpen ? '▴' : '▾'}</span>
+          <span className={`project-switch-caret${switcherOpen ? ' open' : ''}`} aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
         </button>
         {switcherOpen ? (
           <div className="project-menu">

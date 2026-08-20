@@ -31,6 +31,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
       <span className="spinner" aria-label="running" />
     ) : item.state === 'ok' ? (
       <span className={`tool-state ok`}>
+        {/* CR1: the checkmark SVG is aria-hidden, so name the outcome for SR. */}
+        <span className="visually-hidden">done</span>
         <svg
           className="icon-inline"
           viewBox="0 0 24 24"
@@ -51,6 +53,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
       <span className="tool-state denied">skipped</span>
     ) : (
       <span className="tool-state fail">
+        {/* CR1: the cross SVG is aria-hidden, so name the outcome for SR. */}
+        <span className="visually-hidden">failed</span>
         <svg
           className="icon-inline"
           viewBox="0 0 24 24"

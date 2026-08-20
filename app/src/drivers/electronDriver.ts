@@ -1,6 +1,6 @@
 // Desktop driver: the engine lives in Electron's main process; events arrive
 // over IPC already in DriverEvent shape, so this is a thin adapter.
-import type { ApprovalAnswer } from 'os-code/protocol';
+import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
 import { requireBridge } from '../lib/electronBridge.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 
@@ -10,7 +10,13 @@ export class ElectronDriver implements ChatDriver {
   // Fan out with the main process's sequence numbers preserved.
   private sinks = new Set<DriverEventSink>();
 
-  constructor(readonly sessionId: string) {
+  // G1: on resume the main process returns the session journal instead of
+  // pushing it (the renderer's IPC listener is not attached yet), so we hold it
+  // and replay it into each sink on subscribe, ahead of any live event.
+  constructor(
+    readonly sessionId: string,
+    private readonly journal: Array<{ seq: number; event: DriverEvent }> = [],
+  ) {
     const bridgeApi = requireBridge();
     this.offEvents = bridgeApi.onEvent(({ sessionId, seq, event }) => {
       if (sessionId !== this.sessionId) return;
@@ -20,6 +26,9 @@ export class ElectronDriver implements ChatDriver {
 
   subscribe(sink: DriverEventSink): () => void {
     this.sinks.add(sink);
+    // Replay the resume journal so a reopened conversation rebuilds its
+    // transcript. Live events (via onEvent) are strictly after the journal.
+    for (const { event, seq } of this.journal) sink(event, seq);
     return () => this.sinks.delete(sink);
   }
 

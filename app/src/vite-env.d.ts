@@ -6,8 +6,6 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VITE_STRIPE_PUBLISHABLE_KEY?: string;
-  /** Public key (base64url) that verifies signed org entitlement claims. */
-  readonly VITE_ENTITLEMENT_PUBLIC_KEY?: string;
 }
 
 interface ImportMeta {

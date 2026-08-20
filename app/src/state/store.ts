@@ -190,6 +190,8 @@ export function driverFor(conversationId: string): ChatDriver | undefined {
 
 interface AppState {
   ready: boolean;
+  /** Guards init() from running twice (React StrictMode double-invokes effects). */
+  initStarted: boolean;
   view: ViewName;
   drawerOpen: boolean;
   conversations: Record<string, Conversation>;
@@ -253,6 +255,11 @@ interface AppState {
   }): Promise<void>;
   /** Update the declared seat count; re-bands the plan tier. */
   setSeatCount(seatCount: number): Promise<void>;
+  /** Whether adding seats or inviting members is allowed right now: a
+   *  server-backed commercial org needs an active entitlement, a purely local
+   *  org (not yet subject to billing) is never gated. Existing members always
+   *  keep working; only growth is gated. */
+  canGrowTeam(): boolean;
   /** Admin: add a member by email (default role member). */
   addMember(email: string, displayName?: string): Promise<void>;
   /** Admin: remove a member. */
@@ -342,6 +349,9 @@ interface AppState {
   answerApproval(approvalId: string, approve: boolean, always?: boolean): void;
 
   saveSettings(patch: Partial<AppSettings>): Promise<void>;
+  /** Record a freshly downloaded on-device model, reading fresh state so two
+   *  concurrent downloads never clobber each other's deviceModels entry. */
+  addDeviceModel(id: string, name: string): Promise<void>;
   setCloudKey(key: string): Promise<void>;
   clearCloudKey(): Promise<void>;
   /** Connect a cloud provider by API key (Keychain), surfacing its models. */
@@ -419,6 +429,26 @@ export function stackAdmin(account?: Account): boolean {
   return isOrgAdmin(account);
 }
 
+// Only these statuses grant paid access; every other status (past_due, unpaid,
+// canceled, incomplete, incomplete_expired, paused) is revoked. past_due counts
+// as revoked (strict, money-safe); widen this set for a grace window.
+const ENTITLED_STATUSES = new Set(['active', 'trialing']);
+
+/**
+ * Whether an org's billing entitlement grants paid access right now: an active
+ * or trialing subscription whose paid period has not lapsed. The webhook-written
+ * org_entitlements.status is the single authoritative source (client-read-only);
+ * orgs.tier_id is display only and nothing gates on it. Used identically in the
+ * app, marketing, and daemon.
+ */
+export function isEntitled(e?: { status: string; validUntil?: string | null }): boolean {
+  return (
+    !!e &&
+    ENTITLED_STATUSES.has(e.status) &&
+    (!e.validUntil || new Date(e.validUntil).getTime() > Date.now())
+  );
+}
+
 /** The signed-in member's role in a commercial org, if any. */
 export function selfMember(account?: Account): OrgMember | undefined {
   if (!account || account.type !== 'commercial') return undefined;
@@ -444,8 +474,15 @@ export const useApp = create<AppState>((set, get) => {
         };
         return { conversations: { ...state.conversations, [conversationId]: next } };
       });
-      // Persist quiet-moment snapshots for phone-local conversations.
-      if (event.type === 'task-done') void persistConversations(get());
+      // Persist snapshots for phone-local conversations. P2-12: snapshot at both
+      // bookends (task-start captures the user's message immediately; task-done
+      // captures the finished reply) and debounce during streaming so a mid-turn
+      // relaunch does not lose the answer so far.
+      if (event.type === 'task-start' || event.type === 'task-done') {
+        void persistConversations(get());
+      } else if (event.type === 'text-delta') {
+        persistConversationsSoon();
+      }
       // Funnel milestones (opt-in only; no-ops otherwise).
       const srcKind = get().conversations[conversationId]?.source.kind;
       if (event.type === 'text-final' && srcKind && srcKind !== 'mock') {
@@ -468,14 +505,18 @@ export const useApp = create<AppState>((set, get) => {
       case 'desktop': {
         if (isDesktop() && bridge()) {
           let sessionId = conv.source.sessionId;
+          let journal: Array<{ seq: number; event: DriverEvent }> | undefined;
           if (!sessionId) {
             const created = await bridge()!.createSession(conv.source.cwd);
             sessionId = created.id;
             conv.source.sessionId = sessionId;
           } else {
-            await bridge()!.resumeSession(sessionId);
+            // G1: resume returns the journal so the driver can replay it AFTER
+            // it has subscribed (IPC does not buffer a pushed replay).
+            const resumed = await bridge()!.resumeSession(sessionId);
+            if ('journal' in resumed) journal = resumed.journal;
           }
-          return new ElectronDriver(sessionId);
+          return new ElectronDriver(sessionId, journal);
         }
         if (!settings.daemon) {
           throw new Error('Connect to your desktop first (Menu, then Desktop connection).');
@@ -650,6 +691,17 @@ export const useApp = create<AppState>((set, get) => {
     }
   }
 
+  // A1: adding seats or inviting members is gated on an active entitlement, but
+  // ONLY once the org is server-backed and subject to billing. A purely local
+  // org (offline demo, not yet signed in or synced) is never gated, and existing
+  // members always keep working. Manage Billing / Buy stays open regardless.
+  function growthGatedByBilling(): boolean {
+    const st = get();
+    const serverId = st.settings.account?.org?.serverId;
+    if (!authConfigured() || !st.authSession || !serverId) return false;
+    return !isEntitled(st.entitlement);
+  }
+
   // verified email, claim any invited org seat, and read the server role.
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
@@ -671,6 +723,7 @@ export const useApp = create<AppState>((set, get) => {
 
   return {
     ready: false,
+    initStarted: false,
     view: 'chat',
     drawerOpen: false,
     conversations: {},
@@ -684,6 +737,11 @@ export const useApp = create<AppState>((set, get) => {
     connectivity: { homeReachable: false, online: true },
 
     async init() {
+      // P2-11: React StrictMode invokes the mount effect twice in dev, and a
+      // second init() would double timers, listeners, migration writes, and the
+      // auth-callback handling. Run exactly once per store lifetime.
+      if (get().initStarted) return;
+      set({ initStarted: true });
       const settings = (await storeGetJson<AppSettings>(SETTINGS_KEY)) ?? {
         onboarded: false,
         claudeModel: DEFAULT_CLAUDE_MODEL,
@@ -749,11 +807,16 @@ export const useApp = create<AppState>((set, get) => {
         settingsDirty = true;
       }
 
-      // Bucket migration: a saved chat with no project would vanish from every
-      // list once any project exists. Assign orphans to the active (or first)
-      // project, creating a default if the user has none yet.
+      // Bucket migration: a LEGACY saved chat with no project (one that predates
+      // projects) would vanish from every list once any project exists, so adopt
+      // it into the active (or first) project. P2-13: a chat explicitly unfiled
+      // by deleteProject carries `unfiled`, so it is left alone here instead of
+      // being silently re-adopted on the next launch.
       const orphanIds = Object.keys(conversations).filter(
-        (id) => !conversations[id]!.ephemeral && !conversations[id]!.projectId,
+        (id) =>
+          !conversations[id]!.ephemeral &&
+          !conversations[id]!.projectId &&
+          !conversations[id]!.unfiled,
       );
       if (orphanIds.length) {
         let activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
@@ -983,13 +1046,15 @@ export const useApp = create<AppState>((set, get) => {
       const activeProjectId =
         get().settings.activeProjectId === id ? undefined : get().settings.activeProjectId;
       await get().saveSettings({ projects, activeProjectId });
-      // Chats that lived in the project stay, but drop their now-dead link.
+      // Chats that lived in the project stay, but drop their now-dead link. Mark
+      // them `unfiled` so the init orphan-migration does not re-adopt them into
+      // another project on the next launch (P2-13).
       set((s) => {
         const conversations = { ...s.conversations };
         let touched = false;
         for (const [cid, conv] of Object.entries(conversations)) {
           if (conv.projectId === id) {
-            conversations[cid] = { ...conv, projectId: undefined };
+            conversations[cid] = { ...conv, projectId: undefined, unfiled: true };
             touched = true;
           }
         }
@@ -1033,10 +1098,21 @@ export const useApp = create<AppState>((set, get) => {
       if (session) await reconcileOrg(session);
     },
 
+    canGrowTeam() {
+      return !growthGatedByBilling();
+    },
+
     async setSeatCount(seatCount) {
       const account = get().settings.account;
       if (!account?.org || !isOrgAdmin(account)) return;
       const seats = Math.max(1, Math.floor(seatCount));
+      // A1: raising the seat count is growth, so it needs an active entitlement.
+      // Lowering or holding is always allowed. Buy/Manage Billing stays open, so
+      // a lapsed org renews on the web and comes back unblocked.
+      if (seats > account.org.seatCount && growthGatedByBilling()) {
+        get().showToast('Renew your subscription to add seats. Your current team keeps working.');
+        return;
+      }
       const tier = tierForSeats(seats);
       const org: Org = {
         ...account.org,
@@ -1046,10 +1122,12 @@ export const useApp = create<AppState>((set, get) => {
       };
       await get().saveSettings({ account: { ...account, org } });
       logEvent('org_seats_set', { tier: tier.id });
+      // BILLING: tier_id is webhook-owned now (RLS rejects a client write that
+      // touches it), so send only seat_count + price_year. The local tier
+      // derivation above stays for UX; org_entitlements is the source of truth.
       void orgWrite((s, orgId) =>
         supabaseUpdate('orgs', s.accessToken, `id=eq.${orgId}`, {
           seat_count: seats,
-          tier_id: tier.id,
           price_year: tier.priceYear,
         }).then(() => undefined),
       );
@@ -1058,6 +1136,14 @@ export const useApp = create<AppState>((set, get) => {
     async addMember(email, displayName) {
       const account = get().settings.account;
       if (!account?.org || !isOrgAdmin(account)) return;
+      // A1: inviting a member consumes a seat, so it needs an active entitlement
+      // on a server-backed org. Existing members are never affected.
+      if (growthGatedByBilling()) {
+        get().showToast(
+          'Renew your subscription to add teammates. Your current team keeps working.',
+        );
+        return;
+      }
       const clean = email.trim().toLowerCase();
       if (!clean || account.org.members.some((m) => m.email.toLowerCase() === clean)) return;
       const member: OrgMember = {
@@ -1766,6 +1852,13 @@ export const useApp = create<AppState>((set, get) => {
       await storeSetJson(SETTINGS_KEY, settings);
     },
 
+    async addDeviceModel(id, name) {
+      // G2: read the CURRENT deviceModels, never a stale render snapshot, so two
+      // downloads finishing close together each keep their "on device" entry.
+      const deviceModels = { ...get().settings.deviceModels, [id]: name };
+      await get().saveSettings({ deviceModels });
+    },
+
     async setCloudKey(key) {
       await secretSet(ANTHROPIC_KEY_KEY, key.trim());
       set({ cloudKeyPresent: true });
@@ -1846,10 +1939,24 @@ interface PersistedConversations {
   conversations: Record<string, Conversation>;
 }
 
+// P2-12: coalesce the high-frequency streaming snapshots. A pending timer folds
+// every text-delta in its window into a single write ~1.5s later; the task-start
+// and task-done bookends still persist immediately.
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+function persistConversationsSoon(): void {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = undefined;
+    void persistConversations(useApp.getState());
+  }, 1500);
+}
+
 async function persistConversations(state: Pick<AppState, 'order' | 'conversations'>) {
   const conversations: Record<string, Conversation> = {};
-  // Quick chats are ephemeral by design: they never touch the disk.
-  const savedOrder = state.order.filter((id) => !state.conversations[id]?.ephemeral).slice(0, 50);
+  // Quick chats are ephemeral by design: they never touch the disk. The disk
+  // order is bounded so a very long history cannot grow storage without limit;
+  // 200 is generous headroom over the ~50 a session realistically accrues.
+  const savedOrder = state.order.filter((id) => !state.conversations[id]?.ephemeral).slice(0, 200);
   for (const id of savedOrder) {
     const conv = state.conversations[id];
     if (!conv) continue;

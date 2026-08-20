@@ -67,6 +67,10 @@ export interface Conversation {
   projectId?: string;
   /** A throwaway quick chat: never persisted, gone when it closes. */
   ephemeral?: boolean;
+  /** Explicitly unfiled (its project was deleted), as opposed to a legacy chat
+   *  that predates projects. The init orphan-migration adopts only the latter,
+   *  so an intentionally unfiled chat is never re-adopted on the next launch. */
+  unfiled?: boolean;
   createdAt: string;
   updatedAt: string;
   thread: ThreadState;
@@ -145,10 +149,20 @@ export interface Org {
   serverId?: string;
 }
 
-/** The org's billing entitlement, written by the Stripe webhook and read here. */
+/** The org's billing entitlement, written by the Stripe webhook and read here.
+ *  The status vocabulary mirrors the server constraint (webhook-owned); only
+ *  'active'/'trialing' grant paid access (see isEntitled in store.ts). */
 export interface Entitlement {
   tierId: string;
-  status: 'active' | 'past_due' | 'canceled' | 'trialing';
+  status:
+    | 'active'
+    | 'trialing'
+    | 'past_due'
+    | 'unpaid'
+    | 'canceled'
+    | 'incomplete'
+    | 'incomplete_expired'
+    | 'paused';
   /** ISO end of the current paid period, when known. */
   validUntil?: string;
 }

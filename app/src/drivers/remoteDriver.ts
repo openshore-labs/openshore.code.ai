@@ -176,8 +176,20 @@ export class RemoteDriver implements ChatDriver {
     void this.streamLoop();
   }
 
+  // G5: `outageBlipped` lives on the driver (outside the transcript), so an
+  // outage adds the "Connection blipped" status row exactly once, no matter how
+  // many reconnect attempts it takes. And a cleanly-closed stream backs off just
+  // like an error would, so a daemon that closes the SSE immediately cannot spin
+  // this in a zero-delay hot loop. Backoff resets only once a reconnection is
+  // productive (delivers a frame), so an unproductive close keeps stepping up.
+  private outageBlipped = false;
+
   private async streamLoop(): Promise<void> {
     let backoffMs = 600;
+    const stepBackoff = async () => {
+      await new Promise((r) => setTimeout(r, backoffMs));
+      backoffMs = Math.min(backoffMs * 2, 10_000);
+    };
     while (!this.closed) {
       this.abortStream = new AbortController();
       try {
@@ -186,7 +198,6 @@ export class RemoteDriver implements ChatDriver {
           { headers: headers(this.target), signal: this.abortStream.signal },
         );
         if (!res.ok || !res.body) throw new Error(`daemon answered ${res.status}`);
-        backoffMs = 600;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -199,21 +210,32 @@ export class RemoteDriver implements ChatDriver {
             const parsed = parseSseFrame(buffer.slice(0, idx));
             buffer = buffer.slice(idx + 2);
             if (!parsed) continue;
+            // A productive frame: the outage (if any) is over. Clear the blip
+            // flag and reset backoff so the next genuine outage gets one blip.
+            this.outageBlipped = false;
+            backoffMs = 600;
             this.lastSeq = Math.max(this.lastSeq, parsed.seq);
             for (const sink of [...this.sinks]) sink(parsed.event, parsed.seq);
           }
         }
       } catch {
         if (this.closed) return;
-        for (const sink of [...this.sinks]) {
-          sink(
-            { type: 'status', message: 'Connection blipped. Reattaching to the run.' },
-            this.lastSeq,
-          );
+        if (!this.outageBlipped) {
+          this.outageBlipped = true;
+          for (const sink of [...this.sinks]) {
+            sink(
+              { type: 'status', message: 'Connection blipped. Reattaching to the run.' },
+              this.lastSeq,
+            );
+          }
         }
-        await new Promise((r) => setTimeout(r, backoffMs));
-        backoffMs = Math.min(backoffMs * 2, 10_000);
+        await stepBackoff();
+        continue;
       }
+      // Clean close (the daemon ended the response with no error): the run may
+      // just be idle. Back off before reattaching. No blip: nothing went wrong.
+      if (this.closed) return;
+      await stepBackoff();
     }
   }
 

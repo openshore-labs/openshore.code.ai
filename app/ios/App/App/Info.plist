@@ -43,9 +43,12 @@
 		<!--
 		  The phone talks to the user's own desktop daemon over Tailscale
 		  (100.64.0.0/10 CGNAT addresses) and LAN IPs, plain HTTP inside the
-		  private tunnel. NSAllowsLocalNetworking does not cover CGNAT ranges,
-		  so arbitrary loads stay on. Every provider call (Hugging Face,
-		  Anthropic) is still https.
+		  private tunnel. NSAllowsLocalNetworking does not cover the CGNAT range
+		  and the daemon has no public hostname to scope an NSExceptionDomains
+		  entry to, so the blanket flag is required and is kept on deliberately.
+		  Every provider call (Hugging Face, Anthropic, Supabase) is still https.
+		  App Review justification and the reasoning for not narrowing it:
+		  docs/app-review-notes.md. Do NOT flip this without updating that doc.
 		-->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>

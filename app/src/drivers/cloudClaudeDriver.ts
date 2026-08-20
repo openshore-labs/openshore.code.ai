@@ -7,13 +7,40 @@ import type { ApprovalAnswer } from 'os-code/protocol';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 
+// contextWindow is the model's real token budget, used for the context meter.
+// Claude's standard window is 200k tokens; keep these in step with the models.
 export const CLAUDE_MODELS = [
-  { id: 'claude-opus-5', label: 'Claude Opus 5', inPerM: 5, outPerM: 25 },
-  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', inPerM: 3, outPerM: 15 },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', inPerM: 1, outPerM: 5 },
+  { id: 'claude-opus-5', label: 'Claude Opus 5', inPerM: 5, outPerM: 25, contextWindow: 200_000 },
+  {
+    id: 'claude-sonnet-5',
+    label: 'Claude Sonnet 5',
+    inPerM: 3,
+    outPerM: 15,
+    contextWindow: 200_000,
+  },
+  {
+    id: 'claude-haiku-4-5',
+    label: 'Claude Haiku 4.5',
+    inPerM: 1,
+    outPerM: 5,
+    contextWindow: 200_000,
+  },
 ] as const;
 
+/** Fallback context window when a model id is not in the table above. */
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+
 export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5';
+
+/** The model's real context window (P2-14: not a flat 1M, which read ~5x low). */
+export function contextWindowFor(model: string): number {
+  return CLAUDE_MODELS.find((m) => m.id === model)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+}
+
+/** The context meter reading: input tokens as a percent of the real window. */
+export function contextPercentFor(model: string, inputTokens: number): number {
+  return Math.min(100, Math.round((inputTokens / contextWindowFor(model)) * 100));
+}
 
 const SYSTEM_PROMPT = [
   'You are OS Code, a warm, capable coding companion in a mobile and desktop app.',
@@ -77,7 +104,7 @@ export class CloudClaudeDriver implements ChatDriver {
         promptTokens: final.usage.input_tokens,
         completionTokens: final.usage.output_tokens,
         dollars,
-        contextPercent: Math.min(100, Math.round((final.usage.input_tokens / 1_000_000) * 100)),
+        contextPercent: contextPercentFor(this.model, final.usage.input_tokens),
       });
       this.emitter.emit({ type: 'text-final', text: answer });
       if (final.stop_reason === 'refusal') {

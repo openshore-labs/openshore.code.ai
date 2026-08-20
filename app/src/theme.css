@@ -45,6 +45,8 @@
 
   /* Status. Deepened so they read as text on a light ground. */
   --ok: #2f8f4e;
+  /* Soft ok fill (mirrors --cloud-soft), shared by every green status pill. */
+  --ok-soft: rgba(47, 143, 78, 0.14);
   --warn: #8a6d0a;
   --danger: #c0392b;
   --link: #2c6ea3;
@@ -496,6 +498,10 @@ textarea {
   border-radius: 6px;
   padding: 0.12em 0.4em;
 }
+/* Code blocks share the single --code-surface fill with every other code and
+   command surface. This intentionally unified the markdown block onto the common
+   token; its fill shifted a touch (from #f1eee4 to #f3f1e8) so all code surfaces
+   now match exactly. */
 .md pre {
   background: var(--code-surface);
   border: 1px solid var(--border-strong);
@@ -1158,7 +1164,7 @@ textarea {
 }
 
 .pill.fits {
-  background: rgba(47, 143, 78, 0.14);
+  background: var(--ok-soft);
   color: var(--ok);
 }
 .pill.tight {
@@ -1182,15 +1188,31 @@ textarea {
   color: var(--muted);
 }
 /* A cloud/service is reachable. Status green, never teal: teal is reserved for
-   local/private/kept, so a cloud connection must not borrow it. */
+   local/private/kept, so a cloud connection must not borrow it. Shares the
+   --ok-soft fill with .pill.fits (same green status family). */
 .pill.ok {
-  background: rgba(47, 143, 78, 0.14);
+  background: var(--ok-soft);
   color: var(--ok);
 }
 /* A plan price. Price is spend, so it wears the amber spend family, not teal. */
 .pill.price {
   background: var(--cloud-soft);
   color: var(--cloud);
+}
+
+/* Off-screen text that assistive tech still reads. Used to name icon-only
+   states (e.g. a tool's done/failed glyph) whose SVG is aria-hidden. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .field {
@@ -1285,8 +1307,12 @@ textarea {
 }
 
 .project-switch-caret {
+  display: inline-flex;
   color: var(--muted);
-  font-size: 12px;
+  transition: transform 0.18s ease;
+}
+.project-switch-caret.open {
+  transform: rotate(180deg);
 }
 
 .project-menu {
