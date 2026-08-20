@@ -305,6 +305,19 @@ function summarizeStack(): StackSummary {
   return { orchestrator, specialists };
 }
 
+/** Per-model turn counts on this machine, most-used first, zero-turn models
+ *  dropped. A stable secondary sort by model id keeps the order deterministic
+ *  when two models tie. This is the user's OWN local usage; it is never mixed
+ *  with anyone else's and never leaves the device. */
+function buildModelUsage(
+  turnsByModel: Map<string, number>,
+): Array<{ model: string; turns: number }> {
+  return [...turnsByModel.entries()]
+    .filter(([, turns]) => turns > 0)
+    .map(([model, turns]) => ({ model, turns }))
+    .sort((a, b) => b.turns - a.turns || a.model.localeCompare(b.model));
+}
+
 function buildCrew(
   stack: StackSummary,
   turnsByModel: Map<string, number>,
@@ -558,8 +571,16 @@ export function computeStackHealth(
     crew: buildCrew(stack, totals.turnsByModel),
     seal: buildSeal(totals.cloudTurns, atRest, keyProtection),
     timeline,
+    modelUsage: buildModelUsage(totals.turnsByModel),
   };
 }
 
 // Exported for tests: the pure fold, decoupled from disk.
-export const __test = { foldSession, zeroTotals, priceLocal, planBuckets, bucketIndex };
+export const __test = {
+  foldSession,
+  zeroTotals,
+  priceLocal,
+  planBuckets,
+  bucketIndex,
+  buildModelUsage,
+};

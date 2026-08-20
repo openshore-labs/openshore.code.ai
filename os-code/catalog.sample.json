@@ -11,7 +11,8 @@
       "source": {
         "kind": "ollama",
         "ref": "qwen2.5-coder:7b",
-        "pullCommand": "ollama pull qwen2.5-coder:7b"
+        "pullCommand": "ollama pull qwen2.5-coder:7b",
+        "popularityRef": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
       },
       "sizeGB": 4.7,
       "quantization": "Q4_K_M",
@@ -42,7 +43,8 @@
       "source": {
         "kind": "ollama",
         "ref": "qwen2.5-coder:14b",
-        "pullCommand": "ollama pull qwen2.5-coder:14b"
+        "pullCommand": "ollama pull qwen2.5-coder:14b",
+        "popularityRef": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"
       },
       "sizeGB": 9.0,
       "quantization": "Q4_K_M",
@@ -72,7 +74,8 @@
       "source": {
         "kind": "ollama",
         "ref": "qwen2.5-coder:32b",
-        "pullCommand": "ollama pull qwen2.5-coder:32b"
+        "pullCommand": "ollama pull qwen2.5-coder:32b",
+        "popularityRef": "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF"
       },
       "sizeGB": 20.0,
       "quantization": "Q4_K_M",
@@ -102,7 +105,8 @@
       "source": {
         "kind": "ollama",
         "ref": "llama3.1:8b",
-        "pullCommand": "ollama pull llama3.1:8b"
+        "pullCommand": "ollama pull llama3.1:8b",
+        "popularityRef": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
       },
       "sizeGB": 4.9,
       "quantization": "Q4_K_M",
@@ -132,7 +136,8 @@
       "source": {
         "kind": "ollama",
         "ref": "deepseek-r1:14b",
-        "pullCommand": "ollama pull deepseek-r1:14b"
+        "pullCommand": "ollama pull deepseek-r1:14b",
+        "popularityRef": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF"
       },
       "sizeGB": 9.0,
       "quantization": "Q4_K_M",
@@ -190,7 +195,8 @@
       "source": {
         "kind": "ollama",
         "ref": "moondream",
-        "pullCommand": "ollama pull moondream"
+        "pullCommand": "ollama pull moondream",
+        "popularityRef": "vikhyatk/moondream2"
       },
       "sizeGB": 1.7,
       "quantization": "Q4",
@@ -215,7 +221,8 @@
       "source": {
         "kind": "ollama",
         "ref": "nomic-embed-text",
-        "pullCommand": "ollama pull nomic-embed-text"
+        "pullCommand": "ollama pull nomic-embed-text",
+        "popularityRef": "nomic-ai/nomic-embed-text-v1.5-GGUF"
       },
       "sizeGB": 0.3,
       "quantization": "F16",
@@ -243,7 +250,8 @@
       "source": {
         "kind": "ollama",
         "ref": "qwen2.5-coder:1.5b",
-        "pullCommand": "ollama pull qwen2.5-coder:1.5b"
+        "pullCommand": "ollama pull qwen2.5-coder:1.5b",
+        "popularityRef": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF"
       },
       "sizeGB": 1.0,
       "quantization": "Q4_K_M",
@@ -350,6 +358,396 @@
         "sizeGB": 1.1,
         "minRamGB": 4
       }
+    },
+    {
+      "id": "qwen2.5-coder-3b",
+      "name": "Qwen 2.5 Coder 3B",
+      "tagline": "A tiny coder that still writes usable edits. Good on very light machines.",
+      "categories": ["coding", "fast"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5-coder:3b",
+        "pullCommand": "ollama pull qwen2.5-coder:3b",
+        "popularityRef": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF"
+      },
+      "sizeGB": 1.9,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 13,
+        "note": "A middle step between the 1.5B helper and the 7B starter."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen2.5-7b",
+      "name": "Qwen 2.5 7B",
+      "tagline": "A strong general model for chat, reasoning, and clean writing.",
+      "categories": ["reasoning", "writing"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5:7b",
+        "pullCommand": "ollama pull qwen2.5:7b",
+        "popularityRef": "Qwen/Qwen2.5-7B-Instruct-GGUF"
+      },
+      "sizeGB": 4.7,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 14,
+        "note": "The general-purpose sibling of Qwen Coder. Pick Coder for code work."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen2.5-14b",
+      "name": "Qwen 2.5 14B",
+      "tagline": "More headroom for planning and analysis on a 16 GB machine.",
+      "categories": ["reasoning", "analysis"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5:14b",
+        "pullCommand": "ollama pull qwen2.5:14b",
+        "popularityRef": "Qwen/Qwen2.5-14B-Instruct-GGUF"
+      },
+      "sizeGB": 9.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 15,
+        "note": "A capable all-rounder for reasoning-heavy, non-code tasks."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen2.5-32b",
+      "name": "Qwen 2.5 32B",
+      "tagline": "A big general brain for hard reasoning and mixed code and prose.",
+      "categories": ["reasoning", "coding"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen2.5:32b",
+        "pullCommand": "ollama pull qwen2.5:32b",
+        "popularityRef": "Qwen/Qwen2.5-32B-Instruct-GGUF"
+      },
+      "sizeGB": 20.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 16,
+        "note": "Needs 24 GB of VRAM. A general counterpart to Qwen Coder 32B."
+      },
+      "blessed": false
+    },
+    {
+      "id": "mistral-7b",
+      "name": "Mistral 7B Instruct",
+      "tagline": "A fast, friendly all-rounder that writes well and follows instructions.",
+      "categories": ["reasoning", "writing"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "mistral:7b",
+        "pullCommand": "ollama pull mistral:7b",
+        "popularityRef": "bartowski/Mistral-7B-Instruct-v0.3-GGUF"
+      },
+      "sizeGB": 4.4,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 17,
+        "note": "A long-standing open favorite. Lighter on code than Qwen Coder."
+      },
+      "blessed": false
+    },
+    {
+      "id": "mistral-nemo-12b",
+      "name": "Mistral Nemo 12B",
+      "tagline": "A 12B all-rounder with a long context window for big documents.",
+      "categories": ["reasoning", "writing"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "mistral-nemo:12b",
+        "pullCommand": "ollama pull mistral-nemo:12b",
+        "popularityRef": "bartowski/Mistral-Nemo-Instruct-2407-GGUF"
+      },
+      "sizeGB": 7.1,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 18,
+        "note": "Reach for the long context when a task spans many files or pages."
+      },
+      "blessed": false
+    },
+    {
+      "id": "phi4-14b",
+      "name": "Phi 4 14B",
+      "tagline": "Microsoft's compact model that reasons and codes above its weight.",
+      "categories": ["reasoning", "coding"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "phi4",
+        "pullCommand": "ollama pull phi4",
+        "popularityRef": "bartowski/phi-4-GGUF"
+      },
+      "sizeGB": 9.1,
+      "quantization": "Q4_K_M",
+      "contextTokens": 16384,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit"
+      },
+      "curation": {
+        "rank": 19,
+        "note": "Strong reasoning for its size. Shorter context than the Qwen line."
+      },
+      "blessed": false
+    },
+    {
+      "id": "phi3.5-mini",
+      "name": "Phi 3.5 Mini",
+      "tagline": "A small, quick model with a long context for its size.",
+      "categories": ["reasoning", "fast"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "phi3.5",
+        "pullCommand": "ollama pull phi3.5",
+        "popularityRef": "bartowski/Phi-3.5-mini-instruct-GGUF"
+      },
+      "sizeGB": 2.4,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit"
+      },
+      "curation": {
+        "rank": 20,
+        "note": "A light reasoner that fits small machines and long inputs."
+      },
+      "blessed": false
+    },
+    {
+      "id": "gemma2-9b",
+      "name": "Gemma 2 9B",
+      "tagline": "Google's open model with a warm, articulate writing voice.",
+      "categories": ["reasoning", "writing"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "gemma2:9b",
+        "pullCommand": "ollama pull gemma2:9b",
+        "popularityRef": "bartowski/gemma-2-9b-it-GGUF"
+      },
+      "sizeGB": 5.8,
+      "quantization": "Q4_K_M",
+      "contextTokens": 8192,
+      "license": {
+        "id": "Gemma",
+        "name": "Gemma Terms of Use",
+        "url": "https://ai.google.dev/gemma/terms"
+      },
+      "curation": {
+        "rank": 21,
+        "note": "A pleasant writer. Shorter context than Qwen or Mistral Nemo."
+      },
+      "blessed": false
+    },
+    {
+      "id": "gemma2-2b",
+      "name": "Gemma 2 2B",
+      "tagline": "A tiny, tidy writer for quick drafts and short replies.",
+      "categories": ["writing", "fast"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "gemma2:2b",
+        "pullCommand": "ollama pull gemma2:2b",
+        "popularityRef": "bartowski/gemma-2-2b-it-GGUF"
+      },
+      "sizeGB": 1.7,
+      "quantization": "Q4_K_M",
+      "contextTokens": 8192,
+      "license": {
+        "id": "Gemma",
+        "name": "Gemma Terms of Use",
+        "url": "https://ai.google.dev/gemma/terms"
+      },
+      "curation": {
+        "rank": 22,
+        "note": "Fits almost anywhere. Reach for a bigger model on hard tasks."
+      },
+      "blessed": false
+    },
+    {
+      "id": "llama3.2-3b",
+      "name": "Llama 3.2 3B",
+      "tagline": "Meta's small all-rounder with a long context window.",
+      "categories": ["reasoning", "fast"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "llama3.2:3b",
+        "pullCommand": "ollama pull llama3.2:3b",
+        "popularityRef": "bartowski/Llama-3.2-3B-Instruct-GGUF"
+      },
+      "sizeGB": 2.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "Llama-3.2-Community",
+        "name": "Llama 3.2 Community License",
+        "url": "https://www.llama.com/llama3_2/license/"
+      },
+      "curation": {
+        "rank": 23,
+        "note": "A capable small model when you want Meta's lineage and long context."
+      },
+      "blessed": false
+    },
+    {
+      "id": "deepseek-r1-7b",
+      "name": "DeepSeek R1 Distill 7B",
+      "tagline": "A small reasoner that thinks through tricky logic step by step.",
+      "categories": ["reasoning", "analysis"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "deepseek-r1:7b",
+        "pullCommand": "ollama pull deepseek-r1:7b",
+        "popularityRef": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF"
+      },
+      "sizeGB": 4.7,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit"
+      },
+      "curation": {
+        "rank": 24,
+        "note": "The lighter R1 for machines that cannot fit the 14B distill."
+      },
+      "blessed": false
+    },
+    {
+      "id": "yi-coder-9b",
+      "name": "Yi Coder 9B",
+      "tagline": "A dedicated coding model with a long context for large repos.",
+      "categories": ["coding"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "yi-coder:9b",
+        "pullCommand": "ollama pull yi-coder:9b",
+        "popularityRef": "bartowski/Yi-Coder-9B-Chat-GGUF"
+      },
+      "sizeGB": 5.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 25,
+        "note": "An alternative coder to Qwen when you want a longer context."
+      },
+      "blessed": false
+    },
+    {
+      "id": "granite3.1-8b",
+      "name": "Granite 3.1 8B",
+      "tagline": "IBM's open, enterprise-minded model for code and reasoning.",
+      "categories": ["reasoning", "coding"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "granite3.1-dense:8b",
+        "pullCommand": "ollama pull granite3.1-dense:8b",
+        "popularityRef": "bartowski/granite-3.1-8b-instruct-GGUF"
+      },
+      "sizeGB": 4.9,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "curation": {
+        "rank": 26,
+        "note": "A clean Apache option with a long context for mixed work."
+      },
+      "blessed": false
+    },
+    {
+      "id": "deepseek-r1-llama-8b",
+      "name": "DeepSeek R1 Distill Llama 8B",
+      "tagline": "The R1 reasoner distilled onto a Llama base, strong on math.",
+      "categories": ["reasoning", "analysis"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "deepseek-r1:8b",
+        "pullCommand": "ollama pull deepseek-r1:8b",
+        "popularityRef": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF"
+      },
+      "sizeGB": 4.9,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit"
+      },
+      "curation": {
+        "rank": 27,
+        "note": "A Llama-based R1 distill. Pick the Qwen distill for a different lineage."
+      },
+      "blessed": false
     }
   ],
   "presets": [

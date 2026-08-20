@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { SAVINGS_BASIS, __test } from '../src/insights/stackHealth.js';
 import type { DriverEvent } from '../src/core/agent/types.js';
 
-const { foldSession, zeroTotals, priceLocal, planBuckets, bucketIndex } = __test;
+const { foldSession, zeroTotals, priceLocal, planBuckets, bucketIndex, buildModelUsage } = __test;
 
 // A journal: two local turns, then an escalation to cloud, then a cloud turn.
 // The usage after each turn-start is attributed to that turn's provider kind.
@@ -86,6 +86,33 @@ describe('stack health fold', () => {
     );
     expect(t.localPrompt).toBe(100);
     expect(t.cloudPrompt).toBe(0);
+  });
+});
+
+describe('model usage', () => {
+  it('ranks each model by its local turn count, most-used first, dropping unused', () => {
+    const t = zeroTotals();
+    foldSession(journal, t);
+    // qwen ran two turns, claude one; a model with zero turns never appears.
+    expect(buildModelUsage(t.turnsByModel)).toEqual([
+      { model: 'qwen2.5-coder', turns: 2 },
+      { model: 'claude-sonnet', turns: 1 },
+    ]);
+  });
+
+  it('is an empty list when nothing has run', () => {
+    expect(buildModelUsage(zeroTotals().turnsByModel)).toEqual([]);
+  });
+
+  it('breaks turn-count ties by model id, for a deterministic order', () => {
+    const map = new Map([
+      ['zephyr', 3],
+      ['aardvark', 3],
+    ]);
+    expect(buildModelUsage(map)).toEqual([
+      { model: 'aardvark', turns: 3 },
+      { model: 'zephyr', turns: 3 },
+    ]);
   });
 });
 

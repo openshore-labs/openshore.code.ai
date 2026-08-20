@@ -46,11 +46,7 @@ function LiveSeal() {
         {facts.map((f, i) => {
           const how = howToFor(f);
           return (
-            <li
-              className="sh-seal-fact-row"
-              style={{ animationDelay: `${i * 60}ms` }}
-              key={f.key}
-            >
+            <li className="sh-seal-fact-row" style={{ animationDelay: `${i * 60}ms` }} key={f.key}>
               <div className={`sh-seal-fact sh-${f.state}`}>
                 <span className="sh-seal-dot" aria-hidden="true" />
                 {f.label}

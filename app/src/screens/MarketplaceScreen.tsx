@@ -16,7 +16,7 @@ import { hapticSuccess } from '../lib/haptics.js';
 import { logEvent } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
 import { LibraryIntro } from '../components/LibraryIntro.js';
-import { Stars, CapabilityLane } from '../components/Stars.js';
+import { Stars, CapabilityLane, NotRated } from '../components/Stars.js';
 import { CompareSheet } from '../components/CompareSheet.js';
 import {
   EMPTY_FACETS,
@@ -24,7 +24,9 @@ import {
   fitFor,
   filterModels,
   licenseLabel,
+  popularityLabel,
   sortModels,
+  usageTurns,
   type Facets,
   type FitLabel,
   type SortKey,
@@ -58,12 +60,15 @@ function nearestTier(gbValue: number): number {
   );
 }
 
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: 'recommended', label: 'Recommended' },
-  { key: 'popular', label: 'Most popular' },
-  { key: 'newest', label: 'Newest' },
-  { key: 'fit', label: 'Best fit' },
-];
+// The honest label near the sort control, one per axis that needs the
+// disclosure. Editorial ('staff'), landscape ('popular'), and internal ('used')
+// each say plainly what they are and are not. No em dashes (house rule).
+const SORT_SUBHEAD: Partial<Record<SortKey, string>> = {
+  staff: 'Our opinionated shortlist. Chosen, not counted.',
+  popular:
+    'Ranked by downloads and likes on Hugging Face and Ollama. A snapshot of what the world runs, not a measure of quality. The stars are quality.',
+  used: 'Counted on your machine. Never sent anywhere.',
+};
 
 const FIT_PILL: Record<FitLabel, { cls: string; text: string }> = {
   fits: { cls: 'fits', text: 'Runs here' },
@@ -87,6 +92,7 @@ export function MarketplaceScreen() {
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
   const [memoryGB, setMemoryGB] = useState<number>(16);
+  const [usageByModel, setUsageByModel] = useState<Map<string, number> | undefined>();
   const listenersOn = useRef(false);
 
   useEffect(() => {
@@ -106,6 +112,22 @@ export function MarketplaceScreen() {
       setNote(note);
     });
   }, [settings.daemon]);
+
+  useEffect(() => {
+    // The user's OWN local, lifetime usage, read through the desktop bridge and
+    // folded from the session journals on THIS machine. No bridge (iOS/web)
+    // means no usage axis. Private by construction: nothing here is cross-user
+    // and nothing is ever sent anywhere.
+    const b = bridge();
+    if (!b) return;
+    void b
+      .stackHealth('all')
+      .then((h) => {
+        if (!h.modelUsage?.length) return;
+        setUsageByModel(new Map(h.modelUsage.map((u) => [u.model, u.turns])));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (listenersOn.current) return;
@@ -203,10 +225,36 @@ export function MarketplaceScreen() {
     }
   };
 
+  // The internal axis only exists when the user has real local usage that maps
+  // onto at least one catalog model. Otherwise it hides gracefully.
+  const usageAxisAvailable = useMemo(
+    () =>
+      Boolean(
+        usageByModel &&
+        catalog &&
+        catalog.models.some((m) => usageTurns(m, usageByModel) !== undefined),
+      ),
+    [usageByModel, catalog],
+  );
+
+  const sorts = useMemo(() => {
+    const list: { key: SortKey; label: string }[] = [
+      { key: 'recommended', label: 'Recommended' },
+      { key: 'staff', label: 'Staff picks' },
+      { key: 'popular', label: 'Popular' },
+    ];
+    if (usageAxisAvailable) list.push({ key: 'used', label: 'Your most-used' });
+    list.push({ key: 'newest', label: 'Newest' }, { key: 'fit', label: 'Best fit' });
+    return list;
+  }, [usageAxisAvailable]);
+
   const visible = useMemo(() => {
     if (!catalog) return [];
-    return sortModels(filterModels(catalog.models, facets, memoryGB), sort, memoryGB);
-  }, [catalog, facets, sort, memoryGB]);
+    let models = filterModels(catalog.models, facets, memoryGB);
+    // The editorial shelf: only the picks, kept in curated order.
+    if (sort === 'staff') models = models.filter((m) => m.recommended?.isRecommended);
+    return sortModels(models, sort, memoryGB, usageByModel);
+  }, [catalog, facets, sort, memoryGB, usageByModel]);
 
   const compareModels = useMemo(
     () =>
@@ -253,6 +301,7 @@ export function MarketplaceScreen() {
     );
     const detail = detailOpen === model.id;
     const inCompare = compareIds.includes(model.id);
+    const popLabel = popularityLabel(model);
     const stagger = { animationDelay: `${Math.min(index, 7) * 35}ms` };
 
     return (
@@ -323,7 +372,15 @@ export function MarketplaceScreen() {
               />
             ))}
           </div>
-        ) : null}
+        ) : (
+          // No ratings block yet (the broadened landscape roster). Show absence
+          // as absence, never a fabricated or zero star row.
+          <div className="not-rated-row">
+            <NotRated />
+          </div>
+        )}
+
+        {popLabel ? <div className="market-pop">{popLabel}</div> : null}
 
         <div className="market-meta">
           {model.sizeGB} GB · {model.quantization} · {model.contextTokens.toLocaleString()} ctx
@@ -577,7 +634,7 @@ export function MarketplaceScreen() {
               aria-label="Search models"
             />
             <div className="segmented" role="tablist" aria-label="Sort">
-              {SORTS.map((s) => (
+              {sorts.map((s) => (
                 <button
                   key={s.key}
                   role="tab"
@@ -591,11 +648,7 @@ export function MarketplaceScreen() {
             </div>
           </div>
 
-          {sort === 'popular' ? (
-            <p className="sort-honesty">
-              Popularity counts downloads, not quality. Our stars come from benchmarks.
-            </p>
-          ) : null}
+          {SORT_SUBHEAD[sort] ? <p className="sort-honesty">{SORT_SUBHEAD[sort]}</p> : null}
 
           <div className="market-body">
             {!isPhone() ? <aside className="rail-desktop">{filterRail}</aside> : null}

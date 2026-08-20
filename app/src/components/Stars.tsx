@@ -76,6 +76,18 @@ export function Stars({
   );
 }
 
+/** The honest stand-in for a model that has no ratings block yet (the broadened
+ *  landscape roster). It is deliberately NOT a star row: a zero-star or greyed
+ *  track would read as "rated badly," so absent quality shows as absent, plain
+ *  words, never a fabricated score. */
+export function NotRated({ label = 'Not yet rated' }: { label?: string }) {
+  return (
+    <span className="not-rated" role="note">
+      {label}
+    </span>
+  );
+}
+
 /** One capability lane: a small-caps label on the left, a 5-star track on the
  *  right. Tapping toggles the provenance chips (which benchmarks earned it). */
 export function CapabilityLane({
