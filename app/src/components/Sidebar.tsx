@@ -12,6 +12,7 @@ const NAV: Array<{ view: ViewName; glyph: string; label: string }> = [
   { view: 'crew', glyph: '☺', label: 'My Crew' },
   { view: 'marketplace', glyph: '⬡', label: 'Marketplace' },
   { view: 'stack', glyph: '≡', label: 'Your stack' },
+  { view: 'stackhealth', glyph: '❤', label: 'Stack Health' },
   { view: 'repos', glyph: '⌥', label: 'Repositories' },
   { view: 'launch', glyph: '🜂', label: 'Launch' },
   { view: 'connections', glyph: '⚡', label: 'Cloud Connections' },
