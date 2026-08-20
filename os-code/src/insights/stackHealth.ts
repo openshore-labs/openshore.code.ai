@@ -12,7 +12,7 @@
 //   2. "Dollars saved" is an estimate, not a receipt: it reprices the tokens
 //      that ran locally at a named cloud reference rate (Claude Sonnet). The
 //      basis travels with the number so the UI can show what it assumes.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig } from '../config/load.js';
 import { listSessions, sessionsDir, type SessionInfo } from '../daemon/session.js';
@@ -75,26 +75,85 @@ function readJournal(id: string): DriverEvent[] {
   return out;
 }
 
-/** The at-rest truth, checked, not asserted: prefix-scan EVERY session journal
- *  (in range or not) and count lines that are still plaintext. The seal claims
- *  green only when this comes back zero, so the claim covers all history on
- *  disk, not just the window being viewed. Prefix checks only, no decrypting,
- *  so the scan stays cheap. */
-function scanAtRest(): { plainLines: number; sealedLines: number } {
-  const out = { plainLines: 0, sealedLines: 0 };
+interface AtRestCacheEntry {
+  statKey?: string;
+  plain: number;
+  sealed: number;
+}
+
+// Keyed by the full file path (never just the session id): different
+// environments (different OSC_HOME, as tests exercise) can reuse the same
+// session id, and a path-scoped cache is the only safe key. A per-file entry
+// is recomputed only when its (mtime, size) signature changes, so repeated
+// stackHealth() calls in one process re-read only what actually grew.
+const journalScanCache = new Map<string, AtRestCacheEntry>();
+const titleScanCache = new Map<string, AtRestCacheEntry>();
+
+function fileStatKey(path: string): string | undefined {
+  try {
+    const st = statSync(path);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The at-rest truth, checked, not asserted: prefix-scan EVERY session
+ *  journal AND title (in range or not) and count what is still plaintext. The
+ *  seal claims green only when this comes back zero, so the claim covers all
+ *  history on disk, not just the window being viewed. Prefix checks only, no
+ *  decrypting, so the scan stays cheap; per-file results are cached by
+ *  (mtime, size) so an unchanged file is never re-read. */
+function scanAtRest(): { plainLines: number; sealedLines: number; plainTitles: number } {
+  const out = { plainLines: 0, sealedLines: 0, plainTitles: 0 };
   const dir = sessionsDir();
   if (!existsSync(dir)) return out;
   for (const id of readdirSync(dir)) {
-    try {
-      const raw = readFileSync(join(dir, id, 'events.jsonl'), 'utf8');
-      for (const line of raw.split('\n')) {
-        if (!line.trim()) continue;
-        if (isSealed(line)) out.sealedLines += 1;
-        else out.plainLines += 1;
+    const journalPath = join(dir, id, 'events.jsonl');
+    const key = fileStatKey(journalPath);
+    let entry = journalScanCache.get(journalPath);
+    if (!entry || entry.statKey !== key) {
+      entry = { statKey: key, plain: 0, sealed: 0 };
+      if (key) {
+        try {
+          const raw = readFileSync(journalPath, 'utf8');
+          for (const line of raw.split('\n')) {
+            if (!line.trim()) continue;
+            if (isSealed(line)) entry.sealed += 1;
+            else entry.plain += 1;
+          }
+        } catch {}
       }
-    } catch {}
+      journalScanCache.set(journalPath, entry);
+    }
+    out.plainLines += entry.plain;
+    out.sealedLines += entry.sealed;
+
+    const infoPath = join(dir, id, 'info.json');
+    const infoKey = fileStatKey(infoPath);
+    let titleEntry = titleScanCache.get(infoPath);
+    if (!titleEntry || titleEntry.statKey !== infoKey) {
+      titleEntry = { statKey: infoKey, plain: 0, sealed: 0 };
+      if (infoKey) {
+        try {
+          const info = JSON.parse(readFileSync(infoPath, 'utf8')) as { title?: string };
+          if (typeof info.title === 'string' && info.title && !isSealed(info.title)) {
+            titleEntry.plain = 1;
+          }
+        } catch {}
+      }
+      titleScanCache.set(infoPath, titleEntry);
+    }
+    out.plainTitles += titleEntry.plain;
   }
   return out;
+}
+
+/** Test seam: forget the cached scan (tests swap OSC_HOME between cases and
+ *  reuse session ids across environments). */
+export function _resetAtRestScanCache(): void {
+  journalScanCache.clear();
+  titleScanCache.clear();
 }
 
 function cutoff(now: Date, range: StackHealthRange): number {
@@ -274,11 +333,11 @@ function buildCrew(
  *  by construction. Data-left-device reflects real cloud calls rather than a
  *  fake zero. Encryption-at-rest is graded from the actual disk scan and from
  *  the backend that holds the key: green means a system keychain holds the key
- *  AND no plaintext line remains anywhere on disk; anything less says exactly
- *  what is less about it. */
+ *  AND no plaintext line or title remains anywhere on disk; anything less says
+ *  exactly what is less about it. */
 function buildSeal(
   cloudTurns: number,
-  atRest: { plainLines: number; sealedLines: number },
+  atRest: { plainLines: number; sealedLines: number; plainTitles: number },
   keyProtection: 'keychain' | 'encrypted-file' | undefined,
 ): StackHealthSealFact[] {
   let encrypted: StackHealthSealFact;
@@ -293,6 +352,12 @@ function buildSeal(
       key: 'encryptedAtRest',
       state: 'note',
       label: `Encrypting your sessions. ${atRest.plainLines} older ${atRest.plainLines === 1 ? 'line is' : 'lines are'} not yet sealed.`,
+    };
+  } else if (atRest.plainTitles > 0) {
+    encrypted = {
+      key: 'encryptedAtRest',
+      state: 'note',
+      label: `Encrypting your sessions. ${atRest.plainTitles} older ${atRest.plainTitles === 1 ? 'title is' : 'titles are'} not yet sealed.`,
     };
   } else if (keyProtection === 'encrypted-file') {
     encrypted = {
