@@ -6,6 +6,7 @@ import type { OscConfig } from '../config/schema.js';
 import type { ChatMessage, ContentPart, Provider } from '../providers/types.js';
 import type { ProviderRegistry } from '../providers/registry.js';
 import { adapterFor } from '../providers/adapters/index.js';
+import { AnthropicProvider } from '../providers/anthropic.js';
 import type { DelegableRole } from './roles.js';
 import type { ResolvedRole, ResolvedStack } from './stack.js';
 import { logger } from '../util/log.js';
@@ -58,7 +59,16 @@ export class Router {
   }
 
   escalationEnabled(): boolean {
-    return this.config.routing.escalation.enabled && this.escalationTarget() !== undefined;
+    if (!this.config.routing.escalation.enabled) return false;
+    const target = this.escalationTarget();
+    if (!target) return false;
+    // P2-3: a cloud target with no key connected is not a real escalation path.
+    // Consult the injected key getter (via the provider) so escalation reads as
+    // off, and the user is never asked to approve spend that would then error.
+    if (target.provider instanceof AnthropicProvider && !target.provider.hasApiKey()) {
+      return false;
+    }
+    return true;
   }
 
   /**

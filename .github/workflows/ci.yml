@@ -1,0 +1,52 @@
+# Continuous integration: lint, typecheck, and test the whole workspace on
+# every push to main and every PR that targets it. Before this workflow existed
+# the only gate was Codemagic, which ships each main push straight to TestFlight
+# WITHOUT running the suite, so the em-dash guard, redaction tests, RBAC/crypto
+# tests, and the security tests only ever ran on a developer's machine. This is
+# the missing net: a red run here surfaces the break before anyone trusts main.
+#
+# Setup steps (pnpm version, node version, cache) are kept byte-for-byte in sync
+# with catalog.yml so both workflows resolve the same toolchain.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref so a rapid push sequence does not pile
+# up redundant CI.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm -r lint
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Test
+        run: pnpm -r test

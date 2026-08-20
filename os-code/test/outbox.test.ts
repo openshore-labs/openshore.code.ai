@@ -126,6 +126,43 @@ describe('outbox apply', () => {
     ).toBe(true);
   });
 
+  it('preserves meanwhile-work on other files when the tip advanced past base (P0-6)', async () => {
+    // The phone composes against base A. The desktop then commits B, editing a
+    // DIFFERENT file (no history rewrite, so A stays an ancestor of the tip).
+    // Fast-forwarding a base-seeded tree would silently revert B's edit; the
+    // fix seeds from the tip and overlays only the phone's file.
+    const base = await head();
+
+    // Meanwhile-work: desktop edits server.ts and commits it on top of base.
+    writeFileSync(join(repo, 'server.ts'), 'desktop edit landed after the phone composed\n');
+    await simpleGit(repo).add(['server.ts']);
+    await simpleGit(repo).commit('desktop edits server.ts meanwhile');
+    const movedTip = await head();
+    expect(movedTip).not.toBe(base);
+
+    // Apply the phone's item, which was composed against the OLDER base commit.
+    const result = await applyOutboxItem(
+      req({ baseCommit: base, clientOpId: 'op-ff', itemId: 'itm-ff' }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // It fast-forwarded main (no rescue) and carries the phone's file.
+    const newTip = await head();
+    expect(newTip).toBe(result.resultCommit);
+    expect(await simpleGit(repo).raw(['show', `main:new.txt`])).toContain('hello from offshore');
+
+    // The meanwhile desktop edit SURVIVES at the new tip — the core P0-6 assert.
+    expect(await simpleGit(repo).raw(['show', `main:server.ts`])).toContain(
+      'desktop edit landed after the phone composed',
+    );
+
+    // The new commit is parented on the moved tip, so B is in its history.
+    expect((await simpleGit(repo).raw(['rev-parse', `${result.resultCommit}^`])).trim()).toBe(
+      movedTip,
+    );
+  });
+
   it('deletes a file through the outbox', async () => {
     const base = await head();
     const result = await applyOutboxItem(

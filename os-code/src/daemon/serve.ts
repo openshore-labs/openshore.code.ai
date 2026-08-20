@@ -9,7 +9,7 @@
 //   - Sessions run on the remote-attached profile: stricter than sitting at
 //     the desk, never looser.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { basename, join } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, mkdirSync } from 'node:fs';
 import {
@@ -94,6 +94,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   });
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      await route(req, res);
+    } catch (err) {
+      if (err instanceof BadJson) {
+        sendJson(res, 400, { error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }
+
+  async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // CORS preflights carry no Authorization header by design; answer them
     // before the auth gate so the WebView can proceed to the real request.
     if (req.method === 'OPTIONS') {
@@ -259,9 +271,17 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     if (req.method === 'POST' && url.pathname === '/sessions') {
       const body = await readJson(req);
       const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : process.cwd();
+      if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
+        sendJson(res, 403, {
+          error:
+            'Members can only open a session in a workspace an admin has provisioned. Ask a company admin to clone the repo.',
+        });
+        return;
+      }
       try {
         const { driver, warnings } = bootstrapSession({ cwd, profile: 'remote-attached' });
         drivers.set(driver.id, driver);
+        driver.setOwner(auth.userId);
         sendJson(res, 201, { id: driver.id, cwd, warnings });
       } catch (err) {
         sendJson(res, 400, { error: (err as Error).message });
@@ -271,25 +291,41 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
 
     if (parts[0] === 'sessions' && parts[1]) {
       const id = parts[1];
+      // A member may only touch their own session, across input/abort/
+      // approvals/events and rehydrate (D1). Admins (and the legacy shared
+      // token) are unrestricted; a session with no recorded owner is treated as
+      // admin-only, so a member cannot reach a legacy or another user's session.
+      const ownedBy = (owner: string | undefined): boolean =>
+        hasRole(auth, 'admin') || owner === auth.userId;
       let driver = drivers.get(id);
-      if (!driver && listSessions().some((s) => s.id === id)) {
-        // Rehydrate a stored session: the journal replays, a fresh agent continues.
-        const stored = listSessions().find((s) => s.id === id)!;
-        try {
-          const { driver: revived } = bootstrapSession({
-            cwd: stored.cwd,
-            profile: 'remote-attached',
-            sessionId: id,
-          });
-          drivers.set(id, revived);
-          driver = revived;
-        } catch (err) {
-          sendJson(res, 400, { error: (err as Error).message });
-          return;
+      if (!driver) {
+        const stored = listSessions().find((s) => s.id === id);
+        if (stored) {
+          if (!ownedBy(stored.ownerUserId)) {
+            sendJson(res, 403, { error: `Session ${id} belongs to another user.` });
+            return;
+          }
+          // Rehydrate a stored session: the journal replays, a fresh agent continues.
+          try {
+            const { driver: revived } = bootstrapSession({
+              cwd: stored.cwd,
+              profile: 'remote-attached',
+              sessionId: id,
+            });
+            drivers.set(id, revived);
+            driver = revived;
+          } catch (err) {
+            sendJson(res, 400, { error: (err as Error).message });
+            return;
+          }
         }
       }
       if (!driver) {
         sendJson(res, 404, { error: `No session ${id}. GET /sessions lists what exists.` });
+        return;
+      }
+      if (!ownedBy(driver.owner)) {
+        sendJson(res, 403, { error: `Session ${id} belongs to another user.` });
         return;
       }
 
@@ -310,8 +346,19 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       if (req.method === 'POST' && parts[2] === 'approvals' && parts[3]) {
         const body = await readJson(req);
+        // Require an explicit boolean: a missing/garbled field must 400, never
+        // silently resolve as a denial (P2-7).
+        if (typeof body.approve !== 'boolean') {
+          sendJson(res, 400, { error: 'Send {"approve": true} or {"approve": false}.' });
+          return;
+        }
+        // An unknown/already-answered approval id is a 404, not a 200 no-op.
+        if (!driver.pendingApprovalIds().includes(parts[3])) {
+          sendJson(res, 404, { error: `No pending approval ${parts[3]} on session ${id}.` });
+          return;
+        }
         driver.answerApproval(parts[3], {
-          approve: Boolean(body.approve),
+          approve: body.approve,
           alwaysThisSession: Boolean(body.alwaysThisSession),
         });
         sendJson(res, 200, { resolved: true });
@@ -360,6 +407,19 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(text);
 }
 
+/**
+ * Admin-provisioned workspaces are the repos an admin cloned onto the home
+ * machine (under ~/OSCode, via POST /workspaces/clone). A member may only open
+ * sessions inside one of these: without this a member token could point a
+ * session at any path on disk as its jail root and drive it (D1). Admins (and
+ * the legacy shared token, which resolves as admin) are unrestricted.
+ */
+export function isAdminProvisionedWorkspace(cwd: string): boolean {
+  const managed = resolve(join(homedir(), 'OSCode'));
+  const target = resolve(cwd);
+  return target === managed || target.startsWith(managed + sep);
+}
+
 /** Recent workspaces: session cwds, newest first, deduped, existing only. */
 function recentWorkspaces(): Array<{ cwd: string; name: string; lastUsed?: string }> {
   const seen = new Set<string>();
@@ -373,13 +433,23 @@ function recentWorkspaces(): Array<{ cwd: string; name: string; lastUsed?: strin
   return out;
 }
 
+/** A request body that was present but not a JSON object. Caught centrally and
+ *  answered 400, so a malformed POST can never silently read as an empty {}
+ *  (which, on an approval, resolved as a denial and returned 200) (P2-7). */
+class BadJson extends Error {}
+
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   if (!chunks.length) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch {
-    return {};
+    throw new BadJson('The request body is not valid JSON.');
   }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new BadJson('The request body must be a JSON object.');
+  }
+  return parsed as Record<string, unknown>;
 }

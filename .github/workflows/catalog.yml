@@ -77,10 +77,31 @@ jobs:
       # on the first ever run is fine: no baseline means nothing to regress.
       - name: Seed the regression baseline from the live catalog
         run: |
+          set -euo pipefail
           mkdir -p os-code/build
-          curl -fsSL https://openshore.ai/os-code/catalog.json \
-            -o os-code/build/catalog.json \
-            || echo 'No live catalog yet; building without a baseline.'
+          tmp=os-code/build/catalog.json.tmp
+          rm -f "$tmp"
+          # --fail: treat a 4xx/5xx as a curl error, not a 200 whose HTML error
+          # body would be written over the baseline. --retry rides out a
+          # transient CDN blip. -w prints the final HTTP code even on failure, so
+          # a genuine 404 (no catalog published yet: first ever run, allowed) is
+          # told apart from EVERY other failure (a 5xx, an HTML error page,
+          # DNS/connection death), which must FAIL the job rather than build
+          # ungated against a missing or partial baseline.
+          code="$(curl --fail --retry 3 --retry-delay 2 -sSL \
+            -o "$tmp" -w '%{http_code}' \
+            https://openshore.ai/os-code/catalog.json)" && rc=0 || rc=$?
+          if [ "${rc:-0}" -eq 0 ]; then
+            mv "$tmp" os-code/build/catalog.json
+            echo 'Seeded the regression baseline from the live catalog.'
+          elif [ "${code:-}" = "404" ]; then
+            rm -f "$tmp"
+            echo 'No live catalog yet (HTTP 404); building without a baseline (first ever run).'
+          else
+            rm -f "$tmp"
+            echo "::error::Could not fetch the live catalog to seed the baseline (curl exit ${rc}, HTTP ${code:-none}). Refusing to build ungated." >&2
+            exit 1
+          fi
 
       - name: Build the catalog
         run: pnpm --filter os-code build:catalog
@@ -104,7 +125,23 @@ jobs:
           git config user.name 'openshore-catalog-bot'
           git config user.email 'catalog-bot@openshore.ai'
           git commit -m "Publish model catalog ($(date -u +%Y-%m-%d))"
-          git push origin HEAD:main
+          # A human commit can land on marketing main between our shallow clone
+          # and our push, rejecting it and stranding the catalog until the next
+          # scheduled run (up to a week). Rebase our single-file commit onto the
+          # advanced main and retry a few times so a concurrent commit does not
+          # cost a week of staleness.
+          attempts=3
+          n=1
+          until git push origin HEAD:main; do
+            if [ "$n" -ge "$attempts" ]; then
+              echo "::error::Could not publish the catalog after ${attempts} attempts; marketing main kept advancing." >&2
+              exit 1
+            fi
+            echo "Push rejected (main advanced); fetching and rebasing (attempt ${n})."
+            git fetch --depth=50 origin main
+            git rebase origin/main
+            n=$((n + 1))
+          done
 
       - name: Note when publishing is not configured
         if: ${{ env.MARKETING_DEPLOY_TOKEN == '' }}

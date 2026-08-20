@@ -120,6 +120,31 @@ describe('escalation wiring', () => {
     expect(withCloud.router.escalationTarget()?.model).toBe('claude-sonnet-5');
     expect(withCloud.router.escalationEnabled()).toBe(true);
   });
+
+  // P2-3: a real Anthropic cloud target with no key connected must read as
+  // no-escalation, so the user is never asked to approve spend that then errors.
+  function cloudKeySetup(getKey: () => string | undefined) {
+    const config = ConfigSchema.parse({
+      stack: { orchestrator: { provider: 'orch', model: 'big-model' } },
+      providers: { anthropic: { kind: 'anthropic', model: 'claude-sonnet-5' } },
+      routing: { escalation: { enabled: true } },
+    });
+    const registry = new ProviderRegistry(config, getKey);
+    registry.register('orch', new MockProvider('orch', [textTurn('x')]));
+    const stack = resolveStack(config, registry);
+    return new Router(config, registry, stack);
+  }
+
+  it('a keyless cloud target reads as no-escalation', () => {
+    const router = cloudKeySetup(() => undefined);
+    expect(router.escalationTarget()).toBeDefined();
+    expect(router.escalationEnabled()).toBe(false);
+  });
+
+  it('a connected key enables escalation', () => {
+    const router = cloudKeySetup(() => 'sk-ant-test');
+    expect(router.escalationEnabled()).toBe(true);
+  });
 });
 
 describe('resource budget', () => {

@@ -49,7 +49,18 @@ export function regressionGate(next: Catalog, previousRaw: unknown | undefined):
   // Invariants against the last published catalog.
   if (previousRaw !== undefined) {
     const prev = safeParse(previousRaw);
-    if (prev) {
+    if (!prev) {
+      // H3: a baseline that is present but does not schema-parse (a truncated
+      // download, an HTML error page seeded over it, or an old catalog shape)
+      // cannot anchor the checks below. Silently skipping them would publish
+      // UNGATED exactly when the baseline is most suspect, so treat it as a
+      // breach: publish nothing and keep serving whatever is live.
+      breaches.push({
+        check: 'baseline parses',
+        detail:
+          'the previous catalog is present but does not schema-parse (truncated, non-JSON, or old-schema baseline); refusing to publish ungated',
+      });
+    } else {
       // No previously blessed model may silently disappear.
       for (const model of prev.models) {
         if (model.blessed && !ids.has(model.id)) {
@@ -70,6 +81,15 @@ export function regressionGate(next: Catalog, previousRaw: unknown | undefined):
           });
         }
       }
+      // P2-4: the same collapse guard for presets. A build that drops EVERY
+      // preset while the last catalog shipped some is a broken storefront (no
+      // stacks to pick), not an editorial choice.
+      if (prev.presets.length > 0 && next.presets.length === 0) {
+        breaches.push({
+          check: 'presets not all dropped',
+          detail: `every preset was dropped (${prev.presets.length} to 0)`,
+        });
+      }
     }
   }
 
@@ -80,8 +100,9 @@ function safeParse(raw: unknown): Catalog | undefined {
   try {
     return CatalogSchema.parse(raw);
   } catch {
-    // A previous catalog that no longer parses (an old shape) cannot anchor the
-    // regression checks; skip them rather than blocking a fresh, valid build.
+    // A previous catalog that no longer parses (an old shape, a truncated or
+    // non-JSON body). The caller turns this into a breach rather than skipping
+    // the regression checks: an unparseable baseline must not disarm the gate.
     return undefined;
   }
 }

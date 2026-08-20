@@ -3,11 +3,22 @@
 // usage that follows each turn, the savings reprice against the named basis,
 // approvals/denials/outcomes counting, and the session-grained bucketing. The
 // disk/date wrapper is thin; the fold is where correctness lives.
-import { describe, expect, it } from 'vitest';
-import { SAVINGS_BASIS, __test } from '../src/insights/stackHealth.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  SAVINGS_BASIS,
+  __test,
+  _atRestScanCacheSizes,
+  _resetAtRestScanCache,
+  computeStackHealth,
+} from '../src/insights/stackHealth.js';
 import type { DriverEvent } from '../src/core/agent/types.js';
 
 const { foldSession, zeroTotals, priceLocal, planBuckets, bucketIndex, buildModelUsage } = __test;
+
+const DAY_MS = 86_400_000;
 
 // A journal: two local turns, then an escalation to cloud, then a cloud turn.
 // The usage after each turn-start is attributed to that turn's provider kind.
@@ -136,5 +147,145 @@ describe('stack health bucketing', () => {
   it('gives the year range twelve monthly columns', () => {
     const plan = planBuckets(now, 'year', now.getTime());
     expect(plan.starts.length).toBe(12);
+  });
+});
+
+describe('stack health day-bucket anchoring (F1)', () => {
+  // Built with LOCAL Date constructors so the assertions are timezone-agnostic.
+  // A mid-day mid-week "now": buckets must anchor to local midnight, not to
+  // now's time-of-day.
+  const now = new Date(2026, 7, 19, 12, 0, 0); // Aug 19 2026, 12:00 local
+
+  it('buckets a session ~6.5 days ago into bucket 0, not -1, for a week', () => {
+    const plan = planBuckets(now, 'week', now.getTime());
+    expect(plan.starts.length).toBe(7);
+    // With midnight anchoring, bucket 0 starts ~6.5 days back, so an in-range
+    // session that old lands in it. With the old time-of-day anchoring bucket 0
+    // started only 6 days back and this session fell off the chart (-1).
+    const sixAndAHalfDaysAgo = now.getTime() - 6.5 * DAY_MS;
+    expect(bucketIndex(plan.starts, sixAndAHalfDaysAgo)).toBe(0);
+  });
+
+  it('labels a Monday-morning session "Mon" from a mid-week now', () => {
+    const plan = planBuckets(now, 'week', now.getTime());
+    // The Monday of now's own week, at 09:00 local (before now's 12:00). Old
+    // anchoring put this in the prior day's bucket ("Sun"); midnight anchoring
+    // labels it correctly.
+    const daysSinceMonday = (now.getDay() + 6) % 7;
+    const mondayMorning = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - daysSinceMonday,
+      9,
+      0,
+      0,
+    );
+    const idx = bucketIndex(plan.starts, mondayMorning.getTime());
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(plan.labels[idx]).toBe('Mon');
+  });
+
+  it('keeps day boundaries a fixed 24 hours apart despite the fixed-ms removal', () => {
+    // Sanity: seven consecutive local midnights, each a real calendar day apart.
+    const plan = planBuckets(now, 'week', now.getTime());
+    for (let i = 1; i < plan.starts.length; i++) {
+      const d = new Date(plan.starts[i]);
+      expect(d.getHours()).toBe(0);
+      expect(d.getMinutes()).toBe(0);
+    }
+  });
+});
+
+describe('stack health timeline sums equal the headline (F1)', () => {
+  let prevHome: string | undefined;
+  let home: string;
+
+  function makeSession(id: string, updatedAt: string, events: DriverEvent[]): void {
+    const sdir = join(home, 'sessions', id);
+    mkdirSync(sdir, { recursive: true });
+    writeFileSync(
+      join(sdir, 'info.json'),
+      JSON.stringify({ id, cwd: '/x', title: 'T', createdAt: updatedAt, updatedAt }),
+    );
+    const lines = events.map((event, seq) => JSON.stringify({ seq, event })).join('\n');
+    writeFileSync(join(sdir, 'events.jsonl'), `${lines}\n`);
+  }
+
+  beforeEach(() => {
+    prevHome = process.env.OSC_HOME;
+    home = mkdtempSync(join(tmpdir(), 'osc-sh-'));
+    process.env.OSC_HOME = home;
+    _resetAtRestScanCache();
+  });
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.OSC_HOME;
+    else process.env.OSC_HOME = prevHome;
+    _resetAtRestScanCache();
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('does not drop an in-range session that predates bucket 0 from the timeline', () => {
+    const now = new Date(2026, 7, 19, 12, 0, 0);
+    // ~6.5 days old: inside the rolling week cutoff (counted in the headline)
+    // but before bucket 0's local midnight (would be dropped without clamping).
+    const oldTs = new Date(now.getTime() - 6.5 * DAY_MS).toISOString();
+    const turn: DriverEvent[] = [
+      { type: 'task-start', input: 'x' },
+      { type: 'turn-start', turn: 1, model: 'qwen2.5-coder', providerKind: 'local' },
+    ];
+    makeSession('s1', oldTs, turn);
+
+    const health = computeStackHealth('week', now);
+    const timelineLocal = health.timeline.reduce((a, b) => a + b.localTurns, 0);
+    // The chart total must equal the headline privacy-ring count, not miss one.
+    expect(health.privacyRing.localTurns).toBe(1);
+    expect(timelineLocal).toBe(1);
+  });
+});
+
+describe('stack health at-rest scan cache eviction (P2-2)', () => {
+  let prevHome: string | undefined;
+  let home: string;
+
+  function makeSession(id: string): void {
+    const sdir = join(home, 'sessions', id);
+    mkdirSync(sdir, { recursive: true });
+    const updatedAt = new Date().toISOString();
+    writeFileSync(
+      join(sdir, 'info.json'),
+      JSON.stringify({ id, cwd: '/x', title: 'T', createdAt: updatedAt, updatedAt }),
+    );
+    writeFileSync(
+      join(sdir, 'events.jsonl'),
+      `${JSON.stringify({ seq: 0, event: { type: 'task-start', input: 'hi' } })}\n`,
+    );
+  }
+
+  beforeEach(() => {
+    prevHome = process.env.OSC_HOME;
+    home = mkdtempSync(join(tmpdir(), 'osc-evict-'));
+    process.env.OSC_HOME = home;
+    _resetAtRestScanCache();
+  });
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.OSC_HOME;
+    else process.env.OSC_HOME = prevHome;
+    _resetAtRestScanCache();
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('drops cache entries for sessions gone from disk on the next pass', () => {
+    makeSession('a');
+    makeSession('b');
+    computeStackHealth('all', new Date());
+    expect(_atRestScanCacheSizes().journals).toBe(2);
+    expect(_atRestScanCacheSizes().titles).toBe(2);
+
+    // Session b is deleted; the next scan must evict its cached entries rather
+    // than grow unbounded.
+    rmSync(join(home, 'sessions', 'b'), { recursive: true, force: true });
+    computeStackHealth('all', new Date());
+    expect(_atRestScanCacheSizes().journals).toBe(1);
+    expect(_atRestScanCacheSizes().titles).toBe(1);
   });
 });

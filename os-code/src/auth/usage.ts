@@ -1,7 +1,7 @@
 // Cloud usage tracking. Local inference is free and stays free; every
 // metered call is counted, priced, and surfaced so the status line can warn
 // BEFORE quota is spent, never after.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { oscHome } from '../config/load.js';
 
@@ -60,23 +60,64 @@ export class UsageTracker {
 
   allTime(): UsageTotals {
     try {
-      return { ...ZERO, ...JSON.parse(readFileSync(this.path, 'utf8')) };
+      return this.readPersisted() ?? { ...ZERO };
     } catch {
+      // Read/display path: a corrupt file degrades to zero rather than throw.
+      // The persist path treats the same corruption as an error, so lifetime
+      // spend is never silently overwritten with a zero-based total.
       return { ...ZERO };
     }
   }
 
+  /** Read the persisted lifetime totals. Returns null when no file exists yet
+   *  (genuinely zero) and THROWS when a file exists but cannot be parsed, so a
+   *  torn write is never mistaken for a fresh start. */
+  private readPersisted(): UsageTotals | null {
+    let raw: string;
+    try {
+      raw = readFileSync(this.path, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
+    return { ...ZERO, ...(JSON.parse(raw) as Partial<UsageTotals>) };
+  }
+
   private persist(promptTokens: number, completionTokens: number, dollars: number): void {
     try {
-      const totals = this.allTime();
+      let totals: UsageTotals;
+      try {
+        totals = this.readPersisted() ?? { ...ZERO };
+      } catch {
+        // The existing usage.json is unparsable (torn write or corruption).
+        // Preserve it for recovery and refuse to write, so all-time spend is
+        // never silently reset to zero.
+        this.preserveCorrupt();
+        return;
+      }
       totals.promptTokens += promptTokens;
       totals.completionTokens += completionTokens;
       totals.dollars += dollars;
       totals.cloudCalls += 1;
       mkdirSync(oscHome(), { recursive: true });
-      writeFileSync(this.path, JSON.stringify(totals, null, 2));
+      // Temp file + rename: atomic on a POSIX filesystem, so a crash mid-write
+      // leaves the previous totals intact instead of a truncated file.
+      const tmp = `${this.path}.${process.pid}.${Date.now()}.tmp`;
+      writeFileSync(tmp, JSON.stringify(totals, null, 2));
+      renameSync(tmp, this.path);
     } catch {
       // Losing a usage line must never take down a task.
+    }
+  }
+
+  /** Copy an unparsable usage file aside so the real lifetime number can be
+   *  recovered by hand. Best-effort: not resetting spend matters more than the
+   *  copy landing. */
+  private preserveCorrupt(): void {
+    try {
+      copyFileSync(this.path, `${this.path}.corrupt`);
+    } catch {
+      // Nothing to recover to; the original is left untouched regardless.
     }
   }
 }

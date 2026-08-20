@@ -37,6 +37,17 @@ export class AnthropicProvider implements Provider {
     return this.endpoint.baseUrl.replace(/\/$/, '');
   }
 
+  /**
+   * Whether a usable API key is connected right now. Consulted by the router's
+   * escalation gate (P2-3) so a keyless cloud target reads as no-escalation and
+   * the user is never asked to approve cloud spend that would then error. The
+   * subscription stub has no wired key, so it reports false.
+   */
+  hasApiKey(): boolean {
+    if (this.endpoint.auth === 'subscription') return false;
+    return Boolean(this.getApiKey());
+  }
+
   private requireKey(): string {
     if (this.endpoint.auth === 'subscription') {
       throw new ProviderError(
@@ -213,15 +224,22 @@ export class AnthropicProvider implements Provider {
       } catch {}
     }
 
+    // C3: on abort the stream is truncated, so the accumulated tool_use blocks
+    // hold partial (unparseable) JSON. Mirror chatOllama: report the abort and
+    // skip the flush rather than emitting a phantom tool-call from a fragment.
+    if (signal?.aborted) {
+      yield { type: 'done', stopReason: 'aborted' };
+      return;
+    }
+
     for (const [, slot] of [...toolBlocks.entries()].sort((a, b) => a[0] - b[0])) {
       const call: ToolCallRequest = { id: slot.id, name: slot.name, argsText: slot.json };
       yield { type: 'tool-call', call };
     }
     yield {
       type: 'done',
-      stopReason: signal?.aborted
-        ? 'aborted'
-        : stopReason === 'max_tokens'
+      stopReason:
+        stopReason === 'max_tokens'
           ? 'length'
           : sawToolUse || stopReason === 'tool_use'
             ? 'tool-calls'

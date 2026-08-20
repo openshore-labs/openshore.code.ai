@@ -15,7 +15,13 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, rmdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { oscHome } from '../../config/load.js';
-import { getCredential, setCredential, storeBackend, type StoreBackend } from '../../auth/store.js';
+import {
+  getCredential,
+  readCredential,
+  setCredential,
+  storeBackend,
+  type StoreBackend,
+} from '../../auth/store.js';
 
 const PREFIX = 'enc:v1:';
 const DATA_KEY_NAME = 'data-key';
@@ -133,8 +139,11 @@ export function loadOrCreateDataKey(): DataKey | undefined {
   if (cached) return cached;
 
   let raw: string | undefined;
+  let keychainUnreadable = false;
   try {
-    raw = getCredential(DATA_KEY_NAME);
+    const read = readCredential(DATA_KEY_NAME);
+    raw = read.value;
+    keychainUnreadable = read.keychainUnreadable;
   } catch {
     return undefined;
   }
@@ -151,8 +160,16 @@ export function loadOrCreateDataKey(): DataKey | undefined {
       protection = safeBackend();
     }
   } else {
-    // First run. Another engine process (the CLI daemon and the desktop app,
-    // say) may be first-running at the same moment, and two generated keys
+    // No key readable from either home. If a keychain is PRESENT but could not
+    // be read (locked or errored), a real data key may be sitting inside it:
+    // minting a fresh one to the file store now would shadow it, and every line
+    // sealed with the interim key would decrypt to null forever once the
+    // keychain becomes readable again (B1). Refuse to mint under that
+    // uncertainty; callers degrade to plaintext for this run and try again once
+    // the keychain is readable.
+    if (keychainUnreadable) return undefined;
+    // Genuine first run. Another engine process (the CLI daemon and the desktop
+    // app, say) may be first-running at the same moment, and two generated keys
     // would strand whatever the loser sealed. Creation happens under an
     // exclusive cross-process lock; a process that loses the lock waits
     // briefly for the winner's key and adopts it.
@@ -163,7 +180,11 @@ export function loadOrCreateDataKey(): DataKey | undefined {
     if (release) {
       try {
         try {
-          raw = getCredential(DATA_KEY_NAME); // re-check inside the lock
+          const recheck = readCredential(DATA_KEY_NAME); // re-check inside the lock
+          raw = recheck.value;
+          // If the keychain went unreadable between the first read and here,
+          // do not mint (see the B1 note above); the finally releases the lock.
+          if (!raw && recheck.keychainUnreadable) return undefined;
         } catch {}
         if (raw) {
           protection = safeBackend();

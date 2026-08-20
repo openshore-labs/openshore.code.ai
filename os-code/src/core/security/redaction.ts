@@ -24,9 +24,14 @@ const RULES: RedactionRule[] = [
   { kind: 'bearer', pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/g },
   {
     kind: 'assignment',
-    // KEY=value / key: "value" where the name says secret-ish and the value is long enough to matter.
+    // KEY=value / key: "value" where the name says secret-ish and the value is
+    // long enough to matter. The opening quote is captured (group 2) and the
+    // closing quote is consumed only via a backreference to it, so a redaction
+    // run over serialized JSON (`"...TOKEN=abcd1234"`) never eats the JSON
+    // string's own closing quote and corrupts the line (P0-5). A bare,
+    // unquoted value keeps its following delimiter intact.
     pattern:
-      /\b([A-Z0-9_]*(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)[A-Z0-9_]*)\s*[:=]\s*["']?([^\s"']{8,})["']?/gi,
+      /\b([A-Z0-9_]*(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)[A-Z0-9_]*)\s*[:=]\s*(["'])?([^\s"']{8,})(?:\2)?/gi,
   },
 ];
 

@@ -199,14 +199,41 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
     return { ok: false, error: `Branch ${req.branch} does not exist on the home repo.` };
   }
 
-  // Build the tree in a throwaway index seeded from baseCommit; hash the
-  // post-images into the object store. None of this touches the checkout.
+  // Did the branch advance past the base the edits were composed against?
+  // `merge-base --is-ancestor` is true both when the tip is exactly the base
+  // AND when it moved strictly forward; it is false only on a true divergence
+  // (a rewrite/rebase that made base a sibling, not an ancestor, of the tip).
+  const baseIsAncestor = await gitOk(req.cwd, [
+    'merge-base',
+    '--is-ancestor',
+    req.baseCommit,
+    branchTip,
+  ]);
+
+  // P0-6 fix: seed the throwaway index from the RIGHT commit, then overlay only
+  // the request's files. The old code always seeded from baseCommit; when the
+  // branch had fast-forwarded past base, that base tree fast-forwarded onto the
+  // tip and silently REVERTED every file changed between base and tip (desktop
+  // work in intervening commits vanished from pushed history).
+  //   - Fast-forwardable (base is an ancestor of tip, tip may equal base): seed
+  //     from branchTip. Every meanwhile-commit's content is retained and only
+  //     the files this request re-authored change. A file both sides touched
+  //     resolves last-writer-wins to the phone's post-image, which IS the
+  //     buffered edit we are applying; unrelated meanwhile-work survives intact.
+  //   - True divergence (base not an ancestor): seed from baseCommit so the
+  //     rescue branch reproduces the phone's intent verbatim for a human to
+  //     merge; we never force-push over the moved tip (rescue path below).
+  // We chose the overlay-onto-branchTip approach over routing all forward-moved
+  // tips to rescue: it preserves intervening commits' content (the report's bar)
+  // while keeping the common "meanwhile-edit touched a different file" case a
+  // clean fast-forward instead of a rescue branch the founder must merge by hand.
+  const seedCommit = baseIsAncestor ? branchTip : req.baseCommit;
   const indexFile = tmp('oscidx');
   const blobFiles: string[] = [];
   let tree: string;
   try {
     const idxEnv = { GIT_INDEX_FILE: indexFile };
-    await git(req.cwd, ['read-tree', req.baseCommit], idxEnv);
+    await git(req.cwd, ['read-tree', seedCommit], idxEnv);
     for (const f of req.files) {
       if (f.mode === 'delete') {
         await git(req.cwd, ['update-index', '--force-remove', f.path], idxEnv);
@@ -250,9 +277,10 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
     return { ok: false, conflict: true, resultCommit, rescueBranch };
   };
 
-  // Conflict gate: if the base is not an ancestor of the tip, someone moved the
-  // branch. Never force-push; land on a rescue branch instead.
-  if (!(await gitOk(req.cwd, ['merge-base', '--is-ancestor', req.baseCommit, branchTip]))) {
+  // Conflict gate: a true divergence (base is not an ancestor of the tip) means
+  // someone rewrote history. Never force-push; land on a rescue branch instead.
+  // (Computed above as baseIsAncestor, before seeding the index.)
+  if (!baseIsAncestor) {
     return landOnRescue();
   }
 

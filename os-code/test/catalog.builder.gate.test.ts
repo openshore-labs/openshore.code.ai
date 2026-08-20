@@ -188,4 +188,40 @@ describe('bad-build regression gate', () => {
     expect(result.ok).toBe(false);
     expect(result.breaches.some((b) => b.check.includes('25 percent'))).toBe(true);
   });
+
+  it('fails when the previous baseline is present but not JSON (H3)', () => {
+    // An HTML error page or a truncated body seeded over the baseline (index.ts
+    // passes such raw text straight through) must not silently disarm the gate.
+    const result = regressionGate(good, '<html>502 Bad Gateway</html>');
+    expect(result.ok).toBe(false);
+    expect(result.breaches.some((b) => b.check === 'baseline parses')).toBe(true);
+  });
+
+  it('fails when the previous baseline is partial/old-shape and does not parse (H3)', () => {
+    // A truncated catalog (here: missing the required `presets` key) cannot
+    // anchor the regression checks, so it is a breach rather than a skip.
+    const partial = { version: 1, updated: '2026-08-20', models: [] };
+    const result = regressionGate(good, partial);
+    expect(result.ok).toBe(false);
+    expect(result.breaches.some((b) => b.check === 'baseline parses')).toBe(true);
+  });
+
+  it('fails when every preset is dropped while the previous had presets (P2-4)', () => {
+    const prevWithPresets = validateCatalog({
+      ...good,
+      presets: [
+        {
+          id: 'p',
+          name: 'P',
+          tagline: 't',
+          minVramGB: 0,
+          stack: { orchestrator: 'a', specialists: {} },
+        },
+      ],
+    });
+    // next = good ships zero presets; the previous catalog had one.
+    const result = regressionGate(good, prevWithPresets);
+    expect(result.ok).toBe(false);
+    expect(result.breaches.some((b) => b.check === 'presets not all dropped')).toBe(true);
+  });
 });

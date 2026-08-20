@@ -28,7 +28,7 @@ export interface TestSession {
 
 export interface TestSessionOptions {
   files?: Record<string, string>;
-  approve?: (request: ApprovalRequest) => ApprovalAnswer;
+  approve?: (request: ApprovalRequest) => ApprovalAnswer | Promise<ApprovalAnswer>;
   configOverrides?: Record<string, unknown>;
   escalation?: MockProvider;
 }

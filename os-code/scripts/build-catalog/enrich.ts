@@ -45,13 +45,44 @@ export function enrichCatalog(inputs: BuildInputs): EnrichResult {
     return refs.every((r) => ids.has(r));
   });
 
-  const catalog: Catalog = {
+  const today = new Date().toISOString().slice(0, 10);
+  const built: Catalog = {
     version: seed.version,
-    updated: new Date().toISOString().slice(0, 10),
+    updated: today,
     models: kept,
     presets,
   };
+  // P2-19: only advance `updated` when catalog content OTHER than `updated`
+  // itself actually changed since the last publish. Stamping today's date on
+  // every run makes the weekly refresh look like a change even when nothing
+  // moved, which triggers a no-op bot commit + Pages deploy every week. Carry
+  // the previous stamp forward on a true no-op.
+  const catalog: Catalog = { ...built, updated: chooseUpdated(built, inputs.previous, today) };
   return { catalog, drops };
+}
+
+/** The date stamp to publish. Keeps the previous catalog's `updated` when the
+ *  only thing that would change is the stamp itself; advances to `today` on any
+ *  real content change or when there is no comparable previous catalog. */
+function chooseUpdated(next: Catalog, previousRaw: unknown, today: string): string {
+  if (previousRaw === undefined) return today;
+  let prev: Catalog;
+  try {
+    prev = CatalogSchema.parse(previousRaw);
+  } catch {
+    // An unparseable previous catalog cannot be compared; treat as changed. (The
+    // regression gate turns this same case into a breach, so nothing publishes.)
+    return today;
+  }
+  return contentSignature(prev) === contentSignature(next) ? prev.updated : today;
+}
+
+/** A stable comparison key for a catalog with the `updated` stamp neutralized,
+ *  so two catalogs that differ ONLY in `updated` compare equal. Both sides are
+ *  schema-parsed first, so key order is normalized and the comparison holds
+ *  regardless of how the previous catalog's JSON happened to be serialized. */
+function contentSignature(catalog: Catalog): string {
+  return JSON.stringify({ ...CatalogSchema.parse(catalog), updated: '' });
 }
 
 type BuildOutcome = { model: CatalogModel } | { drop: string };

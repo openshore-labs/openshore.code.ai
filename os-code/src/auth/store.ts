@@ -17,6 +17,7 @@ export type StoreBackend = 'keychain' | 'encrypted-file';
 let secretToolChecked: boolean | undefined;
 
 function hasSecretTool(): boolean {
+  if (fakeKeychain) return true;
   if (secretToolChecked === undefined) {
     secretToolChecked = spawnSync('secret-tool', ['--help'], { stdio: 'ignore' }).status === 0;
   }
@@ -26,6 +27,52 @@ function hasSecretTool(): boolean {
 /** Test seam. */
 export function _setSecretTool(v: boolean | undefined): void {
   secretToolChecked = v;
+}
+
+// --- Test seam: an injectable, in-memory keychain --------------------------
+// Real libsecret needs D-Bus and a login session, absent in CI, so the
+// key-shadowing hazard (a keychain that is PRESENT but temporarily unreadable
+// must never trigger a fresh data-key mint) is exercised through this fake.
+// `locked` models exactly that state: reads report "unreadable", not "absent".
+interface FakeKeychain {
+  entries: Map<string, string>;
+  locked: boolean;
+}
+let fakeKeychain: FakeKeychain | undefined;
+
+export function _setFakeKeychain(
+  fk: { entries?: Map<string, string>; locked?: boolean } | undefined,
+): void {
+  fakeKeychain = fk ? { entries: fk.entries ?? new Map(), locked: fk.locked ?? false } : undefined;
+}
+
+type KeychainOutcome =
+  { status: 'found'; value: string } | { status: 'absent' } | { status: 'unreadable' };
+
+/**
+ * Read one entry from the keychain, distinguishing three outcomes. "absent"
+ * (genuinely not there) and "unreadable" (present but locked/errored) must
+ * never be conflated: treating an unreadable keychain as "absent" is what lets
+ * loadOrCreateDataKey mint a second, shadowing data key (B1).
+ */
+function keychainLookup(name: string): KeychainOutcome {
+  if (fakeKeychain) {
+    if (fakeKeychain.locked) return { status: 'unreadable' };
+    const v = fakeKeychain.entries.get(name);
+    return v === undefined ? { status: 'absent' } : { status: 'found', value: v };
+  }
+  if (!hasSecretTool()) return { status: 'absent' };
+  const res = spawnSync('secret-tool', ['lookup', 'service', 'os-code', 'key', name], {
+    encoding: 'utf8',
+  });
+  if (res.status === 0) {
+    const v = res.stdout ? res.stdout.trim() : '';
+    return v ? { status: 'found', value: v } : { status: 'absent' };
+  }
+  // secret-tool exits 1 for a genuine miss; anything else (spawn error, D-Bus
+  // failure, a locked collection) means the keychain could not be read.
+  if (res.status === 1) return { status: 'absent' };
+  return { status: 'unreadable' };
 }
 
 function machineKey(): Buffer {
@@ -69,19 +116,38 @@ export function storeBackend(): StoreBackend {
   return hasSecretTool() ? 'keychain' : 'encrypted-file';
 }
 
+export interface CredentialRead {
+  value: string | undefined;
+  /**
+   * True when a keychain is present but could not be read (locked/errored), so
+   * `value === undefined` does NOT prove the credential is absent. Callers that
+   * would otherwise mint a fresh secret must treat this as "unknown" and refuse
+   * to mint (B1).
+   */
+  keychainUnreadable: boolean;
+}
+
+/** Read a credential, surfacing whether the keychain itself was unreadable. */
+export function readCredential(name: string): CredentialRead {
+  const kc = keychainLookup(name);
+  if (kc.status === 'found') return { value: kc.value, keychainUnreadable: false };
+  // The keychain had nothing (or could not be read); the file store may still
+  // hold a legacy or file-backed key.
+  return { value: readFileStore()[name], keychainUnreadable: kc.status === 'unreadable' };
+}
+
 export function getCredential(name: string): string | undefined {
-  if (hasSecretTool()) {
-    const res = spawnSync('secret-tool', ['lookup', 'service', 'os-code', 'key', name], {
-      encoding: 'utf8',
-    });
-    if (res.status === 0 && res.stdout) return res.stdout.trim() || undefined;
-    // Fall through: the key may predate the keychain, or lookup failed.
-  }
-  return readFileStore()[name];
+  return readCredential(name).value;
 }
 
 export function setCredential(name: string, value: string): StoreBackend {
-  if (hasSecretTool()) {
+  if (fakeKeychain) {
+    if (!fakeKeychain.locked) {
+      fakeKeychain.entries.set(name, value);
+      return 'keychain';
+    }
+    // A locked keychain cannot accept a write; fall through to the file store.
+  } else if (hasSecretTool()) {
     const res = spawnSync(
       'secret-tool',
       ['store', '--label', `OS Code (${name})`, 'service', 'os-code', 'key', name],
@@ -96,7 +162,9 @@ export function setCredential(name: string, value: string): StoreBackend {
 }
 
 export function deleteCredential(name: string): void {
-  if (hasSecretTool()) {
+  if (fakeKeychain) {
+    fakeKeychain.entries.delete(name);
+  } else if (hasSecretTool()) {
     spawnSync('secret-tool', ['clear', 'service', 'os-code', 'key', name], { stdio: 'ignore' });
   }
   const store = readFileStore();

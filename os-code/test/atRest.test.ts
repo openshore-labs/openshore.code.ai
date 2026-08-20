@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   appendFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -26,8 +27,14 @@ import {
   openString,
   sealString,
 } from '../src/core/security/atRest.js';
-import { _setSecretTool } from '../src/auth/store.js';
-import { LocalDriver, listSessions, sealSessionsAtRest } from '../src/daemon/session.js';
+import { _setFakeKeychain, _setSecretTool } from '../src/auth/store.js';
+import {
+  LocalDriver,
+  listSessions,
+  sealSessionsAtRest,
+  _setMigrationRenameHook,
+  type DriverEvent,
+} from '../src/daemon/session.js';
 import { _resetAtRestScanCache, computeStackHealth } from '../src/insights/stackHealth.js';
 
 let home: string;
@@ -43,6 +50,8 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.OSC_HOME;
   _setSecretTool(undefined);
+  _setFakeKeychain(undefined);
+  _setMigrationRenameHook(undefined);
   _resetDataKeyCache();
   rmSync(home, { recursive: true, force: true });
 });
@@ -305,6 +314,130 @@ describe('CTO must-fix hardening', () => {
     // Without the guard (the file is old enough), it seals.
     const unguarded = sealSessionsAtRest();
     expect(unguarded.sealedLines).toBe(1);
+  });
+});
+
+describe('journal robustness (P0-5 / B1 / B2 / P2-5 / P2-6)', () => {
+  it('replays an event whose content ends with TOKEN=<secret> without JSON corruption (P0-5)', () => {
+    const writer = new LocalDriver(home, { id: 'p05' });
+    // The redactor runs over the serialized JSON line; a value ending in a
+    // secret assignment must not let the redaction eat the JSON string's own
+    // closing quote and produce an unterminated (dropped-on-replay) line.
+    writer.emit({ type: 'task-start', input: 'connect with API_TOKEN=abcd1234efgh' });
+
+    const reloaded = new LocalDriver(home, { id: 'p05' });
+    const events: DriverEvent[] = [];
+    reloaded.subscribe((event) => events.push(event));
+    expect(events.map((e) => e.type)).toEqual(['task-start']);
+    const start = events[0] as { type: 'task-start'; input: string };
+    // The secret was redacted, but the event still round-tripped intact.
+    expect(start.input).toContain('[redacted:assignment]');
+    expect(start.input).not.toContain('abcd1234efgh');
+  });
+
+  it('refuses to mint a shadowing data key while the keychain is unreadable (B1)', () => {
+    // The keychain already holds the one true data key, but is momentarily
+    // locked. Minting a second key to the file store now would strand every
+    // line sealed in the interim once the keychain unlocks.
+    const realKey = Buffer.alloc(32, 9).toString('base64url');
+    const entries = new Map([['data-key', realKey]]);
+    _setFakeKeychain({ entries, locked: true });
+    _resetDataKeyCache();
+
+    expect(loadOrCreateDataKey()).toBeUndefined();
+    // No key was written to the file store as a side effect.
+    expect(existsSync(join(home, 'credentials'))).toBe(false);
+
+    // Keychain unlocks: the original key loads, unchanged, and can open data.
+    _setFakeKeychain({ entries, locked: false });
+    _resetDataKeyCache();
+    const dk = loadOrCreateDataKey();
+    expect(dk).toBeDefined();
+    expect(dk!.key.equals(Buffer.from(realKey, 'base64url'))).toBe(true);
+  });
+
+  it('advances seq past unreadable sealed lines so a reload never duplicates seq (B2)', () => {
+    const dir = join(home, 'sessions', 'b2');
+    mkdirSync(dir, { recursive: true });
+    // Three lines sealed with a key we will NOT have at reload (a stand-in for
+    // the keychain being unavailable): loadJournal must skip but still COUNT
+    // them, so the next emit does not reuse seq 1.
+    const strandedKey = Buffer.alloc(32, 42);
+    const lines = [1, 2, 3].map((seq) =>
+      sealString(
+        strandedKey,
+        JSON.stringify({
+          seq,
+          event: { type: 'turn-start', turn: seq, model: 'x', providerKind: 'local' },
+        }),
+      ),
+    );
+    writeFileSync(join(dir, 'events.jsonl'), `${lines.join('\n')}\n`);
+    writeFileSync(
+      join(dir, 'info.json'),
+      JSON.stringify({ id: 'b2', cwd: home, title: 't', createdAt: 'x', updatedAt: 'x' }),
+    );
+
+    const driver = new LocalDriver(home, { id: 'b2' });
+    driver.emit({ type: 'task-done', reason: 'complete' });
+
+    const raw = readFileSync(join(dir, 'events.jsonl'), 'utf8').split('\n').filter(Boolean);
+    expect(raw.length).toBe(4);
+    const dk = loadOrCreateDataKey()!;
+    const newest = JSON.parse(openString(dk.key, raw[3]!)!) as { seq: number };
+    expect(newest.seq).toBe(4); // not 1, which would collide with the sealed lines
+  });
+
+  it('aborts the reseal rename when a concurrent append lands mid-migration (P2-5)', () => {
+    const dir = join(home, 'sessions', 'race');
+    mkdirSync(dir, { recursive: true });
+    const first = JSON.stringify({ seq: 1, event: { type: 'task-start', input: 'a' } });
+    writeFileSync(join(dir, 'events.jsonl'), `${first}\n`);
+    writeFileSync(
+      join(dir, 'info.json'),
+      JSON.stringify({ id: 'race', cwd: home, title: 't', createdAt: 'x', updatedAt: 'x' }),
+    );
+
+    // Simulate another process appending a fresh event in the read->rename gap.
+    const appended = JSON.stringify({ seq: 2, event: { type: 'task-done', reason: 'complete' } });
+    _setMigrationRenameHook(() => appendFileSync(join(dir, 'events.jsonl'), `${appended}\n`));
+    const summary = sealSessionsAtRest();
+    _setMigrationRenameHook(undefined);
+
+    // The guard aborts rather than clobbering the concurrently appended line.
+    expect(summary.sealedLines).toBe(0);
+    const raw = readFileSync(join(dir, 'events.jsonl'), 'utf8').split('\n').filter(Boolean);
+    expect(raw.length).toBe(2);
+    expect(raw.some((l) => l.includes('task-done'))).toBe(true);
+  });
+
+  it('repairs a crash-truncated final line before the next append (P2-6)', () => {
+    const dir = join(home, 'sessions', 'trunc2');
+    mkdirSync(dir, { recursive: true });
+    const dk = loadOrCreateDataKey()!;
+    // A sealed line with NO trailing newline: the shape a crash mid-append leaves.
+    const line1 = sealString(
+      dk.key,
+      JSON.stringify({ seq: 1, event: { type: 'task-start', input: 'one' } }),
+    );
+    writeFileSync(join(dir, 'events.jsonl'), line1);
+    writeFileSync(
+      join(dir, 'info.json'),
+      JSON.stringify({ id: 'trunc2', cwd: home, title: 't', createdAt: 'x', updatedAt: 'x' }),
+    );
+
+    const driver = new LocalDriver(home, { id: 'trunc2' });
+    driver.emit({ type: 'task-done', reason: 'complete' });
+
+    const parts = readFileSync(join(dir, 'events.jsonl'), 'utf8').split('\n').filter(Boolean);
+    expect(parts.length).toBe(2); // not merged into one corrupt line
+    for (const l of parts) {
+      expect(isSealed(l)).toBe(true);
+      expect(() => JSON.parse(openString(dk.key, l)!)).not.toThrow();
+    }
+    const replayed: string[] = [];
+    new LocalDriver(home, { id: 'trunc2' }).subscribe((e) => replayed.push(e.type));
+    expect(replayed).toEqual(['task-start', 'task-done']);
   });
 });
 

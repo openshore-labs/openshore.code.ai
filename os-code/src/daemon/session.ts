@@ -9,6 +9,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -47,6 +48,12 @@ export interface SessionInfo {
   title: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The user who created this session. Recorded by the daemon so ownership can
+   * be enforced across a rehydrate (a member may only drive their own sessions,
+   * D1). Absent on legacy sessions created before ownership was tracked.
+   */
+  ownerUserId?: string;
 }
 
 // The session title is derived from the user's first prompt, so it is user
@@ -92,6 +99,8 @@ export class LocalDriver implements SessionDriver {
   private running = false;
   private agent?: AgentSession;
   private persist: boolean;
+  private ownerUserId?: string;
+  private ensuredTrailingNewline = false;
 
   constructor(
     readonly cwd: string,
@@ -102,6 +111,7 @@ export class LocalDriver implements SessionDriver {
     if (this.persist) {
       const dir = this.dir();
       mkdirSync(dir, { recursive: true });
+      const infoPath = join(dir, 'info.json');
       const info: SessionInfo = {
         id: this.id,
         cwd,
@@ -109,11 +119,35 @@ export class LocalDriver implements SessionDriver {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      if (!existsSync(join(dir, 'info.json'))) {
-        writeFileSync(join(dir, 'info.json'), JSON.stringify(info, null, 2));
+      if (!existsSync(infoPath)) {
+        writeFileSync(infoPath, JSON.stringify(info, null, 2));
+      } else {
+        // Rehydrating a stored session: carry its recorded owner forward so the
+        // daemon can enforce ownership after a restart (D1).
+        try {
+          const existing = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
+          this.ownerUserId = existing.ownerUserId;
+        } catch {}
       }
       this.loadJournal();
     }
+  }
+
+  /** The user who owns this session, if one was recorded. */
+  get owner(): string | undefined {
+    return this.ownerUserId;
+  }
+
+  /** Record the owning user and persist it to info.json. */
+  setOwner(userId: string): void {
+    this.ownerUserId = userId;
+    if (!this.persist) return;
+    try {
+      const infoPath = join(this.dir(), 'info.json');
+      const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
+      info.ownerUserId = userId;
+      writeFileSync(infoPath, JSON.stringify(info, null, 2));
+    } catch {}
   }
 
   /** The agent is attached after construction so the deps can reference the driver's approver. */
@@ -134,8 +168,10 @@ export class LocalDriver implements SessionDriver {
       const raw = readFileSync(join(this.dir(), 'events.jsonl'), 'utf8');
       const dk = loadOrCreateDataKey();
       let skippedSealed = 0;
+      let lineCount = 0;
       for (const line of raw.split('\n')) {
         if (!line.trim()) continue;
+        lineCount += 1;
         // Sealed lines open with the data key; plaintext (pre-encryption)
         // lines pass through. A line that cannot be opened or parsed is
         // skipped, never fatal: a journal must always replay as far as it can.
@@ -150,12 +186,36 @@ export class LocalDriver implements SessionDriver {
           this.seq = Math.max(this.seq, parsed.seq);
         } catch {}
       }
+      // Advance seq past EVERY journaled line, not just the ones we could open
+      // (B2). Seqs are contiguous 1..N, so the line count is the high-water
+      // mark; deriving seq only from openable lines would let a reload without
+      // the key re-issue 1,2,3 on top of existing sealed 1..N and corrupt
+      // resume ordering.
+      this.seq = Math.max(this.seq, lineCount);
       if (skippedSealed > 0) {
         // Surface masked history rather than letting it vanish silently: a
         // sealed line that will not open usually means the data key changed.
         console.warn(
           `[os-code] session ${this.id}: ${skippedSealed} sealed journal ${skippedSealed === 1 ? 'line' : 'lines'} could not be opened and ${skippedSealed === 1 ? 'was' : 'were'} skipped.`,
         );
+      }
+    } catch {}
+  }
+
+  /**
+   * Before the first append of this run, guarantee the journal ends with a
+   * newline. A crash mid-append can leave a final line with no trailing `\n`;
+   * appending onto it would merge the truncated line and the new event into one
+   * unparseable line, losing both (P2-6). Runs at most once per driver.
+   */
+  private ensureTrailingNewline(journalPath: string): void {
+    if (this.ensuredTrailingNewline) return;
+    this.ensuredTrailingNewline = true;
+    try {
+      if (!existsSync(journalPath)) return;
+      const buf = readFileSync(journalPath);
+      if (buf.length > 0 && buf[buf.length - 1] !== 0x0a) {
+        appendFileSync(journalPath, '\n');
       }
     } catch {}
   }
@@ -171,10 +231,9 @@ export class LocalDriver implements SessionDriver {
         // plaintext rather than losing the event.
         const dk = loadOrCreateDataKey();
         const line = redactSecrets(JSON.stringify(entry));
-        appendFileSync(
-          join(this.dir(), 'events.jsonl'),
-          `${dk ? sealString(dk.key, line) : line}\n`,
-        );
+        const journalPath = join(this.dir(), 'events.jsonl');
+        this.ensureTrailingNewline(journalPath);
+        appendFileSync(journalPath, `${dk ? sealString(dk.key, line) : line}\n`);
         const infoPath = join(this.dir(), 'info.json');
         const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
         info.updatedAt = new Date().toISOString();
@@ -234,6 +293,14 @@ export class LocalDriver implements SessionDriver {
 
   abort(): void {
     this.queue = [];
+    // Settle every outstanding approval as declined before aborting the agent.
+    // A run parked on the approver promise would otherwise never resume after
+    // an abort (the session wedges), and a later approve would execute the tool
+    // the user already aborted (C1). Snapshot first: the resolver emits and
+    // deletes, so iterate a copy.
+    const pending = [...this.pendingApprovals.values()];
+    this.pendingApprovals.clear();
+    for (const resolve of pending) resolve({ approve: false });
     this.agent?.abort();
   }
 
@@ -268,6 +335,15 @@ export class LocalDriver implements SessionDriver {
  * landed in the window): a file touched more recently than the guard is left
  * for the next pass. The startup hooks pass a minute; tests pass nothing.
  */
+// Test seam: invoked (when set) after the resealed journal is staged to its
+// tmp file but before the rename, so a test can simulate a concurrent append
+// landing in the read->rewrite->rename window and assert the guard aborts
+// instead of clobbering the new line (P2-5).
+let onBeforeMigrationRename: ((journalPath: string) => void) | undefined;
+export function _setMigrationRenameHook(fn: ((journalPath: string) => void) | undefined): void {
+  onBeforeMigrationRename = fn;
+}
+
 export function sealSessionsAtRest(options: { skipNewerThanMs?: number } = {}): {
   sessions: number;
   sealedLines: number;
@@ -288,6 +364,12 @@ export function sealSessionsAtRest(options: { skipNewerThanMs?: number } = {}): 
     try {
       const journalPath = join(dir, id, 'events.jsonl');
       if (existsSync(journalPath) && !tooRecent(journalPath)) {
+        // Snapshot the file identity before reading. The reseal is a
+        // read->rewrite->rename; if a live process appends between the read and
+        // the rename, the rename would clobber that new line (P2-5). Re-stat
+        // just before renaming and abort if it moved, leaving the file for the
+        // next pass.
+        const before = statSync(journalPath);
         const lines = readFileSync(journalPath, 'utf8').split('\n');
         let changed = 0;
         const out = lines.map((line) => {
@@ -301,8 +383,18 @@ export function sealSessionsAtRest(options: { skipNewerThanMs?: number } = {}): 
           const content = out.join('\n');
           const tmp = `${journalPath}.tmp`;
           writeFileSync(tmp, content.endsWith('\n') ? content : `${content}\n`, { mode: 0o600 });
-          renameSync(tmp, journalPath);
-          summary.sealedLines += changed;
+          onBeforeMigrationRename?.(journalPath);
+          const after = statSync(journalPath);
+          if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+            // The journal changed under us (a concurrent append): do not
+            // clobber it. Drop the staged tmp and leave it for the next pass.
+            try {
+              rmSync(tmp, { force: true });
+            } catch {}
+          } else {
+            renameSync(tmp, journalPath);
+            summary.sealedLines += changed;
+          }
         }
       }
       const infoPath = join(dir, id, 'info.json');

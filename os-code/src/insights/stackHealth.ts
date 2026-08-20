@@ -108,8 +108,14 @@ function scanAtRest(): { plainLines: number; sealedLines: number; plainTitles: n
   const out = { plainLines: 0, sealedLines: 0, plainTitles: 0 };
   const dir = sessionsDir();
   if (!existsSync(dir)) return out;
+  // Track which files this pass actually visited so caches for deleted sessions
+  // are evicted below (a long-lived daemon would otherwise grow them without
+  // bound as sessions come and go).
+  const seenJournals = new Set<string>();
+  const seenTitles = new Set<string>();
   for (const id of readdirSync(dir)) {
     const journalPath = join(dir, id, 'events.jsonl');
+    seenJournals.add(journalPath);
     const key = fileStatKey(journalPath);
     let entry = journalScanCache.get(journalPath);
     if (!entry || entry.statKey !== key) {
@@ -130,6 +136,7 @@ function scanAtRest(): { plainLines: number; sealedLines: number; plainTitles: n
     out.sealedLines += entry.sealed;
 
     const infoPath = join(dir, id, 'info.json');
+    seenTitles.add(infoPath);
     const infoKey = fileStatKey(infoPath);
     let titleEntry = titleScanCache.get(infoPath);
     if (!titleEntry || titleEntry.statKey !== infoKey) {
@@ -146,6 +153,14 @@ function scanAtRest(): { plainLines: number; sealedLines: number; plainTitles: n
     }
     out.plainTitles += titleEntry.plain;
   }
+  // Evict cache entries for sessions that are no longer on disk, so the caches
+  // stay bounded by the live session count in a long-running daemon.
+  for (const key of [...journalScanCache.keys()]) {
+    if (!seenJournals.has(key)) journalScanCache.delete(key);
+  }
+  for (const key of [...titleScanCache.keys()]) {
+    if (!seenTitles.has(key)) titleScanCache.delete(key);
+  }
   return out;
 }
 
@@ -154,6 +169,12 @@ function scanAtRest(): { plainLines: number; sealedLines: number; plainTitles: n
 export function _resetAtRestScanCache(): void {
   journalScanCache.clear();
   titleScanCache.clear();
+}
+
+/** Test seam: how many files the at-rest scan caches are currently holding.
+ *  Used to prove eviction of deleted sessions (P2-2). */
+export function _atRestScanCacheSizes(): { journals: number; titles: number } {
+  return { journals: journalScanCache.size, titles: titleScanCache.size };
 }
 
 function cutoff(now: Date, range: StackHealthRange): number {
@@ -415,26 +436,33 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 /** Bucket boundaries and labels for the range. Session-grained: a session lands
  *  in the bucket its updatedAt falls in. Boundaries oldest-first. */
 function planBuckets(now: Date, range: StackHealthRange, earliest: number): BucketPlan {
-  const day = 86_400_000;
   const hour = 3_600_000;
   const starts: number[] = [];
   const labels: string[] = [];
   const t = now.getTime();
   if (range === 'day') {
     for (let i = 23; i >= 0; i--) {
+      // Anchor to the LOCAL top-of-hour: `% hour` on the epoch would snap to a
+      // UTC boundary and mislabel sessions in half-hour and DST-shifted zones.
       const d = new Date(t - i * hour);
-      starts.push(d.getTime() - (d.getTime() % hour));
+      d.setMinutes(0, 0, 0);
+      starts.push(d.getTime());
       labels.push(`${((d.getHours() + 11) % 12) + 1}${d.getHours() < 12 ? 'a' : 'p'}`);
     }
   } else if (range === 'week') {
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(t - i * day);
+      // Anchor each day bucket to LOCAL midnight via new Date(y, m, d). This
+      // fixes two bugs of subtracting a fixed 86_400_000 from now: buckets no
+      // longer start at now's time-of-day (which mislabels a session's day and
+      // drops early-morning sessions into the prior bucket), and day arithmetic
+      // stays correct across a DST transition.
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
       starts.push(d.getTime());
       labels.push(WEEKDAYS[d.getDay()]);
     }
   } else if (range === 'month') {
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(t - i * day);
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
       starts.push(d.getTime());
       labels.push(`${d.getMonth() + 1}/${d.getDate()}`);
     }
@@ -513,8 +541,12 @@ export function computeStackHealth(
     cloudDollars: 0,
   }));
   for (const s of inRange) {
-    const idx = bucketIndex(plan.starts, Date.parse(s.info.updatedAt));
-    if (idx < 0) continue;
+    const raw = bucketIndex(plan.starts, Date.parse(s.info.updatedAt));
+    // The rolling cutoff reaches a little further back than bucket 0's local
+    // midnight, so an in-range session can predate the first boundary. It still
+    // belongs on the timeline: clamp it into bucket 0 so the chart sum equals
+    // the headline instead of silently dropping the session.
+    const idx = raw < 0 ? 0 : raw;
     const b = zeroTotals();
     foldSession(s.events, b);
     const bucket = timeline[idx];

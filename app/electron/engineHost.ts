@@ -6,7 +6,11 @@ import { homedir } from 'node:os';
 import { existsSync, mkdirSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
-import { listSessions, sealSessionsAtRest, type LocalDriver } from 'os-code/dist/src/daemon/session.js';
+import {
+  listSessions,
+  sealSessionsAtRest,
+  type LocalDriver,
+} from 'os-code/dist/src/daemon/session.js';
 import { startDaemon, type RunningDaemon } from 'os-code/dist/src/daemon/serve.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
 import { getAnthropicKey, loginWithApiKey, logoutClaude } from 'os-code/dist/src/auth/claude.js';
@@ -258,7 +262,10 @@ export class EngineHost {
   async setOpenAIKey(key: string) {
     const trimmed = key.trim();
     if (!/^sk-/.test(trimmed)) {
-      return { ok: false, detail: 'That does not look like an OpenAI API key (they start with sk-).' };
+      return {
+        ok: false,
+        detail: 'That does not look like an OpenAI API key (they start with sk-).',
+      };
     }
     setCredential(OPENAI_KEY_NAME, trimmed);
     saveGlobalConfig({
@@ -272,7 +279,10 @@ export class EngineHost {
       },
     });
     process.env.OPENAI_API_KEY = trimmed;
-    return { ok: true, detail: 'ChatGPT is connected. Point any stack slot at the openai provider to use it.' };
+    return {
+      ok: true,
+      detail: 'ChatGPT is connected. Point any stack slot at the openai provider to use it.',
+    };
   }
 
   async setGithubToken(token: string) {

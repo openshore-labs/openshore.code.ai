@@ -354,6 +354,14 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       }
     }
 
+    // C3: on abort the SSE stream is truncated, so the accumulated tool-call
+    // fragments are partial. Mirror chatOllama: report the abort and skip the
+    // flush rather than emitting a phantom tool-call from a fragment.
+    if (signal?.aborted) {
+      yield { type: 'done', stopReason: 'aborted' };
+      return;
+    }
+
     for (const [, slot] of [...pending.entries()].sort((a, b) => a[0] - b[0])) {
       sawToolCall = true;
       yield {

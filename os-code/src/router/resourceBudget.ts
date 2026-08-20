@@ -90,10 +90,21 @@ export function pickProfile(vramGB: number): VramProfile {
   return 'single';
 }
 
+/** VRAM at or below this is almost always an integrated-GPU carve-out (an AMD
+ *  APU reports 0.5-2 GB), not a real dedicated accelerator worth budgeting the
+ *  whole machine around. */
+const DEDICATED_VRAM_FLOOR_GB = 4;
+
 export function budgetFor(hardware: Hardware, profileOverride?: VramProfile): ResourceBudget {
-  // With no GPU, Ollama runs on CPU from system RAM; be honest and conservative.
+  // With no usable dedicated GPU, Ollama runs on CPU from system RAM; be honest
+  // and conservative. A tiny iGPU VRAM figure must NOT mask that fallback, or a
+  // 64 GB machine gets capped at 2 GB models. Take the larger of the (small)
+  // VRAM and half of system RAM whenever VRAM is below the dedicated floor.
+  const ramBudgetGB = Math.floor(hardware.systemRamGB / 2);
   const effectiveGB =
-    hardware.totalVramGB > 0 ? hardware.totalVramGB : Math.floor(hardware.systemRamGB / 2);
+    hardware.totalVramGB >= DEDICATED_VRAM_FLOOR_GB
+      ? hardware.totalVramGB
+      : Math.max(hardware.totalVramGB, ramBudgetGB);
   const profile = profileOverride ?? pickProfile(effectiveGB);
 
   const budgets: Record<

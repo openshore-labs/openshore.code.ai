@@ -73,7 +73,22 @@ async function main(): Promise<void> {
     }
   }
 
-  const previous = existsSync(OUT_PATH) ? readJson<unknown>(OUT_PATH, undefined) : undefined;
+  // Read the previously published catalog as the regression baseline, keeping
+  // three cases distinct so the gate can act on them (H3): absent (undefined,
+  // genuine first run) skips the previous-catalog checks; present-and-JSON is
+  // passed parsed; present-but-not-JSON (a truncated download, an HTML error
+  // page seeded over it) is passed as the raw text, which the schema parse
+  // rejects, so the gate treats it as a breach instead of silently skipping.
+  // A plain readJson-with-fallback would collapse the last case into "absent."
+  let previous: unknown | undefined;
+  if (existsSync(OUT_PATH)) {
+    const raw = readFileSync(OUT_PATH, 'utf8');
+    try {
+      previous = JSON.parse(raw);
+    } catch {
+      previous = raw;
+    }
+  }
 
   const inputs: BuildInputs = { seed, metadata, benchmarks, evals, overlay, previous };
 
