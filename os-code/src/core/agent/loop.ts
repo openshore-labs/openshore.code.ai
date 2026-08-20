@@ -26,7 +26,7 @@ import { redactSecrets } from '../security/redaction.js';
 import { compactHistory } from '../../context/compaction.js';
 import { estimateMessages } from '../../context/compaction.js';
 import { UsageTracker } from '../../auth/usage.js';
-import type { AgentEvent, ApprovalAnswer, Approver, EventSink } from './types.js';
+import type { AgentEvent, ApprovalAnswer, ApprovalRequest, Approver, EventSink } from './types.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('agent');
@@ -223,8 +223,14 @@ export class AgentSession {
               nativeCalls.push(event.call);
               break;
             case 'usage':
-              promptTokens += event.promptTokens;
-              completionTokens += event.completionTokens;
+              // Last-seen-wins per field. Providers report a running snapshot,
+              // not per-chunk increments: Anthropic sends the prompt count once
+              // at message_start and a cumulative completion count on each
+              // message_delta, so summing double-counts (badly with a vLLM that
+              // emits continuous usage stats). Ignore zeros so a completion-only
+              // delta does not wipe out the prompt count.
+              if (event.promptTokens) promptTokens = event.promptTokens;
+              if (event.completionTokens) completionTokens = event.completionTokens;
               break;
             case 'done':
               break;
@@ -238,6 +244,15 @@ export class AgentSession {
           reason: 'error',
           message: err instanceof Error ? err.message : String(err),
         });
+        return;
+      }
+
+      // C3: an abort during streaming ends the provider stream cleanly (the
+      // provider yields done:'aborted' and skips its truncated tool-call
+      // flush). Treat that as an abort, not a complete answer with truncated
+      // text, and stop before feeding the fragment back.
+      if (this.abortController.signal.aborted) {
+        this.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped at your request.' });
         return;
       }
 
@@ -339,9 +354,26 @@ export class AgentSession {
 
       // Execute the calls in order.
       let sawFailure = false;
+      const answered = new Set<string>();
       for (const call of calls) {
         const observation = await this.executeCall(call, toolMode);
-        if (observation === 'aborted') return;
+        if (observation === 'aborted') {
+          // C2: an early exit mid-batch (a guardrail trip or a user abort)
+          // leaves the just-recorded tool_use blocks with no tool_result, and
+          // every subsequent Anthropic turn 400s. Pair each recorded call with
+          // a synthetic observation. executeCall already emitted the guardrail
+          // task-done; a user abort has not, so emit that here (C1/C3).
+          this.fillUnansweredCalls(calls, answered, toolMode);
+          if (this.abortController.signal.aborted) {
+            this.emit({
+              type: 'task-done',
+              reason: 'aborted',
+              message: 'Stopped at your request.',
+            });
+          }
+          return;
+        }
+        answered.add(call.id);
         if (observation === 'failed') sawFailure = true;
       }
       parseFailStreak = sawFailure ? parseFailStreak + 1 : 0;
@@ -399,7 +431,7 @@ export class AgentSession {
       } catch (err) {
         detail = `Preview failed: ${(err as Error).message}`;
       }
-      const answer = await this.deps.approver({
+      const answer = await this.awaitApprovalOrAbort({
         id: call.id,
         kind: 'tool',
         toolName: call.name,
@@ -407,6 +439,9 @@ export class AgentSession {
         summary,
         detail,
       });
+      // C1: the session was aborted while this approval was pending. Do not run
+      // the tool; report an abort so run() settles instead of wedging.
+      if (answer === 'aborted') return 'aborted';
       if (answer.alwaysThisSession && answer.approve) {
         if (!permissions.allowForSession(call.name)) {
           this.emit({
@@ -454,6 +489,60 @@ export class AgentSession {
     } else {
       this.history.push({ role: 'user', content: `[${call.name} result]\n${content}` });
     }
+  }
+
+  /**
+   * C2: after an early exit mid tool-batch, every tool_use recorded on the
+   * assistant turn still needs a matching tool_result, or `toAnthropicMessages`
+   * emits a dangling tool_use and the next cloud turn 400s. Push a synthetic
+   * observation for any call that never produced one.
+   */
+  private fillUnansweredCalls(
+    calls: ParsedToolCall[],
+    answered: Set<string>,
+    toolMode: 'native' | 'text',
+  ): void {
+    for (const call of calls) {
+      if (answered.has(call.id)) continue;
+      this.pushObservation(
+        call,
+        'This step did not run because the task stopped before reaching it.',
+        toolMode,
+      );
+    }
+  }
+
+  /**
+   * C1: await a tool approval, but resolve to 'aborted' the instant the session
+   * is aborted. Without the race a never-answered approval leaves run() hanging
+   * forever; with it, abort() settles the promise and the tool never runs.
+   */
+  private awaitApprovalOrAbort(request: ApprovalRequest): Promise<ApprovalAnswer | 'aborted'> {
+    const signal = this.abortController?.signal;
+    if (signal?.aborted) return Promise.resolve('aborted');
+    return new Promise<ApprovalAnswer | 'aborted'>((resolve, reject) => {
+      let settled = false;
+      const onAbort = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve('aborted');
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      Promise.resolve(this.deps.approver(request)).then(
+        (answer) => {
+          if (settled) return;
+          settled = true;
+          signal?.removeEventListener('abort', onAbort);
+          resolve(answer);
+        },
+        (err) => {
+          if (settled) return;
+          settled = true;
+          signal?.removeEventListener('abort', onAbort);
+          reject(err);
+        },
+      );
+    });
   }
 
   // -------------------------------------------------------------------------

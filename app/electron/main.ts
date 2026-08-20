@@ -3,13 +3,20 @@
 // everything engine-shaped happens here.
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { lookup } from 'node:dns/promises';
+import type { LookupAddress, LookupOptions } from 'node:dns';
+import { request as httpsRequest } from 'node:https';
+import type { IncomingMessage } from 'node:http';
 import { isIP } from 'node:net';
 import { EngineHost } from './engineHost.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// The only page the shell is ever allowed to navigate to: the app's own bundled
+// entry point. Anything else (a stray file:, an http link) is denied below.
+const appEntry = pathToFileURL(join(here, '..', 'dist', 'index.html'));
 
 // ------------------------------------------------------------ outbound HTTP
 // The renderer cannot reach CORS-hostile third-party APIs directly, so it asks
@@ -23,11 +30,15 @@ const MAX_HTTP_BYTES = 25 * 1024 * 1024;
 function isPrivateAddress(ip: string): boolean {
   const v = isIP(ip);
   if (v === 4) {
-    const [a, b] = ip.split('.').map(Number);
+    const [a, b, c] = ip.split('.').map(Number);
     if (a === 127 || a === 10 || a === 0) return true; // loopback, private, this-host
     if (a === 169 && b === 254) return true; // link-local
     if (a === 172 && b! >= 16 && b! <= 31) return true; // private
     if (a === 192 && b === 168) return true; // private
+    if (a === 192 && b === 0 && c === 0) return true; // 192.0.0.0/24 IETF protocol assignments
+    if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmarking
+    if (a! >= 224 && a! <= 239) return true; // 224.0.0.0/4 multicast
+    if (a! >= 240) return true; // 240.0.0.0/4 reserved (incl. 255.255.255.255 broadcast)
     if (a === 100 && b! >= 64 && b! <= 127) return true; // CGNAT (Tailscale range)
     return false;
   }
@@ -35,39 +46,100 @@ function isPrivateAddress(ip: string): boolean {
     const lower = ip.toLowerCase();
     if (lower === '::1' || lower === '::') return true; // loopback / unspecified
     if (lower.startsWith('fe80') || lower.startsWith('fc') || lower.startsWith('fd')) return true;
+    if (/^fe[c-f]/.test(lower)) return true; // fec0::/10 deprecated site-local
+    if (lower.startsWith('64:ff9b:') || lower.startsWith('0064:ff9b:')) return true; // 64:ff9b::/96 NAT64
     if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice(7)); // v4-mapped
     return false;
   }
   return true; // unresolvable: refuse
 }
 
-async function assertPublicHttps(rawUrl: string): Promise<URL> {
-  const u = new URL(rawUrl);
+// Resolve the hostname ONCE, validate EVERY address it maps to, and return a
+// single vetted address to pin the connection to. Pinning is the anti-rebinding
+// fix (D3): a stock fetch re-resolves DNS at connect time, so a 0-TTL record
+// that flips public->private (or a multi-A "public first, private second"
+// answer) between our check and the connect could still land the socket on
+// loopback/LAN/tailnet. Here the socket is forced to the exact IP we already
+// vetted, and we reject if ANY resolved address is private, not just the first.
+async function vetAndPin(u: URL): Promise<LookupAddress> {
   if (u.protocol !== 'https:') throw new Error('blocked: https only');
   if (/(^|\.)(localhost|local)$/i.test(u.hostname)) throw new Error('blocked: local host');
-  const { address } = await lookup(u.hostname);
-  if (isPrivateAddress(address)) throw new Error('blocked: private address');
-  return u;
+  const addrs = await lookup(u.hostname, { all: true });
+  if (!addrs.length) throw new Error('blocked: unresolvable host');
+  for (const a of addrs) {
+    if (isPrivateAddress(a.address)) throw new Error('blocked: private address');
+  }
+  return addrs[0]!;
 }
 
-async function readCapped(res: Response): Promise<string> {
-  const reader = res.body?.getReader();
-  if (!reader) return '';
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    if (total + value.length > MAX_HTTP_BYTES) {
-      chunks.push(value.slice(0, Math.max(0, MAX_HTTP_BYTES - total)));
-      await reader.cancel();
-      break;
-    }
-    total += value.length;
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8');
+// One https request whose DNS is pinned to `pinned`. The custom `lookup` hands
+// back only the address we vetted, so the TCP connection cannot be rebound to a
+// different host between the check and the connect. TLS still validates against
+// the real hostname (SNI + Host derive from `u`), so legitimate certs verify.
+function pinnedHttpsRequest(
+  u: URL,
+  pinned: LookupAddress,
+  method: string,
+  headers: Record<string, string>,
+  body: string | undefined,
+): Promise<{ status: number; location: string | null; body: string }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
+    const pinnedLookup = (
+      _hostname: string,
+      options: LookupOptions,
+      cb: (
+        err: NodeJS.ErrnoException | null,
+        address: string | LookupAddress[],
+        family?: number,
+      ) => void,
+    ): void => {
+      if (options.all) cb(null, [pinned]);
+      else cb(null, pinned.address, pinned.family);
+    };
+    const req = httpsRequest(
+      {
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: `${u.pathname}${u.search}`,
+        method,
+        headers,
+        lookup: pinnedLookup,
+      },
+      (res: IncomingMessage) => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location ?? null;
+        const chunks: Buffer[] = [];
+        let total = 0;
+        let capped = false;
+        res.on('data', (chunk: Buffer) => {
+          if (capped) return;
+          if (total + chunk.length > MAX_HTTP_BYTES) {
+            chunks.push(chunk.subarray(0, Math.max(0, MAX_HTTP_BYTES - total)));
+            capped = true;
+            res.destroy();
+            return;
+          }
+          total += chunk.length;
+          chunks.push(chunk);
+        });
+        const finish = () =>
+          done(() => resolve({ status, location, body: Buffer.concat(chunks).toString('utf8') }));
+        res.on('end', finish);
+        res.on('close', finish);
+        res.on('error', (err) => done(() => reject(err)));
+      },
+    );
+    req.setTimeout(30000, () => req.destroy(new Error('blocked: request timeout')));
+    req.on('error', (err) => done(() => reject(err)));
+    if (method === 'POST' && body !== undefined) req.write(body);
+    req.end();
+  });
 }
 
 interface HttpFetchReq {
@@ -77,30 +149,44 @@ interface HttpFetchReq {
   body?: string;
 }
 
-async function handleHttpFetch(req: HttpFetchReq): Promise<{ ok: boolean; status: number; body: string }> {
-  const method = req.method === 'POST' ? 'POST' : 'GET';
+function stripHeaders(headers: Record<string, string>, drop: (lower: string) => boolean): void {
+  for (const name of Object.keys(headers)) {
+    if (drop(name.toLowerCase())) delete headers[name];
+  }
+}
+
+async function handleHttpFetch(
+  req: HttpFetchReq,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  let method = req.method === 'POST' ? 'POST' : 'GET';
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(req.headers ?? {})) {
     if (ALLOWED_HEADERS.has(k.toLowerCase())) headers[k] = v;
   }
-  let target = req.url;
+  let body: string | undefined = method === 'POST' ? req.body : undefined;
+  let target = new URL(req.url);
+  const requestOrigin = target.origin;
   for (let hop = 0; hop < 5; hop++) {
-    await assertPublicHttps(target);
-    const res = await fetch(target, {
-      method,
-      headers,
-      body: method === 'POST' ? req.body : undefined,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(30000),
-    });
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('location');
-      if (loc) {
-        target = new URL(loc, target).toString();
-        continue;
+    const pinned = await vetAndPin(target);
+    const res = await pinnedHttpsRequest(target, pinned, method, headers, body);
+    if (res.status >= 300 && res.status < 400 && res.location) {
+      const next = new URL(res.location, target);
+      // P2-9: on a cross-origin hop, drop credentials so the app's Codemagic
+      // token (or any auth header) never leaks to a redirect target it was not
+      // issued for. Once stripped it stays stripped for the rest of the chain.
+      if (next.origin !== requestOrigin) {
+        stripHeaders(headers, (l) => l === 'authorization' || l === 'x-auth-token');
       }
+      // P2-9: per fetch semantics, 301/302/303 turn a POST into a bodyless GET.
+      if (method === 'POST' && (res.status === 301 || res.status === 302 || res.status === 303)) {
+        method = 'GET';
+        body = undefined;
+        stripHeaders(headers, (l) => l === 'content-type');
+      }
+      target = next;
+      continue;
     }
-    return { ok: res.ok, status: res.status, body: await readCapped(res) };
+    return { ok: res.status >= 200 && res.status < 300, status: res.status, body: res.body };
   }
   throw new Error('blocked: too many redirects');
 }
@@ -151,11 +237,21 @@ function createWindow(): void {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  // Allow navigation ONLY to the app's own bundled entry point. Any other
+  // target (a different file: path, an http link, a data: URL) is denied so the
+  // full Node-backed bridge can never be attached to foreign content; http(s)
+  // is handed to the system browser instead.
   win.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('file:')) {
-      event.preventDefault();
-      if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    let sameApp = false;
+    try {
+      const u = new URL(url);
+      sameApp = u.protocol === 'file:' && u.pathname === appEntry.pathname;
+    } catch {
+      sameApp = false;
     }
+    if (sameApp) return;
+    event.preventDefault();
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url);
   });
 
   // OSC_SMOKE=1 makes a headless CI run prove the page and bridge came up.
@@ -184,8 +280,12 @@ ipcMain.handle('osc:send', (_e, sessionId: string, text: string) => host.send(se
 ipcMain.handle('osc:abort', (_e, sessionId: string) => host.abort(sessionId));
 ipcMain.handle(
   'osc:answerApproval',
-  (_e, sessionId: string, approvalId: string, answer: { approve: boolean; alwaysThisSession?: boolean }) =>
-    host.answerApproval(sessionId, approvalId, answer),
+  (
+    _e,
+    sessionId: string,
+    approvalId: string,
+    answer: { approve: boolean; alwaysThisSession?: boolean },
+  ) => host.answerApproval(sessionId, approvalId, answer),
 );
 
 ipcMain.handle('osc:status', () => host.status());

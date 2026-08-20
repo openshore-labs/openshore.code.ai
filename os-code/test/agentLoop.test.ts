@@ -6,6 +6,16 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
+import { toAnthropicMessages } from '../src/providers/anthropic.js';
+import type { ApprovalAnswer } from '../src/core/agent/types.js';
+
+async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitUntil timed out');
+    await new Promise((r) => setTimeout(r, 2));
+  }
+}
 
 describe('agent loop with native tool calls', () => {
   it('runs a tool, feeds the observation back, and finishes with text', async () => {
@@ -147,6 +157,134 @@ describe('guardrails', () => {
     await session.agent.run('read everything');
     const done = session.events.at(-1);
     expect(done && done.type === 'task-done' && done.reason).toBe('guardrail');
+  });
+});
+
+describe('abort correctness (C1, C2, C3)', () => {
+  // C1 (loop half): abort while a tool approval is pending must settle the run
+  // as 'aborted' and never execute the tool. Before the fix the loop awaited a
+  // never-resolving approver and run() hung forever.
+  it('abort during a pending approval resolves aborted and never runs the tool', async () => {
+    let resolveApproval: (a: ApprovalAnswer) => void = () => {};
+    const approvalPending = new Promise<ApprovalAnswer>((res) => {
+      resolveApproval = res;
+    });
+    const provider = new MockProvider('mock', [
+      toolTurn('runShell', { command: 'echo should-not-run' }),
+      textTurn('unreached'),
+    ]);
+    const session = makeTestSession(provider, {
+      approve: () => approvalPending, // never resolves on its own
+    });
+
+    const runPromise = session.agent.run('run it');
+    await waitUntil(() => session.approvals.length === 1);
+    session.agent.abort();
+    await runPromise; // must resolve because executeCall races the abort signal
+
+    const done = session.events.at(-1);
+    expect(done?.type).toBe('task-done');
+    expect(done && done.type === 'task-done' && done.reason).toBe('aborted');
+    // The tool never started.
+    expect(session.events.some((e) => e.type === 'tool-start')).toBe(false);
+
+    // A late approval must not execute the tool after the abort.
+    resolveApproval({ approve: true });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(session.events.some((e) => e.type === 'tool-start')).toBe(false);
+    expect(provider.requests).toHaveLength(1); // no second turn was ever sent
+
+    // C2: the pending call still gets a synthetic tool_result so the transcript
+    // pairs cleanly for the next Anthropic turn.
+    const { messages } = toAnthropicMessages(session.agent.history);
+    expect(unpairedToolUses(messages)).toEqual([]);
+  });
+
+  // C2: a guardrail trip mid tool-batch must leave a tool_result for EVERY
+  // recorded tool_use, or the next cloud turn 400s on a dangling block.
+  it('a guardrail trip mid-batch pairs every tool_use with a tool_result', async () => {
+    const provider = new MockProvider('mock', [
+      [
+        {
+          type: 'tool-call',
+          call: {
+            id: 'c1',
+            name: 'readFile',
+            argsText: '{"path":"a.txt"}',
+            args: { path: 'a.txt' },
+          },
+        },
+        {
+          type: 'tool-call',
+          call: {
+            id: 'c2',
+            name: 'readFile',
+            argsText: '{"path":"b.txt"}',
+            args: { path: 'b.txt' },
+          },
+        },
+        { type: 'done', stopReason: 'tool-calls' },
+      ],
+    ]);
+    const session = makeTestSession(provider, {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+        guardrails: { maxSteps: 1 }, // trips on the first call in the batch
+      },
+    });
+    await session.agent.run('read two files');
+
+    const done = session.events.at(-1);
+    expect(done && done.type === 'task-done' && done.reason).toBe('guardrail');
+
+    // Both call ids got a tool observation in the transcript.
+    const toolIds = session.agent.history.filter((m) => m.role === 'tool').map((m) => m.toolCallId);
+    expect(toolIds).toContain('c1');
+    expect(toolIds).toContain('c2');
+
+    // And the Anthropic view pairs every tool_use with a tool_result.
+    const { messages } = toAnthropicMessages(session.agent.history);
+    expect(unpairedToolUses(messages)).toEqual([]);
+  });
+});
+
+// Every tool_use block whose id has no matching tool_result block. Empty means
+// the transcript is well-formed for the Anthropic Messages API.
+function unpairedToolUses(messages: Array<Record<string, unknown>>): string[] {
+  const uses = new Set<string>();
+  const results = new Set<string>();
+  for (const m of messages) {
+    const content = m.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (block.type === 'tool_use' && typeof block.id === 'string') uses.add(block.id);
+      if (block.type === 'tool_result' && typeof block.tool_use_id === 'string')
+        results.add(block.tool_use_id);
+    }
+  }
+  return [...uses].filter((id) => !results.has(id));
+}
+
+describe('usage accounting (P2-1)', () => {
+  // Providers report a running snapshot, not per-chunk increments. The loop
+  // must take last-seen-wins per field, not sum, or a message_start count plus
+  // a cumulative message_delta count double-counts output tokens.
+  it('takes last-seen-wins per field instead of summing usage events', async () => {
+    const provider = new MockProvider('mock', [
+      [
+        { type: 'text', delta: 'done' },
+        { type: 'usage', promptTokens: 100, completionTokens: 2 }, // message_start-like
+        { type: 'usage', promptTokens: 0, completionTokens: 50 }, // cumulative message_delta
+        { type: 'done', stopReason: 'end' },
+      ],
+    ]);
+    const session = makeTestSession(provider);
+    await session.agent.run('hi');
+
+    const usage = session.events.find((e) => e.type === 'usage');
+    expect(usage && usage.type === 'usage' && usage.promptTokens).toBe(100);
+    // Summing would give 52; last-seen-wins keeps the cumulative 50.
+    expect(usage && usage.type === 'usage' && usage.completionTokens).toBe(50);
   });
 });
 

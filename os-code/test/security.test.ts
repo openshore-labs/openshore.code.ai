@@ -2,11 +2,13 @@
 // profiles. These are the promises the product makes; they get tests.
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Jail, JailViolation } from '../src/core/security/jail.js';
 import { containsSecret, redactSecrets } from '../src/core/security/redaction.js';
-import { EgressPolicy } from '../src/core/security/egress.js';
+import { EgressBlocked, EgressPolicy, isLocalHost } from '../src/core/security/egress.js';
 import {
   assertSafeBind,
   bearerFrom,
@@ -54,6 +56,26 @@ describe('redaction', () => {
     expect(containsSecret(dirty)).toBe(true);
     expect(containsSecret('nothing to see')).toBe(false);
   });
+
+  it('never corrupts serialized JSON, even when a value ends in a secret (P0-5)', () => {
+    const entries = [
+      { seq: 1, event: { type: 'tool-result', text: 'run with API_TOKEN=abcd1234efgh' } },
+      { seq: 2, event: { type: 'assistant-text', text: 'db PASSWORD=hunter2000000 and more' } },
+      {
+        seq: 3,
+        event: { type: 'task-start', input: 'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIexampleKEY' },
+      },
+    ];
+    for (const entry of entries) {
+      const line = redactSecrets(JSON.stringify(entry));
+      // The redacted line is still valid JSON and re-parses to the same shape.
+      const parsed = JSON.parse(line) as { seq: number };
+      expect(parsed.seq).toBe(entry.seq);
+    }
+    // A quoted config value still has its secret scrubbed.
+    expect(redactSecrets('API_KEY="super-secret-value"')).toContain('[redacted:assignment]');
+    expect(redactSecrets('API_KEY="super-secret-value"')).not.toContain('super-secret-value');
+  });
 });
 
 describe('egress policy', () => {
@@ -74,6 +96,39 @@ describe('egress policy', () => {
     expect(policy.check('https://sub.example.com/x', 'web-fetch').allowed).toBe(true);
     expect(policy.check('https://bad.example.com/x', 'web-fetch').allowed).toBe(false);
     expect(policy.check('https://other.org/x', 'web-fetch').allowed).toBe(false);
+  });
+
+  it('recognizes bracketed and zone-scoped IPv6 loopback/link-local as local (P2-8)', () => {
+    // WHATWG URL parsing keeps IPv6 literals bracketed and may carry a zone id;
+    // both must be stripped or the loopback address reads as a remote host.
+    expect(isLocalHost('[::1]')).toBe(true);
+    expect(isLocalHost('[fe80::1%eth0]')).toBe(true);
+    const off = new EgressPolicy({ webEnabled: false, allowlist: [], blocklist: [] });
+    expect(off.check('http://[::1]:8080/x', 'web-fetch').allowed).toBe(true);
+    expect(off.check('http://[fd00::1]/x', 'web-fetch').allowed).toBe(true);
+  });
+
+  it('re-checks every redirect hop and blocks a 3xx into a blocklisted host (D2)', async () => {
+    // A bare fetch would follow the 302 to the blocklisted host itself. The
+    // egress wrapper must re-run the policy on the redirect target and refuse.
+    const server = createServer((_req, res) => {
+      res.writeHead(302, { location: 'http://blocked.invalid/secret' });
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const policy = new EgressPolicy({
+        webEnabled: true,
+        allowlist: [],
+        blocklist: ['blocked.invalid'],
+      });
+      await expect(
+        policy.fetch(`http://127.0.0.1:${port}/start`, 'web-fetch'),
+      ).rejects.toBeInstanceOf(EgressBlocked);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
 

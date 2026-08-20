@@ -75,30 +75,50 @@ async function pullViaApi(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim();
-      buffer = buffer.slice(idx + 1);
-      if (!line) continue;
-      let obj: Record<string, unknown>;
-      try {
-        obj = JSON.parse(line);
-      } catch {
-        continue;
+  // Ollama ends a successful pull with an explicit {"status":"success"} line.
+  // A stream that simply ends (dropped connection, truncated body) is NOT a
+  // success, so track it and only report ok:true when we actually saw it.
+  let sawSuccess = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+        let obj: Record<string, unknown>;
+        try {
+          obj = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (typeof obj.error === 'string') {
+          return { ok: false, detail: `Ollama could not pull ${ref}: ${obj.error}` };
+        }
+        const status = String(obj.status ?? '');
+        if (status === 'success') sawSuccess = true;
+        const total = typeof obj.total === 'number' ? obj.total : undefined;
+        const completed = typeof obj.completed === 'number' ? obj.completed : undefined;
+        const percent = total && completed !== undefined ? (completed / total) * 100 : undefined;
+        onProgress({ line: status, percent, total, completed });
       }
-      if (typeof obj.error === 'string') {
-        return { ok: false, detail: `Ollama could not pull ${ref}: ${obj.error}` };
-      }
-      const status = String(obj.status ?? '');
-      const total = typeof obj.total === 'number' ? obj.total : undefined;
-      const completed = typeof obj.completed === 'number' ? obj.completed : undefined;
-      const percent = total && completed !== undefined ? (completed / total) * 100 : undefined;
-      onProgress({ line: status, percent, total, completed });
     }
+  } catch (err) {
+    // A connection dropped mid-pull must surface as a clean failure, not throw
+    // out of the CLI flow.
+    return {
+      ok: false,
+      detail: `The pull of ${ref} was interrupted: ${(err as Error).message}. Check your connection and disk space, then try again.`,
+    };
+  }
+  if (!sawSuccess) {
+    return {
+      ok: false,
+      detail: `The pull of ${ref} ended before Ollama reported success. Check your connection and disk space, then try again.`,
+    };
   }
   return { ok: true, detail: `${ref} is pulled and ready.` };
 }

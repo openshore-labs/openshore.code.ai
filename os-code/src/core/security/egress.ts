@@ -35,6 +35,20 @@ const PRIVATE_V4 = [
   /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
 ];
 
+/**
+ * Normalize a hostname for IP classification. WHATWG URL parsing keeps IPv6
+ * literals bracketed (`[::1]`) and may carry a zone id (`fe80::1%eth0`), and
+ * `isIP('[::1]')` is 0, so a bracketed loopback would otherwise never match the
+ * IPv6 branch and be treated as a remote host (P2-8). Strip both.
+ */
+function normalizeIpLiteral(host: string): string {
+  let h = host;
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+  const zone = h.indexOf('%');
+  if (zone !== -1) h = h.slice(0, zone);
+  return h;
+}
+
 export function isLocalHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (
@@ -46,7 +60,8 @@ export function isLocalHost(hostname: string): boolean {
     return true;
   }
   if (isIP(host) === 4) return PRIVATE_V4.some((re) => re.test(host));
-  if (isIP(host) === 6) return host === '::1' || host.startsWith('fd') || host.startsWith('fe80');
+  const v6 = normalizeIpLiteral(host);
+  if (isIP(v6) === 6) return v6 === '::1' || v6.startsWith('fd') || v6.startsWith('fe80');
   return false;
 }
 
@@ -107,13 +122,36 @@ export class EgressPolicy {
     return { allowed: true, reason: 'allowed by egress policy' };
   }
 
-  /** A fetch wrapper that refuses before any packet leaves the machine. */
+  /**
+   * A fetch wrapper that refuses before any packet leaves the machine. Redirects
+   * are followed manually so the egress policy is re-checked on EVERY hop: a
+   * bare `fetch` follows 3xx responses itself, and an allowed first URL that
+   * redirects into a blocklisted (or non-allowlisted, or non-local) host would
+   * otherwise reach it unchecked (D2). Bounded so a redirect loop cannot hang.
+   */
   async fetch(url: string, purpose: EgressPurpose, init?: RequestInit): Promise<Response> {
-    const decision = this.check(url, purpose);
-    if (!decision.allowed) {
-      throw new EgressBlocked(url, decision.reason);
+    const maxHops = 10;
+    let current = url;
+    for (let hop = 0; hop <= maxHops; hop++) {
+      const decision = this.check(current, purpose);
+      if (!decision.allowed) {
+        throw new EgressBlocked(current, decision.reason);
+      }
+      const res = await fetch(current, { ...init, redirect: 'manual' });
+      const location = res.headers.get('location');
+      if (res.status >= 300 && res.status < 400 && location) {
+        let next: string;
+        try {
+          next = new URL(location, current).toString();
+        } catch {
+          return res; // Unparseable Location: hand the raw redirect back.
+        }
+        current = next;
+        continue;
+      }
+      return res;
     }
-    return fetch(url, init);
+    throw new EgressBlocked(current, `Too many redirects following ${url} (over ${maxHops} hops).`);
   }
 }
 

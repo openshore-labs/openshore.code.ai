@@ -1,7 +1,14 @@
 // Config loading: global (~/.os-code/config.json) then project
 // (os-code.config.json), project wins per key. A missing file is fine, a
 // malformed file gets a precise, human error naming the file and the field.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigSchema, type OscConfig } from './schema.js';
@@ -83,16 +90,47 @@ export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
   return { config: parsed.data, sources, warnings };
 }
 
-/** Write the global config, creating ~/.os-code on first run. */
+/** Write the global config, creating ~/.os-code on first run. The read-modify-
+ *  write is guarded on both ends: an unparsable existing file is preserved and
+ *  refused (never silently treated as `{}`, which would discard providers,
+ *  stack, and permissions), and the write goes through a temp file + rename so
+ *  a crash mid-write can never leave a torn config on disk. */
 export function saveGlobalConfig(partial: unknown): string {
   const path = globalConfigPath();
   mkdirSync(oscHome(), { recursive: true });
-  const current = existsSync(path) ? (readJson(path).value ?? {}) : {};
+  let current: unknown = {};
+  if (existsSync(path)) {
+    const { value, error } = readJson(path);
+    if (error) {
+      // Overwriting a corrupt config with a partial would discard everything
+      // it held. Preserve it for recovery and refuse the write; the caller can
+      // fix or delete it and retry.
+      const backup = `${path}.corrupt`;
+      try {
+        copyFileSync(path, backup);
+      } catch {
+        // Best-effort: refusing the write matters more than the copy landing.
+      }
+      throw new Error(
+        `Refusing to save: ${error}. The existing config could not be parsed; a copy was preserved at ${backup}. Fix or delete ${path}, then retry.`,
+      );
+    }
+    current = value ?? {};
+  }
   const next = deepMerge(current, partial);
   // Validate before writing so a bad save can never brick the CLI.
   ConfigSchema.parse(next);
-  writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`);
+  writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
   return path;
+}
+
+/** Write via a temp file on the same directory, then rename over the target.
+ *  The rename is atomic on a POSIX filesystem, so a reader never sees a partial
+ *  file and a crash mid-write leaves the previous config intact. */
+function writeFileAtomic(path: string, data: string): void {
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, path);
 }
 
 /** Parse defaults only, used where config must never throw (doctor itself). */

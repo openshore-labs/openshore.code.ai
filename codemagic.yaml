@@ -40,6 +40,7 @@ workflows:
     scripts:
       - name: Install workspace dependencies
         script: |
+          set -euo pipefail
           # The build image pre-enables corepack, so the `pnpm` on PATH is a
           # corepack shim. That shim self-provisions pnpm through corepack,
           # whose bundled npm registry signing keys are stale, and dies with
@@ -54,12 +55,14 @@ workflows:
           pnpm install --frozen-lockfile
       - name: Build the engine and the web app, sync the iOS project
         script: |
+          set -euo pipefail
           pnpm --filter os-code build
           cd app
           npx vite build
           npx cap sync ios
       - name: Stamp the build number
         script: |
+          set -euo pipefail
           cd app/ios/App
           agvtool new-version -all "$BUILD_NUMBER"
       - name: Set up code signing
@@ -94,6 +97,7 @@ workflows:
           xcode-project use-profiles --project "app/ios/App/App.xcodeproj"
       - name: Build the signed IPA
         script: |
+          set -euo pipefail
           # The OscodeLlama plugin depends on LLM.swift, which is macro-based
           # (swift-syntax + a compiler-plugin target) and also pulls the
           # swift-docc build plugin. In a headless xcodebuild archive there is
