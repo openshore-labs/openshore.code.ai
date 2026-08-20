@@ -42,7 +42,7 @@ export function ConnectionsScreen() {
                     {p.models.length} models. Key looks like {p.keyHint}
                   </div>
                 </div>
-                {on ? <span className="pill local">connected</span> : null}
+                {on ? <span className="pill ok">connected</span> : null}
                 {on ? (
                   <button
                     className="btn ghost"

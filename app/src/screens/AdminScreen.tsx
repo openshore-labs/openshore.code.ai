@@ -74,7 +74,7 @@ export function AdminScreen() {
                 {org.seatCount} {org.seatCount === 1 ? 'seat' : 'seats'} declared. {tier.blurb}
               </div>
             </div>
-            <span className="pill local">{priceLabel(tier)}</span>
+            <span className="pill price">{priceLabel(tier)}</span>
             <button
               className="btn ghost"
               style={{ padding: '8px 14px' }}

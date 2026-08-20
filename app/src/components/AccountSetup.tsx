@@ -112,7 +112,7 @@ export function AccountSetup() {
                     <h3 style={{ color: 'var(--local)' }}>{tier.name} plan</h3>
                     <div className="sub">{tier.blurb}</div>
                   </div>
-                  <span className="pill local">{priceLabel(tier)}</span>
+                  <span className="pill price">{priceLabel(tier)}</span>
                 </div>
               </div>
               <p className="hint" style={{ marginTop: 8 }}>

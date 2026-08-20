@@ -31,13 +31,41 @@ export function ToolCard({ item }: { item: ToolItem }) {
       <span className="spinner" aria-label="running" />
     ) : item.state === 'ok' ? (
       <span className={`tool-state ok`}>
-        {'✓'}
+        <svg
+          className="icon-inline"
+          viewBox="0 0 24 24"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 12.5 9.5 18 20 6.5" />
+        </svg>
         {item.durationMs !== undefined ? ` ${(item.durationMs / 1000).toFixed(1)}s` : ''}
       </span>
     ) : item.state === 'denied' ? (
       <span className="tool-state denied">skipped</span>
     ) : (
-      <span className="tool-state fail">{'✗'}</span>
+      <span className="tool-state fail">
+        <svg
+          className="icon-inline"
+          viewBox="0 0 24 24"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </span>
     );
 
   return (
