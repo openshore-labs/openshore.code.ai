@@ -61,7 +61,6 @@ function useCountUp(target: number, durationMs = 1100): number {
 interface RingSpec {
   key: string;
   fraction: number;
-  gradient: [string, string];
   radius: number;
 }
 
@@ -74,19 +73,16 @@ function Rings({ health, animate }: { health: StackHealth; animate: boolean }) {
     {
       key: 'private',
       fraction: health.privacyRing.fraction,
-      gradient: ['#24454f', '#4b90a3'],
       radius: 86,
     },
     {
       key: 'flow',
       fraction: health.flowRing.fraction,
-      gradient: ['#5a6b72', '#8aa0a8'],
       radius: 66,
     },
     {
       key: 'saved',
       fraction: health.savedRing.fraction,
-      gradient: ['#a35f0a', '#e0902f'],
       radius: 46,
     },
   ];
@@ -100,8 +96,10 @@ function Rings({ health, animate }: { health: StackHealth; animate: boolean }) {
       <defs>
         {rings.map((r) => (
           <linearGradient key={r.key} id={`sh-grad-${r.key}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={r.gradient[0]} />
-            <stop offset="100%" stopColor={r.gradient[1]} />
+            {/* Stop colors are token-routed in theme.css (.sh-stop-*) so the
+                rings and the legend swatches read the same values by name. */}
+            <stop offset="0%" className={`sh-stop-${r.key}-a`} />
+            <stop offset="100%" className={`sh-stop-${r.key}-b`} />
           </linearGradient>
         ))}
       </defs>

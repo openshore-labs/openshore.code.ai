@@ -52,6 +52,17 @@
   /* Wave-mark accent from the brand tile (the lighter shore teal). */
   --wave: #4b90a3;
 
+  /* Flow: the neutral competence tone that sits between teal (local) and amber
+     (spend) on the Stack Health rings. Names values already used there. */
+  --flow: #8aa0a8;
+  --flow-deep: #5a6b72;
+  /* The bright end of the amber spend gradient (Stack Health saved ring). */
+  --cloud-bright: #e0902f;
+
+  /* Warm-paper fill under code and command surfaces, one shade darker than the
+     paper ground. Names a value already hardcoded across those surfaces. */
+  --code-surface: #f3f1e8;
+
   --radius: 14px;
   --radius-lg: 20px;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, sans-serif;
@@ -253,8 +264,11 @@ textarea {
 }
 
 .nav-item .glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
-  text-align: center;
+  height: 20px;
   opacity: 0.9;
 }
 
@@ -483,7 +497,7 @@ textarea {
   padding: 0.12em 0.4em;
 }
 .md pre {
-  background: #f1eee4;
+  background: var(--code-surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 14px;
@@ -583,6 +597,12 @@ textarea {
   font-size: 12px;
 }
 
+/* Small functional glyphs (tool pass/fail, Next arrow) drawn in the same
+   line-icon language as the nav; nudged to sit on the text baseline. */
+.icon-inline {
+  vertical-align: -0.14em;
+}
+
 .tool-state.ok {
   color: var(--ok);
 }
@@ -598,7 +618,7 @@ textarea {
 
 .tool-card-detail {
   border-top: 1px solid var(--border);
-  background: #f3f1e8;
+  background: var(--code-surface);
   padding: 10px 12px;
   overflow-x: auto;
   font-family: var(--font-mono);
@@ -897,7 +917,7 @@ textarea {
 }
 
 .sheet-detail {
-  background: #f3f1e8;
+  background: var(--code-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 12px;
@@ -1160,6 +1180,17 @@ textarea {
 .pill.muted {
   background: var(--surface);
   color: var(--muted);
+}
+/* A cloud/service is reachable. Status green, never teal: teal is reserved for
+   local/private/kept, so a cloud connection must not borrow it. */
+.pill.ok {
+  background: rgba(47, 143, 78, 0.14);
+  color: var(--ok);
+}
+/* A plan price. Price is spend, so it wears the amber spend family, not teal. */
+.pill.price {
+  background: var(--cloud-soft);
+  color: var(--cloud);
 }
 
 .field {
@@ -1436,7 +1467,7 @@ textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   color: var(--ink-soft);
@@ -2342,9 +2373,10 @@ textarea {
   font-weight: 600;
 }
 .chevron {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: transform 0.22s cubic-bezier(0.32, 0.72, 0.28, 1);
-  font-size: 15px;
 }
 .chevron.open {
   transform: rotate(90deg);
@@ -2406,7 +2438,7 @@ textarea {
   padding: 3px 8px;
 }
 .pull-cmd {
-  background: #f3f1e8;
+  background: var(--code-surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 9px 11px;
@@ -2714,10 +2746,32 @@ textarea {
   background: var(--wave);
 }
 .sh-lg-flow::before {
-  background: #8aa0a8;
+  background: var(--flow);
 }
 .sh-lg-saved::before {
   background: var(--cloud);
+}
+
+/* Ring gradient stops, token-routed so the rings and the legend swatches above
+   agree by name, not by a coincidence of matching literals. A CSS stop-color
+   property overrides the SVG presentation attribute, so the values live here. */
+.sh-stop-private-a {
+  stop-color: var(--local-deep);
+}
+.sh-stop-private-b {
+  stop-color: var(--wave);
+}
+.sh-stop-flow-a {
+  stop-color: var(--flow-deep);
+}
+.sh-stop-flow-b {
+  stop-color: var(--flow);
+}
+.sh-stop-saved-a {
+  stop-color: var(--cloud);
+}
+.sh-stop-saved-b {
+  stop-color: var(--cloud-bright);
 }
 
 .sh-card {

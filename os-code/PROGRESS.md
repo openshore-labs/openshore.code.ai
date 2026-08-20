@@ -125,9 +125,27 @@ Layer status:
       is now 680K instead of ~177MB. Anyone with an existing local clone
       needs to re-clone or hard-reset to the new hashes; a third,
       unrelated branch on the remote was left untouched.
-- [ ] **Real openshore.ai brand palette**: swap at the `OPENSHORE:` markers
-      in `app/src/theme.css` and `app/scripts/gen-icon.py` when the real
-      hexes land.
+- [x] **Real openshore.ai brand palette: finalized (already matched).** Verified
+      the app's tokens against the canonical brand in the marketing repo
+      (`Open-Shore-LLC-Homepage/src/static/styles.css`): paper/ink/ink-soft/
+      ink-faint/water/water-deep/hairline and Fraunces+Inter all match
+      token-for-token. The `OPENSHORE:` markers were gone because the real values
+      were already in; the to-do was stale. Amber (`--cloud`) is the intentional
+      OS Code product accent on top of the OpenShore base (teal = local/private,
+      amber = cloud/spend). No palette value changed.
+- [x] **Brand audit + finalization (Brand Exec + CMO).** One audit pass, all
+      consistency fixes, no foundation change. Replaced the sidebar's mismatched
+      Unicode nav glyphs (several rendered as color emoji, breaking the palette)
+      with a coherent hand-drawn inline-SVG line-icon set in the wave-mark
+      language, currentColor so the active state tints teal. Reserved teal for
+      local/private only: connection/build "connected"/"finished"/"connected"
+      status moved off `pill local` to a neutral `pill ok`, plan price to a
+      `pill price` (spend). Token-routed the Stack Health ring gradients + legend
+      (added additive `--flow`/`--flow-deep`/`--cloud-bright` naming existing
+      values; rings render identically), unified the mono font on code surfaces
+      (`--font-mono`), added `--code-surface`, and swapped the last stray text
+      glyphs (check/X/arrow/chevron) to inline SVG. Gates green (app 76 tests +
+      vite build). BrandMark and the frozen mark SVGs/PNGs left untouched.
 - [x] **App polish bundle, Tier 1:** done. Navy launch continuity (iOS),
       sheet spring physics, haptics (first token, approval, download
       success), token-stream smoothing in the app transcript.

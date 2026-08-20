@@ -21,7 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function statusPill(status: string): string {
-  if (status === 'finished') return 'pill local';
+  if (status === 'finished') return 'pill ok';
   if (status === 'failed' || status === 'timeout') return 'pill tight';
   return 'pill muted';
 }
@@ -130,7 +130,7 @@ export function LaunchScreen() {
                   : 'Add your Codemagic API token to trigger and follow builds.'}
               </div>
             </div>
-            {codemagicConnected ? <span className="pill local">connected</span> : null}
+            {codemagicConnected ? <span className="pill ok">connected</span> : null}
             {codemagicConnected ? (
               <button
                 className="btn ghost"
