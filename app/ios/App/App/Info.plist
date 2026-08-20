@@ -18,6 +18,20 @@
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Custom URL scheme for Supabase auth callbacks: magic-link and
+	     email-confirmation links redirect to oscode://auth-callback, which
+	     opens the app and is handled by useAuthDeepLink. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ai.openshore.oscode.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>oscode</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>

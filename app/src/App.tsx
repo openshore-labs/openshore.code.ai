@@ -2,6 +2,7 @@
 // active room. The chat is home; everything else is a short visit.
 import { useEffect, useState } from 'react';
 import { useApp } from './state/store.js';
+import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
 import { Sidebar } from './components/Sidebar.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
@@ -29,6 +30,7 @@ function useCompact(): boolean {
 export function App() {
   const { ready, view, drawerOpen, toast, init } = useApp();
   const compact = useCompact();
+  useAuthDeepLink();
 
   useEffect(() => {
     void init();
