@@ -10,6 +10,12 @@ export const CatalogSourceSchema = z.object({
   ref: z.string(),
   /** The exact command a user runs to fetch it, shown before install. */
   pullCommand: z.string(),
+  /** OPTIONAL, back-compat. For an Ollama-distributed model: the Hugging Face
+   *  GGUF repo id to read popularity from, since Ollama has no public JSON
+   *  popularity API. Omitting it just means the model carries no popularity
+   *  number (never a fabricated one). Ignored for HF-distributed models, which
+   *  read their own ref. */
+  popularityRef: z.string().optional(),
 });
 
 export const CatalogLicenseSchema = z.object({

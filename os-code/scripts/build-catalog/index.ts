@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { CatalogSchema } from '../../src/market/schema.js';
 import { enrichCatalog } from './enrich.js';
 import { regressionGate, validateCatalog } from './gate.js';
-import { gatherMetadata, HuggingFaceSource, OllamaSource } from './sources.js';
+import { gatherMetadata, HuggingFaceSource } from './sources.js';
 import type { BuildInputs, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -47,15 +47,29 @@ async function main(): Promise<void> {
   // does not answer contributes nothing (popularity and timestamps degrade to
   // omitted), which never fails the build.
   let metadata: Record<string, ModelMetadata> = {};
-  if (process.env.CATALOG_OFFLINE !== '1') {
-    const refs = seedCatalog.models.map((m) => ({ ref: m.source.ref, kind: m.source.kind }));
+  const online = process.env.CATALOG_OFFLINE !== '1';
+  if (online) {
+    const refs = seedCatalog.models.map((m) => ({
+      ref: m.source.ref,
+      kind: m.source.kind,
+      // Popularity is HF only; an Ollama model reads its HF GGUF home.
+      popularityRef: m.source.popularityRef,
+    }));
     try {
-      metadata = await gatherMetadata(refs, {
-        huggingface: new HuggingFaceSource(),
-        ollama: new OllamaSource(),
-      });
+      metadata = await gatherMetadata(refs, { huggingface: new HuggingFaceSource() });
     } catch (err) {
       console.warn(`Metadata gather failed, building without popularity: ${String(err)}`);
+    }
+    // Bug C: a swallowed fetch failure used to look identical to "source has no
+    // entry", which is how the first live CI run published popularity empty on
+    // every model. An ONLINE run that resolves zero popularity is almost
+    // certainly a broken fetcher, not a real state. Warn loudly (a soft
+    // build-log signal, NOT a hard gate) so it is caught, and keep publishing so
+    // a source outage never takes the storefront down.
+    if (Object.keys(metadata).length === 0) {
+      console.warn(
+        'WARNING: online build resolved 0 popularity entries. Publishing anyway, but the storefront will show empty popularity. Check the source fetchers before trusting this run.',
+      );
     }
   }
 

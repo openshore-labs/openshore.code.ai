@@ -5,7 +5,12 @@
 import type { CatalogModel } from 'os-code/protocol';
 import type { CapabilityCategory } from 'os-code/protocol';
 
-export type SortKey = 'recommended' | 'popular' | 'newest' | 'fit';
+// Browse axes. Three of these are honest, differently-sourced lenses on the
+// same catalog: 'staff' is the editorial shortlist (chosen), 'popular' is the
+// world's downloads/likes (counted, never quality), and 'used' is the user's
+// OWN local turn counts (private, this machine only). 'recommended' stays the
+// default, 'newest' and 'fit' are utility.
+export type SortKey = 'recommended' | 'staff' | 'popular' | 'used' | 'newest' | 'fit';
 
 export type FitLabel = 'fits' | 'tight' | 'too-big';
 
@@ -91,11 +96,41 @@ export function osCodeFit(model: CatalogModel): number | undefined {
 }
 
 /** Popularity as a single sortable number. Downloads dominate; likes break ties.
- *  Labelled as popularity everywhere it surfaces, never as quality. */
+ *  Labelled as popularity everywhere it surfaces, never as quality. Code
+ *  defensively: the builder that populates this field is landing in parallel, so
+ *  popularity may be undefined on any given model, and this returns undefined
+ *  (which the sort sends last) rather than a fabricated zero. */
 export function popularityScore(model: CatalogModel): number | undefined {
   const p = model.popularity;
   if (!p) return undefined;
   return p.downloads + p.likes * 50;
+}
+
+/** A compact, honest count for display: 1.2M, 3.4k, 920. Never rounds up to a
+ *  friendlier lie. */
+function compactCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return `${n}`;
+}
+
+/** A plain-language popularity line for a card, or undefined when the model has
+ *  no popularity data yet. Middle dot for the label/data pair (survives
+ *  truncation, never reads as part of a count). Never presented as quality. */
+export function popularityLabel(model: CatalogModel): string | undefined {
+  const p = model.popularity;
+  if (!p) return undefined;
+  const src = p.source === 'huggingface' ? 'Hugging Face' : 'Ollama';
+  return `${compactCount(p.downloads)} downloads · ${compactCount(p.likes)} likes on ${src}`;
+}
+
+/** The user's OWN local turn count for a model, or undefined if they have never
+ *  run it. Matches on the catalog id first, then the pullable source ref, since
+ *  the engine records turns under whichever name the stack was configured with.
+ *  This is per-machine private usage; it is never cross-user data. */
+export function usageTurns(model: CatalogModel, usage?: Map<string, number>): number | undefined {
+  if (!usage) return undefined;
+  return usage.get(model.id) ?? usage.get(model.source.ref);
 }
 
 function timestamp(model: CatalogModel): number | undefined {
@@ -130,12 +165,16 @@ export function sortModels(
   models: CatalogModel[],
   sort: SortKey,
   memoryGB: number,
+  usageByModel?: Map<string, number>,
 ): CatalogModel[] {
   const list = [...models];
   switch (sort) {
     case 'recommended':
+    case 'staff':
       // Recommended first, then curation.rank. Popularity never outranks the
-      // curated order here: this is the default and the editorial voice.
+      // curated order here: this is the default and the editorial voice. The
+      // 'staff' axis reuses this ordering; the screen narrows its list to only
+      // the picks (the opinionated shortlist), so what remains stays ranked.
       return list.sort((a, b) => {
         const ra = a.recommended?.isRecommended ? 0 : 1;
         const rb = b.recommended?.isRecommended ? 0 : 1;
@@ -144,6 +183,10 @@ export function sortModels(
       });
     case 'popular':
       return list.sort((a, b) => byValueThenRank(a, b, popularityScore, 'desc'));
+    case 'used':
+      // The user's own local usage: most-run first, models never run sent last
+      // (undefined value), curation.rank breaking ties. Private, per-machine.
+      return list.sort((a, b) => byValueThenRank(a, b, (m) => usageTurns(m, usageByModel), 'desc'));
     case 'newest':
       return list.sort((a, b) => byValueThenRank(a, b, timestamp, 'desc'));
     case 'fit':

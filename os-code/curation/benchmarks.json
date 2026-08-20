@@ -10,5 +10,20 @@
   "qwen2.5-coder-1.5b": { "HumanEval": 55, "tokens per second": 100 },
   "qwen2.5-1.5b-phone": { "MMLU": 60, "tokens per second": 95 },
   "llama3.2-1b-phone": { "MMLU": 49, "tokens per second": 110 },
-  "smollm2-1.7b-phone": { "MMLU": 50, "tokens per second": 90 }
+  "smollm2-1.7b-phone": { "MMLU": 50, "tokens per second": 90 },
+  "qwen2.5-coder-3b": { "HumanEval": 84, "MBPP": 73 },
+  "qwen2.5-7b": { "MMLU": 74, "MT-Bench": 8.4 },
+  "qwen2.5-14b": { "MMLU": 79, "GSM8K": 90 },
+  "qwen2.5-32b": { "MMLU": 83, "HumanEval": 88 },
+  "mistral-7b": { "MMLU": 62, "MT-Bench": 7.6 },
+  "mistral-nemo-12b": { "MMLU": 68, "MT-Bench": 8.0 },
+  "phi4-14b": { "MMLU": 85, "HumanEval": 82 },
+  "phi3.5-mini": { "MMLU": 69, "tokens per second": 95 },
+  "gemma2-9b": { "MMLU": 71, "MT-Bench": 8.5 },
+  "gemma2-2b": { "MT-Bench": 8.0, "tokens per second": 100 },
+  "llama3.2-3b": { "MMLU": 63, "tokens per second": 90 },
+  "deepseek-r1-7b": { "MMLU": 66, "MATH-500": 80 },
+  "yi-coder-9b": { "HumanEval": 85, "MBPP": 73 },
+  "granite3.1-8b": { "MMLU": 65, "HumanEval": 72 },
+  "deepseek-r1-llama-8b": { "MMLU": 68, "MATH-500": 85 }
 }

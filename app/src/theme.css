@@ -2302,6 +2302,30 @@ textarea {
   color: var(--muted);
 }
 
+/* Not-yet-rated: a quiet dashed pill, clearly not a star row. It reads as
+   "no quality verdict yet," never as a bad score. */
+.not-rated-row {
+  margin-top: 12px;
+}
+.not-rated {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  padding: 4px 11px;
+}
+
+/* Popularity line: the world's downloads and likes, stated as popularity and
+   never as quality. Deliberately quieter than the stars above it. */
+.market-pop {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* Card foot: a real disclosure with a chevron, plus a compare toggle. */
 .card-foot {
   display: flex;
