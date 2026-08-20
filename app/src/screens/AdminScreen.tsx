@@ -17,7 +17,6 @@ export function AdminScreen() {
     setSeatCount,
     setPreviewAsMember,
     manageBilling,
-    startCheckout,
     entitlement,
     showToast,
   } = useApp();
@@ -112,8 +111,9 @@ export function AdminScreen() {
             </div>
           ) : null}
 
-          {/* Billing lives on the web (Apple 3.1.1): the app shows status and
-              sends the admin out to buy or manage the subscription. */}
+          {/* Billing lives entirely on the web (Apple 3.1.1, and no in-app
+              purchase): the app shows status and opens openshore.ai to buy or
+              manage the subscription. */}
           <div className="card-row" style={{ marginTop: 12 }}>
             <div className="grow">
               <div className="sub">
@@ -123,15 +123,15 @@ export function AdminScreen() {
                         ? ` · renews ${new Date(entitlement.validUntil).toLocaleDateString()}`
                         : ''
                     }`
-                  : 'No active subscription yet. Buy seats on the web.'}
+                  : 'No active subscription yet. Seats are purchased on the web.'}
               </div>
             </div>
             <button
               className={`btn ${entitlement ? 'ghost' : 'primary'}`}
               style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}
-              onClick={() => void (entitlement ? manageBilling() : startCheckout(org.tierId))}
+              onClick={() => void manageBilling()}
             >
-              {entitlement ? 'Manage billing' : 'Buy seats'}
+              {entitlement ? 'Manage billing' : 'Buy seats on the web'}
             </button>
           </div>
         </div>
