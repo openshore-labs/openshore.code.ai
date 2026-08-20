@@ -9,15 +9,74 @@ import { isDesktop } from '../lib/platform.js';
 import { daemonHealth } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 
+// Clean white glyphs for the Tailscale download rows, drawn on a solid teal
+// tile (iOS-app-icon feel). One per platform.
+const GLYPHS: Record<string, JSX.Element> = {
+  apple: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#fff"
+        d="M15.77 12.9c-.02-2.13 1.74-3.15 1.82-3.2-.99-1.45-2.54-1.65-3.09-1.67-1.31-.13-2.56.77-3.23.77-.66 0-1.69-.75-2.78-.73-1.43.02-2.75.83-3.48 2.11-1.48 2.57-.38 6.38 1.06 8.47.7 1.02 1.54 2.17 2.63 2.13 1.05-.04 1.45-.68 2.72-.68 1.27 0 1.63.68 2.74.66 1.13-.02 1.85-1.04 2.55-2.07.8-1.19 1.13-2.34 1.15-2.4-.03-.01-2.2-.85-2.22-3.36zM13.7 6.3c.58-.7.97-1.68.86-2.65-.83.03-1.84.55-2.44 1.25-.53.62-1 1.61-.88 2.56.93.07 1.88-.47 2.46-1.16z"
+      />
+    </svg>
+  ),
+  windows: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="#fff">
+      <rect x="3.5" y="4" width="7.4" height="7.4" rx="0.8" />
+      <rect x="13.1" y="4" width="7.4" height="7.4" rx="0.8" />
+      <rect x="3.5" y="12.6" width="7.4" height="7.4" rx="0.8" />
+      <rect x="13.1" y="12.6" width="7.4" height="7.4" rx="0.8" />
+    </svg>
+  ),
+  linux: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#fff" strokeWidth="1.6">
+      <rect x="3" y="5" width="18" height="14" rx="2.2" />
+      <path d="M7 10l2.6 2-2.6 2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.4 14.2h4.2" strokeLinecap="round" />
+    </svg>
+  ),
+  phone: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#fff" strokeWidth="1.6">
+      <rect x="6.5" y="2.5" width="11" height="19" rx="2.6" />
+      <path d="M10.5 5h3" strokeLinecap="round" />
+    </svg>
+  ),
+  android: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#fff" d="M8 8.5a4 4 0 0 1 8 0zM8 9h8v6.4a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1z" />
+      <rect x="4.6" y="9.6" width="1.8" height="5.4" rx="0.9" fill="#fff" />
+      <rect x="17.6" y="9.6" width="1.8" height="5.4" rx="0.9" fill="#fff" />
+      <rect x="9.4" y="16" width="1.8" height="3.2" rx="0.9" fill="#fff" />
+      <rect x="12.8" y="16" width="1.8" height="3.2" rx="0.9" fill="#fff" />
+      <path
+        d="M9.2 5.6l1.3 1.9M14.8 5.6l-1.3 1.9"
+        stroke="#fff"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <circle cx="10.3" cy="6.9" r="0.65" fill="var(--local)" />
+      <circle cx="13.7" cy="6.9" r="0.65" fill="var(--local)" />
+    </svg>
+  ),
+};
+
 // Tailscale download links, shown on the phone pairing screen so a new user can
 // install it on their desktop without hunting. Desktop platforms use Tailscale's
 // own per-OS download pages; mobile points at the app stores.
-const TAILSCALE_LINKS: { label: string; href: string }[] = [
-  { label: 'macOS', href: 'https://tailscale.com/download/macos' },
-  { label: 'Windows', href: 'https://tailscale.com/download/windows' },
-  { label: 'Linux', href: 'https://tailscale.com/download/linux' },
-  { label: 'iPhone / iPad', href: 'https://apps.apple.com/app/tailscale/id1470499037' },
-  { label: 'Android', href: 'https://play.google.com/store/apps/details?id=com.tailscale.ipn' },
+const TAILSCALE_LINKS: { label: string; glyph: keyof typeof GLYPHS; href: string }[] = [
+  { label: 'macOS', glyph: 'apple', href: 'https://tailscale.com/download/macos' },
+  { label: 'Windows', glyph: 'windows', href: 'https://tailscale.com/download/windows' },
+  { label: 'Linux', glyph: 'linux', href: 'https://tailscale.com/download/linux' },
+  {
+    label: 'iPhone / iPad',
+    glyph: 'phone',
+    href: 'https://apps.apple.com/app/tailscale/id1470499037',
+  },
+  {
+    label: 'Android',
+    glyph: 'android',
+    href: 'https://play.google.com/store/apps/details?id=com.tailscale.ipn',
+  },
 ];
 
 export function PairScreen() {
@@ -180,16 +239,18 @@ function PhonePair() {
           <div className="sub" style={{ marginTop: 12 }}>
             Get Tailscale (free for personal use):
           </div>
-          <div className="dl-row">
+          <div className="dl-list">
             {TAILSCALE_LINKS.map((l) => (
               <a
                 key={l.label}
-                className="dl-chip"
+                className="dl-item"
                 href={l.href}
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                {l.label}
+                <span className="dl-tile">{GLYPHS[l.glyph]}</span>
+                <span className="dl-name">{l.label}</span>
+                <span className="dl-get">GET</span>
               </a>
             ))}
           </div>

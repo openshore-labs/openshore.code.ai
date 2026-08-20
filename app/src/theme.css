@@ -1047,36 +1047,75 @@ textarea {
   text-decoration: none;
 }
 
-/* Download chips (e.g. the Tailscale links on the pairing screen). A wrapping
-   row of small pill anchors in the brand water teal. */
-.dl-row {
+/* Download rows (the Tailscale links on the pairing screen). A compact take on
+   the marketing store cards: a solid water-teal glyph tile, the platform name,
+   and a GET pill, one line each. */
+.dl-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
-.dl-chip {
-  display: inline-flex;
+.dl-item {
+  display: flex;
   align-items: center;
-  padding: 7px 13px;
-  border-radius: 999px;
-  background: var(--local-soft);
-  color: var(--local);
-  font-size: 13px;
-  font-weight: 600;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
   text-decoration: none;
+  color: var(--ink);
   transition:
     background 0.12s ease,
+    border-color 0.12s ease,
     transform 0.06s ease;
 }
 
-.dl-chip:hover {
-  background: rgba(47, 90, 102, 0.18);
+.dl-item:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
 }
 
-.dl-chip:active {
-  transform: scale(0.97);
+.dl-item:active {
+  transform: scale(0.99);
+}
+
+.dl-tile {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--local);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(28, 42, 51, 0.16);
+}
+
+.dl-tile svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.dl-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.dl-get {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--local);
+  background: var(--local-soft);
+  padding: 5px 12px;
+  border-radius: 999px;
 }
 
 .card-row {
