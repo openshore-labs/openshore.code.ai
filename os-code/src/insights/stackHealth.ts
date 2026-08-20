@@ -12,10 +12,11 @@
 //   2. "Dollars saved" is an estimate, not a receipt: it reprices the tokens
 //      that ran locally at a named cloud reference rate (Claude Sonnet). The
 //      basis travels with the number so the UI can show what it assumes.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig } from '../config/load.js';
 import { listSessions, sessionsDir, type SessionInfo } from '../daemon/session.js';
+import { isSealed, loadOrCreateDataKey, openString } from '../core/security/atRest.js';
 import type { DriverEvent } from '../core/agent/types.js';
 import type {
   StackHealth,
@@ -46,9 +47,9 @@ interface LoadedSession {
 
 // ---------------------------------------------------------------- disk reads
 
-/** Read one session's journal, tolerating a missing file, a bad line, or a
- *  sealed line (sealing is a separate task; sealed lines are skipped until an
- *  engine-side open() lands, never crashing the read). */
+/** Read one session's journal: sealed lines open with the data key, plaintext
+ *  (pre-encryption) lines pass through, and anything unreadable is skipped,
+ *  never fatal. */
 function readJournal(id: string): DriverEvent[] {
   const path = join(sessionsDir(), id, 'events.jsonl');
   if (!existsSync(path)) return [];
@@ -59,14 +60,39 @@ function readJournal(id: string): DriverEvent[] {
   } catch {
     return [];
   }
+  const dk = loadOrCreateDataKey();
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
+    const clear = isSealed(line) ? (dk ? openString(dk.key, line) : null) : line;
+    if (clear === null) continue;
     try {
-      const parsed = JSON.parse(line) as { seq: number; event: DriverEvent };
+      const parsed = JSON.parse(clear) as { seq: number; event: DriverEvent };
       if (parsed && parsed.event) out.push(parsed.event);
     } catch {
-      // A sealed or malformed line degrades to skipped, never a thrown read.
+      // A malformed line degrades to skipped, never a thrown read.
     }
+  }
+  return out;
+}
+
+/** The at-rest truth, checked, not asserted: prefix-scan EVERY session journal
+ *  (in range or not) and count lines that are still plaintext. The seal claims
+ *  green only when this comes back zero, so the claim covers all history on
+ *  disk, not just the window being viewed. Prefix checks only, no decrypting,
+ *  so the scan stays cheap. */
+function scanAtRest(): { plainLines: number; sealedLines: number } {
+  const out = { plainLines: 0, sealedLines: 0 };
+  const dir = sessionsDir();
+  if (!existsSync(dir)) return out;
+  for (const id of readdirSync(dir)) {
+    try {
+      const raw = readFileSync(join(dir, id, 'events.jsonl'), 'utf8');
+      for (const line of raw.split('\n')) {
+        if (!line.trim()) continue;
+        if (isSealed(line)) out.sealedLines += 1;
+        else out.plainLines += 1;
+      }
+    } catch {}
   }
   return out;
 }
@@ -244,11 +270,43 @@ function buildCrew(
   return crew;
 }
 
-/** The privacy seal facts, every one literally true. Telemetry is off by
- *  construction. Data-left-device reflects real cloud calls rather than a
- *  fake zero. Encryption-at-rest stays a candid amber until the sealing task
- *  ships and journals are actually sealed. */
-function buildSeal(cloudTurns: number, encryptedAtRest: boolean): StackHealthSealFact[] {
+/** The privacy seal facts, every one computed, none asserted. Telemetry is off
+ *  by construction. Data-left-device reflects real cloud calls rather than a
+ *  fake zero. Encryption-at-rest is graded from the actual disk scan and from
+ *  the backend that holds the key: green means a system keychain holds the key
+ *  AND no plaintext line remains anywhere on disk; anything less says exactly
+ *  what is less about it. */
+function buildSeal(
+  cloudTurns: number,
+  atRest: { plainLines: number; sealedLines: number },
+  keyProtection: 'keychain' | 'encrypted-file' | undefined,
+): StackHealthSealFact[] {
+  let encrypted: StackHealthSealFact;
+  if (!keyProtection) {
+    encrypted = {
+      key: 'encryptedAtRest',
+      state: 'pending',
+      label: 'Sessions are not yet encrypted at rest.',
+    };
+  } else if (atRest.plainLines > 0) {
+    encrypted = {
+      key: 'encryptedAtRest',
+      state: 'note',
+      label: `Encrypting your sessions. ${atRest.plainLines} older ${atRest.plainLines === 1 ? 'line is' : 'lines are'} not yet sealed.`,
+    };
+  } else if (keyProtection === 'encrypted-file') {
+    encrypted = {
+      key: 'encryptedAtRest',
+      state: 'note',
+      label: 'Sessions are encrypted at rest. A system keychain would hold the key more safely.',
+    };
+  } else {
+    encrypted = {
+      key: 'encryptedAtRest',
+      state: 'good',
+      label: 'Sessions are encrypted at rest. The key lives in your system keychain.',
+    };
+  }
   return [
     {
       key: 'telemetry',
@@ -262,13 +320,7 @@ function buildSeal(cloudTurns: number, encryptedAtRest: boolean): StackHealthSea
           state: 'note',
           label: `${cloudTurns} cloud ${cloudTurns === 1 ? 'turn' : 'turns'} sent to your provider, on your own key.`,
         },
-    encryptedAtRest
-      ? { key: 'encryptedAtRest', state: 'good', label: 'Your sessions are encrypted at rest.' }
-      : {
-          key: 'encryptedAtRest',
-          state: 'pending',
-          label: 'Sessions are not yet encrypted at rest.',
-        },
+    encrypted,
   ];
 }
 
@@ -367,7 +419,10 @@ export function computeStackHealth(
   const savedDollars = priceLocal(totals.localPrompt, totals.localCompletion);
   const wouldHavePaid = savedDollars + totals.cloudDollars;
   const totalTurns = totals.localTurns + totals.cloudTurns;
-  const encryptedAtRest = false; // Honest until the journal-sealing task ships.
+  // The seal is measured, not asserted: scan every journal on disk for
+  // plaintext and ask the key store which backend really holds the key.
+  const atRest = scanAtRest();
+  const keyProtection = loadOrCreateDataKey()?.protection;
 
   // Timeline: re-fold per session into its bucket (cheap; sessions are few).
   const plan = planBuckets(now, range, earliest);
@@ -436,7 +491,7 @@ export function computeStackHealth(
     },
 
     crew: buildCrew(stack, totals.turnsByModel),
-    seal: buildSeal(totals.cloudTurns, encryptedAtRest),
+    seal: buildSeal(totals.cloudTurns, atRest, keyProtection),
     timeline,
   };
 }

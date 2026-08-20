@@ -57,11 +57,15 @@ Layer status:
       there, so expect one round of fixes. Founder confirmed the one-time
       Apple/Codemagic setup is done; trigger the `ios-testflight` workflow on
       the `claude/os-code-openshore-styling-4bk7mp` branch.
-- [ ] **At-rest journal encryption** (separate task, ~2-4 sessions per CTO):
-      engine-side `node:crypto` sealing mirroring the app's `enc:v1:iv:ct`
-      format, keyed from the OS keychain, per journal line, tolerant of legacy
-      plaintext. Until it ships the Stack Health seal honestly reports "not yet
-      encrypted at rest."
+- [x] **At-rest journal encryption:** done. Engine-side sealing
+      (`core/security/atRest.ts`) in the exact app `enc:v1:iv:ct` format
+      (bidirectional WebCrypto cross-test), data key in the OS keychain via the
+      existing credential store (encrypted-file fallback at 600, honest backend
+      reporting, self-upgrades into a keychain), per-line journal + title
+      sealing tolerant of legacy plaintext, atomic idempotent boot migration in
+      both the Electron host and the daemon. The Stack Health seal is now
+      measured: green only when the keychain holds the key AND a full-disk scan
+      finds zero plaintext lines.
 - [ ] **Stack Health Phase 2 (named agents):** add an `agents` record to
       `ConfigSchema` and an opaque `agentId` to `task-start`/`turn-start`
       (stamped as a stable record key, never a display name), threaded through
@@ -69,7 +73,7 @@ Layer status:
       to the user's named agents with per-agent stats. Phase 3: one-tap
       suggestions + thumbs feedback.
 - [ ] **Wire the catalog builder in CI:** run `pnpm --filter os-code
-    build:catalog` on a schedule / curation change (fetch the live catalog
+build:catalog` on a schedule / curation change (fetch the live catalog
       into `os-code/build/catalog.json` first so the regression gate has a real
       previous), publish the output, and point `config.catalog.url` at it. Seed
       `os-code/curation/*.json` as the roster grows.
@@ -112,6 +116,19 @@ Layer status:
 
 ## Log
 
+- **2026-08-20: at-rest encryption for the engine.** Session journals and
+  titles now seal with AES-256-GCM in the exact app-side `enc:v1` format
+  (bidirectional WebCrypto cross-test pins the compatibility). The data key
+  rides the existing credential store: OS keychain preferred, machine-keyed
+  encrypted file at 600 as fallback, with the backend reported honestly and the
+  key self-upgrading into a keychain when one appears. Lines are redacted then
+  sealed; readers everywhere tolerate legacy plaintext; a one-shot atomic
+  idempotent boot migration (Electron host + daemon) reseals pre-encryption
+  sessions. The Stack Health privacy seal is now measured, not asserted: a
+  full-disk prefix scan plus the real key backend decide its color, and green
+  requires keychain + zero plaintext lines. Settings' "Encrypted on this
+  device" card shows the live measured facts. 12 new tests; suites now
+  os-code 162 / app 76, all gates green.
 - **2026-08-20: Marketplace + Stack Health + Nightshore site.** Three builds,
   branch `claude/os-code-openshore-styling-4bk7mp`, all gates green (os-code
   150 tests, app 76, vite build).

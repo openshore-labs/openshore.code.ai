@@ -1,12 +1,45 @@
 // Settings: the honest page. What this app is, where your data lives, and a
 // couple of careful switches. No telemetry to toggle because there is none.
+import { useEffect, useState } from 'react';
 import { isOrgAdmin, useApp } from '../state/store.js';
 import { platform } from '../lib/platform.js';
+import { bridge } from '../lib/electronBridge.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { StartingPaths } from '../components/StartingPaths.js';
+import type { StackHealthSealFact } from 'os-code/protocol';
+
+// The live seal, measured by the engine (never asserted): the same three
+// check-rows Stack Health shows, here where someone goes looking for the
+// privacy story. Desktop only; the phone's own data is sealed by the app and
+// the desktop's journals answer for themselves on the desktop.
+function LiveSeal() {
+  const [facts, setFacts] = useState<StackHealthSealFact[] | undefined>();
+  useEffect(() => {
+    const b = bridge();
+    if (!b) return;
+    let live = true;
+    b.stackHealth('day')
+      .then((h) => live && setFacts(h.seal))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!facts) return null;
+  return (
+    <ul className="sh-seal-facts" style={{ marginTop: 12 }}>
+      {facts.map((f) => (
+        <li className={`sh-seal-fact sh-${f.state}`} key={f.key}>
+          <span className="sh-seal-dot" aria-hidden="true" />
+          {f.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function keyStoreLabel(): string {
   switch (platform()) {
@@ -84,12 +117,13 @@ export function SettingsScreen() {
         <div className="card">
           <h3>Encrypted on this device</h3>
           <div className="sub">
-            Your chats, projects, crew, and settings are sealed at rest with AES-256. The key that
-            unlocks them lives in this device's secure store, the {keyStoreLabel()}, and never
-            leaves it. API keys are held there too. When you send a turn to a cloud provider, that
-            one provider sees that one request on your own account. We do not, and there is nothing
-            in between.
+            Your chats, projects, crew, settings, and session journals are sealed at rest with
+            AES-256. The key that unlocks them lives in this device's secure store, the{' '}
+            {keyStoreLabel()}, and never leaves it. API keys are held there too. When you send a
+            turn to a cloud provider, that one provider sees that one request on your own account.
+            We do not, and there is nothing in between.
           </div>
+          <LiveSeal />
         </div>
 
         <div className="card">

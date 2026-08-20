@@ -23,7 +23,7 @@ import { oscHome } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
-import { LocalDriver, listSessions } from './session.js';
+import { LocalDriver, listSessions, sealSessionsAtRest } from './session.js';
 import { clone } from '../git/index.js';
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
 import { withKeyLock } from '../git/applyQueue.js';
@@ -73,6 +73,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   assertSafeBind(host);
   const token = loadOrCreateToken(join(oscHome(), 'daemon.token'));
   const drivers = new Map<string, LocalDriver>();
+
+  // Reseal any pre-encryption sessions before serving. Off the startup path
+  // (setImmediate) and failure-tolerant: sealing is protection, never an
+  // availability risk.
+  setImmediate(() => {
+    try {
+      const sealed = sealSessionsAtRest();
+      if (sealed.sealedLines > 0) {
+        log.info('sealed legacy sessions at rest', sealed);
+      }
+    } catch {}
+  });
 
   const server = createServer((req, res) => {
     void handle(req, res).catch((err) => {

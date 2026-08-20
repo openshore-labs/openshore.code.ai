@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +17,7 @@ import { oscHome } from '../config/load.js';
 import type { AgentSession } from '../core/agent/loop.js';
 import type { ApprovalAnswer, ApprovalRequest, DriverEvent } from '../core/agent/types.js';
 import { redactSecrets } from '../core/security/redaction.js';
+import { isSealed, loadOrCreateDataKey, openString, sealString } from '../core/security/atRest.js';
 
 // DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
 // remote driver can share the exact protocol type; re-exported here so
@@ -46,13 +48,29 @@ export interface SessionInfo {
   updatedAt: string;
 }
 
+// The session title is derived from the user's first prompt, so it is user
+// content and seals like the journal. Timestamps, ids, and cwd stay plain:
+// they order and locate sessions and carry no content.
+function openTitle(title: string): string {
+  if (!isSealed(title)) return title;
+  const dk = loadOrCreateDataKey();
+  return (dk && openString(dk.key, title)) || 'Sealed session';
+}
+
+function sealTitle(title: string): string {
+  const dk = loadOrCreateDataKey();
+  return dk ? sealString(dk.key, title) : title;
+}
+
 export function listSessions(): SessionInfo[] {
   const dir = sessionsDir();
   if (!existsSync(dir)) return [];
   const out: SessionInfo[] = [];
   for (const id of readdirSync(dir)) {
     try {
-      out.push(JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')));
+      const info = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfo;
+      info.title = openTitle(info.title);
+      out.push(info);
     } catch {}
   }
   return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -113,11 +131,19 @@ export class LocalDriver implements SessionDriver {
   private loadJournal(): void {
     try {
       const raw = readFileSync(join(this.dir(), 'events.jsonl'), 'utf8');
+      const dk = loadOrCreateDataKey();
       for (const line of raw.split('\n')) {
         if (!line.trim()) continue;
-        const parsed = JSON.parse(line) as { seq: number; event: DriverEvent };
-        this.events.push(parsed);
-        this.seq = Math.max(this.seq, parsed.seq);
+        // Sealed lines open with the data key; plaintext (pre-encryption)
+        // lines pass through. A line that cannot be opened or parsed is
+        // skipped, never fatal: a journal must always replay as far as it can.
+        const clear = isSealed(line) ? (dk ? openString(dk.key, line) : null) : line;
+        if (clear === null) continue;
+        try {
+          const parsed = JSON.parse(clear) as { seq: number; event: DriverEvent };
+          this.events.push(parsed);
+          this.seq = Math.max(this.seq, parsed.seq);
+        } catch {}
       }
     } catch {}
   }
@@ -128,15 +154,22 @@ export class LocalDriver implements SessionDriver {
     this.events.push(entry);
     if (this.persist) {
       try {
+        // Redact first, then seal: even if the key is ever compromised, the
+        // journal never held a raw secret. No key (store failure) degrades to
+        // plaintext rather than losing the event.
+        const dk = loadOrCreateDataKey();
+        const line = redactSecrets(JSON.stringify(entry));
         appendFileSync(
           join(this.dir(), 'events.jsonl'),
-          `${redactSecrets(JSON.stringify(entry))}\n`,
+          `${dk ? sealString(dk.key, line) : line}\n`,
         );
         const infoPath = join(this.dir(), 'info.json');
         const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
         info.updatedAt = new Date().toISOString();
         if (event.type === 'task-start') {
-          info.title = event.input.slice(0, 60);
+          // The title is the user's own words; it seals like the journal. An
+          // existing (already sealed) title passes through untouched.
+          info.title = sealTitle(event.input.slice(0, 60));
         }
         writeFileSync(infoPath, JSON.stringify(info, null, 2));
       } catch {}
@@ -208,4 +241,51 @@ export class LocalDriver implements SessionDriver {
   pendingApprovalIds(): string[] {
     return [...this.pendingApprovals.keys()];
   }
+}
+
+/**
+ * One-shot at-rest migration, run at engine startup: any plaintext journal
+ * line or session title that predates encryption is resealed in place. Each
+ * file is rewritten atomically (tmp then rename) and already-sealed lines are
+ * left byte-identical, so the pass is idempotent and a crash mid-run loses
+ * nothing. Per-session failures are tolerated: one unreadable session must
+ * never block the engine from starting.
+ */
+export function sealSessionsAtRest(): { sessions: number; sealedLines: number } {
+  const summary = { sessions: 0, sealedLines: 0 };
+  const dk = loadOrCreateDataKey();
+  const dir = sessionsDir();
+  if (!dk || !existsSync(dir)) return summary;
+  for (const id of readdirSync(dir)) {
+    try {
+      const journalPath = join(dir, id, 'events.jsonl');
+      if (existsSync(journalPath)) {
+        const lines = readFileSync(journalPath, 'utf8').split('\n');
+        let changed = 0;
+        const out = lines.map((line) => {
+          if (!line.trim() || isSealed(line)) return line;
+          changed += 1;
+          return sealString(dk.key, line);
+        });
+        if (changed > 0) {
+          const tmp = `${journalPath}.tmp`;
+          writeFileSync(tmp, out.join('\n'), { mode: 0o600 });
+          renameSync(tmp, journalPath);
+          summary.sealedLines += changed;
+        }
+      }
+      const infoPath = join(dir, id, 'info.json');
+      if (existsSync(infoPath)) {
+        const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
+        if (typeof info.title === 'string' && !isSealed(info.title)) {
+          info.title = sealString(dk.key, info.title);
+          const tmp = `${infoPath}.tmp`;
+          writeFileSync(tmp, JSON.stringify(info, null, 2), { mode: 0o600 });
+          renameSync(tmp, infoPath);
+        }
+      }
+      summary.sessions += 1;
+    } catch {}
+  }
+  return summary;
 }
