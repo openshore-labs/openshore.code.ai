@@ -66,12 +66,7 @@ import {
   signUp as supabaseSignUp,
   type Session,
 } from '../lib/supabase.js';
-import {
-  clearSession,
-  freshSession,
-  loadStoredSession,
-  saveSession,
-} from '../lib/authSession.js';
+import { clearSession, freshSession, loadStoredSession, saveSession } from '../lib/authSession.js';
 import {
   autoProfile,
   effectiveProfile,
@@ -222,7 +217,10 @@ interface AppState {
   /** Create a project and make it active. */
   createProject(name: string): Promise<string>;
   setActiveProject(id: string): void;
-  updateProject(id: string, patch: Partial<Pick<Project, 'name' | 'instructions' | 'repoIds'>>): Promise<void>;
+  updateProject(
+    id: string,
+    patch: Partial<Pick<Project, 'name' | 'instructions' | 'repoIds'>>,
+  ): Promise<void>;
   /** Remove a project; its chats stay but drop back to no project. */
   deleteProject(id: string): Promise<void>;
 
@@ -300,10 +298,7 @@ interface AppState {
   // My Crew: user-authored agents.
   /** Create a crew agent and return its id. */
   createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
-  updateCrewAgent(
-    id: string,
-    patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>,
-  ): Promise<void>;
+  updateCrewAgent(id: string, patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>): Promise<void>;
   deleteCrewAgent(id: string): Promise<void>;
   /** Download the Harbor guide model if it is not here yet. Returns success. */
   ensureHarbor(): Promise<boolean>;
@@ -415,8 +410,7 @@ export const useApp = create<AppState>((set, get) => {
         const conv = state.conversations[conversationId];
         if (!conv) return state;
         const thread = reduceEvent(conv.thread, event, seq);
-        const title =
-          conv.title === 'New chat' ? (titleFrom(thread) ?? conv.title) : conv.title;
+        const title = conv.title === 'New chat' ? (titleFrom(thread) ?? conv.title) : conv.title;
         const next: Conversation = {
           ...conv,
           thread,
@@ -432,7 +426,11 @@ export const useApp = create<AppState>((set, get) => {
       if (event.type === 'text-final' && srcKind && srcKind !== 'mock') {
         logOnce('first_local_reply', { source: srcKind });
       }
-      if (event.type === 'tool-end' && event.result?.ok && /edit|write|apply/i.test(event.call.name)) {
+      if (
+        event.type === 'tool-end' &&
+        event.result?.ok &&
+        /edit|write|apply/i.test(event.call.name)
+      ) {
         logOnce('first_accepted_edit', { tool: event.call.name });
       }
     });
@@ -484,7 +482,8 @@ export const useApp = create<AppState>((set, get) => {
         const crew = (s.settings.crew ?? []).filter(
           (a) =>
             a.activityLevel !== 'review' &&
-            (a.projectIds.length === 0 || (conv.projectId != null && a.projectIds.includes(conv.projectId))),
+            (a.projectIds.length === 0 ||
+              (conv.projectId != null && a.projectIds.includes(conv.projectId))),
         );
         return new StackDriver(s.settings.stack ?? emptyStack(), profile, {
           projectName: project?.name,
@@ -680,9 +679,20 @@ export const useApp = create<AppState>((set, get) => {
       // Upgrade any pre-encryption data to sealed-at-rest, in the background.
       void sealExistingKeys([SETTINGS_KEY, CONVERSATIONS_KEY, ANTHROPIC_KEY_KEY]);
 
-      // Restore a signed-in session and refresh the server-verified role.
+      // Finish a web sign-in, or restore a stored one. On web a magic-link or
+      // email-confirmation redirect lands on our own origin with the tokens in
+      // the URL hash; complete it, then strip them from the address bar so they
+      // are not left in history. (Native handles its callback via the oscode://
+      // deep link in useAuthDeepLink.) Otherwise restore the last session.
       if (authConfigured()) {
         void (async () => {
+          const href = typeof window !== 'undefined' ? window.location.href : '';
+          const hasCallback = platform() === 'web' && /access_token=|auth-callback/.test(href);
+          if (hasCallback && (await get().completeAuthCallback(href))) {
+            get().showToast('Signed in.');
+            window.history.replaceState(null, document.title, window.location.pathname);
+            return;
+          }
           const stored = await loadStoredSession();
           if (stored) {
             set({ authSession: stored });
@@ -890,7 +900,12 @@ export const useApp = create<AppState>((set, get) => {
       if (!account?.org || !isOrgAdmin(account)) return;
       const seats = Math.max(1, Math.floor(seatCount));
       const tier = tierForSeats(seats);
-      const org: Org = { ...account.org, seatCount: seats, tierId: tier.id, priceYear: tier.priceYear };
+      const org: Org = {
+        ...account.org,
+        seatCount: seats,
+        tierId: tier.id,
+        priceYear: tier.priceYear,
+      };
       await get().saveSettings({ account: { ...account, org } });
       logEvent('org_seats_set', { tier: tier.id });
     },
@@ -990,7 +1005,11 @@ export const useApp = create<AppState>((set, get) => {
           fresh.accessToken,
           `select=role,status&user_id=eq.${fresh.user.id}&status=eq.active`,
         );
-        const role = rows.find((r) => r.role === 'admin') ? 'admin' : rows.length ? 'member' : undefined;
+        const role = rows.find((r) => r.role === 'admin')
+          ? 'admin'
+          : rows.length
+            ? 'member'
+            : undefined;
         set({ serverRole: role });
         // Mirror the verified email onto the account so the UI reflects it.
         if (account && fresh.user.email && account.selfEmail !== fresh.user.email) {
@@ -1027,7 +1046,10 @@ export const useApp = create<AppState>((set, get) => {
 
     async saveLaunchTarget(target) {
       const id = target.id ?? `l${Date.now().toString(36)}${(convSeq++).toString(36)}`;
-      const launch: LaunchState = { ...(get().settings.launch ?? { runs: [] }), target: { ...target, id } };
+      const launch: LaunchState = {
+        ...(get().settings.launch ?? { runs: [] }),
+        target: { ...target, id },
+      };
       await get().saveSettings({ launch });
       logEvent('launch_target_saved', { platform: target.platform });
     },
@@ -1049,7 +1071,8 @@ export const useApp = create<AppState>((set, get) => {
       };
       const touchRun = (patch: Partial<BuildRun>) =>
         set((s) => ({ settings: { ...s.settings, launch: applyRun(patch) } }));
-      const persistRun = (patch: Partial<BuildRun>) => get().saveSettings({ launch: applyRun(patch) });
+      const persistRun = (patch: Partial<BuildRun>) =>
+        get().saveSettings({ launch: applyRun(patch) });
 
       await get().saveSettings({
         launch: { ...launch, runs: [run, ...(launch?.runs ?? [])].slice(0, 10) },
@@ -1082,7 +1105,10 @@ export const useApp = create<AppState>((set, get) => {
             lastStatus = info.status;
           }
           if (isTerminal(info.status)) {
-            const patch: Partial<BuildRun> = { status: info.status, finishedAt: new Date().toISOString() };
+            const patch: Partial<BuildRun> = {
+              status: info.status,
+              finishedAt: new Date().toISOString(),
+            };
             if (info.status !== 'finished') {
               try {
                 patch.excerpt = await buildLogExcerpt(info);
@@ -1097,7 +1123,10 @@ export const useApp = create<AppState>((set, get) => {
         }
         await persistRun({ status: 'unknown', error: 'Timed out following this build.' });
       } catch (err) {
-        await persistRun({ status: 'failed', error: err instanceof Error ? err.message : String(err) });
+        await persistRun({
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     },
 
@@ -1231,7 +1260,12 @@ export const useApp = create<AppState>((set, get) => {
         // Independent confirmation before an item is ever considered done. A 200
         // is not confirmation; the ref re-read is.
         if (current.state === 'offloading' && current.resultCommit) {
-          const v = await daemonVerifyCommit(daemon, home.homePath, current.resultCommit, current.branch);
+          const v = await daemonVerifyCommit(
+            daemon,
+            home.homePath,
+            current.resultCommit,
+            current.branch,
+          );
           current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
           patch(current.id, current);
         }
@@ -1276,7 +1310,9 @@ export const useApp = create<AppState>((set, get) => {
         .filter((i) => i.state !== 'confirmed')
         .reduce((n, i) => n + itemBytes(i), 0);
       if (!withinCaps(currentTotal, addBytes, largest)) {
-        get().showToast('That change is too large to buffer offline. Dock to sync, or split it up.');
+        get().showToast(
+          'That change is too large to buffer offline. Dock to sync, or split it up.',
+        );
         return undefined;
       }
       const item: OutboxItem = {
