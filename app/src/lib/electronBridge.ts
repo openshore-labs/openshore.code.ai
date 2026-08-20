@@ -1,7 +1,13 @@
 // The typed surface Electron's preload exposes as window.oscode. The main
 // process implements every method against the engine; the renderer never
 // touches Node directly. Keep this file in lockstep with electron/main.ts.
-import type { ApprovalAnswer, Catalog, DriverEvent } from 'os-code/protocol';
+import type {
+  ApprovalAnswer,
+  Catalog,
+  DriverEvent,
+  StackHealth,
+  StackHealthRange,
+} from 'os-code/protocol';
 
 export interface DesktopStatus {
   ollama: { up: boolean; detail: string; models: string[] };
@@ -56,6 +62,9 @@ export interface OscodeBridge {
   // Machine, stack, marketplace.
   status(): Promise<DesktopStatus>;
   catalog(): Promise<{ catalog: Catalog; note?: string }>;
+  /** Fully local read of how the stack is being used, folded from the session
+   *  journals on this machine. Read-only; nothing leaves the device. */
+  stackHealth(range?: StackHealthRange): Promise<StackHealth>;
   installModel(modelId: string): Promise<{ ok: boolean; detail: string }>;
   onInstallProgress(cb: (payload: InstallProgressPayload) => void): () => void;
   setOrchestrator(model: string): Promise<{ ok: boolean; detail: string }>;

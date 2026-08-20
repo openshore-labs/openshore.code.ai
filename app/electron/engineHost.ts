@@ -15,12 +15,13 @@ import { getCredential, setCredential, deleteCredential } from 'os-code/dist/src
 import { detectHardware, budgetFor } from 'os-code/dist/src/router/resourceBudget.js';
 import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
 import { installModel } from 'os-code/dist/src/market/install.js';
+import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
 import { clone } from 'os-code/dist/src/git/index.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
 import { loadOrCreateToken } from 'os-code/dist/src/core/security/daemonAuth.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
-import type { DriverEvent } from 'os-code/protocol';
+import type { DriverEvent, StackHealth, StackHealthRange } from 'os-code/protocol';
 
 export type EventForward = (payload: {
   sessionId: string;
@@ -177,6 +178,12 @@ export class EngineHost {
     const { config } = loadConfig();
     const loaded = await loadCatalog(config, new EgressPolicy(config.egress));
     return { catalog: loaded.catalog, note: loaded.note };
+  }
+
+  // -------------------------------------------------------------- stack health
+
+  async stackHealth(range?: StackHealthRange): Promise<StackHealth> {
+    return computeStackHealth(range ?? 'week');
   }
 
   async installModel(modelId: string): Promise<{ ok: boolean; detail: string }> {

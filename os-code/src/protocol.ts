@@ -23,6 +23,17 @@ export {
 export { CAPABILITIES, SPECIALIST_ROLES, ROLE_CATEGORY, plainLabel } from './router/roles.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
+// Stack Health: pure payload types only. The aggregator that fills them in
+// (insights/stackHealth.ts) touches the filesystem and is NOT imported here.
+export type {
+  StackHealth,
+  StackHealthBucket,
+  StackHealthCrewMember,
+  StackHealthRange,
+  StackHealthSealFact,
+  SavingsBasis,
+} from './insights/stackHealthTypes.js';
+
 /** Wire shapes the daemon serves that are not agent events. */
 export interface DaemonSessionInfo {
   id: string;
