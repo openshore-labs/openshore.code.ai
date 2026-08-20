@@ -7,8 +7,9 @@ Uki app repo: current state first, then what remains, then the log.
 
 **All planned layers are built, tested, polished, and green.** `pnpm install
 && pnpm build` compiles clean; `pnpm typecheck`, `pnpm lint --max-warnings 0`,
-and the test suites (os-code 19 files / 150 tests, app 13 files / 76 tests,
-plus a passing `vite build`) all pass. Live commercial platform is wired:
+and the test suites (os-code 28 files / 222 tests, app 16 files / 90 tests,
+plus a passing `vite build`) all pass, both locally and in CI on every push to
+`main`. Live commercial platform is wired:
 Supabase sign-in, org write-through, and web-only Stripe billing (Apple 3.1.1
 compliant, no in-app purchase). Two dashboards shipped this cycle: a rich
 Marketplace storefront fed by a CI catalog builder, and Stack Health, a fully
@@ -172,6 +173,14 @@ Layer status:
 
 ## Log
 
+- **2026-08-20: CI goes green on main.** The new CI workflow (added in the
+  review remediation) was red on its first three runs: `pnpm -r typecheck`
+  ran before the engine was built, so the app package could not resolve
+  `os-code/protocol` (which points at os-code's built dist). Added a "Build the
+  engine" step (`pnpm --filter os-code build`) before lint/typecheck/test,
+  matching catalog.yml. Run #4 on `73244eb` is fully green: install, build,
+  lint, typecheck, and all 312 tests (222 engine + 90 app) pass in CI. Commit
+  `73244eb`.
 - **2026-08-20: full-platform code review + remediation.** A five-pass senior
   review (engine core/security, engine breadth/builder, money/backend,
   app+electron, infra) produced `CODE-REVIEW-FINDINGS.md` (6 P0, ~28 P1, plus
