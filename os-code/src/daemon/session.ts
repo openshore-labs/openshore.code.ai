@@ -9,6 +9,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -132,18 +133,29 @@ export class LocalDriver implements SessionDriver {
     try {
       const raw = readFileSync(join(this.dir(), 'events.jsonl'), 'utf8');
       const dk = loadOrCreateDataKey();
+      let skippedSealed = 0;
       for (const line of raw.split('\n')) {
         if (!line.trim()) continue;
         // Sealed lines open with the data key; plaintext (pre-encryption)
         // lines pass through. A line that cannot be opened or parsed is
         // skipped, never fatal: a journal must always replay as far as it can.
         const clear = isSealed(line) ? (dk ? openString(dk.key, line) : null) : line;
-        if (clear === null) continue;
+        if (clear === null) {
+          skippedSealed += 1;
+          continue;
+        }
         try {
           const parsed = JSON.parse(clear) as { seq: number; event: DriverEvent };
           this.events.push(parsed);
           this.seq = Math.max(this.seq, parsed.seq);
         } catch {}
+      }
+      if (skippedSealed > 0) {
+        // Surface masked history rather than letting it vanish silently: a
+        // sealed line that will not open usually means the data key changed.
+        console.warn(
+          `[os-code] session ${this.id}: ${skippedSealed} sealed journal ${skippedSealed === 1 ? 'line' : 'lines'} could not be opened and ${skippedSealed === 1 ? 'was' : 'were'} skipped.`,
+        );
       }
     } catch {}
   }
@@ -250,16 +262,32 @@ export class LocalDriver implements SessionDriver {
  * left byte-identical, so the pass is idempotent and a crash mid-run loses
  * nothing. Per-session failures are tolerated: one unreadable session must
  * never block the engine from starting.
+ *
+ * skipNewerThanMs guards against clobbering a journal another process is
+ * appending to right now (read, rewrite, rename would drop the line that
+ * landed in the window): a file touched more recently than the guard is left
+ * for the next pass. The startup hooks pass a minute; tests pass nothing.
  */
-export function sealSessionsAtRest(): { sessions: number; sealedLines: number } {
+export function sealSessionsAtRest(options: { skipNewerThanMs?: number } = {}): {
+  sessions: number;
+  sealedLines: number;
+} {
   const summary = { sessions: 0, sealedLines: 0 };
   const dk = loadOrCreateDataKey();
   const dir = sessionsDir();
   if (!dk || !existsSync(dir)) return summary;
+  const tooRecent = (path: string): boolean => {
+    if (!options.skipNewerThanMs) return false;
+    try {
+      return Date.now() - statSync(path).mtimeMs < options.skipNewerThanMs;
+    } catch {
+      return true;
+    }
+  };
   for (const id of readdirSync(dir)) {
     try {
       const journalPath = join(dir, id, 'events.jsonl');
-      if (existsSync(journalPath)) {
+      if (existsSync(journalPath) && !tooRecent(journalPath)) {
         const lines = readFileSync(journalPath, 'utf8').split('\n');
         let changed = 0;
         const out = lines.map((line) => {
@@ -268,14 +296,17 @@ export function sealSessionsAtRest(): { sessions: number; sealedLines: number } 
           return sealString(dk.key, line);
         });
         if (changed > 0) {
+          // Force the trailing newline: a crash-truncated legacy file must
+          // not make the next append concatenate onto a sealed line.
+          const content = out.join('\n');
           const tmp = `${journalPath}.tmp`;
-          writeFileSync(tmp, out.join('\n'), { mode: 0o600 });
+          writeFileSync(tmp, content.endsWith('\n') ? content : `${content}\n`, { mode: 0o600 });
           renameSync(tmp, journalPath);
           summary.sealedLines += changed;
         }
       }
       const infoPath = join(dir, id, 'info.json');
-      if (existsSync(infoPath)) {
+      if (existsSync(infoPath) && !tooRecent(infoPath)) {
         const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
         if (typeof info.title === 'string' && !isSealed(info.title)) {
           info.title = sealString(dk.key, info.title);

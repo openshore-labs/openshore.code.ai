@@ -30,14 +30,19 @@ function LiveSeal() {
   }, []);
   if (!facts) return null;
   return (
-    <ul className="sh-seal-facts" style={{ marginTop: 12 }}>
-      {facts.map((f) => (
-        <li className={`sh-seal-fact sh-${f.state}`} key={f.key}>
-          <span className="sh-seal-dot" aria-hidden="true" />
-          {f.label}
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="sh-seal-facts" style={{ marginTop: 12 }}>
+        {facts.map((f) => (
+          <li className={`sh-seal-fact sh-${f.state}`} key={f.key}>
+            <span className="sh-seal-dot" aria-hidden="true" />
+            {f.label}
+          </li>
+        ))}
+      </ul>
+      <p className="hint" style={{ marginTop: 8 }}>
+        Measured on this machine just now, not promised.
+      </p>
+    </>
   );
 }
 
@@ -118,10 +123,10 @@ export function SettingsScreen() {
           <h3>Encrypted on this device</h3>
           <div className="sub">
             Your chats, projects, crew, settings, and session journals are sealed at rest with
-            AES-256. The key that unlocks them lives in this device's secure store, the{' '}
-            {keyStoreLabel()}, and never leaves it. API keys are held there too. When you send a
-            turn to a cloud provider, that one provider sees that one request on your own account.
-            We do not, and there is nothing in between.
+            AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
+            {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API keys
+            are held the same way. When you send a turn to a cloud provider, that one provider sees
+            that one request on your own account. We do not, and there is nothing in between.
           </div>
           <LiveSeal />
         </div>
