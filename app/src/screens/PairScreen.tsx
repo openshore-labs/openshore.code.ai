@@ -9,6 +9,17 @@ import { isDesktop } from '../lib/platform.js';
 import { daemonHealth } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 
+// Tailscale download links, shown on the phone pairing screen so a new user can
+// install it on their desktop without hunting. Desktop platforms use Tailscale's
+// own per-OS download pages; mobile points at the app stores.
+const TAILSCALE_LINKS: { label: string; href: string }[] = [
+  { label: 'macOS', href: 'https://tailscale.com/download/macos' },
+  { label: 'Windows', href: 'https://tailscale.com/download/windows' },
+  { label: 'Linux', href: 'https://tailscale.com/download/linux' },
+  { label: 'iPhone / iPad', href: 'https://apps.apple.com/app/tailscale/id1470499037' },
+  { label: 'Android', href: 'https://play.google.com/store/apps/details?id=com.tailscale.ipn' },
+];
+
 export function PairScreen() {
   return isDesktop() ? <DesktopPair /> : <PhonePair />;
 }
@@ -26,7 +37,13 @@ function DesktopPair() {
     setInfo(next);
     if (next.running && next.host) {
       const payload = JSON.stringify({ u: `http://${next.host}:${next.port}`, t: next.token });
-      setQr(await QRCode.toDataURL(payload, { margin: 1, width: 240, color: { dark: '#1c2a33', light: '#f6f4ef' } }));
+      setQr(
+        await QRCode.toDataURL(payload, {
+          margin: 1,
+          width: 240,
+          color: { dark: '#1c2a33', light: '#f6f4ef' },
+        }),
+      );
     } else {
       setQr(undefined);
     }
@@ -42,8 +59,8 @@ function DesktopPair() {
       <div className="screen-inner">
         <h1>Put this on your phone</h1>
         <p className="lead">
-          Over your own private Tailscale network. The desktop owns the run; the phone can drop
-          into a tunnel and reattach with nothing lost.
+          Over your own private Tailscale network. The desktop owns the run; the phone can drop into
+          a tunnel and reattach with nothing lost.
         </p>
 
         <div className="card">
@@ -88,7 +105,11 @@ function DesktopPair() {
             <div className="sub" style={{ marginTop: 12, wordBreak: 'break-all' }}>
               Address: http://{info.host}:{info.port}
             </div>
-            <button className="hint" onClick={() => setShowToken((s) => !s)} style={{ marginTop: 6 }}>
+            <button
+              className="hint"
+              onClick={() => setShowToken((s) => !s)}
+              style={{ marginTop: 6 }}
+            >
               {showToken ? `Token: ${info.token}` : 'Show the pairing token'}
             </button>
           </div>
@@ -96,8 +117,8 @@ function DesktopPair() {
 
         <p className="hint">
           Both devices sign into the same tailnet (the Tailscale app, free for personal use). The
-          connection needs its own token on top of the tailnet, and phone sessions are stricter
-          than desk sessions: shell commands and cloud spend always ask.
+          connection needs its own token on top of the tailnet, and phone sessions are stricter than
+          desk sessions: shell commands and cloud spend always ask.
         </p>
       </div>
     </div>
@@ -156,6 +177,22 @@ function PhonePair() {
             <br />
             2. In OS Code on the desktop: Menu, Desktop + phone, Turn on.
           </div>
+          <div className="sub" style={{ marginTop: 12 }}>
+            Get Tailscale (free for personal use):
+          </div>
+          <div className="dl-row">
+            {TAILSCALE_LINKS.map((l) => (
+              <a
+                key={l.label}
+                className="dl-chip"
+                href={l.href}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                {l.label}
+              </a>
+            ))}
+          </div>
         </div>
 
         <div className="card">
@@ -183,7 +220,12 @@ function PhonePair() {
               }}
             />
           </div>
-          <button className="btn primary" style={{ width: '100%' }} disabled={testing} onClick={() => void connect()}>
+          <button
+            className="btn primary"
+            style={{ width: '100%' }}
+            disabled={testing}
+            onClick={() => void connect()}
+          >
             {testing ? 'Checking...' : 'Connect'}
           </button>
           {state ? (
