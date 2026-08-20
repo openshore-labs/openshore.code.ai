@@ -1,0 +1,14 @@
+{
+  "qwen2.5-coder-7b": { "HumanEval": 88.4, "MBPP": 79, "BFCL": 85, "MMLU": 68 },
+  "qwen2.5-coder-14b": { "HumanEval": 89.6, "MBPP": 82, "BFCL": 88, "MMLU": 72 },
+  "qwen2.5-coder-32b": { "HumanEval": 92.7, "MBPP": 86, "BFCL": 90, "MMLU": 75 },
+  "llama3.1-8b": { "MMLU": 69, "MT-Bench": 8.0 },
+  "deepseek-r1-14b": { "MMLU": 72, "GPQA": 60, "MATH-500": 93.9, "GSM8K": 88 },
+  "llava-7b": { "MMMU": 52, "ChartQA": 78 },
+  "moondream": { "MMMU": 40, "ChartQA": 60, "tokens per second": 80 },
+  "nomic-embed-text": { "MTEB": 62 },
+  "qwen2.5-coder-1.5b": { "HumanEval": 55, "tokens per second": 100 },
+  "qwen2.5-1.5b-phone": { "MMLU": 60, "tokens per second": 95 },
+  "llama3.2-1b-phone": { "MMLU": 49, "tokens per second": 110 },
+  "smollm2-1.7b-phone": { "MMLU": 50, "tokens per second": 90 }
+}

@@ -1,0 +1,13 @@
+{
+  "qwen2.5-coder-7b": 0.86,
+  "qwen2.5-coder-14b": 0.88,
+  "qwen2.5-coder-32b": 0.94,
+  "llama3.1-8b": 0.8,
+  "deepseek-r1-14b": 0.82,
+  "qwen2.5-1.5b-phone": 0.62,
+  "qwen2.5-coder-1.5b": 0.48,
+  "llava-7b": 0.4,
+  "moondream": 0.3,
+  "llama3.2-1b-phone": 0.35,
+  "smollm2-1.7b-phone": 0.4
+}
