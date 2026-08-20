@@ -42,6 +42,14 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build the engine first. The app package imports `os-code/protocol`, which
+      # resolves to os-code's built dist; without this step `pnpm -r typecheck`
+      # (and any app test that touches the protocol types) fails in CI with
+      # "Cannot find module 'os-code/protocol'". Kept before lint/typecheck/test
+      # so every downstream step sees a real dist, matching catalog.yml.
+      - name: Build the engine
+        run: pnpm --filter os-code build
+
       - name: Lint
         run: pnpm -r lint
 
