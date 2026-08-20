@@ -1,5 +1,33 @@
 # OS Code platform code review — findings for remediation
 
+> ## STATUS (2026-08-20): ADDRESSED
+> Every finding below was implemented and pushed to `main` in two gated waves
+> (commits `9c60273` engine/infra, `d3926fa` app/billing on openshore.code.ai;
+> `53e9c12` on Open-Shore-LLC-Homepage), each fix test-backed where a harness
+> exists. Gates green: os-code build/lint/222 tests; app typecheck/lint/90
+> tests/vite build; marketing build + copy gate.
+>
+> **A follow-up security fix was added during remediation:** the RLS lockdown
+> (0005) also revokes table-wide INSERT on `orgs` and grants back only the
+> non-`stripe_customer_id` columns, closing a forged-customer vector.
+>
+> **Not code — these need YOU (founder / ops):**
+> 1. Deploy the Supabase migrations **0004 then 0005** and re-deploy the four
+>    edge functions, together with (or before) shipping the app. Until then the
+>    old webhook is live and the fixes are not active.
+> 2. Enable **Supabase refresh-token rotation + reuse detection** in the Auth
+>    dashboard (bounds a stolen web session; A5).
+> 3. Run one real **Stripe test-mode purchase** to confirm the two-client auth
+>    fix (P0-1) actually lets an admin check out end to end.
+> 4. Add the App Review justification (in `docs/app-review-notes.md`) to App
+>    Store Connect → App Review Information → Notes (H6).
+>
+> **CTO deferred to you (proceeded on the CTO's recommendation; adjust if you
+> disagree):** kept the blanket ATS flag; the entitlement gate blocks only
+> add-seats/add-member when an org lapses (never existing use); deleted the dead
+> entitlement-claim function; treated `past_due` as revoked (one-line toggle in
+> `_shared/entitlement.ts` `ENTITLED` if you want a dunning grace window).
+
 Full-platform review, 2026-08-20. Findings only; **nothing here is fixed yet.**
 Produced by five parallel senior-review passes (engine core+security, engine
 breadth+builder, money/backend, app+electron, infra) plus an inline review of

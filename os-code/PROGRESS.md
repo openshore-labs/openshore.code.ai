@@ -172,6 +172,30 @@ Layer status:
 
 ## Log
 
+- **2026-08-20: full-platform code review + remediation.** A five-pass senior
+  review (engine core/security, engine breadth/builder, money/backend,
+  app+electron, infra) produced `CODE-REVIEW-FINDINGS.md` (6 P0, ~28 P1, plus
+  P2s). All of it was then fixed in two gated waves, test-backed. Wave 1
+  (engine/security/infra): journal-redaction JSON corruption, outbox reverting
+  desktop commits, keychain-unreadable key-loss, daemon member-as-admin, egress
+  redirect + httpFetch DNS-rebind SSRF, abort/guardrail session-bricking, atomic
+  config/usage writes, Stack Health day/DST bucketing, iGPU budget, plus a real
+  CI workflow (lint/typecheck/test on every push, which nothing ran before) and
+  catalog-pipeline hardening. Wave 2 (billing/app): the live money path per the
+  CTO ruling. The billing endpoints authorized the SERVICE-ROLE identity so the
+  admin check saw NULL (the purchase path may have been 403ing every real
+  admin); now a caller-scoped client makes `auth.uid()` the caller. Entitlement
+  is revoked on cancel/past-due/payment-failure (was never revoked), `orgs` is
+  RLS-locked against client tier/customer writes (UPDATE and INSERT), the webhook
+  500s on a failed write so Stripe retries, idempotency/ordering guard, real
+  seats, double-checkout routing. `org_entitlements.status` is the single
+  authoritative source; the dead entitlement-claim function was deleted. App
+  side: blank-transcript-on-resume, listener leaks, persistence, brand-commit
+  a11y. Commits `9c60273`/`d3926fa` here, `53e9c12` marketing.
+  **Founder actions before this is live:** apply migrations 0004 then 0005 and
+  redeploy the edge functions (with/before the app); enable Supabase
+  refresh-token rotation; run one real test-mode purchase to confirm P0-1; add
+  the `docs/app-review-notes.md` ATS justification to App Store Connect.
 - **2026-08-20: at-rest encryption for the engine.** Session journals and
   titles now seal with AES-256-GCM in the exact app-side `enc:v1` format
   (bidirectional WebCrypto cross-test pins the compatibility). The data key
