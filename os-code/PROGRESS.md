@@ -72,11 +72,22 @@ Layer status:
       `loop.ts` and `router.delegate`. Upgrades the crew view from stack roles
       to the user's named agents with per-agent stats. Phase 3: one-tap
       suggestions + thumbs feedback.
-- [ ] **Wire the catalog builder in CI:** run `pnpm --filter os-code
-build:catalog` on a schedule / curation change (fetch the live catalog
-      into `os-code/build/catalog.json` first so the regression gate has a real
-      previous), publish the output, and point `config.catalog.url` at it. Seed
-      `os-code/curation/*.json` as the roster grows.
+- [x] **Catalog builder wired in CI and publishing.**
+      `.github/workflows/catalog.yml` (weekly + on curation/builder/schema change
+      + manual) builds, gates, and publishes `catalog.json` by committing it to
+      the marketing repo at `src/static/os-code/catalog.json`, which Cloudflare
+      Pages serves at `openshore.ai/os-code/catalog.json` (the default
+      `config.catalog.url`). Verified end to end: run #3 published commit
+      `aca6186` to the marketing `main`. Auth is a classic PAT in the
+      `MARKETING_DEPLOY_TOKEN` repo secret (an earlier fine-grained token 403'd
+      on a wrong-repo selection; fixed).
+      Follow-ups, both minor: (1) source-metadata enrichment (HF/Ollama
+      downloads/likes) came back EMPTY on the first live run, so the popularity
+      sort has no numbers yet; investigate whether the sample catalog's
+      `source.ref`s resolve against the real HF/Ollama APIs. (2) the builder
+      stamps a fresh `updated` timestamp each run, so every scheduled run commits
+      even when models are unchanged; consider diffing on content only.
+      Seed `os-code/curation/*.json` as the roster grows.
 - [~] **Stripe went live + email confirmation ON.** Supabase "Confirm email" is
       ON (verified in the dashboard). Stripe is in live mode: live secret key,
       the OS Code webhook (`lzlrlfdffwiypzreoldb.../stripe-webhook`) enabled and
