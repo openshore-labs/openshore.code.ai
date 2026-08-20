@@ -59,17 +59,27 @@ Three facts, each literally true:
    left this device this period" (green). If there were, it says so plainly:
    "N cloud turns sent to your provider, on your own key." A real amber note,
    not an alert, because a cloud call genuinely sends your prompt and context.
-3. **Encrypted at rest**: journals are currently plaintext on disk. The seal
-   reports "Sessions are not yet encrypted at rest" (amber `pending`) and flips
-   to green only when the separate journal-sealing task ships. One candid amber
-   is what makes the two greens believable.
+3. **Encrypted at rest**: measured, never asserted. The aggregator prefix-scans
+   every journal on disk (in range or not) and asks the key store which backend
+   really holds the data key. Green requires BOTH: zero plaintext lines
+   remaining AND the key living in a system keychain. A key that fell back to
+   the machine-keyed encrypted file, or plaintext lines still awaiting
+   migration, each produce a candid amber note saying exactly what is less.
 
-**At-rest encryption is a separate task** (per the CTO): the engine needs its own
-`node:crypto` sealing that mirrors the app's `enc:v1:iv:ct` format
-(`app/src/lib/crypto.ts`), keyed from the OS keychain, applied per journal line
-and tolerant of legacy plaintext. Until then the seal stays honest and the
-reader (`readJournal`) already skips any line it cannot parse, so a future sealed
-line degrades to skipped rather than crashing the read.
+**At-rest encryption (shipped).** The engine seals its own files with
+`os-code/src/core/security/atRest.ts`: AES-256-GCM in exactly the app-side
+format (`enc:v1:<b64url(iv)>:<b64url(ct+tag)>`, `app/src/lib/crypto.ts`), so a
+blob sealed by either side opens on the other (pinned by a bidirectional
+WebCrypto cross-test in `test/atRest.test.ts`). The data key rides the existing
+credential store (`auth/store.ts`): OS keychain via `secret-tool` when present,
+else the machine-keyed encrypted file at mode 600, with the backend reported
+honestly and the key migrating up into the keychain the first time one appears.
+Journal lines are redacted first, then sealed (defense in depth), session titles
+seal because they are the user's own words, and a one-shot boot migration
+(`sealSessionsAtRest`, hooked into both the Electron host and the daemon)
+reseals pre-encryption sessions atomically and idempotently. Readers everywhere
+tolerate legacy plaintext, and a line that cannot open is skipped, never fatal
+and never deleted.
 
 ## Time travel
 

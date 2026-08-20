@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { existsSync, mkdirSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
-import { listSessions, type LocalDriver } from 'os-code/dist/src/daemon/session.js';
+import { listSessions, sealSessionsAtRest, type LocalDriver } from 'os-code/dist/src/daemon/session.js';
 import { startDaemon, type RunningDaemon } from 'os-code/dist/src/daemon/serve.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
 import { getAnthropicKey, loginWithApiKey, logoutClaude } from 'os-code/dist/src/auth/claude.js';
@@ -47,7 +47,15 @@ export class EngineHost {
   constructor(
     private readonly forwardEvent: EventForward,
     private readonly forwardInstall: InstallForward,
-  ) {}
+  ) {
+    // Reseal any pre-encryption sessions once the host is up. Off the launch
+    // path and failure-tolerant: sealing protects data, it never blocks the app.
+    setImmediate(() => {
+      try {
+        sealSessionsAtRest();
+      } catch {}
+    });
+  }
 
   // ---------------------------------------------------------------- sessions
 
