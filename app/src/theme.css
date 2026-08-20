@@ -1047,6 +1047,38 @@ textarea {
   text-decoration: none;
 }
 
+/* Download chips (e.g. the Tailscale links on the pairing screen). A wrapping
+   row of small pill anchors in the brand water teal. */
+.dl-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dl-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--local-soft);
+  color: var(--local);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background 0.12s ease,
+    transform 0.06s ease;
+}
+
+.dl-chip:hover {
+  background: rgba(47, 90, 102, 0.18);
+}
+
+.dl-chip:active {
+  transform: scale(0.97);
+}
+
 .card-row {
   display: flex;
   align-items: center;
