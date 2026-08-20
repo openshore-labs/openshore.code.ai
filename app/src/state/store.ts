@@ -280,6 +280,8 @@ interface AppState {
   /** Open web billing: the Stripe customer portal if subscribed, else the
    *  purchase page. Always in the system browser (Apple 3.1.1). */
   manageBilling(): Promise<void>;
+  /** Start a Stripe Checkout for the given tier and open it in the browser. */
+  startCheckout(tierId: string): Promise<void>;
   /** Authorize an admin action: server role when signed in, else local UX. */
   authorizeAdmin(): Promise<boolean>;
 
@@ -1248,6 +1250,27 @@ export const useApp = create<AppState>((set, get) => {
         }
       }
       openExternal(BILLING_URL);
+    },
+
+    async startCheckout(tierId) {
+      const session = get().authSession;
+      const serverId = get().settings.account?.org?.serverId;
+      // Checkout needs a synced org and a signed-in admin (the function stamps
+      // the orgId into the Stripe session so the webhook can bind the payment).
+      if (!authConfigured() || !session || !serverId) {
+        openExternal(BILLING_URL);
+        return;
+      }
+      try {
+        const { url } = await supabaseInvoke<{ url: string }>(
+          'stripe-checkout',
+          session.accessToken,
+          { orgId: serverId, tierId },
+        );
+        openExternal(url);
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : 'Could not start checkout.');
+      }
     },
 
     async authorizeAdmin() {
