@@ -35,6 +35,30 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep a focused field above the on-screen keyboard. iOS shrinks the visual
+  // viewport for the keyboard but not the layout, and our scroll lives in a
+  // nested container, so Safari does not reliably lift the field itself. On a
+  // touch device, once the keyboard has settled, center any focused field that
+  // the keyboard is actually covering (fields already in view are left alone,
+  // so a sticky composer is untouched).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
+    const onFocusIn = (e: FocusEvent) => {
+      const el = e.target;
+      if (!(el instanceof HTMLElement)) return;
+      if (!el.matches('input, textarea, [contenteditable="true"]')) return;
+      window.setTimeout(() => {
+        const visibleBottom = vv.offsetTop + vv.height;
+        if (el.getBoundingClientRect().bottom > visibleBottom - 24) {
+          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+      }, 300);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
+
   if (!ready) return <div className="shell" />;
 
   if (view === 'onboarding') {
