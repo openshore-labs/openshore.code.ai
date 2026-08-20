@@ -121,6 +121,7 @@ export type ViewName =
   | 'chat'
   | 'marketplace'
   | 'stack'
+  | 'stackhealth'
   | 'connections'
   | 'repos'
   | 'projects'

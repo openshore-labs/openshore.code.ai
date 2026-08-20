@@ -7,6 +7,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
 import { StackScreen } from './screens/StackScreen.js';
+import { StackHealthScreen } from './screens/StackHealthScreen.js';
 import { ConnectionsScreen } from './screens/ConnectionsScreen.js';
 import { ReposScreen } from './screens/ReposScreen.js';
 import { ProjectsScreen } from './screens/ProjectsScreen.js';
@@ -77,6 +78,8 @@ export function App() {
       <MarketplaceScreen />
     ) : view === 'stack' ? (
       <StackScreen />
+    ) : view === 'stackhealth' ? (
+      <StackHealthScreen />
     ) : view === 'connections' ? (
       <ConnectionsScreen />
     ) : view === 'repos' ? (

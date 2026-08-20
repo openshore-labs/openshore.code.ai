@@ -2469,3 +2469,347 @@ textarea {
   color: var(--muted);
   font-size: 11.5px;
 }
+
+/* ---- Stack Health -------------------------------------------------------
+   A fully local dashboard. Water teal = private/local, amber = cloud/spend,
+   a neutral steel for flow. The palette never drifts to Apple's RGB rings:
+   the teal/amber equation is the brand, so it is load-bearing here. */
+
+/* The privacy seal: sticky chrome at the top of the scroll, quiet paper with a
+   wave stamp, not an alert box. */
+.sh-seal {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.sh-seal-mark {
+  color: var(--local);
+  flex: none;
+  line-height: 0;
+}
+.sh-seal-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.sh-seal-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.sh-seal-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: none;
+}
+.sh-seal-fact.sh-good .sh-seal-dot {
+  background: var(--ok);
+}
+.sh-seal-fact.sh-note .sh-seal-dot,
+.sh-seal-fact.sh-pending .sh-seal-dot {
+  background: var(--warn);
+}
+
+/* Time-travel segmented control. Active segment fills teal. */
+.sh-segment {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 18px;
+  background: var(--surface);
+  border-radius: 999px;
+}
+.sh-seg-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+.sh-seg-btn.active {
+  background: var(--local);
+  color: var(--bg);
+}
+
+/* Hero: rings beside the count-up trophy line. */
+.sh-hero {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.sh-rings-wrap {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  flex: none;
+}
+.sh-rings {
+  width: 100%;
+  height: 100%;
+}
+.sh-ring-track {
+  stroke: var(--surface);
+}
+.sh-ring-fill {
+  transition: stroke-dashoffset 900ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.sh-rings-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.sh-rings-pct {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--local);
+  line-height: 1;
+}
+.sh-rings-cap {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.sh-hero-copy {
+  flex: 1;
+  min-width: 200px;
+}
+.sh-saved {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  line-height: 1;
+}
+.sh-saved-sign {
+  font-size: 24px;
+  color: var(--muted);
+  font-family: var(--font-display);
+}
+.sh-saved-num {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 11vw, 60px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.sh-saved-line {
+  color: var(--ink-soft);
+  font-size: 14px;
+  margin-top: 6px;
+}
+.sh-saved-paid {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* Ring legend: names the three colors once. */
+.sh-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 20px;
+}
+.sh-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.sh-legend-item::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.sh-lg-local::before {
+  background: var(--wave);
+}
+.sh-lg-flow::before {
+  background: #8aa0a8;
+}
+.sh-lg-saved::before {
+  background: var(--cloud);
+}
+
+.sh-card {
+  margin-top: 14px;
+}
+.sh-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.sh-card-read {
+  margin-top: 12px;
+}
+
+/* Timeline: stacked local/cloud columns. */
+.sh-timeline {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 96px;
+}
+.sh-tl-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  justify-content: flex-end;
+}
+.sh-tl-bar {
+  width: 100%;
+  max-width: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface);
+  min-height: 3px;
+}
+.sh-tl-cloud {
+  background: var(--cloud);
+}
+.sh-tl-local {
+  background: var(--wave);
+}
+.sh-tl-label {
+  font-size: 9.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Crew cards: each stack role as a small stat block, shore-edge tinted by
+   where it runs (teal local, amber cloud) to match the Marketplace language. */
+.sh-crew {
+  display: grid;
+  gap: 8px;
+}
+.sh-crew-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.sh-crew-card.local {
+  box-shadow: inset 3px 0 0 var(--local);
+}
+.sh-crew-card.cloud {
+  box-shadow: inset 3px 0 0 var(--cloud);
+}
+.sh-crew-card.lead .crew-monogram {
+  outline: 2px solid var(--local);
+  outline-offset: 2px;
+}
+.sh-crew-role {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sh-crew-model {
+  font-size: 12px;
+  margin-top: 1px;
+  word-break: break-word;
+}
+.sh-crew-stat {
+  flex: none;
+  text-align: right;
+}
+.sh-crew-turns {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1;
+}
+.sh-crew-turns-cap {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sh-crew-note {
+  margin-top: 12px;
+}
+
+/* Trust stats row. */
+.sh-stats {
+  display: flex;
+  gap: 10px;
+}
+.sh-stat {
+  flex: 1;
+  text-align: center;
+  padding: 12px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.sh-stat-num {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1;
+}
+.sh-stat-cap {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sh-ring-fill {
+    transition: none;
+  }
+  .sh-seg-btn {
+    transition: none;
+  }
+}
