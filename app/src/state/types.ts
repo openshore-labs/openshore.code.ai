@@ -145,6 +145,14 @@ export interface Org {
   serverId?: string;
 }
 
+/** The org's billing entitlement, written by the Stripe webhook and read here. */
+export interface Entitlement {
+  tierId: string;
+  status: 'active' | 'past_due' | 'canceled' | 'trialing';
+  /** ISO end of the current paid period, when known. */
+  validUntil?: string;
+}
+
 export interface Account {
   type: AccountType;
   /** The commercial org, when type is 'commercial'. */

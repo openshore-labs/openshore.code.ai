@@ -12,6 +12,7 @@ import {
   type Conversation,
   type ConversationSource,
   type CrewAgent,
+  type Entitlement,
   type LaunchState,
   type LaunchTarget,
   type Org,
@@ -58,6 +59,7 @@ import {
   del as supabaseDelete,
   getUser,
   insert as supabaseInsert,
+  invokeFunction as supabaseInvoke,
   isConfigured as authConfigured,
   parseAuthCallback,
   rpc as supabaseRpc,
@@ -105,6 +107,7 @@ import { bridge } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   isDesktop,
+  openExternal,
   platform,
   sealExistingKeys,
   secretDelete,
@@ -168,6 +171,10 @@ export interface HarborDownload {
   failed?: boolean;
 }
 
+// Web billing lives on the marketing site (purchase never happens in-app, per
+// Apple 3.1.1). Admins are sent here to buy seats or manage a subscription.
+const BILLING_URL = 'https://openshore.ai/os-code/';
+
 const SETTINGS_KEY = 'oscode.settings.v1';
 const CONVERSATIONS_KEY = 'oscode.conversations.v1';
 const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
@@ -202,6 +209,8 @@ interface AppState {
   authConfigured: boolean;
   /** The server-verified org role for the signed-in user, when known. */
   serverRole?: 'admin' | 'member';
+  /** The org's billing entitlement (Stripe webhook is the writer), when known. */
+  entitlement?: Entitlement;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
   /** When true, the Marketplace intro walkthrough is showing over the library. */
@@ -266,6 +275,11 @@ interface AppState {
   signOutAccount(): Promise<void>;
   /** Re-read the signed-in user's server role into serverRole. */
   refreshOrgRole(): Promise<void>;
+  /** Re-read the org's billing entitlement from the server. */
+  refreshEntitlement(): Promise<void>;
+  /** Open web billing: the Stripe customer portal if subscribed, else the
+   *  purchase page. Always in the system browser (Apple 3.1.1). */
+  manageBilling(): Promise<void>;
   /** Authorize an admin action: server role when signed in, else local UX. */
   authorizeAdmin(): Promise<boolean>;
 
@@ -649,6 +663,7 @@ export const useApp = create<AppState>((set, get) => {
     }
     await reconcileOrg(session);
     await get().refreshOrgRole();
+    void get().refreshEntitlement();
     logEvent('auth_sign_in');
   }
 
@@ -1153,7 +1168,7 @@ export const useApp = create<AppState>((set, get) => {
       const session = get().authSession;
       if (session) await supabaseSignOut(session.accessToken);
       await clearSession();
-      set({ authSession: undefined, serverRole: undefined });
+      set({ authSession: undefined, serverRole: undefined, entitlement: undefined });
       logEvent('auth_sign_out');
     },
 
@@ -1182,6 +1197,57 @@ export const useApp = create<AppState>((set, get) => {
       } catch {
         // Offline or transient: keep whatever role we last knew.
       }
+    },
+
+    async refreshEntitlement() {
+      const session = get().authSession;
+      const serverId = get().settings.account?.org?.serverId;
+      if (!session || !serverId || !authConfigured()) return;
+      try {
+        const rows = await supabaseSelect<{
+          tier_id: string;
+          status: Entitlement['status'];
+          valid_until: string | null;
+        }>(
+          'org_entitlements',
+          session.accessToken,
+          `select=tier_id,status,valid_until&org_id=eq.${serverId}`,
+        );
+        const row = rows[0];
+        set({
+          entitlement: row
+            ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
+            : undefined,
+        });
+      } catch {
+        // Offline or transient: keep whatever entitlement we last knew.
+      }
+    },
+
+    async manageBilling() {
+      const session = get().authSession;
+      const serverId = get().settings.account?.org?.serverId;
+      if (!authConfigured() || !session || !serverId) {
+        // Not signed in / org not synced yet: still send them to the web page.
+        openExternal(BILLING_URL);
+        return;
+      }
+      // A subscribed org gets the Stripe customer portal; otherwise the web
+      // purchase page. Either way it opens in the system browser.
+      if (get().entitlement) {
+        try {
+          const { url } = await supabaseInvoke<{ url: string }>(
+            'stripe-portal',
+            session.accessToken,
+            { orgId: serverId },
+          );
+          openExternal(url);
+          return;
+        } catch (err) {
+          get().showToast(err instanceof Error ? err.message : 'Could not open billing.');
+        }
+      }
+      openExternal(BILLING_URL);
     },
 
     async authorizeAdmin() {
