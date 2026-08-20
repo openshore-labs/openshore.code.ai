@@ -1,0 +1,117 @@
+# Publish the model catalog. The marketplace is a CATALOG, not a weight host:
+# this job gathers source METADATA only (Hugging Face + Ollama), computes the
+# provenance-backed ratings, runs the license and regression gates, and
+# publishes a static catalog.json. The client pulls weights straight from the
+# source; OpenShore never rehosts them.
+#
+# Where it publishes: openshore.ai is a Cloudflare Pages site built from the
+# Open-Shore-LLC-Homepage repo, whose Eleventy build passes src/static through
+# to the site root. So a file committed to that repo at
+# src/static/os-code/catalog.json is served at openshore.ai/os-code/catalog.json,
+# which is exactly what config.catalog.url defaults to. This job builds the
+# catalog here (where the os-code toolchain lives) and commits it there; the
+# Cloudflare Pages deploy then ships it. On any gate breach the job writes and
+# publishes NOTHING, and the previously published catalog keeps serving.
+#
+# One-time setup (see os-code/docs/MARKETPLACE.md): a repository secret named
+# MARKETING_DEPLOY_TOKEN, a fine-grained PAT scoped to Open-Shore-LLC-Homepage
+# with Contents: read and write. Without it the publish step is skipped and the
+# job just proves the catalog builds.
+name: Publish model catalog
+
+on:
+  # Weekly refresh so popularity and recency stay current. Off the top of the
+  # hour to avoid the scheduler stampede.
+  schedule:
+    - cron: '17 8 * * 1'
+  # Rebuild whenever the curation inputs, the builder, or the schema change.
+  push:
+    branches: [main]
+    paths:
+      - 'os-code/curation/**'
+      - 'os-code/catalog.sample.json'
+      - 'os-code/scripts/build-catalog/**'
+      - 'os-code/src/market/schema.ts'
+      - '.github/workflows/catalog.yml'
+  workflow_dispatch: {}
+
+# One catalog publish at a time; never let two runs race the marketing repo.
+concurrency:
+  group: publish-catalog
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    # Mapped once so the publish gate can test whether it is configured. An
+    # unset secret resolves to an empty string.
+    env:
+      MARKETING_DEPLOY_TOKEN: ${{ secrets.MARKETING_DEPLOY_TOKEN }}
+    steps:
+      - name: Check out the engine repo
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the engine
+        run: pnpm --filter os-code build
+
+      - name: Guard the builder isolation and gates
+        run: pnpm --filter os-code exec vitest run catalog.builder scripts.isolation
+
+      # Seed the regression baseline with whatever is live today, so the gate
+      # compares the new catalog against what users actually have. The builder
+      # reads this same path as `previous` and overwrites it on success. A 404
+      # on the first ever run is fine: no baseline means nothing to regress.
+      - name: Seed the regression baseline from the live catalog
+        run: |
+          mkdir -p os-code/build
+          curl -fsSL https://openshore.ai/os-code/catalog.json \
+            -o os-code/build/catalog.json \
+            || echo 'No live catalog yet; building without a baseline.'
+
+      - name: Build the catalog
+        run: pnpm --filter os-code build:catalog
+
+      - name: Publish to the marketing site
+        if: ${{ env.MARKETING_DEPLOY_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${MARKETING_DEPLOY_TOKEN}@github.com/openshore-labs/Open-Shore-LLC-Homepage.git" \
+            marketing
+          install -D os-code/build/catalog.json marketing/src/static/os-code/catalog.json
+          cd marketing
+          if git diff --quiet; then
+            echo 'Catalog unchanged; nothing to publish.'
+            exit 0
+          fi
+          git config user.name 'openshore-catalog-bot'
+          git config user.email 'catalog-bot@openshore.ai'
+          git add src/static/os-code/catalog.json
+          git commit -m "Publish model catalog ($(date -u +%Y-%m-%d))"
+          git push origin HEAD:main
+
+      - name: Note when publishing is not configured
+        if: ${{ env.MARKETING_DEPLOY_TOKEN == '' }}
+        run: |
+          echo 'MARKETING_DEPLOY_TOKEN is not set, so the catalog was built and'
+          echo 'gated but not published. Add the secret to enable publishing.'
+
+      - name: Upload the built catalog as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog
+          path: os-code/build/catalog.json
