@@ -52,7 +52,7 @@ export class EngineHost {
     // path and failure-tolerant: sealing protects data, it never blocks the app.
     setImmediate(() => {
       try {
-        sealSessionsAtRest();
+        sealSessionsAtRest({ skipNewerThanMs: 60_000 });
       } catch {}
     });
   }

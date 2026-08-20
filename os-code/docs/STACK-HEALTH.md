@@ -76,10 +76,20 @@ else the machine-keyed encrypted file at mode 600, with the backend reported
 honestly and the key migrating up into the keychain the first time one appears.
 Journal lines are redacted first, then sealed (defense in depth), session titles
 seal because they are the user's own words, and a one-shot boot migration
-(`sealSessionsAtRest`, hooked into both the Electron host and the daemon)
-reseals pre-encryption sessions atomically and idempotently. Readers everywhere
-tolerate legacy plaintext, and a line that cannot open is skipped, never fatal
-and never deleted.
+(`sealSessionsAtRest`, hooked into both the Electron host and the daemon,
+guarded against journals being actively appended by another process) reseals
+pre-encryption sessions atomically and idempotently. Readers everywhere tolerate
+legacy plaintext, and a line that cannot open is skipped and counted, never
+fatal and never deleted.
+
+First-run key creation is guarded by a cross-process lock (plus a read-back
+adopt), so two engine processes first-running together converge on one key
+instead of stranding whichever one lost. A deliberate availability decision:
+after a key migrates up into the keychain, the encrypted-file copy is kept as a
+fallback. It is itself AES-256-GCM under a machine-derived key at mode 600,
+never plaintext, and it keeps history readable on boots where the keychain is
+unreachable (a headless session without the desktop bus, say). The keychain is
+the primary and is what the green grade attests.
 
 ## Time travel
 

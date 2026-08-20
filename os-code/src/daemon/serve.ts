@@ -79,7 +79,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   // availability risk.
   setImmediate(() => {
     try {
-      const sealed = sealSessionsAtRest();
+      const sealed = sealSessionsAtRest({ skipNewerThanMs: 60_000 });
       if (sealed.sealedLines > 0) {
         log.info('sealed legacy sessions at rest', sealed);
       }

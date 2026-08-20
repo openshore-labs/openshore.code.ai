@@ -6,7 +6,15 @@
 // replay after reload, the boot migration reseals legacy sessions without
 // losing a byte, and Stack Health's seal grades from the measured disk state.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { webcrypto } from 'node:crypto';
@@ -250,5 +258,50 @@ describe('the measured seal in Stack Health', () => {
     const fact = computeStackHealth('all').seal.find((f) => f.key === 'encryptedAtRest')!;
     expect(fact.state).toBe('note');
     expect(fact.label).toContain('1 older line');
+  });
+});
+
+describe('CTO must-fix hardening', () => {
+  it('breaks a stale first-run create lock and still creates a key', () => {
+    const lock = join(home, 'data-key.lock');
+    mkdirSync(lock, { recursive: true });
+    // Age the lock past the stale threshold, as a crashed creator would.
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    const dk = loadOrCreateDataKey();
+    expect(dk).toBeDefined();
+    expect(dk?.key.length).toBe(32);
+  });
+
+  it('forces a trailing newline when migrating a crash-truncated journal', () => {
+    const dir = join(home, 'sessions', 'trunc');
+    mkdirSync(dir, { recursive: true });
+    // No trailing newline: the shape a crash mid-append leaves behind.
+    writeFileSync(
+      join(dir, 'events.jsonl'),
+      JSON.stringify({ seq: 1, event: { type: 'task-start', input: 'x' } }),
+    );
+    writeFileSync(
+      join(dir, 'info.json'),
+      JSON.stringify({ id: 'trunc', cwd: home, title: 't', createdAt: 'x', updatedAt: 'x' }),
+    );
+    sealSessionsAtRest();
+    const raw = readFileSync(join(dir, 'events.jsonl'), 'utf8');
+    expect(raw.endsWith('\n')).toBe(true);
+    expect(isSealed(raw.trim())).toBe(true);
+  });
+
+  it('leaves a journal alone while another process may be appending to it', () => {
+    const dir = join(home, 'sessions', 'busy');
+    mkdirSync(dir, { recursive: true });
+    const line = JSON.stringify({ seq: 1, event: { type: 'task-start', input: 'x' } });
+    writeFileSync(join(dir, 'events.jsonl'), `${line}\n`);
+    // Freshly written file + a guard window: the migration must not touch it.
+    const guarded = sealSessionsAtRest({ skipNewerThanMs: 60_000 });
+    expect(guarded.sealedLines).toBe(0);
+    expect(readFileSync(join(dir, 'events.jsonl'), 'utf8')).toBe(`${line}\n`);
+    // Without the guard (the file is old enough), it seals.
+    const unguarded = sealSessionsAtRest();
+    expect(unguarded.sealedLines).toBe(1);
   });
 });

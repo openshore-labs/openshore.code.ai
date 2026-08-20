@@ -12,7 +12,10 @@
 // Readers tolerate plaintext (a value that predates encryption passes through)
 // and a failed decrypt returns null rather than destroying data.
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { getCredential, setCredential, type StoreBackend } from '../../auth/store.js';
+import { mkdirSync, rmdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { oscHome } from '../../config/load.js';
+import { getCredential, setCredential, storeBackend, type StoreBackend } from '../../auth/store.js';
 
 const PREFIX = 'enc:v1:';
 const DATA_KEY_NAME = 'data-key';
@@ -74,31 +77,130 @@ export function openString(key: Buffer, value: string): string | null {
 
 let cached: DataKey | undefined;
 
+function safeBackend(): StoreBackend {
+  try {
+    return storeBackend();
+  } catch {
+    return 'encrypted-file';
+  }
+}
+
+/** Synchronous bounded sleep for the first-run wait loop (Node permits
+ *  Atomics.wait on the main thread). */
+function sleepMs(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+const CREATE_LOCK_STALE_MS = 10_000;
+
+/**
+ * O_EXCL-style cross-process lock around first-run key creation. Returns a
+ * release function, or undefined when another live process holds it. A lock
+ * left behind by a crashed creator goes stale after ten seconds and is broken.
+ */
+function acquireCreateLock(): (() => void) | undefined {
+  const lock = join(oscHome(), 'data-key.lock');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      mkdirSync(lock);
+      return () => {
+        try {
+          rmdirSync(lock);
+        } catch {}
+      };
+    } catch {
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > CREATE_LOCK_STALE_MS) {
+          rmdirSync(lock);
+          continue;
+        }
+      } catch {}
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 /**
  * The engine's data-encryption key, created on first use and cached for the
  * process. One key per environment (per OSC_HOME), shared by every engine
  * entrypoint (Electron host, daemon, CLI) so any of them can read what any
- * other sealed. Returns undefined only if the credential store itself fails,
- * in which case callers write plaintext rather than losing data.
+ * other sealed. Returns undefined only when no key can be read, adopted, or
+ * created this run, in which case callers write plaintext rather than losing
+ * data (and the seal reports it).
  */
 export function loadOrCreateDataKey(): DataKey | undefined {
   if (cached) return cached;
+
+  let raw: string | undefined;
   try {
-    let raw = getCredential(DATA_KEY_NAME);
-    if (!raw) {
-      raw = randomBytes(32).toString('base64url');
-    }
-    // Always (re)store: setCredential reports the backend that actually holds
-    // the key, and a key that predates the keychain migrates up into it the
-    // first time one is available. Honest protection, not assumed protection.
-    const protection = setCredential(DATA_KEY_NAME, raw);
-    const key = fromB64Url(raw);
-    if (key.length !== 32) return undefined;
-    cached = { key, protection };
-    return cached;
+    raw = getCredential(DATA_KEY_NAME);
   } catch {
     return undefined;
   }
+
+  let protection: StoreBackend;
+  if (raw) {
+    // Existing key: re-store so it migrates up into a keychain when one
+    // appears and the reported backend is the one that actually holds it. A
+    // failed re-store must never discard a key that was just read; degrade to
+    // the current backend's best guess instead.
+    try {
+      protection = setCredential(DATA_KEY_NAME, raw);
+    } catch {
+      protection = safeBackend();
+    }
+  } else {
+    // First run. Another engine process (the CLI daemon and the desktop app,
+    // say) may be first-running at the same moment, and two generated keys
+    // would strand whatever the loser sealed. Creation happens under an
+    // exclusive cross-process lock; a process that loses the lock waits
+    // briefly for the winner's key and adopts it.
+    try {
+      mkdirSync(oscHome(), { recursive: true });
+    } catch {}
+    const release = acquireCreateLock();
+    if (release) {
+      try {
+        try {
+          raw = getCredential(DATA_KEY_NAME); // re-check inside the lock
+        } catch {}
+        if (raw) {
+          protection = safeBackend();
+        } else {
+          const fresh = randomBytes(32).toString('base64url');
+          try {
+            protection = setCredential(DATA_KEY_NAME, fresh);
+          } catch {
+            return undefined;
+          }
+          // Adopt whatever the store reads back: if a racer slipped past a
+          // broken stale lock, the store's winner is the one true key.
+          try {
+            raw = getCredential(DATA_KEY_NAME) ?? fresh;
+          } catch {
+            raw = fresh;
+          }
+        }
+      } finally {
+        release();
+      }
+    } else {
+      for (let i = 0; i < 100 && !raw; i++) {
+        sleepMs(20);
+        try {
+          raw = getCredential(DATA_KEY_NAME);
+        } catch {}
+      }
+      if (!raw) return undefined; // could not create nor adopt this run
+      protection = safeBackend();
+    }
+  }
+
+  const key = fromB64Url(raw);
+  if (key.length !== 32) return undefined;
+  cached = { key, protection };
+  return cached;
 }
 
 /** Test seam: forget the cached key (tests swap OSC_HOME between cases). */
