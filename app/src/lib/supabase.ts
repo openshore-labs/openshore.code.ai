@@ -204,3 +204,18 @@ export async function del(table: string, accessToken: string, query: string): Pr
   });
   if (!res.ok) throw new Error(await readError(res));
 }
+
+/** Invoke a Supabase Edge Function (POST JSON) as the signed-in user. */
+export async function invokeFunction<T>(
+  name: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const res = await fetch(`${base()}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T;
+}

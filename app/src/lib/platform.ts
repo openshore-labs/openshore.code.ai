@@ -19,6 +19,14 @@ export function platform(): Platform {
 export const isDesktop = () => platform() === 'electron';
 export const isPhone = () => platform() === 'ios';
 
+/** Open a URL in the system browser: Safari on iOS (so it leaves the app, which
+ *  is required for anything billing under Apple 3.1.1), and the OS browser on
+ *  Electron (via the window-open handler) and the web. */
+export function openExternal(url: string): void {
+  if (typeof window === 'undefined') return;
+  window.open(url, platform() === 'ios' ? '_system' : '_blank', 'noopener');
+}
+
 // ---------------------------------------------------------------------------
 // Raw key-value storage: the right home per platform, no encryption. iOS uses
 // Capacitor Preferences (survives app updates); everywhere else, localStorage.

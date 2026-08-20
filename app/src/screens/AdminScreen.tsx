@@ -16,6 +16,8 @@ export function AdminScreen() {
     setMemberRole,
     setSeatCount,
     setPreviewAsMember,
+    manageBilling,
+    entitlement,
     showToast,
   } = useApp();
 
@@ -31,7 +33,9 @@ export function AdminScreen() {
         <BackBar title="Admin" />
         <div className="screen-inner">
           <h1>Admin</h1>
-          <p className="lead">This is a personal account. Admin controls are for company accounts.</p>
+          <p className="lead">
+            This is a personal account. Admin controls are for company accounts.
+          </p>
         </div>
       </div>
     );
@@ -104,11 +108,31 @@ export function AdminScreen() {
               >
                 Save headcount
               </button>
-              <p className="hint" style={{ marginTop: 8 }}>
-                Billing is not live in this build. Nothing is charged.
-              </p>
             </div>
           ) : null}
+
+          {/* Billing lives on the web (Apple 3.1.1): the app shows status and
+              sends the admin out to buy or manage the subscription. */}
+          <div className="card-row" style={{ marginTop: 12 }}>
+            <div className="grow">
+              <div className="sub">
+                {entitlement
+                  ? `Subscription ${entitlement.status}${
+                      entitlement.validUntil
+                        ? ` · renews ${new Date(entitlement.validUntil).toLocaleDateString()}`
+                        : ''
+                    }`
+                  : 'No active subscription yet. Buy seats on the web.'}
+              </div>
+            </div>
+            <button
+              className={`btn ${entitlement ? 'ghost' : 'primary'}`}
+              style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}
+              onClick={() => void manageBilling()}
+            >
+              {entitlement ? 'Manage billing' : 'Buy seats'}
+            </button>
+          </div>
         </div>
 
         {/* Member roster. */}
@@ -126,7 +150,11 @@ export function AdminScreen() {
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && void add()}
               />
-              <button className="btn primary" style={{ padding: '11px 16px' }} onClick={() => void add()}>
+              <button
+                className="btn primary"
+                style={{ padding: '11px 16px' }}
+                onClick={() => void add()}
+              >
                 Add
               </button>
             </div>
