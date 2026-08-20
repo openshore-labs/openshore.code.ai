@@ -6,6 +6,7 @@ import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
+import { StartingPaths } from '../components/StartingPaths.js';
 
 function keyStoreLabel(): string {
   switch (platform()) {
@@ -45,8 +46,8 @@ export function SettingsScreen() {
           <h3>Privacy, plainly</h3>
           <div className="sub">
             Local models run on your hardware and nothing leaves it. Cloud models run on your own
-            keys and only with your approval. Web search leaves your machine when the agent uses
-            it. No telemetry, no analytics, no phone-home, ever.
+            keys and only with your approval. Web search leaves your machine when the agent uses it.
+            No telemetry, no analytics, no phone-home, ever.
           </div>
         </div>
 
@@ -56,7 +57,11 @@ export function SettingsScreen() {
           <div className="card">
             <div className="card-row">
               <div className="grow">
-                <h3>{account.type === 'commercial' ? (org?.name ?? 'Company account') : 'Personal account'}</h3>
+                <h3>
+                  {account.type === 'commercial'
+                    ? (org?.name ?? 'Company account')
+                    : 'Personal account'}
+                </h3>
                 <div className="sub">
                   {account.type === 'commercial' && org
                     ? `${tierById(org.tierId).name} plan · ${priceLabel(tierById(org.tierId))} · ${org.members.length} ${org.members.length === 1 ? 'person' : 'people'}`
@@ -102,9 +107,9 @@ export function SettingsScreen() {
             <div className="grow">
               <h3>Help improve the test build</h3>
               <div className="sub">
-                Records a plain activity log on this device, so we can see where setup goes
-                smoothly or gets stuck. It stays here. Nothing is ever sent unless you copy it and
-                hand it back yourself. Off by default.
+                Records a plain activity log on this device, so we can see where setup goes smoothly
+                or gets stuck. It stays here. Nothing is ever sent unless you copy it and hand it
+                back yourself. Off by default.
               </div>
             </div>
             <button
@@ -145,24 +150,13 @@ export function SettingsScreen() {
           ) : null}
         </div>
 
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <h3>Run onboarding again</h3>
-              <div className="sub">The three starting paths, any time.</div>
-            </div>
-            <button
-              className="btn ghost"
-              style={{ padding: '8px 14px' }}
-              onClick={async () => {
-                await saveSettings({ onboarded: false });
-                setView('onboarding');
-              }}
-            >
-              Open
-            </button>
-          </div>
+        <div style={{ marginTop: 22, marginBottom: 6 }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 18 }}>
+            Add to your setup
+          </h3>
+          <p className="sub">The starting paths, any time.</p>
         </div>
+        <StartingPaths context="settings" />
 
         <div className="card">
           <div className="card-row">
