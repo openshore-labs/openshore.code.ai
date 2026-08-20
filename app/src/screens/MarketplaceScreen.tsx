@@ -4,7 +4,7 @@
 // Licenses shown before anything downloads; weights come from the source, never
 // OpenShore. Ratings are computed from benchmarks by the server-side builder,
 // never crowd-sourced, and popularity is labelled as popularity, never quality.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Catalog, CatalogModel, CapabilityCategory } from 'os-code/protocol';
 import { CAPABILITIES } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
@@ -79,7 +79,7 @@ const FIT_PILL: Record<FitLabel, { cls: string; text: string }> = {
 const CAP_ORDER = Object.keys(CAPABILITIES) as CapabilityCategory[];
 
 export function MarketplaceScreen() {
-  const { settings, saveSettings, showToast, libraryIntro, endLibraryIntro, harborDownload } =
+  const { settings, addDeviceModel, showToast, libraryIntro, endLibraryIntro, harborDownload } =
     useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
   const [note, setNote] = useState<string | undefined>();
@@ -93,7 +93,6 @@ export function MarketplaceScreen() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [memoryGB, setMemoryGB] = useState<number>(16);
   const [usageByModel, setUsageByModel] = useState<Map<string, number> | undefined>();
-  const listenersOn = useRef(false);
 
   useEffect(() => {
     // Snap the machine tier to detected hardware on the desktop, so fit badges
@@ -130,9 +129,11 @@ export function MarketplaceScreen() {
   }, []);
 
   useEffect(() => {
-    if (listenersOn.current) return;
-    listenersOn.current = true;
-    void Llama.addListener('downloadProgress', ({ id, completed, total }) => {
+    // G4: register BOTH progress listeners in the effect and remove BOTH in
+    // cleanup. No mount-once ref guard: under StrictMode the effect runs
+    // cleanup then re-runs, and a ref guard would leave the bridge listener
+    // unregistered (no install progress) while never removing the Llama one.
+    const llamaHandle = Llama.addListener('downloadProgress', ({ id, completed, total }) => {
       setDownloads((d) => ({
         ...d,
         [id]: {
@@ -157,7 +158,10 @@ export function MarketplaceScreen() {
         },
       }));
     });
-    return () => off?.();
+    return () => {
+      void llamaHandle.then((h) => h.remove());
+      off?.();
+    };
   }, []);
 
   const clearDownload = (id: string) =>
@@ -179,9 +183,7 @@ export function MarketplaceScreen() {
         ...d,
         [model.id]: { percent: 100, label: 'Verifying', indeterminate: true },
       }));
-      await saveSettings({
-        deviceModels: { ...settings.deviceModels, [model.id]: model.name },
-      });
+      await addDeviceModel(model.id, model.name);
       hapticSuccess();
       logEvent('model_downloaded', { id: model.id, target: 'device' });
       showToast(`${model.name} is on your bench. Place it in your stack.`);

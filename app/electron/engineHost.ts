@@ -63,27 +63,45 @@ export class EngineHost {
 
   // ---------------------------------------------------------------- sessions
 
-  private attach(driver: LocalDriver): void {
+  // Subscribe the forwarder and CAPTURE the journal replay instead of pushing it
+  // over IPC. subscribe(sink, 0) synchronously replays every journaled entry
+  // before it registers the sink for live events, so the entries emitted during
+  // that synchronous window are the journal; everything after is live and
+  // forwarded. Returning the journal (rather than webContents.send-ing it) fixes
+  // G1: the renderer's osc:event listener is not attached yet at resume time, so
+  // a pushed replay would land on the floor and the reopened chat renders blank.
+  // The driver replays the returned journal AFTER it has subscribed.
+  private attach(driver: LocalDriver): Array<{ seq: number; event: DriverEvent }> {
     this.unsubs.get(driver.id)?.();
+    const journal: Array<{ seq: number; event: DriverEvent }> = [];
+    let live = false;
     const off = driver.subscribe((event, seq) => {
-      this.forwardEvent({ sessionId: driver.id, seq, event });
+      if (live) this.forwardEvent({ sessionId: driver.id, seq, event });
+      else journal.push({ seq, event });
     }, 0);
+    live = true;
     this.unsubs.set(driver.id, off);
     this.drivers.set(driver.id, driver);
+    return journal;
   }
 
   async createSession(cwd?: string): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
     const { driver, warnings } = bootstrapSession({ cwd: workDir, profile: 'local-interactive' });
-    this.attach(driver);
+    this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
   }
 
-  async resumeSession(id: string): Promise<{ id: string; cwd: string } | { error: string }> {
+  async resumeSession(
+    id: string,
+  ): Promise<
+    | { id: string; cwd: string; journal: Array<{ seq: number; event: DriverEvent }> }
+    | { error: string }
+  > {
     const live = this.drivers.get(id);
     if (live) {
-      this.attach(live); // re-subscribe replays the journal for the new window
-      return { id, cwd: live.cwd };
+      const journal = this.attach(live);
+      return { id, cwd: live.cwd, journal };
     }
     const stored = listSessions().find((s) => s.id === id);
     if (!stored) return { error: `No stored session ${id}.` };
@@ -93,8 +111,8 @@ export class EngineHost {
         profile: 'local-interactive',
         sessionId: id,
       });
-      this.attach(driver);
-      return { id, cwd: stored.cwd };
+      const journal = this.attach(driver);
+      return { id, cwd: stored.cwd, journal };
     } catch (err) {
       return { error: (err as Error).message };
     }

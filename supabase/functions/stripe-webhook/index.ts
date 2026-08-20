@@ -3,10 +3,22 @@
 // entitlement with the service role (bypassing RLS on purpose; no client ever
 // writes entitlements). The signature is verified before anything is trusted.
 //
+// Correctness rules (P0-2, P0-4, A2, A4, P2-15):
+//   - status is authoritative. On cancel / delete / payment failure the row is
+//     written with the revoked status and orgs.tier_id drops to 'personal'
+//     (display only) so access ends. Nothing gates on orgs.tier_id.
+//   - Every DB write's error is checked; any failure THROWS -> 500 so Stripe
+//     retries (supabase-js does not throw on its own).
+//   - An unmapped price THROWS (never a silent 'personal' downgrade of a payer).
+//   - Ordering guard: last_event_at drops a stale or duplicate delivery, so a
+//     late subscription.updated(active) can never resurrect a canceled sub.
+//   - Real seats are written from orgs.seat_count while entitled, else 0.
+//
 // Env: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, SUPABASE_URL,
 //      SUPABASE_SERVICE_ROLE_KEY, plus the same STRIPE_PRICE_* as checkout.
 import Stripe from 'https://esm.sh/stripe@14?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { effectiveTier, ENTITLED } from '../_shared/entitlement.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', { apiVersion: '2024-06-20' });
 const supabase = createClient(
@@ -25,18 +37,68 @@ for (const [tier, env] of [
   if (id) TIER_BY_PRICE[id] = tier;
 }
 
-async function upsertEntitlement(orgId: string, priceId: string, subId: string, status: string, periodEnd?: number): Promise<void> {
-  const tier = TIER_BY_PRICE[priceId] ?? 'personal';
-  await supabase.from('org_entitlements').upsert({
+// Upsert the org's entitlement from a Stripe subscription state. Throws on any
+// write error or unmapped price so the caller returns 500 and Stripe retries.
+// `eventCreatedMs` is the webhook event's own timestamp, used to drop stale/dup
+// deliveries (Stripe is at-least-once and unordered).
+async function upsertEntitlement(
+  orgId: string,
+  priceId: string,
+  subId: string,
+  status: string,
+  periodEnd: number | undefined,
+  eventCreatedMs: number,
+): Promise<void> {
+  const tier = TIER_BY_PRICE[priceId];
+  if (!tier) throw new Error(`Unmapped Stripe price ${priceId}`);
+
+  const entitled = ENTITLED.has(status);
+
+  // Ordering guard: never apply an event older than the one already recorded.
+  const { data: existing, error: readErr } = await supabase
+    .from('org_entitlements')
+    .select('last_event_at')
+    .eq('org_id', orgId)
+    .maybeSingle();
+  if (readErr) throw new Error(`entitlement read failed: ${readErr.message}`);
+  if (existing?.last_event_at && new Date(existing.last_event_at).getTime() >= eventCreatedMs) {
+    return; // stale or duplicate delivery; the current state is newer.
+  }
+
+  // Real seats from the org while entitled; zero once revoked.
+  let seats = 0;
+  if (entitled) {
+    const { data: org, error: orgErr } = await supabase
+      .from('orgs')
+      .select('seat_count')
+      .eq('id', orgId)
+      .maybeSingle();
+    if (orgErr) throw new Error(`orgs read failed: ${orgErr.message}`);
+    seats = org?.seat_count ?? 0;
+  }
+
+  const { error: upErr } = await supabase.from('org_entitlements').upsert({
     org_id: orgId,
-    tier_id: tier,
-    seats: 0,
+    tier_id: tier, // the purchased tier; access is decided by status, not this.
+    seats,
     status,
     stripe_subscription_id: subId,
     valid_until: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+    last_event_at: new Date(eventCreatedMs).toISOString(),
     issued_at: new Date().toISOString(),
   });
-  await supabase.from('orgs').update({ tier_id: tier }).eq('id', orgId);
+  if (upErr) throw new Error(`entitlement upsert failed: ${upErr.message}`);
+
+  // orgs.tier_id is DISPLAY only: the real tier while entitled, else 'personal'.
+  const { error: orgUpErr } = await supabase
+    .from('orgs')
+    .update({ tier_id: effectiveTier(tier, status) })
+    .eq('id', orgId);
+  if (orgUpErr) throw new Error(`orgs tier update failed: ${orgUpErr.message}`);
+}
+
+function priceOf(sub: Stripe.Subscription): string {
+  return sub.items.data[0]?.price.id ?? '';
 }
 
 Deno.serve(async (req) => {
@@ -44,33 +106,61 @@ Deno.serve(async (req) => {
   const body = await req.text();
   let event: Stripe.Event;
   try {
-    event = await stripe.webhooks.constructEventAsync(body, sig ?? '', Deno.env.get('STRIPE_WEBHOOK_SECRET') ?? '');
+    event = await stripe.webhooks.constructEventAsync(
+      body,
+      sig ?? '',
+      Deno.env.get('STRIPE_WEBHOOK_SECRET') ?? '',
+    );
   } catch (err) {
-    return new Response(`Bad signature: ${err instanceof Error ? err.message : err}`, { status: 400 });
+    console.error('stripe-webhook bad signature', err);
+    return new Response('Bad signature', { status: 400 });
   }
 
+  const eventCreatedMs = event.created * 1000;
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const orgId = session.metadata?.orgId;
       if (orgId && session.subscription) {
         const sub = await stripe.subscriptions.retrieve(String(session.subscription));
-        const price = sub.items.data[0]?.price.id ?? '';
-        await upsertEntitlement(orgId, price, sub.id, sub.status, sub.current_period_end);
+        await upsertEntitlement(orgId, priceOf(sub), sub.id, sub.status, sub.current_period_end, eventCreatedMs);
       }
-    } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+    } else if (
+      event.type === 'customer.subscription.updated' ||
+      event.type === 'customer.subscription.deleted'
+    ) {
       const sub = event.data.object as Stripe.Subscription;
       const orgId = sub.metadata?.orgId ?? (await orgIdForCustomer(String(sub.customer)));
-      const price = sub.items.data[0]?.price.id ?? '';
-      if (orgId) await upsertEntitlement(orgId, price, sub.id, sub.status, sub.current_period_end);
+      if (orgId) {
+        // A deletion is a revocation regardless of the object's status field.
+        const status = event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status;
+        await upsertEntitlement(orgId, priceOf(sub), sub.id, status, sub.current_period_end, eventCreatedMs);
+      }
+    } else if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object as Stripe.Invoice;
+      const subId = invoice.subscription;
+      if (subId) {
+        const sub = await stripe.subscriptions.retrieve(String(subId));
+        const orgId = sub.metadata?.orgId ?? (await orgIdForCustomer(String(sub.customer)));
+        // sub.status is past_due / unpaid after a failed payment; that revokes.
+        if (orgId) await upsertEntitlement(orgId, priceOf(sub), sub.id, sub.status, sub.current_period_end, eventCreatedMs);
+      }
     }
     return new Response('ok', { status: 200 });
   } catch (err) {
-    return new Response(`Handler error: ${err instanceof Error ? err.message : err}`, { status: 500 });
+    console.error('stripe-webhook handler error', err);
+    return new Response('Handler error', { status: 500 });
   }
 });
 
+// Map a Stripe customer back to an org. Unmatched -> undefined (return 200 so
+// Stripe does not retry forever on a customer we do not track). P2-15.
 async function orgIdForCustomer(customer: string): Promise<string | undefined> {
-  const { data } = await supabase.from('orgs').select('id').eq('stripe_customer_id', customer).single();
+  const { data, error } = await supabase
+    .from('orgs')
+    .select('id')
+    .eq('stripe_customer_id', customer)
+    .maybeSingle();
+  if (error) throw new Error(`orgIdForCustomer failed: ${error.message}`);
   return data?.id;
 }

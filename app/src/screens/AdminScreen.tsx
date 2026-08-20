@@ -17,6 +17,7 @@ export function AdminScreen() {
     setSeatCount,
     setPreviewAsMember,
     manageBilling,
+    canGrowTeam,
     entitlement,
     showToast,
   } = useApp();
@@ -43,6 +44,9 @@ export function AdminScreen() {
 
   const tier = tierById(org.tierId);
   const previewing = Boolean(account?.previewAsMember);
+  // A1: adding seats or teammates needs an active subscription once the org is
+  // billed. Manage Billing / Buy stays open, and the current team keeps working.
+  const canGrow = canGrowTeam();
 
   const add = async () => {
     const clean = email.trim();
@@ -100,6 +104,7 @@ export function AdminScreen() {
               <button
                 className="btn primary"
                 style={{ width: '100%' }}
+                disabled={seats > org.seatCount && !canGrow}
                 onClick={async () => {
                   await setSeatCount(seats);
                   setSeatEdit(false);
@@ -108,6 +113,11 @@ export function AdminScreen() {
               >
                 Save headcount
               </button>
+              {seats > org.seatCount && !canGrow ? (
+                <p className="hint" style={{ marginTop: 8 }}>
+                  Renew your subscription to add seats. Lowering your headcount is always allowed.
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -154,11 +164,18 @@ export function AdminScreen() {
               <button
                 className="btn primary"
                 style={{ padding: '11px 16px' }}
+                disabled={!canGrow}
                 onClick={() => void add()}
               >
                 Add
               </button>
             </div>
+            {!canGrow ? (
+              <p className="hint" style={{ marginTop: 10 }}>
+                Renew your subscription to add teammates. Your current team keeps working. Use
+                Manage billing above to renew.
+              </p>
+            ) : null}
           </div>
         </div>
 

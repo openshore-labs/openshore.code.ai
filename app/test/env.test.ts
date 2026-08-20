@@ -8,12 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 const envExample = readFileSync(join(process.cwd(), '.env.example'), 'utf8');
 
-const REQUIRED = [
-  'VITE_SUPABASE_URL',
-  'VITE_SUPABASE_ANON_KEY',
-  'VITE_STRIPE_PUBLISHABLE_KEY',
-  'VITE_ENTITLEMENT_PUBLIC_KEY',
-];
+const REQUIRED = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_STRIPE_PUBLISHABLE_KEY'];
 
 // Names that would be a leak if they appeared as a client (VITE_) var.
 const NEVER_CLIENT = ['SERVICE_ROLE', 'STRIPE_SECRET', 'ENTITLEMENT_SIGNING', 'WEBHOOK_SECRET'];

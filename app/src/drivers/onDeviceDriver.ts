@@ -1,6 +1,7 @@
 // The pocket brain: a model running fully on this device through the llama
 // plugin. Chat-only by design in v1 (repo tools live on the desktop
 // connection), private by construction: nothing ever leaves the phone.
+import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
@@ -23,6 +24,7 @@ export class OnDeviceDriver implements ChatDriver {
   private answer = '';
   private activeRequestId?: string;
   private listenersReady: Promise<void>;
+  private deviceListeners: PluginListenerHandle[] = [];
   private loaded = false;
 
   private readonly guide: boolean;
@@ -36,32 +38,39 @@ export class OnDeviceDriver implements ChatDriver {
   }
 
   private async attachListeners(): Promise<void> {
-    await Llama.addListener('token', ({ requestId, delta }) => {
-      if (requestId !== this.activeRequestId) return;
-      this.answer += delta;
-      this.emitter.emit({ type: 'text-delta', text: delta });
-    });
-    await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
-      if (requestId !== this.activeRequestId) return;
-      this.activeRequestId = undefined;
-      const text = this.answer.trim();
-      if (text) this.history.push({ role: 'assistant', content: text });
-      this.emitter.emit({ type: 'text-final', text });
-      if (stopReason === 'error') {
-        this.emitter.emit({
-          type: 'task-done',
-          reason: 'error',
-          message:
-            detail ??
-            'The on-device model hit a problem. Try again, or re-download it from the marketplace.',
-        });
-      } else {
-        this.emitter.emit({
-          type: 'task-done',
-          reason: stopReason === 'stopped' ? 'aborted' : 'complete',
-        });
-      }
-    });
+    // G3: keep the handles so dispose() can remove them. Without this, every
+    // opened device chat leaks two Llama listeners (retaining the driver and
+    // its history) for the life of the app.
+    this.deviceListeners.push(
+      await Llama.addListener('token', ({ requestId, delta }) => {
+        if (requestId !== this.activeRequestId) return;
+        this.answer += delta;
+        this.emitter.emit({ type: 'text-delta', text: delta });
+      }),
+    );
+    this.deviceListeners.push(
+      await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
+        if (requestId !== this.activeRequestId) return;
+        this.activeRequestId = undefined;
+        const text = this.answer.trim();
+        if (text) this.history.push({ role: 'assistant', content: text });
+        this.emitter.emit({ type: 'text-final', text });
+        if (stopReason === 'error') {
+          this.emitter.emit({
+            type: 'task-done',
+            reason: 'error',
+            message:
+              detail ??
+              'The on-device model hit a problem. Try again, or re-download it from the marketplace.',
+          });
+        } else {
+          this.emitter.emit({
+            type: 'task-done',
+            reason: stopReason === 'stopped' ? 'aborted' : 'complete',
+          });
+        }
+      }),
+    );
   }
 
   subscribe(sink: DriverEventSink): () => void {
@@ -135,6 +144,8 @@ export class OnDeviceDriver implements ChatDriver {
 
   dispose(): void {
     this.abort();
+    for (const h of this.deviceListeners) void h.remove();
+    this.deviceListeners = [];
     this.emitter.clear();
   }
 }

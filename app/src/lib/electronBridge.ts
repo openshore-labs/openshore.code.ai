@@ -50,7 +50,14 @@ export interface OscodeBridge {
 
   // Sessions (conversations backed by the engine).
   createSession(cwd?: string): Promise<{ id: string; cwd: string; warnings: string[] }>;
-  resumeSession(id: string): Promise<{ id: string; cwd: string } | { error: string }>;
+  /** Resume a session and return its journal so the renderer can replay it AFTER
+   *  subscribing (IPC is not buffered, so a pushed replay would be lost). */
+  resumeSession(
+    id: string,
+  ): Promise<
+    | { id: string; cwd: string; journal: Array<{ seq: number; event: DriverEvent }> }
+    | { error: string }
+  >;
   listSessions(): Promise<SessionRow[]>;
   send(sessionId: string, text: string): Promise<void>;
   abort(sessionId: string): Promise<void>;

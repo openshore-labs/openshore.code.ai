@@ -39,9 +39,6 @@ enable_confirmations = false
 # Note: claim_membership is a Postgres RPC (SECURITY DEFINER function), not an
 # edge function, so it has no [functions.*] entry here.
 
-[functions.entitlement-claim]
-verify_jwt = true
-
 [functions.stripe-checkout]
 verify_jwt = true
 
