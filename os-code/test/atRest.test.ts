@@ -7,6 +7,7 @@
 // losing a byte, and Stack Health's seal grades from the measured disk state.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  appendFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -27,7 +28,7 @@ import {
 } from '../src/core/security/atRest.js';
 import { _setSecretTool } from '../src/auth/store.js';
 import { LocalDriver, listSessions, sealSessionsAtRest } from '../src/daemon/session.js';
-import { computeStackHealth } from '../src/insights/stackHealth.js';
+import { _resetAtRestScanCache, computeStackHealth } from '../src/insights/stackHealth.js';
 
 let home: string;
 
@@ -37,6 +38,7 @@ beforeEach(() => {
   // Force the encrypted-file backend so tests never touch a real keychain.
   _setSecretTool(false);
   _resetDataKeyCache();
+  _resetAtRestScanCache();
 });
 afterEach(() => {
   delete process.env.OSC_HOME;
@@ -303,5 +305,61 @@ describe('CTO must-fix hardening', () => {
     // Without the guard (the file is old enough), it seals.
     const unguarded = sealSessionsAtRest();
     expect(unguarded.sealedLines).toBe(1);
+  });
+});
+
+describe('scanAtRest caching (Settings/Stack Health polish)', () => {
+  it('a repeat scan of an unchanged journal returns identical counts', () => {
+    const driver = new LocalDriver(home, { id: 'cache1' });
+    driver.emit({ type: 'task-start', input: 'x' });
+    const first = computeStackHealth('all').seal.find((f) => f.key === 'encryptedAtRest');
+    const second = computeStackHealth('all').seal.find((f) => f.key === 'encryptedAtRest');
+    expect(second).toEqual(first);
+  });
+
+  it('invalidates and re-scans the moment a journal actually changes', () => {
+    const dir = join(home, 'sessions', 'cache3');
+    mkdirSync(dir, { recursive: true });
+    const sealedLine = sealString(
+      loadOrCreateDataKey()!.key,
+      JSON.stringify({ seq: 1, event: { type: 'task-start', input: 'x' } }),
+    );
+    writeFileSync(join(dir, 'events.jsonl'), `${sealedLine}\n`);
+    writeFileSync(
+      join(dir, 'info.json'),
+      JSON.stringify({
+        id: 'cache3',
+        cwd: home,
+        title: sealString(loadOrCreateDataKey()!.key, 'sealed'),
+        createdAt: 'x',
+        updatedAt: 'x',
+      }),
+    );
+    // Both fully sealed, so the (file-backed-key) note is about the keychain,
+    // not about plaintext remaining.
+    const before = computeStackHealth('all').seal.find((f) => f.key === 'encryptedAtRest')!;
+    expect(before.label).not.toContain('older');
+
+    // A real change: append a plaintext line (new mtime, new size).
+    const plain = JSON.stringify({ seq: 2, event: { type: 'task-done', reason: 'complete' } });
+    appendFileSync(join(dir, 'events.jsonl'), `${plain}\n`);
+    const after = computeStackHealth('all').seal.find((f) => f.key === 'encryptedAtRest')!;
+    expect(after.state).toBe('note');
+    expect(after.label).toContain('1 older line');
+  });
+
+  it('a plaintext title alone (journal already sealed) keeps the seal off green', () => {
+    const driver = new LocalDriver(home, { id: 'cache2' });
+    driver.emit({ type: 'task-start', input: 'sealed on write' });
+    // The title sealed too (emit() seals it). Force it back to plaintext, as
+    // if a partial migration had sealed the journal but not the title.
+    const infoPath = join(home, 'sessions', 'cache2', 'info.json');
+    const info = JSON.parse(readFileSync(infoPath, 'utf8'));
+    info.title = 'unsealed title';
+    writeFileSync(infoPath, JSON.stringify(info, null, 2));
+
+    const fact = computeStackHealth('all').seal.find((f) => f.key === 'encryptedAtRest')!;
+    expect(fact.state).toBe('note');
+    expect(fact.label).toContain('title');
   });
 });

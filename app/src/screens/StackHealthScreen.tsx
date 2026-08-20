@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BackBar } from '../components/BackBar.js';
 import { bridge } from '../lib/electronBridge.js';
-import { hapticTick } from '../lib/haptics.js';
+import { hapticSuccess, hapticTick } from '../lib/haptics.js';
 import type { StackHealth, StackHealthRange } from 'os-code/protocol';
 
 const RANGES: Array<{ id: StackHealthRange; label: string }> = [
@@ -168,9 +168,29 @@ function Timeline({ health }: { health: StackHealth }) {
 }
 
 function SealBand({ health }: { health: StackHealth }) {
+  // Pulse the wave stamp the moment encryption-at-rest first reads as fully
+  // sealed: the one instant this screen has earned a small celebration. Track
+  // the PREVIOUS state so a screen that mounts already-green stays quiet (the
+  // pulse marks a transition, not a status), and never re-fires on later
+  // re-fetches once green is reached.
+  const encrypted = health.seal.find((f) => f.key === 'encryptedAtRest');
+  const prevGoodRef = useRef<boolean | undefined>(encrypted?.state === 'good');
+  const [pulse, setPulse] = useState(false);
+  useEffect(() => {
+    const isGood = encrypted?.state === 'good';
+    if (isGood && prevGoodRef.current === false) {
+      setPulse(true);
+      hapticSuccess();
+      const t = setTimeout(() => setPulse(false), 500);
+      prevGoodRef.current = true;
+      return () => clearTimeout(t);
+    }
+    prevGoodRef.current = isGood;
+  }, [encrypted?.state]);
+
   return (
     <div className="sh-seal" role="group" aria-label="Privacy seal">
-      <span className="sh-seal-mark" aria-hidden="true">
+      <span className={`sh-seal-mark${pulse ? ' sh-seal-mark-pulse' : ''}`} aria-hidden="true">
         <svg
           viewBox="0 0 32 32"
           width="26"

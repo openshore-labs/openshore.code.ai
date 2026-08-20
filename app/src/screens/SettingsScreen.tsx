@@ -11,12 +11,23 @@ import { SignInCard } from '../components/SignInCard.js';
 import { StartingPaths } from '../components/StartingPaths.js';
 import type { StackHealthSealFact } from 'os-code/protocol';
 
+// A fact carries a "How" disclosure when there's a concrete step that would
+// improve it. Matched by key + a stable substring rather than the whole
+// label, so a copy tweak upstream can't silently break the link.
+function howToFor(fact: StackHealthSealFact): string | undefined {
+  if (fact.key === 'encryptedAtRest' && fact.label.includes('would hold the key more safely')) {
+    return 'On Linux, install a keychain provider and the key moves there automatically next launch. On Pop!_OS or Ubuntu: sudo apt install gnome-keyring libsecret-tools. No restart of anything but the app is needed.';
+  }
+  return undefined;
+}
+
 // The live seal, measured by the engine (never asserted): the same three
 // check-rows Stack Health shows, here where someone goes looking for the
 // privacy story. Desktop only; the phone's own data is sealed by the app and
 // the desktop's journals answer for themselves on the desktop.
 function LiveSeal() {
   const [facts, setFacts] = useState<StackHealthSealFact[] | undefined>();
+  const [openHow, setOpenHow] = useState<string | undefined>();
   useEffect(() => {
     const b = bridge();
     if (!b) return;
@@ -32,12 +43,36 @@ function LiveSeal() {
   return (
     <>
       <ul className="sh-seal-facts" style={{ marginTop: 12 }}>
-        {facts.map((f) => (
-          <li className={`sh-seal-fact sh-${f.state}`} key={f.key}>
-            <span className="sh-seal-dot" aria-hidden="true" />
-            {f.label}
-          </li>
-        ))}
+        {facts.map((f, i) => {
+          const how = howToFor(f);
+          return (
+            <li
+              className="sh-seal-fact-row"
+              style={{ animationDelay: `${i * 60}ms` }}
+              key={f.key}
+            >
+              <div className={`sh-seal-fact sh-${f.state}`}>
+                <span className="sh-seal-dot" aria-hidden="true" />
+                {f.label}
+                {how ? (
+                  <button
+                    type="button"
+                    className="linklike"
+                    style={{ marginLeft: 6 }}
+                    onClick={() => setOpenHow(openHow === f.key ? undefined : f.key)}
+                  >
+                    How
+                  </button>
+                ) : null}
+              </div>
+              {how && openHow === f.key ? (
+                <p className="hint" style={{ marginTop: 4, marginLeft: 15 }}>
+                  {how}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
       <p className="hint" style={{ marginTop: 8 }}>
         Measured on this machine just now, not promised.
