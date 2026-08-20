@@ -1,0 +1,34 @@
+{
+  "qwen2.5-coder-7b": {
+    "isRecommended": true,
+    "rank": 1,
+    "note": "We picked this as your starting orchestrator. It is small, fast, and it follows tools well.",
+    "licenseNote": "Commercial use is fine. Attribution required."
+  },
+  "qwen2.5-coder-14b": {
+    "isRecommended": true,
+    "rank": 2,
+    "note": "The one to grow into on a 16 GB machine. More planning headroom, same honest edits.",
+    "licenseNote": "Commercial use is fine. Attribution required."
+  },
+  "qwen2.5-coder-32b": {
+    "isRecommended": false,
+    "licenseNote": "Commercial use is fine. Attribution required."
+  },
+  "llama3.1-8b": {
+    "isRecommended": false,
+    "licenseNote": "Commercial use is fine. Special terms apply above 700 million monthly users."
+  },
+  "nomic-embed-text": {
+    "isRecommended": true,
+    "rank": 3,
+    "note": "Turn this on and repo search starts finding code by meaning. Tiny and always resident.",
+    "licenseNote": "Commercial use is fine. Attribution required."
+  },
+  "qwen2.5-1.5b-phone": {
+    "isRecommended": true,
+    "rank": 4,
+    "note": "The iPhone starter. Quick, coherent, and fully private on the phone.",
+    "licenseNote": "Commercial use is fine. Attribution required."
+  }
+}

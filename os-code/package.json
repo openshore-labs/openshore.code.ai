@@ -12,7 +12,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:catalog": "tsx scripts/build-catalog/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -42,6 +44,7 @@
     "eslint-config-prettier": "10.1.8",
     "ink-testing-library": "4.0.0",
     "prettier": "3.9.6",
+    "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
   },
