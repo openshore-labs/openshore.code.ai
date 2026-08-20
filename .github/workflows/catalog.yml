@@ -94,13 +94,15 @@ jobs:
             marketing
           install -D os-code/build/catalog.json marketing/src/static/os-code/catalog.json
           cd marketing
-          if git diff --quiet; then
+          git add src/static/os-code/catalog.json
+          # --cached so a brand-new (untracked) catalog file also counts as a
+          # change; a plain git diff would miss it and skip the first publish.
+          if git diff --cached --quiet; then
             echo 'Catalog unchanged; nothing to publish.'
             exit 0
           fi
           git config user.name 'openshore-catalog-bot'
           git config user.email 'catalog-bot@openshore.ai'
-          git add src/static/os-code/catalog.json
           git commit -m "Publish model catalog ($(date -u +%Y-%m-%d))"
           git push origin HEAD:main
 
