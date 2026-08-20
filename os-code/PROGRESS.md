@@ -77,9 +77,21 @@ build:catalog` on a schedule / curation change (fetch the live catalog
       into `os-code/build/catalog.json` first so the regression gate has a real
       previous), publish the output, and point `config.catalog.url` at it. Seed
       `os-code/curation/*.json` as the roster grows.
-- [ ] **Stripe test-vs-live + email confirmation:** the billing keys used in
-      setup were `sk_test_`; confirm the Stripe products are Test mode before
-      real users, and turn Supabase email confirmation back ON.
+- [~] **Stripe went live + email confirmation ON.** Supabase "Confirm email" is
+      ON (verified in the dashboard). Stripe is in live mode: live secret key,
+      the OS Code webhook (`lzlrlfdffwiypzreoldb.../stripe-webhook`) enabled and
+      livemode, and all four prices live and yearly. Caught and fixed a Scale
+      price that was created as $500/MONTH instead of $500/year (a 12x
+      overcharge); its price id is unchanged, so `STRIPE_PRICE_SCALE` needed no
+      update. Verified against the Stripe API directly (key mode, per-price
+      interval, webhook status). NOTE: this account is shared with another
+      product (a second `riziqavmckobtcyiazht` webhook is Uki's); each webhook
+      ignores prices it does not recognize, so cross-talk is safe.
+      **Still open:** one real end-to-end purchase to prove the Supabase
+      function secret VALUES (live key, THIS webhook's signing secret, the four
+      price ids) are wired. Secret values cannot be read back from Supabase; a
+      live transaction (refundable) is the only proof, and its success or its
+      failure point names any stale secret.
 - [x] **Slim git history:** done, founder approved. `git filter-repo`
       stripped node_modules from every commit on `main` and this session
       branch (verified: identical tree hash at HEAD before/after, file
