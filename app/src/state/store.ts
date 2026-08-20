@@ -828,7 +828,9 @@ export const useApp = create<AppState>((set, get) => {
           const stored = await loadStoredSession();
           if (stored) {
             set({ authSession: stored });
+            await reconcileOrg(stored);
             await get().refreshOrgRole();
+            void get().refreshEntitlement();
           }
         })();
       }
