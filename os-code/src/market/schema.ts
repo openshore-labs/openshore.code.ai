@@ -20,13 +20,35 @@ export const CatalogLicenseSchema = z.object({
   note: z.string().optional(),
 });
 
+// The capability taxonomy (router/roles.ts). Promoted to a shared const so the
+// categories field and the ratings map agree and cannot drift.
+export const CapabilityEnum = z.enum([
+  'reasoning',
+  'coding',
+  'writing',
+  'analysis',
+  'vision',
+  'image-gen',
+  'embedding',
+  'fast',
+]);
+
+// A 0..5 star, in 0.5 steps. n*2 is exact for halves, so the integer check is
+// safe. Ratings are computed by the server-side builder from benchmarks + the
+// local eval, never crowd-sourced, and every star is provenance-backed.
+const StarSchema = z
+  .number()
+  .min(0)
+  .max(5)
+  .refine((n) => Number.isInteger(n * 2), { message: 'stars must be in 0.5 steps' });
+
 export const CatalogModelSchema = z.object({
   id: z.string(),
   name: z.string(),
   /** Plain language: what this model is good at, no benchmark names. */
   tagline: z.string(),
   /** Standard capability categories (router/roles.ts taxonomy). */
-  categories: z.array(z.enum(['reasoning', 'coding', 'writing', 'analysis', 'vision', 'image-gen', 'embedding', 'fast'])),
+  categories: z.array(CapabilityEnum),
   /** May this model serve as the mandatory reasoning orchestrator? */
   orchestratorCapable: z.boolean(),
   source: CatalogSourceSchema,
@@ -53,6 +75,43 @@ export const CatalogModelSchema = z.object({
       sizeGB: z.number().positive(),
       /** Honest floor: phones under this RAM will struggle or crash. */
       minRamGB: z.number().positive(),
+    })
+    .optional(),
+
+  // ---- Builder-computed fields (all OPTIONAL for backward compatibility) ----
+  // Old clients strip these; the bundled sample (which has none) still
+  // validates. Populated only by the server-side catalog builder.
+
+  /** Capability ratings, computed from published benchmarks + the local eval.
+   *  perCapability is SPARSE (only categories the model targets): it MUST be a
+   *  partialRecord, not a record, or zod 4 would require every category key. */
+  ratings: z
+    .object({
+      perCapability: z.partialRecord(CapabilityEnum, StarSchema),
+      /** Fit as an OS Code orchestrator/tool-user, from the local eval average. */
+      osCodeFit: StarSchema,
+      /** Which benchmark(s) produced each star, so the UI can show provenance. */
+      provenance: z.partialRecord(CapabilityEnum, z.array(z.string()).nonempty()),
+    })
+    .optional(),
+  /** Source popularity (numbers only; weights are never touched). A SORT input,
+   *  labelled as popularity, not quality. */
+  popularity: z
+    .object({
+      downloads: z.number().int().min(0),
+      likes: z.number().int().min(0),
+      source: z.enum(['huggingface', 'ollama']),
+    })
+    .optional(),
+  /** ISO timestamps from source metadata. Plain strings on purpose: a weird
+   *  format degrades (ignored) rather than rejecting the whole catalog. */
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  /** The founder's editorial pick, merged from curation/recommended.json. */
+  recommended: z
+    .object({
+      isRecommended: z.boolean(),
+      note: z.string().optional(),
     })
     .optional(),
 });
