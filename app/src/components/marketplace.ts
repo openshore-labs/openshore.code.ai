@@ -4,6 +4,7 @@
 // partial or old catalog still lands in a sensible curated order.
 import type { CatalogModel } from 'os-code/protocol';
 import type { CapabilityCategory } from 'os-code/protocol';
+import { CAPABILITIES } from 'os-code/protocol';
 
 // Browse axes. Three of these are honest, differently-sourced lenses on the
 // same catalog: 'staff' is the editorial shortlist (chosen), 'popular' is the
@@ -258,4 +259,114 @@ export function activeFacetCount(facets: Facets): number {
   if (facets.source) n++;
   if (facets.minStar !== undefined && facets.capability) n++;
   return n;
+}
+
+// --------------------------------------------------------------- browse (store)
+// The App-Store-style "Apps" front: a featured row and themed shelves the user
+// scrolls, shown when nothing is being searched or filtered. Search or any facet
+// falls back to the full sortable list. All of this is derived from the same
+// catalog the list uses, so a shelf can never show a model the list would hide.
+
+/** A two-letter wordmark for a model's glyph tile: the first two letters of the
+ *  first word that starts with a letter ("Qwen 2.5" -> "Qw"). Distinct enough to
+ *  read as a logo, stable across catalog refreshes. */
+export function modelMonogram(name: string): string {
+  const word = name.split(/\s+/).find((w) => /^[a-z]/i.test(w)) ?? name;
+  const two = word.replace(/[^a-z]/gi, '').slice(0, 2) || name.slice(0, 2);
+  return two.charAt(0).toUpperCase() + two.slice(1).toLowerCase();
+}
+
+/** The editorial title for a capability shelf. The taxonomy's plain labels are
+ *  lowercase phrases ("great at code"); a shelf header wants sentence case. */
+export function capabilityShelfTitle(cap: CapabilityCategory): string {
+  const plain = CAPABILITIES[cap].plain;
+  return plain.charAt(0).toUpperCase() + plain.slice(1);
+}
+
+/** The featured hero row. The founder's editorial picks lead; when the feed has
+ *  none yet (a fresh or partial catalog), the top of the curated order stands in
+ *  so the store is never empty. */
+export function featuredModels(models: CatalogModel[], limit = 8): CatalogModel[] {
+  const picks = models.filter((m) => m.recommended?.isRecommended);
+  const base = picks.length ? picks : models;
+  return [...base].sort((a, b) => a.curation.rank - b.curation.rank).slice(0, limit);
+}
+
+export interface Shelf {
+  key: string;
+  title: string;
+  subtitle?: string;
+  /** Tapping the shelf header opens the full list scoped to this capability. */
+  capability?: CapabilityCategory;
+  /** ...or to this sort axis, when the shelf is a lens rather than a category. */
+  sort?: SortKey;
+  models: CatalogModel[];
+}
+
+const SHELF_CAP_ORDER: CapabilityCategory[] = [
+  'reasoning',
+  'coding',
+  'writing',
+  'analysis',
+  'vision',
+  'image-gen',
+  'embedding',
+  'fast',
+];
+
+const SHELF_MIN = 3; // a shelf needs at least this many models to earn its row
+const SHELF_MAX = 12; // and never scrolls past this many
+
+/** Build the store's shelves from the catalog: pocket models first (when any
+ *  exist), then the world's popular picks, then one shelf per capability that
+ *  has enough models to fill a row. Overlap across shelves is intended, exactly
+ *  as an app can sit in several App Store collections. */
+export function buildShelves(models: CatalogModel[], memoryGB: number): Shelf[] {
+  const shelves: Shelf[] = [];
+
+  const pocket = sortModels(
+    models.filter((m) => m.onDevice),
+    'recommended',
+    memoryGB,
+  );
+  if (pocket.length) {
+    shelves.push({
+      key: 'pocket',
+      title: 'Runs on your phone',
+      subtitle: 'Fully on-device, no desktop needed.',
+      sort: 'recommended',
+      models: pocket.slice(0, SHELF_MAX),
+    });
+  }
+
+  const popular = sortModels(models, 'popular', memoryGB).filter(
+    (m) => popularityScore(m) !== undefined,
+  );
+  if (popular.length >= SHELF_MIN) {
+    shelves.push({
+      key: 'popular',
+      title: 'Popular right now',
+      subtitle: 'What the world is downloading. Popularity, not quality.',
+      sort: 'popular',
+      models: popular.slice(0, SHELF_MAX),
+    });
+  }
+
+  for (const cap of SHELF_CAP_ORDER) {
+    const inCap = sortModels(
+      models.filter((m) => m.categories.includes(cap)),
+      'recommended',
+      memoryGB,
+    );
+    if (inCap.length < SHELF_MIN) continue;
+    shelves.push({
+      key: `cap-${cap}`,
+      title: capabilityShelfTitle(cap),
+      subtitle: CAPABILITIES[cap].blurb,
+      capability: cap,
+      models: inCap.slice(0, SHELF_MAX),
+    });
+  }
+
+  return shelves;
 }

@@ -6,10 +6,14 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogModel } from 'os-code/protocol';
 import {
   EMPTY_FACETS,
+  buildShelves,
+  capabilityShelfTitle,
+  featuredModels,
   filterModels,
   fitFor,
   fuzzyMatch,
   licensePosture,
+  modelMonogram,
   sortModels,
 } from '../src/components/marketplace.js';
 
@@ -152,5 +156,67 @@ describe('licensePosture', () => {
     expect(
       licensePosture(model({ id: 'c', rank: 1, license: { id: 'Weird-9.9', name: 'x' } })),
     ).toBe('gated');
+  });
+});
+
+describe('modelMonogram', () => {
+  it('takes the first two letters of the first word that starts with a letter', () => {
+    expect(modelMonogram('Qwen 2.5 Coder 7B')).toBe('Qw');
+    expect(modelMonogram('DeepSeek R1 14B')).toBe('De');
+    expect(modelMonogram('3.2 Llama')).toBe('Ll');
+  });
+});
+
+describe('capabilityShelfTitle', () => {
+  it('sentence-cases the plain capability label', () => {
+    expect(capabilityShelfTitle('coding')).toBe('Great at code');
+  });
+});
+
+describe('featuredModels', () => {
+  it('leads with editorial picks in curated order when any exist', () => {
+    const models = [
+      model({ id: 'plain', rank: 1 }),
+      model({ id: 'pickB', rank: 6, recommended: { isRecommended: true } }),
+      model({ id: 'pickA', rank: 3, recommended: { isRecommended: true } }),
+    ];
+    expect(featuredModels(models).map((m) => m.id)).toEqual(['pickA', 'pickB']);
+  });
+  it('falls back to the top of the curated order when nothing is picked', () => {
+    const models = [model({ id: 'b', rank: 2 }), model({ id: 'a', rank: 1 })];
+    expect(featuredModels(models, 1).map((m) => m.id)).toEqual(['a']);
+  });
+});
+
+describe('buildShelves', () => {
+  it('surfaces a pocket shelf, a popular shelf, and per-capability shelves', () => {
+    const models = [
+      model({ id: 'code1', rank: 1, categories: ['coding'] }),
+      model({ id: 'code2', rank: 2, categories: ['coding'] }),
+      model({ id: 'code3', rank: 3, categories: ['coding'] }),
+      model({
+        id: 'phone1',
+        rank: 4,
+        categories: ['fast'],
+        onDevice: { url: 'https://x/y.gguf', sizeGB: 1, minRamGB: 4 },
+        popularity: { downloads: 9e6, likes: 200, source: 'huggingface' },
+      }),
+    ];
+    const shelves = buildShelves(models, 16);
+    const keys = shelves.map((s) => s.key);
+    expect(keys).toContain('pocket');
+    expect(keys).toContain('cap-coding');
+    // Coding shelf keeps curated order and holds all three coding models.
+    const coding = shelves.find((s) => s.key === 'cap-coding')!;
+    expect(coding.models.map((m) => m.id)).toEqual(['code1', 'code2', 'code3']);
+    expect(coding.capability).toBe('coding');
+  });
+
+  it('omits a capability shelf below the minimum model count', () => {
+    const models = [
+      model({ id: 'v1', rank: 1, categories: ['vision'] }),
+      model({ id: 'v2', rank: 2, categories: ['vision'] }),
+    ];
+    expect(buildShelves(models, 16).some((s) => s.key === 'cap-vision')).toBe(false);
   });
 });

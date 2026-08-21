@@ -2482,6 +2482,413 @@ textarea {
   color: var(--muted);
 }
 
+/* ======================================================================
+   Store front: the App-Store-style browse layout. A category rail, a
+   featured hero row, and themed shelves that page horizontally. Shown when
+   nothing is searched or filtered; the sortable list is the search surface.
+   ====================================================================== */
+
+/* The search field is now full width above the category rail. */
+.screen-inner > .market-search {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+/* Category rail: horizontally scrolling capability chips, App Store style. */
+.cat-rail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 4px;
+  margin-bottom: 16px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.cat-rail::-webkit-scrollbar {
+  display: none;
+}
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 15px 8px 11px;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.07s ease;
+}
+.cat-chip:active {
+  transform: scale(0.97);
+}
+.cat-chip.active {
+  background: var(--local);
+  border-color: var(--local);
+  color: #fff;
+}
+.cat-chip-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--local-soft);
+  color: var(--local);
+  flex-shrink: 0;
+}
+.cat-chip.active .cat-chip-glyph {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.store-front {
+  animation: fade-in 0.2s ease;
+}
+.store-note {
+  margin-bottom: 16px;
+}
+
+/* Featured hero row: big cards that page horizontally with snap. Narrower than
+   the viewport on purpose (82vw, not 100) so the next card's edge peeks in,
+   the visual cue that there's more to scroll to. scroll-padding-left keeps the
+   snap point aligned with the row's left inset instead of the raw edge. */
+.hero-scroll {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 16px;
+  padding-bottom: 6px;
+  margin: 0 -16px 24px;
+  padding-left: 16px;
+  padding-right: 16px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  /* Right-edge fade: the last visible card's trailing edge softens instead of
+     cutting hard, reinforcing that content continues off-screen. Full opacity
+     well before the edge so no in-view card actually looks faded. */
+  -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, #000 92%, transparent);
+}
+.hero-scroll::-webkit-scrollbar {
+  display: none;
+}
+.hero-card {
+  position: relative;
+  flex-shrink: 0;
+  scroll-snap-align: center;
+  width: min(82vw, 480px);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  color: #fff;
+  overflow: hidden;
+  background:
+    radial-gradient(140% 120% at 100% 0%, rgba(75, 144, 163, 0.55), transparent 60%),
+    linear-gradient(145deg, var(--local-deep), #16323a);
+  box-shadow: 0 10px 30px -16px rgba(28, 42, 51, 0.5);
+  transition:
+    transform 0.24s cubic-bezier(0.32, 0.72, 0.28, 1),
+    box-shadow 0.24s cubic-bezier(0.32, 0.72, 0.28, 1);
+}
+.hero-card.on-device {
+  background:
+    radial-gradient(140% 120% at 100% 0%, rgba(122, 178, 191, 0.5), transparent 60%),
+    linear-gradient(145deg, #2f5a66, #1d3d46);
+}
+@media (hover: hover) {
+  .hero-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 40px -18px rgba(28, 42, 51, 0.55);
+  }
+}
+.hero-card:active {
+  transform: scale(0.99);
+  transition: transform 0.08s ease;
+}
+.hero-eyebrow {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 8px;
+}
+.hero-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
+}
+.hero-tagline {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 6px;
+  margin-bottom: 20px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hero-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+}
+.hero-card .model-tile {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.hero-foot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.hero-foot-meta .pill {
+  align-self: flex-start;
+}
+.hero-size {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.hero-get-wrap {
+  flex-shrink: 0;
+}
+
+/* The Get control shared by hero cards and shelf rows. */
+.store-get {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--local);
+  background: #fff;
+  padding: 8px 20px;
+  border-radius: 999px;
+  transition:
+    transform 0.07s ease,
+    background 0.14s ease;
+}
+.store-get:active {
+  transform: scale(0.95);
+}
+.store-row .store-get {
+  color: var(--local);
+  background: var(--local-soft);
+}
+.get-progress {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--local);
+  background: var(--local-soft);
+  padding: 6px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.hero-get-wrap .get-progress {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Shelves: a header that opens the full scoped list, then rows in columns of
+   three that page horizontally. */
+.shelf {
+  margin-bottom: 26px;
+}
+.shelf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 12px;
+}
+.shelf-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.shelf-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.shelf-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shelf-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition:
+    background 0.16s ease,
+    transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.shelf-head:hover .shelf-more {
+  background: var(--surface-hover);
+  transform: translateX(3px) scale(1.06);
+}
+.shelf-head:active .shelf-more {
+  transform: translateX(1px) scale(0.92);
+  transition-duration: 0.08s;
+}
+.shelf-scroll {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 16px;
+  margin: 0 -16px;
+  padding: 0 16px 6px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, #000 92%, transparent);
+}
+.shelf-scroll::-webkit-scrollbar {
+  display: none;
+}
+.shelf-col {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  width: min(88vw, 420px);
+}
+
+/* App-row card: an icon tile, name and tagline, a Get button. Hairline rule
+   between rows in a column, none under the last. */
+.store-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s ease;
+}
+.store-col-last .store-row:last-child,
+.shelf-col .store-row:last-child {
+  border-bottom: none;
+}
+.store-row:active {
+  background: var(--surface);
+}
+/* Pressed-state depth on the icon only (iOS home-screen press feel), not the
+   whole row: the tile springs down a touch while the row's background settles
+   in with its own, slower fade above. */
+.store-row .model-tile {
+  transition: transform 0.09s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.store-row:active .model-tile {
+  transform: scale(0.93);
+  transition-duration: 0.05s;
+}
+.store-row-body {
+  flex: 1;
+  min-width: 0;
+}
+.store-row-name {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.store-row-sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.store-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.store-row-meta svg {
+  color: var(--local);
+  flex-shrink: 0;
+}
+.store-row-get {
+  flex-shrink: 0;
+}
+
+/* The generated model "app icon" tile. */
+.model-tile {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #fff;
+  background: linear-gradient(150deg, #2b3f49, #1c2a33);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.model-tile.on-device {
+  background: linear-gradient(150deg, var(--wave), var(--local-deep));
+}
+
+/* Sort control scrolls horizontally on narrow screens rather than wrapping. */
+.seg-scroll {
+  display: flex;
+  max-width: 100%;
+  overflow-x: auto;
+  margin-bottom: 12px;
+  scrollbar-width: none;
+}
+.seg-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .store-front,
+  .hero-card,
+  .store-row,
+  .store-row .model-tile,
+  .shelf-more {
+    transition: none;
+    animation: none;
+  }
+}
+
 /* Compare */
 .compare-bar {
   position: fixed;
