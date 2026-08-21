@@ -8,7 +8,9 @@ import { Composer } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
 import { SourcePicker } from '../components/SourcePicker.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
+import { BrandMark } from '../components/BrandMark.js';
 import { isPhone } from '../lib/platform.js';
+import { timeGreeting } from '../lib/greeting.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
   const {
@@ -65,7 +67,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <MessageList thread={thread} />
       ) : (
         <div className="greeting">
-          <h1>What are we building?</h1>
+          <div className="greeting-brand" aria-hidden="true">
+            <BrandMark size={40} />
+            <span className="greeting-wordmark">
+              <span className="accent">OS</span> Code
+            </span>
+          </div>
+          <h1>{timeGreeting()}. What are we building?</h1>
           <p>
             Chat and build with your own stack of local models. Cloud stays one deliberate tap away,
             on your own account.
