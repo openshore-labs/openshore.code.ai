@@ -72,12 +72,27 @@ async function upsertUserEntitlement(
 ): Promise<void> {
   const { data: existing, error: readErr } = await supabase
     .from('user_entitlements')
-    .select('last_event_at')
+    .select('status, source, valid_until, last_event_at')
     .eq('user_id', userId)
     .maybeSingle();
   if (readErr) throw new Error(`user entitlement read failed: ${readErr.message}`);
   if (existing?.last_event_at && new Date(existing.last_event_at).getTime() >= eventMs) {
     return; // stale or duplicate delivery; the current state is newer.
+  }
+
+  // Cross-rail safety (F1): never let an Apple notification clobber a
+  // Stripe-sourced ACTIVE entitlement whose window runs at least as long. A
+  // customer who paid on the web/desktop rail must not be revoked or shortened
+  // by an Apple event for a parallel sub. Mirrors the guard in
+  // link-apple-purchase; an Apple-sourced row (the normal case) is unaffected.
+  if (
+    existing &&
+    existing.source === 'stripe' &&
+    isEntitled({ status: existing.status, validUntil: existing.valid_until })
+  ) {
+    const stripeUntil = existing.valid_until ? new Date(existing.valid_until).getTime() : Infinity;
+    const appleUntil = validUntil ? new Date(validUntil).getTime() : Infinity;
+    if (stripeUntil >= appleUntil) return; // keep the longer paid coverage.
   }
 
   // Only the columns we own are written, so an existing Stripe row keeps its
