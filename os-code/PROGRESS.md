@@ -51,19 +51,36 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **[TOP] Individual Personal tier + free/paid gating + iOS IAP.** Founder
-      decided (2026-08-21) the model: FREE = chat only (Harbor/Ollama), no
-      coding-agent features, no Marketplace; PERSONAL = $20/yr unlocks
-      everything for one individual, via Apple In-App Purchase on iOS and Stripe
-      direct on web/desktop; commercial team tiers unchanged. TODAY the code does
-      NONE of this: `personal` is coded free/$0 ("the full app"), nothing gates
-      coding or the marketplace, no individual entitlement, no paywall, no IAP.
-      This is a foundational monetization change. CTO + CFO are scoping a
-      sign-off-ready plan (gating a local-first agent is honor-system unless
-      tied to a server capability; Apple 15% Small Business rate; dual-rail
-      Apple-IAP/Stripe reconciliation to one account entitlement; App Store
-      Server Notifications V2 -> new Supabase edge function). Build only after
-      founder signs off on the plan.
+- [ ] **[TOP] Individual Personal tier + free/paid gating + iOS IAP -- BUILT
+      (2026-08-21), pending founder config + sandbox validation before deploy.**
+      Model: FREE = chat only (Harbor/Ollama + stack chat); PERSONAL = $20/yr
+      unlocks the coding agent + Marketplace for one person, via Apple IAP on iOS
+      and Stripe on web/desktop; commercial teams unchanged. All four phases are
+      built, CTO-reviewed (money-path + Apple crypto), gated, and pushed to main.
+      **Founder config before deploy (one at a time):**
+      1. Stripe: create a $20/yr **Personal** price; set `STRIPE_PRICE_PERSONAL`
+         as a function secret.
+      2. `supabase db push` (applies 0006, 0007, 0008) then
+         `supabase functions deploy stripe-checkout stripe-webhook stripe-portal
+         link-apple-purchase apple-notifications`.
+      3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
+         in App Store Connect; add `oscode-iap` to app/package.json is done, but
+         confirm `cap sync ios` links it; enable the In-App Purchase capability.
+      4. Apple secrets: paste the real Apple Root CA DER base64 into
+         `_shared/apple.ts` (egress here blocked www.apple.com) OR set
+         `APPLE_ROOT_CA_G3_DER_BASE64`; set `APPLE_BUNDLE_ID`, `APPLE_APP_APPLE_ID`.
+         Register the `apple-notifications` URL as the App Store Server
+         Notifications V2 endpoint. Set `APPLE_ALLOW_SANDBOX=1` ONLY during Apple
+         review, clear it after.
+      5. Sandbox-validate the Apple purchase/restore + notification loop on device.
+      **Deferred (CTO F4/F5, low):** apple-notifications rollback-delete
+      escalation; pre-link refund/revoke handling via App Store Server API lookup.
+      **Not yet built:** the public pricing page redesign (openshore.ai/os-code)
+      -- CMO copy is ready (Free / Personal / Commercial cards + split-frame hero);
+      held for founder sign-off because the marketing repo is live-on-push. Two
+      CMO copy choices open: the pricing headline (per-seat parity vs "Free to
+      chat, $20 to build") and the desktop paywall subhead (feature-led vs
+      privacy-led).
 - [ ] **Live billing config was blank (fixed 2026-08-21).** On project
       lzlrlfdffwiypzreoldb, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` were
       set to EMPTY strings (digest = SHA256 of ""), so checkout 401'd from
@@ -194,6 +211,24 @@ Layer status:
 
 ## Log
 
+- **2026-08-21: individual Personal + free/paid gating + iOS IAP (4 phases).**
+  Free is now chat only; the coding agent and Marketplace need Personal ($20/yr),
+  bought via Apple IAP on iOS and Stripe on web/desktop, both writing one
+  account entitlement. Phase 0: `user_entitlements` + `apple_links` (0006/0007),
+  the `personalUnlocked` resolver, individual read path. Phase 1: Stripe
+  individual checkout/webhook/portal (CTO-reviewed; a HIGH in-place-migration bug
+  found and fixed via 0007, plus a cross-rail clobber pre-empted). Phase 2:
+  native StoreKit 2 Capacitor plugin `oscode-iap` + the Apple server rail
+  (`_shared/apple.ts` via Apple's official verifier, `link-apple-purchase`,
+  `apple-notifications` with idempotency 0008; CTO found and fixed F1 cross-rail
+  false-revoke, F2 sandbox-in-prod, F3 restore revenue-leak). Phase 3: the gate
+  flip -- `newConversation({kind:'desktop'})` and `setView('marketplace')`
+  intercept to a Personal paywall (CMO copy), a lock pill, buyPersonal/restore
+  actions. All gates green (222 engine, 93 app, vite build); commits across
+  e9170a4..f1a70dd. NOT yet deployed: needs the founder config in the action item
+  above (Stripe Personal price, migrations + function deploys, Apple product +
+  secrets + root CA, sandbox validation). Reversible: the gate only bites once
+  the entitlement rails are live, and there are no public users yet.
 - **2026-08-20: CI goes green on main.** The new CI workflow (added in the
   review remediation) was red on its first three runs: `pnpm -r typecheck`
   ran before the engine was built, so the app package could not resolve
