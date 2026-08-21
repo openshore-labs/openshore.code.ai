@@ -75,12 +75,14 @@ Layer status:
       5. Sandbox-validate the Apple purchase/restore + notification loop on device.
       **Deferred (CTO F4/F5, low):** apple-notifications rollback-delete
       escalation; pre-link refund/revoke handling via App Store Server API lookup.
-      **Not yet built:** the public pricing page redesign (openshore.ai/os-code)
-      -- CMO copy is ready (Free / Personal / Commercial cards + split-frame hero);
-      held for founder sign-off because the marketing repo is live-on-push. Two
-      CMO copy choices open: the pricing headline (per-seat parity vs "Free to
-      chat, $20 to build") and the desktop paywall subhead (feature-led vs
-      privacy-led).
+      **Public pricing page: LIVE (2026-08-21).** Open-Shore-LLC-Homepage
+      `main` `bab2418` -- founder picked "Free to chat. $20 to build." for the
+      headline and the feature-led paywall subhead. Free / Personal ("Most
+      popular", $20/yr, App Store fine print, real Stripe individual buy button)
+      / four commercial tiers, reassurance row. Founder must still: purge
+      Cloudflare cache (edge-cached HTML) for it to show at openshore.ai/os-code,
+      and finish step 1-2 above (`STRIPE_PRICE_PERSONAL` + redeploy) before the
+      Get Personal button actually completes checkout instead of erroring.
 - [ ] **Live billing config was blank (fixed 2026-08-21).** On project
       lzlrlfdffwiypzreoldb, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` were
       set to EMPTY strings (digest = SHA256 of ""), so checkout 401'd from
