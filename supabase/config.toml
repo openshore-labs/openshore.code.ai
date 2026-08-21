@@ -48,3 +48,13 @@ verify_jwt = true
 # The Stripe webhook is called by Stripe, not a signed-in user, so no JWT.
 [functions.stripe-webhook]
 verify_jwt = false
+
+# A signed-in user POSTs their signed StoreKit transaction here to link an Apple
+# purchase to their account, so the caller's JWT is required.
+[functions.link-apple-purchase]
+verify_jwt = true
+
+# App Store Server Notifications V2 endpoint. Apple calls it, not a signed-in
+# user, so no JWT; trust comes from the signed payload's Apple signature.
+[functions.apple-notifications]
+verify_jwt = false
