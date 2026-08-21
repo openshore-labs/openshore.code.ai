@@ -23,6 +23,7 @@
     "@capacitor/preferences": "8.0.1",
     "highlight.js": "11.12.0",
     "os-code": "workspace:*",
+    "oscode-iap": "file:./plugins/oscode-iap",
     "oscode-llama": "file:./plugins/oscode-llama",
     "qrcode": "1.5.4",
     "react": "18.3.1",
