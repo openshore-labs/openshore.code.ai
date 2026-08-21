@@ -51,6 +51,27 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **[TOP] Individual Personal tier + free/paid gating + iOS IAP.** Founder
+      decided (2026-08-21) the model: FREE = chat only (Harbor/Ollama), no
+      coding-agent features, no Marketplace; PERSONAL = $20/yr unlocks
+      everything for one individual, via Apple In-App Purchase on iOS and Stripe
+      direct on web/desktop; commercial team tiers unchanged. TODAY the code does
+      NONE of this: `personal` is coded free/$0 ("the full app"), nothing gates
+      coding or the marketplace, no individual entitlement, no paywall, no IAP.
+      This is a foundational monetization change. CTO + CFO are scoping a
+      sign-off-ready plan (gating a local-first agent is honor-system unless
+      tied to a server capability; Apple 15% Small Business rate; dual-rail
+      Apple-IAP/Stripe reconciliation to one account entitlement; App Store
+      Server Notifications V2 -> new Supabase edge function). Build only after
+      founder signs off on the plan.
+- [ ] **Live billing config was blank (fixed 2026-08-21).** On project
+      lzlrlfdffwiypzreoldb, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` were
+      set to EMPTY strings (digest = SHA256 of ""), so checkout 401'd from
+      Stripe. Founder pasted real live values; a live $20 Micro purchase then
+      succeeded end to end (checkout + webhook + entitlement write), confirming
+      P0-1. Migrations 0004/0005 applied and stripe-checkout/-webhook/-portal
+      redeployed on that project; refresh-token rotation already on. Refund the
+      $20 test charge + cancel that sub.
 - [ ] **First desktop run on the founder's machine** (`pnpm install` then
       `pnpm desktop`) against real Ollama models.
 - [ ] **First Codemagic build to TestFlight** (walkthrough in
