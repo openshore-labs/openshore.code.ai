@@ -18,9 +18,12 @@ import { BackBar } from '../components/BackBar.js';
 import { LibraryIntro } from '../components/LibraryIntro.js';
 import { Stars, CapabilityLane, NotRated } from '../components/Stars.js';
 import { CompareSheet } from '../components/CompareSheet.js';
+import { CapIcon, ModelTile } from '../components/MarketIcon.js';
 import {
   EMPTY_FACETS,
   activeFacetCount,
+  buildShelves,
+  featuredModels,
   fitFor,
   filterModels,
   licenseLabel,
@@ -29,6 +32,7 @@ import {
   usageTurns,
   type Facets,
   type FitLabel,
+  type Shelf,
   type SortKey,
 } from '../components/marketplace.js';
 
@@ -266,6 +270,17 @@ export function MarketplaceScreen() {
     [compareIds, catalog],
   );
 
+  // The store front (App Store "Apps" tab) shows when nothing is being searched
+  // or filtered: a featured row and themed shelves to browse. The moment a
+  // search term or any facet is set, we fall back to the full sortable list.
+  const browsing = !facets.query.trim() && activeFacetCount(facets) === 0;
+
+  const featured = useMemo(() => (catalog ? featuredModels(catalog.models) : []), [catalog]);
+  const shelves = useMemo(
+    () => (catalog ? buildShelves(catalog.models, memoryGB) : []),
+    [catalog, memoryGB],
+  );
+
   if (!catalog) {
     return (
       <div className="screen">
@@ -479,6 +494,179 @@ export function MarketplaceScreen() {
     );
   };
 
+  // Open the full list scoped to one model, the store's stand-in for an App
+  // Store product page: the list card carries the ratings, license, details, and
+  // compare that a shelf tile deliberately leaves out.
+  const openModel = (model: CatalogModel) => {
+    setFacets({ ...EMPTY_FACETS, query: model.name });
+    setSort('recommended');
+  };
+
+  // The compact download control shared by hero cards and shelf rows: a Get
+  // button, its in-flight percent, a Retry on failure, or the owned state.
+  const getControl = (model: CatalogModel) => {
+    const dl = downloads[model.id];
+    const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
+    const owned = target === 'device' && Boolean(settings.deviceModels[model.id]);
+    if (owned) return <span className="pill local">on device</span>;
+    if (dl && !dl.failed) {
+      return (
+        <span className="get-progress" aria-live="polite">
+          {dl.indeterminate ? 'Getting' : `${Math.round(dl.percent)}%`}
+        </span>
+      );
+    }
+    return (
+      <button
+        className="store-get"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (target === 'device') void pullToDevice(model);
+          else void pullToDesktop(model);
+        }}
+      >
+        {dl?.failed ? 'Retry' : 'Get'}
+      </button>
+    );
+  };
+
+  const renderHero = (model: CatalogModel, index: number) => {
+    const fit = fitFor(model.sizeGB, memoryGB);
+    const pill = FIT_PILL[fit];
+    const eyebrow = model.recommended?.isRecommended ? 'OpenShore pick' : 'Featured';
+    return (
+      <button
+        className={`hero-card${model.onDevice ? ' on-device' : ''}`}
+        key={model.id}
+        style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
+        onClick={() => openModel(model)}
+        aria-label={`${model.name}. ${model.tagline}`}
+      >
+        <div className="hero-eyebrow">{eyebrow}</div>
+        <div className="hero-title">{model.name}</div>
+        <div className="hero-tagline">{model.tagline}</div>
+        <div className="hero-foot">
+          <ModelTile name={model.name} onDevice={Boolean(model.onDevice)} size={48} />
+          <div className="hero-foot-meta">
+            <span className={`pill ${pill.cls}`}>{pill.text}</span>
+            <span className="hero-size">{model.sizeGB} GB</span>
+          </div>
+          <span className="hero-get-wrap">{getControl(model)}</span>
+        </div>
+      </button>
+    );
+  };
+
+  const renderRow = (model: CatalogModel) => {
+    const primaryCap = model.categories[0];
+    const meta = model.onDevice
+      ? `On device · ${model.sizeGB} GB`
+      : `${model.sizeGB} GB · ${model.quantization}`;
+    return (
+      <button className="store-row" key={model.id} onClick={() => openModel(model)}>
+        <ModelTile name={model.name} onDevice={Boolean(model.onDevice)} size={52} />
+        <div className="store-row-body">
+          <div className="store-row-name">{model.name}</div>
+          <div className="store-row-sub">{model.tagline}</div>
+          <div className="store-row-meta">
+            {primaryCap ? <CapIcon cap={primaryCap} size={12} /> : null}
+            {meta}
+          </div>
+        </div>
+        <span className="store-row-get">{getControl(model)}</span>
+      </button>
+    );
+  };
+
+  // Rows are chunked into columns of three so a shelf pages horizontally, three
+  // models to a screen, exactly like the App Store's "Must-Have Apps" rail.
+  const renderShelf = (shelf: Shelf) => {
+    const columns: CatalogModel[][] = [];
+    for (let i = 0; i < shelf.models.length; i += 3) {
+      columns.push(shelf.models.slice(i, i + 3));
+    }
+    const openShelf = () => {
+      if (shelf.capability) {
+        setFacets({ ...EMPTY_FACETS, capability: shelf.capability });
+      } else {
+        setFacets({ ...EMPTY_FACETS });
+        setSort(shelf.sort ?? 'recommended');
+      }
+    };
+    return (
+      <section className="shelf" key={shelf.key}>
+        <button className="shelf-head" onClick={openShelf}>
+          <span className="shelf-head-text">
+            <span className="shelf-title">{shelf.title}</span>
+            {shelf.subtitle ? <span className="shelf-sub">{shelf.subtitle}</span> : null}
+          </span>
+          <span className="shelf-more" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </span>
+        </button>
+        <div className="shelf-scroll">
+          {columns.map((col, i) => (
+            <div className="shelf-col" key={i}>
+              {col.map(renderRow)}
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
+  const categoryRail = (
+    <div className="cat-rail" role="tablist" aria-label="Browse by capability">
+      <button
+        role="tab"
+        aria-selected={browsing}
+        className={`cat-chip${browsing ? ' active' : ''}`}
+        onClick={() => setFacets({ ...EMPTY_FACETS })}
+      >
+        <span className="cat-chip-glyph all" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </span>
+        Discover
+      </button>
+      {CAP_ORDER.map((cap) => (
+        <button
+          key={cap}
+          role="tab"
+          aria-selected={facets.capability === cap}
+          className={`cat-chip${facets.capability === cap ? ' active' : ''}`}
+          onClick={() => setFacet('capability', facets.capability === cap ? undefined : cap)}
+        >
+          <span className="cat-chip-glyph" aria-hidden="true">
+            <CapIcon cap={cap} size={16} />
+          </span>
+          {CAPABILITIES[cap].plain}
+        </button>
+      ))}
+    </div>
+  );
+
   const capChip = (cap: CapabilityCategory) => (
     <button
       key={cap}
@@ -637,63 +825,83 @@ export function MarketplaceScreen() {
             </div>
           ) : null}
 
-          <div className="market-controls">
-            <input
-              className="market-search"
-              type="search"
-              placeholder="Search models"
-              value={facets.query}
-              onChange={(e) => setFacet('query', e.target.value)}
-              aria-label="Search models"
-            />
-            <div className="segmented" role="tablist" aria-label="Sort">
-              {sorts.map((s) => (
-                <button
-                  key={s.key}
-                  role="tab"
-                  aria-selected={sort === s.key}
-                  className={`seg${sort === s.key ? ' active' : ''}`}
-                  onClick={() => setSort(s.key)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <input
+            className="market-search"
+            type="search"
+            placeholder="Search models"
+            value={facets.query}
+            onChange={(e) => setFacet('query', e.target.value)}
+            aria-label="Search models"
+          />
 
-          {SORT_SUBHEAD[sort] ? <p className="sort-honesty">{SORT_SUBHEAD[sort]}</p> : null}
+          {categoryRail}
 
-          <div className="market-body">
-            {!isPhone() ? <aside className="rail-desktop">{filterRail}</aside> : null}
-
-            <div className="market-main">
-              <div className="result-bar">
-                <span className="result-count" key={visible.length}>
-                  {visible.length} model{visible.length === 1 ? '' : 's'}
-                </span>
-                {isPhone() ? (
-                  <button className="filter-open" onClick={() => setShowFilters(true)}>
-                    Filters{activeFacetCount(facets) ? ` (${activeFacetCount(facets)})` : ''}
-                  </button>
-                ) : null}
-              </div>
+          {browsing ? (
+            <div className="store-front" key="store">
+              {featured.length ? (
+                <div className="hero-scroll">{featured.map(renderHero)}</div>
+              ) : null}
 
               {!isDesktop() ? (
-                <p className="hint" style={{ marginBottom: 10 }}>
+                <p className="hint store-note">
                   Browse here; desktop models install from the OS Code desktop app, and this phone
                   uses them over Tailscale.
                 </p>
               ) : null}
 
-              <div className="market-list" key={sort}>
-                {visible.length ? (
-                  visible.map(renderCard)
-                ) : (
-                  <p className="hint">No models match these filters yet.</p>
-                )}
-              </div>
+              {shelves.map(renderShelf)}
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="segmented seg-scroll" role="tablist" aria-label="Sort">
+                {sorts.map((s) => (
+                  <button
+                    key={s.key}
+                    role="tab"
+                    aria-selected={sort === s.key}
+                    className={`seg${sort === s.key ? ' active' : ''}`}
+                    onClick={() => setSort(s.key)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {SORT_SUBHEAD[sort] ? <p className="sort-honesty">{SORT_SUBHEAD[sort]}</p> : null}
+
+              <div className="market-body">
+                {!isPhone() ? <aside className="rail-desktop">{filterRail}</aside> : null}
+
+                <div className="market-main">
+                  <div className="result-bar">
+                    <span className="result-count" key={visible.length}>
+                      {visible.length} model{visible.length === 1 ? '' : 's'}
+                    </span>
+                    {isPhone() ? (
+                      <button className="filter-open" onClick={() => setShowFilters(true)}>
+                        Filters{activeFacetCount(facets) ? ` (${activeFacetCount(facets)})` : ''}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {!isDesktop() ? (
+                    <p className="hint" style={{ marginBottom: 10 }}>
+                      Browse here; desktop models install from the OS Code desktop app, and this
+                      phone uses them over Tailscale.
+                    </p>
+                  ) : null}
+
+                  <div className="market-list" key={sort}>
+                    {visible.length ? (
+                      visible.map(renderCard)
+                    ) : (
+                      <p className="hint">No models match these filters yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
