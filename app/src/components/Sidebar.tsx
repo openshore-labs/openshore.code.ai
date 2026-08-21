@@ -158,7 +158,12 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
     setActiveProject,
     quickChat,
     startNewChat,
+    personalUnlockedNow,
   } = useApp();
+  // Free is chat only. The Marketplace needs Personal, so a locked pill signals
+  // it before the tap (tapping still opens the upgrade sheet via setView).
+  const unlocked = personalUnlockedNow();
+  const LOCKED_VIEWS = new Set<NavIconName>(['marketplace']);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
   useDismissable(switcherRef, switcherOpen, () => setSwitcherOpen(false));
@@ -293,18 +298,22 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
             Admin
           </button>
         ) : null}
-        {NAV.map((item) => (
-          <button
-            key={item.view}
-            className={`nav-item${view === item.view ? ' active' : ''}`}
-            onClick={() => setView(item.view)}
-          >
-            <span className="glyph">
-              <NavIcon name={item.view} />
-            </span>
-            {item.label}
-          </button>
-        ))}
+        {NAV.map((item) => {
+          const locked = !unlocked && LOCKED_VIEWS.has(item.view);
+          return (
+            <button
+              key={item.view}
+              className={`nav-item${view === item.view ? ' active' : ''}`}
+              onClick={() => setView(item.view)}
+            >
+              <span className="glyph">
+                <NavIcon name={item.view} />
+              </span>
+              {item.label}
+              {locked ? <span className="nav-lock-pill">Personal</span> : null}
+            </button>
+          );
+        })}
       </nav>
     </aside>
   );

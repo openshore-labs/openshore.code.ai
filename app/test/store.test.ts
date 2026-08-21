@@ -223,6 +223,33 @@ describe('entitlement gate (billing A1)', () => {
     expect(personalUnlocked(undefined, undefined)).toBe(false);
   });
 
+  it('free is chat only: coding + marketplace gate to the paywall', async () => {
+    useApp.setState({ userEntitlement: undefined, entitlement: undefined, paywall: undefined });
+    expect(useApp.getState().personalUnlockedNow()).toBe(false);
+
+    // Marketplace navigation is intercepted; the view does not change.
+    useApp.setState({ view: 'chat' });
+    useApp.getState().setView('marketplace');
+    expect(useApp.getState().view).toBe('chat');
+    expect(useApp.getState().paywall).toBe('marketplace');
+
+    // A coding source (desktop) opens the paywall and creates no conversation.
+    useApp.setState({ paywall: undefined });
+    const before = Object.keys(useApp.getState().conversations).length;
+    await useApp.getState().newConversation({ kind: 'desktop', cwd: '/x', repoName: 'x' });
+    expect(useApp.getState().paywall).toBe('coding');
+    expect(Object.keys(useApp.getState().conversations).length).toBe(before);
+  });
+
+  it('an active Personal entitlement unlocks coding + marketplace', async () => {
+    useApp.setState({ userEntitlement: { tierId: 'personal', status: 'active' }, paywall: undefined });
+    expect(useApp.getState().personalUnlockedNow()).toBe(true);
+    useApp.setState({ view: 'chat' });
+    useApp.getState().setView('marketplace');
+    expect(useApp.getState().view).toBe('marketplace');
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+
   it('canGrowTeam stays true for a local (unbilled) org', async () => {
     await useApp.getState().setupAccount({
       type: 'commercial',
