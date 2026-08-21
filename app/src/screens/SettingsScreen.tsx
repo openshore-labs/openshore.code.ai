@@ -9,6 +9,7 @@ import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { StartingPaths } from '../components/StartingPaths.js';
+import { InfoSheet } from '../components/InfoSheet.js';
 import type { StackHealthSealFact } from 'os-code/protocol';
 
 // A fact carries a "How" disclosure when there's a concrete step that would
@@ -111,14 +112,11 @@ export function SettingsScreen() {
         <h1>Settings</h1>
         <p className="lead">OS Code 0.1.0 · running as {platform()}</p>
 
-        <div className="card">
-          <h3>Privacy, plainly</h3>
-          <div className="sub">
-            Local models run on your hardware and nothing leaves it. Cloud models run on your own
-            keys and only with your approval. Web search leaves your machine when the agent uses it.
-            No telemetry, no analytics, no phone-home, ever.
-          </div>
-        </div>
+        <InfoSheet title="Privacy, plainly">
+          Local models run on your hardware and nothing leaves it. Cloud models run on your own keys
+          and only with your approval. Web search leaves your machine when the agent uses it. No
+          telemetry, no analytics, no phone-home, ever.
+        </InfoSheet>
 
         <SignInCard />
 
@@ -150,27 +148,21 @@ export function SettingsScreen() {
           </div>
         ) : null}
 
-        <div className="card">
-          <h3>Encrypted on this device</h3>
-          <div className="sub">
-            Your chats, projects, crew, settings, and session journals are sealed at rest with
-            AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
-            {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API keys
-            are held the same way. When you send a turn to a cloud provider, that one provider sees
-            that one request on your own account. We do not, and there is nothing in between.
-          </div>
+        <InfoSheet title="Encrypted on this device">
+          Your chats, projects, crew, settings, and session journals are sealed at rest with
+          AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
+          {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API keys
+          are held the same way. When you send a turn to a cloud provider, that one provider sees
+          that one request on your own account. We do not, and there is nothing in between.
           <LiveSeal />
-        </div>
+        </InfoSheet>
 
-        <div className="card">
-          <h3>Local models, honestly</h3>
-          <div className="sub">
-            Harbor and any model you run on this device are AI. They can be confidently wrong, and
-            OpenShore does not filter what a local model says. Harbor is a small built-in guide, not
-            a coder. For real work, connect a bigger model. What you type to a local model stays on
-            this device. Harbor is Qwen2.5-0.5B-Instruct, used under the Apache License 2.0.
-          </div>
-        </div>
+        <InfoSheet title="Local models, honestly">
+          Harbor and any model you run on this device are AI. They can be confidently wrong, and
+          OpenShore does not filter what a local model says. Harbor is a small built-in guide, not a
+          coder. For real work, connect a bigger model. What you type to a local model stays on this
+          device. Harbor is Qwen2.5-0.5B-Instruct, used under the Apache License 2.0.
+        </InfoSheet>
 
         <div className="card">
           <div className="card-row">
