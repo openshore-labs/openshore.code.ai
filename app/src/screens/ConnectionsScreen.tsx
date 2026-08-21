@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { PROVIDERS } from '../lib/providers.js';
 import { BackBar } from '../components/BackBar.js';
+import { openInAppBrowser } from '../lib/platform.js';
 
 export function ConnectionsScreen() {
   const { connectedProviders, connectProvider, disconnectProvider, showToast, setView } = useApp();
@@ -69,6 +70,14 @@ export function ConnectionsScreen() {
               </div>
               {editing === p.id ? (
                 <div style={{ marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="linklike"
+                    style={{ marginBottom: 8 }}
+                    onClick={() => openInAppBrowser(p.apiKeyUrl)}
+                  >
+                    Get a {p.name} API key ↗
+                  </button>
                   <div className="field">
                     <input
                       autoFocus
