@@ -42,6 +42,12 @@ def render(svg, out, size):
         sys.exit("No Chrome/Chromium found. Set OSC_CHROME to a browser binary.")
     subprocess.run(
         [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+         # A standalone SVG doesn't fill the whole window (Chromium lays it out a
+         # touch shorter than the viewport), and the uncovered strip defaults to
+         # white, so the shipped icon had a white band across the bottom that read
+         # as a "cut off" tile once iOS masked the corners. Paint the page
+         # background the same navy as the mark so any uncovered area is invisible.
+         "--default-background-color=1c2a33ff", "--force-device-scale-factor=1",
          f"--window-size={size},{size}", f"--screenshot={out}", f"file://{os.path.abspath(svg)}"],
         check=True,
         stderr=subprocess.DEVNULL,
