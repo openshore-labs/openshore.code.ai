@@ -39,6 +39,10 @@ if not chrome:
 first = os.path.join(OUT_DIR, "splash-2732x2732.png")
 subprocess.run(
     [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+     # Paint the page background the same cream as the splash field so any strip
+     # the SVG doesn't cover stays invisible (see gen-icon.py for the white-band
+     # story), and pin the scale factor for a deterministic render.
+     "--default-background-color=f6f4efff", "--force-device-scale-factor=1",
      f"--window-size={SIZE},{SIZE}", f"--screenshot={first}", f"file://{os.path.abspath(SVG)}"],
     check=True,
     stderr=subprocess.DEVNULL,

@@ -1,5 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Open Shore">
   <rect width="32" height="32" rx="7.5" fill="#1C2A33" />
-  <line x1="7" y1="13" x2="25" y2="13" stroke="#F6F4EF" stroke-width="2" stroke-linecap="round" />
-  <path d="M7 19q4.5-3.3 9 0t9 0" fill="none" stroke="#4B90A3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Mark nudged up 0.81 so it sits optically centered in the tile. -->
+  <g transform="translate(0 -0.81)">
+    <line x1="7" y1="13" x2="25" y2="13" stroke="#F6F4EF" stroke-width="2" stroke-linecap="round" />
+    <path d="M7 19q4.5-3.3 9 0t9 0" fill="none" stroke="#4B90A3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
 </svg>
