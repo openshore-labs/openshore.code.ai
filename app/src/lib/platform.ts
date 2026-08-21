@@ -1,6 +1,7 @@
 // Where are we running? One question, answered once. The same web build
 // serves Electron (desktop), Capacitor (iOS), and a plain browser (dev).
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { Preferences } from '@capacitor/preferences';
 import { Llama } from './llamaPlugin.js';
 import { bridge } from './electronBridge.js';
@@ -25,6 +26,20 @@ export const isPhone = () => platform() === 'ios';
 export function openExternal(url: string): void {
   if (typeof window === 'undefined') return;
   window.open(url, platform() === 'ios' ? '_system' : '_blank', 'noopener');
+}
+
+/** Open a URL for a quick errand you're meant to come straight back from
+ *  (fetching an API key, for example): an in-app browser sheet on iOS, so
+ *  signing in and copying a key never leaves OS Code, with the standard
+ *  Capacitor "Done" button to dismiss back to exactly where you were.
+ *  Electron and web have no in-app browser surface, so they fall back to
+ *  the system browser via openExternal. */
+export function openInAppBrowser(url: string): void {
+  if (platform() === 'ios') {
+    void Browser.open({ url });
+    return;
+  }
+  openExternal(url);
 }
 
 // ---------------------------------------------------------------------------
