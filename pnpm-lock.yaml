@@ -31,6 +31,9 @@ importers:
       os-code:
         specifier: workspace:*
         version: link:../os-code
+      oscode-iap:
+        specifier: file:./plugins/oscode-iap
+        version: file:app/plugins/oscode-iap(@capacitor/core@8.5.0)
       oscode-llama:
         specifier: file:./plugins/oscode-llama
         version: file:app/plugins/oscode-llama(@capacitor/core@8.5.0)
@@ -2359,6 +2362,11 @@ packages:
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
+
+  oscode-iap@file:app/plugins/oscode-iap:
+    resolution: {directory: app/plugins/oscode-iap, type: directory}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   oscode-llama@file:app/plugins/oscode-llama:
     resolution: {directory: app/plugins/oscode-llama, type: directory}
@@ -5723,6 +5731,10 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
       word-wrap: 1.2.5
+
+  oscode-iap@file:app/plugins/oscode-iap(@capacitor/core@8.5.0):
+    dependencies:
+      '@capacitor/core': 8.5.0
 
   oscode-llama@file:app/plugins/oscode-llama(@capacitor/core@8.5.0):
     dependencies:
