@@ -42,7 +42,8 @@ export function AccountSetup() {
               <div className="card account-card">
                 <h3>Personal</h3>
                 <div className="sub" style={{ marginBottom: 10 }}>
-                  Personal. Free. For your own work. The full app, your models, your keys.
+                  For your own work, your models, your keys. Free to chat. Unlock the coding agent
+                  and the Marketplace with Personal, $20 a year.
                 </div>
                 <button
                   className="btn primary"
