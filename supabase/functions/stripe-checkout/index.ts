@@ -17,7 +17,7 @@
 import Stripe from 'https://esm.sh/stripe@14?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
-import { tierCoversSeats } from '../_shared/entitlement.ts';
+import { isEntitled, tierCoversSeats } from '../_shared/entitlement.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', { apiVersion: '2024-06-20' });
 
@@ -150,27 +150,50 @@ async function checkoutIndividual(
 ): Promise<Response> {
   const { data: ent, error: entErr } = await admin
     .from('user_entitlements')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, status, source')
     .eq('user_id', userId)
     .maybeSingle();
   if (entErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
+
+  // Already entitled by EITHER rail: never start a second purchase. An Apple sub
+  // is managed on the device (no Stripe portal); a Stripe sub opens the portal.
+  // This also protects an active Apple row from being clobbered to
+  // incomplete/stripe by the customer-create upsert below.
+  if (ent && isEntitled({ status: ent.status })) {
+    if (ent.source === 'apple' || !ent.stripe_customer_id) {
+      return json(
+        { error: 'You already have Personal. Manage it on your iPhone (Settings > your name > Subscriptions).' },
+        409,
+        req,
+      );
+    }
+    const portal = await stripe.billingPortal.sessions.create({
+      customer: ent.stripe_customer_id,
+      return_url: PORTAL_RETURN,
+    });
+    return json({ url: portal.url, alreadySubscribed: true }, 200, req);
+  }
 
   let customer = ent?.stripe_customer_id as string | undefined;
   if (!customer) {
     const created = await stripe.customers.create({ email, metadata: { userId } });
     customer = created.id;
-    // Persist the customer id immediately (status 'incomplete' = no access) so a
-    // second checkout reuses it and the portal can open. The webhook overwrites
-    // status/valid_until when the subscription resolves. source='stripe' here;
-    // an Apple purchase would take the 'apple' path instead.
-    const { error: upErr } = await admin.from('user_entitlements').upsert({
-      user_id: userId,
-      tier_id: 'personal',
-      status: 'incomplete',
-      source: 'stripe',
-      stripe_customer_id: customer,
-      issued_at: new Date().toISOString(),
-    });
+    // Persist the customer id so a second checkout reuses it and the portal can
+    // open. If a row already exists (e.g. a lapsed/incomplete one), UPDATE only
+    // the customer id so we never clobber another rail's source/status; else
+    // insert a fresh revoked row ('incomplete' = no access) that the webhook
+    // flips to active when payment resolves.
+    const write = ent
+      ? admin.from('user_entitlements').update({ stripe_customer_id: customer }).eq('user_id', userId)
+      : admin.from('user_entitlements').insert({
+          user_id: userId,
+          tier_id: 'personal',
+          status: 'incomplete',
+          source: 'stripe',
+          stripe_customer_id: customer,
+          issued_at: new Date().toISOString(),
+        });
+    const { error: upErr } = await write;
     if (upErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
   }
 
