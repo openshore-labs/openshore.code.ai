@@ -922,6 +922,54 @@ textarea {
   margin-bottom: 14px;
 }
 
+/* Personal upgrade sheet: benefit list + price line. */
+.paywall-benefits {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.paywall-benefits li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--text);
+}
+.paywall-benefits li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, currentColor);
+  opacity: 0.85;
+}
+.paywall-price {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+}
+
+/* The small "Personal" pill on a locked nav item. */
+.nav-lock-pill {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--code-surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
 .sheet-detail {
   background: var(--code-surface);
   border: 1px solid var(--border);

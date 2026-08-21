@@ -77,6 +77,12 @@ import {
   type ServerMember,
   type ServerOrg,
 } from './orgSync.js';
+import {
+  iapAvailable,
+  purchase as iapPurchase,
+  restore as iapRestore,
+  PERSONAL_YEARLY_PRODUCT_ID,
+} from '../lib/iap.js';
 import { clearSession, freshSession, loadStoredSession, saveSession } from '../lib/authSession.js';
 import {
   autoProfile,
@@ -131,6 +137,10 @@ export type ViewName =
   | 'pair'
   | 'settings'
   | 'onboarding';
+
+// Which locked surface triggered the Personal upgrade sheet. Free is chat only;
+// the coding agent and the Marketplace need the Personal unlock.
+export type PaywallReason = 'coding' | 'marketplace';
 
 export interface AppSettings {
   onboarded: boolean;
@@ -226,11 +236,27 @@ interface AppState {
   /** Live reach signals that drive the active connectivity profile. */
   connectivity: Connectivity;
   toast?: string;
+  /** When set, the Personal upgrade sheet is showing, and which locked surface
+   *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
+  paywall?: PaywallReason;
 
   init(): Promise<void>;
   setView(view: ViewName): void;
   setDrawer(open: boolean): void;
   showToast(message: string): void;
+  /** Show the Personal upgrade sheet for a locked surface. */
+  openPaywall(reason: PaywallReason): void;
+  closePaywall(): void;
+  /** Whether the signed-in person has the Personal unlock, by EITHER rail (an
+   *  individual Personal subscription OR an entitled commercial org). Free
+   *  (signed out or no entitlement) is chat only. */
+  personalUnlockedNow(): boolean;
+  /** Buy Personal: Apple In-App Purchase on iOS, Stripe web checkout elsewhere.
+   *  Resolves once the purchase flow has been handed off (IAP sheet shown, or
+   *  the browser opened); entitlement lands via refreshEntitlement. */
+  buyPersonal(): Promise<void>;
+  /** Restore a prior Apple purchase (iOS only; required by Apple 3.1.1). */
+  restorePurchases(): Promise<void>;
 
   newConversation(source: ConversationSource, opts?: { ephemeral?: boolean }): Promise<string>;
   /** Open a fresh, empty chat (the source picker decides who answers). A
@@ -953,11 +979,102 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     setView(view) {
+      // Free is chat only: the Marketplace needs Personal. Intercept the
+      // navigation and show the upgrade sheet instead of the locked screen.
+      if (view === 'marketplace' && !get().personalUnlockedNow()) {
+        get().openPaywall('marketplace');
+        return;
+      }
       set({ view, drawerOpen: false });
     },
 
     setDrawer(open) {
       set({ drawerOpen: open });
+    },
+
+    openPaywall(reason) {
+      logEvent('paywall_shown', { reason });
+      set({ paywall: reason, drawerOpen: false });
+    },
+    closePaywall() {
+      set({ paywall: undefined });
+    },
+
+    personalUnlockedNow() {
+      return personalUnlocked(get().userEntitlement, get().entitlement);
+    },
+
+    async buyPersonal() {
+      const session = get().authSession;
+      // Buying requires an account to attach the entitlement to.
+      if (!authConfigured() || !session) {
+        get().showToast('Sign in first to unlock Personal.');
+        return;
+      }
+      // iOS: Apple In-App Purchase (Apple 3.1.1). Never open web checkout in the
+      // app. The signed StoreKit transaction is verified server-side; the client
+      // claim is only a hint.
+      if (iapAvailable()) {
+        try {
+          const result = await iapPurchase(PERSONAL_YEARLY_PRODUCT_ID);
+          if (result.state === 'cancelled' || result.state === 'pending') return;
+          if (result.state === 'purchased' && result.jws) {
+            await supabaseInvoke('link-apple-purchase', session.accessToken, { jws: result.jws });
+            await get().refreshEntitlement();
+            if (get().personalUnlockedNow()) {
+              set({ paywall: undefined });
+              get().showToast("You're Personal. The agent and Marketplace are unlocked.");
+            }
+          }
+        } catch (err) {
+          get().showToast(err instanceof Error ? err.message : 'Could not complete the purchase.');
+        }
+        return;
+      }
+      // Desktop/web: Stripe checkout in the system browser. The webhook writes
+      // the entitlement; refreshEntitlement picks it up on return.
+      try {
+        const { url } = await supabaseInvoke<{ url: string }>('stripe-checkout', session.accessToken, {
+          tierId: 'personal',
+        });
+        if (!url) {
+          get().showToast('Could not start checkout. Try again.');
+          return;
+        }
+        openExternal(url);
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : 'Could not start checkout.');
+      }
+    },
+
+    async restorePurchases() {
+      const session = get().authSession;
+      if (!authConfigured() || !session) {
+        get().showToast('Sign in first, then restore.');
+        return;
+      }
+      if (!iapAvailable()) {
+        // Not an Apple device: a web/desktop buyer's entitlement is already on
+        // the account, so a refresh is the "restore".
+        await get().refreshEntitlement();
+        get().showToast(get().personalUnlockedNow() ? 'Personal restored.' : 'No Personal subscription found.');
+        return;
+      }
+      try {
+        const { transactions } = await iapRestore(PERSONAL_YEARLY_PRODUCT_ID);
+        for (const t of transactions) {
+          if (t.jws) await supabaseInvoke('link-apple-purchase', session.accessToken, { jws: t.jws });
+        }
+        await get().refreshEntitlement();
+        if (get().personalUnlockedNow()) {
+          set({ paywall: undefined });
+          get().showToast('Personal restored.');
+        } else {
+          get().showToast('No purchases to restore.');
+        }
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : 'Could not restore purchases.');
+      }
     },
 
     showToast(message) {
@@ -966,6 +1083,17 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async newConversation(source, opts) {
+      // Free is chat only. The coding AGENT is a 'desktop' repo session (it reads
+      // the repo, writes edits, runs tools) and that is the paid surface; chat
+      // with local models ('device' Harbor/Ollama) and with a connected stack
+      // ('stack') stays free. Central choke point so every coding entry (Repos,
+      // Launch) is gated one way. Returns the current conversation id (or empty)
+      // so callers that navigate on the result do not dead-end.
+      const coding = source.kind === 'desktop';
+      if (coding && !get().personalUnlockedNow()) {
+        get().openPaywall('coding');
+        return get().activeId ?? '';
+      }
       logEvent('source_chosen', { kind: source.kind });
       const id = newId();
       const ephemeral = opts?.ephemeral ?? false;

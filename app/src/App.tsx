@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
 import { Sidebar } from './components/Sidebar.js';
+import { Paywall } from './components/Paywall.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
 import { StackScreen } from './screens/StackScreen.js';
@@ -105,6 +106,7 @@ export function App() {
       {!compact ? <Sidebar /> : null}
       <div className="shell-main">{room}</div>
       {compact && drawerOpen ? <Sidebar drawer /> : null}
+      <Paywall />
       {toast ? <div className="toast">{toast}</div> : null}
     </div>
   );
