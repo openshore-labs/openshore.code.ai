@@ -37,6 +37,10 @@ for (const [tier, env] of [
   if (id) TIER_BY_PRICE[id] = tier;
 }
 
+// The individual Personal price (web/desktop Stripe rail). Apple purchases take
+// the apple-notifications function instead; both write user_entitlements.
+const PERSONAL_PRICE = Deno.env.get('STRIPE_PRICE_PERSONAL');
+
 // Upsert the org's entitlement from a Stripe subscription state. Throws on any
 // write error or unmapped price so the caller returns 500 and Stripe retries.
 // `eventCreatedMs` is the webhook event's own timestamp, used to drop stale/dup
@@ -97,6 +101,47 @@ async function upsertEntitlement(
   if (orgUpErr) throw new Error(`orgs tier update failed: ${orgUpErr.message}`);
 }
 
+// Upsert an INDIVIDUAL Personal entitlement from a Stripe subscription state.
+// Mirrors upsertEntitlement's rules (throw on unmapped price / write error;
+// ordering guard) but writes user_entitlements keyed by user_id. There is no
+// seat concept for an individual.
+async function upsertUserEntitlement(
+  userId: string,
+  priceId: string,
+  subId: string,
+  status: string,
+  periodEnd: number | undefined,
+  customer: string,
+  eventCreatedMs: number,
+): Promise<void> {
+  if (!PERSONAL_PRICE || priceId !== PERSONAL_PRICE) {
+    throw new Error(`Unmapped individual Stripe price ${priceId}`);
+  }
+
+  const { data: existing, error: readErr } = await supabase
+    .from('user_entitlements')
+    .select('last_event_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (readErr) throw new Error(`user entitlement read failed: ${readErr.message}`);
+  if (existing?.last_event_at && new Date(existing.last_event_at).getTime() >= eventCreatedMs) {
+    return; // stale or duplicate delivery; the current state is newer.
+  }
+
+  const { error: upErr } = await supabase.from('user_entitlements').upsert({
+    user_id: userId,
+    tier_id: 'personal',
+    status,
+    source: 'stripe',
+    stripe_customer_id: customer,
+    stripe_subscription_id: subId,
+    valid_until: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+    last_event_at: new Date(eventCreatedMs).toISOString(),
+    issued_at: new Date().toISOString(),
+  });
+  if (upErr) throw new Error(`user entitlement upsert failed: ${upErr.message}`);
+}
+
 function priceOf(sub: Stripe.Subscription): string {
   return sub.items.data[0]?.price.id ?? '';
 }
@@ -120,30 +165,44 @@ Deno.serve(async (req) => {
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const orgId = session.metadata?.orgId;
-      if (orgId && session.subscription) {
+      if (session.subscription) {
         const sub = await stripe.subscriptions.retrieve(String(session.subscription));
-        await upsertEntitlement(orgId, priceOf(sub), sub.id, sub.status, sub.current_period_end, eventCreatedMs);
+        // Individual vs org, decided by which id the checkout stamped.
+        const userId = session.metadata?.userId;
+        const orgId = session.metadata?.orgId;
+        if (userId) {
+          await upsertUserEntitlement(userId, priceOf(sub), sub.id, sub.status, sub.current_period_end, String(sub.customer), eventCreatedMs);
+        } else if (orgId) {
+          await upsertEntitlement(orgId, priceOf(sub), sub.id, sub.status, sub.current_period_end, eventCreatedMs);
+        }
       }
     } else if (
       event.type === 'customer.subscription.updated' ||
       event.type === 'customer.subscription.deleted'
     ) {
       const sub = event.data.object as Stripe.Subscription;
-      const orgId = sub.metadata?.orgId ?? (await orgIdForCustomer(String(sub.customer)));
-      if (orgId) {
-        // A deletion is a revocation regardless of the object's status field.
-        const status = event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status;
-        await upsertEntitlement(orgId, priceOf(sub), sub.id, status, sub.current_period_end, eventCreatedMs);
+      // A deletion is a revocation regardless of the object's status field.
+      const status = event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status;
+      const userId = sub.metadata?.userId ?? (await userIdForCustomer(String(sub.customer)));
+      if (userId) {
+        await upsertUserEntitlement(userId, priceOf(sub), sub.id, status, sub.current_period_end, String(sub.customer), eventCreatedMs);
+      } else {
+        const orgId = sub.metadata?.orgId ?? (await orgIdForCustomer(String(sub.customer)));
+        if (orgId) await upsertEntitlement(orgId, priceOf(sub), sub.id, status, sub.current_period_end, eventCreatedMs);
       }
     } else if (event.type === 'invoice.payment_failed') {
       const invoice = event.data.object as Stripe.Invoice;
       const subId = invoice.subscription;
       if (subId) {
         const sub = await stripe.subscriptions.retrieve(String(subId));
-        const orgId = sub.metadata?.orgId ?? (await orgIdForCustomer(String(sub.customer)));
         // sub.status is past_due / unpaid after a failed payment; that revokes.
-        if (orgId) await upsertEntitlement(orgId, priceOf(sub), sub.id, sub.status, sub.current_period_end, eventCreatedMs);
+        const userId = sub.metadata?.userId ?? (await userIdForCustomer(String(sub.customer)));
+        if (userId) {
+          await upsertUserEntitlement(userId, priceOf(sub), sub.id, sub.status, sub.current_period_end, String(sub.customer), eventCreatedMs);
+        } else {
+          const orgId = sub.metadata?.orgId ?? (await orgIdForCustomer(String(sub.customer)));
+          if (orgId) await upsertEntitlement(orgId, priceOf(sub), sub.id, sub.status, sub.current_period_end, eventCreatedMs);
+        }
       }
     }
     return new Response('ok', { status: 200 });
@@ -163,4 +222,16 @@ async function orgIdForCustomer(customer: string): Promise<string | undefined> {
     .maybeSingle();
   if (error) throw new Error(`orgIdForCustomer failed: ${error.message}`);
   return data?.id;
+}
+
+// Map a Stripe customer back to an individual buyer (user_entitlements holds the
+// customer id, written at checkout). Unmatched -> undefined.
+async function userIdForCustomer(customer: string): Promise<string | undefined> {
+  const { data, error } = await supabase
+    .from('user_entitlements')
+    .select('user_id')
+    .eq('stripe_customer_id', customer)
+    .maybeSingle();
+  if (error) throw new Error(`userIdForCustomer failed: ${error.message}`);
+  return data?.user_id;
 }

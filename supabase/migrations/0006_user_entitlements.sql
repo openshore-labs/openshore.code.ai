@@ -44,6 +44,7 @@ create table if not exists public.user_entitlements (
   -- the double-purchase guard (client-side) keeps it that way.
   source text not null check (source in ('stripe', 'apple')),
   valid_until timestamptz,
+  stripe_customer_id text,
   stripe_subscription_id text,
   apple_original_transaction_id text,
   last_event_at timestamptz,

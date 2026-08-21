@@ -1369,19 +1369,25 @@ export const useApp = create<AppState>((set, get) => {
     async manageBilling() {
       const session = get().authSession;
       const serverId = get().settings.account?.org?.serverId;
-      if (!authConfigured() || !session || !serverId) {
-        // Not signed in / org not synced yet: still send them to the web page.
+      if (!authConfigured() || !session) {
+        // Not signed in: still send them to the web page.
         openExternal(BILLING_URL);
         return;
       }
-      // A subscribed org gets the Stripe customer portal; otherwise the web
-      // purchase page. Either way it opens in the system browser.
-      if (get().entitlement) {
+      // A subscribed individual OR org gets the Stripe customer portal; otherwise
+      // the web purchase page. An individual Personal sub (userEntitlement, no
+      // org) opens the portal with no orgId; a commercial org opens it with its
+      // serverId. Either way it opens in the system browser. (An Apple-purchased
+      // Personal sub is managed in iOS Settings, not here; the caller keeps this
+      // off iOS.)
+      const orgEntitled = !!get().entitlement && !!serverId;
+      const userEntitled = !!get().userEntitlement;
+      if (userEntitled || orgEntitled) {
         try {
           const { url } = await supabaseInvoke<{ url: string }>(
             'stripe-portal',
             session.accessToken,
-            { orgId: serverId },
+            orgEntitled ? { orgId: serverId } : {},
           );
           openExternal(url);
           return;

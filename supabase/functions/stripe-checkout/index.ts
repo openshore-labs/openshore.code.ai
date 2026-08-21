@@ -26,7 +26,14 @@ const PRICE_BY_TIER: Record<string, string | undefined> = {
   commercial_small: Deno.env.get('STRIPE_PRICE_SMALL'),
   commercial_mid: Deno.env.get('STRIPE_PRICE_GROWTH'),
   commercial_large: Deno.env.get('STRIPE_PRICE_SCALE'),
+  // The individual Personal unlock ($20/yr). Bought on the web/desktop here; on
+  // iOS the same unlock is an Apple IAP (Apple 3.1.1), never this endpoint.
+  personal: Deno.env.get('STRIPE_PRICE_PERSONAL'),
 };
+
+const SUCCESS_URL = Deno.env.get('CHECKOUT_SUCCESS_URL') ?? 'https://openshore.ai/os-code/?checkout=success';
+const CANCEL_URL = Deno.env.get('CHECKOUT_CANCEL_URL') ?? 'https://openshore.ai/os-code/';
+const PORTAL_RETURN = Deno.env.get('PORTAL_RETURN_URL') ?? 'https://openshore.ai/os-code/';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
@@ -43,20 +50,29 @@ Deno.serve(async (req) => {
     } = await asUser.auth.getUser();
     if (!user) return json({ error: 'Sign in first.' }, 401, req);
 
-    const { orgId, tierId } = (await req.json()) as { orgId: string; tierId: string };
+    const { orgId, tierId } = (await req.json()) as { orgId?: string; tierId: string };
     const price = PRICE_BY_TIER[tierId];
     if (!price) return json({ error: 'Unknown or non-purchasable tier.' }, 400, req);
+
+    // Privileged client for reads/writes (customer ids).
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+
+    // Individual Personal purchase: no org, the buyer pays for themselves. No
+    // admin check (there is nobody to be an admin of); identity is the caller.
+    if (!orgId) {
+      if (tierId !== 'personal') {
+        return json({ error: 'Only the Personal plan is an individual purchase.' }, 400, req);
+      }
+      return await checkoutIndividual(user.id, user.email, price, req, admin);
+    }
 
     // The caller must be an admin of this org (checked as the caller, not the
     // service role, so auth.uid() resolves inside is_org_admin).
     const { data: isAdmin, error: adminErr } = await asUser.rpc('is_org_admin', { p_org: orgId });
     if (adminErr || !isAdmin) return json({ error: 'Only an org admin can buy seats.' }, 403, req);
-
-    // Privileged client for reads/writes on orgs (stripe_customer_id).
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
 
     const { data: org, error: orgErr } = await admin
       .from('orgs')
@@ -96,7 +112,7 @@ Deno.serve(async (req) => {
     if (active.data.length > 0) {
       const portal = await stripe.billingPortal.sessions.create({
         customer,
-        return_url: Deno.env.get('PORTAL_RETURN_URL') ?? 'https://openshore.ai/os-code/',
+        return_url: PORTAL_RETURN,
       });
       return json({ url: portal.url, alreadySubscribed: true }, 200, req);
     }
@@ -105,8 +121,8 @@ Deno.serve(async (req) => {
       mode: 'subscription',
       customer,
       line_items: [{ price, quantity: 1 }],
-      success_url: Deno.env.get('CHECKOUT_SUCCESS_URL') ?? 'https://openshore.ai/os-code/?checkout=success',
-      cancel_url: Deno.env.get('CHECKOUT_CANCEL_URL') ?? 'https://openshore.ai/os-code/',
+      success_url: SUCCESS_URL,
+      cancel_url: CANCEL_URL,
       metadata: { orgId, tierId },
       // Stamp the subscription too, so subscription.* webhooks carry orgId
       // directly (the webhook still falls back to the customer map).
@@ -118,3 +134,64 @@ Deno.serve(async (req) => {
     return json({ error: 'Could not start checkout. Try again.' }, 500, req);
   }
 });
+
+// Individual Personal checkout. The customer id persists on the buyer's
+// user_entitlements row so repeat checkouts reuse one Stripe customer and the
+// portal can find it; the row is created here with a revoked status (no access)
+// and flipped to active by the webhook when payment completes. Access is never
+// granted here, only by the webhook (the sole entitlement writer).
+async function checkoutIndividual(
+  userId: string,
+  email: string | undefined,
+  price: string,
+  req: Request,
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+): Promise<Response> {
+  const { data: ent, error: entErr } = await admin
+    .from('user_entitlements')
+    .select('stripe_customer_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (entErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
+
+  let customer = ent?.stripe_customer_id as string | undefined;
+  if (!customer) {
+    const created = await stripe.customers.create({ email, metadata: { userId } });
+    customer = created.id;
+    // Persist the customer id immediately (status 'incomplete' = no access) so a
+    // second checkout reuses it and the portal can open. The webhook overwrites
+    // status/valid_until when the subscription resolves. source='stripe' here;
+    // an Apple purchase would take the 'apple' path instead.
+    const { error: upErr } = await admin.from('user_entitlements').upsert({
+      user_id: userId,
+      tier_id: 'personal',
+      status: 'incomplete',
+      source: 'stripe',
+      stripe_customer_id: customer,
+      issued_at: new Date().toISOString(),
+    });
+    if (upErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
+  }
+
+  // A3: never double-charge. An already-active sub goes to the portal.
+  const active = await stripe.subscriptions.list({ customer, status: 'active', limit: 1 });
+  if (active.data.length > 0) {
+    const portal = await stripe.billingPortal.sessions.create({
+      customer,
+      return_url: PORTAL_RETURN,
+    });
+    return json({ url: portal.url, alreadySubscribed: true }, 200, req);
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    customer,
+    line_items: [{ price, quantity: 1 }],
+    success_url: SUCCESS_URL,
+    cancel_url: CANCEL_URL,
+    metadata: { userId, tierId: 'personal' },
+    subscription_data: { metadata: { userId, tierId: 'personal' } },
+  });
+  return json({ url: session.url }, 200, req);
+}
