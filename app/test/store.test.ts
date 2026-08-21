@@ -45,7 +45,7 @@ vi.mock('../src/lib/insights.js', () => ({
   clearInsights: async () => {},
 }));
 
-const { useApp, isEntitled } = await import('../src/state/store.js');
+const { useApp, isEntitled, personalUnlocked } = await import('../src/state/store.js');
 const CONVERSATIONS_KEY = 'oscode.conversations.v1';
 const SETTINGS_KEY = 'oscode.settings.v1';
 
@@ -209,6 +209,18 @@ describe('entitlement gate (billing A1)', () => {
     const past = new Date(Date.now() - 60_000).toISOString();
     expect(isEntitled({ status: 'active', validUntil: future })).toBe(true);
     expect(isEntitled({ status: 'active', validUntil: past })).toBe(false);
+  });
+
+  it('personalUnlocked: either an individual OR an org entitlement unlocks', () => {
+    const active = { status: 'active' as const };
+    const dead = { status: 'canceled' as const };
+    // Individual rail alone unlocks (Personal buyer with no org).
+    expect(personalUnlocked(active, undefined)).toBe(true);
+    // Org rail alone unlocks (commercial member, no personal sub).
+    expect(personalUnlocked(undefined, active)).toBe(true);
+    // Both dead, or neither present: locked.
+    expect(personalUnlocked(dead, dead)).toBe(false);
+    expect(personalUnlocked(undefined, undefined)).toBe(false);
   });
 
   it('canGrowTeam stays true for a local (unbilled) org', async () => {

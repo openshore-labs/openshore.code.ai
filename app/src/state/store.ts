@@ -214,6 +214,11 @@ interface AppState {
   serverRole?: 'admin' | 'member';
   /** The org's billing entitlement (Stripe webhook is the writer), when known. */
   entitlement?: Entitlement;
+  /** The signed-in individual's Personal entitlement (Stripe or Apple IAP is the
+   *  writer), when known. Independent of any org: a Personal buyer has this even
+   *  with no org. The unified paid-access resolver (personalUnlocked) treats an
+   *  individual OR org entitlement as unlocking. */
+  userEntitlement?: Entitlement;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
   /** When true, the Marketplace intro walkthrough is showing over the library. */
@@ -447,6 +452,20 @@ export function isEntitled(e?: { status: string; validUntil?: string | null }): 
     ENTITLED_STATUSES.has(e.status) &&
     (!e.validUntil || new Date(e.validUntil).getTime() > Date.now())
   );
+}
+
+/**
+ * Whether the signed-in person has full-app (paid) access right now, by EITHER
+ * rail: an individual Personal entitlement (Stripe or Apple IAP) OR an entitled
+ * commercial org. One identity anchor (the Supabase user); either entitlement
+ * unlocks. This is the resolver the coding/marketplace gate consumes; team-seat
+ * growth still keys off the org entitlement specifically (growthGatedByBilling).
+ */
+export function personalUnlocked(
+  userEntitlement?: { status: string; validUntil?: string | null },
+  orgEntitlement?: { status: string; validUntil?: string | null },
+): boolean {
+  return isEntitled(userEntitlement) || isEntitled(orgEntitlement);
 }
 
 /** The signed-in member's role in a commercial org, if any. */
@@ -1258,7 +1277,12 @@ export const useApp = create<AppState>((set, get) => {
       const session = get().authSession;
       if (session) await supabaseSignOut(session.accessToken);
       await clearSession();
-      set({ authSession: undefined, serverRole: undefined, entitlement: undefined });
+      set({
+        authSession: undefined,
+        serverRole: undefined,
+        entitlement: undefined,
+        userEntitlement: undefined,
+      });
       logEvent('auth_sign_out');
     },
 
@@ -1291,8 +1315,36 @@ export const useApp = create<AppState>((set, get) => {
 
     async refreshEntitlement() {
       const session = get().authSession;
+      if (!session || !authConfigured()) return;
       const serverId = get().settings.account?.org?.serverId;
-      if (!session || !serverId || !authConfigured()) return;
+      // Individual (Personal) entitlement: readable whenever signed in, with no
+      // org. This is the path a solo Personal buyer needs; the old code gated
+      // the whole method on an org serverId and so never read it.
+      try {
+        const rows = await supabaseSelect<{
+          tier_id: string;
+          status: Entitlement['status'];
+          valid_until: string | null;
+        }>(
+          'user_entitlements',
+          session.accessToken,
+          `select=tier_id,status,valid_until&user_id=eq.${session.user.id}`,
+        );
+        const row = rows[0];
+        set({
+          userEntitlement: row
+            ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
+            : undefined,
+        });
+      } catch {
+        // Offline or transient: keep whatever we last knew.
+      }
+      // Org entitlement: only when the account is a synced commercial org. Gates
+      // team-seat growth (growthGatedByBilling), unchanged.
+      if (!serverId) {
+        set({ entitlement: undefined });
+        return;
+      }
       try {
         const rows = await supabaseSelect<{
           tier_id: string;
