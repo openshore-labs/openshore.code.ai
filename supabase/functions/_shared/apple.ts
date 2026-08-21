@@ -123,6 +123,22 @@ const APP_APPLE_ID = APP_APPLE_ID_RAW ? Number(APP_APPLE_ID_RAW) : undefined;
 // refunds/revocations arrive as their own notifications regardless.
 const ENABLE_ONLINE_CHECKS = false;
 
+// Sandbox gate (F2): a Sandbox/TestFlight StoreKit transaction is validly
+// Apple-signed (it chains to the real root, so verification passes) but costs
+// nothing. Accepting it in production would let anyone with a TestFlight build
+// unlock Personal for free. So sandbox payloads are REJECTED unless
+// APPLE_ALLOW_SANDBOX=1 is set, which the founder enables only during an App
+// Review window (Apple's reviewers test against Sandbox) and clears afterward.
+const ALLOW_SANDBOX = Deno.env.get('APPLE_ALLOW_SANDBOX') === '1';
+
+function assertEnvAllowed(env: Environment): void {
+  if (env === Environment.SANDBOX && !ALLOW_SANDBOX) {
+    throw new Error(
+      'Sandbox Apple transactions are not accepted here. Set APPLE_ALLOW_SANDBOX=1 only during App Review.',
+    );
+  }
+}
+
 const verifiers = new Map<Environment, SignedDataVerifier>();
 function verifierFor(environment: Environment): SignedDataVerifier {
   let verifier = verifiers.get(environment);
@@ -165,6 +181,7 @@ function environmentOf(value: unknown): Environment {
 // chain, bundle, or environment failure.
 export async function verifyTransaction(jws: string): Promise<DecodedTransaction> {
   const env = environmentOf(peekPayload(jws)?.environment);
+  assertEnvAllowed(env);
   return await verifierFor(env).verifyAndDecodeTransaction(jws);
 }
 
@@ -173,5 +190,6 @@ export async function verifyTransaction(jws: string): Promise<DecodedTransaction
 // JWS; verify it separately with verifyTransaction to trust its fields.
 export async function verifyNotification(signedPayload: string): Promise<DecodedNotification> {
   const env = environmentOf(peekPayload(signedPayload)?.data?.environment);
+  assertEnvAllowed(env);
   return await verifierFor(env).verifyAndDecodeNotification(signedPayload);
 }

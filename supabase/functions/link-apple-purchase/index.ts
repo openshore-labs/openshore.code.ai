@@ -78,6 +78,14 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
+    // Who holds this sub now, if anyone, before we move the link.
+    const { data: priorLink, error: priorErr } = await admin
+      .from('apple_links')
+      .select('user_id')
+      .eq('original_transaction_id', originalTransactionId)
+      .maybeSingle();
+    if (priorErr) throw new Error(`apple_links read failed: ${priorErr.message}`);
+
     // Bind original_transaction_id -> this caller. MOVE-NOT-DUPLICATE: the PK is
     // original_transaction_id, so a restore under a new account overwrites the
     // user_id (one Apple sub -> exactly one account). Throw on error -> 500.
@@ -90,6 +98,19 @@ Deno.serve(async (req) => {
       { onConflict: 'original_transaction_id' },
     );
     if (linkErr) throw new Error(`apple_links upsert failed: ${linkErr.message}`);
+
+    // F3: if the sub just MOVED off another account, revoke that prior holder's
+    // Apple entitlement, so one $20 sub cannot leave two accounts entitled. Only
+    // an apple-sourced row is touched (a Stripe sub on the old account is their
+    // own separate purchase and must stay). Best-effort revoke; throw on error.
+    if (priorLink?.user_id && priorLink.user_id !== user.id) {
+      const { error: revErr } = await admin
+        .from('user_entitlements')
+        .update({ status: 'canceled', last_event_at: new Date(eventMs).toISOString() })
+        .eq('user_id', priorLink.user_id)
+        .eq('source', 'apple');
+      if (revErr) throw new Error(`prior holder revoke failed: ${revErr.message}`);
+    }
 
     // Read the caller's existing entitlement to apply two guards before writing.
     const { data: existing, error: readErr } = await admin
