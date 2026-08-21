@@ -239,6 +239,65 @@ textarea {
   display: block;
 }
 
+/* The signed-out prompt: sits right where an account slot would be, between
+   the chat list and the room nav, so it reads as "the thing you're missing"
+   rather than one more room in the list. */
+.sidebar-signin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 16px);
+  margin: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: left;
+  transition:
+    background 0.12s ease,
+    transform 0.06s ease;
+}
+
+.sidebar-signin:hover {
+  background: var(--local-soft);
+}
+
+.sidebar-signin:active {
+  transform: scale(0.985);
+}
+
+.sidebar-signin-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--local-soft);
+  color: var(--local);
+}
+
+.sidebar-signin-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar-signin-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sidebar-signin-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sidebar-nav {
   border-top: 1px solid var(--border);
   padding: 8px;
