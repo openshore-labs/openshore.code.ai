@@ -4,6 +4,7 @@
 import { useRef, useState } from 'react';
 import { sourceLabel } from '../state/types.js';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
+import { useAuth } from '../hooks/useAuth.js';
 import { useDismissable } from '../lib/useDismissable.js';
 import { BrandMark } from './BrandMark.js';
 
@@ -160,6 +161,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
     startNewChat,
     personalUnlockedNow,
   } = useApp();
+  const { configured: authConfigured, signedIn } = useAuth();
   // Free is chat only. The Marketplace needs Personal, so a locked pill signals
   // it before the tap (tapping still opens the upgrade sheet via setView).
   const unlocked = personalUnlockedNow();
@@ -286,6 +288,38 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
           })
         )}
       </div>
+
+      {authConfigured && !signedIn ? (
+        <button
+          type="button"
+          className="sidebar-signin"
+          onClick={() => {
+            setView('settings');
+            setDrawer(false);
+          }}
+        >
+          <span className="sidebar-signin-avatar" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="8.5" r="3.4" />
+              <path d="M5 20v-1a7 7 0 0 1 14 0v1" />
+            </svg>
+          </span>
+          <span className="sidebar-signin-label">
+            <span className="sidebar-signin-title">Sign in</span>
+            <span className="sidebar-signin-sub">Sync chats across your devices</span>
+          </span>
+        </button>
+      ) : null}
+
       <nav className="sidebar-nav">
         {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
           <button
