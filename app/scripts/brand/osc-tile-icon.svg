@@ -1,9 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="1024" height="1024">
   <!-- The exact openshore.ai wave-mark, full-bleed for the iOS app icon
-       (iOS masks the corners to its own squircle). Same colors and geometry
-       as the marketing-site tile. -->
+       (the navy rect covers the whole 32x32 canvas; iOS masks the corners to
+       its own squircle). Colors and mark geometry match the marketing-site
+       tile. The mark group is nudged up 0.81 units (~2.5%) so its bounding box
+       is optically centered in the square icon canvas; without it the mark sits
+       low and reads bottom-heavy once masked. This nudge is icon-only and does
+       not change the favicon/marketing composition. -->
   <rect width="32" height="32" fill="#1c2a33"/>
-  <line x1="7" y1="13" x2="25" y2="13" stroke="#f6f4ef" stroke-width="2" stroke-linecap="round"/>
-  <path d="M7 19q4.5-3.3 9 0t9 0" fill="none" stroke="#4b90a3" stroke-width="2"
-        stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(0 -0.81)">
+    <line x1="7" y1="13" x2="25" y2="13" stroke="#f6f4ef" stroke-width="2" stroke-linecap="round"/>
+    <path d="M7 19q4.5-3.3 9 0t9 0" fill="none" stroke="#4b90a3" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

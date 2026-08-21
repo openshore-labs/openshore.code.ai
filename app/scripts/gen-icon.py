@@ -18,6 +18,7 @@ OUT = os.path.join(
     "AppIcon.appiconset", "AppIcon-512@2x.png",
 )
 SIZE = 1024
+NAVY = (28, 42, 51)  # #1c2a33, the full-bleed background of the mark
 
 
 def find_chrome():
@@ -54,5 +55,34 @@ def render(svg, out, size):
     )
 
 
+def verify(out, size):
+    # Guard against the white-band regression: the standalone SVG can lay out
+    # shorter than the window and leave an uncovered strip, which used to ship
+    # baked into the icon and read as a "cut off" tile once iOS masked the
+    # corners. Fail loudly if the output isn't a full-bleed navy square. Pillow
+    # is optional here; skip the check (with a warning) if it isn't installed.
+    try:
+        from PIL import Image
+    except ImportError:
+        print("warning: Pillow not installed; skipped the full-bleed check.")
+        return
+    im = Image.open(out).convert("RGB")
+    if im.size != (size, size):
+        sys.exit(f"icon check failed: expected {size}x{size}, got {im.size[0]}x{im.size[1]}")
+    px = im.load()
+    W, wht = im.size[0], (255, 255, 255)
+    for x in range(W):
+        for y in (0, W - 1):  # top and bottom edges
+            if px[x, y] != NAVY:
+                sys.exit(f"icon check failed: border pixel ({x},{y})={px[x, y]} is not navy {NAVY}")
+    for y in range(W):
+        for x in (0, W - 1):  # left and right edges
+            if px[x, y] != NAVY:
+                sys.exit(f"icon check failed: border pixel ({x},{y})={px[x, y]} is not navy {NAVY}")
+    if any(px[x, y] == wht for y in range(W) for x in range(W)):
+        sys.exit("icon check failed: found pure-white pixels (the mark's cream is #f6f4ef, not #fff)")
+
+
 render(SVG, OUT, SIZE)
+verify(OUT, SIZE)
 print(f"wrote {OUT} ({SIZE}x{SIZE})")
