@@ -20,14 +20,22 @@ export interface PlanTier {
   blurb: string;
 }
 
+// The free default account: chat only (Harbor / Ollama). The full app (coding
+// agent, Marketplace) is the paid Personal unlock below.
 export const PERSONAL_TIER: PlanTier = {
   id: 'personal',
   name: 'Personal',
   priceYear: 0,
   minEmployees: 1,
   maxEmployees: 1,
-  blurb: 'Personal. Free. For your own work.',
+  blurb: 'Personal. Free to chat. For your own work.',
 };
+
+// The individual Personal UNLOCK price per year, in whole US dollars. Free is
+// chat-only; this unlocks the full app for one person. Same $20 on both rails:
+// Stripe on web/desktop, Apple In-App Purchase on iOS (Apple 3.1.1). Matches the
+// commercial Micro price by design (one person == the smallest team's per-year).
+export const PERSONAL_UNLOCK_PRICE_YEAR = 20;
 
 // Commercial bands, cheapest first. The boundary number belongs to the lower
 // band (5 is Micro, 30 is Small, 100 is Growth), so nobody lands in a pricier

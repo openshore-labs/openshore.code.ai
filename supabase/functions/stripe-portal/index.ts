@@ -26,24 +26,40 @@ Deno.serve(async (req) => {
     } = await asUser.auth.getUser();
     if (!user) return json({ error: 'Sign in first.' }, 401, req);
 
-    const { orgId } = (await req.json()) as { orgId: string };
-    const { data: isAdmin, error: adminErr } = await asUser.rpc('is_org_admin', { p_org: orgId });
-    if (adminErr || !isAdmin) return json({ error: 'Only an org admin can manage billing.' }, 403, req);
+    const { orgId } = (await req.json()) as { orgId?: string };
 
     const admin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
-    const { data: org, error: orgErr } = await admin
-      .from('orgs')
-      .select('stripe_customer_id')
-      .eq('id', orgId)
-      .maybeSingle();
-    if (orgErr) return json({ error: 'Could not open billing. Try again.' }, 500, req);
-    if (!org?.stripe_customer_id) return json({ error: 'No billing customer yet.' }, 400, req);
+
+    // Individual Personal billing: no org, the buyer manages their own sub. The
+    // customer id lives on their user_entitlements row (written at checkout).
+    let customerId: string | undefined;
+    if (!orgId) {
+      const { data: ent, error: entErr } = await admin
+        .from('user_entitlements')
+        .select('stripe_customer_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (entErr) return json({ error: 'Could not open billing. Try again.' }, 500, req);
+      customerId = ent?.stripe_customer_id ?? undefined;
+    } else {
+      // Org billing: the caller must be an admin of this org.
+      const { data: isAdmin, error: adminErr } = await asUser.rpc('is_org_admin', { p_org: orgId });
+      if (adminErr || !isAdmin) return json({ error: 'Only an org admin can manage billing.' }, 403, req);
+      const { data: org, error: orgErr } = await admin
+        .from('orgs')
+        .select('stripe_customer_id')
+        .eq('id', orgId)
+        .maybeSingle();
+      if (orgErr) return json({ error: 'Could not open billing. Try again.' }, 500, req);
+      customerId = org?.stripe_customer_id ?? undefined;
+    }
+    if (!customerId) return json({ error: 'No billing customer yet.' }, 400, req);
 
     const session = await stripe.billingPortal.sessions.create({
-      customer: org.stripe_customer_id,
+      customer: customerId,
       return_url: Deno.env.get('PORTAL_RETURN_URL') ?? 'https://openshore.ai/os-code/',
     });
     return json({ url: session.url }, 200, req);
