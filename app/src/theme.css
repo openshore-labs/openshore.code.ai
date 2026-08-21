@@ -2559,18 +2559,27 @@ textarea {
   margin-bottom: 16px;
 }
 
-/* Featured hero row: big cards that page horizontally with snap. */
+/* Featured hero row: big cards that page horizontally with snap. Narrower than
+   the viewport on purpose (82vw, not 100) so the next card's edge peeks in,
+   the visual cue that there's more to scroll to. scroll-padding-left keeps the
+   snap point aligned with the row's left inset instead of the raw edge. */
 .hero-scroll {
   display: flex;
   gap: 14px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
+  scroll-padding-left: 16px;
   padding-bottom: 6px;
   margin: 0 -16px 24px;
   padding-left: 16px;
   padding-right: 16px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  /* Right-edge fade: the last visible card's trailing edge softens instead of
+     cutting hard, reinforcing that content continues off-screen. Full opacity
+     well before the edge so no in-view card actually looks faded. */
+  -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, #000 92%, transparent);
 }
 .hero-scroll::-webkit-scrollbar {
   display: none;
@@ -2579,7 +2588,7 @@ textarea {
   position: relative;
   flex-shrink: 0;
   scroll-snap-align: center;
-  width: min(86vw, 500px);
+  width: min(82vw, 480px);
   text-align: left;
   display: flex;
   flex-direction: column;
@@ -2741,22 +2750,29 @@ textarea {
   background: var(--surface);
   color: var(--ink-soft);
   transition:
-    background 0.14s ease,
-    transform 0.14s ease;
+    background 0.16s ease,
+    transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .shelf-head:hover .shelf-more {
   background: var(--surface-hover);
-  transform: translateX(2px);
+  transform: translateX(3px) scale(1.06);
+}
+.shelf-head:active .shelf-more {
+  transform: translateX(1px) scale(0.92);
+  transition-duration: 0.08s;
 }
 .shelf-scroll {
   display: flex;
   gap: 14px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
+  scroll-padding-left: 16px;
   margin: 0 -16px;
   padding: 0 16px 6px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, #000 92%, transparent);
 }
 .shelf-scroll::-webkit-scrollbar {
   display: none;
@@ -2787,6 +2803,16 @@ textarea {
 }
 .store-row:active {
   background: var(--surface);
+}
+/* Pressed-state depth on the icon only (iOS home-screen press feel), not the
+   whole row: the tile springs down a touch while the row's background settles
+   in with its own, slower fade above. */
+.store-row .model-tile {
+  transition: transform 0.09s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.store-row:active .model-tile {
+  transform: scale(0.93);
+  transition-duration: 0.05s;
 }
 .store-row-body {
   flex: 1;
@@ -2856,6 +2882,7 @@ textarea {
   .store-front,
   .hero-card,
   .store-row,
+  .store-row .model-tile,
   .shelf-more {
     transition: none;
     animation: none;
