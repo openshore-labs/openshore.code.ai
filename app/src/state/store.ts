@@ -903,6 +903,14 @@ export const useApp = create<AppState>((set, get) => {
 
       if (settingsDirty) await storeSetJson(SETTINGS_KEY, settings);
 
+      // A stored session is a local, encrypted-at-rest read (no network round
+      // trip), so it is cheap to check before deciding the first view: a
+      // signed-in device skips onboarding and lands straight on chat, same as
+      // an already-onboarded one. A fresh sign-in completed via the web
+      // magic-link callback (below) is a separate case that only ever applies
+      // once the app is already open, so it does not need to gate this.
+      const stored: Session | undefined = authConfigured() ? await loadStoredSession() : undefined;
+
       set({
         settings,
         conversations,
@@ -912,18 +920,19 @@ export const useApp = create<AppState>((set, get) => {
         codemagicConnected,
         connectedRepoPlatforms,
         ready: true,
-        view: settings.onboarded ? 'chat' : 'onboarding',
+        authSession: stored ?? get().authSession,
+        view: settings.onboarded || stored ? 'chat' : 'onboarding',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
 
       // Upgrade any pre-encryption data to sealed-at-rest, in the background.
       void sealExistingKeys([SETTINGS_KEY, CONVERSATIONS_KEY, ANTHROPIC_KEY_KEY]);
 
-      // Finish a web sign-in, or restore a stored one. On web a magic-link or
-      // email-confirmation redirect lands on our own origin with the tokens in
-      // the URL hash; complete it, then strip them from the address bar so they
-      // are not left in history. (Native handles its callback via the oscode://
-      // deep link in useAuthDeepLink.) Otherwise restore the last session.
+      // Finish a web sign-in, or reconcile the restored one. On web a
+      // magic-link or email-confirmation redirect lands on our own origin
+      // with the tokens in the URL hash; complete it, then strip them from
+      // the address bar so they are not left in history. (Native handles its
+      // callback via the oscode:// deep link in useAuthDeepLink.)
       if (authConfigured()) {
         void (async () => {
           const href = typeof window !== 'undefined' ? window.location.href : '';
@@ -933,9 +942,7 @@ export const useApp = create<AppState>((set, get) => {
             window.history.replaceState(null, document.title, window.location.pathname);
             return;
           }
-          const stored = await loadStoredSession();
           if (stored) {
-            set({ authSession: stored });
             await reconcileOrg(stored);
             await get().refreshOrgRole();
             void get().refreshEntitlement();
@@ -1034,9 +1041,13 @@ export const useApp = create<AppState>((set, get) => {
       // Desktop/web: Stripe checkout in the system browser. The webhook writes
       // the entitlement; refreshEntitlement picks it up on return.
       try {
-        const { url } = await supabaseInvoke<{ url: string }>('stripe-checkout', session.accessToken, {
-          tierId: 'personal',
-        });
+        const { url } = await supabaseInvoke<{ url: string }>(
+          'stripe-checkout',
+          session.accessToken,
+          {
+            tierId: 'personal',
+          },
+        );
         if (!url) {
           get().showToast('Could not start checkout. Try again.');
           return;
@@ -1057,13 +1068,16 @@ export const useApp = create<AppState>((set, get) => {
         // Not an Apple device: a web/desktop buyer's entitlement is already on
         // the account, so a refresh is the "restore".
         await get().refreshEntitlement();
-        get().showToast(get().personalUnlockedNow() ? 'Personal restored.' : 'No Personal subscription found.');
+        get().showToast(
+          get().personalUnlockedNow() ? 'Personal restored.' : 'No Personal subscription found.',
+        );
         return;
       }
       try {
         const { transactions } = await iapRestore(PERSONAL_YEARLY_PRODUCT_ID);
         for (const t of transactions) {
-          if (t.jws) await supabaseInvoke('link-apple-purchase', session.accessToken, { jws: t.jws });
+          if (t.jws)
+            await supabaseInvoke('link-apple-purchase', session.accessToken, { jws: t.jws });
         }
         await get().refreshEntitlement();
         if (get().personalUnlockedNow()) {
