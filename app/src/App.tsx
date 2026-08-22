@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useApp } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
+import { hapticTick } from './lib/haptics.js';
+import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
 import { ChatScreen } from './screens/ChatScreen.js';
@@ -61,6 +63,20 @@ export function App() {
     };
     document.addEventListener('focusin', onFocusIn);
     return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
+
+  // Every tap gets a light haptic, one listener instead of wiring hapticTick
+  // into every button across the app. The keyboard is exempt on its own: it
+  // isn't a <button> and iOS already gives it system haptics. Capture phase
+  // so a handler that calls stopPropagation downstream still gets counted.
+  useEffect(() => {
+    if (platform() !== 'ios') return;
+    const onTap = (e: MouseEvent) => {
+      if (!(e.target instanceof Element)) return;
+      if (e.target.closest('button:not(:disabled)')) hapticTick();
+    };
+    document.addEventListener('click', onTap, true);
+    return () => document.removeEventListener('click', onTap, true);
   }, []);
 
   if (!ready) return <div className="shell" />;

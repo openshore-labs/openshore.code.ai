@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BackBar } from '../components/BackBar.js';
 import { bridge } from '../lib/electronBridge.js';
-import { hapticSuccess, hapticTick } from '../lib/haptics.js';
+import { hapticSuccess } from '../lib/haptics.js';
 import type { StackHealth, StackHealthRange } from 'os-code/protocol';
 
 const RANGES: Array<{ id: StackHealthRange; label: string }> = [
@@ -273,10 +273,7 @@ export function StackHealthScreen() {
               aria-selected={range === r.id}
               className={`sh-seg-btn${range === r.id ? ' active' : ''}`}
               onClick={() => {
-                if (r.id !== range) {
-                  hapticTick();
-                  setRange(r.id);
-                }
+                if (r.id !== range) setRange(r.id);
               }}
             >
               {r.label}
