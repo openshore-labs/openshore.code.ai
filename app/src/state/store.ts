@@ -101,6 +101,14 @@ import {
   HARBOR_MODEL_NAME,
   HARBOR_MODEL_URL,
 } from '../lib/harbor.js';
+import {
+  EMBARKS_GREETING,
+  EMBARKS_MODEL_ID,
+  EMBARKS_MODEL_NAME,
+  EMBARKS_MODEL_URL,
+  isEmbarks,
+} from '../lib/embarks.js';
+import { SEARCH_SECRET_KEY, type SearchBackend } from '../lib/webSearch.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import {
   emptyStack,
@@ -150,6 +158,11 @@ export interface AppSettings {
   deviceModels: Record<string, string>;
   /** Whether the built-in guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
+  /** Whether the preferred guide (Embarks) has been downloaded to this device. */
+  embarksReady?: boolean;
+  /** Web search backend for Embarks, when the user has brought their own key.
+   *  Undefined means the zero-config DuckDuckGo default. */
+  searchBackend?: SearchBackend;
   /** Whether the Marketplace intro walkthrough has been shown. */
   libraryIntroSeen?: boolean;
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata. */
@@ -231,6 +244,11 @@ interface AppState {
   userEntitlement?: Entitlement;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
+  /** Live progress while Embarks downloads for the first time. */
+  embarksDownload?: HarborDownload;
+  /** Whether a custom search key (Brave/Tavily) is set; keeps the key itself
+   *  out of state, same pattern as codemagicConnected. */
+  searchKeyConfigured: boolean;
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** Live reach signals that drive the active connectivity profile. */
@@ -367,12 +385,23 @@ interface AppState {
   ensureHarbor(): Promise<boolean>;
   /** Cancel an in-progress Harbor download (returning users can skip it). */
   cancelHarbor(): void;
+  /** Download the Embarks guide model if it is not here yet. Returns success. */
+  ensureEmbarks(): Promise<boolean>;
+  /** Cancel an in-progress Embarks download. */
+  cancelEmbarks(): void;
   /** First-run: start Harbor's download and open the LLM Library intro. */
   beginHarborWithIntro(): void;
+  /** First-run: start Embarks' download and open the LLM Library intro. */
+  beginEmbarksWithIntro(): void;
   /** Close the Library intro and return to setup; download keeps going. */
   endLibraryIntro(): void;
-  /** Open a fresh chat with Harbor, downloading it first if needed. */
-  startGuide(): Promise<string | undefined>;
+  /** Open a fresh chat with a guide, downloading it first if needed. Defaults
+   *  to Embarks, the preferred pick. */
+  startGuide(modelId?: string): Promise<string | undefined>;
+  /** Bring your own Brave or Tavily key for Embarks' web search. */
+  setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
+  /** Drop back to the zero-config DuckDuckGo default. */
+  clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
   send(text: string): void;
@@ -777,6 +806,7 @@ export const useApp = create<AppState>((set, get) => {
     cloudKeyPresent: false,
     connectedProviders: {},
     codemagicConnected: false,
+    searchKeyConfigured: false,
     connectedRepoPlatforms: {},
     authConfigured: authConfigured(),
     connectivity: { homeReachable: false, online: true },
@@ -814,6 +844,7 @@ export const useApp = create<AppState>((set, get) => {
         connectedProviders[p.id] = Boolean(await secretGet(providerSecretKey(p.id)));
       }
       const codemagicConnected = Boolean(await secretGet(CODEMAGIC_SECRET_KEY));
+      const searchKeyConfigured = Boolean(await secretGet(SEARCH_SECRET_KEY));
       const connectedRepoPlatforms: Record<string, boolean> = {};
       for (const c of REPO_CONNECTORS) {
         connectedRepoPlatforms[c.id] = Boolean(await secretGet(repoSecretKey(c.id)));
@@ -837,6 +868,11 @@ export const useApp = create<AppState>((set, get) => {
           const harborHere = present.has(HARBOR_MODEL_ID);
           if (Boolean(settings.harborReady) !== harborHere) {
             settings.harborReady = harborHere;
+            changed = true;
+          }
+          const embarksHere = present.has(EMBARKS_MODEL_ID);
+          if (Boolean(settings.embarksReady) !== embarksHere) {
+            settings.embarksReady = embarksHere;
             changed = true;
           }
           if (changed) await storeSetJson(SETTINGS_KEY, settings);
@@ -918,6 +954,7 @@ export const useApp = create<AppState>((set, get) => {
         cloudKeyPresent,
         connectedProviders,
         codemagicConnected,
+        searchKeyConfigured,
         connectedRepoPlatforms,
         ready: true,
         authSession: stored ?? get().authSession,
@@ -1935,11 +1972,62 @@ export const useApp = create<AppState>((set, get) => {
       set({ harborDownload: undefined });
     },
 
+    async ensureEmbarks() {
+      if (get().settings.embarksReady) return true;
+      logEvent('embarks_download_start');
+      set({ embarksDownload: { percent: 0, label: 'Connecting', indeterminate: true } });
+      const handle = await Llama.addListener('downloadProgress', ({ id, completed, total }) => {
+        if (id !== EMBARKS_MODEL_ID) return;
+        set({
+          embarksDownload: {
+            percent: total ? (completed / total) * 100 : 0,
+            label: total
+              ? `${Math.round((completed / total) * 100)}% of ${(total / 1e9).toFixed(1)} GB`
+              : 'Downloading',
+            indeterminate: !total,
+          },
+        });
+      });
+      try {
+        await Llama.downloadModel({ id: EMBARKS_MODEL_ID, url: EMBARKS_MODEL_URL });
+        set({ embarksDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
+        await get().saveSettings({ embarksReady: true });
+        logEvent('embarks_ready');
+        set({ embarksDownload: undefined });
+        return true;
+      } catch (err) {
+        if (get().embarksDownload) {
+          set({
+            embarksDownload: {
+              percent: 0,
+              label: err instanceof Error ? err.message : 'Download failed.',
+              failed: true,
+            },
+          });
+        }
+        return false;
+      } finally {
+        void handle.remove();
+      }
+    },
+
+    cancelEmbarks() {
+      void Llama.cancelDownload({ id: EMBARKS_MODEL_ID }).catch(() => {});
+      logEvent('embarks_download_cancel');
+      set({ embarksDownload: undefined });
+    },
+
     beginHarborWithIntro() {
-      logEvent('library_intro_open');
+      logEvent('library_intro_open', { model: HARBOR_MODEL_ID });
       // Kick the download in the background, then walk the Library intro over
       // the marketplace. ensureHarbor manages harborDownload / harborReady.
       void get().ensureHarbor();
+      set({ libraryIntro: true, view: 'marketplace', drawerOpen: false });
+    },
+
+    beginEmbarksWithIntro() {
+      logEvent('library_intro_open', { model: EMBARKS_MODEL_ID });
+      void get().ensureEmbarks();
       set({ libraryIntro: true, view: 'marketplace', drawerOpen: false });
     },
 
@@ -1951,37 +2039,51 @@ export const useApp = create<AppState>((set, get) => {
       void get().saveSettings({ libraryIntroSeen: true });
     },
 
-    async startGuide() {
-      if (!get().settings.harborReady) {
-        const ok = await get().ensureHarbor();
+    async startGuide(modelId = EMBARKS_MODEL_ID) {
+      const guide = isEmbarks(modelId)
+        ? { name: EMBARKS_MODEL_NAME, greeting: EMBARKS_GREETING, ensure: get().ensureEmbarks }
+        : { name: HARBOR_MODEL_NAME, greeting: HARBOR_GREETING, ensure: get().ensureHarbor };
+      const ready = isEmbarks(modelId) ? get().settings.embarksReady : get().settings.harborReady;
+      if (!ready) {
+        const ok = await guide.ensure();
         if (!ok) return undefined;
       }
-      logEvent('harbor_started');
-      const id = await get().newConversation({
-        kind: 'device',
-        modelId: HARBOR_MODEL_ID,
-        modelName: HARBOR_MODEL_NAME,
-      });
-      // Seed Harbor's greeting directly (not model-generated) so first launch
-      // is a warm, instant, reliable hello with zero wait.
+      logEvent('guide_started', { model: modelId });
+      const id = await get().newConversation({ kind: 'device', modelId, modelName: guide.name });
+      // Seed the guide's greeting directly (not model-generated) so first
+      // launch is a warm, instant, reliable hello with zero wait.
       set((s) => {
         const conv = s.conversations[id];
         if (!conv) return s;
         const greeting = {
           kind: 'assistant' as const,
           id: `${id}-hello`,
-          text: HARBOR_GREETING,
+          text: guide.greeting,
           streaming: false,
         };
         const next: Conversation = {
           ...conv,
-          title: HARBOR_MODEL_NAME,
+          title: guide.name,
           thread: { ...conv.thread, items: [greeting] },
         };
         return { conversations: { ...s.conversations, [id]: next } };
       });
       void persistConversations(get());
       return id;
+    },
+
+    async setSearchBackend(backend, apiKey) {
+      await secretSet(SEARCH_SECRET_KEY, JSON.stringify({ backend, apiKey: apiKey.trim() }));
+      set({ searchKeyConfigured: true });
+      await get().saveSettings({ searchBackend: backend });
+      logEvent('search_backend_set', { backend });
+    },
+
+    async clearSearchBackend() {
+      await secretDelete(SEARCH_SECRET_KEY);
+      set({ searchKeyConfigured: false });
+      await get().saveSettings({ searchBackend: undefined });
+      logEvent('search_backend_cleared');
     },
 
     openConversation(id) {

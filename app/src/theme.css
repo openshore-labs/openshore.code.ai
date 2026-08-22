@@ -932,6 +932,18 @@ textarea {
   background: var(--surface);
 }
 
+/* The preferred guide (Embarks): same pill, teal to mark it as the
+   recommended pick without a separate badge. */
+.suggestion-preferred {
+  color: var(--local);
+  border-color: var(--local);
+  font-weight: 600;
+}
+
+.suggestion-preferred:hover {
+  background: var(--local-soft);
+}
+
 /* ------------------------------------------------------------ sheets/modals */
 
 .sheet-scrim {
