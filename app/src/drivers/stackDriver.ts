@@ -19,6 +19,7 @@ import { platform, secretGet } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
+import { buildEmbarksSystemPrompt, isEmbarks } from '../lib/embarks.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
@@ -137,9 +138,18 @@ export class StackDriver implements ChatDriver {
   }
 
   private systemFor(ref: StackModelRef, placement?: Placement): string {
-    const parts = [
-      ref.kind === 'device' && isHarbor(ref.modelId) ? buildHarborSystemPrompt() : BASE_SYSTEM,
-    ];
+    const guideSystem =
+      ref.kind === 'device' && isHarbor(ref.modelId)
+        ? buildHarborSystemPrompt()
+        : ref.kind === 'device' && isEmbarks(ref.modelId)
+          ? buildEmbarksSystemPrompt(false)
+          : undefined;
+    // Embarks' own web-search protocol only exists in the standalone guide
+    // chat (OnDeviceDriver); placed in a full stack it answers from what it
+    // knows, same as any other Reasoning LLM here (no tool use in v1, see the
+    // file header). Its persona still applies so it identifies itself
+    // correctly and stays honest about not being a coder.
+    const parts = [guideSystem ?? BASE_SYSTEM];
     // Project context: name + standing instructions, injected into every turn.
     const proj = this.context.projectInstructions?.trim();
     if (this.context.projectName || proj) {

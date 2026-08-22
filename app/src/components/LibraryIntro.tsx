@@ -16,37 +16,39 @@ interface Beat {
   cta?: string;
 }
 
-const BEATS: Beat[] = [
-  {
-    id: 'library',
-    eyebrow: 'The Marketplace',
-    headline: 'Every model, in plain language.',
-    body: 'The Marketplace is where you choose the models you own. Each one downloads straight from its source and runs on your hardware, never ours.',
-    art: 'library',
-  },
-  {
-    id: 'stack',
-    eyebrow: 'Your stack',
-    headline: 'One quarterback, a few specialists.',
-    body: 'You build a stack. One model plans and routes the work; optional specialists take coding, writing, vision, and more. Anything missing, the quarterback covers itself.',
-    art: 'stack',
-  },
-  {
-    id: 'harbor',
-    eyebrow: 'Meet Harbor',
-    headline: 'Your first model is on its way.',
-    body: 'Harbor is a small guide, downloading now. It runs on your device, helps you get set up, and is built to be replaced by the bigger models you add.',
-    art: 'harbor',
-  },
-  {
-    id: 'ready',
-    eyebrow: 'Ready',
-    headline: "Let's build your stack.",
-    body: 'Harbor keeps downloading while you set up. When it lands, start chatting to shape your OS Code.',
-    art: 'ready',
-    cta: 'Continue setup',
-  },
-];
+function beatsFor(guideName: string): Beat[] {
+  return [
+    {
+      id: 'library',
+      eyebrow: 'The Marketplace',
+      headline: 'Every model, in plain language.',
+      body: 'The Marketplace is where you choose the models you own. Each one downloads straight from its source and runs on your hardware, never ours.',
+      art: 'library',
+    },
+    {
+      id: 'stack',
+      eyebrow: 'Your stack',
+      headline: 'One quarterback, a few specialists.',
+      body: 'You build a stack. One model plans and routes the work; optional specialists take coding, writing, vision, and more. Anything missing, the quarterback covers itself.',
+      art: 'stack',
+    },
+    {
+      id: 'harbor',
+      eyebrow: `Meet ${guideName}`,
+      headline: 'Your first model is on its way.',
+      body: `${guideName} is a guide, downloading now. It runs on your device, helps you get set up, and is built to be replaced by the bigger models you add.`,
+      art: 'harbor',
+    },
+    {
+      id: 'ready',
+      eyebrow: 'Ready',
+      headline: "Let's build your stack.",
+      body: `${guideName} keeps downloading while you set up. When it lands, start chatting to shape your OS Code.`,
+      art: 'ready',
+      cta: 'Continue setup',
+    },
+  ];
+}
 
 function StageArt({ art, label }: { art: Beat['art']; label?: string }) {
   if (art === 'library') {
@@ -94,18 +96,26 @@ function StageArt({ art, label }: { art: Beat['art']; label?: string }) {
 }
 
 export function LibraryIntro({ onDone }: { onDone: () => void }) {
-  const { harborDownload } = useApp();
+  const { harborDownload, embarksDownload, settings } = useApp();
+  // beginEmbarksWithIntro / beginHarborWithIntro set the matching download
+  // state synchronously before this ever mounts, so whichever is present (or,
+  // once finished, whichever is not yet ready) tells us which guide this run
+  // is for. Embarks is the default when neither has started yet.
+  const isEmbarks = Boolean(embarksDownload) || (!harborDownload && !settings.embarksReady);
+  const guideName = isEmbarks ? 'Embarks' : 'Harbor';
+  const guideDownload = isEmbarks ? embarksDownload : harborDownload;
+  const BEATS = beatsFor(guideName);
   const [beat, setBeat] = useState(0);
   const b = BEATS[beat]!;
   const isLast = beat === BEATS.length - 1;
   const advance = () => (isLast ? onDone() : setBeat((n) => n + 1));
 
-  // On the Harbor/ready beats, show the live download so the user sees it
+  // On the guide/ready beats, show the live download so the user sees it
   // happening. A finished download reads as ready.
   const progressLabel =
     b.art === 'harbor' || b.art === 'ready'
-      ? harborDownload && !harborDownload.failed
-        ? harborDownload.label
+      ? guideDownload && !guideDownload.failed
+        ? guideDownload.label
         : undefined
       : undefined;
 

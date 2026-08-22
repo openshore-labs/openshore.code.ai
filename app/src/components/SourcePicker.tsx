@@ -9,6 +9,8 @@ import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
 import { daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { CLAUDE_MODELS } from '../drivers/cloudClaudeDriver.js';
+import { EMBARKS_MODEL_ID } from '../lib/embarks.js';
+import { HARBOR_MODEL_ID } from '../lib/harbor.js';
 
 export function SourcePicker({
   onPick,
@@ -54,11 +56,20 @@ export function SourcePicker({
               <button
                 className="btn ghost"
                 onClick={() => {
-                  void startGuide();
+                  void startGuide(EMBARKS_MODEL_ID);
                   onClose();
                 }}
               >
-                Harbor, the built-in guide (no setup)
+                Embarks, the built-in guide (no setup)
+              </button>
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  void startGuide(HARBOR_MODEL_ID);
+                  onClose();
+                }}
+              >
+                Harbor, the smaller built-in guide
               </button>
               <button
                 className="btn ghost"

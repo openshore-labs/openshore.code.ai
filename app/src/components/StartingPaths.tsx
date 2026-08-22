@@ -6,7 +6,8 @@
 import { useApp, type ViewName } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
-import { HARBOR_APPROX_LABEL } from '../lib/harbor.js';
+import { HARBOR_APPROX_LABEL, HARBOR_MODEL_ID } from '../lib/harbor.js';
+import { EMBARKS_APPROX_LABEL, EMBARKS_MODEL_ID } from '../lib/embarks.js';
 
 export function StartingPaths({ context }: { context: 'onboarding' | 'settings' }) {
   const {
@@ -14,9 +15,12 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
     saveSettings,
     startGuide,
     cancelHarbor,
+    cancelEmbarks,
     beginHarborWithIntro,
+    beginEmbarksWithIntro,
     settings,
     harborDownload,
+    embarksDownload,
   } = useApp();
 
   const go = async (view: ViewName) => {
@@ -27,15 +31,87 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
     setView(view);
   };
 
-  // Get Harbor here (progress shows in the card), then drop into its chat.
+  // Get a guide here (progress shows in the card), then drop into its chat.
   // startGuide downloads first if needed and only opens once ready.
-  const getHarborAndGo = async () => {
-    const id = await startGuide();
+  const getGuideAndGo = async (modelId: string) => {
+    const id = await startGuide(modelId);
     if (id && context === 'onboarding') {
       await saveSettings({ onboarded: true });
-      logEvent('onboarding_done', { next: 'harbor' });
+      logEvent('onboarding_done', { next: modelId });
     }
   };
+
+  const embarksCard = (
+    <div className="card">
+      {settings.embarksReady ? (
+        <>
+          <h3>Chat with Embarks</h3>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            Your preferred guide is ready. It runs on this iPhone and can search the web.
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: '100%' }}
+            onClick={() => void getGuideAndGo(EMBARKS_MODEL_ID)}
+          >
+            Open Embarks
+          </button>
+        </>
+      ) : embarksDownload?.failed ? (
+        <>
+          <h3>Start with Embarks</h3>
+          <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+            {embarksDownload.label} Check your connection and try again.
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: '100%' }}
+            onClick={() => void getGuideAndGo(EMBARKS_MODEL_ID)}
+          >
+            Retry
+          </button>
+        </>
+      ) : embarksDownload ? (
+        <>
+          <h3>Getting Embarks</h3>
+          <div className="progress-track" style={{ marginTop: 4 }}>
+            <div
+              className={`progress-fill${embarksDownload.indeterminate ? ' indeterminate' : ''}`}
+              style={
+                embarksDownload.indeterminate ? undefined : { width: `${embarksDownload.percent}%` }
+              }
+            />
+          </div>
+          <div className="hint" style={{ marginTop: 6 }}>
+            {embarksDownload.label}. A one-time download, then you chat, and search when it needs
+            to.
+          </div>
+          <button
+            className="btn quiet"
+            style={{ width: '100%', marginTop: 8 }}
+            onClick={() => cancelEmbarks()}
+          >
+            Cancel, I will connect my own stack
+          </button>
+        </>
+      ) : (
+        <>
+          <h3>Start with Embarks, your preferred guide</h3>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            The recommended first model ({EMBARKS_APPROX_LABEL}), running on this iPhone. It gets
+            you set up, answers questions, and searches the web when it needs to.
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: '100%' }}
+            onClick={() => beginEmbarksWithIntro()}
+          >
+            Get Embarks
+          </button>
+        </>
+      )}
+    </div>
+  );
 
   const harborCard = (
     <div className="card">
@@ -43,12 +119,12 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
         <>
           <h3>Chat with Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            Your built-in guide is ready. It runs on this iPhone, offline.
+            Your smaller built-in guide is ready. It runs on this iPhone, offline.
           </div>
           <button
-            className="btn primary"
+            className="btn ghost"
             style={{ width: '100%' }}
-            onClick={() => void getHarborAndGo()}
+            onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
           >
             Open Harbor
           </button>
@@ -60,9 +136,9 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
             {harborDownload.label} Check your connection and try again.
           </div>
           <button
-            className="btn primary"
+            className="btn ghost"
             style={{ width: '100%' }}
-            onClick={() => void getHarborAndGo()}
+            onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
           >
             Retry
           </button>
@@ -91,17 +167,16 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
         </>
       ) : (
         <>
-          <h3>Start with Harbor, your free guide</h3>
+          <h3>Or start with Harbor, the smaller guide</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            The first model in your stack ({HARBOR_APPROX_LABEL}), running on this iPhone. It gets
-            you set up and answers questions, offline once it is here.
+            A lighter download ({HARBOR_APPROX_LABEL}), no web search, otherwise the same idea.
           </div>
           <button
-            className="btn primary"
+            className="btn ghost"
             style={{ width: '100%' }}
             onClick={() => beginHarborWithIntro()}
           >
-            Get Harbor
+            Get Harbor instead
           </button>
         </>
       )}
@@ -110,6 +185,7 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
 
   return (
     <>
+      {!isDesktop() ? embarksCard : null}
       {!isDesktop() ? harborCard : null}
 
       {isDesktop() ? (

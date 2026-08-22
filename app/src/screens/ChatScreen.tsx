@@ -11,6 +11,8 @@ import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { isPhone } from '../lib/platform.js';
 import { timeGreeting } from '../lib/greeting.js';
+import { EMBARKS_MODEL_ID } from '../lib/embarks.js';
+import { HARBOR_MODEL_ID } from '../lib/harbor.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
   const {
@@ -22,7 +24,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     newConversation,
     startGuide,
     harborDownload,
+    embarksDownload,
     cancelHarbor,
+    cancelEmbarks,
     setDrawer,
   } = useApp();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -31,6 +35,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
   const approval = thread?.pendingApprovals[0];
+  // Only one guide downloads at a time in practice; whichever is in flight
+  // gets the shared progress UI below.
+  const guideDownload = embarksDownload ?? harborDownload;
+  const guideDownloadName = embarksDownload ? 'Embarks' : 'Harbor';
+  const cancelGuideDownload = () => (embarksDownload ? cancelEmbarks() : cancelHarbor());
 
   const startWith = async (source: ConversationSource) => {
     setPickerOpen(false);
@@ -79,7 +88,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             on your own account.
           </p>
           <div className="suggestion-row">
-            <button className="suggestion" onClick={() => void startGuide()}>
+            <button
+              className="suggestion suggestion-preferred"
+              onClick={() => void startGuide(EMBARKS_MODEL_ID)}
+            >
+              Ask Embarks
+            </button>
+            <button className="suggestion" onClick={() => void startGuide(HARBOR_MODEL_ID)}>
               Ask Harbor
             </button>
             <button className="suggestion" onClick={() => setPickerOpen(true)}>
@@ -91,31 +106,31 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               </button>
             ) : null}
           </div>
-          {harborDownload ? (
+          {guideDownload ? (
             <div style={{ maxWidth: 400, width: '100%', marginTop: 14 }}>
-              {harborDownload.failed ? (
+              {guideDownload.failed ? (
                 <div className="hint" style={{ color: 'var(--danger)' }}>
-                  {harborDownload.label} Tap Ask Harbor to retry.
+                  {guideDownload.label} Tap Ask {guideDownloadName} to retry.
                 </div>
               ) : (
                 <>
                   <div className="progress-track">
                     <div
-                      className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
+                      className={`progress-fill${guideDownload.indeterminate ? ' indeterminate' : ''}`}
                       style={
-                        harborDownload.indeterminate
+                        guideDownload.indeterminate
                           ? undefined
-                          : { width: `${harborDownload.percent}%` }
+                          : { width: `${guideDownload.percent}%` }
                       }
                     />
                   </div>
                   <div className="hint" style={{ marginTop: 6 }}>
-                    Getting Harbor. {harborDownload.label}.
+                    Getting {guideDownloadName}. {guideDownload.label}.
                   </div>
                   <button
                     className="btn quiet"
                     style={{ width: '100%', marginTop: 8 }}
-                    onClick={() => cancelHarbor()}
+                    onClick={cancelGuideDownload}
                   >
                     Cancel
                   </button>
