@@ -12,11 +12,14 @@ import { APP_KNOWLEDGE } from './guideKnowledge.js';
 export const EMBARKS_MODEL_ID = 'embarks';
 export const EMBARKS_MODEL_NAME = 'Embarks';
 
-// Qwen3-1.7B-Instruct, Q4_K_M (Apache-2.0), from the Qwen team on Hugging
-// Face. VERIFY the exact filename/casing resolves (200) before a build; this
-// sandbox cannot reach the network to check it.
+// Qwen3-1.7B-Instruct, Q4_K_M (Apache-2.0). The official Qwen/Qwen3-1.7B-GGUF
+// repo only ships Q8_0 (1.83GB, no Q4_K_M at all) -- that mismatch is exactly
+// why the first URL here 404'd on a real device. unsloth's GGUF quants are
+// the standard, widely-used source for this quant level; confirmed present
+// via web search (this sandbox still cannot reach huggingface.co directly to
+// verify with a real request, so re-check after this next build too).
 export const EMBARKS_MODEL_URL =
-  'https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf';
+  'https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf';
 export const EMBARKS_APPROX_LABEL = 'about 1.1 GB';
 
 export function isEmbarks(modelId: string): boolean {
