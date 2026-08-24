@@ -248,9 +248,24 @@ Layer status:
   becomes an additive plugin. Get it wrong and the Git logic leaks
   provider-specific assumptions everywhere. Spend your hardest thinking here.
 
+  THIS STORAGE SEAM IS SHARED WITH VAULT, DESIGN IT ONCE
+  Vault (the parked prompt below, likely built in the same cycle) needs the
+  exact same thing: a folder of files on a storage location chosen per resource
+  (local, iCloud, Dropbox, Drive, Proton), synced across the user's own
+  devices. The storage-provider interface you design here IS that shared
+  abstraction. Design it so a Vault folder is just another resource sitting on
+  it, not a Git repo, and do not let Git-specific concerns leak into the
+  interface. If you build gitOS first, name this seam as the thing Vault will
+  adopt; if Vault is being scoped alongside, reconcile the two before either
+  freezes the interface. The one exception is Vault's ORGANIZATION tier, which
+  needs a real multi-writer backend (see Vault's prompt) rather than this
+  synced-folder model; the personal tiers of both features share this seam.
+
   WHERE THIS LIVES
   A new, native "Repositories" section of OS Code (native, not a wrapped web
   view). Confirm the exact surface with the founder before scoping downstream.
+  Note Vault proposes living in this same file-browsing surface, so scope the
+  navigation with both in mind.
 
   RESOLVE WITH THE FOUNDER BEFORE BUILDING (do not guess silently)
   1. Which surface in OS Code does the "Repositories" section live in?
