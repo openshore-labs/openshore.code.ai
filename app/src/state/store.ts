@@ -977,6 +977,28 @@ export const useApp = create<AppState>((set, get) => {
       });
       logEvent('app_open', { onboarded: settings.onboarded });
 
+      // A guide download now runs on a background URLSession, so it keeps going
+      // while the app is away and can still be mid-flight when the app is
+      // reopened. Re-drive the ensure flow for anything still transferring so
+      // the progress bar reappears and resolves, instead of a silent bar that
+      // never moves. (A download that finished while away was already caught by
+      // the listModels reconciliation above, which flips the ready flags.)
+      if (platform() === 'ios') {
+        void (async () => {
+          try {
+            const { ids } = await Llama.activeDownloads();
+            if (ids.includes(HARBOR_MINI_MODEL_ID) && !get().settings.harborMiniReady) {
+              void get().ensureHarborMini();
+            }
+            if (ids.includes(HARBOR_MODEL_ID) && !get().settings.harborReady) {
+              void get().ensureHarbor();
+            }
+          } catch {
+            // Native side unreachable: nothing to reattach.
+          }
+        })();
+      }
+
       // Upgrade any pre-encryption data to sealed-at-rest, in the background.
       void sealExistingKeys([SETTINGS_KEY, CONVERSATIONS_KEY, ANTHROPIC_KEY_KEY]);
 
