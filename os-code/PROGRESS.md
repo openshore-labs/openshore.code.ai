@@ -213,12 +213,13 @@ Layer status:
 
 ### Parked feature ideas (founder-requested build prompts, not started)
 
-> Captured 2026-08-24 from a founder voice note. Two full, build-ready prompts
-> written to hand straight to Opus 4.8. Neither is built. STANDING REMINDER:
-> surface both at the start of any OS Code session, and especially whenever the
-> founder mentions "gitOS," "GitOS," "bring your own model," or "BYOM," until
-> the item's checkbox is checked off. The repo-root `CLAUDE.md` wires this in.
-> These are live, unfinished action items, not settled history.
+> Captured 2026-08-24 from founder voice notes. Full, build-ready prompts
+> written to hand straight to Opus 4.8. None is built. STANDING REMINDER:
+> surface each at the start of any OS Code session, and especially whenever the
+> founder mentions "gitOS," "GitOS," "bring your own model," "BYOM," "vault,"
+> or "Obsidian," until that item's checkbox is checked off. The repo-root
+> `CLAUDE.md` wires this in. These are live, unfinished action items, not
+> settled history.
 
 - [ ] **Scope and build gitOS** (decentralized, local-first Git hosting;
       storage location chosen per repo instead of centralized hosting). Below
@@ -445,6 +446,126 @@ Layer status:
   discoverable setting, run the full OS Code agent workflow against it exactly
   as against a built-in model, and get a clear, specific message (never a silent
   break) when the connected model lacks a capability the stack needs.
+  ```
+
+- [ ] **Scope and build Vault** (a native, Obsidian-style markdown knowledge
+      base built into OS Code, personal by default with an organization tier).
+      Working name only, the founder is not settled on it. Below is the
+      optimized Opus 4.8 build prompt.
+
+  ```
+  ROLE
+  You are the lead engineer scoping and building Vault, a native markdown
+  knowledge base inside OS Code. Work in phases: deliver a plan and get it
+  approved BEFORE writing feature code. Where a decision below is unresolved,
+  ASK the founder rather than assume, especially anything touching where org
+  data physically lives or how it syncs across members.
+
+  MISSION (one sentence)
+  A folder of markdown files the user (or, on the organization tier, the whole
+  team) reads and writes by hand and the agent reads and writes as part of its
+  own work, rendered with a consistent, native visualization inside OS Code
+  instead of a separate app, so the record of what the agent has done and what
+  the user knows lives in one place.
+
+  WHY THIS FITS HERE
+  OS Code already runs the agent loop locally and already owns the file
+  browsing surface (Repositories). Vault is the natural extension: the same
+  agentic work already happening in the app gets a durable, readable home
+  instead of living only in chat transcripts, and the user gets a real
+  organizing layer for notes, decisions, and reference material the agent can
+  actually use as context.
+
+  THE ARCHITECTURE QUESTION THIS SHARES WITH GITOS, RESOLVE TOGETHER
+  gitOS (see the prompt above, if built or being scoped in the same cycle)
+  already needs a storage-provider abstraction: local device, iCloud, Dropbox,
+  Google Drive, Proton Drive, chosen per resource instead of centrally hosted.
+  A personal Vault is the same problem at smaller scale (a folder of files,
+  chosen storage location, needs to sync across the user's own devices). Do
+  not build a second, parallel storage abstraction. If gitOS's
+  storage-provider interface exists or is being scoped concurrently, Vault's
+  personal tier should sit on top of it. If gitOS is not yet built, design
+  Vault's storage layer so gitOS can adopt it later instead of the reverse.
+
+  THE HARD PART, THINK HERE
+  The organization tier is a different problem than the personal tier, not a
+  bigger version of it. A personal vault is one folder on storage the one user
+  already controls, so it can be local-first. An organization vault is shared,
+  read-and-written-to by multiple members across their own devices, which
+  means it needs real multi-user sync and a permission model, the same
+  multi-device conflict problem gitOS's prompt flags for cloud-drive backends,
+  now with concurrent writers instead of one. Consumer cloud drives (Dropbox,
+  Drive, iCloud) do not provide this out of the box. Spend your reasoning
+  budget on whether the org tier needs its own real backend (for example
+  Supabase, mirroring how org accounts and entitlements already work
+  elsewhere in this codebase) rather than trying to force a synced-folder
+  model to do multi-writer duty.
+
+  RESOLVE WITH THE FOUNDER BEFORE BUILDING (do not guess silently)
+  1. True Obsidian compatibility (plain `.md` files plus an `.obsidian/`
+     config folder, so the same folder also opens correctly in the real
+     Obsidian app) versus an Obsidian-INSPIRED native experience that is not
+     actually interoperable. This changes the file format contract
+     completely; get it settled first.
+  2. Where does a personal vault live when the user has only ever used the
+     phone (no desktop paired over Tailscale)? Device-local storage, iCloud,
+     or does it require pairing a desktop first?
+  3. Organization vault backend: real multi-user store (see THE HARD PART
+     above) versus a synced folder with a lock/lease model. Pick one
+     deliberately, do not default into the weaker option.
+  4. Permission model for the organization vault: can every member write
+     everywhere, or is it scoped (a member's own subfolder plus a shared
+     shared/ area, admin-only areas, etc.)?
+  5. How does the agent decide what to write into Vault versus keep in a
+     session's own journal? Automatic (the agent files things itself) versus
+     user-directed (the user tells it to save something) versus both; get this
+     wrong and Vault either fills with noise or stays empty.
+  6. Final product name. "Vault" is a working name only.
+
+  CORE REQUIREMENTS
+  1. Personal tier, on by default for every signed-in account: one vault, one
+     folder of markdown notes, the agent's own read/write target alongside the
+     user's own notes.
+  2. Organization tier: one shared org vault per organization, alongside each
+     member's own personal vault, mirroring how OneDrive separates a personal
+     drive from an org's SharePoint-backed one. The org decides internally
+     what belongs there; OS Code does not police content, only access.
+  3. A native, consistent visualization inside OS Code: browse the folder
+     structure, open and edit a note, see backlinks/references if the
+     Obsidian-compatibility decision above calls for them, all rendered in the
+     app's own design language rather than an embedded web view.
+  4. Agent integration: the agent can read Vault content as context and write
+     new notes or update existing ones as part of its own work, gated by
+     whatever the resolve-first decision on automatic-vs-directed lands on.
+  5. Reuse OS Code's existing at-rest sealing (`enc:v1`) and credential store
+     for anything sensitive that ends up in a note, rather than inventing a
+     second encryption path.
+
+  NON-GOALS FOR V1 (flag, do not build)
+  - Not a real-time collaborative editor (two people typing in the same note
+    simultaneously). Start with save-and-sync, not live co-editing.
+  - Not a plugin ecosystem or Obsidian plugin compatibility, even if the file
+    format is made Obsidian-compatible per the resolve-first decision above.
+  - Not a replacement for the session journal or chat history; Vault is a
+    curated knowledge layer, not a raw transcript store.
+
+  DELIVERABLE FOR THIS PASS (plan, not code)
+  1. The file-format decision (true Obsidian compatibility or not) and why.
+  2. The personal-tier storage design, and its relationship to gitOS's
+     storage-provider interface.
+  3. The organization-tier backend design and its permission model.
+  4. The agent read/write integration design (automatic vs. directed).
+  5. The native browsing/editing UI's shape inside OS Code.
+  6. A clear v1 vs. later-phase cut line.
+  Present the six "resolve first" questions as explicit decision points at the
+  top. Do not write feature code until the plan is approved.
+
+  DEFINITION OF DONE (v1)
+  A signed-in user has a personal vault the agent reads from and writes to
+  alongside their own notes, rendered natively in OS Code. An organization has
+  one shared org vault alongside each member's personal one, with a real
+  permission model and a genuine multi-writer sync story, not a
+  best-effort synced folder.
   ```
 
 ## Log
