@@ -932,7 +932,7 @@ textarea {
   background: var(--surface);
 }
 
-/* The preferred guide (Embarks): same pill, teal to mark it as the
+/* The preferred guide (Harbor): same pill, teal to mark it as the
    recommended pick without a separate badge. */
 .suggestion-preferred {
   color: var(--local);

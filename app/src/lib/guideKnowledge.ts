@@ -1,4 +1,4 @@
-// The grounding facts shared by every on-device guide (Harbor, Embarks). A
+// The grounding facts shared by every on-device guide (Harbor, Harbor Mini). A
 // small model invents setup steps unless it is handed the facts, so the
 // truth about OS Code lives here, once, and both guides' personas splice it
 // in. Keep it tight and accurate to what the app actually does; when it

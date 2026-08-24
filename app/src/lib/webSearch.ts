@@ -1,4 +1,4 @@
-// Web search for on-device chat (Embarks). Zero-config default: DuckDuckGo's
+// Web search for on-device chat (Harbor). Zero-config default: DuckDuckGo's
 // HTML endpoint, no key needed, good enough for almost everything. Bring
 // your own Brave or Tavily key in Settings to switch backends. Nothing here
 // costs OpenShore anything: DuckDuckGo is free, and a Brave/Tavily key is the

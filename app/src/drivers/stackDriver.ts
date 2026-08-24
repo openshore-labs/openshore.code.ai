@@ -19,7 +19,7 @@ import { platform, secretGet } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
-import { buildEmbarksSystemPrompt, isEmbarks } from '../lib/embarks.js';
+import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
@@ -139,12 +139,12 @@ export class StackDriver implements ChatDriver {
 
   private systemFor(ref: StackModelRef, placement?: Placement): string {
     const guideSystem =
-      ref.kind === 'device' && isHarbor(ref.modelId)
-        ? buildHarborSystemPrompt()
-        : ref.kind === 'device' && isEmbarks(ref.modelId)
-          ? buildEmbarksSystemPrompt(false)
+      ref.kind === 'device' && isHarborMini(ref.modelId)
+        ? buildHarborMiniSystemPrompt()
+        : ref.kind === 'device' && isHarbor(ref.modelId)
+          ? buildHarborSystemPrompt(false)
           : undefined;
-    // Embarks' own web-search protocol only exists in the standalone guide
+    // Harbor's own web-search protocol only exists in the standalone guide
     // chat (OnDeviceDriver); placed in a full stack it answers from what it
     // knows, same as any other Reasoning LLM here (no tool use in v1, see the
     // file header). Its persona still applies so it identifies itself
@@ -272,7 +272,7 @@ export class StackDriver implements ChatDriver {
       this.emit({ type: 'status', message: `Warming up ${ref.modelName} on this device.` });
       const load = await Llama.load({
         id: ref.modelId,
-        contextSize: isHarbor(ref.modelId) ? 2048 : 4096,
+        contextSize: isHarborMini(ref.modelId) ? 2048 : 4096,
       });
       if (!load.ok) {
         this.emit({
@@ -289,7 +289,7 @@ export class StackDriver implements ChatDriver {
       requestId: this.activeRequestId,
       system: this.systemFor(ref, placement),
       messages: this.history,
-      maxTokens: isHarbor(ref.modelId) ? 512 : 1024,
+      maxTokens: isHarborMini(ref.modelId) ? 512 : 1024,
       temperature: 0.6,
     });
   }
