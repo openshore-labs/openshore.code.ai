@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
     backgroundColor: '#f6f4ef',
   },
   // Route fetch/XHR through native networking on iOS only (Electron/web are
-  // untouched). Needed for Embarks' web search: DuckDuckGo's HTML endpoint
+  // untouched). Needed for Harbor's web search: DuckDuckGo's HTML endpoint
   // and the Brave/Tavily APIs are not CORS-enabled for an arbitrary app
   // origin, and native URLSession has no such restriction to begin with.
   plugins: {

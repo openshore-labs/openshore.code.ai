@@ -7,7 +7,7 @@
 //
 // The Reasoning LLM plans and routes each task to the specialist whose category
 // fits, and executes the task itself whenever no specialist is placed for it.
-import { HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from './harbor.js';
+import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
 
 export type StackCategory =
   'coding' | 'writing' | 'analysis' | 'vision' | 'image-gen' | 'embedding' | 'fast' | 'custom';
@@ -84,10 +84,11 @@ export function placementValid(p: Placement): boolean {
 }
 
 export function harborRef(): StackModelRef {
-  return { kind: 'device', modelId: HARBOR_MODEL_ID, modelName: HARBOR_MODEL_NAME };
+  return { kind: 'device', modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME };
 }
 
-/** A fresh stack: Harbor is the first Reasoning LLM, nothing placed yet. */
+/** A fresh stack: Harbor Mini is the first Reasoning LLM (kept small so
+ *  first-run download size and time stay low), nothing placed yet. */
 export function emptyStack(): AppStack {
   return { reasoning: harborRef(), active: [], saved: {} };
 }

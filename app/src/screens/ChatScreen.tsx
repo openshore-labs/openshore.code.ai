@@ -11,8 +11,8 @@ import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { isPhone } from '../lib/platform.js';
 import { timeGreeting } from '../lib/greeting.js';
-import { EMBARKS_MODEL_ID } from '../lib/embarks.js';
 import { HARBOR_MODEL_ID } from '../lib/harbor.js';
+import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
   const {
@@ -23,10 +23,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     answerApproval,
     newConversation,
     startGuide,
+    harborMiniDownload,
     harborDownload,
-    embarksDownload,
+    cancelHarborMini,
     cancelHarbor,
-    cancelEmbarks,
     setDrawer,
   } = useApp();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -37,9 +37,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const approval = thread?.pendingApprovals[0];
   // Only one guide downloads at a time in practice; whichever is in flight
   // gets the shared progress UI below.
-  const guideDownload = embarksDownload ?? harborDownload;
-  const guideDownloadName = embarksDownload ? 'Embarks' : 'Harbor';
-  const cancelGuideDownload = () => (embarksDownload ? cancelEmbarks() : cancelHarbor());
+  const guideDownload = harborDownload ?? harborMiniDownload;
+  const guideDownloadName = harborDownload ? 'Harbor' : 'Harbor Mini';
+  const cancelGuideDownload = () => (harborDownload ? cancelHarbor() : cancelHarborMini());
 
   const startWith = async (source: ConversationSource) => {
     setPickerOpen(false);
@@ -90,12 +90,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           <div className="suggestion-row">
             <button
               className="suggestion suggestion-preferred"
-              onClick={() => void startGuide(EMBARKS_MODEL_ID)}
+              onClick={() => void startGuide(HARBOR_MODEL_ID)}
             >
-              Ask Embarks
-            </button>
-            <button className="suggestion" onClick={() => void startGuide(HARBOR_MODEL_ID)}>
               Ask Harbor
+            </button>
+            <button className="suggestion" onClick={() => void startGuide(HARBOR_MINI_MODEL_ID)}>
+              Ask Harbor Mini
             </button>
             <button className="suggestion" onClick={() => setPickerOpen(true)}>
               Pick a model

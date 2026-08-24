@@ -4,7 +4,7 @@ import type { ApprovalRequest } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
-import { isEmbarks } from '../lib/embarks.js';
+import { isHarborMini } from '../lib/harborMini.js';
 
 export type ThreadItem =
   | { kind: 'user'; id: string; text: string }
@@ -216,8 +216,8 @@ export function sourceLabel(source: ConversationSource): string {
     case 'desktop':
       return source.repoName ? `Desktop · ${source.repoName}` : 'Desktop stack';
     case 'device':
+      if (isHarborMini(source.modelId)) return 'Harbor Mini · built-in guide';
       if (isHarbor(source.modelId)) return 'Harbor · built-in guide';
-      if (isEmbarks(source.modelId)) return 'Embarks · built-in guide';
       return `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
     case 'cloud':
       return `Claude · ${source.model}`;

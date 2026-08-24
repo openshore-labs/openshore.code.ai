@@ -1,13 +1,13 @@
 // The pocket brain: a model running fully on this device through the llama
 // plugin. Chat-only by design in v1 (repo tools live on the desktop
 // connection), private by construction: nothing ever leaves the phone, except
-// a web search Embarks explicitly asks for, which the user can point at their
+// a web search Harbor explicitly asks for, which the user can point at their
 // own key instead of the DuckDuckGo default.
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
-import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
-import { buildEmbarksSystemPrompt, isEmbarks, EMBARKS_SEARCH_PREFIX } from '../lib/embarks.js';
+import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
+import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
 import { formatSearchResults, loadSearchKey, webSearch } from '../lib/webSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
@@ -21,7 +21,7 @@ const SYSTEM_PROMPT = [
 
 // The whole response must be exactly this one line for it to count as a
 // search request, not just a mention of the word "search" mid-answer.
-const SEARCH_LINE = new RegExp(`^${EMBARKS_SEARCH_PREFIX}\\s*(.+)$`, 'i');
+const SEARCH_LINE = new RegExp(`^${HARBOR_SEARCH_PREFIX}\\s*(.+)$`, 'i');
 
 let requestSeq = 0;
 
@@ -45,14 +45,14 @@ export class OnDeviceDriver implements ChatDriver {
     private readonly modelId: string,
     private readonly modelName: string,
   ) {
-    this.searchable = isEmbarks(modelId);
-    this.guide = isHarbor(modelId) || this.searchable;
+    this.searchable = isHarbor(modelId);
+    this.guide = isHarborMini(modelId) || this.searchable;
     this.listenersReady = this.attachListeners();
   }
 
   private systemPrompt(): string {
-    if (isHarbor(this.modelId)) return buildHarborSystemPrompt();
-    if (this.searchable) return buildEmbarksSystemPrompt();
+    if (isHarborMini(this.modelId)) return buildHarborMiniSystemPrompt();
+    if (this.searchable) return buildHarborSystemPrompt();
     return SYSTEM_PROMPT;
   }
 
@@ -101,10 +101,10 @@ export class OnDeviceDriver implements ChatDriver {
           type: 'status',
           message: `Warming up ${this.modelName} on this device.`,
         });
-        // Harbor only writes short guidance, so a small context keeps the KV
-        // cache and load time down. Embarks is bigger and does an extra
-        // search round-trip, so it gets the full window like a chosen pocket
-        // model does.
+        // Harbor Mini only writes short guidance, so a small context keeps
+        // the KV cache and load time down. Harbor is bigger and does an
+        // extra search round-trip, so it gets the full window like a chosen
+        // pocket model does.
         const load = await Llama.load({
           id: this.modelId,
           contextSize: this.guide && !this.searchable ? 2048 : 4096,

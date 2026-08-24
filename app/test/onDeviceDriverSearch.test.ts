@@ -1,4 +1,4 @@
-// Embarks' web-search loop: a SEARCH: line is a control message, not a real
+// Harbor's web-search loop: a SEARCH: line is a control message, not a real
 // reply, and it must never leak into the visible transcript; the search runs
 // at most once per user turn even if the model keeps asking.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,11 +32,11 @@ vi.mock('../src/lib/webSearch.js', () => ({
 }));
 
 const { OnDeviceDriver } = await import('../src/drivers/onDeviceDriver.js');
-const { EMBARKS_MODEL_ID } = await import('../src/lib/embarks.js');
+const { HARBOR_MODEL_ID } = await import('../src/lib/harbor.js');
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-describe('OnDeviceDriver web search loop (Embarks)', () => {
+describe('OnDeviceDriver web search loop (Harbor)', () => {
   beforeEach(() => {
     generateCalls.length = 0;
     searchMock.mockReset();
@@ -47,7 +47,7 @@ describe('OnDeviceDriver web search loop (Embarks)', () => {
   it('detects a SEARCH: line, searches, and continues with the real answer', async () => {
     searchMock.mockResolvedValue([{ title: 'T', url: 'https://u', snippet: 'S' }]);
     const events: any[] = [];
-    const driver = new OnDeviceDriver(EMBARKS_MODEL_ID, 'Embarks');
+    const driver = new OnDeviceDriver(HARBOR_MODEL_ID, 'Harbor');
     driver.subscribe((e) => events.push(e));
     await tick();
 
@@ -77,7 +77,7 @@ describe('OnDeviceDriver web search loop (Embarks)', () => {
 
   it('never searches twice in the same turn even if the model asks again', async () => {
     searchMock.mockResolvedValue([]);
-    const driver = new OnDeviceDriver(EMBARKS_MODEL_ID, 'Embarks');
+    const driver = new OnDeviceDriver(HARBOR_MODEL_ID, 'Harbor');
     driver.subscribe(() => {});
     await tick();
 
@@ -97,10 +97,10 @@ describe('OnDeviceDriver web search loop (Embarks)', () => {
     expect(generateCalls).toHaveLength(2);
   });
 
-  it('never triggers search for Harbor, only Embarks', async () => {
-    const { HARBOR_MODEL_ID } = await import('../src/lib/harbor.js');
+  it('never triggers search for Harbor Mini, only Harbor', async () => {
+    const { HARBOR_MINI_MODEL_ID } = await import('../src/lib/harborMini.js');
     const events: any[] = [];
-    const driver = new OnDeviceDriver(HARBOR_MODEL_ID, 'Harbor');
+    const driver = new OnDeviceDriver(HARBOR_MINI_MODEL_ID, 'Harbor Mini');
     driver.subscribe((e) => events.push(e));
     await tick();
 

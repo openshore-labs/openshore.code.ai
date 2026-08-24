@@ -89,8 +89,8 @@ export function MarketplaceScreen() {
     showToast,
     libraryIntro,
     endLibraryIntro,
+    harborMiniDownload,
     harborDownload,
-    embarksDownload,
   } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
   const [note, setNote] = useState<string | undefined>();
@@ -801,47 +801,16 @@ export function MarketplaceScreen() {
           <h1>Models, in plain language</h1>
           <p className="lead">Curated for what they are actually good at. {note ?? ''}</p>
 
-          {settings.embarksReady || embarksDownload ? (
-            <div className="card">
-              <div className="card-row">
-                <div className="grow">
-                  <h3>
-                    Embarks <span className="sub">(preferred guide)</span>
-                  </h3>
-                  <div className="sub">
-                    Bigger, reasons better, searches the web when it needs to.
-                  </div>
-                </div>
-                {settings.embarksReady ? <span className="pill local">on device</span> : null}
-              </div>
-              {embarksDownload && !embarksDownload.failed ? (
-                <>
-                  <div className="progress-track" style={{ marginTop: 10 }}>
-                    <div
-                      className={`progress-fill${embarksDownload.indeterminate ? ' indeterminate' : ''}`}
-                      style={
-                        embarksDownload.indeterminate
-                          ? undefined
-                          : { width: `${embarksDownload.percent}%` }
-                      }
-                    />
-                  </div>
-                  <div className="hint" style={{ marginTop: 6 }}>
-                    {embarksDownload.label}
-                  </div>
-                </>
-              ) : null}
-            </div>
-          ) : null}
-
           {settings.harborReady || harborDownload ? (
             <div className="card">
               <div className="card-row">
                 <div className="grow">
                   <h3>
-                    Harbor <span className="sub">(smaller guide)</span>
+                    Harbor <span className="sub">(preferred guide)</span>
                   </h3>
-                  <div className="sub">The first model in your stack. Built to be replaced.</div>
+                  <div className="sub">
+                    Bigger, reasons better, searches the web when it needs to.
+                  </div>
                 </div>
                 {settings.harborReady ? <span className="pill local">on device</span> : null}
               </div>
@@ -859,6 +828,37 @@ export function MarketplaceScreen() {
                   </div>
                   <div className="hint" style={{ marginTop: 6 }}>
                     {harborDownload.label}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {settings.harborMiniReady || harborMiniDownload ? (
+            <div className="card">
+              <div className="card-row">
+                <div className="grow">
+                  <h3>
+                    Harbor Mini <span className="sub">(smaller guide)</span>
+                  </h3>
+                  <div className="sub">The first model in your stack. Built to be replaced.</div>
+                </div>
+                {settings.harborMiniReady ? <span className="pill local">on device</span> : null}
+              </div>
+              {harborMiniDownload && !harborMiniDownload.failed ? (
+                <>
+                  <div className="progress-track" style={{ marginTop: 10 }}>
+                    <div
+                      className={`progress-fill${harborMiniDownload.indeterminate ? ' indeterminate' : ''}`}
+                      style={
+                        harborMiniDownload.indeterminate
+                          ? undefined
+                          : { width: `${harborMiniDownload.percent}%` }
+                      }
+                    />
+                  </div>
+                  <div className="hint" style={{ marginTop: 6 }}>
+                    {harborMiniDownload.label}
                   </div>
                 </>
               ) : null}

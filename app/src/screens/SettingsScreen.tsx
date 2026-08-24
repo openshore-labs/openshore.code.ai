@@ -123,7 +123,7 @@ export function SettingsScreen() {
     setSearchKeyValue('');
     if (!key) return;
     await setSearchBackend(searchChoice, key);
-    showToast(`${SEARCH_BACKEND_LABEL[searchChoice]} connected for Embarks' web search.`);
+    showToast(`${SEARCH_BACKEND_LABEL[searchChoice]} connected for Harbor's web search.`);
   };
 
   const copyLog = async () => {
@@ -189,10 +189,11 @@ export function SettingsScreen() {
         </InfoSheet>
 
         <InfoSheet title="Local models, honestly">
-          Embarks and Harbor, and any model you run on this device, are AI. They can be confidently
-          wrong, and OpenShore does not filter what a local model says. Neither is a coder. For real
-          work, connect a bigger model. What you type to a local model stays on this device. Embarks
-          is Qwen3-1.7B and Harbor is Qwen2.5-0.5B-Instruct, both used under the Apache License 2.0.
+          Harbor and Harbor Mini, and any model you run on this device, are AI. They can be
+          confidently wrong, and OpenShore does not filter what a local model says. Neither is a
+          coder. For real work, connect a bigger model. What you type to a local model stays on this
+          device. Harbor is Qwen3-1.7B and Harbor Mini is Qwen2.5-0.5B-Instruct, both used under the
+          Apache License 2.0.
         </InfoSheet>
 
         <div className="card">
@@ -200,7 +201,7 @@ export function SettingsScreen() {
             <div className="grow">
               <h3>Web search</h3>
               <div className="sub">
-                Embarks searches the web when it needs to.{' '}
+                Harbor searches the web when it needs to.{' '}
                 {SEARCH_BACKEND_LABEL[activeSearchBackend]}
                 {activeSearchBackend === 'duckduckgo' ? ', no key needed.' : ', on your own key.'}
               </div>
