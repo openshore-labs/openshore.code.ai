@@ -211,6 +211,242 @@ Layer status:
       terminal's own scrollback already pages, and a custom pager fights it;
       `/find` is the genuinely additive capability.
 
+### Parked feature ideas (founder-requested build prompts, not started)
+
+> Captured 2026-08-24 from a founder voice note. Two full, build-ready prompts
+> written to hand straight to Opus 4.8. Neither is built. STANDING REMINDER:
+> surface both at the start of any OS Code session, and especially whenever the
+> founder mentions "gitOS," "GitOS," "bring your own model," or "BYOM," until
+> the item's checkbox is checked off. The repo-root `CLAUDE.md` wires this in.
+> These are live, unfinished action items, not settled history.
+
+- [ ] **Scope and build gitOS** (decentralized, local-first Git hosting;
+      storage location chosen per repo instead of centralized hosting). Below
+      is the optimized Opus 4.8 build prompt.
+
+  ```
+  ROLE
+  You are the lead engineer scoping and building gitOS. Work in strict phases:
+  deliver a plan and get it approved BEFORE writing any feature code. Where a
+  decision below is unresolved, ASK the founder rather than assume. A wrong
+  assumption at the storage/secrets seam is very expensive to unwind later, so
+  treat the "resolve first" list as a hard gate, not a formality.
+
+  MISSION (one sentence)
+  GitHub, functionally identical, except the user chooses WHERE each repository
+  physically lives at creation time (their own device, their own network
+  storage, or a cloud drive they already pay for) instead of it being centrally
+  hosted on someone else's servers.
+
+  THE INSIGHT THAT DRIVES THE ARCHITECTURE
+  A Git host is a specialized file store wrapped in a UI plus an
+  integration/secrets layer. gitOS keeps the UI and the integration layer and
+  hands the file store to the user. So the entire design pivots on ONE seam: a
+  storage-provider interface that the Git logic and the UI never see past. Get
+  that seam right and every backend (local, iCloud, Dropbox, Drive, Proton)
+  becomes an additive plugin. Get it wrong and the Git logic leaks
+  provider-specific assumptions everywhere. Spend your hardest thinking here.
+
+  WHERE THIS LIVES
+  A new, native "Repositories" section of OS Code (native, not a wrapped web
+  view). Confirm the exact surface with the founder before scoping downstream.
+
+  RESOLVE WITH THE FOUNDER BEFORE BUILDING (do not guess silently)
+  1. Which surface in OS Code does the "Repositories" section live in?
+  2. Implementation approach, the pivotal call. Strong default: shell out to
+     real `git` against a working copy that sits inside the user-chosen storage
+     location. This gets true Git semantics (branches, merges, history, diffs)
+     for free and makes every cloud drive "just a folder." The alternative,
+     reimplementing Git operations against each provider's raw API, is far more
+     work and more failure modes. Recommend the real-`git` default explicitly
+     unless the founder has a reason to want otherwise.
+  3. Secrets on untrusted storage. When a repo lives on a consumer cloud drive
+     the founder does not control, how are its secrets (CI tokens, deploy
+     hooks, API keys) stored and encrypted so the drive provider never sees
+     plaintext? This needs a real answer (for example client-side encryption
+     with a key the provider never holds), not "we'll store them in a file."
+     OS Code already has an at-rest sealing format (`enc:v1`) and a credential
+     store; reuse them rather than inventing a second mechanism.
+  4. Multi-device conflict handling. Dropbox, Google Drive, iCloud, and Proton
+     Drive do NOT provide Git-aware locking or merge semantics; they are naive
+     folder syncs. Is a lock file or lease enough for v1, or is real 3-way
+     merge on top of the synced folder required? Decide before committing to a
+     backend model; do not assume "it's just a folder, it'll be fine."
+  5. Per-provider auth. What OAuth scopes do Dropbox, Google Drive, and Proton
+     Drive each need, and what is the simplest on-device iCloud path (native
+     Files picker vs. CloudKit)?
+
+  CORE REQUIREMENTS
+  1. Storage-location picker on repo creation. Backends for v1:
+       - Local device storage, including any path reachable from the device (a
+         Tailscale-mounted share or NAS is just a filesystem path, no bespoke
+         network protocol). OS Code already pairs desktop and phone over
+         Tailscale, so this backend runs with the existing grain.
+       - iCloud Drive (via the OS's own Files/iCloud connection, not a bespoke
+         API).
+       - Dropbox.
+       - Google Drive.
+       - Proton Drive.
+     Build these behind the pluggable storage-provider interface so new
+     backends land without touching Git logic.
+  2. GitHub stays available, additively. The section also offers "Connect to
+     GitHub" (note GitLab and Bitbucket as later additions). gitOS is a new
+     option ALONGSIDE GitHub, never a removal of it.
+  3. Full functional parity, not just file sync: branches, commits, merges,
+     diffs, history, AND the secrets/integration layer so a repo's wiring (CI,
+     deploy hooks, keys) clones and reconnects exactly like today, regardless
+     of which backend holds the bytes. The bar is "clone this and everything
+     just works," not "clone this and get plain files."
+  4. Coding-agent workflow parity. Selecting a repo to work in feels identical
+     to selecting a repo in a modern coding agent today: pick the repo (any
+     backend), an agent or the user makes changes, changes commit; the backend
+     is invisible. OS Code's own agent loop is the consumer to satisfy here.
+  5. Backups as a first-class feature, near-zero effort. Because the repo
+     already lives on storage the user owns, add a Settings toggle plus an
+     interval picker (daily, weekly, custom) that snapshots the repo to a
+     second user-chosen location. This is gitOS's headline differentiator
+     versus GitHub, not a bolt-on: the wiring already exists, so backup is
+     gold-standard by construction. Design it as such.
+
+  NON-GOALS FOR V1 (flag, do not build)
+  - Do not try to match GitHub's collaboration surface (PRs, issues,
+    Actions-equivalent CI runners) in v1. Scope v1 to solo or small-team repo
+    storage plus core Git operations plus backups.
+  - Do not assume the cloud-drive providers solve real-time multi-device
+    conflict resolution. They do not.
+
+  DELIVERABLE FOR THIS PASS (plan, not code)
+  1. The storage-provider interface: its surface, and how local, iCloud,
+     Dropbox, Drive, and Proton each satisfy it.
+  2. The repo-creation flow end to end.
+  3. The secrets/integration-wiring design, including the untrusted-storage
+     encryption model.
+  4. The backup feature design.
+  5. A clear v1 vs. later-phase cut line.
+  Present the five "resolve first" questions as explicit decision points at the
+  top. Do not write feature code until the plan is approved.
+
+  DEFINITION OF DONE (v1)
+  A user can create a repo on any of the five backends, do real Git work in it
+  (including via a coding agent), have its integrations reconnect on clone, and
+  turn on scheduled backups to a second location, with secrets never landing in
+  plaintext on a provider the user does not control.
+  ```
+
+- [ ] **Scope and build Bring Your Own Model (BYOM)** (a first-class "connect
+      any model you control" capability). NOTE: this overlaps heavily with what
+      OS Code already does, so the prompt is framed as an EXTENSION of the
+      existing model/router layer, not a new build. Below is the optimized Opus
+      4.8 build prompt.
+
+  ```
+  ROLE
+  You are the lead engineer extending OS Code with an explicit "Bring Your Own
+  Model" (BYOM) capability. IMPORTANT FIRST STEP: OS Code is already a
+  bring-your-own-stack product (local models as the default, a
+  router/quarterback, Ollama-native and OpenAI-compatible adapters, a manual
+  cloud flip for the user's own Claude or ChatGPT account, a marketplace
+  catalog). So this is very likely an EXTENSION of the existing model/router
+  layer, not a new subsystem. Before proposing anything, audit what already
+  exists (the router, the provider adapters, the cloud-connect flow, the config
+  schema) and design the DELTA that turns today's capability into a first-class,
+  user-facing "connect any model you control" feature. Do not duplicate what is
+  built. Work in phases: plan first, get it approved, then build. Where a
+  decision below is unresolved, ASK.
+
+  MISSION (one sentence)
+  A clear, first-class setting that lets a user or an organization point OS Code
+  at a model THEY control (their own fine-tuned or local model, a self-hosted
+  endpoint, or another provider's API) with as little friction as selecting a
+  built-in model, framed as an explicit "Bring your own model" entry point
+  rather than something only power users discover.
+
+  THE GAP TO CLOSE (audit first, then build)
+  OS Code can already talk to local and OpenAI-compatible backends. BYOM is
+  about making "add a model I control" an obvious, safe, org-aware first-class
+  action, plus honest capability handling when a connected model cannot do what
+  the agent loop needs. Identify and close the gap between what the
+  router/adapters do today and:
+    - a discoverable "Bring your own model" action in the app (not just a config
+      file edit),
+    - organization-level configuration (a company sets it once for the team),
+    - a pre-flight compatibility check and graceful degradation.
+
+  TWO AUDIENCES, DESIGN FOR BOTH
+  1. Super users: individuals swapping in a specific model for preference, cost,
+     or performance.
+  2. Companies (the primary long-term case): organizations running a local or
+     fine-tuned model tailored to their own codebase and conventions, with the
+     CTO's time going into shaping that model rather than rebuilding the generic
+     agent tooling every company now has. Treat the org case as first-class.
+
+  THE HARD PART, THINK HERE
+  The agent loop, tool-calling, and context management must work against a BYO
+  model exactly as against a built-in one. Endpoints disagree on tool-call
+  format, streaming, context window, and system-prompt handling. The crux is a
+  clean model-adapter contract plus honest capability detection: when a
+  connected model cannot do something the stack needs, detect it and tell the
+  user precisely what is missing, rather than failing mid-agent-loop. Spend your
+  reasoning budget on the adapter contract and the degradation path. Reuse OS
+  Code's existing "specialist tools register only when the stack can serve them"
+  pattern rather than inventing a parallel one.
+
+  RESOLVE WITH THE FOUNDER BEFORE BUILDING (do not guess silently)
+  1. How much of BYOM does OS Code's current router/adapter layer already
+     cover, and what is the exact remaining delta? (Answer from the code first,
+     then confirm scope with the founder.)
+  2. How are credentials for a self-hosted or local endpoint stored and
+     secured? (OS Code already has a credential store; extend it, do not add a
+     second.)
+  3. Does connecting a model require a pre-flight compatibility check (tool-use
+     format, context window, streaming) before it can go live?
+  4. How does a BYOM connection interact with the existing spend-confirm and
+     billing model that governs cloud escalation?
+
+  CORE REQUIREMENTS
+  1. A discoverable "Bring your own model" entry point that connects a model
+     endpoint (self-hosted, local-network, or third-party API) with its own
+     credentials, clearly distinct from the built-in local stack and the cloud
+     flip.
+  2. Fully first-class, not a stub: the agent loop, tool-calling, and context
+     management all function against the connected model as they do against
+     built-ins.
+  3. Build on the existing OpenAI-compatible adapter as the baseline (it already
+     covers most self-hosted and local servers such as vLLM, Ollama, and LM
+     Studio), and keep the adapter layer open so named providers can be added
+     later.
+  4. Org-level configuration: a company sets this once for its whole team or
+     workspace, not only per individual user, wired through the existing org
+     write-through where possible.
+  5. Graceful degradation: when the connected model lacks a needed capability,
+     detect it and explain what is missing rather than failing silently or
+     breaking the loop.
+
+  NON-GOALS FOR V1 (flag, do not build)
+  - Not a marketplace or discovery surface for models (OS Code already has a
+    marketplace catalog; BYOM is the "I already have my own model" path, not a
+    new catalog).
+  - Not model fine-tuning tooling. Assume the org already has, or is training,
+    its own model elsewhere; BYOM only connects to it.
+
+  DELIVERABLE FOR THIS PASS (plan, not code)
+  1. An audit of what OS Code's model/router layer already provides and the
+     exact remaining delta.
+  2. The connection UX (individual and org).
+  3. The model-adapter contract and the capability-detection and degradation
+     model, expressed as an extension of the existing adapters.
+  4. Individual-vs-org scoping and credential storage.
+  5. A clear v1 vs. later-phase cut line.
+  Present the "resolve first" questions as explicit decision points at the top.
+  Do not write feature code until the plan is approved.
+
+  DEFINITION OF DONE (v1)
+  An individual or an org can connect a model they control through a
+  discoverable setting, run the full OS Code agent workflow against it exactly
+  as against a built-in model, and get a clear, specific message (never a silent
+  break) when the connected model lacks a capability the stack needs.
+  ```
+
 ## Log
 
 - **2026-08-21: individual Personal + free/paid gating + iOS IAP (4 phases).**
