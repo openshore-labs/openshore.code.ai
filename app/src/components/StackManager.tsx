@@ -9,6 +9,7 @@ import { stackAdmin, useApp } from '../state/store.js';
 import { BackBar } from './BackBar.js';
 import { PROFILES, autoProfile, effectiveProfile } from '../lib/profiles.js';
 import { PROVIDERS } from '../lib/providers.js';
+import { byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import {
   STACK_CATEGORIES,
   categoryLabel,
@@ -21,6 +22,16 @@ import {
   type StackModelRef,
 } from '../lib/stack.js';
 
+/** The host of a BYOM base URL, for a compact bench sub-line. Falls back to
+ *  the raw string if it does not parse. */
+function byomHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
+}
+
 export function StackManager() {
   const {
     settings,
@@ -29,6 +40,8 @@ export function StackManager() {
     setReasoning,
     placeSpecialist,
     benchSpecialist,
+    connectByom,
+    disconnectByom,
     setView,
     showToast,
   } = useApp();
@@ -46,6 +59,7 @@ export function StackManager() {
       modelName,
     })),
   ];
+  const byomRefs: StackModelRef[] = (settings.byomModels ?? []).map(byomRef);
   const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
     (p) =>
       p.models.map((m): StackModelRef => ({
@@ -55,11 +69,13 @@ export function StackManager() {
         label: m.label,
       })),
   );
-  const available: StackModelRef[] = [...deviceRefs, ...cloudRefs];
+  const available: StackModelRef[] = [...deviceRefs, ...byomRefs, ...cloudRefs];
   const activeKeys = new Set(stack.active.map((m) => refKey(m.ref)));
   const reasoningKey = refKey(reasoning);
   const placed = (r: StackModelRef) => refKey(r) === reasoningKey || activeKeys.has(refKey(r));
-  const bench = deviceRefs.filter((r) => !placed(r));
+  // The local bench holds on-device and bring-your-own-model refs, both placed
+  // the same way; connected cloud providers get their own grouped section.
+  const bench = [...deviceRefs, ...byomRefs].filter((r) => !placed(r));
   const cloudBench = PROVIDERS.filter((p) => connectedProviders[p.id])
     .map((p) => ({
       provider: p,
@@ -74,6 +90,32 @@ export function StackManager() {
   const [pickReasoning, setPickReasoning] = useState(false);
   const [menuKey, setMenuKey] = useState<string | undefined>();
   const [cloudPick, setCloudPick] = useState<Record<string, string>>({});
+
+  // Bring-your-own-model connect form, and the id of the benched BYOM whose
+  // options sheet is open.
+  const [byomOpen, setByomOpen] = useState(false);
+  const [byomForm, setByomForm] = useState({ label: '', baseUrl: '', model: '', apiKey: '' });
+  const [byomMenuId, setByomMenuId] = useState<string | undefined>();
+  const byomFormValid =
+    byomForm.label.trim() !== '' &&
+    byomForm.model.trim() !== '' &&
+    /^https?:\/\/.+/i.test(byomForm.baseUrl.trim());
+
+  const saveByom = async () => {
+    if (!byomFormValid) {
+      showToast('A name, an https endpoint, and a model id are needed.');
+      return;
+    }
+    const conn = await connectByom({
+      label: byomForm.label,
+      baseUrl: normalizeBaseUrl(byomForm.baseUrl),
+      model: byomForm.model,
+      apiKey: byomForm.apiKey,
+    });
+    setByomOpen(false);
+    setByomForm({ label: '', baseUrl: '', model: '', apiKey: '' });
+    showToast(`${conn.label} is on your bench. Place it to put it to work.`);
+  };
 
   const openPlacement = (ref: StackModelRef, existing?: Placement) =>
     setConfig({ ref, placement: existing ?? { category: 'coding' } });
@@ -92,7 +134,30 @@ export function StackManager() {
     <div className="screen">
       <BackBar title="Your stack" />
       <div className="screen-inner">
-        <h1>{admin ? 'Your stack' : 'The stack'}</h1>
+        <div className="stack-head">
+          <h1>{admin ? 'Your stack' : 'The stack'}</h1>
+          {admin ? (
+            <button
+              className="stack-add-btn"
+              aria-label="Bring your own model"
+              title="Bring your own model"
+              onClick={() => setByomOpen(true)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
         <p className="lead">
           {admin
             ? 'Your Reasoning LLM plans every task and routes it to the specialist whose category fits. When nothing is placed for a task, the Reasoning LLM does it itself.'
@@ -192,8 +257,15 @@ export function StackManager() {
                 <div className="card" key={refKey(ref)}>
                   <div className="card-row">
                     <div className="grow">
-                      <h3>{refName(ref)}</h3>
-                      <div className="sub">On the bench. Place it to put it to work.</div>
+                      <h3>
+                        {refName(ref)}
+                        {ref.kind === 'byom' ? <span className="sub"> (your model)</span> : null}
+                      </h3>
+                      <div className="sub">
+                        {ref.kind === 'byom'
+                          ? `On the bench. ${ref.model} at ${byomHost(ref.baseUrl)}.`
+                          : 'On the bench. Place it to put it to work.'}
+                      </div>
                     </div>
                     <button
                       className="btn ghost"
@@ -202,6 +274,15 @@ export function StackManager() {
                     >
                       Add to stack
                     </button>
+                    {ref.kind === 'byom' ? (
+                      <button
+                        className="icon-btn"
+                        aria-label="Options"
+                        onClick={() => setByomMenuId(ref.id)}
+                      >
+                        {'⋯'}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ))
@@ -326,6 +407,115 @@ export function StackManager() {
                   Download a model from the Marketplace or connect a cloud model to choose another.
                 </p>
               ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Bring-your-own-model connect sheet. */}
+      {byomOpen ? (
+        <div className="sheet-scrim" onClick={() => setByomOpen(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h2>Bring your own model</h2>
+            <p className="sheet-sub">
+              Point OS Code at any OpenAI-compatible endpoint you control: a self-hosted server, a
+              fine-tune behind your own gateway, or another provider. It lands on your bench, ready
+              to place.
+            </p>
+
+            <div className="field">
+              <label>Name</label>
+              <input
+                autoFocus
+                placeholder="e.g. Our house model"
+                value={byomForm.label}
+                onChange={(e) => setByomForm({ ...byomForm, label: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label>Endpoint URL</label>
+              <input
+                type="url"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                placeholder="https://your-host/v1"
+                value={byomForm.baseUrl}
+                onChange={(e) => setByomForm({ ...byomForm, baseUrl: e.target.value })}
+              />
+              <div className="hint" style={{ marginTop: 4 }}>
+                The base URL, ending in /v1. OS Code calls /chat/completions on it.
+              </div>
+            </div>
+            <div className="field">
+              <label>Model id</label>
+              <input
+                autoCapitalize="none"
+                autoCorrect="off"
+                placeholder="e.g. llama-3.1-70b-instruct"
+                value={byomForm.model}
+                onChange={(e) => setByomForm({ ...byomForm, model: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label>API key (optional)</label>
+              <input
+                type="password"
+                placeholder="Leave blank for a keyless local server"
+                value={byomForm.apiKey}
+                onChange={(e) => setByomForm({ ...byomForm, apiKey: e.target.value })}
+              />
+              <div className="hint" style={{ marginTop: 4 }}>
+                Stored in this device's secure store, scoped to this connection, never synced.
+              </div>
+            </div>
+
+            <div className="sheet-actions">
+              <button
+                className="btn primary"
+                disabled={!byomFormValid}
+                onClick={() => void saveByom()}
+              >
+                Add to bench
+              </button>
+              <button className="btn quiet" onClick={() => setByomOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Options for a benched BYOM model. */}
+      {byomMenuId ? (
+        <div className="sheet-scrim" onClick={() => setByomMenuId(undefined)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h2>Options</h2>
+            <div className="sheet-actions">
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  const conn = (settings.byomModels ?? []).find((c) => c.id === byomMenuId);
+                  setByomMenuId(undefined);
+                  if (conn) openPlacement(byomRef(conn), stack.saved[`byom:${conn.id}`]);
+                }}
+              >
+                Add to stack
+              </button>
+              <button
+                className="btn quiet"
+                onClick={async () => {
+                  const id = byomMenuId!;
+                  setByomMenuId(undefined);
+                  await disconnectByom(id);
+                  showToast('Disconnected. Its key was removed from this device.');
+                }}
+              >
+                Disconnect
+              </button>
+              <button className="btn quiet" onClick={() => setByomMenuId(undefined)}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>

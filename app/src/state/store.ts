@@ -113,10 +113,12 @@ import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insi
 import {
   emptyStack,
   refKey as stackRefKey,
+  harborRef,
   type AppStack,
   type Placement,
   type StackModelRef,
 } from '../lib/stack.js';
+import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
 import { bridge } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -156,6 +158,10 @@ export interface AppSettings {
   claudeModel: string;
   /** Downloaded on-device models: catalog id -> friendly name. */
   deviceModels: Record<string, string>;
+  /** Bring-your-own-model connections: OpenAI-compatible endpoints the user
+   *  controls. Metadata only; each connection's API key lives in the secret
+   *  store under byomSecretKey(id). */
+  byomModels?: ByomConnection[];
   /** Whether the small built-in guide (Harbor Mini) has been downloaded to this device. */
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
@@ -425,6 +431,15 @@ interface AppState {
   setProfileOverride(profile?: ProfileId): Promise<void>;
 
   // Stack management (the app-side Reasoning LLM + specialists + bench).
+  /** Connect a bring-your-own-model endpoint. Returns the new connection. */
+  connectByom(input: {
+    label: string;
+    baseUrl: string;
+    model: string;
+    apiKey?: string;
+  }): Promise<ByomConnection>;
+  /** Disconnect a BYOM endpoint: delete its key and pull it from the stack. */
+  disconnectByom(id: string): Promise<void>;
   /** Set the Reasoning LLM anchor (from the bench or a cloud model). */
   setReasoning(ref: StackModelRef): Promise<void>;
   /** Move a bench model into the active stack under a category placement. */
@@ -2192,6 +2207,44 @@ export const useApp = create<AppState>((set, get) => {
         cloudKeyPresent: id === 'anthropic' ? false : s.cloudKeyPresent,
       }));
       logEvent('provider_disconnected', { provider: id });
+    },
+
+    async connectByom(input) {
+      const id = `byom_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      const conn: ByomConnection = {
+        id,
+        label: input.label.trim(),
+        baseUrl: input.baseUrl,
+        model: input.model.trim(),
+      };
+      // The key is optional: a self-hosted server may accept unauthenticated
+      // requests. Store one only when given, so byomSecretKey stays absent for
+      // keyless endpoints.
+      if (input.apiKey && input.apiKey.trim()) {
+        await secretSet(byomSecretKey(id), input.apiKey.trim());
+      }
+      const byomModels = [...(get().settings.byomModels ?? []), conn];
+      await get().saveSettings({ byomModels });
+      logEvent('byom_connected');
+      return conn;
+    },
+
+    async disconnectByom(id) {
+      await secretDelete(byomSecretKey(id));
+      const settings = get().settings;
+      const byomModels = (settings.byomModels ?? []).filter((c) => c.id !== id);
+      const key = `byom:${id}`;
+      // Pull it out of the stack too: drop it from the active specialists and
+      // the saved-placement map, and if it was the Reasoning anchor fall back
+      // to the built-in guide so the anchor is never left dangling.
+      const stack = settings.stack ?? emptyStack();
+      const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
+      const saved = { ...stack.saved };
+      delete saved[key];
+      const reasoning =
+        stack.reasoning && stackRefKey(stack.reasoning) === key ? harborRef() : stack.reasoning;
+      await get().saveSettings({ byomModels, stack: { ...stack, active, saved, reasoning } });
+      logEvent('byom_disconnected');
     },
 
     async setReasoning(ref) {
