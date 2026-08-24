@@ -423,6 +423,37 @@ textarea {
   transform: scale(0.92);
 }
 
+/* Stack header: title on the left, the bring-your-own-model "+" on the right. */
+.stack-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stack-add-btn {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--local-soft);
+  color: var(--local);
+  border: 1px solid var(--local);
+  transition:
+    background 0.12s ease,
+    transform 0.06s ease;
+}
+
+.stack-add-btn:hover {
+  background: rgba(47, 90, 102, 0.18);
+}
+
+.stack-add-btn:active {
+  transform: scale(0.92);
+}
+
 /* ------------------------------------------------------------------ chat */
 
 .thread {

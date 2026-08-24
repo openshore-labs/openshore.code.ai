@@ -18,6 +18,7 @@ import { Llama } from '../lib/llamaPlugin.js';
 import { platform, secretGet } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
+import { byomSecretKey } from '../lib/byom.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
@@ -76,7 +77,10 @@ export function classifyTask(text: string): StackCategory | 'reasoning' {
 type Msg = { role: 'user' | 'assistant'; content: string };
 
 function locationOf(ref: StackModelRef): 'home' | 'cloud' | 'device' {
-  return ref.kind === 'cloud' ? 'cloud' : 'device';
+  // A BYOM endpoint goes over the network (its own or someone else's server),
+  // so it shares the cloud reachability rules: available online, held back on
+  // the strictest offline profile. Only a truly on-device model is 'device'.
+  return ref.kind === 'device' ? 'device' : 'cloud';
 }
 
 export class StackDriver implements ChatDriver {
@@ -213,7 +217,7 @@ export class StackDriver implements ChatDriver {
       type: 'turn-start',
       turn: this.history.length,
       model: refName(target.ref),
-      providerKind: target.ref.kind === 'cloud' ? 'cloud' : 'local',
+      providerKind: target.ref.kind === 'device' ? 'local' : 'cloud',
     });
     if (target.category !== 'reasoning' && target.placement) {
       this.emit({
@@ -225,6 +229,7 @@ export class StackDriver implements ChatDriver {
     this.answer = '';
     try {
       if (target.ref.kind === 'device') await this.runDevice(target.ref, target.placement);
+      else if (target.ref.kind === 'byom') await this.runByom(target.ref, target.placement);
       else await this.runCloud(target.ref, target.placement);
     } catch (err) {
       this.emit({
@@ -311,7 +316,29 @@ export class StackDriver implements ChatDriver {
     }
     const system = this.systemFor(ref, placement);
     if (ref.provider === 'anthropic') await this.runAnthropic(key, ref.model, system);
-    else await this.runOpenAiCompatible(ref.provider, key, ref.model, system);
+    else {
+      const base = providerInfo(ref.provider)?.openaiBaseUrl;
+      if (!base) {
+        this.emit({
+          type: 'task-done',
+          reason: 'error',
+          message: `No endpoint configured for ${ref.provider}.`,
+        });
+        return;
+      }
+      await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system);
+    }
+  }
+
+  private async runByom(
+    ref: Extract<StackModelRef, { kind: 'byom' }>,
+    placement?: Placement,
+  ): Promise<void> {
+    // A BYOM key is optional: a local or trusted-network server may accept
+    // unauthenticated requests, so an absent key is not an error here.
+    const key = (await secretGet(byomSecretKey(ref.id))) ?? undefined;
+    const system = this.systemFor(ref, placement);
+    await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system);
   }
 
   private async runAnthropic(key: string, model: string, system: string): Promise<void> {
@@ -342,24 +369,19 @@ export class StackDriver implements ChatDriver {
     this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
+  // The shared OpenAI-compatible path, driven by an explicit base URL and an
+  // optional key, so it serves both the built-in cloud providers and a
+  // bring-your-own-model endpoint. `label` names the source in error copy.
   private async runOpenAiCompatible(
-    provider: string,
-    key: string,
+    label: string,
+    base: string,
+    key: string | undefined,
     model: string,
     system: string,
   ): Promise<void> {
-    const info = providerInfo(provider);
-    const base = info?.openaiBaseUrl;
-    if (!base) {
-      this.emit({
-        type: 'task-done',
-        reason: 'error',
-        message: `No endpoint configured for ${provider}.`,
-      });
-      return;
-    }
     const messages = [{ role: 'system', content: system }, ...this.history];
-    const authHeaders = { 'content-type': 'application/json', authorization: `Bearer ${key}` };
+    const authHeaders: Record<string, string> = { 'content-type': 'application/json' };
+    if (key) authHeaders.authorization = `Bearer ${key}`;
 
     // On a device or the desktop shell, these providers send no CORS headers, so
     // the request goes through the native shim, which cannot stream. Ask for a
@@ -374,7 +396,7 @@ export class StackDriver implements ChatDriver {
         this.emit({
           type: 'task-done',
           reason: 'error',
-          message: `${provider} answered ${res.status}.`,
+          message: `${label} answered ${res.status}.`,
         });
         return;
       }
@@ -400,7 +422,7 @@ export class StackDriver implements ChatDriver {
       this.emit({
         type: 'task-done',
         reason: 'error',
-        message: `${provider} answered ${res.status}.`,
+        message: `${label} answered ${res.status}.`,
       });
       return;
     }

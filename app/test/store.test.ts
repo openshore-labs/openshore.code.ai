@@ -242,7 +242,10 @@ describe('entitlement gate (billing A1)', () => {
   });
 
   it('an active Personal entitlement unlocks coding + marketplace', async () => {
-    useApp.setState({ userEntitlement: { tierId: 'personal', status: 'active' }, paywall: undefined });
+    useApp.setState({
+      userEntitlement: { tierId: 'personal', status: 'active' },
+      paywall: undefined,
+    });
     expect(useApp.getState().personalUnlockedNow()).toBe(true);
     useApp.setState({ view: 'chat' });
     useApp.getState().setView('marketplace');
@@ -343,5 +346,62 @@ describe('deleteProject unfiling (P2-13)', () => {
     const legacy = useApp.getState().conversations['legacy']!;
     expect(legacy.projectId).toBeDefined();
     expect(useApp.getState().settings.projects ?? []).toHaveLength(1);
+  });
+});
+
+// BYOM: connecting an endpoint stores the key in the secret store (never in
+// settings), lands the connection on the bench, and disconnecting removes the
+// key and pulls it out of the stack, falling the anchor back to the guide.
+describe('bring your own model', () => {
+  beforeEach(resetStore);
+
+  it('connects an endpoint, keeping the key out of settings', async () => {
+    const conn = await useApp.getState().connectByom({
+      label: 'House model',
+      baseUrl: 'https://host/v1',
+      model: 'llama-3.1-70b',
+      apiKey: 'sk-secret',
+    });
+    const models = useApp.getState().settings.byomModels ?? [];
+    expect(models).toHaveLength(1);
+    expect(models[0]!.label).toBe('House model');
+    expect(models[0]!.model).toBe('llama-3.1-70b');
+    // The key lives in the secret store, never in the persisted settings blob.
+    expect(secrets.get(`oscode.secret.byom.${conn.id}`)).toBe('sk-secret');
+    expect(JSON.stringify(models)).not.toContain('sk-secret');
+  });
+
+  it('allows a keyless connection (no secret written)', async () => {
+    const conn = await useApp.getState().connectByom({
+      label: 'Local vLLM',
+      baseUrl: 'http://127.0.0.1:8000/v1',
+      model: 'my-model',
+    });
+    expect(secrets.has(`oscode.secret.byom.${conn.id}`)).toBe(false);
+    expect(useApp.getState().settings.byomModels).toHaveLength(1);
+  });
+
+  it('disconnecting removes the key, the connection, and any stack placement', async () => {
+    const conn = await useApp.getState().connectByom({
+      label: 'Anchor model',
+      baseUrl: 'https://host/v1',
+      model: 'm',
+      apiKey: 'k',
+    });
+    // Make it the Reasoning anchor, then disconnect it.
+    await useApp.getState().setReasoning({
+      kind: 'byom',
+      id: conn.id,
+      label: conn.label,
+      baseUrl: conn.baseUrl,
+      model: conn.model,
+    });
+    expect(useApp.getState().settings.stack?.reasoning?.kind).toBe('byom');
+
+    await useApp.getState().disconnectByom(conn.id);
+    expect(secrets.has(`oscode.secret.byom.${conn.id}`)).toBe(false);
+    expect(useApp.getState().settings.byomModels ?? []).toHaveLength(0);
+    // The anchor is never left dangling: it falls back to the built-in guide.
+    expect(useApp.getState().settings.stack?.reasoning?.kind).toBe('device');
   });
 });

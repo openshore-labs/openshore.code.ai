@@ -36,10 +36,12 @@ export function categoryLabel(id: StackCategory): string {
   return STACK_CATEGORIES.find((c) => c.id === id)?.plain ?? id;
 }
 
-// A model that can sit in the stack: an on-device model or a cloud model.
+// A model that can sit in the stack: an on-device model, a built-in cloud
+// provider's model, or a user-connected "bring your own model" endpoint.
 export type StackModelRef =
   | { kind: 'device'; modelId: string; modelName: string }
-  | { kind: 'cloud'; provider: string; model: string; label: string };
+  | { kind: 'cloud'; provider: string; model: string; label: string }
+  | { kind: 'byom'; id: string; label: string; baseUrl: string; model: string };
 
 export interface Placement {
   category: StackCategory;
@@ -64,7 +66,14 @@ export interface AppStack {
 }
 
 export function refKey(ref: StackModelRef): string {
-  return ref.kind === 'device' ? `device:${ref.modelId}` : `cloud:${ref.provider}:${ref.model}`;
+  switch (ref.kind) {
+    case 'device':
+      return `device:${ref.modelId}`;
+    case 'cloud':
+      return `cloud:${ref.provider}:${ref.model}`;
+    case 'byom':
+      return `byom:${ref.id}`;
+  }
 }
 
 export function refName(ref: StackModelRef): string {

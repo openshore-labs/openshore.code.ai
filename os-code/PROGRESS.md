@@ -340,6 +340,18 @@ Layer status:
       existing model/router layer, not a new build. Below is the optimized Opus
       4.8 build prompt.
 
+      **Partial (2026-08-24): the individual in-stack connector shipped.** The
+      founder's concrete ask (a "+" button top-right of the Stack, point at a
+      model you control, it lands on the Bench and places into the stack) is
+      built: `app/src/lib/byom.ts`, a `byom` `StackModelRef` kind, `connectByom`
+      / `disconnectByom` in the store (key in the device secret store, never in
+      settings), and the StackManager connect/disconnect UI. It reuses the
+      existing OpenAI-compatible adapter (now endpoint-driven, with an optional
+      key so keyless local servers work). STILL OPEN from the prompt below:
+      org-level configuration (set once for a whole team), a pre-flight
+      capability check, and graceful degradation when a connected model lacks a
+      needed capability. Keep this item open until those land.
+
   ```
   ROLE
   You are the lead engineer extending OS Code with an explicit "Bring Your Own
