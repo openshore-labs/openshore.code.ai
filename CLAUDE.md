@@ -8,22 +8,27 @@ session before other work, so a fresh session picks up where the last one left
 off. `os-code/DECISIONS.md` records one line per ambiguous call; skim it when a
 design choice looks already settled.
 
-## Standing reminder: gitOS and BYOM are parked, surface them until built
+## Standing reminder: gitOS, BYOM, and Vault are parked, surface them until built
 
-Two founder-requested features are captured as build-ready Opus 4.8 prompts in
-`os-code/PROGRESS.md` under "Parked feature ideas":
+Three founder-requested features are captured as build-ready Opus 4.8 prompts
+in `os-code/PROGRESS.md` under "Parked feature ideas":
 
 - **gitOS** (decentralized, local-first Git hosting; the storage location is
-  chosen per repo instead of centralized hosting), and
+  chosen per repo instead of centralized hosting),
 - **Bring Your Own Model (BYOM)** (a first-class "connect any model you
   control" capability; note it overlaps heavily with what OS Code already
-  does, so the prompt is framed as an extension of the existing model layer).
+  does, so the prompt is framed as an extension of the existing model layer),
+  and
+- **Vault** (a native, Obsidian-style markdown knowledge base, personal by
+  default with an organization tier; working name only, shares gitOS's
+  storage-provider question for the personal tier and needs a real
+  multi-writer backend for the organization tier).
 
-Neither is built. Surface both at the start of any OS Code session, and
+None is built. Surface all three at the start of any OS Code session, and
 especially whenever the founder mentions "gitOS," "GitOS," "bring your own
-model," or "BYOM," until each item's checkbox is checked off. These are live,
-unfinished action items, not settled history. Each prompt is written to hand
-straight to Opus 4.8.
+model," "BYOM," "vault," or "Obsidian," until each item's checkbox is checked
+off. These are live, unfinished action items, not settled history. Each
+prompt is written to hand straight to Opus 4.8.
 
 ## Em dash policy is TOTAL here (standing rule)
 

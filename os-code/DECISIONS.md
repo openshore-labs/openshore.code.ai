@@ -71,3 +71,11 @@ execution contract. Newest at the bottom.
   new repo-root `CLAUDE.md` that makes every session read PROGRESS.md and
   surface both until each is checked off. BYOM is framed as an extension of the
   existing model/router layer, since OS Code is already bring-your-own-stack.
+- **Vault (Obsidian-style knowledge base) parked as a build prompt too.**
+  Personal-tier vault plus an organization tier, native markdown browsing, and
+  agent read/write access; captured in PROGRESS.md "Parked feature ideas"
+  alongside gitOS and BYOM, same standing-reminder treatment. Flagged as
+  sharing gitOS's storage-provider abstraction for the personal tier, and as
+  needing a real multi-writer backend (not a synced folder) for the
+  organization tier, since consumer cloud drives do not solve concurrent
+  writers. "Vault" is a working name, not settled.
