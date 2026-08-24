@@ -64,3 +64,10 @@ execution contract. Newest at the bottom.
 - **No custom scrollback pager.** Over SSH the terminal's own scrollback pages
   natively and a custom pager fights it; `/find` (transcript search, TUI and
   plain) is the additive capability instead.
+- **gitOS and BYOM parked as build prompts, not code.** Two founder-requested
+  features (gitOS decentralized Git hosting; BYOM connect-any-model) are
+  captured as Opus 4.8 build prompts in PROGRESS.md "Parked feature ideas," not
+  built. The founder's "remind me whenever I work on OS Code" is wired via a
+  new repo-root `CLAUDE.md` that makes every session read PROGRESS.md and
+  surface both until each is checked off. BYOM is framed as an extension of the
+  existing model/router layer, since OS Code is already bring-your-own-stack.
