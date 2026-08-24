@@ -33,3 +33,26 @@ Why it is not narrowed:
 If Apple pushes back, the fallback is to keep the blanket load setting and
 reiterate the above; there is no correct narrower configuration while the
 transport is IP-addressed CGNAT.
+
+## Background model downloads (background URLSession)
+
+Pocket-model weights (Harbor, Harbor Mini, and marketplace models) are large:
+about 380 MB to over 1 GB each. They download on a background `URLSession`
+(`URLSessionConfiguration.background`, identifier
+`ai.openshore.oscode.model-downloads`, in
+`app/plugins/oscode-llama/ios/.../ModelStore.swift`) so the transfer survives
+the user backgrounding or closing the app, and iOS relaunches the app in the
+background to finish it. This is the standard system download mechanism, so:
+
+- No `UIBackgroundModes` entry is required or declared. Background transfers are
+  a first-class URLSession feature and do not need a background-mode
+  capability. The only wiring is the AppDelegate's
+  `handleEventsForBackgroundURLSession`, which hands the completion handler back
+  to the session so the app re-suspends cleanly.
+- Weights come straight from the source over HTTPS (Hugging Face resolve URLs);
+  OpenShore never rehosts them. The files land in Application Support, excluded
+  from iCloud backup, since they are re-downloadable.
+- No silent or speculative downloads: a transfer only ever starts from a user
+  action (choosing a guide or a marketplace model). `isDiscretionary` is false
+  only so the download the user just asked for starts promptly rather than
+  waiting for wifi and a charger.

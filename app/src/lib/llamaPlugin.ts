@@ -15,8 +15,13 @@ export interface LlamaPluginContract {
   isSupported(): Promise<{ supported: boolean; reason?: string }>;
   /** Models already downloaded into the app's storage. */
   listModels(): Promise<{ models: DeviceModelInfo[] }>;
-  /** Download a GGUF straight from its source; progress via 'downloadProgress'. */
+  /** Download a GGUF straight from its source; progress via 'downloadProgress'.
+   *  The transfer runs on a background URLSession, so it keeps going while the
+   *  app is backgrounded or closed and the app is relaunched to finish it. */
   downloadModel(options: { id: string; url: string }): Promise<{ path: string }>;
+  /** Model ids the background session is still transferring right now. Used on
+   *  launch to re-show progress for a download that was mid-flight. */
+  activeDownloads(): Promise<{ ids: string[] }>;
   cancelDownload(options: { id: string }): Promise<void>;
   deleteModel(options: { id: string }): Promise<void>;
   /** Load a downloaded model into memory (frees any previous one). */
@@ -87,6 +92,10 @@ class LlamaWeb {
     const model = { id, fileName: `${id}.gguf`, sizeBytes: total };
     this.models = [...this.models.filter((m) => m.id !== id), model];
     return { path: `demo://${id}.gguf` };
+  }
+
+  async activeDownloads() {
+    return { ids: [] as string[] };
   }
 
   async cancelDownload() {}

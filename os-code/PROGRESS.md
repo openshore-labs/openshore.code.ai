@@ -597,6 +597,29 @@ Layer status:
 
 ## Log
 
+- **2026-08-24: model downloads (and inference) survive backgrounding.** Root
+  cause of "the download failed because I closed the app": `ModelStore` ran the
+  GGUF download on a foreground `URLSession`, which iOS suspends on background
+  and kills on close, and the whole completion contract was a live
+  `CAPPluginCall` that evaporated with the app. Rebuilt it on a background
+  `URLSession` (`URLSessionConfiguration.background`, fixed identifier, a
+  process-wide `ModelStore.shared` singleton): the system daemon keeps
+  transferring while the app is suspended or terminated and relaunches the app
+  to finish. Each task carries its model id in `taskDescription` so it is
+  recovered across a relaunch (`getAllTasks`), with a recovery gate that holds a
+  fresh start until recovery reports what is already in flight, so no duplicate
+  download. AppDelegate now implements
+  `handleEventsForBackgroundURLSession` -> `ModelStore.handleBackgroundSessionEvents`.
+  On launch the JS init calls a new `activeDownloads()` and re-drives
+  `ensureHarbor` / `ensureHarborMini` for anything still transferring, so the
+  progress bar reappears instead of a dead one; a download that finished while
+  away was already caught by the `listModels` reconciliation. Also wrapped
+  on-device `load` and `generate` in finite-length `beginBackgroundTask`
+  assertions so a model load or a mid-stream reply is not cut off the instant
+  the app leaves the foreground. No `UIBackgroundModes` entry needed;
+  `docs/app-review-notes.md` documents the justification. Gates green (app: 20
+  files / 116 tests, typecheck, lint, em-dash guard incl. `.swift`). Swift is
+  built on Codemagic, not verifiable in this sandbox.
 - **2026-08-21: individual Personal + free/paid gating + iOS IAP (4 phases).**
   Free is now chat only; the coding agent and Marketplace need Personal ($20/yr),
   bought via Apple IAP on iOS and Stripe on web/desktop, both writing one

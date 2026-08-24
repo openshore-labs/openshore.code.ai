@@ -1,10 +1,25 @@
 import UIKit
 import Capacitor
+import OscodeLlama
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+
+    // iOS calls this when it has relaunched the app in the background to finish
+    // model downloads that kept running on the background URLSession while the
+    // app was suspended or closed. Hand the completion handler to the store,
+    // which owns that session; it calls the handler once every delegate event
+    // has been delivered so the system can re-suspend the app cleanly.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        ModelStore.handleBackgroundSessionEvents(
+            identifier: identifier, completionHandler: completionHandler)
+    }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.

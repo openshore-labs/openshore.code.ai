@@ -1,5 +1,43 @@
 import Foundation
 import Capacitor
+import UIKit
+
+/// A finite-length background task assertion. On-device inference (loading
+/// multi-GB weights, streaming a reply) is not a URLSession, so the system does
+/// not keep it alive on its own the way it does a background download. Holding
+/// this assertion asks iOS not to suspend the app while that work is in flight,
+/// so a load or a reply that is mid-stream when the user glances away keeps
+/// going through the OS grace period instead of being cut off instantly.
+final class BackgroundActivity {
+    private var taskId: UIBackgroundTaskIdentifier = .invalid
+    private let name: String
+    private let lock = NSLock()
+
+    init(_ name: String) { self.name = name }
+
+    func begin() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            guard self.taskId == .invalid else { return }
+            self.taskId = UIApplication.shared.beginBackgroundTask(withName: self.name) { [weak self] in
+                self?.end()
+            }
+        }
+    }
+
+    func end() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            guard self.taskId != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(self.taskId)
+            self.taskId = .invalid
+        }
+    }
+}
 
 /// The Capacitor bridge for on-device inference. The JS contract lives in
 /// app/src/lib/llamaPlugin.ts; keep the two in lockstep. Events:
@@ -12,6 +50,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "isSupported", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listModels", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "downloadModel", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "activeDownloads", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelDownload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteModel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "load", returnType: CAPPluginReturnPromise),
@@ -23,7 +62,9 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "secureDelete", returnType: CAPPluginReturnPromise)
     ]
 
-    private let store = ModelStore()
+    // The one process-wide store, so its background download session is shared
+    // with the copy the AppDelegate reconnects on a background relaunch.
+    private let store = ModelStore.shared
     private let runner = LlamaRunner()
     private var pendingDownloads = [String: CAPPluginCall]()
     private let downloadsLock = NSLock()
@@ -100,6 +141,10 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         store.download(id: id, from: url)
     }
 
+    @objc func activeDownloads(_ call: CAPPluginCall) {
+        call.resolve(["ids": store.activeIds()])
+    }
+
     @objc func cancelDownload(_ call: CAPPluginCall) {
         guard let id = call.getString("id") else {
             call.reject("cancelDownload needs an id.")
@@ -136,12 +181,17 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["ok": false, "detail": "That model is not on this iPhone yet. Download it first."])
             return
         }
-        // Loading multi-GB weights blocks; keep it off the plugin queue.
+        // Loading multi-GB weights blocks; keep it off the plugin queue. Hold a
+        // background assertion so a load in progress is not suspended the moment
+        // the app leaves the foreground.
+        let activity = BackgroundActivity("oscode.load")
+        activity.begin()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
+            guard let self else { activity.end(); return }
             let result = self.runner.load(id: id, path: path, contextSize: contextSize)
             var payload: [String: Any] = ["ok": result.ok]
             if let detail = result.detail { payload["detail"] = detail }
+            activity.end()
             call.resolve(payload)
         }
     }
@@ -166,6 +216,10 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return (role: role, content: content)
         }
 
+        // Keep a reply that is mid-stream alive through the OS grace period if
+        // the user backgrounds the app while it is still writing.
+        let activity = BackgroundActivity("oscode.generate")
+        activity.begin()
         let started = runner.generate(
             requestId: requestId,
             system: system,
@@ -177,6 +231,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
                 ])
             },
             onDone: { [weak self] stopReason, detail in
+                activity.end()
                 var payload: [String: Any] = [
                     "requestId": requestId,
                     "stopReason": stopReason
@@ -185,6 +240,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
                 self?.notifyListeners("generationDone", data: payload)
             }
         )
+        if !started { activity.end() }
         call.resolve(["started": started])
     }
 
