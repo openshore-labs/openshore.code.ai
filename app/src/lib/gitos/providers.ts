@@ -92,10 +92,12 @@ export const PROVIDER_ROSTER: Array<{
   },
   {
     id: 'icloud',
+    // Wired (oscode-icloud plugin); readiness is decided at runtime by the
+    // device, so ready stays false here and probeReady('icloud') is the truth.
     label: 'iCloud Drive',
-    blurb: 'Your iCloud, synced by iOS itself.',
+    blurb: 'Your iCloud, synced by iOS across your devices.',
     ready: false,
-    pending: 'Arriving. Needs the Files integration.',
+    pending: 'Sign in to iCloud on this iPhone to use it.',
   },
   {
     id: 'dropbox',

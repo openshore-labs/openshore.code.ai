@@ -1,0 +1,18 @@
+{
+  "name": "oscode-icloud",
+  "version": "0.1.0",
+  "description": "iCloud Drive storage for OpenShore Vault: read and write the app's ubiquity container, coordinated, so the same folder opens in Obsidian and syncs across the user's devices.",
+  "license": "MIT",
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

@@ -104,5 +104,23 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!--
+	  Name the app's iCloud Drive container and make its Documents folder public
+	  in the Files app, so a Vault stored on iCloud shows up as "OpenShore" under
+	  iCloud Drive and Obsidian mobile can open it. Pairs with the iCloud
+	  entitlement in App.entitlements.
+	-->
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.ai.openshore.oscode</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>OpenShore</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

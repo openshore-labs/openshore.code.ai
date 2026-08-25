@@ -100,6 +100,24 @@ execution contract. Newest at the bottom.
   Built same day: the gitOS seam (app/src/lib/gitos/) and the personal
   Vault on it, with export-to-real-files as the true-compat escape hatch
   the CTO required.
+- **iCloud is the first cloud storage provider wired (2026-08-25), founder
+  order iCloud then Google then Dropbox.** iCloud needs no external OAuth
+  (unlike Google/Dropbox), so it went first: a native Capacitor plugin
+  (app/plugins/oscode-icloud) reads and writes the app's iCloud Drive
+  ubiquity container under NSFileCoordinator, the entitlement and
+  NSUbiquitousContainers config make the container's Documents public in
+  Files as "OpenShore", and the JS provider (app/src/lib/gitos/icloud.ts)
+  satisfies the same seam as Local with the lease kept as a container file.
+  Readiness is a RUNTIME probe (Icloud.available()), never a hardcoded flag:
+  a signed-out phone or an unprovisioned build shows iCloud as not usable and
+  it stays unselectable, so the seam never lies. The vault can move Local to
+  iCloud from the storage sheet (vaultMoveTo copies every note, then
+  repoints, leaving source bytes as a safety copy). FOUNDER PREREQUISITE:
+  enable the iCloud capability with the iCloud.ai.openshore.oscode container
+  on the ai.openshore.oscode App ID before the next distribution build, or
+  signing fails (same class of step as Push). Google and Dropbox are next,
+  and are pure-JS REST plus OAuth (no native plugin), Google restricted to
+  the drive.file scope per the CFO to avoid the CASA assessment.
 - **Off-device is where long work runs (standing principle, founder call
   2026-08-25).** Any feature that kicks off long or agentic work runs that work
   off the phone (on the user's daemon, or a cloud runner), as a durable,
