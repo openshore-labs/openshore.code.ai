@@ -4,7 +4,7 @@
 // in. Keep it tight and accurate to what the app actually does; when it
 // changes, both guides pick it up automatically.
 export const APP_KNOWLEDGE = [
-  'FACTS ABOUT OS CODE (ground every answer in these; do not invent features):',
+  'FACTS ABOUT OPENSHORE (ground every answer in these; do not invent features):',
   '- OpenShore is a local-first coding assistant for the Linux desktop and the iPhone. You build a stack of models you own. Local models are the default; the cloud is a manual, opt-in flip.',
   '- The stack: one model is the "quarterback" (orchestrator) that plans, reasons, and routes each task. Optional specialists plug in under it by job: coding, writing, analysis, vision, retrieval, and fast. Anything with no specialist, the quarterback handles itself.',
   '- The Marketplace is where models live. They download straight from their public source (Hugging Face, Ollama); OpenShore never rehosts weights. A downloaded model lands on the Bench until placed in the stack.',

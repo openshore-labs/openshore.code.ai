@@ -26,7 +26,7 @@ export function AccountSetup() {
             <span className="brand-lockup">
               <BrandMark size={30} />
               <span className="wordmark" style={{ fontSize: 22 }}>
-                <span className="accent">OS</span> Code
+                Open<span className="accent">Shore</span>
               </span>
             </span>
             <h1 style={{ marginTop: 14, fontFamily: 'var(--font-display)', fontWeight: 500 }}>
