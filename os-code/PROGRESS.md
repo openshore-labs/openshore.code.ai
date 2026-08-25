@@ -51,6 +51,17 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Native iOS voice dictation (BLOCKED on two founder calls).** Mic works
+      via Web Speech on desktop/web; iOS WKWebView needs a native
+      SFSpeechRecognizer Capacitor plugin. CTO: build it only AFTER a confirmed
+      clean TestFlight, and get the founder's on-device-vs-server data-egress
+      posture first. Must-fixes in the 2026-08-25 log entry.
+- [ ] **Ratify fresh-chat-on-model-switch** as intended behavior (built).
+      Optional later, low risk: "continue this thread with [new model]" = fork a
+      new chat seeded with the current transcript, no live driver handoff.
+- [ ] **Vision beyond Claude:** extend `sourceSupportsVision` when a direct
+      BYOM/OpenAI/Gemini vision chat, a vision pocket model, or image blocks over
+      the desktop-daemon SSE protocol land (daemon is text-only for now).
 - [ ] **[TOP] Individual Personal tier + free/paid gating + iOS IAP -- BUILT
       (2026-08-21), pending founder config + sandbox validation before deploy.**
       Model: FREE = chat only (Harbor/Ollama + stack chat); PERSONAL = $20/yr
@@ -632,6 +643,40 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-25: vision routing (CTO-ruled), plus the two composer forks the CTO
+  parked.** Built on the composer rework above after a CTO review of the three
+  deferred forks. **Fork 2 (GO, shipped):** images now route only to a brain
+  that can see them. New `sourceSupportsVision(source)` in `state/types.ts`
+  (default false everywhere, true only for a direct Claude chat today; the one
+  place to extend for BYOM/Gemini vision or the desktop daemon later). The
+  composer + button is gated: on a text-only model it shows "This model reads
+  text only. Switch to Claude to send images." instead of stranding the file,
+  and a send-time guard strips images if the model changed. No more silent drop
+  (the trust hole the CTO flagged). Tests: effort, attachments, and vision
+  resolvers added (app suite now 138). **Fork 3 (CTO NO-GO on hot-swap):** kept
+  fresh-chat-on-switch (each conversation is bound to one driver; real
+  mid-thread driver hot-swap is large blast radius, low value: streaming
+  aborts, approval/tool state re-homing, N-by-N history reshaping). NEEDS
+  FOUNDER RATIFY that fresh-chat is the intended behavior to keep. A bounded
+  later enhancement is captured in the action list: "continue this thread with
+  [new model]" = fork a new chat seeded with the transcript, no live handoff.
+  **Fork 1 (native iOS voice) BLOCKED, by CTO recommendation + a founder
+  decision:** the mic works via Web Speech on desktop/web but the iOS WKWebView
+  needs a native SFSpeechRecognizer Capacitor plugin. The CTO says sequence it
+  AFTER a confirmed clean TestFlight build (so any red is unambiguously the new
+  plugin, not a latent archive issue we just spent four fixes on), and it needs
+  the founder's call on the on-device-vs-server speech data-egress posture
+  (on-device preferred for an on-device-first tool; server recognition is
+  allowed but must be disclosed). Must-fixes captured for when it proceeds:
+  both `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`
+  (real sentences, no em dash); request both SFSpeech and AVAudioSession
+  permissions with every denial branch handled; `requiresOnDeviceRecognition`
+  where supported; deactivate the audio session with
+  `notifyOthersOnDeactivation` on stop; verify `cap sync` lands the plugin in
+  CapApp-SPM and the App target links the product with the correct
+  product-vs-module import name (the exact trap from last time). Green through
+  Fork 2: app typecheck, lint, 138 tests, vite build.
 
 - **2026-08-25: opening chat reworked to the Claude shape, and a five-control
   composer.** Empty state now mirrors the Claude app: just the wave-mark and a

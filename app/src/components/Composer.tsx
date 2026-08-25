@@ -14,6 +14,7 @@ import { useDictation } from '../hooks/useDictation.js';
 export function Composer({
   busy,
   source,
+  visionSupported,
   placeholder,
   onSend,
   onStop,
@@ -21,6 +22,9 @@ export function Composer({
 }: {
   busy: boolean;
   source?: ConversationSource;
+  /** Whether the current brain can read attached images. Gates the + button so
+   *  an image is never stranded on a text-only model. */
+  visionSupported: boolean;
   placeholder?: string;
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
@@ -43,11 +47,26 @@ export function Composer({
 
   const submit = () => {
     const text = value.trim();
-    if ((!text && attachments.length === 0) || busy) return;
-    onSend(text, attachments);
+    // Send-time guard (belt and suspenders to the + gate): never forward images
+    // to a brain that cannot see them. The model can change between attach and
+    // send, so re-check here.
+    const outgoing = visionSupported ? attachments : attachments.filter((a) => !a.isImage);
+    if (!visionSupported && outgoing.length < attachments.length) {
+      showToast('This model reads text only. Switch to Claude to send images.');
+    }
+    if ((!text && outgoing.length === 0) || busy) return;
+    onSend(text, outgoing);
     setValue('');
     setAttachments([]);
     if (areaRef.current) areaRef.current.style.height = 'auto';
+  };
+
+  const addTap = () => {
+    if (!visionSupported) {
+      showToast('This model reads text only. Switch to Claude to send images.');
+      return;
+    }
+    fileRef.current?.click();
   };
 
   const onFiles = async (files: FileList | null) => {
@@ -122,15 +141,15 @@ export function Composer({
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,.pdf,.txt,.md,.json,.csv"
+            accept="image/*"
             multiple
             hidden
             onChange={(e) => void onFiles(e.target.files)}
           />
           <button
-            className="composer-add press-fb"
-            onClick={() => fileRef.current?.click()}
-            aria-label="Add photo or file"
+            className={`composer-add press-fb${visionSupported ? '' : ' muted'}`}
+            onClick={addTap}
+            aria-label="Add image"
           >
             {'+'}
           </button>
