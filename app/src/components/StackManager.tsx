@@ -234,7 +234,7 @@ export function StackManager() {
 
         {!admin ? (
           <p className="hint" style={{ marginTop: 12 }}>
-            The bench and stack controls are managed by your admin. Everything else in OS Code, your
+            The bench and stack controls are managed by your admin. Everything else in OpenShore, your
             chats, projects, and crew, is yours to set up as you like.
           </p>
         ) : (
@@ -418,7 +418,7 @@ export function StackManager() {
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h2>Bring your own model</h2>
             <p className="sheet-sub">
-              Point OS Code at any OpenAI-compatible endpoint you control: a self-hosted server, a
+              Point OpenShore at any OpenAI-compatible endpoint you control: a self-hosted server, a
               fine-tune behind your own gateway, or another provider. It lands on your bench, ready
               to place.
             </p>
@@ -444,7 +444,7 @@ export function StackManager() {
                 onChange={(e) => setByomForm({ ...byomForm, baseUrl: e.target.value })}
               />
               <div className="hint" style={{ marginTop: 4 }}>
-                The base URL, ending in /v1. OS Code calls /chat/completions on it.
+                The base URL, ending in /v1. OpenShore calls /chat/completions on it.
               </div>
             </div>
             <div className="field">

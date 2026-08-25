@@ -110,7 +110,7 @@ export function ConnectionsScreen() {
           >
             your stack
           </button>{' '}
-          to make it your Reasoning LLM or a specialist. OS Code defers to cheaper models for the
+          to make it your Reasoning LLM or a specialist. OpenShore defers to cheaper models for the
           right tasks, so you keep control of cost.
         </p>
       </div>

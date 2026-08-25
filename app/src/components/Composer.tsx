@@ -45,7 +45,7 @@ export function Composer({
           ref={areaRef}
           rows={1}
           value={value}
-          placeholder={placeholder ?? 'Message OS Code'}
+          placeholder={placeholder ?? 'Message OpenShore'}
           onChange={(e) => {
             setValue(e.target.value);
             e.target.style.height = 'auto';

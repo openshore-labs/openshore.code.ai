@@ -1,6 +1,6 @@
 # Model licenses
 
-OS Code does not ship model weights inside the app. Every model, including
+OpenShore does not ship model weights inside the app. Every model, including
 Harbor (the built-in guide), is downloaded by the user straight from its own
 public source. OpenShore never rehosts weights.
 
