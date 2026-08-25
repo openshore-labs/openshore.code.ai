@@ -267,6 +267,9 @@ function vaultProviderId(settings: AppSettings): StorageProviderId {
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
 const unsubscribers = new Map<string, () => void>();
+// Guards against two interleaved outbox syncs (a double "Sync now" tap): the
+// second returns immediately rather than racing the first's snapshot save.
+let outboxSyncing = false;
 
 export function driverFor(conversationId: string): ChatDriver | undefined {
   return drivers.get(conversationId);
@@ -2136,6 +2139,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async syncOutbox() {
+      if (outboxSyncing) return;
       const s = get().settings;
       const daemon = s.daemon;
       const home = s.repo?.homeRepo;
@@ -2150,71 +2154,83 @@ export const useApp = create<AppState>((set, get) => {
       }
       const pending = pendingForRepo(outbox, home.id);
       if (!pending.length) return;
-      const deviceId = s.deviceId ?? 'dev_unknown';
-      let items = [...outbox];
-      const patch = (id: string, next: (typeof outbox)[number]) => {
-        items = items.map((i) => (i.id === id ? next : i));
-      };
+      outboxSyncing = true;
+      try {
+        const deviceId = s.deviceId ?? 'dev_unknown';
+        let items = [...outbox];
+        const patch = (id: string, next: (typeof outbox)[number]) => {
+          items = items.map((i) => (i.id === id ? next : i));
+        };
 
-      for (const item of pending) {
-        let current = item;
-        try {
-          const res = await daemonApplyOutbox(daemon, {
-            cwd: home.homePath,
-            clientOpId: item.clientOpId,
-            itemId: item.id,
-            deviceId,
-            branch: item.branch,
-            message: item.message,
-            baseCommit: item.baseCommit,
-            files: item.files.map((f) => ({
-              path: f.path,
-              mode: f.mode,
-              contentBase64: f.contentBase64,
-            })),
-          });
-          current = applyResult(item, res);
-        } catch (err) {
-          current = {
-            ...item,
-            state: 'failed',
-            attempts: item.attempts + 1,
-            lastError: err instanceof Error ? err.message : String(err),
-          };
-        }
-        patch(current.id, current);
-
-        // Independent confirmation before an item is ever considered done. A 200
-        // is not confirmation; the ref re-read is.
-        if (current.state === 'offloading' && current.resultCommit) {
+        for (const item of pending) {
+          let current = item;
           try {
-            const v = await daemonVerifyCommit(
-              daemon,
-              home.homePath,
-              current.resultCommit,
-              current.branch,
-            );
-            current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
-            patch(current.id, current);
-          } catch {
-            // The verify call itself failed (transient, or path not yet
-            // allowed): leave the item offloading so it retries on the next
-            // sync, rather than falsely marking a landed commit failed.
+            const res = await daemonApplyOutbox(daemon, {
+              cwd: home.homePath,
+              clientOpId: item.clientOpId,
+              itemId: item.id,
+              deviceId,
+              branch: item.branch,
+              message: item.message,
+              baseCommit: item.baseCommit,
+              files: item.files.map((f) => ({
+                path: f.path,
+                mode: f.mode,
+                contentBase64: f.contentBase64,
+              })),
+            });
+            current = applyResult(item, res);
+          } catch (err) {
+            current = {
+              ...item,
+              state: 'failed',
+              attempts: item.attempts + 1,
+              lastError: err instanceof Error ? err.message : String(err),
+            };
           }
+          patch(current.id, current);
+
+          // Independent confirmation before an item is ever considered done. A 200
+          // is not confirmation; the ref re-read is.
+          if (current.state === 'offloading' && current.resultCommit) {
+            try {
+              const v = await daemonVerifyCommit(
+                daemon,
+                home.homePath,
+                current.resultCommit,
+                current.branch,
+              );
+              current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
+              patch(current.id, current);
+            } catch {
+              // The verify call itself failed (transient, or path not yet
+              // allowed): leave the item offloading so it retries on the next
+              // sync, rather than falsely marking a landed commit failed.
+            }
+          }
+
+          // A conflict or failure halts this repo's batch: later items were
+          // composed assuming the earlier ones landed.
+          if (stopsBatch(current)) break;
         }
 
-        // A conflict or failure halts this repo's batch: later items were
-        // composed assuming the earlier ones landed.
-        if (stopsBatch(current)) break;
+        // Re-read the live outbox at save time and merge our results into it,
+        // rather than writing back the pre-sync snapshot. An item buffered while
+        // this sync ran (bufferCommitIntent appends to settings) must survive
+        // (DL-5). Apply our processed version where we have one, keep any newer
+        // item untouched, and clear only confirmed items.
+        const liveRepo = get().settings.repo;
+        const live = liveRepo?.outbox ?? [];
+        const processed = new Map(items.map((i) => [i.id, i]));
+        const merged = live
+          .map((i) => processed.get(i.id) ?? i)
+          .filter((i) => i.state !== 'confirmed');
+        const cleared = live.length - merged.length;
+        await get().saveSettings({ repo: { ...(liveRepo ?? { outbox: [] }), outbox: merged } });
+        logEvent('outbox_sync', { pending: pending.length, cleared });
+      } finally {
+        outboxSyncing = false;
       }
-
-      // Confirmed items are already in the home repo, so clearing their buffered
-      // copy loses nothing. Everything not confirmed (pending, conflict, failed)
-      // stays, so no unsynced work is ever deleted.
-      const kept = items.filter((i) => i.state !== 'confirmed');
-      const cleared = items.length - kept.length;
-      await get().saveSettings({ repo: { ...s.repo!, outbox: kept } });
-      logEvent('outbox_sync', { pending: pending.length, cleared });
     },
 
     async bufferCommitIntent(input) {
@@ -2249,7 +2265,10 @@ export const useApp = create<AppState>((set, get) => {
         return undefined;
       }
       const item: OutboxItem = {
-        id: `o${Date.now().toString(36).padStart(9, '0')}${(convSeq++).toString(36)}`,
+        // Fixed-width time and sequence so the id sorts in creation order
+        // lexicographically (the pendingForRepo ULID-order assumption): an
+        // unpadded seq would put 'z' after '10' within the same millisecond.
+        id: `o${Date.now().toString(36).padStart(9, '0')}${(convSeq++).toString(36).padStart(4, '0')}`,
         clientOpId: outboxOpId(),
         repoId: input.repoId,
         branch: input.branch,
@@ -2674,7 +2693,23 @@ export const useApp = create<AppState>((set, get) => {
         if (note) notes.push({ path: note.path, text: note.text });
       }
       for (const note of notes) {
-        await target.write(VAULT_RESOURCE_ID, note.path, note.text);
+        // Do not blindly overwrite a note already at the target path: another
+        // device may have written a newer version there. When the target's copy
+        // is newer, land the source copy under a conflict name instead, so the
+        // move cannot regress newer work (COR-9).
+        const targetMeta = await target.stat(VAULT_RESOURCE_ID, note.path).catch(() => undefined);
+        const sourceMeta = files.find((f) => f.path === note.path);
+        const targetIsNewer =
+          targetMeta && sourceMeta ? targetMeta.updatedAt > sourceMeta.updatedAt : false;
+        if (targetIsNewer) {
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const dot = note.path.lastIndexOf('.');
+          const base = dot === -1 ? note.path : note.path.slice(0, dot);
+          const ext = dot === -1 ? '' : note.path.slice(dot);
+          await target.write(VAULT_RESOURCE_ID, `${base} (from ${from} ${stamp})${ext}`, note.text);
+        } else {
+          await target.write(VAULT_RESOURCE_ID, note.path, note.text);
+        }
       }
       const resources = (get().settings.gitosResources ?? []).map((r) =>
         r.id === VAULT_RESOURCE_ID ? { ...r, providerId } : r,
