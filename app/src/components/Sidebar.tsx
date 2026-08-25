@@ -189,7 +189,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
         <span className="brand-lockup">
           <BrandMark size={26} />
           <span className="wordmark">
-            <span className="accent">OS</span> Code
+            Open<span className="accent">Shore</span>
           </span>
         </span>
       </div>

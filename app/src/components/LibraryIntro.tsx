@@ -125,7 +125,7 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
         <span className="brand-lockup">
           <BrandMark size={24} />
           <span className="wordmark" style={{ fontSize: 16 }}>
-            <span className="accent">OS</span> Code
+            Open<span className="accent">Shore</span>
           </span>
         </span>
         {!isLast ? (
