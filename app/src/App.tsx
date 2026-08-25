@@ -8,6 +8,7 @@ import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
 import { ChatScreen } from './screens/ChatScreen.js';
+import { ChatsScreen } from './screens/ChatsScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
 import { StackScreen } from './screens/StackScreen.js';
 import { StackHealthScreen } from './screens/StackHealthScreen.js';
@@ -129,6 +130,8 @@ export function App() {
       <PairScreen />
     ) : view === 'settings' ? (
       <SettingsScreen />
+    ) : view === 'chats' ? (
+      <ChatsScreen />
     ) : (
       <ChatScreen compact={compact} />
     );

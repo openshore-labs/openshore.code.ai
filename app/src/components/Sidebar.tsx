@@ -1,8 +1,7 @@
 // The sidebar: the project bucket at the top-left, a new chat inside it, a
-// throwaway quick chat, the recent conversations in the active project, and the
-// app's few rooms. Persistent on desktop, a slide-over drawer on the phone.
+// throwaway quick chat, and the app's few rooms (chat history lives in the
+// Chats room). Persistent on desktop, a slide-over drawer on the phone.
 import { useRef, useState } from 'react';
-import { sourceLabel } from '../state/types.js';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { useDismissable } from '../lib/useDismissable.js';
@@ -17,6 +16,7 @@ import { BrandMark } from './BrandMark.js';
 type NavIconName = Exclude<ViewName, 'chat' | 'onboarding'>;
 
 const NAV: Array<{ view: NavIconName; label: string }> = [
+  { view: 'chats', label: 'Chats' },
   { view: 'projects', label: 'Projects' },
   { view: 'crew', label: 'My Crew' },
   { view: 'marketplace', label: 'Marketplace' },
@@ -36,6 +36,13 @@ const NAV: Array<{ view: NavIconName; label: string }> = [
 // Each depicts its room in a calm monochrome studio style. Decorative only; the
 // text label beside each carries the name for assistive tech.
 const ICON_NODES: Record<NavIconName, JSX.Element> = {
+  // Two overlapping speech bubbles: the chat history, the way Claude marks it.
+  chats: (
+    <>
+      <path d="M4 15.5V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7.5L4 15.5Z" />
+      <path d="M9 16.2a2 2 0 0 0 2 2h5.5L20 21.7V13" />
+    </>
+  ),
   // Stacked project layers (buckets seen edge-on).
   projects: (
     <>
@@ -158,12 +165,8 @@ function NavIcon({ name }: { name: NavIconName }) {
 
 export function Sidebar({ drawer }: { drawer?: boolean }) {
   const {
-    order,
-    conversations,
-    activeId,
     view,
     setView,
-    openConversation,
     setDrawer,
     settings,
     setActiveProject,
@@ -182,16 +185,6 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
 
   const projects = settings.projects ?? [];
   const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
-
-  // What shows in the list: saved chats in the active project. A live quick
-  // chat is transient, so it appears only while it is the one open.
-  const shown = order.filter((id) => {
-    const conv = conversations[id];
-    if (!conv) return false;
-    if (conv.ephemeral) return id === activeId;
-    if (activeProject) return conv.projectId === activeProject.id;
-    return !conv.projectId;
-  });
 
   const body = (
     <aside className={`sidebar${drawer ? ' drawer' : ''}`}>
@@ -272,32 +265,9 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
         Quick chat <span className="quick-chat-note">not saved</span>
       </button>
 
-      <div className="conv-list">
-        {shown.length === 0 ? (
-          <p className="conv-empty">
-            {activeProject
-              ? 'No chats here yet. Start one and it stays with this project.'
-              : 'Create a project to start saving your chats.'}
-          </p>
-        ) : (
-          shown.map((id) => {
-            const conv = conversations[id]!;
-            return (
-              <button
-                key={id}
-                className={`conv-item press-fb press-fb--row${id === activeId && view === 'chat' ? ' active' : ''}`}
-                onClick={() => openConversation(id)}
-              >
-                {conv.ephemeral ? <span className="ephemeral-dot" aria-hidden="true" /> : null}
-                {conv.title}
-                <span className="conv-source">
-                  {conv.ephemeral ? 'Quick chat · not saved' : sourceLabel(conv.source)}
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
+      {/* The conversation history lives in the Chats room now, reached from the
+          nav below, rather than stacked down the side of every screen. */}
+      <div className="sidebar-spacer" />
 
       {authConfigured && !signedIn ? (
         <button
