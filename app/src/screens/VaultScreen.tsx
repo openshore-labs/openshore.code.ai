@@ -42,6 +42,9 @@ export function VaultScreen() {
     vaultReadAll,
     vaultMoveTo,
     vaultError,
+    vaultAcquireLease,
+    vaultReleaseLease,
+    vaultLeaseHeldByOther,
     connectGdriveAccount,
     disconnectGdriveAccount,
     settings,
@@ -49,6 +52,8 @@ export function VaultScreen() {
   } = useApp();
 
   const team = vaultScope === 'team';
+  // Another device holds the vault's write lease: show the note read-only.
+  const readOnly = Boolean(vaultLeaseHeldByOther);
   const teamAvailable = teamVaultAvailable();
 
   const [folder, setFolder] = useState('');
@@ -58,6 +63,7 @@ export function VaultScreen() {
   const [newName, setNewName] = useState('');
   const [storageOpen, setStorageOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
   const [ready, setReady] = useState<Partial<Record<StorageProviderId, boolean>>>({});
   const [moving, setMoving] = useState(false);
@@ -108,6 +114,19 @@ export function VaultScreen() {
     void vaultRefresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Hold the single-writer lease while the vault is open, renewed on a
+  // heartbeat (TTL is 90s, renew at 40s), and released on the way out. If
+  // another device holds it live, the screen goes read-only.
+  useEffect(() => {
+    void vaultAcquireLease();
+    const beat = setInterval(() => void vaultAcquireLease(), 40_000);
+    return () => {
+      clearInterval(beat);
+      void vaultReleaseLease();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultScope]);
 
   const paths = useMemo(() => vaultFiles.map((f) => f.path), [vaultFiles]);
 
@@ -165,9 +184,12 @@ export function VaultScreen() {
     pendingSave.current = null;
   }, []);
   // Flush on background (iOS may suspend or jetsam the app) and on unmount.
+  // On return to foreground, refresh so edits synced from another device (or
+  // the desktop agent) show up without a manual reopen.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flushSave();
+      else void vaultRefresh();
     };
     document.addEventListener('visibilitychange', onVisibility);
     let remove: (() => void) | undefined;
@@ -188,7 +210,7 @@ export function VaultScreen() {
       remove?.();
       flushSave();
     };
-  }, [flushSave]);
+  }, [flushSave, vaultRefresh]);
 
   const openNote = (path: string) => {
     // Persist any in-flight edit to the current note before switching away.
@@ -274,7 +296,8 @@ export function VaultScreen() {
               className="icon-btn"
               aria-label={editing ? 'Read' : 'Edit'}
               aria-pressed={editing}
-              onClick={() => setEditing((e) => !e)}
+              disabled={readOnly}
+              onClick={() => !readOnly && setEditing((e) => !e)}
             >
               {editing ? (
                 <svg
@@ -317,7 +340,14 @@ export function VaultScreen() {
             {(parent || 'Vault') + ' · ' + words + (words === 1 ? ' word' : ' words')}
           </p>
 
-          {editing ? (
+          {readOnly ? (
+            <p className="hint" style={{ marginTop: 8, color: 'var(--warn)' }}>
+              This vault is open on another device. Read-only here until it closes there, so your
+              edits do not collide.
+            </p>
+          ) : null}
+
+          {editing && !readOnly ? (
             <div className="vault-editor-wrap">
               <textarea
                 ref={editorRef}
@@ -401,25 +431,44 @@ export function VaultScreen() {
         </div>
 
         {menuOpen ? (
-          <div className="sheet-scrim" onClick={() => setMenuOpen(false)}>
+          <div
+            className="sheet-scrim"
+            onClick={() => {
+              setMenuOpen(false);
+              setConfirmDelete(false);
+            }}
+          >
             <div className="sheet" onClick={(e) => e.stopPropagation()}>
               <h2>Options</h2>
               <div className="sheet-actions">
                 <button
-                  className="btn quiet"
+                  className={`btn quiet press-fb${confirmDelete ? ' danger' : ''}`}
                   onClick={() => {
+                    // Two taps to delete: a single tap is too easy to hit by
+                    // accident, and a local or iCloud delete is unrecoverable.
+                    if (!confirmDelete) {
+                      setConfirmDelete(true);
+                      return;
+                    }
                     const path = vaultNote.path;
                     // Drop any pending debounced save first, or its stale timer
                     // would recreate the note we are deleting.
                     cancelSave();
                     setMenuOpen(false);
+                    setConfirmDelete(false);
                     void vaultDelete(path);
                     showToast('Note deleted.');
                   }}
                 >
-                  Delete this note
+                  {confirmDelete ? 'Really delete? Tap to confirm.' : 'Delete this note'}
                 </button>
-                <button className="btn quiet" onClick={() => setMenuOpen(false)}>
+                <button
+                  className="btn quiet press-fb"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setConfirmDelete(false);
+                  }}
+                >
                   Cancel
                 </button>
               </div>

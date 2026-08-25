@@ -67,10 +67,15 @@ export function noteFolder(path: string): string {
  *  out of the vault root and clobber a sibling resource (SEC: path jail). */
 export function normalizeNotePath(raw: string): string | undefined {
   const cleaned = raw
+    // Normalize to NFC so a name typed on one device matches the same name an
+    // NFD filesystem (iCloud/APFS) stored, instead of forking into two notes.
+    .normalize('NFC')
     .trim()
     .replace(/\\/g, '/')
     .split('/')
-    .map((s) => s.trim())
+    // Strip characters forbidden on common filesystems and Obsidian's own link
+    // syntax (a note containing these could never be wikilinked anyway).
+    .map((s) => s.trim().replace(/[<>:"|?*#^[\]]/g, ''))
     .filter((s) => s && s !== '.' && s !== '..')
     .join('/');
   if (!cleaned) return undefined;
@@ -102,21 +107,25 @@ export function backlinksTo(
   path: string,
   notes: Array<{ path: string; text: string }>,
 ): Array<{ path: string; excerpt: string }> {
-  const title = noteTitle(path).toLowerCase();
-  const full = path.replace(/\.md$/i, '').toLowerCase();
+  const paths = notes.map((n) => n.path);
   const out: Array<{ path: string; excerpt: string }> = [];
   for (const note of notes) {
     if (note.path === path) continue;
-    const links = parseWikilinks(note.text);
-    const hit = links.find((l) => {
-      const t = l.target.replace(/\.md$/i, '').toLowerCase();
-      return t === full || t === title || t.split('/').pop() === title;
-    });
-    if (!hit) continue;
-    const idx = note.text.toLowerCase().indexOf('[[');
-    const start = Math.max(0, idx - 40);
+    // Find the wikilink that actually resolves to this note (resolved against
+    // the real path list, so [[x/B]] is credited to x/B.md, not to root B.md),
+    // and excerpt around THAT link, not merely the note's first "[[".
+    let hitIndex = -1;
+    for (const m of note.text.matchAll(WIKILINK)) {
+      const resolved = resolveWikilink(m[1]!.trim(), paths);
+      if (resolved === path) {
+        hitIndex = m.index ?? -1;
+        break;
+      }
+    }
+    if (hitIndex === -1) continue;
+    const start = Math.max(0, hitIndex - 40);
     const excerpt = note.text
-      .slice(start, idx + 80)
+      .slice(start, hitIndex + 80)
       .replace(/\n+/g, ' ')
       .trim();
     out.push({ path: note.path, excerpt });

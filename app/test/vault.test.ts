@@ -51,6 +51,20 @@ describe('note paths', () => {
     expect(normalizeNotePath('./note')).toBe('note.md');
     expect(normalizeNotePath('../..')).toBeUndefined();
   });
+
+  it('strips filesystem and Obsidian forbidden characters (R-6)', () => {
+    expect(normalizeNotePath('a:b*c?.md')).toBe('abc.md');
+    expect(normalizeNotePath('note#heading^block')).toBe('noteheadingblock.md');
+    expect(normalizeNotePath('<>|"')).toBeUndefined();
+  });
+
+  it('normalizes unicode to NFC so decomposed and composed names match (R-4)', () => {
+    // "e" + combining acute (NFD) and precomposed "e-acute" (NFC) must map to
+    // the same path.
+    const nfd = normalizeNotePath('cafe\u0301'); // e + combining acute
+    const nfc = normalizeNotePath('caf\u00e9'); // precomposed e-acute
+    expect(nfd).toBe(nfc);
+  });
 });
 
 describe('wikilink resolution', () => {
