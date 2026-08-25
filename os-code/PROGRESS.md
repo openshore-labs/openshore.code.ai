@@ -642,6 +642,34 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: opening chat reworked to the Claude shape, and a five-control
+  composer.** Empty state now mirrors the Claude app: just the wave-mark and a
+  time-of-day greeting, no header title, no "chat and build" subtitle, no
+  suggestion pills. Top bar keeps only the hamburger (phone) and the OpenShore
+  ProfileStatus indicator. The composer gained the five Claude-Code controls:
+  add (+), a model pill (default "My Stack"), an effort pill (default High), a
+  mic, and send/stop. New model+effort sheet (`ModelSheet.tsx`): effort pinned
+  at the very top (High/Medium/Low segmented), then My Stack, then connected
+  cloud providers (Claude opens a sub-sheet of Claude models; other providers
+  point to the stack, which is where they actually run), then on-device models.
+  New state: `effort` in AppSettings (default High), mirrored to a live value
+  (`lib/effort.ts`) that the cloud-Claude and stack drivers fold into their
+  system prompt, so the choice actually shapes answers. Attachments
+  (`lib/attachments.ts`): + captures photos/files via the WebView picker (works
+  in the iOS WKWebView, no native plugin), shown as chips, and image blocks are
+  forwarded to the cloud-Claude vision path (`ChatDriver.send` gained an
+  optional `attachments` arg; non-vision drivers ignore it). Voice
+  (`useDictation.ts`): Web Speech dictation where the platform provides it
+  (desktop, web); the iOS WKWebView does not expose SpeechRecognition, so the
+  mic is honest there (a toast) rather than fake. Green: app typecheck, lint,
+  128 tests, vite build. **Known scope / follow-ups:** (1) native iOS voice
+  needs a Capacitor speech plugin, deliberately deferred so it cannot
+  destabilize the just-fixed iOS archive; (2) vision is wired for the
+  cloud-Claude path only, other drivers ignore attachments; (3) switching the
+  model while a chat is open starts a fresh chat with the new brain (each
+  conversation is bound to one driver), rather than swapping mid-thread. Not
+  build-run-verified on device (no macOS/iOS here); validated by the gate.
+
 - **2026-08-25: fixed the real cause of the "Unable to resolve module
   dependency: 'OscodeLlama'" archive failure, a wrong import name.** The
   oscode-llama Package.swift names the library PRODUCT `OscodeLlama` but its
