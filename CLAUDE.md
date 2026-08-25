@@ -8,27 +8,25 @@ session before other work, so a fresh session picks up where the last one left
 off. `os-code/DECISIONS.md` records one line per ambiguous call; skim it when a
 design choice looks already settled.
 
-## Standing reminder: gitOS, BYOM, and Vault are parked, surface them until built
+## gitOS, BYOM, and Vault are BUILT (reminder retired 2026-08-25)
 
-Three founder-requested features are captured as build-ready Opus 4.8 prompts
-in `os-code/PROGRESS.md` under "Parked feature ideas":
+All three founder-requested features shipped and are on `main`. The old
+"surface them until built" standing reminder is retired, since its own
+condition (each checkbox checked off in `os-code/PROGRESS.md`) is now met.
 
-- **gitOS** (decentralized, local-first Git hosting; the storage location is
-  chosen per repo instead of centralized hosting),
-- **Bring Your Own Model (BYOM)** (a first-class "connect any model you
-  control" capability; note it overlaps heavily with what OS Code already
-  does, so the prompt is framed as an extension of the existing model layer),
-  and
-- **Vault** (a native, Obsidian-style markdown knowledge base, personal by
-  default with an organization tier; working name only, shares gitOS's
-  storage-provider question for the personal tier and needs a real
-  multi-writer backend for the organization tier).
+- **BYOM** (connect a model you control, from the Stack): BUILT 2026-08-24,
+  commit `243e43e`. Code in `app/src/lib/byom.ts`.
+- **gitOS** (the per-repo storage seam, ships as "Repositories"): BUILT
+  2026-08-25, commits `b8e1658` (framing/seam), `ac74f77` (iCloud Drive),
+  `3b28146` (Google Drive, OAuth PKCE). Code in `app/src/lib/gitos/`.
+- **Vault** (native Obsidian-style markdown knowledge base, on the gitOS seam):
+  BUILT 2026-08-25, commit `b8e1658`. Code in `app/src/lib/vault.ts` and
+  `app/src/screens/VaultScreen.tsx`.
 
-None is built. Surface all three at the start of any OS Code session, and
-especially whenever the founder mentions "gitOS," "GitOS," "bring your own
-model," "BYOM," "vault," or "Obsidian," until each item's checkbox is checked
-off. These are live, unfinished action items, not settled history. Each
-prompt is written to hand straight to Opus 4.8.
+Do NOT re-surface these as unbuilt or re-scope them from scratch. The one open
+follow-up is Vault's ORGANIZATION tier (a real multi-writer backend), tracked
+as its own item in `os-code/PROGRESS.md`. The original build prompts are kept
+in that file as historical reference only.
 
 ## Em dash policy is TOTAL here (standing rule)
 
