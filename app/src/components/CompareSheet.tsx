@@ -4,6 +4,7 @@
 // reuse the same track as the cards.
 import type { CatalogModel, CapabilityCategory } from 'os-code/protocol';
 import { CAPABILITIES } from 'os-code/protocol';
+import { useSheetExit } from '../hooks/useSheetExit.js';
 import { Stars } from './Stars.js';
 import { fitFor, licenseLabel, osCodeFit, starIn, type FitLabel } from './marketplace.js';
 
@@ -23,6 +24,7 @@ export function CompareSheet({
   memoryGB: number;
   onClose: () => void;
 }) {
+  const { closing, dismiss } = useSheetExit(onClose);
   // The union of capabilities any selected model targets, in taxonomy order.
   const order = Object.keys(CAPABILITIES) as CapabilityCategory[];
   const caps = order.filter((c) => models.some((m) => m.categories.includes(c)));
@@ -64,8 +66,11 @@ export function CompareSheet({
   const cols = `minmax(96px, 1.1fr) repeat(${models.length}, minmax(0, 1fr))`;
 
   return (
-    <div className="sheet-scrim" onClick={onClose}>
-      <div className="sheet compare-sheet" onClick={(e) => e.stopPropagation()}>
+    <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
+      <div
+        className={`sheet compare-sheet${closing ? ' closing' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2>Compare</h2>
         <div className="sheet-sub">
           Stars come from benchmarks. Fit is for your selected machine.
@@ -129,7 +134,7 @@ export function CompareSheet({
         </div>
 
         <div className="sheet-actions">
-          <button className="btn ghost" onClick={onClose}>
+          <button className="btn ghost press-fb" onClick={dismiss}>
             Done
           </button>
         </div>

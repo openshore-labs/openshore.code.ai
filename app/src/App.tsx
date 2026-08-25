@@ -34,6 +34,7 @@ function useCompact(): boolean {
 
 export function App() {
   const { ready, view, drawerOpen, toast, init } = useApp();
+  const theme = useApp((s) => s.settings.theme);
   const compact = useCompact();
   useAuthDeepLink();
 
@@ -41,6 +42,14 @@ export function App() {
     void init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Apply the appearance preference to the document root. 'system' removes the
+  // attribute so prefers-color-scheme decides; light/dark pin it.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+    else delete root.dataset.theme;
+  }, [theme]);
 
   // Keep a focused field above the on-screen keyboard. iOS shrinks the visual
   // viewport for the keyboard but not the layout, and our scroll lives in a
