@@ -8,7 +8,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
-import type { IncomingMessage } from 'node:http';
+import { createServer } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
 import { isIP } from 'node:net';
 import { EngineHost } from './engineHost.js';
 
@@ -208,6 +209,70 @@ function writeSecrets(all: Record<string, string>): void {
   writeFileSync(secretsPath(), JSON.stringify(all), { mode: 0o600 });
 }
 
+// --------------------------------------------------------- Google Drive OAuth
+// A one-shot loopback HTTP server for the desktop OAuth redirect (RFC 8252):
+// bound to 127.0.0.1 only, answers exactly one request, then closes. The
+// renderer builds the consent URL against the returned port and opens it in
+// the system browser via the existing window-open handler (openExternal).
+let gdriveServer: Server | undefined;
+
+function closeGdriveServer(): void {
+  gdriveServer?.close();
+  gdriveServer = undefined;
+}
+
+ipcMain.handle('osc:gdriveOAuthListen', () => {
+  return new Promise<{ port: number }>((resolve, reject) => {
+    closeGdriveServer();
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address();
+      if (!addr || typeof addr === 'string') {
+        server.close();
+        reject(new Error('Could not open a local port for sign-in.'));
+        return;
+      }
+      gdriveServer = server;
+      resolve({ port: addr.port });
+    });
+  });
+});
+
+ipcMain.handle('osc:gdriveOAuthWait', () => {
+  return new Promise<{ code: string; state: string } | { error: string }>((resolve) => {
+    const server = gdriveServer;
+    if (!server) {
+      resolve({ error: 'No sign-in window is open.' });
+      return;
+    }
+    const timeout = setTimeout(() => {
+      closeGdriveServer();
+      resolve({ error: 'Sign-in timed out.' });
+    }, 300_000);
+    server.once('request', (req, res) => {
+      clearTimeout(timeout);
+      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+      const code = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+      const error = url.searchParams.get('error');
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(
+        '<!doctype html><meta charset="utf-8"><title>OpenShore</title>' +
+          '<body style="font:16px system-ui;padding:2rem">Signed in. You can close this window and return to OpenShore.</body>',
+      );
+      closeGdriveServer();
+      if (error) resolve({ error });
+      else if (code && state) resolve({ code, state });
+      else resolve({ error: 'The sign-in response was missing required data.' });
+    });
+  });
+});
+
+ipcMain.handle('osc:gdriveOAuthCancel', () => {
+  closeGdriveServer();
+});
+
 let win: BrowserWindow | undefined;
 
 const host = new EngineHost(
@@ -364,6 +429,7 @@ void app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  closeGdriveServer();
   host.disposeAll();
   app.quit();
 });

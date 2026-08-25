@@ -108,10 +108,13 @@ export const PROVIDER_ROSTER: Array<{
   },
   {
     id: 'gdrive',
+    // Wired (Drive REST + OAuth PKCE); readiness is decided at runtime by
+    // whether an account is connected, so ready stays false here and
+    // probeReady('gdrive') is the truth.
     label: 'Google Drive',
-    blurb: 'Your Drive, your bytes.',
+    blurb: 'Your Drive, your bytes. Files added outside OpenShore may not show up here.',
     ready: false,
-    pending: 'Arriving. Needs the Google connection.',
+    pending: 'Connect your Google account to use this.',
   },
   {
     id: 'proton',

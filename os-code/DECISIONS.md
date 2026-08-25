@@ -118,6 +118,44 @@ execution contract. Newest at the bottom.
   signing fails (same class of step as Push). Google and Dropbox are next,
   and are pure-JS REST plus OAuth (no native plugin), Google restricted to
   the drive.file scope per the CFO to avoid the CASA assessment.
+- **Google Drive is the second cloud storage provider wired (2026-08-25),
+  the first real OAuth flow anywhere in this app** (every other cloud
+  connection, os-code's GitHub device flow included, is either paste-an-
+  API-key or a terminal flow). CTO ruling on the architecture: two OAuth
+  clients under one Google Cloud project, not a choice, Google's own
+  native-app rules require it. An "iOS" client redirects through the app's
+  existing oscode:// scheme on a path (oauth2redirect) distinct from the
+  Supabase auth callback; a "Desktop app" client redirects through a
+  one-shot loopback HTTP server the Electron main process opens, bound to
+  127.0.0.1 only, closed after the single request. Both flows are PKCE with
+  state verification, the security control that makes a custom-scheme
+  collision non-exploitable. Tokens live in the same secretGet/Set/Delete
+  store as every other credential (iOS Keychain, Electron safeStorage);
+  disconnect revokes at Google before deleting locally, and account sign-out
+  now revokes Drive too, so a handed-off device does not keep standing
+  access. drive.file scope (CFO ruling already on record) means the app only
+  sees files it created itself: `app/src/lib/gitos/gdrive.ts` creates a real
+  folder tree per resource (not the hidden appDataFolder) so a user, Drive
+  desktop sync, and Obsidian can all find it normally, with a
+  `.oscode/index.json` cache (same dotfolder convention as iCloud's lease
+  file) to avoid a full tree walk on every read. write() never trusts a
+  cache miss blindly: it resolves against a live listing first and surfaces
+  more than one same-name match as a conflict, since Drive does not enforce
+  unique filenames the way a filesystem does and a stale index could
+  otherwise fork one logical path into two file ids. Founder decision
+  (asked directly, not defaulted): the drive.file scope's real limitation,
+  that files added outside OpenShore may not appear, ships as honest UI
+  copy on the Drive backend rather than silent v1 scope. FOUNDER
+  PREREQUISITE before either build can connect: register an "iOS" OAuth
+  client (bundle id ai.openshore.oscode) and a "Desktop app" OAuth client in
+  the same Google Cloud project, publish the OAuth consent screen with
+  scope drive.file (non-sensitive, no CASA and no Google verification
+  review at any publishing status) and, while its Publishing status is
+  Testing, add every internal tester's Google account as a test user
+  (refresh tokens expire after 7 days in Testing, a known trap to expect
+  during dev, not a bug); then fill in VITE_GDRIVE_IOS_CLIENT_ID,
+  VITE_GDRIVE_DESKTOP_CLIENT_ID, and VITE_GDRIVE_DESKTOP_CLIENT_SECRET
+  (app/.env.example). Dropbox is next, app-folder scope per the CTO.
 - **Off-device is where long work runs (standing principle, founder call
   2026-08-25).** Any feature that kicks off long or agentic work runs that work
   off the phone (on the user's daemon, or a cloud runner), as a durable,

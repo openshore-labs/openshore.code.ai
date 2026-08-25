@@ -11,6 +11,7 @@ import { backlinksTo, noteFolder, noteTitle, normalizeNotePath, treeAt } from '.
 import {
   PROVIDER_ROSTER,
   probeReady,
+  isGdriveConfigured,
   type GitosResource,
   type StorageProviderId,
 } from '../lib/gitos/index.js';
@@ -29,6 +30,8 @@ export function VaultScreen() {
     vaultDelete,
     vaultReadAll,
     vaultMoveTo,
+    connectGdriveAccount,
+    disconnectGdriveAccount,
     settings,
     showToast,
   } = useApp();
@@ -386,7 +389,22 @@ export function VaultScreen() {
                 const isReady = ready[p.id] ?? p.ready;
                 const move = async () => {
                   if (isCurrent) return;
-                  if (!isReady) {
+                  let usable = isReady;
+                  if (!usable && p.id === 'gdrive' && isGdriveConfigured()) {
+                    // Not connected yet, but this build has the OAuth client:
+                    // run the connect flow inline instead of just explaining
+                    // that it is coming.
+                    setMoving(true);
+                    const result = await connectGdriveAccount();
+                    if (!result.ok) {
+                      setMoving(false);
+                      showToast(result.error ?? 'Could not connect Google Drive.');
+                      return;
+                    }
+                    usable = true;
+                    setReady((r) => ({ ...r, gdrive: true }));
+                  }
+                  if (!usable) {
                     showToast(
                       p.pending ?? `${p.label} vaults are coming. Your vault can move there later.`,
                     );
@@ -402,27 +420,44 @@ export function VaultScreen() {
                       : `Could not move to ${p.label}. ${p.pending ?? 'Try again in a moment.'}`,
                   );
                 };
+                const disconnect = async () => {
+                  setMoving(true);
+                  await disconnectGdriveAccount();
+                  setMoving(false);
+                  setReady((r) => ({ ...r, gdrive: false }));
+                  showToast('Disconnected Google Drive.');
+                };
                 return (
-                  <button
-                    key={p.id}
-                    className="btn ghost vault-provider"
-                    disabled={moving}
-                    onClick={() => void move()}
-                  >
-                    <span className="grow" style={{ textAlign: 'left' }}>
-                      {p.label}
-                      <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
-                        {p.blurb}
+                  <div key={p.id} className="vault-provider-row">
+                    <button
+                      className="btn ghost vault-provider"
+                      disabled={moving}
+                      onClick={() => void move()}
+                    >
+                      <span className="grow" style={{ textAlign: 'left' }}>
+                        {p.label}
+                        <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+                          {p.blurb}
+                        </span>
                       </span>
-                    </span>
-                    {isCurrent ? (
-                      <span className="pill local">Here now</span>
-                    ) : isReady ? (
-                      <span className="pill local">Move here</span>
-                    ) : (
-                      <span className="nav-lock-pill">Arriving</span>
-                    )}
-                  </button>
+                      {isCurrent ? (
+                        <span className="pill local">Here now</span>
+                      ) : isReady ? (
+                        <span className="pill local">Move here</span>
+                      ) : (
+                        <span className="nav-lock-pill">Arriving</span>
+                      )}
+                    </button>
+                    {p.id === 'gdrive' && isReady && !isCurrent ? (
+                      <button
+                        className="btn ghost vault-provider-disconnect"
+                        disabled={moving}
+                        onClick={() => void disconnect()}
+                      >
+                        Disconnect Google Drive
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })}
               <button

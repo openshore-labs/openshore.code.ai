@@ -125,6 +125,8 @@ import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
 import {
   providerFor,
   probeReady,
+  connectGdrive,
+  disconnectGdrive,
   type GitosResource,
   type StorageProviderId,
   type StoredFileMeta,
@@ -461,6 +463,10 @@ interface AppState {
    *  copy every note across, then repoint the resource. Returns false when the
    *  target is not usable right now. */
   vaultMoveTo(providerId: StorageProviderId): Promise<boolean>;
+  /** Run the Google Drive OAuth connect flow. Never throws. */
+  connectGdriveAccount(): Promise<{ ok: boolean; error?: string }>;
+  /** Revoke and forget the connected Google account. */
+  disconnectGdriveAccount(): Promise<void>;
   /** Drop back to the zero-config DuckDuckGo default. */
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
@@ -1591,6 +1597,11 @@ export const useApp = create<AppState>((set, get) => {
       const session = get().authSession;
       if (session) await supabaseSignOut(session.accessToken);
       await clearSession();
+      // Best-effort: signing out of the account also severs any connected
+      // Google Drive access, so a shared or handed-off device does not keep
+      // standing storage access behind. A revoke failure (offline) must
+      // never block sign-out itself.
+      await disconnectGdrive().catch(() => {});
       set({
         authSession: undefined,
         serverRole: undefined,
@@ -2313,6 +2324,17 @@ export const useApp = create<AppState>((set, get) => {
       set({ vaultFiles: await target.list(VAULT_RESOURCE_ID) });
       logEvent('vault_moved', { to: providerId });
       return true;
+    },
+
+    async connectGdriveAccount() {
+      const result = await connectGdrive();
+      logEvent(result.ok ? 'gdrive_connected' : 'gdrive_connect_failed');
+      return result;
+    },
+
+    async disconnectGdriveAccount() {
+      await disconnectGdrive();
+      logEvent('gdrive_disconnected');
     },
 
     openConversation(id) {
