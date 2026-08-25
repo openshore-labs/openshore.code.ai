@@ -225,19 +225,26 @@ Layer status:
       terminal's own scrollback already pages, and a custom pager fights it;
       `/find` is the genuinely additive capability.
 
-### Parked feature ideas (founder-requested build prompts, not started)
+### Parked feature ideas (founder-requested build prompts)
 
 > Captured 2026-08-24 from founder voice notes. Full, build-ready prompts
-> written to hand straight to Opus 4.8. None is built. STANDING REMINDER:
-> surface each at the start of any OS Code session, and especially whenever the
-> founder mentions "gitOS," "GitOS," "bring your own model," "BYOM," "vault,"
-> or "Obsidian," until that item's checkbox is checked off. The repo-root
-> `CLAUDE.md` wires this in. These are live, unfinished action items, not
-> settled history.
+> written to hand straight to Opus 4.8.
+>
+> STATUS (2026-08-25): ALL THREE ARE BUILT and on `main`. BYOM shipped
+> 2026-08-24 (`243e43e`); Vault + the gitOS storage seam shipped 2026-08-25
+> (`b8e1658`, `ac74f77`, `3b28146`; gitOS ships as "Repositories"). The
+> standing "surface until built" reminder is RETIRED now that every checkbox
+> below is checked. The build prompts are kept only as historical reference.
+> Remaining follow-up: Vault's ORGANIZATION tier still needs a real
+> multi-writer backend (tracked as its own item, not a reason to re-surface).
 
-- [ ] **Scope and build gitOS** (decentralized, local-first Git hosting;
-      storage location chosen per repo instead of centralized hosting). Below
-      is the optimized Opus 4.8 build prompt.
+- [x] **Scope and build gitOS: BUILT (2026-08-25).** Shipped as "Repositories"
+      (gitOS is the internal name for the storage seam). Framing + seam in
+      `b8e1658`, iCloud Drive provider in `ac74f77`, Google Drive provider
+      (OAuth PKCE, drive.file) in `3b28146`. Code lives in
+      `app/src/lib/gitos/`. The original build prompt is kept below for history.
+      (decentralized, local-first Git hosting; storage location chosen per repo
+      instead of centralized hosting).
 
       **Partial (2026-08-25): the storage seam is framed and live, and the
       full advisory org ruled on every decision point** (founder delegated
@@ -388,7 +395,11 @@ Layer status:
   plaintext on a provider the user does not control.
   ```
 
-- [ ] **Scope and build Bring Your Own Model (BYOM)** (a first-class "connect
+- [x] **Scope and build Bring Your Own Model (BYOM): BUILT (2026-08-24).**
+      Shipped in `243e43e` ("connect a model you control, from the Stack"). Code
+      in `app/src/lib/byom.ts`, tests in `app/test/byom.test.ts`. The original
+      build prompt is kept below for history.
+      (a first-class "connect
       any model you control" capability). NOTE: this overlaps heavily with what
       OS Code already does, so the prompt is framed as an EXTENSION of the
       existing model/router layer, not a new build. Below is the optimized Opus
@@ -514,10 +525,16 @@ Layer status:
   break) when the connected model lacks a capability the stack needs.
   ```
 
-- [ ] **Scope and build Vault** (a native, Obsidian-style markdown knowledge
-      base built into OS Code, personal by default with an organization tier).
-      Working name only, the founder is not settled on it. Below is the
-      optimized Opus 4.8 build prompt.
+- [x] **Scope and build Vault: BUILT (2026-08-25).** Shipped on the gitOS seam
+      in `b8e1658` ("Frame gitOS and ship Vault on it"). Code in
+      `app/src/lib/vault.ts`, `app/src/lib/vaultExport.ts`,
+      `app/src/screens/VaultScreen.tsx`, `app/src/components/VaultMarkdown.tsx`;
+      tests in `app/test/vault.test.ts`. The organization tier (multi-writer
+      backend) remains the open follow-up. The original build prompt is kept
+      below for history.
+      (a native, Obsidian-style markdown knowledge base built into OS Code,
+      personal by default with an organization tier). Working name only, the
+      founder is not settled on it.
 
       **Partial (2026-08-25): the personal Vault shipped, on the gitOS seam,
       after the full advisory org answered the decision points.** Name: Vault
