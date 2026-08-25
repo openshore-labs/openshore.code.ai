@@ -597,6 +597,30 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: completion push, so you can code with the app closed.** Parity
+  with Claude Code's "write a prompt, close the app, get told when it is done."
+  The desktop path already runs the agent loop on the user's own daemon and
+  journals every step for replay, so the run continues while the phone is closed;
+  the missing piece was telling the user when it finishes or blocks on an
+  approval. Built content-free push across three layers. Supabase: migration 0009
+  (push_devices, push_grants, push_sends), a new _shared/apns.ts ES256 provider
+  signer with token caching, and push-register / push-grant / push-send. The
+  daemon (src/daemon/push.ts) watches each session's live events and fires a
+  push on approval-request (always) or an idle task-done (queue empty), unless a
+  fresh phone beat says the user is watching; the grant is sealed at rest, keyed
+  per owning user. The app registers for APNs (AppDelegate + the llama plugin,
+  aps-environment read from the provisioning profile), hands the daemon a grant,
+  and beats while foreground. Auth model per the CTO review (GO with must-fixes,
+  all folded in): the daemon is already fully trusted, so the credential is an
+  opaque revocable grant, not a signed short-lived JWT; push-send derives the
+  target user and devices solely from the grant, with a per-session cooldown, a
+  daily ceiling, and (session, kind, seq) de-dupe. On-device (Harbor) and
+  phone-orchestrated cloud/stack turns cannot run closed (iOS limit) and are out
+  of scope; the standing off-device principle is in DECISIONS.md. Gates green
+  (os-code 29 files / 227 tests incl. a new push.test.ts, app 20 / 116, vite
+  build, both em-dash guards). Dormant until the Apple push capability, the
+  APNS_* secrets, and the migration/function deploys land (docs/PUSH-SETUP.md).
+  Swift builds on Codemagic, not verifiable in this sandbox.
 - **2026-08-24: model downloads (and inference) survive backgrounding.** Root
   cause of "the download failed because I closed the app": `ModelStore` ran the
   GGUF download on a foreground `URLSession`, which iOS suspends on background
