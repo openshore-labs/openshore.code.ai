@@ -633,6 +633,22 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: fixed the real cause of the "Unable to resolve module
+  dependency: 'OscodeLlama'" archive failure, a wrong import name.** The
+  oscode-llama Package.swift names the library PRODUCT `OscodeLlama` but its
+  TARGET (and therefore its Swift MODULE) `OscodeLlamaPlugin`. Swift `import`
+  takes a module name, so `import OscodeLlama` in AppDelegate.swift could never
+  resolve. The error was byte-identical across builds because the import line
+  never changed and no module named `OscodeLlama` exists. Fixed to `import
+  OscodeLlamaPlugin`. The earlier package-link commit (6fc341d) was still
+  necessary and correct: it links the `OscodeLlama` product to the App target,
+  which is what makes the `OscodeLlamaPlugin` module available to import; the
+  wrong import name was masking whether that link worked. Both classes
+  AppDelegate calls (`OscodeLlamaPlugin.deliverPushToken`,
+  `ModelStore.handleBackgroundSessionEvents`) live in that module. Still not
+  locally build-verifiable (no macOS/Xcode); reasoned from the Package.swift
+  product-vs-target naming and Swift's module-import rule.
+
 - **2026-08-25: fixed the first two Codemagic archive failures (fresh iOS
   Swift compile, expected per the earlier note above).** (1)
   `ModelStore.swift`'s four `URLSessionDownloadDelegate`/`URLSessionDelegate`

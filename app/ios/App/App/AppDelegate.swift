@@ -1,6 +1,6 @@
 import UIKit
 import Capacitor
-import OscodeLlama
+import OscodeLlamaPlugin
 import UserNotifications
 
 @UIApplicationMain
