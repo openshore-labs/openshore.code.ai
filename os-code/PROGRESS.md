@@ -656,6 +656,22 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: composer refinements (founder pass on the live app).** Boot
+  splash hold cut to 1.5s (`SPLASH_MIN_MS`). Greeting is now the tile mark plus
+  the line only, the OpenShore wordmark removed. Composer mic swapped from the
+  emoji to the iOS keyboard dictation microphone (an inline outline SVG, matching
+  Claude). The effort pill is replaced by a Claude Code style permission-mode
+  pill: `</> Accept edits` by default, opening a Select-mode sheet with the three
+  modes (Auto, Accept edits, Plan) and their descriptions. Effort stays a
+  selection pinned at the top of the model sheet, as before. New
+  `permissionMode` in settings (default acceptEdits) and `lib/permissionMode.ts`;
+  it functions on the coding-agent surface, the driver event handler
+  auto-answers tool approvals per mode (Accept edits approves file edits, Auto
+  approves all tools, Plan approves nothing, cloud spend always asks), and is
+  inert for plain chat, exactly as the mode picker is in Claude Code. Tests
+  added for the mode logic; app suite 143. Green: typecheck, lint, 143 tests,
+  vite build.
+
 - **2026-08-25: native iOS voice dictation, on-device only (founder call).**
   Founder chose on-device-only recognition (mic audio never leaves the phone,
   matching the "your machine, your keys" posture) and to build now rather than

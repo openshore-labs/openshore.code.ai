@@ -98,6 +98,11 @@ import {
 import { PROVIDERS, providerSecretKey } from '../lib/providers.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
+import {
+  DEFAULT_PERMISSION_MODE,
+  autoApproves,
+  type PermissionMode,
+} from '../lib/permissionMode.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
@@ -218,8 +223,11 @@ export interface AppSettings {
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
   /** Reasoning effort for new turns, the same idea Claude exposes. Defaults to
-   *  'high'. Chosen from the composer pill or the top of the model sheet. */
+   *  'high'. Chosen from the top of the model sheet. */
   effort?: Effort;
+  /** How tool approvals are handled for the coding agent. Defaults to
+   *  'acceptEdits'. Chosen from the composer's mode pill. */
+  permissionMode?: PermissionMode;
 }
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
@@ -633,6 +641,16 @@ export const useApp = create<AppState>((set, get) => {
         };
         return { conversations: { ...state.conversations, [conversationId]: next } };
       });
+      // Permission mode: auto-answer tool approvals the current mode covers
+      // (Accept edits approves file edits, Auto approves all tools). Cloud spend
+      // always asks. This is the coding-agent surface; chat brains raise no
+      // approvals, so the mode is inert there.
+      if (event.type === 'approval-request') {
+        const mode = get().settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
+        if (autoApproves(mode, event.request.toolName, event.request.kind)) {
+          drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
+        }
+      }
       // Persist snapshots for phone-local conversations. P2-12: snapshot at both
       // bookends (task-start captures the user's message immediately; task-done
       // captures the finished reply) and debounce during streaming so a mid-turn
