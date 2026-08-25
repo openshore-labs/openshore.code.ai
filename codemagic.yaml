@@ -1,9 +1,9 @@
-# OS Code: iOS build to TestFlight.
+# OpenShore: iOS build to TestFlight.
 # One-time setup lives in docs/TESTFLIGHT.md (App Store Connect app record,
 # Codemagic App Store Connect API-key integration named "os_code_app_store").
 workflows:
   ios-testflight:
-    name: OS Code iOS (TestFlight)
+    name: OpenShore iOS (TestFlight)
     max_build_duration: 90
     instance_type: mac_mini_m2
     integrations:
