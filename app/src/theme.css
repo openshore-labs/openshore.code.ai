@@ -1,4 +1,4 @@
-/* OS Code app design system. Structure borrowed from the best chat apps,
+/* OpenShore app design system. Structure borrowed from the best chat apps,
    skin 100% OpenShore: the openshore.ai palette exactly. Cream paper ground,
    deep-ink text, deep-water teal for local/brand, warm amber for anything
    cloud or spend. Type is Fraunces (serif display) + Inter (sans UI), the same
@@ -1022,7 +1022,7 @@ textarea {
 
 /* The opening splash: the brand lockup sits above the time-of-day greeting,
    the same two-part shape as the reference chat apps' idle screen, just in
-   OS Code's own wave-mark and wordmark. */
+   OpenShore's own wave-mark and wordmark. */
 .greeting-brand {
   display: flex;
   align-items: center;
@@ -2159,7 +2159,7 @@ textarea {
 /* ---------------------------------------------------- library intro (enablement)
    The OpenShore take on the house enablement pattern shared with Uki: an art
    stage over a dark caption dock, eyebrow -> serif headline -> benefit body,
-   an expanding-dot pager, one spring easing. Same grammar, OS Code palette. */
+   an expanding-dot pager, one spring easing. Same grammar, OpenShore palette. */
 
 .lib-intro {
   position: fixed;

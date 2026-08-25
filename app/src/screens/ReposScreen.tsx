@@ -1,6 +1,6 @@
 // Repositories: connect GitHub and other platforms on your own token, set the
 // home repo the whole system works through, and see anything buffered while you
-// were off-home. Below that, the desktop clone/open flow: point OS Code at a
+// were off-home. Below that, the desktop clone/open flow: point OpenShore at a
 // repo and it reads, edits, tests, and commits there with your approval.
 import { useEffect, useState } from 'react';
 import { isOrgAdmin, useApp } from '../state/store.js';
@@ -92,7 +92,7 @@ export function ReposScreen() {
         <h1>Repositories</h1>
         <p className="lead">
           Connect GitHub or another platform on your own token, or keep a home repo of your own so
-          you do not depend on anyone else. OS Code reads, edits, tests, and commits with your
+          you do not depend on anyone else. OpenShore reads, edits, tests, and commits with your
           approval on every change.
         </p>
 

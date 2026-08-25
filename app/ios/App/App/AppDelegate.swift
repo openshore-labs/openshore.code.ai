@@ -1,14 +1,62 @@
 import UIKit
 import Capacitor
+import OscodeLlama
+import UserNotifications
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
 
+    // iOS calls this when it has relaunched the app in the background to finish
+    // model downloads that kept running on the background URLSession while the
+    // app was suspended or closed. Hand the completion handler to the store,
+    // which owns that session; it calls the handler once every delegate event
+    // has been delivered so the system can re-suspend the app cleanly.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        ModelStore.handleBackgroundSessionEvents(
+            identifier: identifier, completionHandler: completionHandler)
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Own the notification-center delegate so a completion push that arrives
+        // while the app is foreground can be suppressed (the user is already
+        // here). Registration itself is requested contextually from JS, not at
+        // launch.
+        UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    // APNs handed us a device token. Hex-encode it (the wire form APNs expects)
+    // and pass it to the plugin, which caches it and emits it to the web layer.
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
+        OscodeLlamaPlugin.deliverPushToken(hex)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        NSLog("OpenShore: APNs registration failed: \(error.localizedDescription)")
+    }
+
+    // A push that arrives while the app is foreground is redundant: the user is
+    // looking at OpenShore and will see the run update live. Suppress the banner so
+    // it is not shown on top of the very session it is about.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([])
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

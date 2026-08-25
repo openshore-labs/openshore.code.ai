@@ -97,7 +97,7 @@ export function LaunchScreen() {
         <h1>Launch</h1>
         <p className="lead">
           Get your built app to the App Store or Google Play, guided from here. The model walks you
-          through the accounts and setup. When you build, OS Code follows Codemagic and reads the
+          through the accounts and setup. When you build, OpenShore follows Codemagic and reads the
           result, so a failure comes back as a fix, not a wall of logs.
         </p>
 

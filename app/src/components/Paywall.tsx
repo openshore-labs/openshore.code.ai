@@ -25,7 +25,7 @@ export function Paywall() {
   const subhead =
     reason === 'marketplace'
       ? 'Free covers chat with the models you already run in Harbor or Ollama. Personal adds the full catalog, rated against your hardware, and the coding agent.'
-      : 'Chat is yours for free. Personal turns OS Code into a coding agent that reads your repo, writes real edits, and runs the tools to prove them.';
+      : 'Chat is yours for free. Personal turns OpenShore into a coding agent that reads your repo, writes real edits, and runs the tools to prove them.';
   // The App Store returns the localized price at purchase; $20/year is the set
   // price and the label the founder configures the product at.
   const priceLine = ios

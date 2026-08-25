@@ -208,7 +208,7 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
           <div className="card">
             <h3>Open a repository</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Point OS Code at a repo and it reads, edits, and commits with your approval.
+              Point OpenShore at a repo and it reads, edits, and commits with your approval.
             </div>
             <button
               className="btn ghost"

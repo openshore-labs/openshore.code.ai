@@ -159,6 +159,22 @@ export class LocalDriver implements SessionDriver {
     return this.running;
   }
 
+  /** No task running and none queued: safe to treat a just-finished run as a
+   *  true idle completion rather than a pause between batched messages. */
+  get idle(): boolean {
+    return !this.running && this.queue.length === 0;
+  }
+
+  /**
+   * Subscribe to LIVE events only, with no journal replay (unlike subscribe,
+   * which replays history first). The push notifier uses this so reattaching or
+   * rehydrating a driver never re-fires old approvals or completions.
+   */
+  onEvent(listener: (event: DriverEvent, seq: number) => void): () => void {
+    this.sinks.add(listener);
+    return () => this.sinks.delete(listener);
+  }
+
   private dir(): string {
     return join(sessionsDir(), this.id);
   }

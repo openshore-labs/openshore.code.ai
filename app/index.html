@@ -18,9 +18,102 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *"
     />
-    <title>OS Code</title>
+    <title>OpenShore</title>
+    <!--
+      Boot splash. Painted the instant the document parses, before the bundle
+      loads and React mounts, so opening OpenShore never shows a blank window
+      (desktop Electron) or the gap between the iOS launch image and the first
+      React frame. main.tsx fades and removes it once the app has rendered.
+      Inline styles are allowed by the CSP's style-src 'unsafe-inline'.
+    -->
+    <style>
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #f6f4ef;
+        opacity: 1;
+        transition: opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      #boot-splash.boot-splash-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #boot-splash .boot-mark {
+        width: 72px;
+        height: 72px;
+        animation: boot-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      #boot-splash .boot-wordmark {
+        font-family:
+          ui-rounded,
+          'SF Pro Rounded',
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        font-weight: 500;
+        font-size: 24px;
+        letter-spacing: -0.01em;
+        color: #1c2a33;
+        animation: boot-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        animation-delay: 0.04s;
+      }
+      #boot-splash .boot-wordmark .boot-accent {
+        color: #2f5a66;
+      }
+      @keyframes boot-rise {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash,
+        #boot-splash .boot-mark,
+        #boot-splash .boot-wordmark {
+          animation: none;
+          transition: none;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-splash" role="img" aria-label="OpenShore">
+      <svg class="boot-mark" viewBox="0 0 32 32" focusable="false" aria-hidden="true">
+        <rect width="32" height="32" rx="7.5" fill="#1c2a33" />
+        <g transform="translate(0 -0.81)">
+          <line
+            x1="7"
+            y1="13"
+            x2="25"
+            y2="13"
+            stroke="#f6f4ef"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <path
+            d="M7 19q4.5-3.3 9 0t9 0"
+            fill="none"
+            stroke="#4b90a3"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </g>
+      </svg>
+      <div class="boot-wordmark">Open<span class="boot-accent">Shore</span></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

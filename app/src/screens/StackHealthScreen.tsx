@@ -289,7 +289,7 @@ export function StackHealthScreen() {
           <div className="card" style={{ marginTop: 12 }}>
             <h3>Stack Health lives on your desktop</h3>
             <p className="sub" style={{ marginTop: 6 }}>
-              It reads the sessions stored on the machine that runs your models. Open OS Code on
+              It reads the sessions stored on the machine that runs your models. Open OpenShore on
               your Mac or PC to see it. Your phone stays a window onto that machine, never a copy of
               it.
             </p>
