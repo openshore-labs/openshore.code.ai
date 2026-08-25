@@ -28,6 +28,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     newConversation,
     switchModel,
     setConversationRepos,
+    openProjectDetail,
     setDrawer,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -61,6 +62,20 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     setConversationRepos(conv.id, next);
   };
 
+  // The project this chat sits in, for the Claude-style header: an open chat
+  // shows its own project; the greeting (no chat yet) shows the project the next
+  // saved chat will land in. A quick chat belongs to no project, so no chip.
+  const projects = settings.projects ?? [];
+  const activeProjectId = settings.activeProjectId ?? projects[0]?.id;
+  const headerProject = conv
+    ? conv.ephemeral || !conv.projectId
+      ? undefined
+      : projects.find((p) => p.id === conv.projectId)
+    : projects.find((p) => p.id === activeProjectId);
+  const goProject = () => {
+    if (headerProject) openProjectDetail(headerProject.id);
+  };
+
   // The composer pill shows the live chat's brain when one is open, otherwise
   // the pending selection for the next new chat.
   const composerSource = conv ? conv.source : selectedSource;
@@ -79,12 +94,44 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   return (
     <div className="shell-main">
       <header className="topbar">
+        {/* Left control on the phone: a back button when this chat lives in a
+            project (it goes to the project, Claude-style), otherwise the menu. */}
         {compact ? (
-          <button className="icon-btn" onClick={() => setDrawer(true)} aria-label="Menu">
-            {'☰'}
-          </button>
+          headerProject ? (
+            <button className="icon-btn" onClick={goProject} aria-label="Back to project">
+              {'‹'}
+            </button>
+          ) : (
+            <button className="icon-btn" onClick={() => setDrawer(true)} aria-label="Menu">
+              {'☰'}
+            </button>
+          )
         ) : null}
-        {conv ? (
+        {compact && headerProject ? (
+          <>
+            <button
+              className="project-chip-top"
+              onClick={goProject}
+              aria-label={`Open ${headerProject.name}`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="15"
+                height="15"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 7.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 18.5 19h-14A1.5 1.5 0 0 1 3 17.5Z" />
+              </svg>
+              <span>{headerProject.name}</span>
+            </button>
+            <div className="topbar-spacer" />
+          </>
+        ) : conv ? (
           <div className="topbar-title">
             {conv.title}
             <div className="topbar-sub">

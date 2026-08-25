@@ -23,8 +23,17 @@ export function ProjectsScreen() {
   const activeId = settings.activeProjectId ?? projects[0]?.id;
 
   const [newName, setNewName] = useState('');
-  // Which project's detail is open. Undefined shows the list.
-  const [openId, setOpenId] = useState<string | undefined>();
+  // Which project's detail is open. Undefined shows the list. Seeded once from
+  // the one-shot nav hint (set when you tap the project chip in a chat), then
+  // the hint is cleared so a later nav-in lands on the list.
+  const [openId, setOpenId] = useState<string | undefined>(
+    () => useApp.getState().pendingProjectDetailId,
+  );
+  useEffect(() => {
+    if (useApp.getState().pendingProjectDetailId) {
+      useApp.setState({ pendingProjectDetailId: undefined });
+    }
+  }, []);
 
   const create = async () => {
     const name = newName.trim();

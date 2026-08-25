@@ -142,6 +142,14 @@ describe('project bucketing and quick chats', () => {
     s.setConversationRepos(id, undefined);
     expect(useApp.getState().conversations[id]!.repoIds).toBeUndefined();
   });
+
+  it('openProjectDetail routes to Projects with a one-shot detail hint', async () => {
+    const s = useApp.getState();
+    const projectId = await s.createProject('Alpha');
+    s.openProjectDetail(projectId);
+    expect(useApp.getState().view).toBe('projects');
+    expect(useApp.getState().pendingProjectDetailId).toBe(projectId);
+  });
 });
 
 describe('outbox producer', () => {

@@ -325,9 +325,16 @@ interface AppState {
   /** When set, the Personal upgrade sheet is showing, and which locked surface
    *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
   paywall?: PaywallReason;
+  /** A one-shot hint for the Projects room to open straight into one project's
+   *  detail (set when you tap the project chip from a chat). The Projects screen
+   *  adopts it on mount and clears it, so navigating in via the nav still lands
+   *  on the list. */
+  pendingProjectDetailId?: string;
 
   init(): Promise<void>;
   setView(view: ViewName): void;
+  /** Open the Projects room straight into one project's detail view. */
+  openProjectDetail(id: string): void;
   setDrawer(open: boolean): void;
   showToast(message: string): void;
   /** Show the Personal upgrade sheet for a locked surface. */
@@ -1265,6 +1272,10 @@ export const useApp = create<AppState>((set, get) => {
         return;
       }
       set({ view, drawerOpen: false });
+    },
+
+    openProjectDetail(id) {
+      set({ view: 'projects', pendingProjectDetailId: id, drawerOpen: false });
     },
 
     setDrawer(open) {
