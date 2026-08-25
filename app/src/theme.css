@@ -1008,12 +1008,16 @@ textarea {
   font-size: 16px;
   font-weight: 700;
   transition:
-    transform 0.08s ease,
-    opacity 0.15s ease;
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.15s ease,
+    background 0.15s ease;
 }
 
+/* Empty field: the send button sits small and dim, then springs up to full
+   size the moment there is something to send. */
 .send-btn:disabled {
   opacity: 0.35;
+  transform: scale(0.82);
   cursor: default;
 }
 
@@ -1147,21 +1151,38 @@ textarea {
   font-weight: 600;
 }
 .ms-seg {
+  position: relative;
   display: inline-flex;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 2px;
-  gap: 2px;
+}
+/* The active highlight is one element that slides between the three slots,
+   a shared-element move rather than three separate backgrounds snapping. */
+.ms-seg-slider {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 3);
+  border-radius: 999px;
+  background: var(--local);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 0;
 }
 .ms-seg-btn {
+  position: relative;
+  z-index: 1;
+  flex: 1;
   font-size: 12.5px;
   padding: 5px 13px;
   border-radius: 999px;
   color: var(--ink-soft);
+  background: transparent;
+  transition: color 0.2s ease;
 }
 .ms-seg-btn.active {
-  background: var(--local);
   color: var(--bg);
   font-weight: 600;
 }
@@ -1229,6 +1250,64 @@ textarea {
   margin-bottom: 10px;
 }
 
+/* ---------------------------------------------------------------- polish */
+
+/* Pressed-state feedback for every tappable that opts in. Curt press-down, a
+   spring back out. Rides the individual `scale` property on purpose, so an
+   inline transform on the same element can never shadow it. */
+.press-fb {
+  transition: scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.press-fb:active {
+  scale: 0.93;
+  transition: scale 0.05s ease;
+}
+
+/* Attachment chips spring in as they are added. */
+.composer-chip {
+  animation: chip-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Mic, while listening: a slow breathing ring so it reads as live. */
+.composer-mic.listening {
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(47, 90, 102, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(47, 90, 102, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(47, 90, 102, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press-fb,
+  .press-fb:active,
+  .ms-seg-slider,
+  .send-btn,
+  .composer-chip {
+    transition: none;
+    animation: none;
+  }
+  .composer-mic.listening {
+    animation: none;
+  }
+}
+
 /* --------------------------------------------------------------- greeting */
 
 .greeting {
@@ -1239,7 +1318,32 @@ textarea {
   justify-content: center;
   padding: 24px;
   text-align: center;
-  gap: 10px;
+  gap: 14px;
+}
+
+/* The opening greeting settles in, the mark first and the line a beat behind,
+   the same unhurried easeOutQuint as the boot splash. */
+.greeting .brand-mark {
+  animation: greet-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.greeting h1 {
+  animation: greet-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.07s both;
+}
+@keyframes greet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .greeting .brand-mark,
+  .greeting h1 {
+    animation: none;
+  }
 }
 
 /* The opening splash: the brand lockup sits above the time-of-day greeting,
