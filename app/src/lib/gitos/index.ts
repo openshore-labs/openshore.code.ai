@@ -3,12 +3,14 @@
 // "gitOS" is the internal system name; the user-facing surfaces are
 // Repositories (code) and Vault (notes), per the CMO naming ruling.
 import { localProvider } from './local.js';
+import { icloudProvider, isIcloudAvailable } from './icloud.js';
 import { PROVIDER_ROSTER, type StorageProvider, type StorageProviderId } from './providers.js';
 
 export * from './providers.js';
 
 const PROVIDERS_BY_ID: Partial<Record<StorageProviderId, StorageProvider>> = {
   local: localProvider,
+  icloud: icloudProvider,
 };
 
 /** The provider for an id, or undefined while its wiring is not landed.
@@ -17,9 +19,18 @@ export function providerFor(id: StorageProviderId): StorageProvider | undefined 
   return PROVIDERS_BY_ID[id];
 }
 
-/** Roster entries whose provider is live right now. */
-export function readyProviders(): StorageProvider[] {
-  return PROVIDER_ROSTER.filter((r) => r.ready)
-    .map((r) => PROVIDERS_BY_ID[r.id])
-    .filter((p): p is StorageProvider => Boolean(p));
+/** Whether a provider is usable right now. Local always is; iCloud is decided
+ *  at runtime by the device (signed in and provisioned); the rest are not
+ *  wired yet. Never reports a provider ready that would fail on use. */
+export async function probeReady(id: StorageProviderId): Promise<boolean> {
+  if (id === 'local') return true;
+  if (id === 'icloud') return isIcloudAvailable();
+  return false;
+}
+
+/** Roster entries whose provider is usable right now, probed live. */
+export async function readyProviderIds(): Promise<StorageProviderId[]> {
+  const ids = PROVIDER_ROSTER.map((r) => r.id);
+  const flags = await Promise.all(ids.map(probeReady));
+  return ids.filter((_, i) => flags[i]);
 }

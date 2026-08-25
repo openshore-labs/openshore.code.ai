@@ -18,6 +18,7 @@ let package = Package(
         .package(name: "CapacitorHaptics", path: "../../../../node_modules/.pnpm/@capacitor+haptics@8.0.1_@capacitor+core@8.5.0/node_modules/@capacitor/haptics"),
         .package(name: "CapacitorPreferences", path: "../../../../node_modules/.pnpm/@capacitor+preferences@8.0.1_@capacitor+core@8.5.0/node_modules/@capacitor/preferences"),
         .package(name: "OscodeIap", path: "../../../../node_modules/.pnpm/oscode-iap@file+app+plugins+oscode-iap_@capacitor+core@8.5.0/node_modules/oscode-iap"),
+        .package(name: "OscodeIcloud", path: "../../../../node_modules/.pnpm/oscode-icloud@file+app+plugins+oscode-icloud_@capacitor+core@8.5.0/node_modules/oscode-icloud"),
         .package(name: "OscodeLlama", path: "../../../../node_modules/.pnpm/oscode-llama@file+app+plugins+oscode-llama_@capacitor+core@8.5.0/node_modules/oscode-llama")
     ],
     targets: [
@@ -32,6 +33,7 @@ let package = Package(
                 .product(name: "CapacitorHaptics", package: "CapacitorHaptics"),
                 .product(name: "CapacitorPreferences", package: "CapacitorPreferences"),
                 .product(name: "OscodeIap", package: "OscodeIap"),
+                .product(name: "OscodeIcloud", package: "OscodeIcloud"),
                 .product(name: "OscodeLlama", package: "OscodeLlama")
             ]
         )

@@ -120,7 +120,13 @@ import {
   type StackModelRef,
 } from '../lib/stack.js';
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
-import { providerFor, type GitosResource, type StoredFileMeta } from '../lib/gitos/index.js';
+import {
+  providerFor,
+  probeReady,
+  type GitosResource,
+  type StorageProviderId,
+  type StoredFileMeta,
+} from '../lib/gitos/index.js';
 import { normalizeNotePath } from '../lib/vault.js';
 import { bridge } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
@@ -221,8 +227,15 @@ const SETTINGS_KEY = 'oscode.settings.v1';
 const CONVERSATIONS_KEY = 'oscode.conversations.v1';
 const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
 
-// The one personal vault every account starts with, on the Local provider.
+// The one personal vault every account starts with, on the Local provider
+// until the user moves it to iCloud (or another provider) from the vault's
+// storage sheet.
 const VAULT_RESOURCE_ID = 'vault.personal';
+
+/** Which storage provider holds the personal vault right now. */
+function vaultProviderId(settings: AppSettings): StorageProviderId {
+  return settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID)?.providerId ?? 'local';
+}
 
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
@@ -439,6 +452,10 @@ interface AppState {
   vaultDelete(path: string): Promise<void>;
   /** Every note body, for backlink derivation. */
   vaultReadAll(): Promise<Array<{ path: string; text: string }>>;
+  /** Move the personal vault to a different storage provider (e.g. iCloud):
+   *  copy every note across, then repoint the resource. Returns false when the
+   *  target is not usable right now. */
+  vaultMoveTo(providerId: StorageProviderId): Promise<boolean>;
   /** Drop back to the zero-config DuckDuckGo default. */
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
@@ -2215,14 +2232,14 @@ export const useApp = create<AppState>((set, get) => {
         await get().saveSettings({ gitosResources: [...resources, vault] });
         logEvent('vault_created');
       }
-      const provider = providerFor('local')!;
+      const provider = providerFor(vaultProviderId(get().settings))!;
       set({ vaultFiles: await provider.list(VAULT_RESOURCE_ID) });
     },
 
     async vaultOpen(path) {
       const normalized = normalizeNotePath(path);
       if (!normalized) return;
-      const provider = providerFor('local')!;
+      const provider = providerFor(vaultProviderId(get().settings))!;
       const existing = await provider.read(VAULT_RESOURCE_ID, normalized);
       set({
         vaultNote: existing ?? { path: normalized, text: '', updatedAt: new Date().toISOString() },
@@ -2235,7 +2252,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async vaultSave(path, text) {
-      const provider = providerFor('local')!;
+      const provider = providerFor(vaultProviderId(get().settings))!;
       const saved = await provider.write(VAULT_RESOURCE_ID, path, text);
       set({
         vaultFiles: await provider.list(VAULT_RESOURCE_ID),
@@ -2248,7 +2265,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async vaultDelete(path) {
-      const provider = providerFor('local')!;
+      const provider = providerFor(vaultProviderId(get().settings))!;
       await provider.remove(VAULT_RESOURCE_ID, path);
       set({
         vaultFiles: await provider.list(VAULT_RESOURCE_ID),
@@ -2258,7 +2275,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async vaultReadAll() {
-      const provider = providerFor('local')!;
+      const provider = providerFor(vaultProviderId(get().settings))!;
       const files = await provider.list(VAULT_RESOURCE_ID);
       const out: Array<{ path: string; text: string }> = [];
       for (const f of files) {
@@ -2266,6 +2283,27 @@ export const useApp = create<AppState>((set, get) => {
         if (note) out.push({ path: note.path, text: note.text });
       }
       return out;
+    },
+
+    async vaultMoveTo(providerId) {
+      const from = vaultProviderId(get().settings);
+      if (providerId === from) return true;
+      const target = providerFor(providerId);
+      if (!target || !(await probeReady(providerId))) return false;
+      // Copy every note across before repointing, so a mid-move failure leaves
+      // the source vault intact. The source bytes are left in place as a
+      // safety copy; a later cleanup pass can reclaim them.
+      const notes = await get().vaultReadAll();
+      for (const note of notes) {
+        await target.write(VAULT_RESOURCE_ID, note.path, note.text);
+      }
+      const resources = (get().settings.gitosResources ?? []).map((r) =>
+        r.id === VAULT_RESOURCE_ID ? { ...r, providerId } : r,
+      );
+      await get().saveSettings({ gitosResources: resources });
+      set({ vaultFiles: await target.list(VAULT_RESOURCE_ID) });
+      logEvent('vault_moved', { to: providerId });
+      return true;
     },
 
     openConversation(id) {
