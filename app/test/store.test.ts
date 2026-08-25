@@ -126,6 +126,22 @@ describe('project bucketing and quick chats', () => {
     s.openConversation(savedId);
     expect(useApp.getState().conversations[quickId]).toBeUndefined();
   });
+
+  it('a new chat inherits the project repos (no override) until it sets its own', async () => {
+    const s = useApp.getState();
+    const projectId = await s.createProject('Alpha');
+    await s.updateProject(projectId, { repoIds: ['gitos:r1'] });
+    const id = await s.newConversation({ kind: 'mock' });
+    // Undefined override means "follow the project".
+    expect(useApp.getState().conversations[id]!.repoIds).toBeUndefined();
+
+    s.setConversationRepos(id, ['desktop:/tmp/x']);
+    expect(useApp.getState().conversations[id]!.repoIds).toEqual(['desktop:/tmp/x']);
+
+    // Passing undefined drops the override and inherits the project again.
+    s.setConversationRepos(id, undefined);
+    expect(useApp.getState().conversations[id]!.repoIds).toBeUndefined();
+  });
 });
 
 describe('outbox producer', () => {

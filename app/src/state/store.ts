@@ -506,6 +506,9 @@ interface AppState {
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
+  /** Override a chat's repositories, or pass undefined to drop the override and
+   *  let the chat inherit its project's repos again. */
+  setConversationRepos(id: string, repoIds: string[] | undefined): void;
   send(text: string, attachments?: Attachment[]): void;
   abort(): void;
   answerApproval(approvalId: string, approve: boolean, always?: boolean): void;
@@ -2549,6 +2552,18 @@ export const useApp = create<AppState>((set, get) => {
           .then((driver) => attachDriver(id, driver))
           .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)));
       }
+    },
+
+    setConversationRepos(id, repoIds) {
+      set((s) => {
+        const conv = s.conversations[id];
+        if (!conv) return s;
+        // undefined clears the override (back to inheriting the project); an
+        // array, empty included, is this chat's own explicit selection.
+        const next = { ...conv, repoIds: repoIds ? [...repoIds] : undefined };
+        return { conversations: { ...s.conversations, [id]: next } };
+      });
+      void persistConversations(get());
     },
 
     deleteConversation(id) {

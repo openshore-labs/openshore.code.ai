@@ -67,6 +67,12 @@ export interface Conversation {
   source: ConversationSource;
   /** The project this chat belongs to, if any. */
   projectId?: string;
+  /** This chat's own repository selection, when it has diverged from its
+   *  project. Undefined means "inherit the project's repos" (the default, so a
+   *  new chat rides the project's repositories with nothing to set); an array,
+   *  even an empty one, is an explicit per-chat override. Resolve with
+   *  resolveChatRepoIds in lib/availableRepos. */
+  repoIds?: string[];
   /** A throwaway quick chat: never persisted, gone when it closes. */
   ephemeral?: boolean;
   /** Explicitly unfiled (its project was deleted), as opposed to a legacy chat

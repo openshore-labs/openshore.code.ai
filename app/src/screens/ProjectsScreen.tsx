@@ -1,62 +1,52 @@
-// Projects: the buckets that hold your work. A project keeps its chats and
-// their context together, carries standing instructions into every chat, and
-// can share repositories with other projects. Create one to start saving
-// chats; switch the active one from here or the sidebar.
-import { useEffect, useState } from 'react';
+// Projects, organized the way Claude's projects are: the room opens on a plain
+// list of your projects, and tapping one drops you inside it, where its chats,
+// its repositories, and its standing instructions live together. The "..." menu
+// at the top edits the project's details; the repositories row attaches repos
+// straight from the Repositories section. Every chat you start here inherits the
+// project's repositories by default, so a project keeps touching the same repos
+// until you start another one.
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonWorkspaces } from '../drivers/remoteDriver.js';
+import { useDismissable } from '../lib/useDismissable.js';
+import { availableRepos, repoRefLabel } from '../lib/availableRepos.js';
+import { RepoPickerSheet } from '../components/RepoPickerSheet.js';
 import { BackBar } from '../components/BackBar.js';
 import type { Project } from '../state/types.js';
 
 export function ProjectsScreen() {
-  const {
-    settings,
-    createProject,
-    updateProject,
-    deleteProject,
-    setActiveProject,
-    setView,
-    showToast,
-  } = useApp();
+  const { settings, conversations, order, createProject } = useApp();
 
   const projects = settings.projects ?? [];
   const activeId = settings.activeProjectId ?? projects[0]?.id;
 
   const [newName, setNewName] = useState('');
-  const [editing, setEditing] = useState<Project | undefined>();
-  const [confirmDelete, setConfirmDelete] = useState<string | undefined>();
-  const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        if (isDesktop() && bridge()) setWorkspaces(await bridge()!.recentWorkspaces());
-        else if (settings.daemon) setWorkspaces(await daemonWorkspaces(settings.daemon));
-      } catch {
-        setWorkspaces([]);
-      }
-    })();
-  }, [settings.daemon]);
+  // Which project's detail is open. Undefined shows the list.
+  const [openId, setOpenId] = useState<string | undefined>();
 
   const create = async () => {
     const name = newName.trim();
     if (!name) return;
-    await createProject(name);
+    const id = await createProject(name);
     setNewName('');
-    showToast(`${name} is your active project.`);
+    setOpenId(id);
   };
 
-  const saveEdit = async () => {
-    if (!editing) return;
-    await updateProject(editing.id, {
-      name: editing.name.trim() || 'Untitled project',
-      instructions: editing.instructions,
-      repoIds: editing.repoIds,
-    });
-    setEditing(undefined);
-  };
+  // Falls back to the list on its own when the open project no longer exists
+  // (deleted from its detail view, which also calls onBack).
+  const openProject = projects.find((p) => p.id === openId);
+
+  if (openProject) {
+    return (
+      <ProjectDetail
+        project={openProject}
+        isActive={openProject.id === activeId}
+        onBack={() => setOpenId(undefined)}
+      />
+    );
+  }
 
   return (
     <div className="screen">
@@ -64,8 +54,8 @@ export function ProjectsScreen() {
       <div className="screen-inner">
         <h1>Projects</h1>
         <p className="lead">
-          A project keeps its chats and their context together. Standing instructions ride into
-          every chat in the project, and repositories can be shared across projects.
+          A project keeps its chats, its repositories, and its standing instructions together. Open
+          one to work inside it.
         </p>
 
         <div className="card">
@@ -93,9 +83,16 @@ export function ProjectsScreen() {
             No projects yet. Create one above, then every new chat is saved inside it.
           </p>
         ) : (
-          projects.map((p) => (
-            <div className="card" key={p.id}>
-              <div className="card-row">
+          projects.map((p) => {
+            const chatCount = order.filter(
+              (id) => conversations[id] && !conversations[id]!.ephemeral && conversations[id]!.projectId === p.id,
+            ).length;
+            return (
+              <button
+                key={p.id}
+                className="card project-card"
+                onClick={() => setOpenId(p.id)}
+              >
                 <div className="grow">
                   <h3>
                     {p.name}
@@ -106,53 +103,240 @@ export function ProjectsScreen() {
                     ) : null}
                   </h3>
                   <div className="sub">
-                    {p.instructions?.trim()
-                      ? p.instructions.trim().slice(0, 80)
-                      : 'No standing instructions yet.'}
+                    {chatCount ? `${chatCount} chat${chatCount > 1 ? 's' : ''}` : 'No chats yet'}
                     {p.repoIds.length
                       ? ` · ${p.repoIds.length} repo${p.repoIds.length > 1 ? 's' : ''}`
                       : ''}
+                    {p.instructions?.trim() ? ' · instructions set' : ''}
                   </div>
                 </div>
-              </div>
-              <div
-                className="suggestion-row"
-                style={{ justifyContent: 'flex-start', marginTop: 4 }}
+                <span className="disclosure-chevron" aria-hidden="true" />
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Inside one project: its repositories, its instructions, and its chats. The
+// header carries the "..." overflow menu (edit, activate, delete).
+function ProjectDetail({
+  project,
+  isActive,
+  onBack,
+}: {
+  project: Project;
+  isActive: boolean;
+  onBack: () => void;
+}) {
+  const {
+    settings,
+    conversations,
+    order,
+    updateProject,
+    deleteProject,
+    setActiveProject,
+    openConversation,
+    startNewChat,
+    showToast,
+  } = useApp();
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useDismissable(menuRef, menuOpen, () => setMenuOpen(false));
+
+  const [editing, setEditing] = useState<{ name: string; instructions: string } | undefined>();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [repoPicker, setRepoPicker] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        if (isDesktop() && bridge()) setWorkspaces(await bridge()!.recentWorkspaces());
+        else if (settings.daemon) setWorkspaces(await daemonWorkspaces(settings.daemon));
+      } catch {
+        setWorkspaces([]);
+      }
+    })();
+  }, [settings.daemon]);
+
+  const roster = availableRepos({
+    gitosResources: settings.gitosResources,
+    homeRepo: settings.repo?.homeRepo,
+    workspaces,
+  });
+
+  const toggleRepo = (id: string) => {
+    const on = project.repoIds.includes(id);
+    void updateProject(project.id, {
+      repoIds: on ? project.repoIds.filter((x) => x !== id) : [...project.repoIds, id],
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    await updateProject(project.id, {
+      name: editing.name.trim() || 'Untitled project',
+      instructions: editing.instructions,
+    });
+    setEditing(undefined);
+  };
+
+  const chats = order
+    .map((id) => conversations[id])
+    .filter((c): c is NonNullable<typeof c> => Boolean(c) && !c!.ephemeral && c!.projectId === project.id);
+
+  return (
+    <div className="screen">
+      <header className="topbar">
+        <button className="icon-btn" onClick={onBack} aria-label="Back to projects">
+          {'‹'}
+        </button>
+        <div className="topbar-title">
+          {project.name}
+          {isActive ? <span className="pill local" style={{ marginLeft: 8 }}>active</span> : null}
+        </div>
+        <div className="project-menu-wrap" ref={menuRef}>
+          <button
+            className="icon-btn"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Project options"
+            aria-expanded={menuOpen}
+          >
+            {'⋯'}
+          </button>
+          {menuOpen ? (
+            <div className="overflow-menu">
+              <button
+                className="overflow-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEditing({ name: project.name, instructions: project.instructions ?? '' });
+                }}
               >
-                {p.id === activeId ? null : (
-                  <button
-                    className="suggestion"
-                    onClick={() => {
-                      setActiveProject(p.id);
-                      showToast(`${p.name} is now active.`);
-                    }}
-                  >
-                    Make active
-                  </button>
-                )}
+                Edit details
+              </button>
+              {isActive ? null : (
                 <button
-                  className="suggestion"
+                  className="overflow-item"
                   onClick={() => {
-                    setActiveProject(p.id);
-                    setView('chat');
-                    useApp.setState({ activeId: undefined });
+                    setMenuOpen(false);
+                    setActiveProject(project.id);
+                    showToast(`${project.name} is now active.`);
                   }}
                 >
-                  Open a chat
+                  Make active
                 </button>
-                <button className="suggestion" onClick={() => setEditing({ ...p })}>
-                  Edit
-                </button>
-                <button className="suggestion" onClick={() => setConfirmDelete(p.id)}>
-                  Delete
-                </button>
-              </div>
+              )}
+              <button
+                className="overflow-item danger"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setConfirmDelete(true);
+                }}
+              >
+                Delete project
+              </button>
             </div>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="screen-inner">
+        {/* Repositories: attached straight from the Repositories section. Every
+            chat in this project rides these unless it sets its own. */}
+        <div className="section-head">
+          <h3>Repositories</h3>
+        </div>
+        <div className="repo-pill-row">
+          {project.repoIds.map((id) => (
+            <span key={id} className="repo-pill">
+              {repoRefLabel(id, roster)}
+              <button
+                className="repo-pill-x"
+                aria-label={`Remove ${repoRefLabel(id, roster)}`}
+                onClick={() => toggleRepo(id)}
+              >
+                {'×'}
+              </button>
+            </span>
+          ))}
+          <button className="repo-pill add" onClick={() => setRepoPicker(true)}>
+            {'+ Repositories'}
+          </button>
+        </div>
+        <p className="hint" style={{ marginTop: 2 }}>
+          {project.repoIds.length
+            ? 'Every chat here runs on these by default. A chat can pick its own.'
+            : 'Attach the repositories this project works on. New chats inherit them.'}
+        </p>
+
+        {/* Standing instructions: the context every chat in the project carries. */}
+        <div className="section-head" style={{ marginTop: 20 }}>
+          <h3>Project instructions</h3>
+          <button
+            className="section-action"
+            onClick={() => setEditing({ name: project.name, instructions: project.instructions ?? '' })}
+          >
+            {project.instructions?.trim() ? 'Edit' : 'Add'}
+          </button>
+        </div>
+        <div className="card">
+          {project.instructions?.trim() ? (
+            <div className="instructions-body">{project.instructions.trim()}</div>
+          ) : (
+            <div className="sub">
+              No standing instructions yet. Add the context and rules every chat in this project
+              should follow.
+            </div>
+          )}
+        </div>
+
+        {/* Chats in this project. */}
+        <div className="section-head" style={{ marginTop: 20 }}>
+          <h3>Chats</h3>
+          <button
+            className="section-action"
+            onClick={() => {
+              setActiveProject(project.id);
+              startNewChat();
+            }}
+          >
+            + New chat
+          </button>
+        </div>
+        {chats.length === 0 ? (
+          <p className="hint">No chats yet. Start one and it stays with this project.</p>
+        ) : (
+          chats.map((c) => (
+            <button key={c!.id} className="card project-card" onClick={() => openConversation(c!.id)}>
+              <div className="grow">
+                <h3>{c!.title}</h3>
+                <div className="sub">
+                  {c!.repoIds
+                    ? `${c!.repoIds.length} repo${c!.repoIds.length === 1 ? '' : 's'} (this chat)`
+                    : 'Project repositories'}
+                </div>
+              </div>
+              <span className="disclosure-chevron" aria-hidden="true" />
+            </button>
           ))
         )}
       </div>
 
-      {/* Edit sheet: name, standing instructions, shared repos. */}
+      {repoPicker ? (
+        <RepoPickerSheet
+          title="Project repositories"
+          subtitle="Pick from the repositories you connected in Repositories. New chats inherit these."
+          selected={project.repoIds}
+          onToggle={toggleRepo}
+          onClose={() => setRepoPicker(false)}
+        />
+      ) : null}
+
       {editing ? (
         <div className="sheet-scrim" onClick={() => setEditing(undefined)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -167,43 +351,12 @@ export function ProjectsScreen() {
             <div className="field">
               <label>Standing instructions (optional)</label>
               <textarea
-                rows={4}
+                rows={5}
                 placeholder="Context and rules every chat in this project should follow."
-                value={editing.instructions ?? ''}
+                value={editing.instructions}
                 onChange={(e) => setEditing({ ...editing, instructions: e.target.value })}
               />
             </div>
-
-            {workspaces.length ? (
-              <div className="field">
-                <label>Repositories (shareable across projects)</label>
-                <div className="check-list">
-                  {workspaces.map((ws) => {
-                    const on = editing.repoIds.includes(ws.cwd);
-                    return (
-                      <label key={ws.cwd} className="multiselect-row">
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          onChange={() =>
-                            setEditing({
-                              ...editing,
-                              repoIds: on
-                                ? editing.repoIds.filter((x) => x !== ws.cwd)
-                                : [...editing.repoIds, ws.cwd],
-                            })
-                          }
-                        />
-                        <span>{ws.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <p className="hint">Connect your desktop to attach repositories to this project.</p>
-            )}
-
             <div className="sheet-actions">
               <button className="btn primary" onClick={() => void saveEdit()}>
                 Save
@@ -216,9 +369,8 @@ export function ProjectsScreen() {
         </div>
       ) : null}
 
-      {/* Delete confirmation. Chats survive; they just lose the project link. */}
       {confirmDelete ? (
-        <div className="sheet-scrim" onClick={() => setConfirmDelete(undefined)}>
+        <div className="sheet-scrim" onClick={() => setConfirmDelete(false)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h2>Delete this project?</h2>
             <p className="sheet-sub">
@@ -228,15 +380,15 @@ export function ProjectsScreen() {
               <button
                 className="btn primary"
                 onClick={async () => {
-                  const id = confirmDelete;
-                  setConfirmDelete(undefined);
-                  await deleteProject(id);
+                  setConfirmDelete(false);
+                  await deleteProject(project.id);
                   showToast('Project deleted.');
+                  onBack();
                 }}
               >
                 Delete project
               </button>
-              <button className="btn quiet" onClick={() => setConfirmDelete(undefined)}>
+              <button className="btn quiet" onClick={() => setConfirmDelete(false)}>
                 Keep it
               </button>
             </div>

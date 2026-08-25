@@ -10,23 +10,28 @@ import { Composer } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
 import { ModelSheet } from '../components/ModelSheet.js';
 import { ModeSheet } from '../components/ModeSheet.js';
+import { RepoPickerSheet } from '../components/RepoPickerSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { timeGreeting } from '../lib/greeting.js';
+import { resolveChatRepoIds } from '../lib/availableRepos.js';
 import type { Attachment } from '../lib/attachments.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
   const {
     activeId,
     conversations,
+    settings,
     send,
     abort,
     answerApproval,
     newConversation,
     switchModel,
+    setConversationRepos,
     setDrawer,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [repoSheetOpen, setRepoSheetOpen] = useState(false);
   // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
   // 'local' from the out-of-usage "Switch to a local model" tap.
   const [sheetStage, setSheetStage] = useState<'root' | 'local'>('root');
@@ -38,6 +43,23 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
   const approval = thread?.pendingApprovals[0];
+
+  // Repositories for a saved, filed chat. It inherits the project's repos until
+  // it sets its own; the chip in the header opens the picker to diverge or
+  // reset. Quick chats and unfiled chats have no project to ride, so no chip.
+  const project = conv?.projectId
+    ? settings.projects?.find((p) => p.id === conv.projectId)
+    : undefined;
+  const chatRepoIds = resolveChatRepoIds(conv?.repoIds, project?.repoIds);
+  const showRepoChip = Boolean(conv && !conv.ephemeral && project);
+  const inheriting = conv?.repoIds === undefined;
+
+  const toggleChatRepo = (id: string) => {
+    if (!conv) return;
+    const base = conv.repoIds ?? chatRepoIds;
+    const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+    setConversationRepos(conv.id, next);
+  };
 
   // The composer pill shows the live chat's brain when one is open, otherwise
   // the pending selection for the next new chat.
@@ -74,6 +96,33 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         ) : (
           <div className="topbar-spacer" />
         )}
+        {showRepoChip ? (
+          <button
+            className="repo-chip"
+            onClick={() => setRepoSheetOpen(true)}
+            aria-label="Chat repositories"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="7" cy="6" r="2.2" />
+              <circle cx="7" cy="18" r="2.2" />
+              <circle cx="17" cy="8" r="2.2" />
+              <path d="M7 8.2v7.6" />
+              <path d="M17 10.2v1.1a3.6 3.6 0 0 1-3.6 3.6H9.2" />
+            </svg>
+            <span>{chatRepoIds.length}</span>
+            {inheriting ? null : <span className="repo-chip-own" aria-hidden="true" />}
+          </button>
+        ) : null}
         <ProfileStatus />
       </header>
 
@@ -134,6 +183,22 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ) : null}
 
       {modeSheetOpen ? <ModeSheet onClose={() => setModeSheetOpen(false)} /> : null}
+
+      {repoSheetOpen && conv ? (
+        <RepoPickerSheet
+          title="Chat repositories"
+          subtitle={
+            inheriting
+              ? 'This chat is following the project. Pick repos to give it its own set.'
+              : 'This chat runs on its own repositories.'
+          }
+          selected={chatRepoIds}
+          onToggle={toggleChatRepo}
+          onUseProject={() => setConversationRepos(conv.id, undefined)}
+          inheriting={inheriting}
+          onClose={() => setRepoSheetOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
