@@ -18,7 +18,7 @@ root.render(
 // phone), which read as too fast. Modeled on the Claude iOS app's unhurried
 // opening. THIS IS THE KNOB to make it slower or faster; pair it with the
 // entrance/exit durations in index.html. The mark holds until this time, then
-// the 0.55s cross-fade runs, so total opening is roughly SPLASH_MIN_MS + 550ms.
+// the 0.5s cross-fade runs, so total opening is roughly SPLASH_MIN_MS + 500ms.
 const SPLASH_MIN_MS = 1500;
 
 // Dismiss the boot splash once BOTH the first React frame has painted AND the
