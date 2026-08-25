@@ -72,6 +72,11 @@ export function ModelSheet({
             <div className="ms-effort" role="group" aria-label="Reasoning effort">
               <span className="ms-effort-label">Effort</span>
               <div className="ms-seg">
+                <span
+                  className="ms-seg-slider"
+                  style={{ transform: `translateX(${EFFORTS.indexOf(effort) * 100}%)` }}
+                  aria-hidden="true"
+                />
                 {EFFORTS.map((e) => (
                   <button
                     key={e}
