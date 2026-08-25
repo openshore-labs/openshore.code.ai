@@ -13,5 +13,25 @@
 	-->
 	<key>aps-environment</key>
 	<string>$(APS_ENVIRONMENT)</string>
+	<!--
+	  iCloud Documents for the Vault's iCloud storage provider (oscode-icloud).
+	  The container id must match OscodeIcloudPlugin.containerId. As with Push
+	  above, the provisioning profile must carry this entitlement, so enable
+	  iCloud (with the iCloud.ai.openshore.oscode container) on the
+	  ai.openshore.oscode App ID BEFORE the next distribution build, or signing
+	  fails. Until then the provider probes unavailable and stays unselectable.
+	-->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.ai.openshore.oscode</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.ai.openshore.oscode</string>
+	</array>
 </dict>
 </plist>

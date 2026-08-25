@@ -40,6 +40,9 @@ importers:
       oscode-iap:
         specifier: file:./plugins/oscode-iap
         version: file:app/plugins/oscode-iap(@capacitor/core@8.5.0)
+      oscode-icloud:
+        specifier: file:./plugins/oscode-icloud
+        version: file:app/plugins/oscode-icloud(@capacitor/core@8.5.0)
       oscode-llama:
         specifier: file:./plugins/oscode-llama
         version: file:app/plugins/oscode-llama(@capacitor/core@8.5.0)
@@ -2384,6 +2387,11 @@ packages:
 
   oscode-iap@file:app/plugins/oscode-iap:
     resolution: {directory: app/plugins/oscode-iap, type: directory}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  oscode-icloud@file:app/plugins/oscode-icloud:
+    resolution: {directory: app/plugins/oscode-icloud, type: directory}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -5763,6 +5771,10 @@ snapshots:
       word-wrap: 1.2.5
 
   oscode-iap@file:app/plugins/oscode-iap(@capacitor/core@8.5.0):
+    dependencies:
+      '@capacitor/core': 8.5.0
+
+  oscode-icloud@file:app/plugins/oscode-icloud(@capacitor/core@8.5.0):
     dependencies:
       '@capacitor/core': 8.5.0
 
