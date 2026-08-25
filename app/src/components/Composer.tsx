@@ -7,9 +7,31 @@
 import { useRef, useState } from 'react';
 import { sourceLabel, type ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
-import { DEFAULT_EFFORT, effortLabel } from '../lib/effort.js';
+import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
 import { fileToAttachment, type Attachment } from '../lib/attachments.js';
 import { useDictation } from '../hooks/useDictation.js';
+
+// The iOS keyboard dictation microphone, the same outline Claude uses.
+function MicIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={20}
+      height={20}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <line x1="12" y1="18" x2="12" y2="22" />
+      <line x1="8.5" y1="22" x2="15.5" y2="22" />
+    </svg>
+  );
+}
 
 export function Composer({
   busy,
@@ -19,6 +41,7 @@ export function Composer({
   onSend,
   onStop,
   onOpenModelSheet,
+  onOpenModeSheet,
 }: {
   busy: boolean;
   source?: ConversationSource;
@@ -29,6 +52,7 @@ export function Composer({
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
   onOpenModelSheet: () => void;
+  onOpenModeSheet: () => void;
 }) {
   const { settings, showToast } = useApp();
   const [value, setValue] = useState('');
@@ -90,7 +114,7 @@ export function Composer({
   };
 
   const modelLabel = source ? sourceLabel(source) : 'My Stack';
-  const effort = settings.effort ?? DEFAULT_EFFORT;
+  const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
   return (
     <div className="composer-wrap">
@@ -158,11 +182,14 @@ export function Composer({
             {modelLabel}
           </button>
           <button
-            className="composer-pill composer-pill-effort press-fb"
-            onClick={onOpenModelSheet}
-            aria-label={`Effort: ${effortLabel(effort)}`}
+            className="composer-pill composer-pill-mode press-fb"
+            onClick={onOpenModeSheet}
+            aria-label={`Mode: ${permissionModeLabel(mode)}`}
           >
-            {effortLabel(effort)}
+            <span className="pill-code" aria-hidden="true">
+              {'</>'}
+            </span>
+            {permissionModeLabel(mode)}
           </button>
 
           <div className="composer-row-spacer" />
@@ -172,7 +199,7 @@ export function Composer({
             onClick={micTap}
             aria-label={dictation.listening ? 'Stop dictation' : 'Dictate'}
           >
-            {'🎤'}
+            <MicIcon />
           </button>
 
           {busy ? (

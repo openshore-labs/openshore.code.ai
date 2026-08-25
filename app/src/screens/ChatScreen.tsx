@@ -9,6 +9,7 @@ import { MessageList } from '../components/MessageList.js';
 import { Composer } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
 import { ModelSheet } from '../components/ModelSheet.js';
+import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { timeGreeting } from '../lib/greeting.js';
@@ -26,6 +27,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     setDrawer,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [modeSheetOpen, setModeSheetOpen] = useState(false);
   // The brain a new chat will use, chosen from the composer. Defaults to the
   // stack, which is what "My Stack" selects.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
@@ -76,12 +78,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <MessageList thread={thread} />
       ) : (
         <div className="greeting">
-          <span className="brand-lockup">
-            <BrandMark size={44} />
-            <span className="wordmark" style={{ fontSize: 30 }}>
-              Open<span className="accent">Shore</span>
-            </span>
-          </span>
+          <BrandMark size={48} />
           <h1>{timeGreeting()}. What are we building?</h1>
         </div>
       )}
@@ -91,6 +88,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         source={composerSource}
         visionSupported={sourceSupportsVision(composerSource)}
         onOpenModelSheet={() => setSheetOpen(true)}
+        onOpenModeSheet={() => setModeSheetOpen(true)}
         onSend={(text, attachments) => {
           if (!conv) {
             void startWith(selectedSource, text, attachments);
@@ -121,6 +119,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           onClose={() => setSheetOpen(false)}
         />
       ) : null}
+
+      {modeSheetOpen ? <ModeSheet onClose={() => setModeSheetOpen(false)} /> : null}
     </div>
   );
 }

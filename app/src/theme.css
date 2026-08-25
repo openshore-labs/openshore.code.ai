@@ -1068,10 +1068,20 @@ textarea {
 .composer-pill:hover {
   background: var(--surface-hover);
 }
-.composer-pill-effort {
-  color: var(--local);
-  font-weight: 600;
+.composer-pill-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-weight: 500;
   flex-shrink: 0;
+  max-width: none;
+}
+.pill-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--local);
+  letter-spacing: -0.06em;
 }
 
 .composer-row-spacer {
@@ -1248,6 +1258,86 @@ textarea {
   font-size: 13px;
   color: var(--local);
   margin-bottom: 10px;
+}
+
+/* Permission-mode sheet (Select mode), the three Claude Code modes. */
+.mode-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.mode-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mode-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.mode-list {
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+.mode-row:last-child {
+  border-bottom: none;
+}
+.mode-row:hover {
+  background: var(--surface-hover);
+}
+.mode-row-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--ink-soft);
+}
+.mode-row-icon.mode-auto {
+  color: var(--cloud);
+}
+.mode-row-icon.mode-acceptEdits {
+  color: var(--local);
+}
+.mode-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.mode-row-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.mode-row-desc {
+  font-size: 13px;
+  color: var(--muted);
+}
+.mode-row-check {
+  color: var(--local);
+  font-size: 17px;
+  flex-shrink: 0;
 }
 
 /* ---------------------------------------------------------------- polish */
