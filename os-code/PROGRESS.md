@@ -656,6 +656,20 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: polish pass, swipe physics + a tappable out-of-usage fallback.**
+  Both polish bundles surfaced this session, built. Swipe-to-pin now reads as
+  native: (1) axis lock, the gesture decides horizontal vs vertical in the first
+  ~8px and only captures the pointer once horizontal, so a vertical list scroll
+  is never stolen; (2) velocity commit, a quick leftward flick fires Pin/Unpin
+  even short of the distance threshold; (3) a reveal-edge haptic tick the instant
+  the action is fully revealed (armed), on top of the success haptic at commit.
+  Out-of-usage is now actionable: the stopped message carries a "Switch to a
+  local model" button that opens the Local LLMs sheet directly. The exact
+  fallback phrase moved to `lib/usageFallback.ts` (a leaf module the cloud driver
+  emits and the transcript matches, so they cannot drift), and `ModelSheet` takes
+  an `initialStage` so the tap lands straight on the Local LLMs sub-sheet. Green:
+  typecheck, lint, 153 tests, vite build, cap sync ios.
+
 - **2026-08-25: OpenShore stops pricing usage; at account limits it points to
   local.** Founder call: OpenShore is a connection to the user's own Anthropic
   account (subscription or pay-as-you-go), so their account owns all billing.
