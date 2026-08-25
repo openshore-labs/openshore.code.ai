@@ -18,6 +18,11 @@ export type ThreadItem =
       state: 'running' | 'ok' | 'fail' | 'denied';
       durationMs?: number;
       detail?: string;
+      // How to render `detail` when expanded: a unified diff (edit tools) gets
+      // the +/- colorizing, plain command output is shown verbatim in a mono
+      // block. Shell output run through the diff renderer mis-colors every line
+      // that happens to start with + or -, so the kind is tracked explicitly.
+      detailKind?: 'diff' | 'output';
     }
   | { kind: 'status'; id: string; text: string }
   | { kind: 'note'; id: string; text: string }

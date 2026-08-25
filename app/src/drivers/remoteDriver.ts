@@ -4,6 +4,7 @@
 // with backoff and resumes from the last sequence it saw.
 import type { ApprovalAnswer, DaemonSessionInfo, DriverEvent } from 'os-code/protocol';
 import type { ChatDriver, DriverEventSink } from './types.js';
+import { streamingFetch } from '../lib/streamingFetch.js';
 
 export interface DaemonTarget {
   /** e.g. http://100.101.1.2:4816 (the desktop's tailnet address). */
@@ -193,7 +194,7 @@ export class RemoteDriver implements ChatDriver {
     while (!this.closed) {
       this.abortStream = new AbortController();
       try {
-        const res = await fetch(
+        const res = await streamingFetch(
           `${this.target.baseUrl}/sessions/${this.sessionId}/events?since=${this.lastSeq}`,
           { headers: headers(this.target), signal: this.abortStream.signal },
         );

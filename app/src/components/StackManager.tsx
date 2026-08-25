@@ -234,8 +234,8 @@ export function StackManager() {
 
         {!admin ? (
           <p className="hint" style={{ marginTop: 12 }}>
-            The bench and stack controls are managed by your admin. Everything else in OpenShore, your
-            chats, projects, and crew, is yours to set up as you like.
+            The bench and stack controls are managed by your admin. Everything else in OpenShore,
+            your chats, projects, and crew, is yours to set up as you like.
           </p>
         ) : (
           <>

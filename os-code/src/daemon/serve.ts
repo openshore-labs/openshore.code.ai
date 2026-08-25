@@ -99,12 +99,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     } catch {}
   });
 
-  const server = createServer((req, res) => {
+  const requestListener = (req: IncomingMessage, res: ServerResponse): void => {
     void handle(req, res).catch((err) => {
       log.error('request failed', { err: String(err) });
       sendJson(res, 500, { error: 'Something went wrong in the daemon; check its logs.' });
     });
-  });
+  };
+  const server = createServer(requestListener);
+  // When bound to the tailnet, also listen on loopback. `osc attach` (and any
+  // same-machine tool) defaults to 127.0.0.1, so a tailscale-only bind left the
+  // pair wizard's own `osc attach` step refused on the desktop. Loopback is
+  // never less safe than the tailnet bind it accompanies.
+  const loopbackServer = host !== '127.0.0.1' ? createServer(requestListener) : undefined;
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
@@ -235,6 +241,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 400, { ok: false, error: 'Send a valid repo cwd.' });
         return;
       }
+      // An apply creates a commit and pushes it with the desktop's credentials,
+      // a stronger capability than opening a session, so it takes the same
+      // path gate: a member may only apply into a workspace an admin has
+      // provisioned, never an arbitrary repo path on the machine.
+      if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
+        sendJson(res, 403, {
+          ok: false,
+          error:
+            'Members can only sync into a workspace an admin has provisioned. Ask a company admin to clone the repo.',
+        });
+        return;
+      }
       const request = body as unknown as OutboxApplyRequest;
       if (
         !request.clientOpId ||
@@ -267,6 +285,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const branch = url.searchParams.get('branch') ?? undefined;
       if (!cwd || !existsSync(cwd) || !commit) {
         sendJson(res, 400, { error: 'Send cwd and commit.' });
+        return;
+      }
+      // Same path gate as apply: a member may only inspect a commit inside a
+      // provisioned workspace, never probe an arbitrary repo on the machine.
+      if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
+        sendJson(res, 403, { error: 'Members can only verify inside a provisioned workspace.' });
         return;
       }
       try {
@@ -441,9 +465,28 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
+    const closeAll = (): void => {
+      server.close();
+      loopbackServer?.close();
+    };
     server.listen(options.port, host, () => {
       log.info('daemon up', { host, port: options.port });
-      resolve({ host, port: options.port, close: () => server.close() });
+      if (loopbackServer) {
+        loopbackServer.once('error', (err) => {
+          // A loopback conflict must not take the tailnet listener down (or hang
+          // startup): the primary bind is what the phone uses. Log, resolve with
+          // the tailnet-only daemon, and carry on. resolve() is idempotent, so
+          // the success path below is harmless if it also fires.
+          log.warn('loopback listener failed', { err: String(err) });
+          resolve({ host, port: options.port, close: closeAll });
+        });
+        loopbackServer.listen(options.port, '127.0.0.1', () => {
+          log.info('daemon also on loopback', { port: options.port });
+          resolve({ host, port: options.port, close: closeAll });
+        });
+      } else {
+        resolve({ host, port: options.port, close: closeAll });
+      }
     });
   });
 }

@@ -17,7 +17,15 @@ export function BrandMark({ size = 28 }: { size?: number }) {
     >
       <rect width="32" height="32" rx="7.5" fill="#1c2a33" />
       <g transform="translate(0 -0.81)">
-        <line x1="7" y1="13" x2="25" y2="13" stroke="#f6f4ef" strokeWidth="2" strokeLinecap="round" />
+        <line
+          x1="7"
+          y1="13"
+          x2="25"
+          y2="13"
+          stroke="#f6f4ef"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
         <path
           d="M7 19q4.5-3.3 9 0t9 0"
           fill="none"

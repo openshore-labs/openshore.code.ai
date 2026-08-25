@@ -24,6 +24,21 @@ export function DiffBlock({ text }: { text: string }) {
   );
 }
 
+// Plain tool output (a shell command's stdout/stderr, a read result): verbatim
+// in a mono block, with no diff colorizing. A command line that starts with +
+// or - is data, not an addition or deletion.
+export function OutputBlock({ text }: { text: string }) {
+  return (
+    <div className="tool-card-detail">
+      {text.split('\n').map((line, i) => (
+        <div key={i} className="diff-ctx">
+          {line || ' '}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ToolCard({ item }: { item: ToolItem }) {
   const [open, setOpen] = useState(false);
   const stateGlyph =
@@ -83,7 +98,13 @@ export function ToolCard({ item }: { item: ToolItem }) {
         <span className="tool-summary">{item.summary}</span>
         {stateGlyph}
       </button>
-      {open && item.detail ? <DiffBlock text={item.detail} /> : null}
+      {open && item.detail ? (
+        item.detailKind === 'output' ? (
+          <OutputBlock text={item.detail} />
+        ) : (
+          <DiffBlock text={item.detail} />
+        )
+      ) : null}
     </div>
   );
 }

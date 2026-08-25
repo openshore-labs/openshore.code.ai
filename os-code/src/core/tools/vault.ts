@@ -4,14 +4,7 @@
 // every WRITE is always-ask: it prompts the user with a diff and never lands a
 // byte without approval (the founder's ruling, enforced by alwaysAsk here plus
 // the permission engine honoring it before any auto-allow path).
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
@@ -130,10 +123,7 @@ export const vaultReadTool: ToolDef<typeof readSchema> = {
 };
 
 const listSchema = z.object({
-  folder: z
-    .string()
-    .optional()
-    .describe('Optional subfolder to list; omit for the whole vault.'),
+  folder: z.string().optional().describe('Optional subfolder to list; omit for the whole vault.'),
 });
 
 function walk(dir: string, root: string, out: string[]): void {

@@ -101,7 +101,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
               state: (event.result.ok ? 'ok' : 'fail') as 'ok' | 'fail',
               durationMs: event.durationMs,
               summary: firstLine(event.result.content) || item.summary,
-              detail: event.result.diffText,
+              // An edit tool carries a unified diff; every other tool (shell
+              // above all) carries plain content. Keep the full content as the
+              // expandable detail so the phone can actually read a command's
+              // output, and mark which renderer it wants.
+              detail: event.result.diffText ?? event.result.content ?? undefined,
+              detailKind: (event.result.diffText ? 'diff' : 'output') as 'diff' | 'output',
             }
           : item,
       );

@@ -31,7 +31,9 @@ export function Paywall() {
   const priceLine = ios
     ? '$20 per year. One person, the whole app.'
     : '$20 per year. One person, the whole app. Same price on iPhone.';
-  const primaryLabel = ios ? 'Unlock Personal · $20/year' : 'Get Personal · $20/year (opens your browser)';
+  const primaryLabel = ios
+    ? 'Unlock Personal · $20/year'
+    : 'Get Personal · $20/year (opens your browser)';
   const secondaryLabel = ios ? 'Restore purchases' : 'Already bought? Refresh your license';
 
   return (

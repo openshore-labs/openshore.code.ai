@@ -7,6 +7,7 @@ import type { ApprovalAnswer } from 'os-code/protocol';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 import { effortDirective } from '../lib/effort.js';
+import { streamingFetch } from '../lib/streamingFetch.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { SWITCH_TO_LOCAL } from '../lib/usageFallback.js';
 import type { SeedTurn } from '../state/types.js';
@@ -49,7 +50,7 @@ export class CloudClaudeDriver implements ChatDriver {
     private readonly model: string = DEFAULT_CLAUDE_MODEL,
     seed?: SeedTurn[],
   ) {
-    this.client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+    this.client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, fetch: streamingFetch });
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
