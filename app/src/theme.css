@@ -454,6 +454,122 @@ textarea {
   transform: scale(0.92);
 }
 
+/* ----------------------------------------------------------------- vault */
+
+/* Wikilinks wear the brand teal: internal knowledge is local/private, so it
+   carries --local, never --link (which means "leaves the app"). Unresolved
+   links (the note does not exist yet) go dashed and muted, created on tap. */
+.wikilink {
+  color: var(--local);
+  text-decoration: none;
+  border-bottom: 1px solid var(--local-soft);
+  border-radius: 4px;
+  transition:
+    background 0.12s ease,
+    transform 0.06s ease;
+}
+
+.wikilink:active {
+  background: var(--local-soft);
+  transform: scale(0.98);
+}
+
+.wikilink.unresolved {
+  color: var(--muted);
+  border-bottom-style: dashed;
+  border-bottom-color: var(--border-strong);
+}
+
+.vault-note-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.vault-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 26px;
+  letter-spacing: -0.012em;
+}
+
+.vault-editor {
+  width: 100%;
+  min-height: 46vh;
+  margin-top: 14px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  line-height: 1.6;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.vault-md {
+  margin-top: 14px;
+}
+
+.vault-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vault-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vault-row-chevron {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  opacity: 0.7;
+}
+
+.vault-crumbs {
+  margin-bottom: 10px;
+}
+
+.vault-mention {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+}
+
+.vault-mention-title {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--local);
+}
+
+.vault-mention-excerpt {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-provider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
 /* ------------------------------------------------------------------ chat */
 
 .thread {
