@@ -11,7 +11,7 @@ import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
-import { isDesktop, isPhone } from '../lib/platform.js';
+import { isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { logEvent } from '../lib/insights.js';
 import { BackBar } from '../components/BackBar.js';
@@ -70,7 +70,7 @@ function nearestTier(gbValue: number): number {
 const SORT_SUBHEAD: Partial<Record<SortKey, string>> = {
   staff: 'Our opinionated shortlist. Chosen, not counted.',
   popular:
-    'Ranked by downloads and likes on Hugging Face and Ollama. A snapshot of what the world runs, not a measure of quality. The stars are quality.',
+    'Ranked by downloads and likes on Hugging Face. A snapshot of what the world runs, not a measure of quality. The stars are quality.',
   used: 'Counted on your machine. Never sent anywhere.',
 };
 
@@ -250,16 +250,21 @@ export function MarketplaceScreen() {
     [usageByModel, catalog],
   );
 
+  // The staff axis lands on an empty state with a pick-less catalog (the bundled
+  // starter carries none), so only offer it when the catalog actually has picks.
+  const staffAxisAvailable = useMemo(
+    () => Boolean(catalog?.models.some((m) => m.recommended?.isRecommended)),
+    [catalog],
+  );
+
   const sorts = useMemo(() => {
-    const list: { key: SortKey; label: string }[] = [
-      { key: 'recommended', label: 'Recommended' },
-      { key: 'staff', label: 'Staff picks' },
-      { key: 'popular', label: 'Popular' },
-    ];
+    const list: { key: SortKey; label: string }[] = [{ key: 'recommended', label: 'Recommended' }];
+    if (staffAxisAvailable) list.push({ key: 'staff', label: 'Staff picks' });
+    list.push({ key: 'popular', label: 'Popular' });
     if (usageAxisAvailable) list.push({ key: 'used', label: 'Your most-used' });
     list.push({ key: 'newest', label: 'Newest' }, { key: 'fit', label: 'Best fit' });
     return list;
-  }, [usageAxisAvailable]);
+  }, [usageAxisAvailable, staffAxisAvailable]);
 
   const visible = useMemo(() => {
     if (!catalog) return [];
@@ -882,7 +887,7 @@ export function MarketplaceScreen() {
                 <div className="hero-scroll">{featured.map(renderHero)}</div>
               ) : null}
 
-              {!isDesktop() ? (
+              {isPhone() ? (
                 <p className="hint store-note">
                   Browse here; desktop models install from the OpenShore desktop app, and this phone
                   uses them over Tailscale.
@@ -924,7 +929,7 @@ export function MarketplaceScreen() {
                     ) : null}
                   </div>
 
-                  {!isDesktop() ? (
+                  {isPhone() ? (
                     <p className="hint" style={{ marginBottom: 10 }}>
                       Browse here; desktop models install from the OpenShore desktop app, and this
                       phone uses them over Tailscale.

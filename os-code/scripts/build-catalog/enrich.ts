@@ -26,8 +26,12 @@ export function enrichCatalog(inputs: BuildInputs): EnrichResult {
   const drops: DropRecord[] = [];
   const kept: CatalogModel[] = [];
 
+  // MP-F5: last week's popularity, keyed by model id, so a model whose metadata
+  // is missing this run carries its prior number forward instead of blanking.
+  const prevPopularity = previousPopularityById(inputs.previous);
+
   for (const base of seed.models) {
-    const built = buildModel(base, inputs);
+    const built = buildModel(base, inputs, prevPopularity);
     if ('drop' in built) {
       drops.push({ id: base.id, reason: built.drop });
       continue;
@@ -85,9 +89,33 @@ function contentSignature(catalog: Catalog): string {
   return JSON.stringify({ ...CatalogSchema.parse(catalog), updated: '' });
 }
 
+type Popularity = NonNullable<CatalogModel['popularity']>;
+
+/** Popularity from the previously published catalog, keyed by model id. Used to
+ *  carry a number forward when this run's source metadata is missing (MP-F5). An
+ *  absent or unparseable previous catalog yields an empty map. */
+function previousPopularityById(previousRaw: unknown): Map<string, Popularity> {
+  const map = new Map<string, Popularity>();
+  if (previousRaw === undefined) return map;
+  let prev: Catalog;
+  try {
+    prev = CatalogSchema.parse(previousRaw);
+  } catch {
+    return map;
+  }
+  for (const m of prev.models) {
+    if (m.popularity) map.set(m.id, m.popularity);
+  }
+  return map;
+}
+
 type BuildOutcome = { model: CatalogModel } | { drop: string };
 
-function buildModel(base: CatalogModel, inputs: BuildInputs): BuildOutcome {
+function buildModel(
+  base: CatalogModel,
+  inputs: BuildInputs,
+  prevPopularity: Map<string, Popularity>,
+): BuildOutcome {
   // Gate 1, license fail-closed: id/name/url come ONLY from the allow-list. An
   // unmapped or missing license id drops the model. We never synthesize one.
   const licenseRow = resolveLicense(base.license.id);
@@ -107,9 +135,26 @@ function buildModel(base: CatalogModel, inputs: BuildInputs): BuildOutcome {
   const license: CatalogModel['license'] = {
     id: licenseRow.id,
     name: licenseRow.name,
+    // MP-A-6: publish the machine-known commercial posture from the allow-list
+    // row, so the client reads the flag directly instead of re-mapping the id.
+    commercial: licenseRow.commercial,
     ...(licenseRow.url ? { url: licenseRow.url } : {}),
     ...(overlay?.licenseNote ? { note: overlay.licenseNote } : {}),
   };
+
+  // MP-A-5: license drift signal. The assigned id/name come fail-closed from the
+  // allow-list, never from the source tag, so a mismatch never drops the model
+  // (HF tag noise is real). But a mismatch is worth a loud build-log line: the
+  // source may have relicensed under us and the allow-list mapping needs a look.
+  const meta = inputs.metadata[base.source.ref];
+  if (meta?.licenseTag) {
+    const tag = meta.licenseTag.trim().toLowerCase();
+    if (tag && tag !== license.id.toLowerCase()) {
+      console.warn(
+        `WARNING: license drift for "${base.id}": source tags "${meta.licenseTag}" but the catalog assigns "${license.id}". Kept the assigned id; verify the allow-list mapping.`,
+      );
+    }
+  }
 
   // Ratings. osCodeFit needs a real eval report; without one there is no honest
   // fit to claim, so no ratings block is emitted. perCapability stars come from
@@ -146,11 +191,18 @@ function buildModel(base: CatalogModel, inputs: BuildInputs): BuildOutcome {
 
   // Popularity and timestamps, from source metadata. Numbers only, labelled as
   // popularity (a sort input), never as quality.
-  const meta = inputs.metadata[base.source.ref];
-  const popularity =
+  let popularity: Popularity | undefined =
     meta && (meta.downloads !== undefined || meta.likes !== undefined)
       ? { downloads: meta.downloads ?? 0, likes: meta.likes ?? 0, source: meta.source }
       : undefined;
+  // MP-F5: when this run has no fresh number but the last catalog carried one
+  // for this model, keep the prior number rather than blanking it. One bad HF
+  // day must not wipe downloads/likes across the storefront (which would also
+  // become next week's regression baseline).
+  if (!popularity) {
+    const carried = prevPopularity.get(base.id);
+    if (carried) popularity = carried;
+  }
 
   const recommended = overlay
     ? { isRecommended: overlay.isRecommended, ...(overlay.note ? { note: overlay.note } : {}) }

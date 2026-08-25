@@ -34,6 +34,12 @@ const LICENSE_POSTURE: Record<string, LicensePosture> = {
 };
 
 export function licensePosture(model: CatalogModel): LicensePosture {
+  // MP-A-6: prefer the builder's published commercial flag when the catalog
+  // carries it (the builder is the authority). The hand-mapped table below
+  // stays the fallback for older catalogs and the bundled sample, which predate
+  // the flag. The schema's 'ok' maps to this module's 'commercial-ok' label.
+  const flag = model.license.commercial;
+  if (flag) return flag === 'ok' ? 'commercial-ok' : flag;
   return LICENSE_POSTURE[model.license.id] ?? 'gated';
 }
 

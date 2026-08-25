@@ -157,6 +157,27 @@ describe('licensePosture', () => {
       licensePosture(model({ id: 'c', rank: 1, license: { id: 'Weird-9.9', name: 'x' } })),
     ).toBe('gated');
   });
+
+  it('prefers the published commercial flag over the id table (MP-A-6)', () => {
+    // Apache-2.0 reads commercial-ok in the fallback table, but a published
+    // non-commercial flag wins: the builder is the authority.
+    expect(
+      licensePosture(
+        model({
+          id: 'x',
+          rank: 1,
+          license: { id: 'Apache-2.0', name: 'x', commercial: 'non-commercial' },
+        }),
+      ),
+    ).toBe('non-commercial');
+    // An id unknown to the table would read as gated, but a published 'ok' flag
+    // maps to the module's 'commercial-ok' label.
+    expect(
+      licensePosture(
+        model({ id: 'y', rank: 1, license: { id: 'Weird-9.9', name: 'x', commercial: 'ok' } }),
+      ),
+    ).toBe('commercial-ok');
+  });
 });
 
 describe('modelMonogram', () => {
