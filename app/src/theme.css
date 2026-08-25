@@ -1588,6 +1588,17 @@ textarea {
   align-items: flex-end;
   justify-content: center;
   animation: fade-in 0.16s ease;
+  transition: opacity 0.3s ease;
+}
+
+/* Dismissal: the scrim fades as the sheet slides back down (see
+   ProfileStatus.tsx, which holds the unmount for the exit's full length). */
+.sheet-scrim.closing {
+  animation: none;
+  opacity: 0;
+}
+.info-sheet.closing {
+  transform: translateY(110%);
 }
 
 @media (min-width: 720px) {
@@ -1644,6 +1655,24 @@ textarea {
 
 .info-sheet.dragging {
   transition: none;
+}
+
+/* Honor the preference: no rise, no slide, no scrim fade. The component's
+   unmount timer still fires, so the sheet just appears and is gone. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: none;
+  }
+  .sheet-scrim {
+    animation: none;
+    transition: none;
+  }
+  .info-sheet {
+    transition: none;
+  }
+  .info-sheet.closing {
+    transform: none;
+  }
 }
 
 .sheet-grabber {
