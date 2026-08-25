@@ -106,6 +106,14 @@ export interface OscodeBridge {
     headers?: Record<string, string>;
     body?: string;
   }): Promise<{ ok: boolean; status: number; body: string }>;
+
+  // Google Drive OAuth redirect capture: a one-shot loopback server. listen()
+  // opens it and returns the port to build the redirect_uri against; wait()
+  // blocks for the single callback request (or times out); cancel() closes
+  // it early if the user backs out of the flow.
+  gdriveOAuthListen(): Promise<{ port: number }>;
+  gdriveOAuthWait(): Promise<{ code: string; state: string } | { error: string }>;
+  gdriveOAuthCancel(): Promise<void>;
 }
 
 export function bridge(): OscodeBridge | undefined {
