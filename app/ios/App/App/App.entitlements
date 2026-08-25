@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Push Notifications capability for the content-free completion push (a
+	  desktop session finished, or needs an approval, while the app is closed).
+	  The value is set per build configuration via APS_ENVIRONMENT: development
+	  for a local Debug build (sandbox APNs), production for the Release build
+	  that ships to TestFlight and the App Store. The provisioning profile must
+	  carry the same entitlement, so enable Push Notifications on the
+	  ai.openshore.oscode App ID before the next distribution build.
+	-->
+	<key>aps-environment</key>
+	<string>$(APS_ENVIRONMENT)</string>
+</dict>
+</plist>

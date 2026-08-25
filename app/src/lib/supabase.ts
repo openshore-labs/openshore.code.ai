@@ -205,6 +205,12 @@ export async function del(table: string, accessToken: string, query: string): Pr
   if (!res.ok) throw new Error(await readError(res));
 }
 
+/** The full URL of an Edge Function, for a caller that is not the signed-in user
+ *  (e.g. the desktop daemon posting to push-send). Undefined when unconfigured. */
+export function functionUrl(name: string): string | undefined {
+  return SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/${name}` : undefined;
+}
+
 /** Invoke a Supabase Edge Function (POST JSON) as the signed-in user. */
 export async function invokeFunction<T>(
   name: string,
