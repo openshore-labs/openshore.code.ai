@@ -550,11 +550,26 @@ Layer status:
       Linked mentions backlinks card, the storage-location sheet with Local
       live and the other providers honestly Arriving, and the export action.
       Free tier (CFO: the daily-habit hook; the agent side is what Personal
-      gates). STILL OPEN: org vault on Supabase multi-writer with LWW plus
-      conflict copy (CTO), permissions via existing admin/member roles, agent
-      write access as user-directed plus agent-proposed with approval (never
-      silent), [[ autocompletion in the editor, and iCloud sync once the
-      gitOS iCloud provider lands.
+      gates).
+
+      **Org tier BUILT (2026-08-25).** The shared, multi-writer team vault
+      shipped: a Supabase-backed gitOS provider ('org', Team vault) behind the
+      same seam, so the Vault UI never learns the bytes live in Postgres.
+      Migration `supabase/migrations/0010_org_vault.sql` adds `org_vault_notes`
+      (keyed org_id + path), RLS so only active members read (is_org_member),
+      table writes revoked so the two SECURITY DEFINER RPCs are the ONLY write
+      path, `org_vault_put` doing last-write-wins with a conflict copy (the
+      overwritten body is preserved as a "(conflict ...)" note, never lost),
+      and `org_vault_delete` as a tombstone. The Vault screen gains a
+      Personal | Team switcher (Team shown only to signed-in org members), and
+      `[[` autocompletion landed for both vaults (pure `wikilinkContext` in
+      vault.ts, a mobile-first chip row in the editor). iCloud sync for the
+      PERSONAL vault is already covered by the landed iCloud gitOS provider.
+      The founder must apply the migration (supabase db push) for the live team
+      vault to work. STILL OPEN (its own follow-up): agent-proposed vault writes
+      with approval, which spans the os-code desktop daemon's tool/approval
+      protocol (the app is chat-only; real tools run on the daemon), so it is a
+      distinct subsystem, not part of this backend.
 
   ```
   ROLE
@@ -672,6 +687,31 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-25: Vault organization tier (shared multi-writer team vault).** The
+  last open Vault follow-up. A Supabase-backed gitOS provider ('org', "Team
+  vault") slots behind the existing storage seam, so the Vault UI is unchanged
+  above it. Migration `supabase/migrations/0010_org_vault.sql`: `org_vault_notes`
+  keyed (org_id, path); RLS so only active members read (reuses is_org_member);
+  table INSERT/UPDATE/DELETE revoked from clients so the two SECURITY DEFINER
+  RPCs are the sole write path (same lockdown shape as 0005); `org_vault_put`
+  does last-write-wins with a CONFLICT COPY (the body that would be overwritten
+  by a concurrent write is first preserved as a "(conflict ...)" note, so no
+  member's work is ever silently lost); `org_vault_delete` is a tombstone so
+  peers converge on removals. Client: the provider tracks the rev it last read
+  and hands it to the RPC as the base for conflict detection; a Personal | Team
+  switcher on the Vault screen (Team shown only to signed-in org members); the
+  personal vault's storage-location sheet stays personal-only. Also shipped `[[`
+  autocompletion for both vaults: a pure `wikilinkContext(text, caret)` helper in
+  vault.ts (tested) drives a mobile-first suggestion chip row in the editor, one
+  tap to link an existing note or create a new one. The store's vault actions are
+  now scope-aware (personal path behavior unchanged); the org provider
+  authenticates via a token getter the store registers, never importing the
+  store. FOUNDER ACTION: apply the migration (supabase db push) to enable the
+  live team vault. Green: typecheck, lint --max-warnings 0, 168 app tests, em-dash
+  policy, vite build. STILL OPEN as its own subsystem: agent-proposed vault
+  writes with approval (spans the desktop daemon's tool/approval protocol; the
+  app is chat-only). CTO reviewed the migration/RLS before push.
 
 - **2026-08-25: connection status sheet fix + a full sheet-dismiss polish.**
   Tapping the connectivity pill (Docked/Offshore/Offline) opened its Connection

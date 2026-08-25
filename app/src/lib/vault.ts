@@ -28,6 +28,25 @@ export function parseWikilinks(text: string): WikiLink[] {
   return links;
 }
 
+/** Autocomplete context for a "[[" being typed: given the editor text and the
+ *  caret offset, return the index of the "[[" and the raw query typed since it,
+ *  or null when the caret is not inside an open, single-line, pre-alias
+ *  wikilink. The editor offers note matches for the query and, on a pick,
+ *  replaces from `start`. Cancels once the pair is closed (]]), a new line
+ *  starts, or the alias half begins (|), matching Obsidian, which suggests the
+ *  target and leaves the alias alone. */
+export function wikilinkContext(
+  text: string,
+  caret: number,
+): { start: number; query: string } | null {
+  const before = text.slice(0, Math.max(0, caret));
+  const open = before.lastIndexOf('[[');
+  if (open === -1) return null;
+  const between = before.slice(open + 2);
+  if (/[\]\n|]/.test(between)) return null;
+  return { start: open, query: between };
+}
+
 /** A note's display title: its filename without the .md extension, exactly
  *  how Obsidian titles a note. */
 export function noteTitle(path: string): string {

@@ -136,7 +136,9 @@ import {
   probeReady,
   connectGdrive,
   disconnectGdrive,
+  setOrgVaultAuth,
   type GitosResource,
+  type StorageProvider,
   type StorageProviderId,
   type StoredFileMeta,
 } from '../lib/gitos/index.js';
@@ -306,10 +308,14 @@ interface AppState {
   /** Whether a custom search key (Brave/Tavily) is set; keeps the key itself
    *  out of state, same pattern as codemagicConnected. */
   searchKeyConfigured: boolean;
-  /** The personal vault's file list, loaded through the gitOS seam. */
+  /** The active vault's file list, loaded through the gitOS seam. */
   vaultFiles: StoredFileMeta[];
   /** The open vault note, when one is open. */
   vaultNote?: { path: string; text: string; updatedAt: string };
+  /** Which vault the Vault screen is showing: the personal one (on the chosen
+   *  storage provider) or the shared team vault (org tier, Supabase-backed).
+   *  Team is only reachable when signed in as an active member of an org. */
+  vaultScope: 'personal' | 'team';
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** Live reach signals that drive the active connectivity profile. */
@@ -467,8 +473,15 @@ interface AppState {
   /** Bring your own Brave or Tavily key for Harbor's web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
-  // Vault (the personal Obsidian-compatible vault, first consumer of gitOS).
-  /** Ensure the personal vault exists and load its file list. */
+  // Vault (the Obsidian-compatible vault, first consumer of gitOS). Personal by
+  // default; the team scope reads and writes the shared org vault.
+  /** Switch between the personal and team vault, then refresh. Switching to
+   *  team when it is not available is a no-op. */
+  setVaultScope(scope: 'personal' | 'team'): Promise<void>;
+  /** Whether the shared team vault is reachable right now (accounts configured,
+   *  signed in as an active org member). Drives whether the switcher shows. */
+  teamVaultAvailable(): boolean;
+  /** Ensure the active vault exists and load its file list. */
   vaultRefresh(): Promise<void>;
   /** Open a note into vaultNote. A missing path opens as a fresh empty note. */
   vaultOpen(path: string): Promise<void>;
@@ -909,6 +922,24 @@ export const useApp = create<AppState>((set, get) => {
     return !isEntitled(st.entitlement);
   }
 
+  // Which provider and resource the vault actions target, resolved from the
+  // active scope. Personal rides the chosen storage provider and the personal
+  // resource id; team is the Supabase-backed org vault, addressed by the org's
+  // server id. Returns undefined for team when no signed-in org is present, so
+  // the actions no-op instead of throwing.
+  function vaultTarget(): { provider: StorageProvider; resourceId: string } | undefined {
+    const st = get();
+    if (st.vaultScope === 'team') {
+      const orgId = st.settings.account?.org?.serverId;
+      const provider = providerFor('org');
+      if (!orgId || !provider) return undefined;
+      return { provider, resourceId: orgId };
+    }
+    const provider = providerFor(vaultProviderId(st.settings));
+    if (!provider) return undefined;
+    return { provider, resourceId: VAULT_RESOURCE_ID };
+  }
+
   // verified email, claim any invited org seat, and read the server role.
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
@@ -941,6 +972,7 @@ export const useApp = create<AppState>((set, get) => {
     codemagicConnected: false,
     searchKeyConfigured: false,
     vaultFiles: [],
+    vaultScope: 'personal',
     connectedRepoPlatforms: {},
     authConfigured: authConfigured(),
     connectivity: { homeReachable: false, online: true },
@@ -951,6 +983,25 @@ export const useApp = create<AppState>((set, get) => {
       // auth-callback handling. Run exactly once per store lifetime.
       if (get().initStarted) return;
       set({ initStarted: true });
+
+      // Wire the team vault (org tier) to the signed-in session: a fresh-token
+      // getter and a readiness predicate, so the Supabase-backed provider can
+      // authenticate without importing the store (which would be a cycle).
+      setOrgVaultAuth(
+        async () => {
+          const session = get().authSession;
+          if (!session || !authConfigured()) return undefined;
+          try {
+            const fresh = await freshSession(session);
+            if (fresh !== session) set({ authSession: fresh });
+            return fresh.accessToken;
+          } catch {
+            return undefined;
+          }
+        },
+        () => get().teamVaultAvailable(),
+      );
+
       const settings = (await storeGetJson<AppSettings>(SETTINGS_KEY)) ?? {
         onboarded: false,
         claudeModel: DEFAULT_CLAUDE_MODEL,
@@ -2332,31 +2383,50 @@ export const useApp = create<AppState>((set, get) => {
       logEvent('search_backend_cleared');
     },
 
+    teamVaultAvailable() {
+      const st = get();
+      return Boolean(
+        authConfigured() && st.authSession && st.serverRole && st.settings.account?.org?.serverId,
+      );
+    },
+
+    async setVaultScope(scope) {
+      if (scope === get().vaultScope) return;
+      if (scope === 'team' && !get().teamVaultAvailable()) return;
+      set({ vaultScope: scope, vaultNote: undefined, vaultFiles: [] });
+      logEvent('vault_scope', { scope });
+      await get().vaultRefresh();
+    },
+
     async vaultRefresh() {
       // The personal vault is one gitOS resource, auto-registered on first
-      // open, on the Local provider. More vaults and other providers arrive
-      // through the same registry when their wiring lands.
-      const resources = get().settings.gitosResources ?? [];
-      if (!resources.some((r) => r.id === VAULT_RESOURCE_ID)) {
-        const vault: GitosResource = {
-          id: VAULT_RESOURCE_ID,
-          name: 'Vault',
-          kind: 'vault',
-          providerId: 'local',
-          createdAt: new Date().toISOString(),
-        };
-        await get().saveSettings({ gitosResources: [...resources, vault] });
-        logEvent('vault_created');
+      // open, on the Local provider. The team vault is server-side and needs no
+      // local resource row. More vaults and providers arrive through the same
+      // registry when their wiring lands.
+      if (get().vaultScope === 'personal') {
+        const resources = get().settings.gitosResources ?? [];
+        if (!resources.some((r) => r.id === VAULT_RESOURCE_ID)) {
+          const vault: GitosResource = {
+            id: VAULT_RESOURCE_ID,
+            name: 'Vault',
+            kind: 'vault',
+            providerId: 'local',
+            createdAt: new Date().toISOString(),
+          };
+          await get().saveSettings({ gitosResources: [...resources, vault] });
+          logEvent('vault_created');
+        }
       }
-      const provider = providerFor(vaultProviderId(get().settings))!;
-      set({ vaultFiles: await provider.list(VAULT_RESOURCE_ID) });
+      const target = vaultTarget();
+      set({ vaultFiles: target ? await target.provider.list(target.resourceId) : [] });
     },
 
     async vaultOpen(path) {
       const normalized = normalizeNotePath(path);
       if (!normalized) return;
-      const provider = providerFor(vaultProviderId(get().settings))!;
-      const existing = await provider.read(VAULT_RESOURCE_ID, normalized);
+      const target = vaultTarget();
+      if (!target) return;
+      const existing = await target.provider.read(target.resourceId, normalized);
       set({
         vaultNote: existing ?? { path: normalized, text: '', updatedAt: new Date().toISOString() },
       });
@@ -2368,10 +2438,11 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async vaultSave(path, text) {
-      const provider = providerFor(vaultProviderId(get().settings))!;
-      const saved = await provider.write(VAULT_RESOURCE_ID, path, text);
+      const target = vaultTarget();
+      if (!target) return;
+      const saved = await target.provider.write(target.resourceId, path, text);
       set({
-        vaultFiles: await provider.list(VAULT_RESOURCE_ID),
+        vaultFiles: await target.provider.list(target.resourceId),
         vaultNote:
           get().vaultNote?.path === path
             ? { path, text: saved.text, updatedAt: saved.updatedAt }
@@ -2381,35 +2452,48 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async vaultDelete(path) {
-      const provider = providerFor(vaultProviderId(get().settings))!;
-      await provider.remove(VAULT_RESOURCE_ID, path);
+      const target = vaultTarget();
+      if (!target) return;
+      await target.provider.remove(target.resourceId, path);
       set({
-        vaultFiles: await provider.list(VAULT_RESOURCE_ID),
+        vaultFiles: await target.provider.list(target.resourceId),
         vaultNote: get().vaultNote?.path === path ? undefined : get().vaultNote,
       });
       logEvent('vault_note_delete');
     },
 
     async vaultReadAll() {
-      const provider = providerFor(vaultProviderId(get().settings))!;
-      const files = await provider.list(VAULT_RESOURCE_ID);
+      const target = vaultTarget();
+      if (!target) return [];
+      const files = await target.provider.list(target.resourceId);
       const out: Array<{ path: string; text: string }> = [];
       for (const f of files) {
-        const note = await provider.read(VAULT_RESOURCE_ID, f.path);
+        const note = await target.provider.read(target.resourceId, f.path);
         if (note) out.push({ path: note.path, text: note.text });
       }
       return out;
     },
 
     async vaultMoveTo(providerId) {
+      // Moving is about where the PERSONAL vault's bytes live. The team vault is
+      // a separate shared resource, never a move target, so reject it outright
+      // and read the source through the personal provider (not the active
+      // scope's), so a move initiated while viewing the team vault is still safe.
+      if (providerId === 'org') return false;
       const from = vaultProviderId(get().settings);
       if (providerId === from) return true;
       const target = providerFor(providerId);
-      if (!target || !(await probeReady(providerId))) return false;
+      const source = providerFor(from);
+      if (!target || !source || !(await probeReady(providerId))) return false;
       // Copy every note across before repointing, so a mid-move failure leaves
       // the source vault intact. The source bytes are left in place as a
       // safety copy; a later cleanup pass can reclaim them.
-      const notes = await get().vaultReadAll();
+      const files = await source.list(VAULT_RESOURCE_ID);
+      const notes: Array<{ path: string; text: string }> = [];
+      for (const f of files) {
+        const note = await source.read(VAULT_RESOURCE_ID, f.path);
+        if (note) notes.push({ path: note.path, text: note.text });
+      }
       for (const note of notes) {
         await target.write(VAULT_RESOURCE_ID, note.path, note.text);
       }
