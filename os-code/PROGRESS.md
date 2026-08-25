@@ -656,6 +656,20 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: model sheet restructured to the Claude "Select model" shape.**
+  Root is now a header (X + "Select model"), My Stack as the default, an Effort
+  row (opens a High/Medium/Low sub-sheet), and two category buttons that open
+  dedicated sheets the way Claude's "more models" does: Cloud Providers and
+  Local LLMs. Each has an honest empty state that routes to setup: Cloud with no
+  connected providers shows "No connected providers, add your API to get
+  started" to Connections; Local with no downloads shows "No connected local
+  LLMs, download a model from the Marketplace to get started" to the
+  Marketplace. When no stack exists yet (`settings.stack` undefined), My Stack is
+  greyed and carries a "Create your stack to get started" link to the Stack
+  screen. Rows are now grouped into rounded cards with dividers, matching the
+  Claude grouping. Effort no longer lives in the composer; it is a selection in
+  this sheet. Green: typecheck, lint, 143 tests, vite build.
+
 - **2026-08-25: composer refinements (founder pass on the live app).** Boot
   splash hold cut to 1.5s (`SPLASH_MIN_MS`). Greeting is now the tile mark plus
   the line only, the OpenShore wordmark removed. Composer mic swapped from the

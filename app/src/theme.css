@@ -1197,8 +1197,13 @@ textarea {
   font-weight: 600;
 }
 
+/* One rounded card per group, rows divided inside it, the Claude "Select model"
+   grouping. */
 .ms-group {
-  margin-bottom: 16px;
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 12px;
 }
 .ms-group:last-child {
   margin-bottom: 0;
@@ -1208,7 +1213,7 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
-  margin: 0 0 6px 4px;
+  margin: 0 0 6px 6px;
 }
 .ms-row {
   display: flex;
@@ -1217,21 +1222,18 @@ textarea {
   gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  margin-bottom: 6px;
+  padding: 14px 16px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
 }
 .ms-row:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
 }
 .ms-row:hover {
   background: var(--surface-hover);
 }
 .ms-row-default {
   background: var(--local-soft);
-  border-color: var(--local);
 }
 .ms-row-text {
   display: flex;
@@ -1239,6 +1241,42 @@ textarea {
   align-items: flex-start;
   gap: 2px;
   min-width: 0;
+  flex: 1;
+}
+.ms-row-value {
+  color: var(--muted);
+  font-size: 13.5px;
+  flex-shrink: 0;
+}
+.ms-row-disabled {
+  cursor: default;
+}
+.ms-row-disabled:hover {
+  background: transparent;
+}
+.ms-row-disabled .ms-row-main {
+  color: var(--muted);
+}
+.ms-sublink {
+  font-size: 13px;
+  color: var(--local);
+  text-align: left;
+  padding: 0;
+  margin-top: 3px;
+}
+.ms-empty {
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.ms-empty:hover {
+  background: var(--surface-hover);
 }
 .ms-row-main {
   font-size: 15px;
