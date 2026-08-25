@@ -242,15 +242,24 @@ Layer status:
       Shipped: `app/src/lib/gitos/` with the path/bytes StorageProvider seam
       (list/stat/read/write/remove plus single-writer lease ops, per the CTO
       must-fix), the Local provider over the sealed store, and the provider
-      roster with iCloud/Dropbox/Drive/Proton registered but honestly marked
-      not ready pending OAuth wiring. Vault ships as the seam's first
-      consumer (see the Vault item). STILL OPEN: real-git shell-out on the
-      desktop engine, the Repositories surface merge, cloud-drive providers
-      (need the founder's OAuth apps: Dropbox app-folder, Google drive.file
-      only per CFO to avoid the CASA assessment, iCloud ubiquity container;
-      Proton has no public OAuth API today and stays an honest stub), and
-      the per-repo secrets key model. Ships as "Repositories"; gitOS is the
-      internal name (CMO, Git trademark policy). Personal-gated (CFO).
+      roster with Dropbox/Proton registered but honestly marked not ready
+      pending OAuth wiring. Vault ships as the seam's first consumer (see the
+      Vault item). Two cloud providers landed the same day: iCloud (native
+      Capacitor plugin, `app/plugins/oscode-icloud/`, ubiquity container,
+      needs the App ID capability enabled in the Apple Developer portal
+      before each distribution build) and Google Drive (`app/src/lib/gitos/
+      gdrive.ts` + `gdriveAuth.ts`, drive.file scope only per the CFO, real
+      folder tree with a `.oscode/index.json` cache, OAuth PKCE with an iOS
+      client via the app's own URL scheme and a Desktop client via a
+      loopback redirect for Electron, per the CTO's architecture ruling;
+      founder still needs to register both OAuth clients in Google Cloud
+      Console and fill in `VITE_GDRIVE_*` before either build can connect).
+      STILL OPEN: real-git shell-out on the desktop engine, the Repositories
+      surface merge, Dropbox (app-folder scope per CTO), Proton (no public
+      OAuth API today, stays an honest stub), a Google Drive disconnect
+      affordance beyond the storage sheet's inline button, and the per-repo
+      secrets key model. Ships as "Repositories"; gitOS is the internal name
+      (CMO, Git trademark policy). Personal-gated (CFO).
 
   ```
   ROLE
