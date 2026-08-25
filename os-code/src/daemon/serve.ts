@@ -477,7 +477,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       if (req.method === 'GET' && parts[2] === 'events') {
-        const since = Number(url.searchParams.get('since') ?? 0);
+        const sinceRaw = Number(url.searchParams.get('since') ?? 0);
+        // Garbage (NaN) or a negative would otherwise skip the replay silently.
+        const since = Number.isFinite(sinceRaw) && sinceRaw >= 0 ? sinceRaw : 0;
         res.writeHead(200, {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',

@@ -53,4 +53,25 @@ describe('RemoteDriver reconnect (G5)', () => {
     expect(calls).toBeGreaterThan(1); // it retried
     expect(blips).toHaveLength(1); // but blipped only once for the outage
   });
+
+  it('stops retrying on a 401 and tells the user to re-pair (TS-P2-1)', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls++;
+      return { ok: false, status: 401, body: null } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const messages: string[] = [];
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    driver.subscribe((event) => {
+      if (event.type === 'status') messages.push(event.message);
+    });
+
+    await vi.advanceTimersByTimeAsync(6000);
+    driver.dispose();
+
+    expect(calls).toBe(1); // no retry loop on a fatal answer
+    expect(messages.some((m) => /re-pair/i.test(m))).toBe(true);
+  });
 });
