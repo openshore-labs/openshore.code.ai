@@ -348,6 +348,13 @@ textarea {
   display: block;
 }
 
+/* Holds the space the recent-chats list used to fill, so the room nav still
+   sits at the bottom of the drawer. */
+.sidebar-spacer {
+  flex: 1;
+  min-height: 8px;
+}
+
 /* The signed-out prompt: sits right where an account slot would be, between
    the chat list and the room nav, so it reads as "the thing you're missing"
    rather than one more room in the list. */
@@ -536,6 +543,15 @@ textarea {
 
 .icon-btn:active {
   transform: scale(0.92);
+}
+
+/* The drawer (menu) button reads a touch more substantial than a bare icon
+   hint: a slightly larger tap target and a fuller-weight glyph in the primary
+   ink, so it looks like a deliberate control. */
+.menu-btn {
+  width: 40px;
+  height: 40px;
+  color: var(--ink);
 }
 
 /* Stack header: title on the left, the bring-your-own-model "+" on the right. */
@@ -1649,8 +1665,12 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
+  /* Anchored just above the composer, not centered in the page, the way the
+     Claude app opens. So when the keyboard lifts the composer, the mark and the
+     line ride up with it and stay right above it, instead of jumping to the top
+     and colliding with the status bar. */
+  justify-content: flex-end;
+  padding: 24px 24px 20px;
   text-align: center;
   gap: 14px;
 }
@@ -2059,6 +2079,61 @@ textarea {
   color: var(--muted);
   font-size: 14px;
   margin-bottom: 18px;
+}
+
+/* The Chats room: a new-chat row, then the saved chats as full-width cards. */
+.chats-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.06s ease;
+}
+
+.chat-row:hover {
+  background: var(--surface);
+}
+
+.chat-row:active {
+  transform: scale(0.99);
+}
+
+.chat-row.active {
+  border-color: var(--local);
+}
+
+.chat-row-title {
+  display: block;
+  font-size: 15px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-row-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .card {

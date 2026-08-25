@@ -162,6 +162,7 @@ import {
 
 export type ViewName =
   | 'chat'
+  | 'chats'
   | 'marketplace'
   | 'stack'
   | 'stackhealth'
@@ -632,6 +633,42 @@ export function isOrgAdmin(account?: Account): boolean {
 export function stackAdmin(account?: Account): boolean {
   if (account?.previewAsMember) return false;
   return isOrgAdmin(account);
+}
+
+/** The device StackModelRef for the flagship guide (Harbor). Harbor Mini has
+ *  its own harborRef() in stack.js; this is its bigger sibling. */
+function harborFullRef(): StackModelRef {
+  return { kind: 'device', modelId: HARBOR_MODEL_ID, modelName: HARBOR_MODEL_NAME };
+}
+
+/**
+ * Decide whether a freshly downloaded guide should become the stack's Reasoning
+ * anchor, so "My Stack" chat can start right away. Promote when there is no
+ * anchor yet, or the current anchor is a built-in guide that is not actually on
+ * this device. The preferred guide (Harbor) also upgrades a ready Harbor Mini;
+ * Mini never demotes a ready guide, and neither ever overrides a cloud, BYOM,
+ * or user-chosen device model the user deliberately set. `ref` is assumed to be
+ * a guide that is already downloaded.
+ */
+function reasoningPromotion(
+  stack: AppStack | undefined,
+  ref: StackModelRef,
+  opts: { harborReady: boolean; harborMiniReady: boolean; preferred: boolean },
+): StackModelRef | undefined {
+  const current = stack?.reasoning;
+  if (!current) return ref;
+  if (stackRefKey(current) === stackRefKey(ref)) return undefined;
+  if (current.kind !== 'device') return undefined;
+  const id = current.modelId;
+  const currentReady =
+    id === HARBOR_MODEL_ID
+      ? opts.harborReady
+      : id === HARBOR_MINI_MODEL_ID
+        ? opts.harborMiniReady
+        : true; // a user-chosen pocket model: respect it
+  if (!currentReady) return ref;
+  const currentIsGuide = id === HARBOR_MODEL_ID || id === HARBOR_MINI_MODEL_ID;
+  return opts.preferred && currentIsGuide ? ref : undefined;
 }
 
 // Only these statuses grant paid access; every other status (past_due, unpaid,
@@ -1145,6 +1182,36 @@ export const useApp = create<AppState>((set, get) => {
         }
       }
       let settingsDirty = false;
+
+      // Heal a stack whose Reasoning anchor is a built-in guide that is not
+      // actually on this device: if the other guide is downloaded, promote it so
+      // "My Stack" chat starts right away instead of failing with "download it
+      // first." This is exactly the case a fresh stack (seeded with Harbor Mini)
+      // hits when the user only downloaded Harbor. Prefer Harbor when both are
+      // present. Only a not-present guide anchor is touched; a cloud, BYOM, or
+      // user-chosen device anchor is left alone.
+      const anchor = settings.stack?.reasoning;
+      if (anchor?.kind === 'device') {
+        const anchorId = anchor.modelId;
+        const anchorIsGuide = anchorId === HARBOR_MODEL_ID || anchorId === HARBOR_MINI_MODEL_ID;
+        const anchorReady =
+          anchorId === HARBOR_MODEL_ID
+            ? Boolean(settings.harborReady)
+            : anchorId === HARBOR_MINI_MODEL_ID
+              ? Boolean(settings.harborMiniReady)
+              : true;
+        if (anchorIsGuide && !anchorReady) {
+          const promote = settings.harborReady
+            ? harborFullRef()
+            : settings.harborMiniReady
+              ? harborRef()
+              : undefined;
+          if (promote) {
+            settings.stack = { ...settings.stack!, reasoning: promote };
+            settingsDirty = true;
+          }
+        }
+      }
 
       // A stable device id, generated once, for rescue-branch names and sync.
       if (!settings.deviceId) {
@@ -2360,6 +2427,15 @@ export const useApp = create<AppState>((set, get) => {
         set({ harborMiniDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborMiniReady: true });
         logEvent('harbor_mini_ready');
+        // Make Harbor Mini the Reasoning anchor when the stack has none or its
+        // anchor is a guide that is not on the device, so My Stack chat works
+        // right away. Never demotes a ready Harbor.
+        const miniTarget = reasoningPromotion(get().settings.stack, harborRef(), {
+          harborReady: Boolean(get().settings.harborReady),
+          harborMiniReady: true,
+          preferred: false,
+        });
+        if (miniTarget) await get().setReasoning(miniTarget);
         set({ harborMiniDownload: undefined });
         return true;
       } catch (err) {
@@ -2407,6 +2483,16 @@ export const useApp = create<AppState>((set, get) => {
         set({ harborDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborReady: true });
         logEvent('harbor_ready');
+        // Make Harbor the Reasoning anchor when the stack has none, its anchor
+        // is a guide not on the device, or the anchor is Harbor Mini (Harbor is
+        // the preferred pick). So My Stack chat works right away. Never
+        // overrides a cloud, BYOM, or user-chosen device model.
+        const harborTarget = reasoningPromotion(get().settings.stack, harborFullRef(), {
+          harborReady: true,
+          harborMiniReady: Boolean(get().settings.harborMiniReady),
+          preferred: true,
+        });
+        if (harborTarget) await get().setReasoning(harborTarget);
         set({ harborDownload: undefined });
         return true;
       } catch (err) {

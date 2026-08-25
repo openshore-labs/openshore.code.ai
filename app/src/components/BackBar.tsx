@@ -2,6 +2,7 @@
 // always-visible connectivity status.
 import { useApp } from '../state/store.js';
 import { ProfileStatus } from './ProfileStatus.js';
+import { MenuIcon } from './MenuIcon.js';
 
 export function BackBar({ title }: { title: string }) {
   const { setView, setDrawer } = useApp();
@@ -12,8 +13,8 @@ export function BackBar({ title }: { title: string }) {
       </button>
       <div className="topbar-title">{title}</div>
       <ProfileStatus />
-      <button className="icon-btn" onClick={() => setDrawer(true)} aria-label="Menu">
-        {'☰'}
+      <button className="icon-btn menu-btn" onClick={() => setDrawer(true)} aria-label="Menu">
+        <MenuIcon />
       </button>
     </header>
   );
