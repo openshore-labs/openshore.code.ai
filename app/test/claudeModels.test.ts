@@ -16,15 +16,13 @@ describe('Claude model catalog', () => {
     ]);
   });
 
-  it('carries the first-party pricing and context windows', () => {
-    expect(claudeModel('claude-fable-5')).toMatchObject({
-      inPerM: 10,
-      outPerM: 50,
-      contextWindow: 1_000_000,
-    });
-    // Sonnet 5 was previously listed at the wrong 3/15; it is 2/10.
-    expect(claudeModel('claude-sonnet-5')).toMatchObject({ inPerM: 2, outPerM: 10 });
+  it('carries the first-party context windows and no pricing', () => {
+    // OpenShore does not price usage; billing rides the user's own account, so
+    // the catalog carries no per-token rates, only the real context window.
+    expect(claudeModel('claude-fable-5')?.contextWindow).toBe(1_000_000);
     expect(claudeModel('claude-haiku-4-5')?.contextWindow).toBe(200_000);
+    expect(claudeModel('claude-opus-5')).not.toHaveProperty('inPerM');
+    expect(claudeModel('claude-opus-5')).not.toHaveProperty('outPerM');
   });
 
   it('names models by their short label, falling back to the id', () => {
