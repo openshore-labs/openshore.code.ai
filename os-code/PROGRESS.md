@@ -656,6 +656,26 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: connection status sheet fix + a full sheet-dismiss polish.**
+  Tapping the connectivity pill (Docked/Offshore/Offline) opened its Connection
+  sheet clipped at the top of the screen, behind the status bar, unreadable. Root
+  cause: `ProfileStatus` rendered the sheet from inside `.topbar`, which sets
+  `backdrop-filter`; a non-none backdrop-filter makes the element the containing
+  block for its position:fixed descendants, so the full-screen `.sheet-scrim` was
+  trapped in the thin bar instead of the viewport. Fix: portal the scrim to
+  `document.body`, so its fixed positioning resolves against the viewport. Keeps
+  the top bar's backdrop blur intact and fixes both places the pill appears
+  (ChatScreen, BackBar). Then the polish the fix invited: the sheet slid in but
+  snapped out, so it now drags to dismiss (grab handle, 1:1 finger tracking,
+  velocity-free threshold with spring-back) and always animates out (scrim fade +
+  slide-down, unmount held for the full exit so the tail is never clipped, a fixed
+  timer so it also lands under reduced motion). Haptics on the lift and the drop
+  via `lib/haptics`. `prefers-reduced-motion` now suppresses the sheet rise,
+  slide, and scrim fade (was previously unhandled for sheets, an app-wide win).
+  Green: typecheck, lint, 147 app tests, em-dash policy. Follow-up (not done):
+  bring the same real exit to InfoSheet, ModelSheet, and the mode sheet, which
+  still snap-unmount.
+
 - **2026-08-25: polish pass, swipe physics + a tappable out-of-usage fallback.**
   Both polish bundles surfaced this session, built. Swipe-to-pin now reads as
   native: (1) axis lock, the gesture decides horizontal vs vertical in the first
