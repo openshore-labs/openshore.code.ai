@@ -212,7 +212,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
 
     // ------------------------------------------------- URLSessionDownloadDelegate
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession, downloadTask: URLSessionDownloadTask,
         didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
@@ -225,7 +225,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         progress?(id, totalBytesWritten, totalBytesExpectedToWrite)
     }
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession, downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
@@ -258,7 +258,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         clear(id: id, taskId: downloadTask.taskIdentifier)
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return } // success already handled above
         lock.lock()
         let id = taskIds[task.taskIdentifier] ?? task.taskDescription
@@ -274,7 +274,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     /// Fired once all background events for this session have been delivered.
     /// Calling the stashed system handler on the main thread lets iOS re-suspend
     /// the app cleanly.
-    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+    public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         let handler = Self.backgroundEventsCompletion
         Self.backgroundEventsCompletion = nil
         DispatchQueue.main.async { handler?() }
