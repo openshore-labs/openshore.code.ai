@@ -3,6 +3,24 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-25)
+
+**Local-first review remediation landed (7 waves).** A full review
+(`CODE-REVIEW-LOCAL-FIRST.md`) covering the Vault, gitOS, the driver/model
+stack, and the UI against the Uki polish bar was addressed end to end:
+Vault data-loss holes (autosave flush, offline save error surfacing with
+draft rescue, iCloud placeholder clobber, path jail), the dead wikilink
+renderer, mid-chat switch reseed and rollback, driver abort and stack
+degradation, the daemon outbox path allowlist, the Drive sync data-loss
+cluster (index merge with tombstones, conflict copies, dup-root and delete
+fallthrough) behind a new mock-transport harness, the motion-token vocabulary
+and two enforcement tests, the sheet-exit sweep, chat autoscroll, warm dark
+mode, and the single-writer lease wiring. Gates green: os-code 30 files / 238
+tests, app 37 files / 209 tests, `pnpm -r lint`/`typecheck` clean, `vite
+build` passes. Founder decision points were resolved by the advisors (CTO on
+the outbox gating, lease, and daemon allowlist; Creative Studio on warm dark
+mode). Follow-ups captured below.
+
 ## Current state (2026-08-20)
 
 **All planned layers are built, tested, polished, and green.** `pnpm install
@@ -51,6 +69,27 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Review follow-ups deferred from the remediation** (all captured, none
+      shipped): Vault backlink perf (opening a note reads every note serially,
+      cache bodies keyed by updatedAt, R-8); export cleanup of stale files
+      under the export root (R-13); BYOM/OpenAI-compatible true streaming and
+      cancel on iOS and Electron (buffer-then-dump today, needs a native SSE
+      bridge, R-16); the remaining UI Tier 2/3 polish (progress-bar layout
+      animation, sub-44pt tap targets, landscape safe-area-left/right,
+      room-change transition, full press-fb adoption on bare tappables, dialog
+      role/Escape/focus-trap on sheets). See `CODE-REVIEW-LOCAL-FIRST.md`.
+- [ ] **Repositories offload: wire the producer + homePath picker** to flip
+      `REPO_OUTBOX_ENABLED` on (its own scoped feature, per CTO FD-1). Also
+      PAR-3: platform-remote (GitHub/GitLab) home repos have no push path yet.
+- [ ] **Claude Code parity roadmap (Part 5a)**, ranked: make desktop pairing
+      the celebrated first-run path + a phone-side read-only tool slice (the
+      app default surface is chat-only today); MCP-stdio on the engine;
+      checkpoints/rewind; replace the stack regex classifier with a Harbor Mini
+      classification call; vision beyond Claude.
+- [ ] **Founder config before Drive/dark ship:** Google OAuth client ids (see
+      DECISIONS gdrive entry); the warm dark palette accents are a first pass,
+      a designer contrast/shadow audit pass is the polish (Creative Studio
+      flagged it as the non-mechanical half of dark mode).
 - [x] **Native iOS voice dictation: BUILT (2026-08-25), on-device only.**
       Founder chose on-device-only (mic audio never leaves the phone) and to
       build now rather than wait for the clean TestFlight. New `oscode-speech`
