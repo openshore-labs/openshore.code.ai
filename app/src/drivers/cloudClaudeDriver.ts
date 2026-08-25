@@ -8,6 +8,7 @@ import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
+import { SWITCH_TO_LOCAL } from '../lib/usageFallback.js';
 import type { SeedTurn } from '../state/types.js';
 
 // The model catalog (ids, labels, context) lives in one leaf module so the
@@ -151,9 +152,8 @@ export class CloudClaudeDriver implements ChatDriver {
 // Billing lives on the user's own Anthropic account, so when it is out of usage
 // (depleted pay-as-you-go credits, or a plan usage cap) OpenShore does not try
 // to explain the charge. It says the account is out of Claude usage and points
-// at a local model, which keeps working with no account behind it.
-const SWITCH_TO_LOCAL = 'Switch to a local model to keep going.';
-
+// at a local model, which keeps working with no account behind it. The exact
+// fallback line lives in usageFallback so the transcript can offer the tap.
 function isOutOfUsage(err: unknown): boolean {
   // Depleted credits come back as a 400 whose message names the balance.
   if (err instanceof Anthropic.BadRequestError) {

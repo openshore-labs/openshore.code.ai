@@ -658,6 +658,16 @@ textarea {
   border-radius: var(--radius);
   padding: 10px 14px;
 }
+.msg-stopped-action {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--local);
+  border-radius: 999px;
+}
 
 .cursor-caret {
   display: inline-block;
