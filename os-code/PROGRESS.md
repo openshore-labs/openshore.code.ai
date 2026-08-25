@@ -656,6 +656,23 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: OpenShore stops pricing usage; at account limits it points to
+  local.** Founder call: OpenShore is a connection to the user's own Anthropic
+  account (subscription or pay-as-you-go), so their account owns all billing.
+  The app no longer fabricates or shows a per-turn dollar estimate. Removed the
+  `inPerM`/`outPerM` rates from `lib/claudeModels.ts` (catalog now keeps only the
+  real context window, the honest non-pricing signal the meter reads) and the
+  token-times-rate cost math from the cloud driver. The shared `usage` protocol
+  event still carries a `dollars` field for the CLI, so the driver sends 0 rather
+  than invent a number (the shared protocol/CLI cost path was left intact, not
+  renovated). Out-of-usage handling: a depleted balance (400 naming the credit
+  balance) or a usage cap (429) now reads "No more Claude usage on your account
+  right now. Switch to a local model to keep going," instead of the old
+  rate-limit hedge, so the local fallback is always offered. The chat status line
+  drops the `$X.XX` segment; model, kind, and context percent remain. Green:
+  typecheck, lint, 151 tests, vite build. Follow-up (not done): make the
+  out-of-usage message tappable to jump straight to the Local LLMs sheet.
+
 - **2026-08-25: swipe-to-pin for models in the model sheet.** Founder wanted a
   swipe-left-to-pin on selectable models, pinned ones surfacing under My Stack
   on the root sheet where they can be unpinned by swipe. New pure helpers in
