@@ -53,6 +53,10 @@ create policy org_vault_select on public.org_vault_notes for select
 -- PATCH the table directly and skip that path (the same lockdown shape used for
 -- public.orgs in 0005).
 revoke insert, update, delete on public.org_vault_notes from authenticated, anon;
+-- Defense in depth: anon never reads this table (RLS would return zero rows for
+-- a null uid anyway, but do not rely on the policy alone). Only authenticated
+-- members select, and even then RLS scopes them to their own org.
+revoke select on public.org_vault_notes from anon;
 grant select on public.org_vault_notes to authenticated;
 
 -- Write a note: last-write-wins, but never lose work. When the note has moved
