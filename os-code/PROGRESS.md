@@ -656,6 +656,19 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: swipe-to-pin for models in the model sheet.** Founder wanted a
+  swipe-left-to-pin on selectable models, pinned ones surfacing under My Stack
+  on the root sheet where they can be unpinned by swipe. New pure helpers in
+  `lib/pins.ts` (`pinKey`/`isPinnable`/`isPinned`/`togglePin`, tested) key each
+  concrete source (`cloud:anthropic:<model>`, `device:<id>`); the stack and mock
+  never pin. New `SwipeRow.tsx` is a pointer-driven row: a tap picks the model,
+  a swipe past a short commit distance fires Pin/Unpin with a success haptic, and
+  the foreground tracks the finger 1:1 then springs back on release (reduced
+  motion honored). `AppSettings.pinnedModels` persists the list. The model sheet
+  renders pins under My Stack (swipe to unpin) and wraps the Cloud Providers /
+  Local LLMs model rows in SwipeRow (swipe to pin). Green: typecheck, lint, 151
+  tests, vite build, cap sync ios.
+
 - **2026-08-25: complete Claude model lineup, and a corrected model catalog.**
   Founder wants OpenShore to be a full Claude client: every model the user's key
   can reach, listed and usable, no need for the Claude app. Added Fable 5
