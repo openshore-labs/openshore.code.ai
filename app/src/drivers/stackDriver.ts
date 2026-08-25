@@ -18,6 +18,7 @@ import { Llama } from '../lib/llamaPlugin.js';
 import { platform, secretGet } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
+import { effortDirective } from '../lib/effort.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
@@ -154,6 +155,8 @@ export class StackDriver implements ChatDriver {
     // file header). Its persona still applies so it identifies itself
     // correctly and stays honest about not being a coder.
     const parts = [guideSystem ?? BASE_SYSTEM];
+    // Reasoning effort, read live so it reflects the current composer choice.
+    parts.push(effortDirective());
     // Project context: name + standing instructions, injected into every turn.
     const proj = this.context.projectInstructions?.trim();
     if (this.context.projectName || proj) {
