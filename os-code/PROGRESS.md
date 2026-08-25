@@ -618,8 +618,14 @@ Layer status:
   phone-orchestrated cloud/stack turns cannot run closed (iOS limit) and are out
   of scope; the standing off-device principle is in DECISIONS.md. Gates green
   (os-code 29 files / 227 tests incl. a new push.test.ts, app 20 / 116, vite
-  build, both em-dash guards). Dormant until the Apple push capability, the
-  APNS_* secrets, and the migration/function deploys land (docs/PUSH-SETUP.md).
+  build, both em-dash guards).
+  **Server side is now LIVE (2026-08-25):** the founder set the APNS_* secrets,
+  ran `supabase db push` (0009 applied), and deployed push-register /
+  push-grant / push-send. Still needed before the phone can register: confirm
+  Push Notifications is enabled on the ai.openshore.oscode App ID (Apple
+  Developer, Identifiers), and merge this branch to `main` so Codemagic cuts a
+  TestFlight build carrying the entitlement and the new native code (the
+  simulator cannot receive a push token; needs a real device).
   Swift builds on Codemagic, not verifiable in this sandbox.
 - **2026-08-24: model downloads (and inference) survive backgrounding.** Root
   cause of "the download failed because I closed the app": `ModelStore` ran the
