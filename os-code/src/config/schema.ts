@@ -184,6 +184,15 @@ export const UiSchema = z.object({
   plain: z.boolean().default(false),
 });
 
+export const VaultSchema = z.object({
+  // Where the agent's on-device knowledge vault lives on disk. Plain markdown
+  // files, so Obsidian or any editor opens the folder directly. Unset means
+  // ~/OSCode/Vault (resolved in buildToolContext, since the schema has no home
+  // dir). The agent reads and writes it through the vault tools; every write
+  // asks first.
+  dir: z.string().optional(),
+});
+
 // ---------------------------------------------------------------------------
 // The whole config
 // ---------------------------------------------------------------------------
@@ -204,6 +213,7 @@ export const ConfigSchema = z.object({
   catalog: CatalogSchema.prefault({}),
   license: LicenseSchema.prefault({}),
   ui: UiSchema.prefault({}),
+  vault: VaultSchema.prefault({}),
 });
 
 export type OscConfig = z.infer<typeof ConfigSchema>;

@@ -566,10 +566,24 @@ Layer status:
       vault.ts, a mobile-first chip row in the editor). iCloud sync for the
       PERSONAL vault is already covered by the landed iCloud gitOS provider.
       The founder must apply the migration (supabase db push) for the live team
-      vault to work. STILL OPEN (its own follow-up): agent-proposed vault writes
-      with approval, which spans the os-code desktop daemon's tool/approval
-      protocol (the app is chat-only; real tools run on the daemon), so it is a
-      distinct subsystem, not part of this backend.
+      vault to work. (Applied 2026-08-25.)
+
+      **Agent vault writes BUILT (2026-08-25), daemon side.** The founder chose
+      a PRIVATE ON-DEVICE vault (local-first, no token crossing to the daemon)
+      over the team vault as the agent's write target. New daemon tools in
+      `os-code/src/core/tools/vault.ts`: `vaultRead` and `vaultList` (read risk,
+      flow) and `vaultWrite` (write risk, alwaysAsk). Notes are plain markdown
+      under `~/OSCode/Vault` (config `vault.dir`), path-jailed to that root, so
+      Obsidian or any editor opens the folder. "Never silent" is enforced hard:
+      a new `ToolDef.alwaysAsk` flag, honored by the permission engine BEFORE
+      any auto-allow path (session grant, rule, trusted repo), so no setting can
+      make an agent vault write skip its approval diff. The approval reuses the
+      existing app ApprovalSheet + CLI/TUI prompt (a unified diff). 236 os-code
+      tests green (adds vaultTools.test), lint, em-dash. STILL OPEN (paired
+      follow-up): the APP's Vault screen does not yet read this on-disk folder;
+      that needs a file-backed gitOS provider via new Electron IPC (the bridge
+      exposes no generic fs today), which is desktop-only and not testable in
+      the web session. Today the notes are real files openable in Obsidian/Files.
 
   ```
   ROLE
@@ -687,6 +701,26 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-25: Agent vault writes, with an always-ask approval (daemon side).**
+  The last Vault follow-up. The agent can now read, list, and WRITE the user's
+  knowledge vault as part of its work, but never silently. Founder chose a
+  private on-device vault (plain markdown under `~/OSCode/Vault`, config
+  `vault.dir`) over the team vault, so nothing crosses to the daemon and Obsidian
+  opens the folder. New tools in `os-code/src/core/tools/vault.ts`: `vaultRead` /
+  `vaultList` (read, flow) and `vaultWrite` (write, always-ask, append or
+  replace, unified-diff preview), path-jailed to the vault root so a note can
+  never escape it. The "never silent" guarantee is structural, not a convention:
+  a new `ToolDef.alwaysAsk` flag that the permission engine honors before every
+  auto-allow path (`decide()` returns 'ask' ahead of session grants, rules, and
+  trusted repos), and the loop refuses to grant "allow for this session" on such
+  a tool. Reuses the existing approval surface (app ApprovalSheet + CLI/TUI diff)
+  for free. Green: os-code build, lint --max-warnings 0, 236 tests (adds
+  vaultTools.test with an escape-rejection and an always-ask-beats-trusted-repo
+  case), em-dash policy. FOLLOW-UP (paired, not blocking): the app's Vault screen
+  does not yet show this on-disk folder; wiring it needs a file-backed gitOS
+  provider over new Electron IPC (the bridge exposes no generic fs today),
+  desktop-only and not testable from the web session.
 
 - **2026-08-25: Vault organization tier (shared multi-writer team vault).** The
   last open Vault follow-up. A Supabase-backed gitOS provider ('org', "Team
