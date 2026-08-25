@@ -120,6 +120,8 @@ import {
   type StackModelRef,
 } from '../lib/stack.js';
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
+import { providerFor, type GitosResource, type StoredFileMeta } from '../lib/gitos/index.js';
+import { normalizeNotePath } from '../lib/vault.js';
 import { bridge } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -142,6 +144,7 @@ export type ViewName =
   | 'stackhealth'
   | 'connections'
   | 'repos'
+  | 'vault'
   | 'projects'
   | 'crew'
   | 'admin'
@@ -164,6 +167,9 @@ export interface AppSettings {
    *  controls. Metadata only; each connection's API key lives in the secret
    *  store under byomSecretKey(id). */
   byomModels?: ByomConnection[];
+  /** gitOS resources: repos and vaults, each pointing at a storage provider.
+   *  Metadata only; the bytes live behind the provider seam. */
+  gitosResources?: GitosResource[];
   /** Whether the small built-in guide (Harbor Mini) has been downloaded to this device. */
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
@@ -215,6 +221,9 @@ const SETTINGS_KEY = 'oscode.settings.v1';
 const CONVERSATIONS_KEY = 'oscode.conversations.v1';
 const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
 
+// The one personal vault every account starts with, on the Local provider.
+const VAULT_RESOURCE_ID = 'vault.personal';
+
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
 const unsubscribers = new Map<string, () => void>();
@@ -261,6 +270,10 @@ interface AppState {
   /** Whether a custom search key (Brave/Tavily) is set; keeps the key itself
    *  out of state, same pattern as codemagicConnected. */
   searchKeyConfigured: boolean;
+  /** The personal vault's file list, loaded through the gitOS seam. */
+  vaultFiles: StoredFileMeta[];
+  /** The open vault note, when one is open. */
+  vaultNote?: { path: string; text: string; updatedAt: string };
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** Live reach signals that drive the active connectivity profile. */
@@ -412,6 +425,20 @@ interface AppState {
   startGuide(modelId?: string): Promise<string | undefined>;
   /** Bring your own Brave or Tavily key for Harbor's web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
+
+  // Vault (the personal Obsidian-compatible vault, first consumer of gitOS).
+  /** Ensure the personal vault exists and load its file list. */
+  vaultRefresh(): Promise<void>;
+  /** Open a note into vaultNote. A missing path opens as a fresh empty note. */
+  vaultOpen(path: string): Promise<void>;
+  /** Close the open note (back to the tree). */
+  vaultCloseNote(): void;
+  /** Write a note body and refresh the file list. */
+  vaultSave(path: string, text: string): Promise<void>;
+  /** Delete a note and refresh; closes it if it was open. */
+  vaultDelete(path: string): Promise<void>;
+  /** Every note body, for backlink derivation. */
+  vaultReadAll(): Promise<Array<{ path: string; text: string }>>;
   /** Drop back to the zero-config DuckDuckGo default. */
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
@@ -849,6 +876,7 @@ export const useApp = create<AppState>((set, get) => {
     connectedProviders: {},
     codemagicConnected: false,
     searchKeyConfigured: false,
+    vaultFiles: [],
     connectedRepoPlatforms: {},
     authConfigured: authConfigured(),
     connectivity: { homeReachable: false, online: true },
@@ -2169,6 +2197,75 @@ export const useApp = create<AppState>((set, get) => {
       set({ searchKeyConfigured: false });
       await get().saveSettings({ searchBackend: undefined });
       logEvent('search_backend_cleared');
+    },
+
+    async vaultRefresh() {
+      // The personal vault is one gitOS resource, auto-registered on first
+      // open, on the Local provider. More vaults and other providers arrive
+      // through the same registry when their wiring lands.
+      const resources = get().settings.gitosResources ?? [];
+      if (!resources.some((r) => r.id === VAULT_RESOURCE_ID)) {
+        const vault: GitosResource = {
+          id: VAULT_RESOURCE_ID,
+          name: 'Vault',
+          kind: 'vault',
+          providerId: 'local',
+          createdAt: new Date().toISOString(),
+        };
+        await get().saveSettings({ gitosResources: [...resources, vault] });
+        logEvent('vault_created');
+      }
+      const provider = providerFor('local')!;
+      set({ vaultFiles: await provider.list(VAULT_RESOURCE_ID) });
+    },
+
+    async vaultOpen(path) {
+      const normalized = normalizeNotePath(path);
+      if (!normalized) return;
+      const provider = providerFor('local')!;
+      const existing = await provider.read(VAULT_RESOURCE_ID, normalized);
+      set({
+        vaultNote: existing ?? { path: normalized, text: '', updatedAt: new Date().toISOString() },
+      });
+      logEvent('vault_note_open', { fresh: !existing });
+    },
+
+    vaultCloseNote() {
+      set({ vaultNote: undefined });
+    },
+
+    async vaultSave(path, text) {
+      const provider = providerFor('local')!;
+      const saved = await provider.write(VAULT_RESOURCE_ID, path, text);
+      set({
+        vaultFiles: await provider.list(VAULT_RESOURCE_ID),
+        vaultNote:
+          get().vaultNote?.path === path
+            ? { path, text: saved.text, updatedAt: saved.updatedAt }
+            : get().vaultNote,
+      });
+      logEvent('vault_note_save');
+    },
+
+    async vaultDelete(path) {
+      const provider = providerFor('local')!;
+      await provider.remove(VAULT_RESOURCE_ID, path);
+      set({
+        vaultFiles: await provider.list(VAULT_RESOURCE_ID),
+        vaultNote: get().vaultNote?.path === path ? undefined : get().vaultNote,
+      });
+      logEvent('vault_note_delete');
+    },
+
+    async vaultReadAll() {
+      const provider = providerFor('local')!;
+      const files = await provider.list(VAULT_RESOURCE_ID);
+      const out: Array<{ path: string; text: string }> = [];
+      for (const f of files) {
+        const note = await provider.read(VAULT_RESOURCE_ID, f.path);
+        if (note) out.push({ path: note.path, text: note.text });
+      }
+      return out;
     },
 
     openConversation(id) {

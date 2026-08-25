@@ -13,6 +13,7 @@ import { StackScreen } from './screens/StackScreen.js';
 import { StackHealthScreen } from './screens/StackHealthScreen.js';
 import { ConnectionsScreen } from './screens/ConnectionsScreen.js';
 import { ReposScreen } from './screens/ReposScreen.js';
+import { VaultScreen } from './screens/VaultScreen.js';
 import { ProjectsScreen } from './screens/ProjectsScreen.js';
 import { CrewScreen } from './screens/CrewScreen.js';
 import { AdminScreen } from './screens/AdminScreen.js';
@@ -101,6 +102,8 @@ export function App() {
       <ConnectionsScreen />
     ) : view === 'repos' ? (
       <ReposScreen />
+    ) : view === 'vault' ? (
+      <VaultScreen />
     ) : view === 'projects' ? (
       <ProjectsScreen />
     ) : view === 'crew' ? (
