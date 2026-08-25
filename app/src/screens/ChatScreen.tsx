@@ -27,6 +27,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     setDrawer,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
+  // 'local' from the out-of-usage "Switch to a local model" tap.
+  const [sheetStage, setSheetStage] = useState<'root' | 'local'>('root');
   const [modeSheetOpen, setModeSheetOpen] = useState(false);
   // The brain a new chat will use, chosen from the composer. Defaults to the
   // stack, which is what "My Stack" selects.
@@ -75,7 +78,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       </header>
 
       {conv && thread && thread.items.length > 0 ? (
-        <MessageList thread={thread} />
+        <MessageList
+          thread={thread}
+          onSwitchToLocal={() => {
+            setSheetStage('local');
+            setSheetOpen(true);
+          }}
+        />
       ) : (
         <div className="greeting">
           <BrandMark size={48} />
@@ -87,7 +96,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         busy={Boolean(thread?.busy)}
         source={composerSource}
         visionSupported={sourceSupportsVision(composerSource)}
-        onOpenModelSheet={() => setSheetOpen(true)}
+        onOpenModelSheet={() => {
+          setSheetStage('root');
+          setSheetOpen(true);
+        }}
         onOpenModeSheet={() => setModeSheetOpen(true)}
         onSend={(text, attachments) => {
           if (!conv) {
@@ -108,6 +120,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
       {sheetOpen ? (
         <ModelSheet
+          initialStage={sheetStage}
           onPick={(source) => {
             setSelectedSource(source);
             setSheetOpen(false);

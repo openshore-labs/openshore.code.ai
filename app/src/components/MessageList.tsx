@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
 import { hapticTick } from '../lib/haptics.js';
+import { offersLocalFallback } from '../lib/usageFallback.js';
 import { Markdown } from './Markdown.js';
 import { ToolCard } from './ToolCard.js';
 
@@ -22,7 +23,14 @@ function AssistantBubble({ text, streaming }: { text: string; streaming: boolean
   );
 }
 
-export function MessageList({ thread }: { thread: ThreadState }) {
+export function MessageList({
+  thread,
+  onSwitchToLocal,
+}: {
+  thread: ThreadState;
+  /** Open the Local LLMs sheet, offered when a turn stopped for no account usage. */
+  onSwitchToLocal?: () => void;
+}) {
   const endRef = useRef<HTMLDivElement>(null);
   const itemCount = thread.items.length;
   const lastItem = thread.items[itemCount - 1];
@@ -64,6 +72,15 @@ export function MessageList({ thread }: { thread: ThreadState }) {
               return (
                 <div key={item.id} className="msg-stopped">
                   {item.message}
+                  {onSwitchToLocal && offersLocalFallback(item.message) ? (
+                    <button
+                      type="button"
+                      className="msg-stopped-action press-fb"
+                      onClick={onSwitchToLocal}
+                    >
+                      Switch to a local model
+                    </button>
+                  ) : null}
                 </div>
               );
           }

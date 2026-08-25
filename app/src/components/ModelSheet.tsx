@@ -80,13 +80,16 @@ function pinSub(s: ConversationSource): string {
 export function ModelSheet({
   onPick,
   onClose,
+  initialStage = 'root',
 }: {
   onPick: (source: ConversationSource) => void;
   onClose: () => void;
+  /** Which sub-sheet to open on. Defaults to root; the out-of-usage tap opens 'local'. */
+  initialStage?: 'root' | 'effort' | 'cloud' | 'local';
 }) {
   const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView, showToast } =
     useApp();
-  const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local'>('root');
+  const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local'>(initialStage);
   const effort = settings.effort ?? DEFAULT_EFFORT;
 
   const hasStack = Boolean(settings.stack);
