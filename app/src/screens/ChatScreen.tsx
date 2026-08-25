@@ -1,53 +1,43 @@
-// The chat screen: greeting when empty, streaming transcript when live,
-// approvals as sheets, and the composer always within thumb's reach.
+// The chat screen. Empty state mirrors the Claude app's opening: just the mark
+// and a time-of-day greeting, with the model, effort, and everything else
+// living in the composer. A live conversation swaps in the transcript and a
+// header that names the chat.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { sourceLabel, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
 import { Composer } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
-import { SourcePicker } from '../components/SourcePicker.js';
+import { ModelSheet } from '../components/ModelSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
-import { isPhone } from '../lib/platform.js';
 import { timeGreeting } from '../lib/greeting.js';
-import { HARBOR_MODEL_ID } from '../lib/harbor.js';
-import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
+import type { Attachment } from '../lib/attachments.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
-  const {
-    activeId,
-    conversations,
-    send,
-    abort,
-    answerApproval,
-    newConversation,
-    startGuide,
-    harborMiniDownload,
-    harborDownload,
-    cancelHarborMini,
-    cancelHarbor,
-    setDrawer,
-  } = useApp();
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pendingText, setPendingText] = useState<string | undefined>();
+  const { activeId, conversations, send, abort, answerApproval, newConversation, setDrawer } =
+    useApp();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // The brain a new chat will use, chosen from the composer. Defaults to the
+  // stack, which is what "My Stack" selects.
+  const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
   const approval = thread?.pendingApprovals[0];
-  // Only one guide downloads at a time in practice; whichever is in flight
-  // gets the shared progress UI below.
-  const guideDownload = harborDownload ?? harborMiniDownload;
-  const guideDownloadName = harborDownload ? 'Harbor' : 'Harbor Mini';
-  const cancelGuideDownload = () => (harborDownload ? cancelHarbor() : cancelHarborMini());
 
-  const startWith = async (source: ConversationSource) => {
-    setPickerOpen(false);
+  // The composer pill shows the live chat's brain when one is open, otherwise
+  // the pending selection for the next new chat.
+  const composerSource = conv ? conv.source : selectedSource;
+
+  const startWith = async (
+    source: ConversationSource,
+    text?: string,
+    attachments?: Attachment[],
+  ) => {
     const id = await newConversation(source);
-    if (pendingText) {
-      const text = pendingText;
-      setPendingText(undefined);
-      useApp.getState().sendWhenAttached(id, text);
+    if (text || (attachments && attachments.length)) {
+      useApp.getState().sendWhenAttached(id, text ?? '', attachments);
     }
   };
 
@@ -59,16 +49,18 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             {'☰'}
           </button>
         ) : null}
-        <div className="topbar-title">
-          {conv ? conv.title : 'OpenShore'}
-          <div className="topbar-sub">
-            {conv
-              ? thread?.model
+        {conv ? (
+          <div className="topbar-title">
+            {conv.title}
+            <div className="topbar-sub">
+              {thread?.model
                 ? `${thread.model.name} · ${thread.model.kind}${thread.dollars > 0 ? ` · $${thread.dollars.toFixed(2)}` : ''}${thread.contextPercent ? ` · ctx ${thread.contextPercent}%` : ''}`
-                : sourceLabel(conv.source)
-              : 'Your machine. Your models. Your keys.'}
+                : sourceLabel(conv.source)}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="topbar-spacer" />
+        )}
         <ProfileStatus />
       </header>
 
@@ -76,84 +68,23 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <MessageList thread={thread} />
       ) : (
         <div className="greeting">
-          <div className="greeting-brand" aria-hidden="true">
-            <BrandMark size={40} />
-            <span className="greeting-wordmark">
-              Open<span className="accent">Shore</span>
-            </span>
-          </div>
+          <BrandMark size={44} />
           <h1>{timeGreeting()}. What are we building?</h1>
-          <p>
-            Chat and build with your own stack of local models. Cloud stays one deliberate tap away,
-            on your own account.
-          </p>
-          <div className="suggestion-row">
-            <button
-              className="suggestion suggestion-preferred"
-              onClick={() => void startGuide(HARBOR_MODEL_ID)}
-            >
-              Ask Harbor
-            </button>
-            <button className="suggestion" onClick={() => void startGuide(HARBOR_MINI_MODEL_ID)}>
-              Ask Harbor Mini
-            </button>
-            <button className="suggestion" onClick={() => setPickerOpen(true)}>
-              Pick a model
-            </button>
-            {isPhone() ? (
-              <button className="suggestion" onClick={() => useApp.getState().setView('pair')}>
-                Connect my desktop
-              </button>
-            ) : null}
-          </div>
-          {guideDownload ? (
-            <div style={{ maxWidth: 400, width: '100%', marginTop: 14 }}>
-              {guideDownload.failed ? (
-                <div className="hint" style={{ color: 'var(--danger)' }}>
-                  {guideDownload.label} Tap Ask {guideDownloadName} to retry.
-                </div>
-              ) : (
-                <>
-                  <div className="progress-track">
-                    <div
-                      className={`progress-fill${guideDownload.indeterminate ? ' indeterminate' : ''}`}
-                      style={
-                        guideDownload.indeterminate
-                          ? undefined
-                          : { width: `${guideDownload.percent}%` }
-                      }
-                    />
-                  </div>
-                  <div className="hint" style={{ marginTop: 6 }}>
-                    Getting {guideDownloadName}. {guideDownload.label}.
-                  </div>
-                  <button
-                    className="btn quiet"
-                    style={{ width: '100%', marginTop: 8 }}
-                    onClick={cancelGuideDownload}
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
-            </div>
-          ) : null}
         </div>
       )}
 
       <Composer
         busy={Boolean(thread?.busy)}
-        source={conv?.source}
-        onSend={(text) => {
+        source={composerSource}
+        onOpenModelSheet={() => setSheetOpen(true)}
+        onSend={(text, attachments) => {
           if (!conv) {
-            setPendingText(text);
-            setPickerOpen(true);
+            void startWith(selectedSource, text, attachments);
             return;
           }
-          send(text);
+          send(text, attachments);
         }}
         onStop={abort}
-        onPickSource={() => setPickerOpen(true)}
       />
 
       {approval ? (
@@ -163,10 +94,16 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         />
       ) : null}
 
-      {pickerOpen ? (
-        <SourcePicker
-          onPick={(source) => void startWith(source)}
-          onClose={() => setPickerOpen(false)}
+      {sheetOpen ? (
+        <ModelSheet
+          onPick={(source) => {
+            setSelectedSource(source);
+            setSheetOpen(false);
+            // Switching the brain while a chat is open starts a fresh chat with
+            // it, since each conversation is bound to one driver.
+            if (conv) void startWith(source);
+          }}
+          onClose={() => setSheetOpen(false)}
         />
       ) : null}
     </div>

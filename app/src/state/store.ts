@@ -93,6 +93,8 @@ import {
 } from '../lib/profiles.js';
 import { PROVIDERS, providerSecretKey } from '../lib/providers.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
+import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
+import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
 import { StackDriver } from '../drivers/stackDriver.js';
@@ -211,6 +213,9 @@ export interface AppSettings {
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
+  /** Reasoning effort for new turns, the same idea Claude exposes. Defaults to
+   *  'high'. Chosen from the composer pill or the top of the model sheet. */
+  effort?: Effort;
 }
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
@@ -323,7 +328,7 @@ interface AppState {
   /** A throwaway chat with the stack for a quick lookup. Not saved. */
   quickChat(): Promise<string>;
   /** Send text once the active conversation's driver has attached. */
-  sendWhenAttached(conversationId: string, text: string): void;
+  sendWhenAttached(conversationId: string, text: string, attachments?: Attachment[]): void;
   /** Create a project and make it active. */
   createProject(name: string): Promise<string>;
   setActiveProject(id: string): void;
@@ -466,7 +471,7 @@ interface AppState {
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
-  send(text: string): void;
+  send(text: string, attachments?: Attachment[]): void;
   abort(): void;
   answerApproval(approvalId: string, approve: boolean, always?: boolean): void;
 
@@ -1032,6 +1037,10 @@ export const useApp = create<AppState>((set, get) => {
 
       if (settingsDirty) await storeSetJson(SETTINGS_KEY, settings);
 
+      // Mirror the persisted reasoning effort into the live value the drivers
+      // read at send time (defaults to High on a fresh device).
+      setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
+
       // A stored session is a local, encrypted-at-rest read (no network round
       // trip), so it is cheap to check before deciding the first view: a
       // signed-in device skips onboarding and lands straight on chat, same as
@@ -1326,14 +1335,14 @@ export const useApp = create<AppState>((set, get) => {
       return get().newConversation({ kind: 'stack' }, { ephemeral: true });
     },
 
-    sendWhenAttached(conversationId, text) {
+    sendWhenAttached(conversationId, text, attachments) {
       // Drivers attach asynchronously after a conversation is created. Poll
       // briefly for this one, then deliver, instead of guessing a fixed delay.
       let tries = 0;
       const trySend = () => {
         const driver = drivers.get(conversationId);
         if (driver) {
-          driver.send(text);
+          driver.send(text, attachments);
           return;
         }
         if (tries++ > 100) {
@@ -2367,7 +2376,7 @@ export const useApp = create<AppState>((set, get) => {
       void persistConversations(get());
     },
 
-    send(text) {
+    send(text, attachments) {
       const { activeId } = get();
       if (!activeId) return;
       const driver = drivers.get(activeId);
@@ -2375,7 +2384,7 @@ export const useApp = create<AppState>((set, get) => {
         get().showToast('This chat is not connected yet. Give it a second, or reopen it.');
         return;
       }
-      driver.send(text);
+      driver.send(text, attachments);
     },
 
     abort() {
@@ -2393,6 +2402,7 @@ export const useApp = create<AppState>((set, get) => {
       const settings = { ...get().settings, ...patch };
       set({ settings });
       setInsightsEnabled(settings.insightsOptIn ?? false);
+      setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       await storeSetJson(SETTINGS_KEY, settings);
     },
 
