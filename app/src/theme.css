@@ -1323,7 +1323,7 @@ textarea {
 
 /* The opening greeting settles in, the mark first and the line a beat behind,
    the same unhurried easeOutQuint as the boot splash. */
-.greeting .brand-mark {
+.greeting .brand-lockup {
   animation: greet-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .greeting h1 {
@@ -1340,7 +1340,7 @@ textarea {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .greeting .brand-mark,
+  .greeting .brand-lockup,
   .greeting h1 {
     animation: none;
   }

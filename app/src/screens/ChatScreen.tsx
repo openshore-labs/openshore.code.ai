@@ -76,7 +76,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <MessageList thread={thread} />
       ) : (
         <div className="greeting">
-          <BrandMark size={44} />
+          <span className="brand-lockup">
+            <BrandMark size={44} />
+            <span className="wordmark" style={{ fontSize: 30 }}>
+              Open<span className="accent">Shore</span>
+            </span>
+          </span>
           <h1>{timeGreeting()}. What are we building?</h1>
         </div>
       )}
