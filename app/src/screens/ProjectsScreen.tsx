@@ -58,7 +58,7 @@ export function ProjectsScreen() {
   }
 
   return (
-    <div className="screen">
+    <div className="screen projects-list-screen">
       <BackBar title="Projects" />
       <div className="screen-inner">
         <h1>Projects</h1>
@@ -199,7 +199,7 @@ function ProjectDetail({
     .filter((c): c is NonNullable<typeof c> => Boolean(c) && !c!.ephemeral && c!.projectId === project.id);
 
   return (
-    <div className="screen">
+    <div className="screen project-detail-screen">
       <header className="topbar">
         <button className="icon-btn" onClick={onBack} aria-label="Back to projects">
           {'‹'}

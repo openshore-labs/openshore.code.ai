@@ -4263,19 +4263,28 @@ textarea {
   width: 100%;
   text-align: left;
   cursor: pointer;
+  /* Asymmetric press, house standard: curt down, spring out, riding `scale`. */
   transition:
-    background 0.12s ease,
-    transform 0.06s ease;
+    background 0.14s ease,
+    scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .project-card:hover {
   background: var(--surface-hover);
 }
 .project-card:active {
-  transform: scale(0.99);
+  scale: 0.985;
+  transition: scale 0.05s ease;
 }
 .project-card .grow {
   flex: 1;
   min-width: 0;
+}
+/* The chevron drifts in toward the finger as the row is pressed. */
+.project-card .disclosure-chevron {
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.project-card:active .disclosure-chevron {
+  transform: rotate(-45deg) translate(1px, 1px);
 }
 
 /* The "..." overflow menu on a project's detail header. */
@@ -4295,6 +4304,10 @@ textarea {
   z-index: 60;
   display: flex;
   flex-direction: column;
+  /* Grows from the "..." it hangs off, top-right, like the project switcher. */
+  transform-origin: top right;
+  animation: menu-pop 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform, opacity;
 }
 .overflow-item {
   text-align: left;
@@ -4306,6 +4319,9 @@ textarea {
 }
 .overflow-item:hover {
   background: var(--surface);
+}
+.overflow-item:active {
+  background: var(--surface-hover);
 }
 .overflow-item.danger {
   color: var(--danger);
@@ -4327,10 +4343,16 @@ textarea {
   font-size: 13px;
   font-weight: 600;
   color: var(--local);
-  transition: opacity 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .section-action:hover {
   opacity: 0.72;
+}
+.section-action:active {
+  scale: 0.94;
+  transition: scale 0.05s ease;
 }
 
 /* The attached-repositories row: solid pills for what is attached, a dashed
@@ -4359,12 +4381,17 @@ textarea {
   transition:
     background 0.12s ease,
     border-color 0.12s ease,
-    color 0.12s ease;
+    color 0.12s ease,
+    scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .repo-pill.add:hover {
   background: var(--surface);
   border-color: var(--local);
   color: var(--local);
+}
+.repo-pill.add:active {
+  scale: 0.94;
+  transition: scale 0.05s ease;
 }
 .repo-pill-x {
   display: grid;
@@ -4378,11 +4405,16 @@ textarea {
   opacity: 0.7;
   transition:
     opacity 0.12s ease,
-    background 0.12s ease;
+    background 0.12s ease,
+    scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .repo-pill-x:hover {
   opacity: 1;
   background: rgba(47, 90, 102, 0.16);
+}
+.repo-pill-x:active {
+  scale: 0.82;
+  transition: scale 0.05s ease;
 }
 
 .instructions-body {
@@ -4423,10 +4455,15 @@ textarea {
   margin-bottom: 10px;
   transition:
     background 0.12s ease,
-    border-color 0.12s ease;
+    border-color 0.12s ease,
+    scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .repo-inherit-row:hover {
   background: var(--surface);
+}
+.repo-inherit-row:active {
+  scale: 0.99;
+  transition: scale 0.05s ease;
 }
 .repo-inherit-row.on {
   border-color: var(--local);
@@ -4458,19 +4495,22 @@ textarea {
   font-weight: 600;
   transition:
     background 0.12s ease,
-    transform 0.06s ease;
+    scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .repo-chip:hover {
   background: var(--surface);
 }
 .repo-chip:active {
-  transform: scale(0.94);
+  scale: 0.92;
+  transition: scale 0.05s ease;
 }
 .repo-chip-own {
   width: 6px;
   height: 6px;
   border-radius: 999px;
   background: var(--local);
+  /* Pops in the moment a chat diverges from its project's repos. */
+  animation: chip-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 /* The project pill in a chat's top bar (Claude's "Job Search" chip): a folder
@@ -4492,7 +4532,7 @@ textarea {
   box-shadow: 0 1px 2px rgba(28, 42, 51, 0.05);
   transition:
     background 0.12s ease,
-    transform 0.06s ease;
+    scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .project-chip-top svg {
   flex-shrink: 0;
@@ -4507,5 +4547,67 @@ textarea {
   background: var(--surface);
 }
 .project-chip-top:active {
-  transform: scale(0.97);
+  scale: 0.96;
+  transition: scale 0.05s ease;
+}
+
+/* Drill-in between the projects list and a project's detail. The detail pushes
+   in from the right (a level deeper); the list settles back with a calm fade,
+   so tapping a project reads as going one level in and back. */
+.project-detail-screen {
+  animation: project-push-in 0.28s cubic-bezier(0.32, 0.72, 0.28, 1);
+}
+@keyframes project-push-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.projects-list-screen {
+  animation: project-list-in 0.24s cubic-bezier(0.32, 0.72, 0.28, 1);
+}
+@keyframes project-list-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-detail-screen,
+  .projects-list-screen,
+  .overflow-menu,
+  .repo-chip-own {
+    animation: none;
+  }
+  .project-card,
+  .project-card .disclosure-chevron,
+  .project-chip-top,
+  .repo-chip,
+  .repo-pill.add,
+  .repo-pill-x,
+  .section-action,
+  .repo-inherit-row {
+    transition: none;
+  }
+  .project-card:active,
+  .project-chip-top:active,
+  .repo-chip:active,
+  .repo-pill.add:active,
+  .repo-pill-x:active,
+  .section-action:active,
+  .repo-inherit-row:active {
+    scale: 1;
+  }
+  .project-card:active .disclosure-chevron {
+    transform: rotate(-45deg);
+  }
 }
