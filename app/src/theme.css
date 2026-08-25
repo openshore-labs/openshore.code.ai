@@ -1436,28 +1436,6 @@ textarea {
   }
 }
 
-/* The opening splash: the brand lockup sits above the time-of-day greeting,
-   the same two-part shape as the reference chat apps' idle screen, just in
-   OpenShore's own wave-mark and wordmark. */
-.greeting-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  animation: fade-in 0.3s ease;
-}
-
-.greeting-wordmark {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 22px;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-
-.greeting-wordmark .accent {
-  color: var(--local);
-}
-
 .greeting h1 {
   font-family: var(--font-display);
   font-weight: 500;
