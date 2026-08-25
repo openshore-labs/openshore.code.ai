@@ -408,6 +408,7 @@ export class AgentSession {
       risk: tool.risk,
       path,
       cwd: toolContext.cwd,
+      alwaysAsk: tool.alwaysAsk,
     });
 
     if (decision.decision === 'deny') {
@@ -443,7 +444,13 @@ export class AgentSession {
       // the tool; report an abort so run() settles instead of wedging.
       if (answer === 'aborted') return 'aborted';
       if (answer.alwaysThisSession && answer.approve) {
-        if (!permissions.allowForSession(call.name)) {
+        if (tool.alwaysAsk) {
+          // An always-ask tool cannot be granted for the session, by design.
+          this.emit({
+            type: 'note',
+            message: `${call.name} always asks before it runs, so it will prompt again next time.`,
+          });
+        } else if (!permissions.allowForSession(call.name)) {
           this.emit({
             type: 'note',
             message: `Session-wide approval is not available on the ${profile.name} profile; each ${call.name} will ask.`,

@@ -47,6 +47,9 @@ export interface ToolContext {
   ) => Promise<string>;
   /** Semantic repo retrieval, provided by the context layer when enabled. */
   searchRepo?: (query: string, k: number) => Promise<string>;
+  /** Absolute path to the on-device knowledge vault (markdown files). The vault
+   *  tools resolve note paths under here, jailed to it. */
+  vaultRoot?: string;
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
@@ -54,6 +57,10 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
   description: string;
   schema: S;
   risk: ToolRisk;
+  /** When true, this tool ALWAYS prompts for approval, before any auto-allow
+   *  path (session grant, permission rule, trusted repo). Used for actions that
+   *  must never happen silently, e.g. the agent writing to the user's vault. */
+  alwaysAsk?: boolean;
   /** Primary path argument, for glob-scoped permission rules. */
   pathOf?: (args: z.infer<S>) => string | undefined;
   /** Build the approval preview. Called only when the decision is 'ask'. */

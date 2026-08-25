@@ -15,6 +15,9 @@ import { webSearchTool } from '../tools/webSearch.js';
 import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
 import { analyzeImageTool, delegateTool, searchRepoTool } from '../tools/specialist.js';
+import { vaultWriteTool, vaultReadTool, vaultListTool } from '../tools/vault.js';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { Router } from '../../router/router.js';
 import type { ProviderRegistry } from '../../providers/registry.js';
 import { RepoIndex, keywordSearch } from '../../context/index.js';
@@ -37,6 +40,11 @@ export function buildToolRegistry(options: {
   registry.register(webSearchTool);
   registry.register(webFetchTool);
   registry.register(searchRepoTool);
+  // The agent's durable, on-device knowledge vault. Reads/lists flow; writes
+  // always ask (vaultWriteTool.alwaysAsk).
+  registry.register(vaultReadTool);
+  registry.register(vaultListTool);
+  registry.register(vaultWriteTool);
   // Specialist-facing tools appear only when the stack can serve them, so a
   // single-model setup never tempts the model with tools that cannot work.
   if (options.stackHasVision) registry.register(analyzeImageTool);
@@ -73,6 +81,11 @@ export function buildToolContext(options: {
     searchRepo = async (query, k) => keywordSearch(cwd, query, k);
   }
 
+  // The on-device vault lives outside the repo, so it is addressed by its own
+  // absolute root, not the workspace jail. Config can point it anywhere; unset
+  // means ~/OSCode/Vault (alongside the OSCode clones the daemon makes).
+  const vaultRoot = config.vault?.dir ?? join(homedir(), 'OSCode', 'Vault');
+
   return {
     cwd,
     jail,
@@ -81,5 +94,6 @@ export function buildToolContext(options: {
     imageProvider: providers.imageProvider(),
     delegate: (role, task, images) => router.delegate(role, task, images),
     searchRepo,
+    vaultRoot,
   };
 }

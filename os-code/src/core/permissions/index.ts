@@ -46,6 +46,8 @@ export interface PermissionQuery {
   path?: string;
   /** Workspace root, used for the trusted-repo check. */
   cwd?: string;
+  /** The tool declared it must always ask. Overrides every auto-allow path. */
+  alwaysAsk?: boolean;
 }
 
 export interface PermissionResult {
@@ -70,6 +72,13 @@ export class PermissionEngine {
   }
 
   decide(q: PermissionQuery): PermissionResult {
+    // An always-ask tool prompts every time, before any auto-allow path: no
+    // session grant, permission rule, or trusted repo can make it silent. This
+    // is the "never silent" guarantee for agent vault writes.
+    if (q.alwaysAsk) {
+      return { decision: 'ask', reason: 'this action always asks first' };
+    }
+
     // Session grants never apply to shell or cloud spend on restrictive profiles.
     if (this.sessionAllows.has(q.toolName)) {
       const shellBlocked =
