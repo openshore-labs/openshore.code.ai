@@ -2,10 +2,10 @@
 // the EXACT command. Output is size-capped and secret-redacted before the
 // model sees it, and a timeout kills the whole process group so nothing is
 // left running unattended.
-import { spawn } from 'node:child_process';
 import { z } from 'zod';
 import { capContent, type ToolDef } from './index.js';
 import { redactSecrets } from '../security/redaction.js';
+import { runCommand } from '../exec/commandRunner.js';
 
 const schema = z.object({
   command: z.string().describe('The shell command to run (bash -c)'),
@@ -31,51 +31,38 @@ export const runShellTool: ToolDef<typeof schema> = {
     };
   },
   async execute(args, ctx) {
-    const timeoutMs = (args.timeoutSeconds ?? 120) * 1000;
-    return await new Promise((resolve) => {
-      const child = spawn('/bin/bash', ['-c', args.command], {
-        cwd: ctx.cwd,
-        detached: true, // its own process group, so the timeout can kill the tree
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      let out = '';
-      let err = '';
-      let finished = false;
-      const timer = setTimeout(() => {
-        if (finished) return;
-        finished = true;
-        try {
-          process.kill(-child.pid!, 'SIGKILL');
-        } catch {}
-        resolve({
-          ok: false,
-          content: redactSecrets(
-            `Command timed out after ${timeoutMs / 1000}s and was killed.\nstdout so far:\n${capContent(out, 8000)}\nstderr so far:\n${capContent(err, 4000)}`,
-          ),
-        });
-      }, timeoutMs);
+    const timeoutSeconds = args.timeoutSeconds ?? 120;
+    // The agent lane is non-interactive: stdin is /dev/null so a command that
+    // reads it gets EOF rather than blocking until the timeout. Output arrives
+    // via the shared runner (already secret-redacted per chunk); this tool
+    // buffers and caps it for the model, exactly as before.
+    const result = await runCommand({
+      command: args.command,
+      cwd: ctx.cwd,
+      stdin: 'ignore',
+      timeoutMs: timeoutSeconds * 1000,
+    }).done;
 
-      child.stdout.on('data', (d) => (out += d));
-      child.stderr.on('data', (d) => (err += d));
-      child.on('error', (e) => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-        resolve({ ok: false, content: `Could not start the command: ${e.message}` });
-      });
-      child.on('close', (code) => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-        const body = [
-          `exit code: ${code}`,
-          out.trim() ? `stdout:\n${capContent(out.trim(), 16000)}` : 'stdout: (empty)',
-          err.trim() ? `stderr:\n${capContent(err.trim(), 8000)}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n');
-        resolve({ ok: code === 0, content: redactSecrets(body) });
-      });
-    });
+    if (result.startError) {
+      return { ok: false, content: `Could not start the command: ${result.startError}` };
+    }
+    if (result.timedOut) {
+      return {
+        ok: false,
+        content: redactSecrets(
+          `Command timed out after ${timeoutSeconds}s and was killed.\nstdout so far:\n${capContent(result.stdout, 8000)}\nstderr so far:\n${capContent(result.stderr, 4000)}`,
+        ),
+      };
+    }
+    const out = result.stdout.trim();
+    const err = result.stderr.trim();
+    const body = [
+      `exit code: ${result.exitCode}`,
+      out ? `stdout:\n${capContent(out, 16000)}` : 'stdout: (empty)',
+      err ? `stderr:\n${capContent(err, 8000)}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+    return { ok: result.exitCode === 0, content: redactSecrets(body) };
   },
 };

@@ -149,6 +149,78 @@ describe('daemon RBAC (D1)', () => {
   });
 });
 
+describe('command lane (chat-to-terminal bridge)', () => {
+  it('runs a user command and streams its output over the session SSE', async () => {
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+
+    const started = await fetch(`${base}/sessions/${id}/commands`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ command: 'printf "bridge-works\\n"' }),
+    });
+    expect(started.status).toBe(202);
+    const { runId } = (await started.json()) as { runId: string };
+    expect(runId).toBeTruthy();
+
+    // Read the session event stream and collect command-* frames until end.
+    const res = await fetch(`${base}/sessions/${id}/events?since=0`, {
+      headers: auth(adminToken),
+    });
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let output = '';
+    let sawStart = false;
+    let sawEnd: { exitCode: number | null } | undefined;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !sawEnd) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
+        if (!dataLine) continue;
+        try {
+          const event = JSON.parse(dataLine.slice(5).trim());
+          if (event.type === 'command-start' && event.runId === runId) sawStart = true;
+          if (event.type === 'command-output' && event.runId === runId) output += event.chunk;
+          if (event.type === 'command-end' && event.runId === runId) sawEnd = event;
+        } catch {}
+      }
+    }
+    await reader.cancel();
+    expect(sawStart).toBe(true);
+    expect(output).toContain('bridge-works');
+    expect(sawEnd?.exitCode).toBe(0);
+  });
+
+  it('rejects an empty command', async () => {
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    const res = await fetch(`${base}/sessions/${id}/commands`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ command: '   ' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('404s a stdin write to an unknown run', async () => {
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    const res = await fetch(`${base}/sessions/${id}/commands/nope/stdin`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ data: 'x\n' }),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('daemon request hygiene (P2-7)', () => {
   it('a malformed JSON body is a 400, not a silent empty object', async () => {
     const res = await fetch(`${base}/sessions`, {

@@ -59,4 +59,24 @@ export type EventSink = (event: AgentEvent) => void;
 export type DriverEvent =
   | AgentEvent
   | { type: 'approval-request'; request: ApprovalRequest }
-  | { type: 'approval-resolved'; id: string; approved: boolean };
+  | { type: 'approval-resolved'; id: string; approved: boolean }
+  // The user-initiated command lane (the chat-to-terminal bridge). Driver-level,
+  // not agent-level: a command the user runs from the phone or desktop shell,
+  // its live output, and its result. `source: 'user'` is the tapped-Run lane;
+  // 'agent' is reserved for surfacing an agent runShell here in a later phase.
+  | {
+      type: 'command-start';
+      runId: string;
+      command: string;
+      cwd: string;
+      source: 'user' | 'agent';
+    }
+  | { type: 'command-output'; runId: string; chunk: string; stream: 'stdout' | 'stderr' }
+  | {
+      type: 'command-end';
+      runId: string;
+      exitCode: number | null;
+      signal?: string;
+      durationMs: number;
+      truncated: boolean;
+    };

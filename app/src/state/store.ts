@@ -509,6 +509,14 @@ interface AppState {
   send(text: string, attachments?: Attachment[]): void;
   abort(): void;
   answerApproval(approvalId: string, approve: boolean, always?: boolean): void;
+  /** Chat-to-terminal bridge: run a command on the connected desktop (only a
+   *  desktop-backed conversation has a terminal). Output streams into the
+   *  transcript as a command card. */
+  runCommand(command: string): void;
+  sendCommandStdin(runId: string, data: string): void;
+  killCommand(runId: string): void;
+  /** Whether the active conversation can run terminal commands (desktop-backed). */
+  canRunCommands(): boolean;
 
   saveSettings(patch: Partial<AppSettings>): Promise<void>;
   /** Record a freshly downloaded on-device model, reading fresh state so two
@@ -2588,6 +2596,37 @@ export const useApp = create<AppState>((set, get) => {
       const { activeId } = get();
       if (!activeId) return;
       drivers.get(activeId)?.answerApproval(approvalId, { approve, alwaysThisSession: always });
+    },
+
+    runCommand(command) {
+      const { activeId } = get();
+      if (!activeId) return;
+      const driver = drivers.get(activeId);
+      if (!driver?.runCommand) {
+        get().showToast('This chat has no terminal. Open a desktop repo to run commands.');
+        return;
+      }
+      // Output arrives as command-* events on the driver subscription; the
+      // transcript reducer renders the card. Fire and forget.
+      void driver.runCommand(command).then((runId) => {
+        if (!runId) get().showToast('Could not reach the desktop to run that. Try again.');
+      });
+    },
+
+    sendCommandStdin(runId, data) {
+      const { activeId } = get();
+      if (activeId) drivers.get(activeId)?.sendStdin?.(runId, data);
+    },
+
+    killCommand(runId) {
+      const { activeId } = get();
+      if (activeId) drivers.get(activeId)?.killCommand?.(runId);
+    },
+
+    canRunCommands() {
+      const { activeId } = get();
+      if (!activeId) return false;
+      return typeof drivers.get(activeId)?.runCommand === 'function';
     },
 
     async saveSettings(patch) {

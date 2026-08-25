@@ -419,6 +419,43 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 200, { aborted: true });
         return;
       }
+      // ---- user-initiated command lane (chat-to-terminal bridge) ----
+      // The owner is already established above (ownedBy). Their explicit tap is
+      // the approval, so no model approval is raised; the run is audited in the
+      // sealed journal (command-start records the exact command and cwd).
+      if (req.method === 'POST' && parts[2] === 'commands' && !parts[3]) {
+        const body = await readJson(req);
+        if (typeof body.command !== 'string' || !body.command.trim()) {
+          sendJson(res, 400, { error: 'Send {"command": "..."}.' });
+          return;
+        }
+        const { runId } = driver.runCommand(body.command);
+        sendJson(res, 202, { runId });
+        return;
+      }
+      if (req.method === 'POST' && parts[2] === 'commands' && parts[3] && parts[4] === 'stdin') {
+        const body = await readJson(req);
+        if (typeof body.data !== 'string') {
+          sendJson(res, 400, { error: 'Send {"data": "..."}.' });
+          return;
+        }
+        const ok = driver.writeCommandStdin(parts[3], body.data);
+        if (!ok) {
+          sendJson(res, 404, { error: `No running command ${parts[3]} on session ${id}.` });
+          return;
+        }
+        sendJson(res, 200, { wrote: true });
+        return;
+      }
+      if (req.method === 'POST' && parts[2] === 'commands' && parts[3] && parts[4] === 'kill') {
+        const ok = driver.killCommand(parts[3]);
+        if (!ok) {
+          sendJson(res, 404, { error: `No running command ${parts[3]} on session ${id}.` });
+          return;
+        }
+        sendJson(res, 200, { killed: true });
+        return;
+      }
       if (req.method === 'POST' && parts[2] === 'approvals' && parts[3]) {
         const body = await readJson(req);
         // Require an explicit boolean: a missing/garbled field must 400, never

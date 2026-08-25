@@ -931,6 +931,149 @@ textarea {
   }
 }
 
+/* -------------------------------------------- command card (terminal bridge) */
+
+.command-card {
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(28, 42, 51, 0.04);
+  animation: msg-in 0.2s ease;
+}
+
+.command-card + .command-card {
+  margin-top: 8px;
+}
+
+.command-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-family: var(--font-mono);
+}
+
+.command-prompt {
+  color: var(--local);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.command-line {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-card-head .tool-state {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.command-kill {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  background: transparent;
+}
+
+.command-output {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  background: var(--code-surface);
+  padding: 10px 12px;
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.command-note {
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+.command-stdin {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.command-stdin input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* --------------------------------------------- code block toolbar (Run/Copy) */
+
+.md-code {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.md-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--code-surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+}
+
+.md-code-lang {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  text-transform: lowercase;
+}
+
+.md-code-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.md-code-run,
+.md-code-copy {
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--ink-soft);
+}
+
+.md-code-run {
+  border-color: var(--local);
+  color: var(--local);
+  font-weight: 600;
+}
+
+.md-code pre {
+  margin: 0;
+}
+
 /* ------------------------------------------------------------- citations */
 
 .citations {

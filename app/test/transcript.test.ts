@@ -89,6 +89,31 @@ describe('transcript reducer', () => {
     expect(tool?.kind === 'tool' && tool.detailKind).toBe('diff');
   });
 
+  it('renders a user command card: start, streamed output, exit badge', () => {
+    const state = feed([
+      { type: 'task-start', input: 'help me' },
+      { type: 'command-start', runId: 'r1', command: 'ls -a', cwd: '/repo', source: 'user' },
+      { type: 'command-output', runId: 'r1', chunk: '.\n', stream: 'stdout' },
+      { type: 'command-output', runId: 'r1', chunk: '..\nREADME.md\n', stream: 'stdout' },
+      { type: 'command-end', runId: 'r1', exitCode: 0, durationMs: 120, truncated: false },
+    ]);
+    const cmd = state.items.find((i) => i.kind === 'command');
+    expect(cmd?.kind === 'command' && cmd.command).toBe('ls -a');
+    expect(cmd?.kind === 'command' && cmd.output).toBe('.\n..\nREADME.md\n');
+    expect(cmd?.kind === 'command' && cmd.state).toBe('done');
+    expect(cmd?.kind === 'command' && cmd.exitCode).toBe(0);
+  });
+
+  it('marks a killed command (null exit) as stopped', () => {
+    const state = feed([
+      { type: 'task-start', input: 'go' },
+      { type: 'command-start', runId: 'r2', command: 'sleep 99', cwd: '/repo', source: 'user' },
+      { type: 'command-end', runId: 'r2', exitCode: null, durationMs: 50, truncated: false },
+    ]);
+    const cmd = state.items.find((i) => i.kind === 'command');
+    expect(cmd?.kind === 'command' && cmd.state).toBe('killed');
+  });
+
   it('streams into one bubble and replaces it with the cleaned final text', () => {
     const mid = feed([
       { type: 'task-start', input: 'go' },

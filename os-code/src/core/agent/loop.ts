@@ -109,23 +109,31 @@ export class AgentSession {
   // The task loop
   // -------------------------------------------------------------------------
 
-  async run(input: string, images?: Array<{ base64: string; mediaType: string }>): Promise<void> {
+  async run(
+    input: string,
+    images?: Array<{ base64: string; mediaType: string }>,
+    contextPreamble?: string,
+  ): Promise<void> {
     const { config, guardrails } = this.deps;
     guardrails.startTask();
     this.cloudApprovedForTask = false;
     this.abortController = new AbortController();
+    // The visible task-start is the user's own words. A context preamble (the
+    // results of commands the user ran between turns) rides into the model's
+    // message so it sees them, but never shows in the transcript as user text.
     this.emit({ type: 'task-start', input });
+    const modelText = contextPreamble ? `${contextPreamble}\n\n${input}` : input;
 
     const content: string | ContentPart[] = images?.length
       ? [
-          { type: 'text', text: input },
+          { type: 'text', text: modelText },
           ...images.map((i): ContentPart => ({
             type: 'image',
             imageBase64: i.base64,
             mediaType: i.mediaType,
           })),
         ]
-      : input;
+      : modelText;
     this.history.push({ role: 'user', content });
 
     let parseFailStreak = 0;
