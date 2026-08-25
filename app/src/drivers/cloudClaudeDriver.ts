@@ -10,30 +10,14 @@ import { effortDirective } from '../lib/effort.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import type { SeedTurn } from '../state/types.js';
 
-// contextWindow is the model's real token budget, used for the context meter.
-// Claude's standard window is 200k tokens; keep these in step with the models.
-export const CLAUDE_MODELS = [
-  { id: 'claude-opus-5', label: 'Claude Opus 5', inPerM: 5, outPerM: 25, contextWindow: 200_000 },
-  {
-    id: 'claude-sonnet-5',
-    label: 'Claude Sonnet 5',
-    inPerM: 3,
-    outPerM: 15,
-    contextWindow: 200_000,
-  },
-  {
-    id: 'claude-haiku-4-5',
-    label: 'Claude Haiku 4.5',
-    inPerM: 1,
-    outPerM: 5,
-    contextWindow: 200_000,
-  },
-] as const;
+// The model catalog (ids, labels, pricing, context) lives in one leaf module so
+// the driver, the model sheet, and sourceLabel all agree. Imported for the
+// driver's own use and re-exported for the existing importers.
+import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
+export { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL };
 
-/** Fallback context window when a model id is not in the table above. */
+/** Fallback context window when a model id is not in the catalog. */
 const DEFAULT_CONTEXT_WINDOW = 200_000;
-
-export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5';
 
 /** The model's real context window (P2-14: not a flat 1M, which read ~5x low). */
 export function contextWindowFor(model: string): number {

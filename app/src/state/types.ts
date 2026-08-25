@@ -5,6 +5,7 @@ import type { BuildStatus } from '../lib/codemagic.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
 import { isHarborMini } from '../lib/harborMini.js';
+import { claudeModelLabel } from '../lib/claudeModels.js';
 
 export type ThreadItem =
   | { kind: 'user'; id: string; text: string }
@@ -220,7 +221,7 @@ export function sourceLabel(source: ConversationSource): string {
       if (isHarbor(source.modelId)) return 'Harbor · built-in guide';
       return `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
     case 'cloud':
-      return `Claude · ${source.model}`;
+      return `Claude · ${claudeModelLabel(source.model)}`;
     case 'stack':
       return 'Your stack';
     case 'mock':

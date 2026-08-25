@@ -656,6 +656,25 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: complete Claude model lineup, and a corrected model catalog.**
+  Founder wants OpenShore to be a full Claude client: every model the user's key
+  can reach, listed and usable, no need for the Claude app. Added Fable 5
+  (`claude-fable-5`) so the Cloud Providers sheet now lists Fable 5, Opus 5,
+  Sonnet 5, Haiku 4.5 with blurbs. Centralized the catalog into one leaf module
+  `lib/claudeModels.ts` (single source of truth for id, label, blurb, pricing,
+  context) that the cloud driver, the model sheet, and `sourceLabel` all read.
+  Fixed stale data against the first-party API rates: Sonnet 5 was listed at
+  3/15 per MTok, it is 2/10; and the context windows were all a flat 200k when
+  Fable 5 / Opus 5 / Sonnet 5 are 1M (Haiku 4.5 is 200k), which had been reading
+  the context meter about 5x too high. The composer pill now shows a clean name
+  ("Claude · Opus 5") instead of the raw model id. The cloud-driver context-meter
+  test was asserting the old wrong 200k window; updated to the real 1M with the
+  200k fallback for unknown models. Follow-up (not done): wire the real
+  `output_config.effort` API param for the cloud path instead of the current
+  system-prompt effort directive; the request shape already works with Fable 5
+  (no thinking/budget_tokens/prefill sent). Green: typecheck, lint, 147 tests,
+  vite build.
+
 - **2026-08-25: model sheet restructured to the Claude "Select model" shape.**
   Root is now a header (X + "Select model"), My Stack as the default, an Effort
   row (opens a High/Medium/Low sub-sheet), and two category buttons that open
