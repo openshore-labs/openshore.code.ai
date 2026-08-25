@@ -278,6 +278,43 @@ export class RemoteDriver implements ChatDriver {
     }).catch(() => {});
   }
 
+  // ---- chat-to-terminal bridge ----
+  // Output for a started run streams back as command-* events on the same SSE
+  // subscription, so these methods only kick off / drive a run. A short timeout
+  // keeps a blackholed tailnet from hanging the tap.
+  async runCommand(command: string): Promise<string | undefined> {
+    try {
+      const res = await fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/commands`, {
+        method: 'POST',
+        headers: { ...headers(this.target), 'content-type': 'application/json' },
+        body: JSON.stringify({ command }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return undefined;
+      const body = (await res.json()) as { runId?: string };
+      return body.runId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  sendStdin(runId: string, data: string): void {
+    void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/commands/${runId}/stdin`, {
+      method: 'POST',
+      headers: { ...headers(this.target), 'content-type': 'application/json' },
+      body: JSON.stringify({ data }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => {});
+  }
+
+  killCommand(runId: string): void {
+    void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/commands/${runId}/kill`, {
+      method: 'POST',
+      headers: headers(this.target),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => {});
+  }
+
   dispose(): void {
     this.closed = true;
     this.abortStream?.abort();

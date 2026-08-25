@@ -26,7 +26,21 @@ export type ThreadItem =
     }
   | { kind: 'status'; id: string; text: string }
   | { kind: 'note'; id: string; text: string }
-  | { kind: 'stopped'; id: string; message: string };
+  | { kind: 'stopped'; id: string; message: string }
+  // A command the user ran through the chat-to-terminal bridge: its live output
+  // streams in, then an exit badge. Distinct from a tool card (which is the
+  // agent's own action) so the transcript reads as "I ran this," not "it did."
+  | {
+      kind: 'command';
+      id: string;
+      runId: string;
+      command: string;
+      output: string;
+      state: 'running' | 'done' | 'killed';
+      exitCode?: number | null;
+      durationMs?: number;
+      truncated?: boolean;
+    };
 
 export interface CitationItem {
   title: string;

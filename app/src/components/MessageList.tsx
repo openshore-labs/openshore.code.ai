@@ -7,6 +7,7 @@ import { hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
 import { Markdown } from './Markdown.js';
 import { ToolCard } from './ToolCard.js';
+import { CommandCard } from './CommandCard.js';
 
 function AssistantBubble({ text, streaming }: { text: string; streaming: boolean }) {
   const shown = useSmoothedReveal(text, streaming);
@@ -56,6 +57,8 @@ export function MessageList({
               return <AssistantBubble key={item.id} text={item.text} streaming={item.streaming} />;
             case 'tool':
               return <ToolCard key={item.id} item={item} />;
+            case 'command':
+              return <CommandCard key={item.id} item={item} />;
             case 'status':
               return (
                 <div key={item.id} className="msg-status">

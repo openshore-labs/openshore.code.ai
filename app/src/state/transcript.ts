@@ -181,6 +181,44 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         pendingApprovals: next.pendingApprovals.filter((a) => a.id !== event.id),
       };
 
+    case 'command-start': {
+      const settled = settleStreaming(next);
+      return push(settled, {
+        kind: 'command',
+        id: `cmd_${event.runId}`,
+        runId: event.runId,
+        command: event.command,
+        output: '',
+        state: 'running',
+      });
+    }
+
+    case 'command-output': {
+      const items = next.items.map((item) =>
+        item.kind === 'command' && item.runId === event.runId
+          ? { ...item, output: capOutput(item.output + event.chunk) }
+          : item,
+      );
+      return { ...next, items };
+    }
+
+    case 'command-end': {
+      const items = next.items.map((item) =>
+        item.kind === 'command' && item.runId === event.runId
+          ? {
+              ...item,
+              // A kill lands as a null exit code or a signal; anything else is a
+              // normal finish (exit 0 or not).
+              state: (event.exitCode === null ? 'killed' : 'done') as 'done' | 'killed',
+              exitCode: event.exitCode,
+              durationMs: event.durationMs,
+              truncated: event.truncated,
+            }
+          : item,
+      );
+      return { ...next, items };
+    }
+
     default:
       return next;
   }
@@ -210,6 +248,14 @@ function summarizeArgs(args: Record<string, unknown>): string {
 
 function firstLine(text: string): string {
   return (text.split('\n')[0] ?? '').slice(0, 100);
+}
+
+// Client-side cap on a command card's live output, matching the daemon's own
+// per-run emit cap: keep the tail, so a flood never grows the transcript state
+// without bound.
+const COMMAND_OUTPUT_CAP = 200_000;
+function capOutput(text: string): string {
+  return text.length > COMMAND_OUTPUT_CAP ? text.slice(text.length - COMMAND_OUTPUT_CAP) : text;
 }
 
 function dedupeCitations(citations: Array<{ title: string; url: string }>) {

@@ -20,6 +20,8 @@ import type { AgentSession } from '../core/agent/loop.js';
 import type { ApprovalAnswer, ApprovalRequest, DriverEvent } from '../core/agent/types.js';
 import { redactSecrets } from '../core/security/redaction.js';
 import { isSealed, loadOrCreateDataKey, openString, sealString } from '../core/security/atRest.js';
+import { runCommand as spawnCommand, type CommandRun } from '../core/exec/commandRunner.js';
+import { capContent } from '../core/tools/index.js';
 
 // DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
 // remote driver can share the exact protocol type; re-exported here so
@@ -101,6 +103,11 @@ export class LocalDriver implements SessionDriver {
   private persist: boolean;
   private ownerUserId?: string;
   private ensuredTrailingNewline = false;
+  // The user-initiated command lane: live runs keyed by runId, and a queue of
+  // framed results the model reads on its next turn (so it sees command
+  // outcomes without a screenshot).
+  private commands = new Map<string, CommandRun>();
+  private pendingTerminalContext: string[] = [];
 
   constructor(
     readonly cwd: string,
@@ -293,8 +300,9 @@ export class LocalDriver implements SessionDriver {
     const next = this.queue.shift();
     if (!next) return;
     this.running = true;
+    const preamble = this.drainTerminalContext();
     try {
-      await this.agent.run(next.text, next.images);
+      await this.agent.run(next.text, next.images, preamble);
     } catch (err) {
       this.emit({
         type: 'task-done',
@@ -305,6 +313,99 @@ export class LocalDriver implements SessionDriver {
       this.running = false;
       if (this.queue.length) void this.pump();
     }
+  }
+
+  // ---- user-initiated command lane (chat-to-terminal bridge) --------------
+  // The journaled/emitted output per run is capped so a reattaching phone
+  // rebuilds the card cheaply; the model still gets a fuller (capContent) tail.
+  private static readonly COMMAND_EMIT_CAP = 64 * 1024;
+  private static readonly MAX_PENDING_CONTEXT = 16;
+
+  /**
+   * Run a command the user asked for (not the agent). Streams output as
+   * command-* events, records the result for the model's next turn, and
+   * returns the runId the caller drives (stdin, kill). The authenticated
+   * owner's tap IS the approval; this raises no model approval.
+   */
+  runCommand(command: string, opts: { source?: 'user' | 'agent' } = {}): { runId: string } {
+    const runId = randomUUID().slice(0, 8);
+    const source = opts.source ?? 'user';
+    const startedAt = Date.now();
+    this.emit({ type: 'command-start', runId, command, cwd: this.cwd, source });
+
+    let emitted = 0;
+    let truncated = false;
+    const run = spawnCommand({
+      command,
+      cwd: this.cwd,
+      stdin: 'pipe',
+      onChunk: (stream, text) => {
+        if (emitted >= LocalDriver.COMMAND_EMIT_CAP) {
+          truncated = true;
+          return;
+        }
+        let chunk = text;
+        if (emitted + chunk.length > LocalDriver.COMMAND_EMIT_CAP) {
+          chunk = chunk.slice(0, LocalDriver.COMMAND_EMIT_CAP - emitted);
+          truncated = true;
+        }
+        emitted += chunk.length;
+        this.emit({ type: 'command-output', runId, chunk, stream });
+      },
+    });
+    this.commands.set(runId, run);
+
+    void run.done.then((result) => {
+      this.commands.delete(runId);
+      const durationMs = Date.now() - startedAt;
+      this.emit({
+        type: 'command-end',
+        runId,
+        exitCode: result.exitCode,
+        signal: result.signal ?? undefined,
+        durationMs,
+        truncated: truncated || result.timedOut,
+      });
+      // Frame the result for the model's next turn (drained in pump). Output is
+      // already secret-redacted by the runner; cap the tail for context.
+      const combined = [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
+      const exitNote = result.startError
+        ? `failed to start: ${result.startError}`
+        : result.timedOut
+          ? 'timed out and was killed'
+          : `exit ${result.exitCode}`;
+      this.pendingTerminalContext.push(
+        `[terminal] the user ran \`${command}\` in ${this.cwd} (${exitNote}, ${(durationMs / 1000).toFixed(1)}s):\n${capContent(combined, 8000)}`,
+      );
+      if (this.pendingTerminalContext.length > LocalDriver.MAX_PENDING_CONTEXT) {
+        this.pendingTerminalContext.shift();
+      }
+    });
+
+    return { runId };
+  }
+
+  /** Feed stdin to a running command (answers a prompt). */
+  writeCommandStdin(runId: string, data: string): boolean {
+    const run = this.commands.get(runId);
+    if (!run) return false;
+    run.write(data);
+    return true;
+  }
+
+  /** Ask a running command to stop. */
+  killCommand(runId: string): boolean {
+    const run = this.commands.get(runId);
+    if (!run) return false;
+    run.kill();
+    return true;
+  }
+
+  private drainTerminalContext(): string | undefined {
+    if (!this.pendingTerminalContext.length) return undefined;
+    const joined = this.pendingTerminalContext.join('\n\n');
+    this.pendingTerminalContext = [];
+    return joined;
   }
 
   abort(): void {

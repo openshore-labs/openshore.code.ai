@@ -19,6 +19,15 @@ export interface ChatDriver {
   subscribe(sink: DriverEventSink): () => void;
   /** Release sockets, native handles, timers. */
   dispose(): void;
+  /**
+   * The chat-to-terminal bridge (desktop-backed drivers only). Run a command
+   * the user asked for on the connected machine; output streams back as
+   * command-* events on the same subscription. Returns the runId, or undefined
+   * if this driver has no terminal. sendStdin/killCommand drive a live run.
+   */
+  runCommand?(command: string): Promise<string | undefined>;
+  sendStdin?(runId: string, data: string): void;
+  killCommand?(runId: string): void;
 }
 
 /** Shared helper: a tiny fan-out emitter drivers can compose. */
