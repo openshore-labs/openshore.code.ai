@@ -8,6 +8,7 @@ import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
+import type { SeedTurn } from '../state/types.js';
 
 // contextWindow is the model's real token budget, used for the context meter.
 // Claude's standard window is 200k tokens; keep these in step with the models.
@@ -62,10 +63,13 @@ export class CloudClaudeDriver implements ChatDriver {
   constructor(
     apiKey: string,
     private readonly model: string = DEFAULT_CLAUDE_MODEL,
+    seed?: SeedTurn[],
   ) {
     this.client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
     const known = CLAUDE_MODELS.find((m) => m.id === model);
     this.price = known ?? { inPerM: 5, outPerM: 25 };
+    // A mid-chat switch seeds the prior turns so this model continues the thread.
+    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
 
   subscribe(sink: DriverEventSink): () => void {
@@ -85,12 +89,10 @@ export class CloudClaudeDriver implements ChatDriver {
     const imageBlocks = (attachments ?? [])
       .map(imageBlockParts)
       .filter((p): p is { mediaType: string; base64: string } => Boolean(p))
-      .map(
-        (p): Anthropic.ImageBlockParam => ({
-          type: 'image',
-          source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
-        }),
-      );
+      .map((p): Anthropic.ImageBlockParam => ({
+        type: 'image',
+        source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
+      }));
     if (imageBlocks.length) {
       this.history.push({
         role: 'user',

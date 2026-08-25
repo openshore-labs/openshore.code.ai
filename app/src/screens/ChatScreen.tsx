@@ -15,8 +15,16 @@ import { timeGreeting } from '../lib/greeting.js';
 import type { Attachment } from '../lib/attachments.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
-  const { activeId, conversations, send, abort, answerApproval, newConversation, setDrawer } =
-    useApp();
+  const {
+    activeId,
+    conversations,
+    send,
+    abort,
+    answerApproval,
+    newConversation,
+    switchModel,
+    setDrawer,
+  } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
   // The brain a new chat will use, chosen from the composer. Defaults to the
   // stack, which is what "My Stack" selects.
@@ -100,9 +108,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           onPick={(source) => {
             setSelectedSource(source);
             setSheetOpen(false);
-            // Switching the brain while a chat is open starts a fresh chat with
-            // it, since each conversation is bound to one driver.
-            if (conv) void startWith(source);
+            // With a chat open, switch its model in place and carry the thread
+            // (Claude-style). With none open, this just sets the brain the next
+            // send will use.
+            if (conv) void switchModel(source);
           }}
           onClose={() => setSheetOpen(false)}
         />

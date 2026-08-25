@@ -11,6 +11,7 @@ import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js'
 import { formatSearchResults, loadSearchKey, webSearch } from '../lib/webSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
+import type { SeedTurn } from '../state/types.js';
 
 const SYSTEM_PROMPT = [
   'You are OpenShore, a friendly coding companion running fully on this device.',
@@ -44,9 +45,12 @@ export class OnDeviceDriver implements ChatDriver {
   constructor(
     private readonly modelId: string,
     private readonly modelName: string,
+    seed?: SeedTurn[],
   ) {
     this.searchable = isHarbor(modelId);
     this.guide = isHarborMini(modelId) || this.searchable;
+    // A mid-chat switch seeds the prior turns so this model continues the thread.
+    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
     this.listenersReady = this.attachListeners();
   }
 

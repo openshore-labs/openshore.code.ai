@@ -19,6 +19,7 @@ import { platform, secretGet } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
 import { effortDirective } from '../lib/effort.js';
+import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
@@ -100,7 +101,10 @@ export class StackDriver implements ChatDriver {
     private readonly stack: AppStack,
     private readonly profile: ProfileId,
     private readonly context: StackContext = {},
+    seed?: SeedTurn[],
   ) {
+    // A mid-chat switch seeds the prior turns so the stack continues the thread.
+    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
     this.listenersReady = this.attachDeviceListeners();
   }
 

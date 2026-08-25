@@ -7,6 +7,10 @@ import { create } from 'zustand';
 import type { DriverEvent } from 'os-code/protocol';
 import {
   emptyThread,
+  seedFromTranscript,
+  sourceLabel,
+  type SeedTurn,
+  type ThreadItem,
   type Account,
   type BuildRun,
   type Conversation,
@@ -322,6 +326,11 @@ interface AppState {
   restorePurchases(): Promise<void>;
 
   newConversation(source: ConversationSource, opts?: { ephemeral?: boolean }): Promise<string>;
+  /** Switch the model of the OPEN conversation, Claude-style: keep the thread,
+   *  reseed the new brain with the transcript, and let the next turn run on it.
+   *  Falls back to a fresh chat when there is nothing to carry or the target is
+   *  not a chat brain. */
+  switchModel(source: ConversationSource): Promise<void>;
   /** Open a fresh, empty chat (the source picker decides who answers). A
    *  project is auto-created on first save, so this never dead-ends. */
   startNewChat(): void;
@@ -666,7 +675,7 @@ export const useApp = create<AppState>((set, get) => {
     }
   }
 
-  async function buildDriver(conv: Conversation): Promise<ChatDriver> {
+  async function buildDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
     const { settings } = get();
     switch (conv.source.kind) {
       case 'desktop': {
@@ -701,11 +710,11 @@ export const useApp = create<AppState>((set, get) => {
         return new RemoteDriver(sessionId, settings.daemon, 0);
       }
       case 'device':
-        return new OnDeviceDriver(conv.source.modelId, conv.source.modelName);
+        return new OnDeviceDriver(conv.source.modelId, conv.source.modelName, seed);
       case 'cloud': {
         const key = await secretGet(ANTHROPIC_KEY_KEY);
         if (!key) throw new Error('Add your Claude API key under Connections first.');
-        return new CloudClaudeDriver(key, conv.source.model);
+        return new CloudClaudeDriver(key, conv.source.model, seed);
       }
       case 'stack': {
         const s = get();
@@ -722,11 +731,16 @@ export const useApp = create<AppState>((set, get) => {
             (a.projectIds.length === 0 ||
               (conv.projectId != null && a.projectIds.includes(conv.projectId))),
         );
-        return new StackDriver(s.settings.stack ?? emptyStack(), profile, {
-          projectName: project?.name,
-          projectInstructions: project?.instructions,
-          crew,
-        });
+        return new StackDriver(
+          s.settings.stack ?? emptyStack(),
+          profile,
+          {
+            projectName: project?.name,
+            projectInstructions: project?.instructions,
+            crew,
+          },
+          seed,
+        );
       }
       case 'mock':
         return new MockDriver();
@@ -1322,6 +1336,66 @@ export const useApp = create<AppState>((set, get) => {
       }
       void persistConversations(get());
       return id;
+    },
+
+    async switchModel(source) {
+      const { activeId } = get();
+      const conv = activeId ? get().conversations[activeId] : undefined;
+      // Only chat brains carry a thread forward. A repo agent ('desktop') or the
+      // demo ('mock') is a different mode; with nothing to carry, or no open
+      // chat, just open a fresh chat with the chosen brain.
+      const seedable =
+        source.kind === 'stack' || source.kind === 'cloud' || source.kind === 'device';
+      if (!activeId || !conv || conv.thread.items.length === 0 || !seedable) {
+        await get().newConversation(source);
+        return;
+      }
+      // Never swap under a live turn or a pending step (CTO guardrails): that
+      // would abort a stream mid-token or orphan an approval bound to the old
+      // driver. Claude does not let you switch mid-stream either.
+      if (conv.thread.busy) {
+        get().showToast('Let the current reply finish, then switch.');
+        return;
+      }
+      if (conv.thread.pendingApprovals.length) {
+        get().showToast('Answer the pending step first, then switch.');
+        return;
+      }
+      const seed = seedFromTranscript(conv.thread.items);
+      // Clear the cached model badge so the top bar shows the new brain right
+      // away; the next turn-start refreshes it with live cost/context.
+      const nextConv: Conversation = {
+        ...conv,
+        source,
+        thread: { ...conv.thread, model: undefined },
+        updatedAt: new Date().toISOString(),
+      };
+      set((s) => ({ conversations: { ...s.conversations, [activeId]: nextConv } }));
+      try {
+        // attachDriver disposes the old driver and keeps the thread, so the
+        // visible history is untouched; the new driver starts with the seeded
+        // transcript so the next turn has full context.
+        const driver = await buildDriver(nextConv, seed);
+        attachDriver(activeId, driver);
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c) return s;
+          const note: ThreadItem = {
+            kind: 'note',
+            id: newId(),
+            text: `Now using ${sourceLabel(source)}.`,
+          };
+          return {
+            conversations: {
+              ...s.conversations,
+              [activeId]: { ...c, thread: { ...c.thread, items: [...c.thread.items, note] } },
+            },
+          };
+        });
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : String(err));
+      }
+      void persistConversations(get());
     },
 
     startNewChat() {
