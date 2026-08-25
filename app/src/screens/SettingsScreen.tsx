@@ -350,9 +350,7 @@ export function SettingsScreen() {
           </div>
         </div>
 
-        <p className="hint">
-          OpenShore. Familiar where it should be, yours where it matters.
-        </p>
+        <p className="hint">OpenShore. Familiar where it should be, yours where it matters.</p>
       </div>
     </div>
   );

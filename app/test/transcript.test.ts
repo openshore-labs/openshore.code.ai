@@ -44,6 +44,51 @@ describe('transcript reducer', () => {
     expect(tail.kind === 'assistant' && tail.text).toBe('Fixed.');
   });
 
+  it('keeps a shell command full output as readable detail, not just the first line', () => {
+    const state = feed([
+      { type: 'task-start', input: 'run the tests' },
+      {
+        type: 'tool-start',
+        call: { id: 's1', name: 'runShell', args: { command: 'npm test' } },
+      },
+      {
+        type: 'tool-end',
+        call: { id: 's1', name: 'runShell', args: { command: 'npm test' } },
+        // A line starting with '-' is data here, not a diff deletion.
+        result: { ok: true, content: 'PASS suite one\n- 12 assertions\nPASS suite two' },
+        durationMs: 4200,
+      },
+      { type: 'task-done', reason: 'complete' },
+    ]);
+    const tool = state.items.find((i) => i.kind === 'tool');
+    expect(tool?.kind === 'tool' && tool.summary).toBe('PASS suite one');
+    // The full output survives so the phone can actually read it, tagged as
+    // plain output so the diff colorizer never touches the '- 12 assertions'.
+    expect(tool?.kind === 'tool' && tool.detail).toBe(
+      'PASS suite one\n- 12 assertions\nPASS suite two',
+    );
+    expect(tool?.kind === 'tool' && tool.detailKind).toBe('output');
+  });
+
+  it('keeps an edit tool diff tagged for the diff renderer', () => {
+    const state = feed([
+      { type: 'task-start', input: 'edit it' },
+      {
+        type: 'tool-start',
+        call: { id: 'e1', name: 'editFile', args: { path: 'a.ts' } },
+      },
+      {
+        type: 'tool-end',
+        call: { id: 'e1', name: 'editFile', args: { path: 'a.ts' } },
+        result: { ok: true, content: 'edited a.ts', diffText: '+ added\n- removed' },
+        durationMs: 12,
+      },
+    ]);
+    const tool = state.items.find((i) => i.kind === 'tool');
+    expect(tool?.kind === 'tool' && tool.detail).toBe('+ added\n- removed');
+    expect(tool?.kind === 'tool' && tool.detailKind).toBe('diff');
+  });
+
   it('streams into one bubble and replaces it with the cleaned final text', () => {
     const mid = feed([
       { type: 'task-start', input: 'go' },

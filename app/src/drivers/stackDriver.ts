@@ -17,6 +17,7 @@ import type { ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import { platform, secretGet } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
+import { streamingFetch } from '../lib/streamingFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
 import { effortDirective } from '../lib/effort.js';
 import type { SeedTurn } from '../state/types.js';
@@ -349,7 +350,11 @@ export class StackDriver implements ChatDriver {
   }
 
   private async runAnthropic(key: string, model: string, system: string): Promise<void> {
-    const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+    const client = new Anthropic({
+      apiKey: key,
+      dangerouslyAllowBrowser: true,
+      fetch: streamingFetch,
+    });
     const stream = client.messages.stream(
       {
         model,

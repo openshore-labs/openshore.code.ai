@@ -101,6 +101,52 @@ describe('daemon RBAC (D1)', () => {
     });
     expect(res.status).toBe(403);
   });
+
+  it('a member cannot apply an outbox commit into an arbitrary repo path', async () => {
+    // The apply pushes with the desktop's credentials, so an un-provisioned
+    // path (here the scratch home) must be refused before any git work.
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await fetch(`${base}/outbox/apply`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({
+        cwd: home,
+        clientOpId: 'op1',
+        itemId: 'it1',
+        branch: 'main',
+        baseCommit: 'HEAD',
+        files: [],
+      }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('a member cannot verify an outbox commit in an arbitrary repo path', async () => {
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await fetch(
+      `${base}/outbox/verify?cwd=${encodeURIComponent(home)}&commit=deadbeef&branch=main`,
+      { headers: auth(token) },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('an admin may reach the outbox routes (past the path gate)', async () => {
+    // The scratch home is not a git repo, so apply fails downstream, but the
+    // admin is never stopped by the 403 path gate: the status is not 403.
+    const res = await fetch(`${base}/outbox/apply`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({
+        cwd: home,
+        clientOpId: 'op2',
+        itemId: 'it2',
+        branch: 'main',
+        baseCommit: 'HEAD',
+        files: [],
+      }),
+    });
+    expect(res.status).not.toBe(403);
+  });
 });
 
 describe('daemon request hygiene (P2-7)', () => {

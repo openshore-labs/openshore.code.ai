@@ -26,10 +26,7 @@ export interface OscodeSpeechContract {
   start(): Promise<void>;
   stop(): Promise<void>;
 
-  addListener(
-    event: 'partial',
-    cb: (data: SpeechPartial) => void,
-  ): Promise<PluginListenerHandle>;
+  addListener(event: 'partial', cb: (data: SpeechPartial) => void): Promise<PluginListenerHandle>;
   addListener(event: 'result', cb: (data: SpeechResult) => void): Promise<PluginListenerHandle>;
   addListener(event: 'error', cb: (data: SpeechError) => void): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;

@@ -3,9 +3,9 @@ import { offersLocalFallback, SWITCH_TO_LOCAL } from '../src/lib/usageFallback.j
 
 describe('usage fallback', () => {
   it('recognizes an out-of-usage stop by its shared phrase', () => {
-    expect(offersLocalFallback(`No more Claude usage on your account right now. ${SWITCH_TO_LOCAL}`)).toBe(
-      true,
-    );
+    expect(
+      offersLocalFallback(`No more Claude usage on your account right now. ${SWITCH_TO_LOCAL}`),
+    ).toBe(true);
   });
 
   it('does not offer local for unrelated stops', () => {
