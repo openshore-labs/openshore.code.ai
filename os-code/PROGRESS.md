@@ -715,6 +715,56 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: Review remediation (branch `claude/openshore-code-review-ud4bt9`,
+  NOT yet on main).** Acted on the 2026-08-25 review
+  (`CODE-REVIEW-FINDINGS-2026-08-25.md`) across the three focus areas, each fix
+  test-backed; gates green (os-code 268 tests, app 189, typecheck, lint,
+  vite build). Awaiting founder review before merge to main.
+  - **Tailscale / phone (P0 + P1s).** Fixed the flagship phone bug: the daemon
+    SSE stream and Anthropic SDK were routed through Capacitor's native-HTTP
+    fetch (buffers, cannot stream), so a paired phone rendered nothing during a
+    run. New `streamingFetch` reaches the unpatched WebView fetch
+    (`window.CapacitorWebFetch`); the global patch stays on so web search / Drive
+    / Supabase are untouched (safe failure mode). Also: `/outbox/apply|verify`
+    now admin/workspace-gated (a member token could push to any repo, security
+    must-fix); the tailscale-bound daemon also listens on loopback so `osc
+    attach` reaches it; a daemon restart seeds the agent's history from the
+    journal (no more amnesia) and clears zombie approvals; the reconnect loop
+    stops on 401/persistent-404 with actionable copy instead of retrying forever;
+    phone POSTs get a 10s timeout.
+  - **Chat-to-terminal bridge, Phase 1 (the founder's game-changer).** A
+    first-class command lane: run a command on the paired desktop from chat,
+    watch output stream live, answer prompts, kill it, and the model reads the
+    result on its next turn (no screenshot loop). New
+    `core/exec/commandRunner.ts` (shared with runShell), three `command-*`
+    driver events, `LocalDriver.runCommand/writeCommandStdin/killCommand`, daemon
+    routes under the owned-session block (owner's tap is the approval, audited in
+    the journal), a `contextPreamble` seam into `AgentSession.run`, and the app
+    side (command ThreadItem + reducer, `CommandCard`, RemoteDriver methods,
+    store actions, a Run/Copy button on shell code blocks). Also fixed the tiny
+    high-leverage bug: the app discarded all shell output past its first line.
+    Follow-ups: desktop (Electron) command lane, a composer terminal-mode
+    toggle, and Phase 2 (full PTY tab) which is a founder decision.
+  - **Marketplace (premium + functional + HF automation).** A standalone iPhone
+    now fetches the published catalog directly (Preferences-cached, graceful
+    fallback) so ratings/popularity/staff-picks appear without a paired desktop;
+    the Staff axis hides when empty; copy fixed (popularity is HF-only; the "over
+    Tailscale" note is phone-only). Builder: an HF outage no longer strips
+    popularity (carry-forward + coverage gate); HF_TOKEN + bounded concurrency +
+    retry; a license-drift warning; a published commercial-posture flag; a gate
+    that rejects any non-huggingface.co `onDevice.url` (plus the native client
+    check), closing a redirect-to-anywhere download vector.
+  - **Advisor ruling captured (founder decision needed).** The C-suite (CFO lead,
+    CMO weighed) recommends opening FREE desktop CHAT (route it like `stack`,
+    read-only) while keeping the $20 Personal gate on the coding agent,
+    Marketplace, and repo writes. This is a monetization-FOUNDATION change, so it
+    was deliberately NOT built; it needs the founder's explicit yes. Gate lives at
+    `app/src/state/store.ts` around the desktop-conversation check.
+  - **Needs founder / device (cannot verify in a web session):** confirm the P0
+    fix on a real iPhone (streaming); the Swift `downloadModel` host check and
+    any native change compile on TestFlight; wire an optional `HF_TOKEN` repo
+    secret if you want the authenticated popularity fetch.
+
 - **2026-08-25: App Vault opens the on-disk folder (file-backed provider).** The
   paired follow-up to agent vault writes: the app's Vault can now live in the
   same `~/OSCode/Vault` folder the agent writes, so notes flow both ways and

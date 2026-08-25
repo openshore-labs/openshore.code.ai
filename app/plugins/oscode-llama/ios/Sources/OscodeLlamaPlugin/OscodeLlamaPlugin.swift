@@ -183,6 +183,16 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("downloadModel needs an id and an https url.")
             return
         }
+        // MP-S2: pocket-model weights come only from Hugging Face. The builder
+        // gate already enforces this host, so this is defense in depth: a
+        // tampered catalog cannot point the phone at an arbitrary GGUF to feed
+        // llama.cpp. The CDN redirect (cdn-lfs.huggingface.co) is followed by
+        // URLSession AFTER this check, which is fine.
+        let host = url.host ?? ""
+        guard host == "huggingface.co" || host.hasSuffix(".huggingface.co") else {
+            call.reject("downloadModel only accepts a huggingface.co url.")
+            return
+        }
         call.keepAlive = true
         downloadsLock.lock()
         pendingDownloads[id] = call
