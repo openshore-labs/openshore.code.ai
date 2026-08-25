@@ -40,6 +40,16 @@ describe('note paths', () => {
     expect(normalizeNotePath('already.md')).toBe('already.md');
     expect(normalizeNotePath('///')).toBeUndefined();
   });
+
+  it('drops dot and dot-dot segments so a name cannot escape the vault root', () => {
+    // SEC: a typed name or a wikilink target must never climb out of the vault
+    // and clobber a sibling resource.
+    expect(normalizeNotePath('../x')).toBe('x.md');
+    expect(normalizeNotePath('../../secrets/lease')).toBe('secrets/lease.md');
+    expect(normalizeNotePath('a/../../b')).toBe('a/b.md');
+    expect(normalizeNotePath('./note')).toBe('note.md');
+    expect(normalizeNotePath('../..')).toBeUndefined();
+  });
 });
 
 describe('wikilink resolution', () => {

@@ -62,14 +62,16 @@ export function noteFolder(path: string): string {
 
 /** Normalize a user-typed note name or path into a vault-relative .md path:
  *  strips leading/trailing slashes and whitespace, collapses separators, and
- *  appends .md when absent. Returns undefined for an empty result. */
+ *  appends .md when absent. Returns undefined for an empty result. Dot and
+ *  dot-dot segments are dropped so a typed name or a wikilink can never climb
+ *  out of the vault root and clobber a sibling resource (SEC: path jail). */
 export function normalizeNotePath(raw: string): string | undefined {
   const cleaned = raw
     .trim()
     .replace(/\\/g, '/')
     .split('/')
     .map((s) => s.trim())
-    .filter(Boolean)
+    .filter((s) => s && s !== '.' && s !== '..')
     .join('/');
   if (!cleaned) return undefined;
   return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;

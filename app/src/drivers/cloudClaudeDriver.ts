@@ -71,10 +71,12 @@ export class CloudClaudeDriver implements ChatDriver {
     const imageBlocks = (attachments ?? [])
       .map(imageBlockParts)
       .filter((p): p is { mediaType: string; base64: string } => Boolean(p))
-      .map((p): Anthropic.ImageBlockParam => ({
-        type: 'image',
-        source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
-      }));
+      .map(
+        (p): Anthropic.ImageBlockParam => ({
+          type: 'image',
+          source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
+        }),
+      );
     if (imageBlocks.length) {
       this.history.push({
         role: 'user',
@@ -84,6 +86,9 @@ export class CloudClaudeDriver implements ChatDriver {
       this.history.push({ role: 'user', content: text });
     }
 
+    // Accumulate the streamed text so an abort can keep the visible partial in
+    // model history (Claude's own apps re-feed the partial when you continue).
+    let partial = '';
     try {
       const stream = this.client.messages.stream({
         model: this.model,
@@ -92,7 +97,10 @@ export class CloudClaudeDriver implements ChatDriver {
         messages: this.history,
       });
       this.activeStream = stream;
-      stream.on('text', (delta) => this.emitter.emit({ type: 'text-delta', text: delta }));
+      stream.on('text', (delta) => {
+        partial += delta;
+        this.emitter.emit({ type: 'text-delta', text: delta });
+      });
       const final = await stream.finalMessage();
       const answer = final.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -122,6 +130,8 @@ export class CloudClaudeDriver implements ChatDriver {
     } catch (err) {
       this.activeStream = undefined;
       if (err instanceof Anthropic.APIUserAbortError) {
+        if (partial.trim()) this.history.push({ role: 'assistant', content: partial });
+        this.emitter.emit({ type: 'text-final', text: partial });
         this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
         return;
       }
