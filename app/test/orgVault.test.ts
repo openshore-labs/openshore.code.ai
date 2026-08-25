@@ -14,6 +14,7 @@ import {
   orgVaultProvider,
   setOrgVaultAuth,
   isOrgVaultAvailable,
+  resetOrgVault,
 } from '../src/lib/gitos/orgVault.js';
 
 const ORG = 'org-123';
@@ -104,6 +105,18 @@ describe('org vault provider', () => {
       () => true,
     );
     await expect(orgVaultProvider.list(ORG)).rejects.toThrow(/team/i);
+  });
+
+  it('forgets base revs on reset, so one account cannot leak into the next', async () => {
+    mockSelect.mockResolvedValue([{ path: 'a.md', body: 'hi', updated_at: 't1', rev: 7 }]);
+    await orgVaultProvider.read(ORG, 'a.md'); // learns base rev 7
+
+    resetOrgVault(); // sign-out / account switch clears the cache
+
+    mockRpc.mockResolvedValue({ path: 'a.md', body: 'z', updated_at: 't2', rev: 1, size: 1 });
+    await orgVaultProvider.write(ORG, 'a.md', 'z');
+    // The forgotten rev falls back to base 0, not the stale 7.
+    expect(mockRpc.mock.calls[0]![2]).toMatchObject({ p_base_rev: 0 });
   });
 
   it('grants the lease trivially: multi-writer has no single-writer lock', async () => {

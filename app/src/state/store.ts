@@ -137,6 +137,7 @@ import {
   connectGdrive,
   disconnectGdrive,
   setOrgVaultAuth,
+  resetOrgVault,
   type GitosResource,
   type StorageProvider,
   type StorageProviderId,
@@ -943,7 +944,10 @@ export const useApp = create<AppState>((set, get) => {
   // verified email, claim any invited org seat, and read the server role.
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
-    set({ authSession: session });
+    // A fresh session always starts on the personal vault, with no team-vault
+    // state or base-rev cache carried over from a prior account on this device.
+    resetOrgVault();
+    set({ authSession: session, vaultScope: 'personal', vaultFiles: [], vaultNote: undefined });
     const account = get().settings.account;
     if (account && session.user.email && account.selfEmail !== session.user.email) {
       await get().saveSettings({ account: { ...account, selfEmail: session.user.email } });
@@ -1749,11 +1753,19 @@ export const useApp = create<AppState>((set, get) => {
       // standing storage access behind. A revoke failure (offline) must
       // never block sign-out itself.
       await disconnectGdrive().catch(() => {});
+      // Sever the team vault too: drop its on-screen state and the provider's
+      // base-rev cache, and fall back to the personal scope, so a handed-off
+      // device never shows the previous org's note titles or open note to the
+      // next person who signs in.
+      resetOrgVault();
       set({
         authSession: undefined,
         serverRole: undefined,
         entitlement: undefined,
         userEntitlement: undefined,
+        vaultScope: 'personal',
+        vaultFiles: [],
+        vaultNote: undefined,
       });
       logEvent('auth_sign_out');
     },

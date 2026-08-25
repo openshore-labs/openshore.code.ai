@@ -711,7 +711,14 @@ Layer status:
   live team vault. Green: typecheck, lint --max-warnings 0, 168 app tests, em-dash
   policy, vite build. STILL OPEN as its own subsystem: agent-proposed vault
   writes with approval (spans the desktop daemon's tool/approval protocol; the
-  app is chat-only). CTO reviewed the migration/RLS before push.
+  app is chat-only). CTO reviewed the migration/RLS: SAFE with one P1 fixed in a
+  follow-up commit before the migration is applied. The P1 was an
+  account-separation leak (team-vault state and the provider base-rev cache
+  survived sign-out, so a handed-off device could show the previous org's note
+  titles / open note); fixed by clearing vaultScope/vaultFiles/vaultNote and
+  calling resetOrgVault() on sign-out, and resetting to the personal scope on
+  sign-in. Also took the CTO's anon-select revoke (defense in depth). Left as
+  noted, non-regression: repo-wide search_path hardening (pg_catalog, public).
 
 - **2026-08-25: connection status sheet fix + a full sheet-dismiss polish.**
   Tapping the connectivity pill (Docked/Offshore/Offline) opened its Connection

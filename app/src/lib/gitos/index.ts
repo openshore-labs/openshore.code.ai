@@ -11,7 +11,7 @@ import { PROVIDER_ROSTER, type StorageProvider, type StorageProviderId } from '.
 
 export * from './providers.js';
 export { isGdriveConfigured, connectGdrive, disconnectGdrive } from './gdriveAuth.js';
-export { setOrgVaultAuth, isOrgVaultAvailable } from './orgVault.js';
+export { setOrgVaultAuth, isOrgVaultAvailable, resetOrgVault } from './orgVault.js';
 
 const PROVIDERS_BY_ID: Partial<Record<StorageProviderId, StorageProvider>> = {
   local: localProvider,

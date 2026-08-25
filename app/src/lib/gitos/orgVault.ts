@@ -56,6 +56,14 @@ export function isOrgVaultAvailable(): boolean {
 const baseRev = new Map<string, number>();
 const revKey = (resourceId: string, path: string) => `${resourceId}::${path}`;
 
+/** Forget all cached base revisions. Call on sign-out / account switch so one
+ *  account's team-vault state never carries into the next on a shared device.
+ *  The store also clears the on-screen vault state; this clears the module cache
+ *  that would otherwise outlive it. */
+export function resetOrgVault(): void {
+  baseRev.clear();
+}
+
 async function token(): Promise<string> {
   const t = await getToken?.();
   if (!t) throw new Error('Sign in to your team to use the team vault.');
