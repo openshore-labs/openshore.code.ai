@@ -29,6 +29,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     switchModel,
     setConversationRepos,
     openProjectDetail,
+    setActiveProject,
+    startNewChat,
     setDrawer,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -168,6 +170,31 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             </svg>
             <span>{chatRepoIds.length}</span>
             {inheriting ? null : <span className="repo-chip-own" aria-hidden="true" />}
+          </button>
+        ) : null}
+        {compact && headerProject ? (
+          <button
+            className="icon-btn"
+            onClick={() => {
+              setActiveProject(headerProject.id);
+              startNewChat();
+            }}
+            aria-label="New chat in this project"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4.1A7.5 7.5 0 1 1 20 11.5Z" />
+              <path d="M12 8.6v5.8M9.1 11.5h5.8" />
+            </svg>
           </button>
         ) : null}
         <ProfileStatus />
