@@ -43,6 +43,7 @@ export async function daemonCreateSession(target: DaemonTarget, cwd?: string): P
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
     body: JSON.stringify(cwd ? { cwd } : {}),
+    signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
   if (!res.ok || !body.id) throw new Error(body.error ?? `The desktop answered ${res.status}.`);
@@ -184,6 +185,15 @@ export class RemoteDriver implements ChatDriver {
   // this in a zero-delay hot loop. Backoff resets only once a reconnection is
   // productive (delivers a frame), so an unproductive close keeps stepping up.
   private outageBlipped = false;
+  private notFoundStreak = 0;
+
+  // A fatal answer is not a network blip: stop retrying and tell the user what
+  // to do, instead of "Connection blipped" forever on a revoked token or a
+  // deleted session.
+  private emitTerminal(message: string): void {
+    this.closed = true;
+    for (const sink of [...this.sinks]) sink({ type: 'status', message }, this.lastSeq);
+  }
 
   private async streamLoop(): Promise<void> {
     let backoffMs = 600;
@@ -198,6 +208,22 @@ export class RemoteDriver implements ChatDriver {
           `${this.target.baseUrl}/sessions/${this.sessionId}/events?since=${this.lastSeq}`,
           { headers: headers(this.target), signal: this.abortStream.signal },
         );
+        if (res.status === 401 || res.status === 403) {
+          this.emitTerminal(
+            'The desktop rejected this phone. Re-pair from Menu, Desktop connection.',
+          );
+          return;
+        }
+        if (res.status === 404) {
+          // Tolerate a transient 404 (a session rehydrating), give up after a few.
+          this.notFoundStreak += 1;
+          if (this.notFoundStreak >= 3) {
+            this.emitTerminal('This session no longer exists on the desktop. Start a new one.');
+            return;
+          }
+          throw new Error('session not found yet');
+        }
+        this.notFoundStreak = 0;
         if (!res.ok || !res.body) throw new Error(`daemon answered ${res.status}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -250,6 +276,9 @@ export class RemoteDriver implements ChatDriver {
       method: 'POST',
       headers: { ...headers(this.target), 'content-type': 'application/json' },
       body: JSON.stringify({ text }),
+      // A blackholed tailnet (Tailscale toggled off on the phone) otherwise
+      // hangs this for the OS default minute with no feedback.
+      signal: AbortSignal.timeout(10_000),
     }).catch(() => {
       for (const sink of [...this.sinks]) {
         sink(
@@ -267,6 +296,7 @@ export class RemoteDriver implements ChatDriver {
     void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/abort`, {
       method: 'POST',
       headers: headers(this.target),
+      signal: AbortSignal.timeout(10_000),
     }).catch(() => {});
   }
 
@@ -275,6 +305,7 @@ export class RemoteDriver implements ChatDriver {
       method: 'POST',
       headers: { ...headers(this.target), 'content-type': 'application/json' },
       body: JSON.stringify(answer),
+      signal: AbortSignal.timeout(10_000),
     }).catch(() => {});
   }
 

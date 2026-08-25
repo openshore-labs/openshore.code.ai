@@ -162,6 +162,11 @@ export class LocalDriver implements SessionDriver {
     this.agent = agent;
   }
 
+  /** The journaled events, in order (used to seed history on rehydrate). */
+  replayEvents(): DriverEvent[] {
+    return this.events.map((e) => e.event);
+  }
+
   get busy(): boolean {
     return this.running;
   }

@@ -9,6 +9,7 @@ import { resolveStack } from '../../router/stack.js';
 import { Router } from '../../router/router.js';
 import { buildToolContext, buildToolRegistry } from './registry.js';
 import { AgentSession } from './loop.js';
+import { seedHistoryFromEvents, unresolvedApprovalIds } from './seed.js';
 import { PermissionEngine, type PermissionConfig } from '../permissions/index.js';
 import { Guardrails } from '../guardrails/index.js';
 import { profileFor, type SecurityProfileName } from '../security/profiles.js';
@@ -86,6 +87,24 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     codeMap,
   });
   driver.attachAgent(agent);
+
+  // Rehydrating a stored session (daemon restarted): the journal replayed into
+  // the driver, but a fresh AgentSession has no memory. Seed its history from
+  // the journaled turns so the next message continues the conversation instead
+  // of answering with amnesia, and tell the client the session was restored.
+  if (options.sessionId) {
+    const journal = driver.replayEvents();
+    const seeded = seedHistoryFromEvents(journal);
+    if (seeded.length) {
+      agent.history = seeded;
+      driver.emit({ type: 'status', message: 'Reconnected to this session after a restart.' });
+    }
+    // Clear any approval the old process was waiting on: its resolver is gone,
+    // so the client's sheet would otherwise block forever with a 404 Approve.
+    for (const id of unresolvedApprovalIds(journal)) {
+      driver.emit({ type: 'approval-resolved', id, approved: false });
+    }
+  }
 
   return { driver, agent, router, config, toolContext, warnings };
 }
