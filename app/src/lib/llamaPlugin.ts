@@ -15,8 +15,13 @@ export interface LlamaPluginContract {
   isSupported(): Promise<{ supported: boolean; reason?: string }>;
   /** Models already downloaded into the app's storage. */
   listModels(): Promise<{ models: DeviceModelInfo[] }>;
-  /** Download a GGUF straight from its source; progress via 'downloadProgress'. */
+  /** Download a GGUF straight from its source; progress via 'downloadProgress'.
+   *  The transfer runs on a background URLSession, so it keeps going while the
+   *  app is backgrounded or closed and the app is relaunched to finish it. */
   downloadModel(options: { id: string; url: string }): Promise<{ path: string }>;
+  /** Model ids the background session is still transferring right now. Used on
+   *  launch to re-show progress for a download that was mid-flight. */
+  activeDownloads(): Promise<{ ids: string[] }>;
   cancelDownload(options: { id: string }): Promise<void>;
   deleteModel(options: { id: string }): Promise<void>;
   /** Load a downloaded model into memory (frees any previous one). */
@@ -31,6 +36,13 @@ export interface LlamaPluginContract {
     temperature?: number;
   }): Promise<{ started: boolean }>;
   stop(options: { requestId: string }): Promise<void>;
+
+  /** Ask for notification permission and, if granted, register for APNs. The
+   *  token then arrives via the 'pushToken' event (and getPushToken). */
+  requestPushPermission(): Promise<{ granted: boolean }>;
+  /** The current APNs device token, or null until one has been issued.
+   *  `environment` selects which APNs host the token is valid against. */
+  getPushToken(): Promise<{ token: string | null; environment: 'sandbox' | 'production' }>;
 
   /** Keychain-backed secret storage (iOS). Off iOS, unused (see platform.ts). */
   secureGet(options: { key: string }): Promise<{ value: string | null }>;
@@ -52,6 +64,10 @@ export interface LlamaPluginContract {
       stopReason: 'end' | 'stopped' | 'error';
       detail?: string;
     }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'pushToken',
+    listener: (data: { token: string; environment: 'sandbox' | 'production' }) => void,
   ): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;
 }
@@ -87,6 +103,10 @@ class LlamaWeb {
     const model = { id, fileName: `${id}.gguf`, sizeBytes: total };
     this.models = [...this.models.filter((m) => m.id !== id), model];
     return { path: `demo://${id}.gguf` };
+  }
+
+  async activeDownloads() {
+    return { ids: [] as string[] };
   }
 
   async cancelDownload() {}
@@ -127,6 +147,15 @@ class LlamaWeb {
 
   async stop({ requestId }: { requestId: string }) {
     this.stopped.add(requestId);
+  }
+
+  async requestPushPermission() {
+    // No APNs off a real iPhone; the guide flow treats this as "no push here".
+    return { granted: false };
+  }
+
+  async getPushToken() {
+    return { token: null as string | null, environment: 'production' as const };
   }
 
   async secureGet({ key }: { key: string }) {

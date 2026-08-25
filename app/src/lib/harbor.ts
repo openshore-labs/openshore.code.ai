@@ -54,7 +54,7 @@ export const HARBOR_SEARCH_PREFIX = 'SEARCH:';
 
 function harborPersona(searchable: boolean): string {
   return [
-    `You are Harbor ${HARBOR_MODEL_VERSION}, the preferred on-device guide in the user's OS Code stack, running on their own device.`,
+    `You are Harbor ${HARBOR_MODEL_VERSION}, the preferred on-device guide in the user's OpenShore stack, running on their own device.`,
     searchable
       ? 'You are bigger and more capable than the smaller Harbor Mini guide: real reasoning, and real web search when you need current information.'
       : 'You are bigger and more capable than the smaller Harbor Mini guide: real reasoning.',

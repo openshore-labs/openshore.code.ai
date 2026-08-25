@@ -1,7 +1,7 @@
 {
   "name": "oscode-llama",
   "version": "0.1.0",
-  "description": "On-device llama.cpp inference for OS Code: GGUF models on the iPhone's Metal GPU.",
+  "description": "On-device llama.cpp inference for OpenShore: GGUF models on the iPhone's Metal GPU.",
   "license": "MIT",
   "files": [
     "ios/Sources",

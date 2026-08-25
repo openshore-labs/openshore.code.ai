@@ -13,7 +13,7 @@ import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 
 const SYSTEM_PROMPT = [
-  'You are OS Code, a friendly coding companion running fully on this device.',
+  'You are OpenShore, a friendly coding companion running fully on this device.',
   'Be concise and useful. Use markdown for code.',
   'You have no internet and no file access here. For repo work, the user can connect this app to their desktop.',
   'Never use em dashes. Use a period or a comma instead.',

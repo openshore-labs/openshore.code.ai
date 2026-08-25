@@ -24,6 +24,7 @@ import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { LocalDriver, listSessions, sealSessionsAtRest } from './session.js';
+import { PushNotifier, savePushConfig } from './push.js';
 import { clone } from '../git/index.js';
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
 import { withKeyLock } from '../git/applyQueue.js';
@@ -73,6 +74,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   assertSafeBind(host);
   const token = loadOrCreateToken(join(oscHome(), 'daemon.token'));
   const drivers = new Map<string, LocalDriver>();
+  // One egress policy for every outbound call (catalog refresh, completion push),
+  // and the notifier that fires a content-free push when a run needs the user and
+  // no phone is watching.
+  const egress = new EgressPolicy(options.config.egress);
+  const notifier = new PushNotifier(egress);
+
+  // Register a driver and attach the push watcher exactly once, wherever a
+  // driver is created or rehydrated.
+  const trackDriver = (driver: LocalDriver): void => {
+    drivers.set(driver.id, driver);
+    notifier.watch(driver);
+  };
 
   // Reseal any pre-encryption sessions before serving. Off the startup path
   // (setImmediate) and failure-tolerant: sealing is protection, never an
@@ -143,6 +156,44 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         role: auth.role,
         user: auth.userId,
       });
+      return;
+    }
+
+    // ---- Completion push. ----
+    // The phone hands the daemon an opaque grant (minted server-side for the
+    // signed-in user) plus the push-send URL. The daemon holds it sealed at rest
+    // and uses it only to fire content-free "session needs you" pushes.
+    if (req.method === 'POST' && url.pathname === '/push/register') {
+      const body = await readJson(req);
+      const grant = typeof body.grant === 'string' ? body.grant : '';
+      const sendUrl = typeof body.sendUrl === 'string' ? body.sendUrl : '';
+      let parsed: URL | undefined;
+      try {
+        parsed = new URL(sendUrl);
+      } catch {
+        parsed = undefined;
+      }
+      if (!grant || !parsed || parsed.protocol !== 'https:') {
+        sendJson(res, 400, { error: 'Send {"grant": "...", "sendUrl": "https://..."}.' });
+        return;
+      }
+      savePushConfig(auth.userId, { grant, sendUrl });
+      sendJson(res, 200, { registered: true });
+      return;
+    }
+    // The phone beats while it is foreground on a session, so the daemon can tell
+    // the user is watching and hold the push back. A live socket is NOT trusted
+    // for this: a backgrounded iOS socket lingers half-open long after the app is
+    // gone, which would suppress exactly the push the user needs.
+    if (req.method === 'POST' && url.pathname === '/push/beat') {
+      const body = await readJson(req);
+      const sessionId = typeof body.sessionId === 'string' ? body.sessionId : '';
+      if (!sessionId) {
+        sendJson(res, 400, { error: 'Send {"sessionId": "..."}.' });
+        return;
+      }
+      notifier.recordBeat(sessionId);
+      sendJson(res, 200, { ok: true });
       return;
     }
 
@@ -251,7 +302,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     }
     if (req.method === 'GET' && url.pathname === '/catalog') {
       try {
-        const loaded = await loadCatalog(options.config, new EgressPolicy(options.config.egress));
+        const loaded = await loadCatalog(options.config, egress);
         sendJson(res, 200, { catalog: loaded.catalog, source: loaded.source, note: loaded.note });
       } catch (err) {
         sendJson(res, 500, { error: (err as Error).message });
@@ -280,7 +331,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       try {
         const { driver, warnings } = bootstrapSession({ cwd, profile: 'remote-attached' });
-        drivers.set(driver.id, driver);
+        trackDriver(driver);
         driver.setOwner(auth.userId);
         sendJson(res, 201, { id: driver.id, cwd, warnings });
       } catch (err) {
@@ -312,7 +363,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               profile: 'remote-attached',
               sessionId: id,
             });
-            drivers.set(id, revived);
+            trackDriver(revived);
             driver = revived;
           } catch (err) {
             sendJson(res, 400, { error: (err as Error).message });

@@ -158,7 +158,7 @@ function DesktopPair() {
           <div className="card" style={{ textAlign: 'center' }}>
             <h3>Scan from the phone app</h3>
             <div className="sub" style={{ marginBottom: 12 }}>
-              OS Code on iPhone: Menu, Desktop + phone, then paste or scan.
+              OpenShore on iPhone: Menu, Desktop + phone, then paste or scan.
             </div>
             <img src={qr} alt="Pairing QR code" style={{ borderRadius: 12 }} />
             <div className="sub" style={{ marginTop: 12, wordBreak: 'break-all' }}>
@@ -234,7 +234,7 @@ function PhonePair() {
           <div className="sub">
             1. Install Tailscale on both devices and sign into the same tailnet.
             <br />
-            2. In OS Code on the desktop: Menu, Desktop + phone, Turn on.
+            2. In OpenShore on the desktop: Menu, Desktop + phone, Turn on.
           </div>
           <div className="sub" style={{ marginTop: 12 }}>
             Get Tailscale (free for personal use):

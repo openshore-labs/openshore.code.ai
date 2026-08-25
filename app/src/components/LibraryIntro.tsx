@@ -1,4 +1,4 @@
-// The LLM Library intro: OS Code's take on the house enablement pattern shared
+// The LLM Library intro: OpenShore's take on the house enablement pattern shared
 // with Uki. A short, self-paced full-screen sequence, eyebrow -> serif headline
 // -> benefit body over a dark caption dock, that explains the Library and the
 // stack and introduces Harbor while it downloads. It ends by returning the user
@@ -43,7 +43,7 @@ function beatsFor(guideName: string): Beat[] {
       id: 'ready',
       eyebrow: 'Ready',
       headline: "Let's build your stack.",
-      body: `${guideName} keeps downloading while you set up. When it lands, start chatting to shape your OS Code.`,
+      body: `${guideName} keeps downloading while you set up. When it lands, start chatting to shape your stack.`,
       art: 'ready',
       cta: 'Continue setup',
     },
@@ -125,7 +125,7 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
         <span className="brand-lockup">
           <BrandMark size={24} />
           <span className="wordmark" style={{ fontSize: 16 }}>
-            <span className="accent">OS</span> Code
+            Open<span className="accent">Shore</span>
           </span>
         </span>
         {!isLast ? (

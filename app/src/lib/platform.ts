@@ -30,7 +30,7 @@ export function openExternal(url: string): void {
 
 /** Open a URL for a quick errand you're meant to come straight back from
  *  (fetching an API key, for example): an in-app browser sheet on iOS, so
- *  signing in and copying a key never leaves OS Code, with the standard
+ *  signing in and copying a key never leaves OpenShore, with the standard
  *  Capacitor "Done" button to dismiss back to exactly where you were.
  *  Electron and web have no in-app browser surface, so they fall back to
  *  the system browser via openExternal. */

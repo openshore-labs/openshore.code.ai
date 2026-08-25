@@ -223,7 +223,7 @@ function createWindow(): void {
     minHeight: 520,
     backgroundColor: '#f6f4ef',
     autoHideMenuBar: true,
-    title: 'OS Code',
+    title: 'OpenShore',
     webPreferences: {
       preload: join(here, '..', 'electron', 'preload.cjs'),
       contextIsolation: true,

@@ -376,7 +376,7 @@ export function MarketplaceScreen() {
         {rated ? (
           <div className="ratings">
             <div className="osfit">
-              <span className="osfit-label">OS Code fit</span>
+              <span className="osfit-label">OpenShore fit</span>
               <Stars value={rated.osCodeFit} size={18} fill="var(--wave)" />
             </div>
             <div className="osfit-divider" />
@@ -884,7 +884,7 @@ export function MarketplaceScreen() {
 
               {!isDesktop() ? (
                 <p className="hint store-note">
-                  Browse here; desktop models install from the OS Code desktop app, and this phone
+                  Browse here; desktop models install from the OpenShore desktop app, and this phone
                   uses them over Tailscale.
                 </p>
               ) : null}
@@ -926,7 +926,7 @@ export function MarketplaceScreen() {
 
                   {!isDesktop() ? (
                     <p className="hint" style={{ marginBottom: 10 }}>
-                      Browse here; desktop models install from the OS Code desktop app, and this
+                      Browse here; desktop models install from the OpenShore desktop app, and this
                       phone uses them over Tailscale.
                     </p>
                   ) : null}

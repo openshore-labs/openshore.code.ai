@@ -84,6 +84,7 @@ import {
   PERSONAL_YEARLY_PRODUCT_ID,
 } from '../lib/iap.js';
 import { clearSession, freshSession, loadStoredSession, saveSession } from '../lib/authSession.js';
+import { beatDesktopSession, registerPushForDaemon } from '../lib/push.js';
 import {
   autoProfile,
   effectiveProfile,
@@ -125,6 +126,7 @@ import { bridge } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   isDesktop,
+  isPhone,
   openExternal,
   platform,
   sealExistingKeys,
@@ -177,6 +179,10 @@ export interface AppSettings {
   searchBackend?: SearchBackend;
   /** Whether the Marketplace intro walkthrough has been shown. */
   libraryIntroSeen?: boolean;
+  /** Daemon base URLs this device has registered for completion push, so a grant
+   *  is minted once per daemon rather than on every desktop session. Device-local
+   *  bookkeeping, not synced. */
+  pushRegisteredDaemons?: string[];
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata. */
   stack?: AppStack;
   /** Project buckets; a saved chat belongs to one. */
@@ -615,6 +621,23 @@ export const useApp = create<AppState>((set, get) => {
     unsubscribers.set(conversationId, off);
   }
 
+  // Register this device for completion push with the connected daemon, once per
+  // daemon. iOS-only and best-effort (see registerPushForDaemon); a failure just
+  // means no push until the next desktop session opens.
+  async function ensureDesktopPush(): Promise<void> {
+    const s = get();
+    const daemon = s.settings.daemon;
+    const session = s.authSession;
+    if (!isPhone() || !daemon || !session) return;
+    if ((s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl)) return;
+    const ok = await registerPushForDaemon(daemon, session);
+    if (!ok) return;
+    const existing = get().settings.pushRegisteredDaemons ?? [];
+    if (!existing.includes(daemon.baseUrl)) {
+      await get().saveSettings({ pushRegisteredDaemons: [...existing, daemon.baseUrl] });
+    }
+  }
+
   async function buildDriver(conv: Conversation): Promise<ChatDriver> {
     const { settings } = get();
     switch (conv.source.kind) {
@@ -642,6 +665,10 @@ export const useApp = create<AppState>((set, get) => {
           sessionId = await daemonCreateSession(settings.daemon, conv.source.cwd);
           conv.source.sessionId = sessionId;
         }
+        // Opening a desktop session is the walk-away-able moment: the run
+        // continues on the daemon while the phone is closed. Register for
+        // completion push now (contextual, not at launch), once per daemon.
+        void ensureDesktopPush();
         // Replay from zero so the transcript rebuilds exactly.
         return new RemoteDriver(sessionId, settings.daemon, 0);
       }
@@ -1005,6 +1032,28 @@ export const useApp = create<AppState>((set, get) => {
       });
       logEvent('app_open', { onboarded: settings.onboarded });
 
+      // A guide download now runs on a background URLSession, so it keeps going
+      // while the app is away and can still be mid-flight when the app is
+      // reopened. Re-drive the ensure flow for anything still transferring so
+      // the progress bar reappears and resolves, instead of a silent bar that
+      // never moves. (A download that finished while away was already caught by
+      // the listModels reconciliation above, which flips the ready flags.)
+      if (platform() === 'ios') {
+        void (async () => {
+          try {
+            const { ids } = await Llama.activeDownloads();
+            if (ids.includes(HARBOR_MINI_MODEL_ID) && !get().settings.harborMiniReady) {
+              void get().ensureHarborMini();
+            }
+            if (ids.includes(HARBOR_MODEL_ID) && !get().settings.harborReady) {
+              void get().ensureHarbor();
+            }
+          } catch {
+            // Native side unreachable: nothing to reattach.
+          }
+        })();
+      }
+
       // Upgrade any pre-encryption data to sealed-at-rest, in the background.
       void sealExistingKeys([SETTINGS_KEY, CONVERSATIONS_KEY, ANTHROPIC_KEY_KEY]);
 
@@ -1036,6 +1085,23 @@ export const useApp = create<AppState>((set, get) => {
         window.addEventListener('online', () => void get().refreshConnectivity());
         window.addEventListener('offline', () => void get().refreshConnectivity());
         setInterval(() => void get().refreshConnectivity(), 20000);
+      }
+
+      // While the phone is foreground on a desktop chat, beat the daemon so it
+      // knows the user is watching and holds the completion push back. The
+      // daemon does not trust its own socket for this (a backgrounded iOS socket
+      // lingers half-open), so the phone is the authority on foreground.
+      if (isPhone()) {
+        setInterval(() => {
+          const s = get();
+          const daemon = s.settings.daemon;
+          if (!daemon || s.view !== 'chat' || !s.activeId) return;
+          if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+          const conv = s.conversations[s.activeId];
+          if (conv?.source.kind === 'desktop' && conv.source.sessionId) {
+            void beatDesktopSession(daemon, conv.source.sessionId);
+          }
+        }, 12000);
       }
     },
 

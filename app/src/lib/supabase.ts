@@ -2,7 +2,7 @@
 // light in the WebView, and Supabase (GoTrue + PostgREST) already sends CORS
 // headers, so plain fetch works from capacitor://localhost and Electron. When
 // VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are unset, isConfigured() is false
-// and the whole auth surface no-ops: OS Code runs local-first exactly as before.
+// and the whole auth surface no-ops: OpenShore runs local-first exactly as before.
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
@@ -203,6 +203,12 @@ export async function del(table: string, accessToken: string, query: string): Pr
     headers: authHeaders(accessToken),
   });
   if (!res.ok) throw new Error(await readError(res));
+}
+
+/** The full URL of an Edge Function, for a caller that is not the signed-in user
+ *  (e.g. the desktop daemon posting to push-send). Undefined when unconfigured. */
+export function functionUrl(name: string): string | undefined {
+  return SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/${name}` : undefined;
 }
 
 /** Invoke a Supabase Edge Function (POST JSON) as the signed-in user. */

@@ -60,7 +60,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           </button>
         ) : null}
         <div className="topbar-title">
-          {conv ? conv.title : 'OS Code'}
+          {conv ? conv.title : 'OpenShore'}
           <div className="topbar-sub">
             {conv
               ? thread?.model
@@ -79,7 +79,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           <div className="greeting-brand" aria-hidden="true">
             <BrandMark size={40} />
             <span className="greeting-wordmark">
-              <span className="accent">OS</span> Code
+              Open<span className="accent">Shore</span>
             </span>
           </div>
           <h1>{timeGreeting()}. What are we building?</h1>

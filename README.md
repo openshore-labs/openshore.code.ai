@@ -1,4 +1,4 @@
-# OS Code
+# OpenShore
 
 Chat and build with your own stack of local LLMs. A native app for the
 Linux desktop and the iPhone, in the familiar shape of a modern coding
