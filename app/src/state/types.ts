@@ -232,6 +232,25 @@ function isProbablyPhone(): boolean {
   return typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
 }
 
+// One prior turn handed to a freshly built driver so a mid-chat model switch
+// carries the conversation forward, the way Claude keeps the thread when you
+// change models. Only the spoken turns cross over; tool/status/note artifacts
+// are execution detail the new model does not need.
+export interface SeedTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+export function seedFromTranscript(items: ThreadItem[]): SeedTurn[] {
+  const out: SeedTurn[] = [];
+  for (const it of items) {
+    if (it.kind === 'user') out.push({ role: 'user', text: it.text });
+    else if (it.kind === 'assistant' && it.text.trim())
+      out.push({ role: 'assistant', text: it.text });
+  }
+  return out;
+}
+
 // Can this brain actually see an attached image? Resolved at send time, per the
 // CTO's ruling: default false everywhere, opt in only where vision genuinely
 // works, so an image is never silently dropped into a text-only model. Today

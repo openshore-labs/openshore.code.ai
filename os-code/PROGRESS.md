@@ -56,9 +56,11 @@ Layer status:
       SFSpeechRecognizer Capacitor plugin. CTO: build it only AFTER a confirmed
       clean TestFlight, and get the founder's on-device-vs-server data-egress
       posture first. Must-fixes in the 2026-08-25 log entry.
-- [ ] **Ratify fresh-chat-on-model-switch** as intended behavior (built).
-      Optional later, low risk: "continue this thread with [new model]" = fork a
-      new chat seeded with the current transcript, no live driver handoff.
+- [x] **Mid-chat model switching, Claude-style: BUILT (2026-08-25).** Founder
+      wanted the Claude behavior (keep the thread, change the model for the next
+      turn). Not the CTO's feared live hot-swap: switch only when idle, reseed
+      the new driver with the transcript, keep the same conversation. See the
+      log entry.
 - [ ] **Vision beyond Claude:** extend `sourceSupportsVision` when a direct
       BYOM/OpenAI/Gemini vision chat, a vision pocket model, or image blocks over
       the desktop-daemon SSE protocol land (daemon is text-only for now).
@@ -652,6 +654,28 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-25: mid-chat model switching, Claude-style (founder overrode the
+  CTO's fresh-chat default).** The founder wanted Claude's actual behavior:
+  keep the conversation, change the model, the next turn runs on the new brain
+  with the full transcript as context. This is NOT the live hot-swap the CTO
+  NO-GO'd (aborting a stream mid-token, re-homing in-flight approvals). The
+  insight that made it safe: `attachDriver` already disposes the old driver and
+  swaps in a new one while keeping the thread (it is the production reattach
+  path), so the only new work is seeding the new driver with the transcript and
+  gating the swap. New `switchModel(source)` store action: refuses to swap while
+  a turn is streaming or an approval is pending (CTO guardrails), falls back to a
+  fresh chat when there is nothing to carry or the target is a repo agent/demo
+  (a different mode), otherwise reseeds and reattaches in place and drops a "Now
+  using X." note in the transcript. `seedFromTranscript` carries only the spoken
+  user/assistant turns (tool/status artifacts stay behind). The three chat-brain
+  drivers (cloud Claude, stack, on-device) gained an optional `seed` constructor
+  arg that pre-fills their history. The top-bar model badge clears on switch so
+  it reflects the new brain immediately. Tests added (seed extraction); app
+  suite 140. Green: typecheck, lint, 140 tests, vite build. Not device-verified
+  (no iOS here). Edge left as-is (low risk): switching right after an errored
+  turn that ended on a user message could seed two consecutive user turns; the
+  Anthropic API merges those, and the idle+approval gates make it rare.
 
 - **2026-08-25: vision routing (CTO-ruled), plus the two composer forks the CTO
   parked.** Built on the composer rework above after a CTO review of the three
