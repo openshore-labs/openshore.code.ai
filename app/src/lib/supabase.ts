@@ -2,7 +2,7 @@
 // light in the WebView, and Supabase (GoTrue + PostgREST) already sends CORS
 // headers, so plain fetch works from capacitor://localhost and Electron. When
 // VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are unset, isConfigured() is false
-// and the whole auth surface no-ops: OS Code runs local-first exactly as before.
+// and the whole auth surface no-ops: OpenShore runs local-first exactly as before.
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 

@@ -112,7 +112,7 @@ export interface CrewAgent {
   createdAt: string;
 }
 
-// Account and organization. OS Code is used solo (Personal) or by a company
+// Account and organization. OpenShore is used solo (Personal) or by a company
 // (Commercial). A commercial org has an admin who provisions members by email
 // and owns the shared stack and storage locations. Members use everything else
 // as their own (chats, projects, crew), but see the stack read-only.

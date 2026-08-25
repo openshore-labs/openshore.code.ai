@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'ai.openshore.oscode',
-  appName: 'OS Code',
+  appName: 'OpenShore',
   webDir: 'dist',
   ios: {
     contentInset: 'never',

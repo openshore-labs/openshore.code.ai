@@ -1,5 +1,5 @@
 // The sign-in surface. It appears only when this build has accounts configured
-// (Supabase keys present); otherwise OS Code is local-first and shows nothing
+// (Supabase keys present); otherwise OpenShore is local-first and shows nothing
 // here. It follows the conventional pattern: one primary action whose label and
 // heading track a Sign in / Create account mode toggle, with a passwordless
 // magic link offered underneath.
@@ -130,7 +130,7 @@ export function SignInCard() {
       <div className="sub" style={{ marginTop: 10, textAlign: 'center' }}>
         {mode === 'signin' ? (
           <>
-            New to OS Code?{' '}
+            New to OpenShore?{' '}
             <button className="linklike" disabled={busy} onClick={() => setMode('signup')}>
               Create an account
             </button>

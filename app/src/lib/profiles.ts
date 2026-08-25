@@ -1,4 +1,4 @@
-// Connectivity profiles. OS Code is one system with the same chats, history,
+// Connectivity profiles. OpenShore is one system with the same chats, history,
 // connections, and stack everywhere; what changes device to device and moment
 // to moment is REACH. Which of your stack you can actually use depends on two
 // signals: can we reach your home system (the always-on desktop / Mac mini that

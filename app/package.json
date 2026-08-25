@@ -2,7 +2,7 @@
   "name": "oscode-app",
   "private": true,
   "version": "0.1.0",
-  "description": "OS Code: the native app. Chat and build with your own stack of local LLMs.",
+  "description": "OpenShore: the native app. Chat and build with your own stack of local LLMs.",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -56,7 +56,7 @@
   },
   "build": {
     "appId": "ai.openshore.oscode",
-    "productName": "OS Code",
+    "productName": "OpenShore",
     "files": [
       "dist/**",
       "dist-electron/**",

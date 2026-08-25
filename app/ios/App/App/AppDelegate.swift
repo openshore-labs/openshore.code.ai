@@ -45,11 +45,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        NSLog("OS Code: APNs registration failed: \(error.localizedDescription)")
+        NSLog("OpenShore: APNs registration failed: \(error.localizedDescription)")
     }
 
     // A push that arrives while the app is foreground is redundant: the user is
-    // looking at OS Code and will see the run update live. Suppress the banner so
+    // looking at OpenShore and will see the run update live. Suppress the banner so
     // it is not shown on top of the very session it is about.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,

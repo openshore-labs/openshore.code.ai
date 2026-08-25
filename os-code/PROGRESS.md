@@ -597,6 +597,27 @@ Layer status:
 
 ## Log
 
+- **2026-08-25: boot splash on open, and the app is now named OpenShore.**
+  Two founder asks. (1) Opening OpenShore no longer shows a blank window before
+  the UI paints: a branded boot splash (the wave-mark plus the OpenShore
+  wordmark on the app background) is painted the instant index.html parses, so
+  it covers the desktop Electron blank-window gap and the iOS launch-image to
+  React-mount gap alike; main.tsx cross-fades and removes it once the first
+  frame renders, honoring prefers-reduced-motion. The in-app opening greeting
+  (brand lockup plus time-of-day greeting in the empty chat) is unchanged and
+  still shows on a cold open. (2) The product display name changed from "OS
+  Code" to "OpenShore" everywhere a person reads it: the app/window/bundle
+  display names (capacitor appName, electron title, package productName,
+  index.html title, iOS CFBundleDisplayName), the topbar and greeting wordmark,
+  the guide system prompts ("You are OpenShore..."), and all in-app copy.
+  Technical identifiers are deliberately left as-is (appId ai.openshore.oscode,
+  the oscode-* packages, the os-code workspace package, the osc CLI) so bundle
+  IDs, IAP, and builds do not break. Green: app typecheck, lint, 116 tests, and
+  vite build all pass. Landed on branch
+  claude/splash-screen-openshare-rename-sd0580 for merge to main. Follow-up:
+  the public product page (Open-Shore-LLC-Homepage, openshore.ai/os-code) still
+  says "OS Code"; mirror the rename there when the founder is ready.
+
 - **2026-08-25: completion push, so you can code with the app closed.** Parity
   with Claude Code's "write a prompt, close the app, get told when it is done."
   The desktop path already runs the agent loop on the user's own daemon and

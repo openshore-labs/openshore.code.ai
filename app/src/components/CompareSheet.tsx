@@ -80,7 +80,7 @@ export function CompareSheet({
               </div>
             ))}
 
-            <div className="compare-label">OS Code fit</div>
+            <div className="compare-label">OpenShore fit</div>
             {models.map((m, i) => (
               <div key={m.id} className={`compare-cell${i === osFitWin ? ' win' : ''}`}>
                 {osCodeFit(m) !== undefined ? (

@@ -15,7 +15,7 @@ export interface RepoConnectorInfo {
   name: string;
   /** What the personal access token looks like, to reassure the user. */
   keyHint: string;
-  /** Where OS Code creates a token, shown as guidance. */
+  /** Where OpenShore creates a token, shown as guidance. */
   tokenUrl: string;
 }
 
@@ -50,7 +50,7 @@ export function repoSecretKey(id: string): string {
 
 // The home repo: the anchor, set once, admin-owned in a commercial org. It is
 // either a location on the home system (reached over Tailscale) or a platform
-// remote OS Code pushes to on your behalf.
+// remote OpenShore pushes to on your behalf.
 export interface HomeRepo {
   id: string;
   label: string;
