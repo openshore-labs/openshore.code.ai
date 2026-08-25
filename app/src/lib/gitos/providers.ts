@@ -11,12 +11,16 @@
 // real and visible, but marked not ready until their OAuth wiring lands. They
 // are never faked.
 
-// 'org' is the Team vault (Supabase-backed, organization tier). It is a real
-// provider behind the seam, but deliberately NOT in PROVIDER_ROSTER below: the
-// team vault is a separate resource reached by the Vault scope switcher, not a
-// place you move your personal vault's bytes, so it never appears in the
-// personal vault's "where it lives" sheet.
-export type StorageProviderId = 'local' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org';
+// 'files' is the on-disk folder provider (desktop only): plain .md files under
+// the agent's vault directory (~/OSCode/Vault), so the app and the agent share
+// one folder that Obsidian opens directly. It IS a roster entry (a real place
+// to keep the personal vault). 'org' is the Team vault (Supabase-backed,
+// organization tier), a real provider behind the seam but deliberately NOT in
+// PROVIDER_ROSTER: the team vault is reached by the Vault scope switcher, not by
+// moving the personal vault's bytes, so it never appears in the "where it lives"
+// sheet.
+export type StorageProviderId =
+  'local' | 'files' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org';
 
 /** One file inside a gitOS resource, addressed by a relative POSIX-style
  *  path (e.g. "notes/ideas/vault-design.md"). Paths map 1:1 onto a real
@@ -94,6 +98,16 @@ export const PROVIDER_ROSTER: Array<{
     label: 'This device',
     blurb: 'Stored here, sealed at rest. Private by construction.',
     ready: true,
+  },
+  {
+    id: 'files',
+    label: 'This folder',
+    blurb:
+      'Plain .md files on this computer. Your agent writes here too, and Obsidian opens the folder.',
+    // Desktop only; probeReady('files') decides at runtime by whether the
+    // Electron file bridge is present, so ready stays false here.
+    ready: false,
+    pending: 'Open OpenShore on your computer to keep the vault as a folder.',
   },
   {
     id: 'icloud',
