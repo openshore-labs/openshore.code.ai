@@ -1,9 +1,10 @@
 import UIKit
 import Capacitor
 import OscodeLlama
+import UserNotifications
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
 
@@ -22,8 +23,40 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Own the notification-center delegate so a completion push that arrives
+        // while the app is foreground can be suppressed (the user is already
+        // here). Registration itself is requested contextually from JS, not at
+        // launch.
+        UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    // APNs handed us a device token. Hex-encode it (the wire form APNs expects)
+    // and pass it to the plugin, which caches it and emits it to the web layer.
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
+        OscodeLlamaPlugin.deliverPushToken(hex)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        NSLog("OS Code: APNs registration failed: \(error.localizedDescription)")
+    }
+
+    // A push that arrives while the app is foreground is redundant: the user is
+    // looking at OS Code and will see the run update live. Suppress the banner so
+    // it is not shown on top of the very session it is about.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([])
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

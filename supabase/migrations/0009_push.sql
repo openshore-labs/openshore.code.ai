@@ -25,11 +25,11 @@
 -- never from the request body, so a leaked grant cannot become a cross-user
 -- push oracle.
 
--- A user's APNs device tokens. The phone writes its own token (RLS insert-own),
--- which is low-stakes: it is the user's own token and only ever used to deliver
--- these notifications. device_token is the primary key because it is globally
--- unique per install and can move between accounts on a reinstall or a re-sign-in
--- (the upsert then overwrites user_id, so one device maps to one current user).
+-- A user's APNs device tokens. Written through the push-register function (service
+-- role), not the client, so a token that moves between accounts on a reinstall or
+-- a re-sign-in cleanly overwrites user_id (a client upsert could not update a row
+-- it does not own). device_token is the primary key because it is globally unique
+-- per install, so one device maps to exactly one current user.
 create table if not exists public.push_devices (
   device_token text primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -79,23 +79,12 @@ alter table public.push_devices enable row level security;
 alter table public.push_grants enable row level security;
 alter table public.push_sends enable row level security;
 
+-- A user may READ their own device rows (a future settings screen lists them).
+-- Writes go through the service role only (push-register writes, push-send prunes
+-- dead tokens), exactly as with user_entitlements, so with RLS on and no
+-- insert/update/delete policy, client writes are denied by default.
 drop policy if exists push_devices_select on public.push_devices;
 create policy push_devices_select on public.push_devices for select
-  using (user_id = auth.uid());
-
--- The phone registers its own token. insert-own and update-own are scoped to the
--- caller so a client can never write a row for another user.
-drop policy if exists push_devices_insert on public.push_devices;
-create policy push_devices_insert on public.push_devices for insert
-  with check (user_id = auth.uid());
-
-drop policy if exists push_devices_update on public.push_devices;
-create policy push_devices_update on public.push_devices for update
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
-
-drop policy if exists push_devices_delete on public.push_devices;
-create policy push_devices_delete on public.push_devices for delete
   using (user_id = auth.uid());
 
 -- A user may see their own grants (a future settings screen lists paired daemons)

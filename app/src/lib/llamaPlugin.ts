@@ -37,6 +37,13 @@ export interface LlamaPluginContract {
   }): Promise<{ started: boolean }>;
   stop(options: { requestId: string }): Promise<void>;
 
+  /** Ask for notification permission and, if granted, register for APNs. The
+   *  token then arrives via the 'pushToken' event (and getPushToken). */
+  requestPushPermission(): Promise<{ granted: boolean }>;
+  /** The current APNs device token, or null until one has been issued.
+   *  `environment` selects which APNs host the token is valid against. */
+  getPushToken(): Promise<{ token: string | null; environment: 'sandbox' | 'production' }>;
+
   /** Keychain-backed secret storage (iOS). Off iOS, unused (see platform.ts). */
   secureGet(options: { key: string }): Promise<{ value: string | null }>;
   secureSet(options: { key: string; value: string }): Promise<void>;
@@ -57,6 +64,10 @@ export interface LlamaPluginContract {
       stopReason: 'end' | 'stopped' | 'error';
       detail?: string;
     }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'pushToken',
+    listener: (data: { token: string; environment: 'sandbox' | 'production' }) => void,
   ): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;
 }
@@ -136,6 +147,15 @@ class LlamaWeb {
 
   async stop({ requestId }: { requestId: string }) {
     this.stopped.add(requestId);
+  }
+
+  async requestPushPermission() {
+    // No APNs off a real iPhone; the guide flow treats this as "no push here".
+    return { granted: false };
+  }
+
+  async getPushToken() {
+    return { token: null as string | null, environment: 'production' as const };
   }
 
   async secureGet({ key }: { key: string }) {

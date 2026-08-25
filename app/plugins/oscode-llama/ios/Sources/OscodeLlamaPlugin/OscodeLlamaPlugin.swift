@@ -1,6 +1,7 @@
 import Foundation
 import Capacitor
 import UIKit
+import UserNotifications
 
 /// A finite-length background task assertion. On-device inference (loading
 /// multi-GB weights, streaming a reply) is not a URLSession, so the system does
@@ -57,6 +58,8 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "unload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "generate", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestPushPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPushToken", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureGet", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureSet", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureDelete", returnType: CAPPluginReturnPromise)
@@ -69,7 +72,53 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
     private var pendingDownloads = [String: CAPPluginCall]()
     private let downloadsLock = NSLock()
 
+    // APNs device token plumbing. The AppDelegate's
+    // didRegisterForRemoteNotificationsWithDeviceToken callback lands in the app
+    // target, not here, so it hands the token to this static, which caches it (so
+    // a getPushToken after the fact still answers) and forwards it to the live
+    // plugin instance as a JS 'pushToken' event.
+    private static weak var live: OscodeLlamaPlugin?
+    private static var cachedPushToken: String?
+
+    // Which APNs host the issued token is valid against, read from the actual
+    // aps-environment in the embedded provisioning profile so the label always
+    // matches how the build was signed: "development" (a local Xcode build) means
+    // the sandbox host, "production" (TestFlight, App Store) means the production
+    // host. An App Store build carries no embedded profile, and App Store uses
+    // production APNs, so the absence defaults to production. Computed once.
+    private static let apsEnvironment: String = {
+        guard
+            let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+            let data = try? Data(contentsOf: url),
+            let text = String(data: data, encoding: .isoLatin1),
+            let start = text.range(of: "<plist"),
+            let end = text.range(of: "</plist>")
+        else {
+            return "production"
+        }
+        let plistText = String(text[start.lowerBound..<end.upperBound])
+        guard
+            let plistData = plistText.data(using: .isoLatin1),
+            let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any],
+            let entitlements = plist["Entitlements"] as? [String: Any],
+            let aps = entitlements["aps-environment"] as? String
+        else {
+            return "production"
+        }
+        return aps == "development" ? "sandbox" : "production"
+    }()
+
+    public static func deliverPushToken(_ token: String) {
+        cachedPushToken = token
+        live?.notifyListeners("pushToken", data: ["token": token, "environment": apsEnvironment])
+    }
+
     override public func load() {
+        Self.live = self
+        // If the token already arrived before the bridge was up, surface it now.
+        if let token = Self.cachedPushToken {
+            self.notifyListeners("pushToken", data: ["token": token, "environment": Self.apsEnvironment])
+        }
         store.setHandlers(
             progress: { [weak self] id, completed, total in
                 self?.notifyListeners("downloadProgress", data: [
@@ -251,6 +300,28 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         runner.stop(requestId: requestId)
         call.resolve()
+    }
+
+    // ------------------------------------------------------------------- push
+
+    @objc func requestPushPermission(_ call: CAPPluginCall) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            if granted {
+                // Registration must run on the main thread; the token then lands
+                // in the AppDelegate and flows back through deliverPushToken.
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+            call.resolve(["granted": granted])
+        }
+    }
+
+    @objc func getPushToken(_ call: CAPPluginCall) {
+        call.resolve([
+            "token": Self.cachedPushToken ?? NSNull(),
+            "environment": Self.apsEnvironment
+        ])
     }
 
     // ---------------------------------------------------------------- secrets
