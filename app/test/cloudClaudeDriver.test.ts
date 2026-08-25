@@ -13,15 +13,16 @@ describe('cloud context meter (P2-14)', () => {
     for (const m of CLAUDE_MODELS) expect(m.contextWindow).toBeGreaterThanOrEqual(200_000);
   });
 
-  it('reads against the real window, not 1M', () => {
-    expect(contextWindowFor(DEFAULT_CLAUDE_MODEL)).toBe(200_000);
-    // 100k tokens is ~50% of a 200k window (it read ~10% against a 1M window).
-    expect(contextPercentFor(DEFAULT_CLAUDE_MODEL, 100_000)).toBe(50);
-    // An unknown model falls back to the same default window, not 1M.
+  it('reads against the model real window', () => {
+    // Opus 5 (the default) has a 1M context window.
+    expect(contextWindowFor(DEFAULT_CLAUDE_MODEL)).toBe(1_000_000);
+    // 100k tokens is 10% of a 1M window.
+    expect(contextPercentFor(DEFAULT_CLAUDE_MODEL, 100_000)).toBe(10);
+    // An unknown model falls back to the 200k default window.
     expect(contextPercentFor('mystery-model', 100_000)).toBe(50);
   });
 
   it('clamps at 100 percent', () => {
-    expect(contextPercentFor(DEFAULT_CLAUDE_MODEL, 999_999)).toBe(100);
+    expect(contextPercentFor(DEFAULT_CLAUDE_MODEL, 2_000_000)).toBe(100);
   });
 });

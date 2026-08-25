@@ -7,16 +7,9 @@ import { useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
-import { CLAUDE_MODELS } from '../drivers/cloudClaudeDriver.js';
+import { CLAUDE_MODELS } from '../lib/claudeModels.js';
 import { PROVIDERS } from '../lib/providers.js';
 import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
-
-// One-line blurbs for the Claude models, in the register of the Claude app.
-const CLAUDE_BLURB: Record<string, string> = {
-  'claude-opus-5': 'For complex tasks',
-  'claude-sonnet-5': 'Most efficient for everyday tasks',
-  'claude-haiku-4-5': 'Fastest for quick answers',
-};
 
 function Row({
   main,
@@ -163,7 +156,7 @@ export function ModelSheet({
                         <Row
                           key={m.id}
                           main={m.label}
-                          sub={CLAUDE_BLURB[m.id]}
+                          sub={m.blurb}
                           onClick={() =>
                             onPick({ kind: 'cloud', provider: 'anthropic', model: m.id })
                           }
