@@ -21,7 +21,8 @@ import { bridge } from '../electronBridge.js';
 const IOS_CLIENT_ID = import.meta.env.VITE_GDRIVE_IOS_CLIENT_ID as string | undefined;
 const DESKTOP_CLIENT_ID = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID as string | undefined;
 const DESKTOP_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_SECRET as
-  string | undefined;
+  | string
+  | undefined;
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -291,7 +292,13 @@ export async function disconnectGdrive(): Promise<void> {
   const token = refresh ?? access;
   if (token) {
     try {
-      await fetch(`${REVOKE_ENDPOINT}?token=${encodeURIComponent(token)}`, { method: 'POST' });
+      // The token goes in the POST body, never the URL query, so it cannot land
+      // in a proxy or server access log.
+      await fetch(REVOKE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: `token=${encodeURIComponent(token)}`,
+      });
     } catch {
       // Best-effort: the local tokens are cleared below regardless, so this
       // device stops using them even if the revoke call itself is offline.

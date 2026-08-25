@@ -10,6 +10,7 @@ import {
   wikilinkContext,
   wikilinksToMarkdown,
 } from '../src/lib/vault.js';
+import { vaultUrlTransform } from '../src/components/VaultMarkdown.js';
 
 describe('wikilink parsing (Obsidian grammar)', () => {
   it('parses plain, aliased, and heading-suffixed links', () => {
@@ -66,6 +67,25 @@ describe('wikilink resolution', () => {
     const md = wikilinksToMarkdown('Go to [[Roadmap|the plan]] then [[Missing]].', paths);
     expect(md).toContain('[the plan](vault:projects%2FRoadmap.md)');
     expect(md).toContain('[Missing](vault:Missing.md?new)');
+  });
+
+  it('renders an embed as a chip, not a broken image or a linked target', () => {
+    const md = wikilinksToMarkdown('Look: ![[Roadmap]] and ![[Art|the art]].', paths);
+    expect(md).toContain('`embed not supported yet: Roadmap`');
+    expect(md).toContain('`embed not supported yet: the art`');
+    // The embed's inner target is not turned into a vault link or an image.
+    expect(md).not.toContain('![');
+    expect(md).not.toContain('vault:projects%2FRoadmap.md)');
+  });
+});
+
+describe('vault url transform (COR-1: vault links must survive the renderer)', () => {
+  it('passes vault: hrefs through and blocks hostile protocols', () => {
+    expect(vaultUrlTransform('vault:Ideas.md')).toBe('vault:Ideas.md');
+    expect(vaultUrlTransform('vault:Missing.md?new')).toBe('vault:Missing.md?new');
+    // https keeps working; javascript is stripped by the default transform.
+    expect(vaultUrlTransform('https://example.com')).toBe('https://example.com');
+    expect(vaultUrlTransform('javascript:alert(1)')).toBe('');
   });
 });
 

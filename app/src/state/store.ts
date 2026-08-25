@@ -2187,14 +2187,20 @@ export const useApp = create<AppState>((set, get) => {
         // Independent confirmation before an item is ever considered done. A 200
         // is not confirmation; the ref re-read is.
         if (current.state === 'offloading' && current.resultCommit) {
-          const v = await daemonVerifyCommit(
-            daemon,
-            home.homePath,
-            current.resultCommit,
-            current.branch,
-          );
-          current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
-          patch(current.id, current);
+          try {
+            const v = await daemonVerifyCommit(
+              daemon,
+              home.homePath,
+              current.resultCommit,
+              current.branch,
+            );
+            current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
+            patch(current.id, current);
+          } catch {
+            // The verify call itself failed (transient, or path not yet
+            // allowed): leave the item offloading so it retries on the next
+            // sync, rather than falsely marking a landed commit failed.
+          }
         }
 
         // A conflict or failure halts this repo's batch: later items were

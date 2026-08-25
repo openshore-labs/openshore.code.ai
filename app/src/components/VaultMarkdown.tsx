@@ -3,10 +3,17 @@
 // anchor carrying a vault: href, then the anchor override below intercepts
 // the tap and navigates inside the vault instead of leaving the app. External
 // http(s) links keep their normal behavior.
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { wikilinksToMarkdown } from '../lib/vault.js';
+
+// react-markdown 10 strips any href whose protocol is not in its allowlist,
+// which drops our vault: wikilinks (they would render with an empty href and
+// never navigate). Allow vault: through, and keep the default transform for
+// every other protocol so javascript: and other hostile schemes stay blocked.
+export const vaultUrlTransform = (url: string): string =>
+  url.startsWith('vault:') ? url : defaultUrlTransform(url);
 
 export function VaultMarkdown({
   text,
@@ -22,6 +29,7 @@ export function VaultMarkdown({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
+        urlTransform={vaultUrlTransform}
         components={{
           a: ({ href, children }) => {
             if (href?.startsWith('vault:')) {

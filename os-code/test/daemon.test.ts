@@ -103,6 +103,36 @@ describe('daemon RBAC (D1)', () => {
   });
 });
 
+describe('daemon outbox path allowlist (SEC-2)', () => {
+  const applyBody = {
+    cwd: '',
+    clientOpId: 'op-1',
+    itemId: 'itm-1',
+    deviceId: 'dev-1',
+    branch: 'main',
+    baseCommit: 'abc123',
+    files: [{ path: 'x.txt', mode: 'upsert', contentBase64: 'aGk=' }],
+  };
+
+  it('rejects an apply to a repo outside the allowed roots, even for an admin', async () => {
+    // `home` exists but is not under ~/OSCode and is not a configured root.
+    const res = await fetch(`${base}/outbox/apply`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ ...applyBody, cwd: home }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a verify for a repo outside the allowed roots', async () => {
+    const qs = new URLSearchParams({ cwd: home, commit: 'abc123' });
+    const res = await fetch(`${base}/outbox/verify?${qs.toString()}`, {
+      headers: auth(adminToken),
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('daemon request hygiene (P2-7)', () => {
   it('a malformed JSON body is a 400, not a silent empty object', async () => {
     const res = await fetch(`${base}/sessions`, {
