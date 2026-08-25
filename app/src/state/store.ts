@@ -327,6 +327,11 @@ interface AppState {
    *  empty state); 'save' means a write failed and the draft was stashed for
    *  replay. Undefined when the vault is healthy. */
   vaultError?: 'load' | 'save';
+  /** True when a live single-writer lease on the personal vault is held by
+   *  another device, so this one shows read-only. Cloud folder syncs (iCloud,
+   *  Drive) have no Git-aware locking, so the lease bounds the concurrent-edit
+   *  clobber window (the conflict-copy write is the durable backstop). */
+  vaultLeaseHeldByOther?: boolean;
   /** Which vault the Vault screen is showing: the personal one (on the chosen
    *  storage provider) or the shared team vault (org tier, Supabase-backed).
    *  Team is only reachable when signed in as an active member of an org. */
@@ -512,6 +517,12 @@ interface AppState {
   vaultDelete(path: string): Promise<void>;
   /** Every note body, for backlink derivation. */
   vaultReadAll(): Promise<Array<{ path: string; text: string }>>;
+  /** Take or renew the personal vault's single-writer lease, and record whether
+   *  another device holds it live (which puts the screen read-only). No-op for
+   *  the team vault (the server resolves concurrency). */
+  vaultAcquireLease(): Promise<void>;
+  /** Release the personal vault lease this device holds. */
+  vaultReleaseLease(): Promise<void>;
   /** Move the personal vault to a different storage provider (e.g. iCloud):
    *  copy every note across, then repoint the resource. Returns false when the
    *  target is not usable right now. */
@@ -2547,10 +2558,16 @@ export const useApp = create<AppState>((set, get) => {
       if (!normalized) return;
       const target = vaultTarget();
       if (!target) return;
-      const known = get().vaultFiles.some((f) => f.path === normalized);
+      // Resolve to an existing note case-insensitively: opening "note" when
+      // "Note.md" already exists must open the existing note, not fork a second
+      // divergent one (storage keys are case-sensitive, resolution is not).
+      const openPath =
+        get().vaultFiles.find((f) => f.path.toLowerCase() === normalized.toLowerCase())?.path ??
+        normalized;
+      const known = get().vaultFiles.some((f) => f.path === openPath);
       let existing;
       try {
-        existing = await target.provider.read(target.resourceId, normalized);
+        existing = await target.provider.read(target.resourceId, openPath);
       } catch {
         get().showToast('Could not open that note. Check your vault storage connection.');
         return;
@@ -2563,7 +2580,7 @@ export const useApp = create<AppState>((set, get) => {
         return;
       }
       set({
-        vaultNote: existing ?? { path: normalized, text: '', updatedAt: new Date().toISOString() },
+        vaultNote: existing ?? { path: openPath, text: '', updatedAt: new Date().toISOString() },
       });
       logEvent('vault_note_open', { fresh: !existing });
     },
@@ -2673,6 +2690,40 @@ export const useApp = create<AppState>((set, get) => {
         if (note) out.push({ path: note.path, text: note.text });
       }
       return out;
+    },
+
+    async vaultAcquireLease() {
+      // Only the personal vault leases; the team vault's server resolves
+      // concurrency, so acquiring there is unnecessary.
+      if (get().vaultScope !== 'personal') {
+        set({ vaultLeaseHeldByOther: false });
+        return;
+      }
+      const target = vaultTarget();
+      if (!target) return;
+      const deviceId = get().settings.deviceId ?? 'dev_unknown';
+      try {
+        const lease = await target.provider.acquireLease(target.resourceId, deviceId, 90_000);
+        const heldByOther =
+          lease.holder !== deviceId && new Date(lease.expiresAt).getTime() > Date.now();
+        set({ vaultLeaseHeldByOther: heldByOther });
+      } catch {
+        // A lease read/write failure must not block editing; leave state as is.
+      }
+    },
+
+    async vaultReleaseLease() {
+      if (get().vaultScope !== 'personal') return;
+      const target = vaultTarget();
+      const deviceId = get().settings.deviceId ?? 'dev_unknown';
+      if (target) {
+        try {
+          await target.provider.releaseLease(target.resourceId, deviceId);
+        } catch {
+          // Best-effort; the lease's TTL reclaims it regardless.
+        }
+      }
+      set({ vaultLeaseHeldByOther: false });
     },
 
     async vaultMoveTo(providerId) {

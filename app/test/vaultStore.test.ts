@@ -49,6 +49,7 @@ vi.mock('../src/lib/insights.js', () => ({
 // simulate an offline or token-expired cloud vault.
 const files = new Map<string, string>();
 const fail = { list: false, read: false, write: false };
+let leaseHolder = 'me';
 const mockProvider = {
   id: 'local' as const,
   label: 'Local',
@@ -78,10 +79,17 @@ const mockProvider = {
   async remove(_r: string, path: string): Promise<void> {
     files.delete(path);
   },
-  async acquireLease() {
-    return { holder: 'me', expiresAt: 'x' };
+  async acquireLease(_r: string, holder: string) {
+    // A foreign holder keeps its lease; otherwise the caller takes it.
+    if (leaseHolder !== 'me' && leaseHolder !== holder) {
+      return { holder: leaseHolder, expiresAt: new Date(Date.now() + 90_000).toISOString() };
+    }
+    leaseHolder = holder;
+    return { holder, expiresAt: new Date(Date.now() + 90_000).toISOString() };
   },
-  async releaseLease() {},
+  async releaseLease() {
+    leaseHolder = 'me';
+  },
 };
 
 vi.mock('../src/lib/gitos/index.js', () => ({
@@ -99,12 +107,20 @@ function reset() {
   mem.clear();
   files.clear();
   fail.list = fail.read = fail.write = false;
+  leaseHolder = 'me';
   useApp.setState({
-    settings: { onboarded: true, claudeModel: 'x', deviceModels: {}, gitosResources: [] },
+    settings: {
+      onboarded: true,
+      claudeModel: 'x',
+      deviceModels: {},
+      gitosResources: [],
+      deviceId: 'this-device',
+    },
     vaultScope: 'personal',
     vaultFiles: [],
     vaultNote: undefined,
     vaultError: undefined,
+    vaultLeaseHeldByOther: undefined,
   });
 }
 
@@ -169,6 +185,24 @@ describe('vault data safety', () => {
     await useApp.getState().vaultOpen('brand-new');
     expect(useApp.getState().vaultNote?.path).toBe('brand-new.md');
     expect(useApp.getState().vaultNote?.text).toBe('');
+  });
+
+  it('flags the vault read-only when another device holds the lease (FD-3)', async () => {
+    // A foreign device already holds a live lease.
+    leaseHolder = 'other-device';
+    await useApp.getState().vaultAcquireLease();
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(true);
+    // When it releases, this device can take the lease and edit again.
+    leaseHolder = 'me';
+    await useApp.getState().vaultAcquireLease();
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
+  });
+
+  it('does not lease the team vault (server resolves concurrency)', async () => {
+    leaseHolder = 'other-device';
+    useApp.setState({ vaultScope: 'team' });
+    await useApp.getState().vaultAcquireLease();
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
   });
 
   it('drops a stashed draft when its note is deleted (no resurrection)', async () => {

@@ -167,3 +167,12 @@ execution contract. Newest at the bottom.
   the loop off-device and journals every step for replay, which is why it is the
   path that behaves like Claude Code. New long-running features should target
   that path (or a future cloud runner) by design.
+
+- **Personal vault is device-scoped, not account-scoped (R-19):** sign-out
+  wipes the synced team-vault state and Drive tokens, but leaves the personal
+  vault's Local bytes and gitOS resource rows on the device, so a user's own
+  notes survive signing out and back in. Wiping them on sign-out would delete a
+  user's knowledge base as a side effect of signing out, which is worse than
+  the shared-device leak it would prevent; the personal vault is treated as
+  device-local property, like the on-device model files. A future encrypted,
+  per-account vault at rest is the real fix for a shared device.

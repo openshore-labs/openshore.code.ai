@@ -11,6 +11,14 @@ import { REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 
+// The phone-to-home commit-offload pipeline (home repo + buffered deploys) is
+// built and tested end to end on the desktop engine, but no app flow produces
+// buffered commit-intents and no UI sets the home repo path yet, so the section
+// would only ever show its empty state. Hidden until the producer and the
+// homePath picker land (CTO ruling FD-1). Flip this to reveal it, a one-line
+// change; the store actions and the desktop apply engine stay intact.
+const REPO_OUTBOX_ENABLED = false;
+
 export function ReposScreen() {
   const {
     settings,
@@ -91,9 +99,8 @@ export function ReposScreen() {
       <div className="screen-inner">
         <h1>Repositories</h1>
         <p className="lead">
-          Connect GitHub or another platform on your own token, or keep a home repo of your own so
-          you do not depend on anyone else. OpenShore reads, edits, tests, and commits with your
-          approval on every change.
+          Connect GitHub or another platform on your own token. OpenShore reads, edits, tests, and
+          commits with your approval on every change.
         </p>
 
         {/* Connect a platform. */}
@@ -162,128 +169,134 @@ export function ReposScreen() {
           );
         })}
 
-        {/* Home repo. */}
-        <h3 style={{ margin: '18px 0 10px' }}>Home repo</h3>
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <h3>{homeRepo ? homeRepo.label : 'Not set up yet'}</h3>
-              <div className="sub">
-                {homeRepo
-                  ? `${homeRepo.kind === 'home' ? 'On your home system' : homeRepo.kind} · ${homeRepo.defaultBranch}`
-                  : 'The one place the whole system works through, like your home LLM. Off-home deploys buffer, then land here when you dock.'}
-              </div>
-            </div>
-            {admin ? (
-              <button
-                className="btn ghost"
-                style={{ padding: '8px 14px' }}
-                onClick={() => setEditingHome((v) => !v)}
-              >
-                {homeRepo ? 'Change' : 'Set up'}
-              </button>
-            ) : null}
-          </div>
-          {editingHome && admin ? (
-            <HomeRepoEditor
-              initial={homeRepo}
-              onSave={async (h) => {
-                await setHomeRepo(h);
-                setEditingHome(false);
-                showToast('Home repo set.');
-              }}
-              onCancel={() => setEditingHome(false)}
-            />
-          ) : null}
-          {!admin && settings.account?.type === 'commercial' ? (
-            <p className="hint" style={{ marginTop: 8 }}>
-              Your admin owns where the home repo lives.
-            </p>
-          ) : null}
-        </div>
-
-        {/* Buffered deploys (the outbox). */}
-        {homeRepo ? (
+        {/* Home repo. Hidden until the offload producer + homePath picker land. */}
+        {REPO_OUTBOX_ENABLED ? (
           <>
-            <h3 style={{ margin: '18px 0 10px' }}>Buffered while off-home</h3>
+            <h3 style={{ margin: '18px 0 10px' }}>Home repo</h3>
             <div className="card">
-              {outbox.length === 0 ? (
-                <div className="sub">
-                  Nothing buffered. When you deploy away from home, changes wait here, sealed on
-                  this device, and sync to the home repo the moment you dock. Your device only
-                  clears a change after the home repo confirms it, so nothing is lost in between.
+              <div className="card-row">
+                <div className="grow">
+                  <h3>{homeRepo ? homeRepo.label : 'Not set up yet'}</h3>
+                  <div className="sub">
+                    {homeRepo
+                      ? `${homeRepo.kind === 'home' ? 'On your home system' : homeRepo.kind} · ${homeRepo.defaultBranch}`
+                      : 'The one place the whole system works through, like your home LLM. Off-home deploys buffer, then land here when you dock.'}
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <div className="sub" style={{ marginBottom: 8 }}>
-                    {unsynced} waiting to reach the home repo. They sync on dock and clear only once
-                    the home repo confirms them.
-                  </div>
-                  {(() => {
-                    const health = bufferHealth(outbox, Date.now());
-                    if (!health.pendingCount) return null;
-                    const days = health.oldestMs ? Math.floor(health.oldestMs / 86_400_000) : 0;
-                    return (
-                      <p
-                        className="hint"
-                        style={{
-                          marginBottom: 8,
-                          color: health.stale || health.overCap ? 'var(--danger)' : undefined,
-                        }}
-                      >
-                        {(health.totalBytes / 1024).toFixed(0)} KB of work is buffered only on this
-                        device
-                        {days >= 1 ? `, the oldest ${days} day${days > 1 ? 's' : ''} old` : ''}.
-                        Dock to sync it safely. If you might lose this device first, export a
-                        backup.
-                      </p>
-                    );
-                  })()}
-                  {outbox.map((item) => (
-                    <div className="card-row" key={item.id} style={{ marginTop: 6 }}>
-                      <span className={`state-dot ${item.state}`} aria-hidden="true" />
-                      <div className="grow">
-                        <div style={{ fontSize: 14 }}>{item.message}</div>
-                        <div className="sub">
-                          {item.branch} · {item.files.length} file{item.files.length > 1 ? 's' : ''}
-                        </div>
-                      </div>
-                      <span className="sub" style={{ textTransform: 'capitalize' }}>
-                        {item.state}
-                      </span>
-                    </div>
-                  ))}
-                  <div
-                    className="suggestion-row"
-                    style={{ justifyContent: 'flex-start', marginTop: 10 }}
+                {admin ? (
+                  <button
+                    className="btn ghost"
+                    style={{ padding: '8px 14px' }}
+                    onClick={() => setEditingHome((v) => !v)}
                   >
-                    <button
-                      className="suggestion"
-                      disabled={!settings.daemon}
-                      onClick={async () => {
-                        await syncOutbox();
-                        showToast('Synced what the home repo could confirm.');
-                      }}
-                    >
-                      Sync now
-                    </button>
-                    <button
-                      className="suggestion"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(exportBuffer());
-                          showToast('Backup copied. Paste it somewhere safe.');
-                        } catch {
-                          showToast('Copy is unavailable here.');
-                        }
-                      }}
-                    >
-                      Export a backup
-                    </button>
-                  </div>
-                </>
-              )}
+                    {homeRepo ? 'Change' : 'Set up'}
+                  </button>
+                ) : null}
+              </div>
+              {editingHome && admin ? (
+                <HomeRepoEditor
+                  initial={homeRepo}
+                  onSave={async (h) => {
+                    await setHomeRepo(h);
+                    setEditingHome(false);
+                    showToast('Home repo set.');
+                  }}
+                  onCancel={() => setEditingHome(false)}
+                />
+              ) : null}
+              {!admin && settings.account?.type === 'commercial' ? (
+                <p className="hint" style={{ marginTop: 8 }}>
+                  Your admin owns where the home repo lives.
+                </p>
+              ) : null}
             </div>
+
+            {/* Buffered deploys (the outbox). */}
+            {homeRepo ? (
+              <>
+                <h3 style={{ margin: '18px 0 10px' }}>Buffered while off-home</h3>
+                <div className="card">
+                  {outbox.length === 0 ? (
+                    <div className="sub">
+                      Nothing buffered. When you deploy away from home, changes wait here, sealed on
+                      this device, and sync to the home repo the moment you dock. Your device only
+                      clears a change after the home repo confirms it, so nothing is lost in
+                      between.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="sub" style={{ marginBottom: 8 }}>
+                        {unsynced} waiting to reach the home repo. They sync on dock and clear only
+                        once the home repo confirms them.
+                      </div>
+                      {(() => {
+                        const health = bufferHealth(outbox, Date.now());
+                        if (!health.pendingCount) return null;
+                        const days = health.oldestMs ? Math.floor(health.oldestMs / 86_400_000) : 0;
+                        return (
+                          <p
+                            className="hint"
+                            style={{
+                              marginBottom: 8,
+                              color: health.stale || health.overCap ? 'var(--danger)' : undefined,
+                            }}
+                          >
+                            {(health.totalBytes / 1024).toFixed(0)} KB of work is buffered only on
+                            this device
+                            {days >= 1 ? `, the oldest ${days} day${days > 1 ? 's' : ''} old` : ''}.
+                            Dock to sync it safely. If you might lose this device first, export a
+                            backup.
+                          </p>
+                        );
+                      })()}
+                      {outbox.map((item) => (
+                        <div className="card-row" key={item.id} style={{ marginTop: 6 }}>
+                          <span className={`state-dot ${item.state}`} aria-hidden="true" />
+                          <div className="grow">
+                            <div style={{ fontSize: 14 }}>{item.message}</div>
+                            <div className="sub">
+                              {item.branch} · {item.files.length} file
+                              {item.files.length > 1 ? 's' : ''}
+                            </div>
+                          </div>
+                          <span className="sub" style={{ textTransform: 'capitalize' }}>
+                            {item.state}
+                          </span>
+                        </div>
+                      ))}
+                      <div
+                        className="suggestion-row"
+                        style={{ justifyContent: 'flex-start', marginTop: 10 }}
+                      >
+                        <button
+                          className="suggestion"
+                          disabled={!settings.daemon}
+                          onClick={async () => {
+                            await syncOutbox();
+                            showToast('Synced what the home repo could confirm.');
+                          }}
+                        >
+                          Sync now
+                        </button>
+                        <button
+                          className="suggestion"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(exportBuffer());
+                              showToast('Backup copied. Paste it somewhere safe.');
+                            } catch {
+                              showToast('Copy is unavailable here.');
+                            }
+                          }}
+                        >
+                          Export a backup
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : null}
           </>
         ) : null}
 
