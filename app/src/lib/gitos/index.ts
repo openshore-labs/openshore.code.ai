@@ -7,14 +7,17 @@ import { icloudProvider, isIcloudAvailable } from './icloud.js';
 import { gdriveProvider } from './gdrive.js';
 import { isGdriveConnected } from './gdriveAuth.js';
 import { orgVaultProvider, isOrgVaultAvailable } from './orgVault.js';
+import { deviceFolderProvider, isDeviceFolderAvailable } from './deviceFolder.js';
 import { PROVIDER_ROSTER, type StorageProvider, type StorageProviderId } from './providers.js';
 
 export * from './providers.js';
 export { isGdriveConfigured, connectGdrive, disconnectGdrive } from './gdriveAuth.js';
 export { setOrgVaultAuth, isOrgVaultAvailable, resetOrgVault } from './orgVault.js';
+export { isDeviceFolderAvailable } from './deviceFolder.js';
 
 const PROVIDERS_BY_ID: Partial<Record<StorageProviderId, StorageProvider>> = {
   local: localProvider,
+  files: deviceFolderProvider,
   icloud: icloudProvider,
   gdrive: gdriveProvider,
   org: orgVaultProvider,
@@ -32,6 +35,7 @@ export function providerFor(id: StorageProviderId): StorageProvider | undefined 
  *  reports a provider ready that would fail on use. */
 export async function probeReady(id: StorageProviderId): Promise<boolean> {
   if (id === 'local') return true;
+  if (id === 'files') return isDeviceFolderAvailable();
   if (id === 'icloud') return isIcloudAvailable();
   if (id === 'gdrive') return isGdriveConnected();
   if (id === 'org') return isOrgVaultAvailable();

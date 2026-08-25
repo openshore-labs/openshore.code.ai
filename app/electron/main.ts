@@ -2,9 +2,20 @@
 // that mirrors OscodeBridge method for method. The renderer stays Node-free;
 // everything engine-shaped happens here.
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { Jail } from 'os-code/dist/src/core/security/jail.js';
+import { loadConfig } from 'os-code/dist/src/config/load.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
@@ -386,6 +397,62 @@ ipcMain.handle('osc:recentWorkspaces', () => host.recentWorkspaces());
 ipcMain.handle('osc:daemonInfo', () => host.daemonInfo());
 ipcMain.handle('osc:daemonStart', () => host.daemonStart());
 ipcMain.handle('osc:daemonStop', () => host.daemonStop());
+
+// On-disk vault: the SAME markdown folder the agent's daemon tools write
+// (~/OSCode/Vault, or config vault.dir), so the app's Vault and the agent share
+// one folder. Every note path is jailed to that directory (symlink-safe), so a
+// path from the renderer can never touch a file outside the vault.
+function vaultDir(): string {
+  try {
+    return loadConfig().config.vault?.dir ?? join(homedir(), 'OSCode', 'Vault');
+  } catch {
+    return join(homedir(), 'OSCode', 'Vault');
+  }
+}
+function vaultJail(): Jail {
+  const dir = vaultDir();
+  mkdirSync(dir, { recursive: true });
+  return new Jail(dir);
+}
+
+ipcMain.handle('osc:vaultList', () => {
+  const root = vaultDir();
+  if (!existsSync(root)) return [];
+  const out: Array<{ path: string; updatedAt: string; size: number }> = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) walk(abs);
+      else if (entry.isFile() && /\.md$/i.test(entry.name)) {
+        const st = statSync(abs);
+        out.push({
+          path: relative(root, abs).split(sep).join('/'),
+          updatedAt: st.mtime.toISOString(),
+          size: st.size,
+        });
+      }
+    }
+  };
+  walk(root);
+  out.sort((a, b) => a.path.localeCompare(b.path));
+  return out;
+});
+ipcMain.handle('osc:vaultRead', (_e, path: string) => {
+  const abs = vaultJail().resolve(path);
+  if (!existsSync(abs)) return null;
+  return { path, text: readFileSync(abs, 'utf8'), updatedAt: statSync(abs).mtime.toISOString() };
+});
+ipcMain.handle('osc:vaultWrite', (_e, path: string, text: string) => {
+  const abs = vaultJail().resolve(path);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, text);
+  return { path, text, updatedAt: statSync(abs).mtime.toISOString() };
+});
+ipcMain.handle('osc:vaultRemove', (_e, path: string) => {
+  const abs = vaultJail().resolve(path);
+  if (existsSync(abs)) rmSync(abs);
+});
 
 // OS-encrypted secret store (used for the app's data-encryption key).
 ipcMain.handle('osc:secureGet', (_e, key: string): string | null => {

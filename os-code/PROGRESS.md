@@ -579,11 +579,23 @@ Layer status:
       any auto-allow path (session grant, rule, trusted repo), so no setting can
       make an agent vault write skip its approval diff. The approval reuses the
       existing app ApprovalSheet + CLI/TUI prompt (a unified diff). 236 os-code
-      tests green (adds vaultTools.test), lint, em-dash. STILL OPEN (paired
-      follow-up): the APP's Vault screen does not yet read this on-disk folder;
-      that needs a file-backed gitOS provider via new Electron IPC (the bridge
-      exposes no generic fs today), which is desktop-only and not testable in
-      the web session. Today the notes are real files openable in Obsidian/Files.
+      tests green (adds vaultTools.test), lint, em-dash.
+
+      **App folder view BUILT (2026-08-25), desktop.** The paired follow-up
+      shipped: a file-backed gitOS provider ('files', "This folder") that the app
+      points the personal vault at, reading and writing the SAME `~/OSCode/Vault`
+      folder the agent writes, so agent notes show in the app's Vault and vice
+      versa, and Obsidian opens the folder. New Electron IPC (osc:vaultList /
+      Read / Write / Remove in electron/main.ts, path-jailed with os-code's Jail),
+      exposed on the bridge + preload; the provider (app/src/lib/gitos/
+      deviceFolder.ts) is a thin client over it, in PROVIDER_ROSTER and offered
+      in the "Where it lives" sheet on desktop only (probeReady gates it off the
+      phone). Move the personal vault to it from that sheet. Green: app typecheck
+      (incl. electron), lint, 176 tests (adds deviceFolder.test), vite build,
+      em-dash. Not device-verified (no Electron in the web session); founder
+      confirms on Pop!_OS. Minor known gap: no live fs-watch, so an agent write
+      appears in the app on the next Vault refresh (navigate away and back), not
+      instantly.
 
   ```
   ROLE
@@ -701,6 +713,22 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-25: App Vault opens the on-disk folder (file-backed provider).** The
+  paired follow-up to agent vault writes: the app's Vault can now live in the
+  same `~/OSCode/Vault` folder the agent writes, so notes flow both ways and
+  Obsidian opens the folder. A new gitOS provider 'files' ("This folder") is a
+  thin client over new Electron IPC (osc:vaultList/Read/Write/Remove in
+  electron/main.ts), each path jailed to the vault dir with os-code's own Jail
+  (symlink-safe). Exposed on the bridge interface + preload; registered in the
+  seam and PROVIDER_ROSTER; probeReady('files') gates it to the desktop app
+  (the phone shows it as "Open OpenShore on your computer"). The user moves the
+  personal vault onto it from the existing "Where it lives" sheet, which needed
+  no change (it renders the roster generically). Green: app typecheck (app +
+  electron tsconfig), lint --max-warnings 0, 176 tests (adds deviceFolder.test
+  with a no-bridge-throws case), vite build, em-dash. Not runnable in the web
+  session (no Electron), so founder verifies on Pop!_OS. Known gap: no fs-watch,
+  so an external write (the agent's) shows on the next Vault refresh, not live.
 
 - **2026-08-25: Agent vault writes, with an always-ask approval (daemon side).**
   The last Vault follow-up. The agent can now read, list, and WRITE the user's

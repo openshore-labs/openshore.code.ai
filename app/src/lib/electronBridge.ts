@@ -8,6 +8,7 @@ import type {
   StackHealth,
   StackHealthRange,
 } from 'os-code/protocol';
+import type { StoredFile, StoredFileMeta } from './gitos/providers.js';
 
 export interface DesktopStatus {
   ollama: { up: boolean; detail: string; models: string[] };
@@ -93,6 +94,14 @@ export interface OscodeBridge {
   daemonInfo(): Promise<DaemonInfo>;
   daemonStart(): Promise<DaemonInfo | { error: string }>;
   daemonStop(): Promise<void>;
+
+  // On-disk vault: plain .md files under the agent's vault dir (~/OSCode/Vault),
+  // so the app's Vault and the agent share one folder. Paths are jailed to that
+  // directory in the main process. Keep in lockstep with electron/main.ts.
+  vaultList(): Promise<StoredFileMeta[]>;
+  vaultRead(path: string): Promise<StoredFile | null>;
+  vaultWrite(path: string, text: string): Promise<StoredFile>;
+  vaultRemove(path: string): Promise<void>;
 
   // OS-encrypted secret store (safeStorage), for the data-encryption key.
   secureGet(key: string): Promise<string | null>;
