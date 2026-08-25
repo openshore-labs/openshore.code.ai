@@ -7,6 +7,7 @@ import {
   parseWikilinks,
   resolveWikilink,
   treeAt,
+  wikilinkContext,
   wikilinksToMarkdown,
 } from '../src/lib/vault.js';
 
@@ -90,5 +91,42 @@ describe('folder tree', () => {
       { kind: 'note', path: 'a/one.md', name: 'one' },
       { kind: 'note', path: 'a/two.md', name: 'two' },
     ]);
+  });
+});
+
+describe('wikilinkContext (editor [[ autocomplete)', () => {
+  it('opens a query at the caret right after "[["', () => {
+    const text = 'see [[Ide';
+    expect(wikilinkContext(text, text.length)).toEqual({ start: 4, query: 'Ide' });
+  });
+
+  it('reads from the caret, not the end of text', () => {
+    const text = 'a [[One and later [[Two';
+    // Caret right after the first "[[One" (index 7), before the second brackets.
+    expect(wikilinkContext(text, 7)).toEqual({ start: 2, query: 'One' });
+  });
+
+  it('is null when the pair is already closed', () => {
+    const text = 'see [[Ideas]] now';
+    expect(wikilinkContext(text, text.length)).toBeNull();
+  });
+
+  it('cancels once the alias half begins', () => {
+    const text = 'see [[Ideas|the';
+    expect(wikilinkContext(text, text.length)).toBeNull();
+  });
+
+  it('cancels across a newline', () => {
+    const text = 'see [[Ideas\nmore';
+    expect(wikilinkContext(text, text.length)).toBeNull();
+  });
+
+  it('is null with no open brackets', () => {
+    expect(wikilinkContext('plain text', 5)).toBeNull();
+  });
+
+  it('offers an empty query the instant "[[" is typed', () => {
+    const text = 'x [[';
+    expect(wikilinkContext(text, text.length)).toEqual({ start: 2, query: '' });
   });
 });

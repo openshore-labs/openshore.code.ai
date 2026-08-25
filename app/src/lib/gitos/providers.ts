@@ -11,7 +11,12 @@
 // real and visible, but marked not ready until their OAuth wiring lands. They
 // are never faked.
 
-export type StorageProviderId = 'local' | 'icloud' | 'dropbox' | 'gdrive' | 'proton';
+// 'org' is the Team vault (Supabase-backed, organization tier). It is a real
+// provider behind the seam, but deliberately NOT in PROVIDER_ROSTER below: the
+// team vault is a separate resource reached by the Vault scope switcher, not a
+// place you move your personal vault's bytes, so it never appears in the
+// personal vault's "where it lives" sheet.
+export type StorageProviderId = 'local' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org';
 
 /** One file inside a gitOS resource, addressed by a relative POSIX-style
  *  path (e.g. "notes/ideas/vault-design.md"). Paths map 1:1 onto a real

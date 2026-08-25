@@ -7,7 +7,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
-import { backlinksTo, noteFolder, noteTitle, normalizeNotePath, treeAt } from '../lib/vault.js';
+import {
+  backlinksTo,
+  noteFolder,
+  noteTitle,
+  normalizeNotePath,
+  treeAt,
+  wikilinkContext,
+} from '../lib/vault.js';
 import {
   PROVIDER_ROSTER,
   probeReady,
@@ -23,6 +30,9 @@ export function VaultScreen() {
   const {
     vaultFiles,
     vaultNote,
+    vaultScope,
+    setVaultScope,
+    teamVaultAvailable,
     vaultRefresh,
     vaultOpen,
     vaultCloseNote,
@@ -36,6 +46,9 @@ export function VaultScreen() {
     showToast,
   } = useApp();
 
+  const team = vaultScope === 'team';
+  const teamAvailable = teamVaultAvailable();
+
   const [folder, setFolder] = useState('');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -47,6 +60,26 @@ export function VaultScreen() {
   const [ready, setReady] = useState<Partial<Record<StorageProviderId, boolean>>>({});
   const [moving, setMoving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  // Live [[wikilink]] autocomplete. When the caret sits inside an unclosed
+  // "[[ ...", linkQuery is what has been typed since the brackets and linkStart
+  // is the index of the "[[", so a pick replaces exactly that span.
+  const [linkQuery, setLinkQuery] = useState<string | null>(null);
+  const [linkStart, setLinkStart] = useState(0);
+
+  // If the team vault stops being available while it is open (sign-out), drop
+  // back to the personal vault so the screen never shows an empty dead end.
+  useEffect(() => {
+    if (team && !teamAvailable) void setVaultScope('personal');
+  }, [team, teamAvailable, setVaultScope]);
+
+  // Recompute the autocomplete context from the editor value and caret.
+  const refreshLinkContext = useCallback((value: string, caret: number) => {
+    const ctx = wikilinkContext(value, caret);
+    if (!ctx) return setLinkQuery(null);
+    setLinkStart(ctx.start);
+    setLinkQuery(ctx.query);
+  }, []);
 
   const currentProviderId: StorageProviderId =
     (settings.gitosResources as GitosResource[] | undefined)?.find(
@@ -133,6 +166,45 @@ export function VaultScreen() {
     const title = noteTitle(vaultNote.path);
     const parent = noteFolder(vaultNote.path);
     const words = draft.trim() ? draft.trim().split(/\s+/).length : 0;
+
+    // Autocomplete candidates for the open "[[": notes whose title or path
+    // matches, best-prefix first. A non-matching, non-empty query also offers
+    // to link a brand new note of that name (created on first open, like a tap
+    // on a dashed link).
+    const q = (linkQuery ?? '').trim().toLowerCase();
+    const linkMatches =
+      linkQuery === null
+        ? []
+        : paths
+            .filter((p) => p !== vaultNote.path)
+            .map((p) => ({ p, t: noteTitle(p) }))
+            .filter(({ p, t }) => !q || t.toLowerCase().includes(q) || p.toLowerCase().includes(q))
+            .sort((a, b) => {
+              const ap = a.t.toLowerCase().startsWith(q) ? 0 : 1;
+              const bp = b.t.toLowerCase().startsWith(q) ? 0 : 1;
+              return ap - bp || a.t.length - b.t.length;
+            })
+            .slice(0, 6);
+    const canCreate =
+      linkQuery !== null && q.length > 0 && !paths.some((p) => noteTitle(p).toLowerCase() === q);
+
+    const insertWikilink = (targetName: string) => {
+      const el = editorRef.current;
+      const caret = el?.selectionStart ?? draft.length;
+      const before = draft.slice(0, linkStart);
+      const after = draft.slice(caret);
+      const inserted = `[[${targetName}]]`;
+      const next = before + inserted + after;
+      setDraft(next);
+      scheduleSave(vaultNote.path, next);
+      setLinkQuery(null);
+      const pos = before.length + inserted.length;
+      requestAnimationFrame(() => {
+        el?.focus();
+        el?.setSelectionRange(pos, pos);
+      });
+    };
+
     return (
       <div className="screen">
         <BackBar title="Vault" />
@@ -196,16 +268,59 @@ export function VaultScreen() {
           </p>
 
           {editing ? (
-            <textarea
-              className="vault-editor"
-              autoFocus
-              value={draft}
-              placeholder="Write. Plain markdown, and [[wikilinks]] to connect notes."
-              onChange={(e) => {
-                setDraft(e.target.value);
-                scheduleSave(vaultNote.path, e.target.value);
-              }}
-            />
+            <div className="vault-editor-wrap">
+              <textarea
+                ref={editorRef}
+                className="vault-editor"
+                autoFocus
+                value={draft}
+                placeholder="Write. Plain markdown, and [[wikilinks]] to connect notes."
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  scheduleSave(vaultNote.path, e.target.value);
+                  refreshLinkContext(
+                    e.target.value,
+                    e.target.selectionStart ?? e.target.value.length,
+                  );
+                }}
+                onKeyUp={(e) =>
+                  refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+                }
+                onSelect={(e) =>
+                  refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+                }
+                onBlur={() => setLinkQuery(null)}
+              />
+              {linkQuery !== null && (linkMatches.length > 0 || canCreate) ? (
+                <div className="vault-link-suggest" role="listbox" aria-label="Link a note">
+                  {linkMatches.map(({ p, t }) => (
+                    <button
+                      key={p}
+                      className="vault-link-chip"
+                      // onMouseDown, not onClick, so the pick lands before the
+                      // textarea's blur clears the autocomplete context.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertWikilink(t);
+                      }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                  {canCreate ? (
+                    <button
+                      className="vault-link-chip vault-link-new"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertWikilink((linkQuery ?? '').trim());
+                      }}
+                    >
+                      New: {(linkQuery ?? '').trim()}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           ) : (
             <VaultMarkdown
               text={draft}
@@ -287,11 +402,43 @@ export function VaultScreen() {
             </svg>
           </button>
         </div>
+        {teamAvailable ? (
+          <div
+            className="segmented"
+            role="tablist"
+            aria-label="Which vault"
+            style={{ marginBottom: 10 }}
+          >
+            <button
+              role="tab"
+              aria-selected={!team}
+              className={`seg${!team ? ' active' : ''}`}
+              onClick={() => void setVaultScope('personal')}
+            >
+              Personal
+            </button>
+            <button
+              role="tab"
+              aria-selected={team}
+              className={`seg${team ? ' active' : ''}`}
+              onClick={() => void setVaultScope('team')}
+            >
+              Team
+            </button>
+          </div>
+        ) : null}
         <p className="lead">
-          Plain markdown files you own, that you and your agent both write.{' '}
-          <button className="linklike" onClick={() => setStorageOpen(true)}>
-            Where it lives
-          </button>
+          {team
+            ? 'Shared markdown your whole team reads and writes. Saved to your organization.'
+            : 'Plain markdown files you own, that you and your agent both write.'}
+          {!team ? (
+            <>
+              {' '}
+              <button className="linklike" onClick={() => setStorageOpen(true)}>
+                Where it lives
+              </button>
+            </>
+          ) : null}
         </p>
 
         {crumbs.length ? (
@@ -315,8 +462,12 @@ export function VaultScreen() {
 
         {vaultFiles.length === 0 ? (
           <div className="greeting" style={{ minHeight: '40vh' }}>
-            <h1>Your vault starts with one note.</h1>
-            <p>Plain markdown files. Yours, on this device.</p>
+            <h1>{team ? 'Your team vault is empty.' : 'Your vault starts with one note.'}</h1>
+            <p>
+              {team
+                ? 'The first note you write is shared with your organization.'
+                : 'Plain markdown files. Yours, on this device.'}
+            </p>
             <button className="btn primary" onClick={() => setNewOpen(true)}>
               New note
             </button>

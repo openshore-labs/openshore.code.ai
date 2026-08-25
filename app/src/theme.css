@@ -514,6 +514,39 @@ textarea {
   padding: 14px;
 }
 
+.vault-editor-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+/* [[wikilink]] autocomplete: a horizontal chip row under the editor, one tap
+   to link a note. Mobile-first, so no caret-anchored popover to fight the
+   on-screen keyboard. */
+.vault-link-suggest {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 2px 2px;
+  scrollbar-width: none;
+}
+.vault-link-suggest::-webkit-scrollbar {
+  display: none;
+}
+.vault-link-chip {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.vault-link-new {
+  color: var(--local);
+  border-style: dashed;
+}
+
 .vault-md {
   margin-top: 14px;
 }
