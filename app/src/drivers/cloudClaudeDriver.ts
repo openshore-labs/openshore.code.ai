@@ -10,9 +10,9 @@ import { effortDirective } from '../lib/effort.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import type { SeedTurn } from '../state/types.js';
 
-// The model catalog (ids, labels, pricing, context) lives in one leaf module so
-// the driver, the model sheet, and sourceLabel all agree. Imported for the
-// driver's own use and re-exported for the existing importers.
+// The model catalog (ids, labels, context) lives in one leaf module so the
+// driver, the model sheet, and sourceLabel all agree. Imported for the driver's
+// own use and re-exported for the existing importers.
 import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
 export { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL };
 
@@ -42,7 +42,6 @@ export class CloudClaudeDriver implements ChatDriver {
   private history: Anthropic.MessageParam[] = [];
   private client: Anthropic;
   private activeStream?: { abort(): void };
-  private price: { inPerM: number; outPerM: number };
 
   constructor(
     apiKey: string,
@@ -50,8 +49,6 @@ export class CloudClaudeDriver implements ChatDriver {
     seed?: SeedTurn[],
   ) {
     this.client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-    const known = CLAUDE_MODELS.find((m) => m.id === model);
-    this.price = known ?? { inPerM: 5, outPerM: 25 };
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
@@ -102,15 +99,15 @@ export class CloudClaudeDriver implements ChatDriver {
         .join('');
       this.history.push({ role: 'assistant', content: final.content });
 
-      const dollars =
-        (final.usage.input_tokens * this.price.inPerM +
-          final.usage.output_tokens * this.price.outPerM) /
-        1_000_000;
+      // OpenShore does not price usage; billing rides the user's own account.
+      // The shared usage event still carries a dollars field for the CLI, so
+      // send 0 rather than fabricate a cost. The context meter is the honest
+      // signal we do surface.
       this.emitter.emit({
         type: 'usage',
         promptTokens: final.usage.input_tokens,
         completionTokens: final.usage.output_tokens,
-        dollars,
+        dollars: 0,
         contextPercent: contextPercentFor(this.model, final.usage.input_tokens),
       });
       this.emitter.emit({ type: 'text-final', text: answer });
@@ -151,12 +148,31 @@ export class CloudClaudeDriver implements ChatDriver {
   }
 }
 
+// Billing lives on the user's own Anthropic account, so when it is out of usage
+// (depleted pay-as-you-go credits, or a plan usage cap) OpenShore does not try
+// to explain the charge. It says the account is out of Claude usage and points
+// at a local model, which keeps working with no account behind it.
+const SWITCH_TO_LOCAL = 'Switch to a local model to keep going.';
+
+function isOutOfUsage(err: unknown): boolean {
+  // Depleted credits come back as a 400 whose message names the balance.
+  if (err instanceof Anthropic.BadRequestError) {
+    return /credit balance|billing|quota/i.test(err.message);
+  }
+  return false;
+}
+
 function describeError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) {
     return 'Claude rejected the API key. Update it under Connections.';
   }
+  if (isOutOfUsage(err)) {
+    return `No more Claude usage on your account right now. ${SWITCH_TO_LOCAL}`;
+  }
   if (err instanceof Anthropic.RateLimitError) {
-    return 'Claude is rate limiting this key right now. Give it a moment.';
+    // A usage cap and a transient burst both surface as 429; either way, a
+    // local model is the way through without waiting on the account.
+    return `Claude has no usage available on your account right now. ${SWITCH_TO_LOCAL} You can also try again in a moment.`;
   }
   if (err instanceof Anthropic.APIConnectionError) {
     return 'Could not reach Claude. Check the connection and try again.';

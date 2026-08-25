@@ -64,7 +64,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             {conv.title}
             <div className="topbar-sub">
               {thread?.model
-                ? `${thread.model.name} · ${thread.model.kind}${thread.dollars > 0 ? ` · $${thread.dollars.toFixed(2)}` : ''}${thread.contextPercent ? ` · ctx ${thread.contextPercent}%` : ''}`
+                ? `${thread.model.name} · ${thread.model.kind}${thread.contextPercent ? ` · ctx ${thread.contextPercent}%` : ''}`
                 : sourceLabel(conv.source)}
             </div>
           </div>
