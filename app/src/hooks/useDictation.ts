@@ -1,13 +1,16 @@
-// Voice-to-text for the composer mic. Uses the Web Speech API where the
-// platform provides it: desktop browsers and the Electron shell do, and so
-// does Safari on iOS. The iOS WKWebView (where the packaged app runs) does NOT
-// expose SpeechRecognition, so `supported` comes back false there and the mic
-// button hides itself rather than pretending. Real native iOS dictation needs a
-// Capacitor speech plugin; that is a deliberate follow-up, tracked in PROGRESS,
-// kept out of this change so it cannot destabilize the iOS archive.
+// Voice-to-text for the composer mic, with two backends behind one interface:
+//  - iOS (the packaged app): the native OscodeSpeech plugin, on-device only, so
+//    mic audio never leaves the phone.
+//  - desktop / web: the Web Speech API, where the platform provides it.
+// Either way, onText receives the growing transcript for the session and the
+// caller appends it to the field. Where neither backend exists, `supported` is
+// false and the mic button hides itself rather than pretending.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PluginListenerHandle } from '@capacitor/core';
+import { isPhone } from '../lib/platform.js';
+import { OscodeSpeech } from '../lib/speechPlugin.js';
 
-// Minimal shapes for the vendor-prefixed API; the DOM lib does not type it.
+// Minimal shapes for the vendor-prefixed Web Speech API; the DOM lib omits it.
 interface SpeechRecognitionLike {
   lang: string;
   continuous: boolean;
@@ -20,12 +23,11 @@ interface SpeechRecognitionLike {
   onend: (() => void) | null;
 }
 interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>;
+  results: ArrayLike<{ 0: { transcript: string } }>;
 }
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
-function getCtor(): SpeechRecognitionCtor | undefined {
+function webCtor(): SpeechRecognitionCtor | undefined {
   if (typeof window === 'undefined') return undefined;
   const w = window as unknown as {
     SpeechRecognition?: SpeechRecognitionCtor;
@@ -41,51 +43,102 @@ export interface Dictation {
   stop: () => void;
 }
 
-// onText receives the growing transcript for the current dictation session; the
-// caller appends it to the field. onText fires with the full session text each
-// time so the caller can replace the in-progress tail cleanly.
 export function useDictation(onText: (text: string) => void): Dictation {
-  const [supported] = useState(() => Boolean(getCtor()));
+  const native = isPhone();
+  const [supported, setSupported] = useState<boolean>(() => (native ? false : Boolean(webCtor())));
   const [listening, setListening] = useState(false);
-  const recRef = useRef<SpeechRecognitionLike | null>(null);
   const onTextRef = useRef(onText);
   onTextRef.current = onText;
 
-  const stop = useCallback(() => {
-    recRef.current?.stop();
+  const handlesRef = useRef<PluginListenerHandle[]>([]);
+  const webRef = useRef<SpeechRecognitionLike | null>(null);
+
+  // Native capability probe: on-device recognition may be absent on older
+  // devices or the current language.
+  useEffect(() => {
+    if (!native) return;
+    let cancelled = false;
+    void OscodeSpeech.available()
+      .then((r) => {
+        if (!cancelled) setSupported(r.available);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [native]);
+
+  const stopNative = useCallback(() => {
+    for (const h of handlesRef.current) void h.remove();
+    handlesRef.current = [];
+    void OscodeSpeech.stop().catch(() => {});
+    setListening(false);
   }, []);
 
-  const toggle = useCallback(() => {
-    if (!supported) return;
-    if (recRef.current) {
-      recRef.current.stop();
-      return;
+  const startNative = useCallback(async () => {
+    const perm = await OscodeSpeech.requestPermission().catch(() => ({ granted: false }));
+    if (!perm.granted) return;
+    const partial = await OscodeSpeech.addListener('partial', (d) => onTextRef.current(d.text));
+    const result = await OscodeSpeech.addListener('result', (d) => {
+      onTextRef.current(d.text);
+      stopNative();
+    });
+    const error = await OscodeSpeech.addListener('error', () => stopNative());
+    handlesRef.current = [partial, result, error];
+    try {
+      await OscodeSpeech.start();
+      setListening(true);
+    } catch {
+      stopNative();
     }
-    const Ctor = getCtor();
+  }, [stopNative]);
+
+  const startWeb = useCallback(() => {
+    const Ctor = webCtor();
     if (!Ctor) return;
     const rec = new Ctor();
     rec.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
     rec.continuous = true;
     rec.interimResults = true;
-    let sessionText = '';
     rec.onresult = (event) => {
       let text = '';
       for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
-      sessionText = text;
-      onTextRef.current(sessionText);
+      onTextRef.current(text);
     };
     const finish = () => {
-      recRef.current = null;
+      webRef.current = null;
       setListening(false);
     };
     rec.onerror = finish;
     rec.onend = finish;
-    recRef.current = rec;
+    webRef.current = rec;
     setListening(true);
     rec.start();
-  }, [supported]);
+  }, []);
 
-  useEffect(() => () => recRef.current?.abort(), []);
+  const stop = useCallback(() => {
+    if (native) stopNative();
+    else webRef.current?.stop();
+  }, [native, stopNative]);
+
+  const toggle = useCallback(() => {
+    if (!supported) return;
+    if (native) {
+      if (listening) stopNative();
+      else void startNative();
+      return;
+    }
+    if (webRef.current) webRef.current.stop();
+    else startWeb();
+  }, [supported, native, listening, stopNative, startNative, startWeb]);
+
+  useEffect(
+    () => () => {
+      if (native) stopNative();
+      else webRef.current?.abort();
+    },
+    [native, stopNative],
+  );
 
   return { supported, listening, toggle, stop };
 }

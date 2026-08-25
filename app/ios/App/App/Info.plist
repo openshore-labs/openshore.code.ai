@@ -55,6 +55,10 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenShore connects to the OpenShore daemon running on your own desktop over your local network or Tailscale.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenShore uses the microphone to turn your speech into text when you tap the mic in the composer.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>OpenShore transcribes your speech on this device so you can dictate messages. The audio stays on your phone.</string>
 	<!-- Only standard TLS; skips the export-compliance question on each TestFlight build. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

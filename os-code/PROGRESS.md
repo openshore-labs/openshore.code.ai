@@ -51,11 +51,12 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Native iOS voice dictation (BLOCKED on two founder calls).** Mic works
-      via Web Speech on desktop/web; iOS WKWebView needs a native
-      SFSpeechRecognizer Capacitor plugin. CTO: build it only AFTER a confirmed
-      clean TestFlight, and get the founder's on-device-vs-server data-egress
-      posture first. Must-fixes in the 2026-08-25 log entry.
+- [x] **Native iOS voice dictation: BUILT (2026-08-25), on-device only.**
+      Founder chose on-device-only (mic audio never leaves the phone) and to
+      build now rather than wait for the clean TestFlight. New `oscode-speech`
+      Capacitor plugin (SFSpeechRecognizer + AVAudioEngine, JS-registered so no
+      pbxproj linking). See the log entry. Not device-verified (no iOS here);
+      first real dictation on TestFlight is the proof.
 - [x] **Mid-chat model switching, Claude-style: BUILT (2026-08-25).** Founder
       wanted the Claude behavior (keep the thread, change the model for the next
       turn). Not the CTO's feared live hot-swap: switch only when idle, reseed
@@ -654,6 +655,31 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-25: native iOS voice dictation, on-device only (founder call).**
+  Founder chose on-device-only recognition (mic audio never leaves the phone,
+  matching the "your machine, your keys" posture) and to build now rather than
+  wait for a clean TestFlight. New `oscode-speech` Capacitor plugin, third local
+  SPM plugin, mirroring oscode-iap: `SFSpeechRecognizer` +
+  `SFSpeechAudioBufferRecognitionRequest` with `requiresOnDeviceRecognition =
+  true`, driven by an `AVAudioEngine` input tap. Crucially it is JS-registered
+  (`registerPlugin('OscodeSpeech')`), NOT imported in AppDelegate, so it needs
+  no manual `project.pbxproj` linking, the exact trap that cost four fixes on
+  oscode-llama; `cap sync` lists it in `CapApp-SPM/Package.swift` (verified: both
+  the package ref and the product link landed) and Capacitor discovers it at
+  runtime. CTO must-fixes all in: both `NSMicrophoneUsageDescription` and
+  `NSSpeechRecognitionUsageDescription` (real sentences, no em dash); separate
+  `SFSpeechRecognizer.requestAuthorization` and `AVAudioSession` record grants
+  with every denial branch reported; audio session `.record`/`.duckOthers`,
+  deactivated with `.notifyOthersOnDeactivation` on stop; interruption observer
+  (call/Siri) stops cleanly; `available` reports false where on-device is absent
+  so the mic hides instead of falling back to a server. `useDictation` now picks
+  the backend: native on iOS, Web Speech on desktop/web, mic hidden where
+  neither exists. Green: app typecheck, lint, 140 tests, vite build, and `cap
+  sync ios` clean. NOT device-verified (no macOS/Xcode here); the native side
+  compiles for the first time on the next Codemagic archive, so expect a
+  possible round of fixes like the earlier iOS work, and the on-device
+  transcription itself is only provable on a real TestFlight install.
 
 - **2026-08-25: mid-chat model switching, Claude-style (founder overrode the
   CTO's fresh-chat default).** The founder wanted Claude's actual behavior:
