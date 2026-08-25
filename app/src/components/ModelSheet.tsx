@@ -1,15 +1,46 @@
 // The model sheet, in the Claude app's "Select model" shape. The root shows the
-// default (My Stack), the effort control, and two category buttons that open
-// dedicated sheets, the way Claude's "more models" expands: Cloud Providers and
-// Local LLMs. Each category has an honest empty state that routes to setup. When
-// no stack exists yet, My Stack is greyed with a link to build one.
+// default (My Stack), any models the user has pinned, the effort control, and two
+// category buttons that open dedicated sheets, the way Claude's "more models"
+// expands: Cloud Providers and Local LLMs. Each category has an honest empty
+// state that routes to setup. When no stack exists yet, My Stack is greyed with a
+// link to build one. Models in the category sheets swipe left to pin; a pinned
+// model rides under My Stack for one-tap use and swipes there to unpin.
 import { useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
-import { CLAUDE_MODELS } from '../lib/claudeModels.js';
+import { CLAUDE_MODELS, claudeModelLabel } from '../lib/claudeModels.js';
 import { PROVIDERS } from '../lib/providers.js';
 import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
+import { isPinned, pinKey, togglePin } from '../lib/pins.js';
+import { SwipeRow } from './SwipeRow.js';
+
+function RowContent({
+  main,
+  sub,
+  value,
+  chevron,
+}: {
+  main: string;
+  sub?: string;
+  value?: string;
+  chevron?: boolean;
+}) {
+  return (
+    <>
+      <span className="ms-row-text">
+        <span className="ms-row-main">{main}</span>
+        {sub ? <span className="ms-row-sub">{sub}</span> : null}
+      </span>
+      {value ? <span className="ms-row-value">{value}</span> : null}
+      {chevron ? (
+        <span className="ms-row-chev" aria-hidden="true">
+          {'›'}
+        </span>
+      ) : null}
+    </>
+  );
+}
 
 function Row({
   main,
@@ -28,18 +59,22 @@ function Row({
 }) {
   return (
     <button className={`ms-row press-fb${highlight ? ' ms-row-default' : ''}`} onClick={onClick}>
-      <span className="ms-row-text">
-        <span className="ms-row-main">{main}</span>
-        {sub ? <span className="ms-row-sub">{sub}</span> : null}
-      </span>
-      {value ? <span className="ms-row-value">{value}</span> : null}
-      {chevron ? (
-        <span className="ms-row-chev" aria-hidden="true">
-          {'›'}
-        </span>
-      ) : null}
+      <RowContent main={main} sub={sub} value={value} chevron={chevron} />
     </button>
   );
+}
+
+/** A short, human name for a pinned source, shown under My Stack. */
+function pinLabel(s: ConversationSource): string {
+  if (s.kind === 'cloud') return claudeModelLabel(s.model);
+  if (s.kind === 'device') return s.modelName;
+  return 'Model';
+}
+
+function pinSub(s: ConversationSource): string {
+  if (s.kind === 'cloud') return 'Claude, in the cloud';
+  if (s.kind === 'device') return 'Runs fully on this device';
+  return '';
 }
 
 export function ModelSheet({
@@ -59,6 +94,11 @@ export function ModelSheet({
   const otherProviders = PROVIDERS.filter((p) => p.id !== 'anthropic' && connectedProviders[p.id]);
   const cloudEmpty = !claudeReady && otherProviders.length === 0;
   const deviceModels = Object.entries(settings.deviceModels);
+  const pins = settings.pinnedModels ?? [];
+
+  const setPin = (source: ConversationSource) => {
+    void saveSettings({ pinnedModels: togglePin(pins, source) });
+  };
 
   const goto = (view: Parameters<typeof setView>[0]) => {
     setView(view);
@@ -102,6 +142,18 @@ export function ModelSheet({
                   </span>
                 </div>
               )}
+              {pins.map((src) => (
+                <SwipeRow
+                  key={pinKey(src)}
+                  pinned
+                  onTap={() => onPick(src)}
+                  onToggle={() => setPin(src)}
+                >
+                  <div className="ms-row">
+                    <RowContent main={pinLabel(src)} sub={pinSub(src)} />
+                  </div>
+                </SwipeRow>
+              ))}
             </div>
 
             <div className="ms-group">
@@ -152,16 +204,25 @@ export function ModelSheet({
                   <>
                     <div className="ms-heading">Claude</div>
                     <div className="ms-group">
-                      {CLAUDE_MODELS.map((m) => (
-                        <Row
-                          key={m.id}
-                          main={m.label}
-                          sub={m.blurb}
-                          onClick={() =>
-                            onPick({ kind: 'cloud', provider: 'anthropic', model: m.id })
-                          }
-                        />
-                      ))}
+                      {CLAUDE_MODELS.map((m) => {
+                        const src: ConversationSource = {
+                          kind: 'cloud',
+                          provider: 'anthropic',
+                          model: m.id,
+                        };
+                        return (
+                          <SwipeRow
+                            key={m.id}
+                            pinned={isPinned(pins, src)}
+                            onTap={() => onPick(src)}
+                            onToggle={() => setPin(src)}
+                          >
+                            <div className="ms-row">
+                              <RowContent main={m.label} sub={m.blurb} />
+                            </div>
+                          </SwipeRow>
+                        );
+                      })}
                     </div>
                   </>
                 ) : null}
@@ -193,14 +254,25 @@ export function ModelSheet({
             <Header title="Local LLMs" />
             {deviceModels.length ? (
               <div className="ms-group">
-                {deviceModels.map(([id, name]) => (
-                  <Row
-                    key={id}
-                    main={name}
-                    sub="Runs fully on this device"
-                    onClick={() => onPick({ kind: 'device', modelId: id, modelName: name })}
-                  />
-                ))}
+                {deviceModels.map(([id, name]) => {
+                  const src: ConversationSource = {
+                    kind: 'device',
+                    modelId: id,
+                    modelName: name,
+                  };
+                  return (
+                    <SwipeRow
+                      key={id}
+                      pinned={isPinned(pins, src)}
+                      onTap={() => onPick(src)}
+                      onToggle={() => setPin(src)}
+                    >
+                      <div className="ms-row">
+                        <RowContent main={name} sub="Runs fully on this device" />
+                      </div>
+                    </SwipeRow>
+                  );
+                })}
               </div>
             ) : (
               <button className="ms-empty press-fb" onClick={() => goto('marketplace')}>

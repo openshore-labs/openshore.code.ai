@@ -228,6 +228,10 @@ export interface AppSettings {
   /** How tool approvals are handled for the coding agent. Defaults to
    *  'acceptEdits'. Chosen from the composer's mode pill. */
   permissionMode?: PermissionMode;
+  /** Models the user pinned (swipe-left) from the Cloud Providers or Local LLMs
+   *  sheets. They surface under My Stack on the root model sheet for one-tap
+   *  selection, and swipe there to unpin. Only concrete models pin. */
+  pinnedModels?: ConversationSource[];
 }
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
