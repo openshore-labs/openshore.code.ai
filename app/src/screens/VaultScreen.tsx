@@ -8,8 +8,15 @@ import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import { backlinksTo, noteFolder, noteTitle, normalizeNotePath, treeAt } from '../lib/vault.js';
-import { PROVIDER_ROSTER } from '../lib/gitos/index.js';
+import {
+  PROVIDER_ROSTER,
+  probeReady,
+  type GitosResource,
+  type StorageProviderId,
+} from '../lib/gitos/index.js';
 import { exportVaultToFiles } from '../lib/vaultExport.js';
+
+const VAULT_RESOURCE_ID = 'vault.personal';
 
 export function VaultScreen() {
   const {
@@ -21,6 +28,8 @@ export function VaultScreen() {
     vaultSave,
     vaultDelete,
     vaultReadAll,
+    vaultMoveTo,
+    settings,
     showToast,
   } = useApp();
 
@@ -32,7 +41,30 @@ export function VaultScreen() {
   const [storageOpen, setStorageOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
+  const [ready, setReady] = useState<Partial<Record<StorageProviderId, boolean>>>({});
+  const [moving, setMoving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const currentProviderId: StorageProviderId =
+    (settings.gitosResources as GitosResource[] | undefined)?.find(
+      (r) => r.id === VAULT_RESOURCE_ID,
+    )?.providerId ?? 'local';
+
+  // Probe live readiness when the storage sheet opens, so iCloud shows as
+  // usable only on a device that can actually reach it.
+  useEffect(() => {
+    if (!storageOpen) return;
+    let live = true;
+    void Promise.all(PROVIDER_ROSTER.map((p) => probeReady(p.id))).then((flags) => {
+      if (!live) return;
+      const map: Partial<Record<StorageProviderId, boolean>> = {};
+      PROVIDER_ROSTER.forEach((p, i) => (map[p.id] = flags[i]));
+      setReady(map);
+    });
+    return () => {
+      live = false;
+    };
+  }, [storageOpen]);
 
   useEffect(() => {
     void vaultRefresh();
@@ -349,29 +381,50 @@ export function VaultScreen() {
               the same files and it just opens.
             </p>
             <div className="sheet-actions">
-              {PROVIDER_ROSTER.map((p) => (
-                <button
-                  key={p.id}
-                  className="btn ghost vault-provider"
-                  onClick={() => {
-                    if (!p.ready) {
-                      showToast(`${p.label} vaults are coming. Your vault can move there later.`);
-                    }
-                  }}
-                >
-                  <span className="grow" style={{ textAlign: 'left' }}>
-                    {p.label}
-                    <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
-                      {p.blurb}
+              {PROVIDER_ROSTER.map((p) => {
+                const isCurrent = p.id === currentProviderId;
+                const isReady = ready[p.id] ?? p.ready;
+                const move = async () => {
+                  if (isCurrent) return;
+                  if (!isReady) {
+                    showToast(
+                      p.pending ?? `${p.label} vaults are coming. Your vault can move there later.`,
+                    );
+                    return;
+                  }
+                  setMoving(true);
+                  const ok = await vaultMoveTo(p.id).catch(() => false);
+                  setMoving(false);
+                  setStorageOpen(false);
+                  showToast(
+                    ok
+                      ? `Your vault lives on ${p.label} now. It syncs from here.`
+                      : `Could not move to ${p.label}. ${p.pending ?? 'Try again in a moment.'}`,
+                  );
+                };
+                return (
+                  <button
+                    key={p.id}
+                    className="btn ghost vault-provider"
+                    disabled={moving}
+                    onClick={() => void move()}
+                  >
+                    <span className="grow" style={{ textAlign: 'left' }}>
+                      {p.label}
+                      <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+                        {p.blurb}
+                      </span>
                     </span>
-                  </span>
-                  {p.ready ? (
-                    <span className="pill local">Private</span>
-                  ) : (
-                    <span className="nav-lock-pill">Arriving</span>
-                  )}
-                </button>
-              ))}
+                    {isCurrent ? (
+                      <span className="pill local">Here now</span>
+                    ) : isReady ? (
+                      <span className="pill local">Move here</span>
+                    ) : (
+                      <span className="nav-lock-pill">Arriving</span>
+                    )}
+                  </button>
+                );
+              })}
               <button
                 className="btn ghost"
                 onClick={async () => {

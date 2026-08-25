@@ -454,4 +454,17 @@ describe('vault (gitOS Local provider)', () => {
     // Nothing hits the file list until a save happens.
     expect(useApp.getState().vaultFiles).toEqual([]);
   });
+
+  it('refuses to move the vault to a provider that is not usable', async () => {
+    const s = useApp.getState();
+    await s.vaultRefresh();
+    // iCloud probes unavailable off-device (the web mock), so the move is
+    // refused and the vault stays on Local, its bytes untouched.
+    const ok = await s.vaultMoveTo('icloud');
+    expect(ok).toBe(false);
+    const resource = (useApp.getState().settings.gitosResources ?? []).find(
+      (r) => r.id === 'vault.personal',
+    );
+    expect(resource?.providerId).toBe('local');
+  });
 });
