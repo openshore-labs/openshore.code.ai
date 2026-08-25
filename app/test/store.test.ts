@@ -405,3 +405,53 @@ describe('bring your own model', () => {
     expect(useApp.getState().settings.stack?.reasoning?.kind).toBe('device');
   });
 });
+
+// Vault: the personal vault auto-registers as a gitOS resource on first
+// refresh, notes round-trip through the Local provider, and delete cleans
+// both the body and the index.
+describe('vault (gitOS Local provider)', () => {
+  beforeEach(resetStore);
+
+  it('auto-creates the personal vault resource on first refresh', async () => {
+    await useApp.getState().vaultRefresh();
+    const resources = useApp.getState().settings.gitosResources ?? [];
+    expect(resources).toHaveLength(1);
+    expect(resources[0]).toMatchObject({ kind: 'vault', providerId: 'local' });
+    expect(useApp.getState().vaultFiles).toEqual([]);
+  });
+
+  it('saves, lists, reopens, and deletes notes', async () => {
+    const s = useApp.getState();
+    await s.vaultRefresh();
+    await s.vaultSave('ideas/First.md', 'Hello [[Second]]');
+    await s.vaultSave('Second.md', 'The other note');
+    // The provider keeps the index alphabetical (locale-aware, so case does
+    // not split the ordering): ideas/ sorts before Second.
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual([
+      'ideas/First.md',
+      'Second.md',
+    ]);
+
+    await s.vaultOpen('ideas/First');
+    expect(useApp.getState().vaultNote).toMatchObject({
+      path: 'ideas/First.md',
+      text: 'Hello [[Second]]',
+    });
+
+    const all = await s.vaultReadAll();
+    expect(all).toHaveLength(2);
+
+    await s.vaultDelete('ideas/First.md');
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['Second.md']);
+    expect(useApp.getState().vaultNote).toBeUndefined();
+  });
+
+  it('opening a missing path yields a fresh empty note without writing it', async () => {
+    const s = useApp.getState();
+    await s.vaultRefresh();
+    await s.vaultOpen('Brand New');
+    expect(useApp.getState().vaultNote).toMatchObject({ path: 'Brand New.md', text: '' });
+    // Nothing hits the file list until a save happens.
+    expect(useApp.getState().vaultFiles).toEqual([]);
+  });
+});

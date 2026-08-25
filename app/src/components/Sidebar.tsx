@@ -23,6 +23,7 @@ const NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'stack', label: 'Your stack' },
   { view: 'stackhealth', label: 'Stack Health' },
   { view: 'repos', label: 'Repositories' },
+  { view: 'vault', label: 'Vault' },
   { view: 'launch', label: 'Launch' },
   { view: 'connections', label: 'Cloud Connections' },
   { view: 'pair', label: 'Desktop + phone' },
@@ -83,6 +84,15 @@ const ICON_NODES: Record<NavIconName, JSX.Element> = {
       <circle cx="17" cy="8" r="2.2" />
       <path d="M7 8.2v7.6" />
       <path d="M17 10.2v1.1a3.6 3.6 0 0 1-3.6 3.6H9.2" />
+    </>
+  ),
+  // A cut gem, the shape every Obsidian hand knows: the vault.
+  vault: (
+    <>
+      <path d="M12 3 19 9l-7 12L5 9l7-6Z" />
+      <path d="M5 9h14" />
+      <path d="M12 3 9.6 9l2.4 12" />
+      <path d="M12 3l2.4 6L12 21" />
     </>
   ),
   // A paper plane heading up and out: launch / ship.

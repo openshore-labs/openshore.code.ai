@@ -79,6 +79,27 @@ execution contract. Newest at the bottom.
   needing a real multi-writer backend (not a synced folder) for the
   organization tier, since consumer cloud drives do not solve concurrent
   writers. "Vault" is a working name, not settled.
+- **gitOS + Vault decision points settled by the full advisory org
+  (2026-08-25), founder delegated the calls and pre-authorized the build.**
+  CTO: seam is path/bytes-shaped with single-writer lease ops from day one;
+  real git shells out on the desktop engine only, the phone browses and
+  buffers through the existing outbox grain; secrets on untrusted storage
+  seal enc:v1 under a PER-REPO key from the credential store, never the
+  device DEK; org Vault is Supabase multi-writer (LWW plus conflict copy),
+  folder-plus-lease cannot honestly serve concurrent writers; agent writes
+  are user-directed or agent-proposed with approval, never silent. CMO:
+  "gitOS" stays internal (Git trademark policy), ships as Repositories;
+  Vault ships as Vault BECAUSE compat is true; the honest claim is "point
+  Obsidian at the same folder and it just opens." CFO: personal tiers are
+  near-zero COGS on user-owned storage; Google Drive integration must use
+  drive.file scope only or we owe a $15k-75k/yr CASA assessment; Vault free
+  (habit hook), Repositories Personal-gated, org Vault inside commercial
+  tiers. Creative Studio: "Paper Study" direction, wikilinks wear --local
+  teal (internal knowledge is local/private), not-ready providers render
+  full-opacity with an Arriving pill and a toast, never disabled-looking.
+  Built same day: the gitOS seam (app/src/lib/gitos/) and the personal
+  Vault on it, with export-to-real-files as the true-compat escape hatch
+  the CTO required.
 - **Off-device is where long work runs (standing principle, founder call
   2026-08-25).** Any feature that kicks off long or agentic work runs that work
   off the phone (on the user's daemon, or a cloud runner), as a durable,
