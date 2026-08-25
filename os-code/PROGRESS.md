@@ -135,9 +135,10 @@ Layer status:
       `aca6186` to the marketing `main`. Auth is a classic PAT in the
       `MARKETING_DEPLOY_TOKEN` repo secret (an earlier fine-grained token 403'd
       on a wrong-repo selection; fixed).
-      Follow-up: (1) the builder stamps a fresh `updated` timestamp each run, so
-      every scheduled run commits even when models are unchanged; consider
-      diffing on content only. Seed `os-code/curation/*.json` as the roster grows.
+      Follow-up: (1) DONE, the builder now carries the previous `updated` stamp
+      forward on a true no-op build (chooseUpdated/contentSignature in
+      enrich.ts), so an unchanged run no longer commits. Seed
+      `os-code/curation/*.json` as the roster grows.
 - [x] **Marketplace popularity axes + landscape breadth.** Two honest axes plus
       an editorial shelf, no telemetry. LANDSCAPE ("Popular across local LLMs"):
       fixed the enrichment that published empty (HF per-segment slash encoding;

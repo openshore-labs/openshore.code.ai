@@ -224,4 +224,57 @@ describe('bad-build regression gate', () => {
     expect(result.ok).toBe(false);
     expect(result.breaches.some((b) => b.check === 'presets not all dropped')).toBe(true);
   });
+
+  it('fails an online run when popularity coverage falls more than half (MP-A-4)', () => {
+    const withPop: Catalog = {
+      ...good,
+      models: good.models.map((m) => ({
+        ...m,
+        popularity: { downloads: 100, likes: 1, source: 'huggingface' as const },
+      })),
+    };
+    // next = good carries zero popularity; the previous had it on both models.
+    const online = regressionGate(good, withPop, { online: true });
+    expect(online.ok).toBe(false);
+    expect(online.breaches.some((b) => b.check === 'popularity coverage not halved')).toBe(true);
+    // Offline (the default) legitimately carries no popularity: no such breach.
+    const offline = regressionGate(good, withPop);
+    expect(offline.breaches.some((b) => b.check === 'popularity coverage not halved')).toBe(false);
+  });
+
+  it('fails when an onDevice.url host is not huggingface.co (MP-S2)', () => {
+    const evil: Catalog = {
+      ...good,
+      models: [
+        {
+          ...good.models[0]!,
+          onDevice: { url: 'https://evil.example.com/x.gguf', sizeGB: 1, minRamGB: 4 },
+        },
+        good.models[1]!,
+      ],
+    };
+    const result = regressionGate(evil, undefined);
+    expect(result.ok).toBe(false);
+    expect(result.breaches.some((b) => b.check === 'onDevice.url host is huggingface.co')).toBe(
+      true,
+    );
+  });
+
+  it('passes a huggingface.co onDevice.url host (MP-S2)', () => {
+    const okDev: Catalog = {
+      ...good,
+      models: [
+        {
+          ...good.models[0]!,
+          onDevice: {
+            url: 'https://huggingface.co/org/repo/resolve/main/x.gguf',
+            sizeGB: 1,
+            minRamGB: 4,
+          },
+        },
+        good.models[1]!,
+      ],
+    };
+    expect(regressionGate(okDev, undefined).ok).toBe(true);
+  });
 });

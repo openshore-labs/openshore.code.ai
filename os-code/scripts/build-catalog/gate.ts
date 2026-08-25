@@ -21,12 +21,38 @@ export function validateCatalog(catalog: unknown): Catalog {
  * Assert the invariants that a good build always holds. previousRaw is the
  * last published catalog.json (undefined on the first ever build).
  */
-export function regressionGate(next: Catalog, previousRaw: unknown | undefined): RegressionResult {
+export function regressionGate(
+  next: Catalog,
+  previousRaw: unknown | undefined,
+  opts: { online?: boolean } = {},
+): RegressionResult {
   const breaches: GateBreach[] = [];
+  const online = opts.online ?? false;
 
   // Invariant: a catalog with no models is never a valid publish.
   if (next.models.length === 0) {
     breaches.push({ check: 'non-empty', detail: 'the enriched catalog has no models' });
+  }
+
+  // MP-S2: an onDevice.url points iPhones at a multi-GB GGUF that llama.cpp
+  // parses (a parser with a CVE history against malicious GGUF). Whoever can
+  // write the published catalog must not be able to redirect that download off
+  // Hugging Face, so pin the host. The client follows the CDN resolve redirect
+  // to cdn-lfs.huggingface.co AFTER its own host check, which is fine.
+  for (const model of next.models) {
+    if (!model.onDevice) continue;
+    let host: string | undefined;
+    try {
+      host = new URL(model.onDevice.url).host;
+    } catch {
+      host = undefined;
+    }
+    if (host !== 'huggingface.co') {
+      breaches.push({
+        check: 'onDevice.url host is huggingface.co',
+        detail: `model "${model.id}" onDevice.url host is "${host ?? 'unparseable'}", not huggingface.co`,
+      });
+    }
   }
 
   // Invariant: every preset orchestrator and specialist id resolves to a model.
@@ -89,6 +115,21 @@ export function regressionGate(next: Catalog, previousRaw: unknown | undefined):
           check: 'presets not all dropped',
           detail: `every preset was dropped (${prev.presets.length} to 0)`,
         });
+      }
+      // MP-A-4: popularity coverage guard. On an ONLINE run, a collapse in how
+      // many models carry popularity is a source-outage signature (MP-F5 carries
+      // last week's numbers forward, so a real online run should not lose half
+      // its coverage). Offline runs legitimately carry no popularity, so this
+      // check is online-only. "More than half lost" means next < prev / 2.
+      if (online) {
+        const prevWithPop = prev.models.filter((m) => m.popularity).length;
+        const nextWithPop = next.models.filter((m) => m.popularity).length;
+        if (prevWithPop > 0 && nextWithPop < prevWithPop / 2) {
+          breaches.push({
+            check: 'popularity coverage not halved',
+            detail: `models carrying popularity fell from ${prevWithPop} to ${nextWithPop} (more than half lost)`,
+          });
+        }
       }
     }
   }

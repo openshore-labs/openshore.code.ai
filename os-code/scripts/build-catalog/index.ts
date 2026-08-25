@@ -102,7 +102,7 @@ async function main(): Promise<void> {
   // Validate against the schema, then run the regression gate. A breach fails
   // the job and writes nothing.
   const validated = validateCatalog(catalog);
-  const gate = regressionGate(validated, previous);
+  const gate = regressionGate(validated, previous, { online });
   if (!gate.ok) {
     console.error(
       'REGRESSION GATE FAILED. Publishing nothing; the previous catalog keeps serving.',

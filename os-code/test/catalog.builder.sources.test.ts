@@ -175,3 +175,136 @@ describe('popularity presence in the enriched model (Bug C)', () => {
     expect(catalog.models[0]?.popularity).toBeUndefined();
   });
 });
+
+// ---- MP-A-2: auth header and one transient retry ----
+
+describe('HuggingFaceSource auth header (MP-A-2)', () => {
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.HF_TOKEN;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    if (realToken === undefined) delete process.env.HF_TOKEN;
+    else process.env.HF_TOKEN = realToken;
+  });
+
+  function stubCapturingHeaders(): { headers: Array<Record<string, string>> } {
+    const headers: Array<Record<string, string>> = [];
+    globalThis.fetch = (async (_url: unknown, init?: { headers?: Record<string, string> }) => {
+      headers.push({ ...(init?.headers ?? {}) });
+      return { ok: true, json: async () => ({ downloads: 1, likes: 0 }) } as Response;
+    }) as typeof fetch;
+    return { headers };
+  }
+
+  it('sends authorization: Bearer when HF_TOKEN is set', async () => {
+    process.env.HF_TOKEN = 'hf_secrettoken';
+    const { headers } = stubCapturingHeaders();
+    await new HuggingFaceSource().fetchMetadata('org/model-GGUF');
+    expect(headers[0]?.authorization).toBe('Bearer hf_secrettoken');
+  });
+
+  it('sends no authorization header when HF_TOKEN is unset', async () => {
+    delete process.env.HF_TOKEN;
+    const { headers } = stubCapturingHeaders();
+    await new HuggingFaceSource().fetchMetadata('org/model-GGUF');
+    expect(headers[0]?.authorization).toBeUndefined();
+  });
+});
+
+describe('HuggingFaceSource transient retry (MP-A-2)', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('retries once after a 429 and resolves on the follow-up success', async () => {
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call += 1;
+      if (call === 1) return { ok: false, status: 429, json: async () => ({}) } as Response;
+      return { ok: true, status: 200, json: async () => ({ downloads: 77, likes: 3 }) } as Response;
+    }) as typeof fetch;
+    // retryBaseMs 0 so the test does not sleep.
+    const meta = await new HuggingFaceSource('https://huggingface.co', 0).fetchMetadata(
+      'org/m-GGUF',
+    );
+    expect(call).toBe(2);
+    expect(meta?.downloads).toBe(77);
+    expect(meta?.likes).toBe(3);
+  });
+
+  it('does not retry a plain 404 (a real miss)', async () => {
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call += 1;
+      return { ok: false, status: 404, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+    const meta = await new HuggingFaceSource('https://huggingface.co', 0).fetchMetadata('ghost/x');
+    expect(call).toBe(1);
+    expect(meta).toBeUndefined();
+  });
+});
+
+// ---- MP-F5: popularity carries forward when this run's metadata is missing ----
+
+describe('popularity carry-forward (MP-F5)', () => {
+  it('keeps the previous catalog popularity when metadata is absent this run', () => {
+    const seed = specialistSeed('m1', 'm1:7b');
+    // Last week's published catalog carried a number for m1.
+    const first = enrichCatalog(
+      inputsFor(seed, {
+        'm1:7b': { ref: 'm1:7b', source: 'huggingface', downloads: 5000, likes: 40 },
+      }),
+    ).catalog;
+    expect(first.models[0]?.popularity).toEqual({
+      downloads: 5000,
+      likes: 40,
+      source: 'huggingface',
+    });
+
+    // This run resolves NO metadata, but the previous catalog is in inputs.
+    const again = enrichCatalog({ ...inputsFor(seed, {}), previous: first }).catalog;
+    expect(again.models[0]?.popularity).toEqual({
+      downloads: 5000,
+      likes: 40,
+      source: 'huggingface',
+    });
+  });
+
+  it('still omits popularity when neither this run nor the previous catalog has it', () => {
+    const seed = specialistSeed('m1', 'm1:7b');
+    const first = enrichCatalog(inputsFor(seed, {})).catalog;
+    const again = enrichCatalog({ ...inputsFor(seed, {}), previous: first }).catalog;
+    expect(again.models[0]?.popularity).toBeUndefined();
+  });
+});
+
+// ---- MP-A-8: the no-op updated stamp ----
+
+describe('updated timestamp no-op stamp (MP-A-8)', () => {
+  const today = new Date().toISOString().slice(0, 10);
+
+  it('carries the previous updated stamp forward on a true no-op build', () => {
+    const seed = specialistSeed('m1', 'm1:7b');
+    const first = enrichCatalog(inputsFor(seed, {})).catalog;
+    // Byte-identical content, only an older stamp: the signature matches.
+    const previous = { ...first, updated: '2020-01-01' };
+    const again = enrichCatalog({ ...inputsFor(seed, {}), previous }).catalog;
+    expect(again.updated).toBe('2020-01-01');
+  });
+
+  it('advances the stamp to today when content actually changed', () => {
+    const seed = specialistSeed('m1', 'm1:7b');
+    const first = enrichCatalog(inputsFor(seed, {})).catalog;
+    // Previous carried different model copy, so the content signature differs.
+    // (Popularity is deliberately NOT the lever here: MP-F5 carry-forward would
+    // copy a prior number into this run and mask the change.)
+    const previous = {
+      ...first,
+      updated: '2020-01-01',
+      models: [{ ...first.models[0]!, tagline: 'An older tagline.' }],
+    };
+    const again = enrichCatalog({ ...inputsFor(seed, {}), previous }).catalog;
+    expect(again.updated).toBe(today);
+  });
+});

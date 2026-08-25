@@ -47,6 +47,9 @@ jobs:
     # unset secret resolves to an empty string.
     env:
       MARKETING_DEPLOY_TOKEN: ${{ secrets.MARKETING_DEPLOY_TOKEN }}
+      # Optional: an authenticated Hugging Face token lifts the anonymous rate
+      # limit on the popularity fetch. Absent, the build stays anonymous.
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
       - name: Check out the engine repo
         uses: actions/checkout@v4

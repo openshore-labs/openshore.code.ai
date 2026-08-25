@@ -2,10 +2,10 @@
 // from the SPDX allow-list table, never synthesizes one from a source tag, and
 // takes the human note ONLY from the editorial overlay. A model whose license
 // id is missing or unmapped does not clear the curated gate: it is dropped.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { enrichCatalog } from '../scripts/build-catalog/enrich.js';
 import { resolveLicense } from '../scripts/build-catalog/licenses.table.js';
-import type { BuildInputs } from '../scripts/build-catalog/types.js';
+import type { BuildInputs, ModelMetadata } from '../scripts/build-catalog/types.js';
 
 function seedWith(licenseId: string) {
   return {
@@ -77,5 +77,47 @@ describe('license fail-closed', () => {
     // No overlay note means no note at all. The seed note is never carried.
     const withoutOverlay = enrichCatalog(inputs(seedWith('Apache-2.0')));
     expect(withoutOverlay.catalog.models[0]?.license.note).toBeUndefined();
+  });
+
+  it('publishes the commercial flag from the allow-list row (MP-A-6)', () => {
+    const ok = enrichCatalog(inputs(seedWith('Apache-2.0')));
+    expect(ok.catalog.models[0]?.license.commercial).toBe('ok');
+    const gated = enrichCatalog(inputs(seedWith('Llama-3.1-Community')));
+    expect(gated.catalog.models[0]?.license.commercial).toBe('gated');
+  });
+});
+
+// ---- MP-A-5: license drift is a loud warning, never a drop ----
+
+function metaWith(licenseTag: string): Record<string, ModelMetadata> {
+  // Keyed by the seed model's source ref (model-one:7b).
+  return { 'model-one:7b': { ref: 'model-one:7b', source: 'huggingface', licenseTag } };
+}
+
+function inputsWithMeta(seed: unknown, metadata: Record<string, ModelMetadata>): BuildInputs {
+  return { seed, metadata, benchmarks: { m1: { HumanEval: 92 } }, evals: {}, overlay: {} };
+}
+
+describe('license drift signal (MP-A-5)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('warns loudly but keeps the model when the source tag disagrees with the assigned id', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { catalog } = enrichCatalog(inputsWithMeta(seedWith('Apache-2.0'), metaWith('mit')));
+    // The model survives (the assigned id wins, fail-closed from the allow-list).
+    expect(catalog.models).toHaveLength(1);
+    expect(catalog.models[0]?.license.id).toBe('Apache-2.0');
+    // And a drift warning naming both sides was logged.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/license drift for "m1"/);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/"mit"/);
+  });
+
+  it('does not warn when the source tag matches (case-insensitively)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    enrichCatalog(inputsWithMeta(seedWith('Apache-2.0'), metaWith('apache-2.0')));
+    expect(warn).not.toHaveBeenCalled();
   });
 });

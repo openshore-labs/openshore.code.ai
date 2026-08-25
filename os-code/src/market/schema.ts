@@ -24,6 +24,10 @@ export const CatalogLicenseSchema = z.object({
   url: z.string().optional(),
   /** One honest sentence: commercial use, restrictions, gotchas. */
   note: z.string().optional(),
+  /** The machine-known commercial posture, published by the builder from the
+   *  SPDX allow-list. OPTIONAL for back-compat: older catalogs omit it and the
+   *  client falls back to its own id-to-posture table. */
+  commercial: z.enum(['ok', 'non-commercial', 'gated']).optional(),
 });
 
 // The capability taxonomy (router/roles.ts). Promoted to a shared const so the
