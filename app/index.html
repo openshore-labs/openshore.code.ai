@@ -23,7 +23,14 @@
       Boot splash. Painted the instant the document parses, before the bundle
       loads and React mounts, so opening OpenShore never shows a blank window
       (desktop Electron) or the gap between the iOS launch image and the first
-      React frame. main.tsx fades and removes it once the app has rendered.
+      React frame. Deliberately unhurried, modeled on the Claude iOS app's
+      opening: the mark scales and fades in, HOLDS for a beat (main.tsx enforces
+      a minimum on-screen time so it never flashes past on a fast device), then
+      the whole splash scales through and cross-fades as the app arrives.
+
+      Timing knobs live in two places, tune both together:
+        - entrance + exit durations/curves here in this <style>
+        - SPLASH_MIN_MS (the hold) in src/main.tsx
       Inline styles are allowed by the CSP's style-src 'unsafe-inline'.
     -->
     <style>
@@ -38,16 +45,24 @@
         gap: 16px;
         background: #f6f4ef;
         opacity: 1;
-        transition: opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+        transform: scale(1);
+        /* Exit: the whole lockup eases up and dissolves as the app appears. */
+        transition:
+          opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
       }
       #boot-splash.boot-splash-hidden {
         opacity: 0;
+        transform: scale(1.05);
         pointer-events: none;
       }
       #boot-splash .boot-mark {
-        width: 72px;
-        height: 72px;
-        animation: boot-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        width: 76px;
+        height: 76px;
+        /* Entrance: scale + fade in, easeOutQuint. `backwards` fill holds the
+           from-state during any delay and reverts to the natural scale(1)
+           after, so it never fights the container's exit transform. */
+        animation: boot-rise 0.62s cubic-bezier(0.22, 1, 0.36, 1) backwards;
       }
       #boot-splash .boot-wordmark {
         font-family:
@@ -62,8 +77,7 @@
         font-size: 24px;
         letter-spacing: -0.01em;
         color: #1c2a33;
-        animation: boot-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-        animation-delay: 0.04s;
+        animation: boot-rise 0.62s cubic-bezier(0.22, 1, 0.36, 1) 0.09s backwards;
       }
       #boot-splash .boot-wordmark .boot-accent {
         color: #2f5a66;
@@ -71,11 +85,11 @@
       @keyframes boot-rise {
         from {
           opacity: 0;
-          transform: translateY(6px);
+          transform: scale(0.86);
         }
         to {
           opacity: 1;
-          transform: translateY(0);
+          transform: scale(1);
         }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -83,7 +97,11 @@
         #boot-splash .boot-mark,
         #boot-splash .boot-wordmark {
           animation: none;
-          transition: none;
+          transition: opacity 0.3s linear;
+          transform: none;
+        }
+        #boot-splash.boot-splash-hidden {
+          transform: none;
         }
       }
     </style>
