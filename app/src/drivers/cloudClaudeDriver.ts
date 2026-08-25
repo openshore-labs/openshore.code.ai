@@ -6,6 +6,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
+import { effortDirective } from '../lib/effort.js';
+import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 
 // contextWindow is the model's real token budget, used for the context meter.
 // Claude's standard window is 200k tokens; keep these in step with the models.
@@ -70,20 +72,39 @@ export class CloudClaudeDriver implements ChatDriver {
     return this.emitter.subscribe(sink);
   }
 
-  send(text: string): void {
-    void this.run(text);
+  send(text: string, attachments?: Attachment[]): void {
+    void this.run(text, attachments);
   }
 
-  private async run(text: string): Promise<void> {
+  private async run(text: string, attachments?: Attachment[]): Promise<void> {
     this.emitter.emit({ type: 'task-start', input: text });
     this.emitter.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
-    this.history.push({ role: 'user', content: text });
+    // Vision: fold image attachments into the user turn as base64 image blocks
+    // (the shape the Anthropic messages API takes). With no images it stays a
+    // plain string, unchanged.
+    const imageBlocks = (attachments ?? [])
+      .map(imageBlockParts)
+      .filter((p): p is { mediaType: string; base64: string } => Boolean(p))
+      .map(
+        (p): Anthropic.ImageBlockParam => ({
+          type: 'image',
+          source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
+        }),
+      );
+    if (imageBlocks.length) {
+      this.history.push({
+        role: 'user',
+        content: [...imageBlocks, { type: 'text', text }],
+      });
+    } else {
+      this.history.push({ role: 'user', content: text });
+    }
 
     try {
       const stream = this.client.messages.stream({
         model: this.model,
         max_tokens: 16000,
-        system: SYSTEM_PROMPT,
+        system: [SYSTEM_PROMPT, effortDirective()].join('\n'),
         messages: this.history,
       });
       this.activeStream = stream;
