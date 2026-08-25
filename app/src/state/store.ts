@@ -226,6 +226,9 @@ export interface AppSettings {
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
+  /** Appearance: follow the system (default), or pin light or dark. Device
+   *  local by nature (a per-device viewing preference). */
+  theme?: 'system' | 'light' | 'dark';
   /** Reasoning effort for new turns, the same idea Claude exposes. Defaults to
    *  'high'. Chosen from the top of the model sheet. */
   effort?: Effort;

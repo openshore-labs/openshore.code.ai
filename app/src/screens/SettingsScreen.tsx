@@ -151,6 +151,36 @@ export function SettingsScreen() {
 
         <SignInCard />
 
+        <div className="card">
+          <div className="card-row">
+            <h3 style={{ marginBottom: 0 }}>Appearance</h3>
+          </div>
+          <p className="hint" style={{ marginTop: 2 }}>
+            Follow your system, or pin light or dark. This stays on this device.
+          </p>
+          <div
+            className="segmented"
+            role="tablist"
+            aria-label="Appearance"
+            style={{ marginTop: 10 }}
+          >
+            {(['system', 'light', 'dark'] as const).map((t) => {
+              const active = (settings.theme ?? 'system') === t;
+              return (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={active}
+                  className={`seg press-fb${active ? ' active' : ''}`}
+                  onClick={() => void saveSettings({ theme: t })}
+                >
+                  {t === 'system' ? 'System' : t === 'light' ? 'Light' : 'Dark'}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {account ? (
           <div className="card">
             <div className="card-row">
@@ -350,9 +380,7 @@ export function SettingsScreen() {
           </div>
         </div>
 
-        <p className="hint">
-          OpenShore. Familiar where it should be, yours where it matters.
-        </p>
+        <p className="hint">OpenShore. Familiar where it should be, yours where it matters.</p>
       </div>
     </div>
   );
