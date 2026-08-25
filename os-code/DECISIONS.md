@@ -79,3 +79,14 @@ execution contract. Newest at the bottom.
   needing a real multi-writer backend (not a synced folder) for the
   organization tier, since consumer cloud drives do not solve concurrent
   writers. "Vault" is a working name, not settled.
+- **Off-device is where long work runs (standing principle, founder call
+  2026-08-25).** Any feature that kicks off long or agentic work runs that work
+  off the phone (on the user's daemon, or a cloud runner), as a durable,
+  journaled, resumable job with a completion notification, never as an
+  in-app-process task that dies when iOS suspends the app. The phone is a remote
+  control and a viewer, not the compute. Rationale: iOS grants no app
+  minutes-long background compute, so on-device (Harbor / pocket) turns simply
+  cannot continue while the app is closed; the desktop-daemon path already runs
+  the loop off-device and journals every step for replay, which is why it is the
+  path that behaves like Claude Code. New long-running features should target
+  that path (or a future cloud runner) by design.
