@@ -39,10 +39,12 @@
         inset: 0;
         z-index: 2147483647;
         display: flex;
-        flex-direction: column;
+        /* Horizontal lockup: wave-mark tile beside the wordmark, on one row,
+           the same two-part shape as the in-app greeting. */
+        flex-direction: row;
         align-items: center;
         justify-content: center;
-        gap: 16px;
+        gap: 14px;
         background: #f6f4ef;
         opacity: 1;
         transform: scale(1);
@@ -57,25 +59,23 @@
         pointer-events: none;
       }
       #boot-splash .boot-mark {
-        width: 76px;
-        height: 76px;
+        width: 56px;
+        height: 56px;
         /* Entrance: scale + fade in, easeOutQuint. `backwards` fill holds the
            from-state during any delay and reverts to the natural scale(1)
            after, so it never fights the container's exit transform. */
         animation: boot-rise 0.62s cubic-bezier(0.22, 1, 0.36, 1) backwards;
       }
       #boot-splash .boot-wordmark {
-        font-family:
-          ui-rounded,
-          'SF Pro Rounded',
-          system-ui,
-          -apple-system,
-          'Segoe UI',
-          Roboto,
-          sans-serif;
+        /* The greeting's display serif (Fraunces), mirrored here so the splash
+           and the in-app greeting read as one wordmark. Fraunces is loaded via
+           @font-face in theme.css (font-display: swap), so this falls back to
+           Georgia for the first paint and swaps in when the bundle's CSS lands,
+           the same behavior as the greeting. */
+        font-family: 'Fraunces', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
         font-weight: 500;
-        font-size: 24px;
-        letter-spacing: -0.01em;
+        font-size: 36px;
+        letter-spacing: 0.02em;
         color: #1c2a33;
         animation: boot-rise 0.62s cubic-bezier(0.22, 1, 0.36, 1) 0.09s backwards;
       }
