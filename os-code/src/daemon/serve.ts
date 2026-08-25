@@ -235,6 +235,13 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 400, { ok: false, error: 'Send a valid repo cwd.' });
         return;
       }
+      if (!isOutboxAllowedPath(cwd, options.config)) {
+        sendJson(res, 403, {
+          ok: false,
+          error: 'This repo is not an allowed outbox target on this machine.',
+        });
+        return;
+      }
       const request = body as unknown as OutboxApplyRequest;
       if (
         !request.clientOpId ||
@@ -269,10 +276,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 400, { error: 'Send cwd and commit.' });
         return;
       }
+      if (!isOutboxAllowedPath(cwd, options.config)) {
+        sendJson(res, 403, { error: 'This repo is not an allowed outbox target on this machine.' });
+        return;
+      }
       try {
         sendJson(res, 200, await verifyCommit({ cwd, commit, branch }));
-      } catch {
-        sendJson(res, 200, { exists: false, onBranch: false });
+      } catch (err) {
+        // R-15: a thrown lookup error is not proof the commit is missing.
+        // Returning {exists:false} makes a landed commit look failed and the
+        // phone marks its buffered item failed. Surface a 500 so the client
+        // keeps the item and retries, instead of a false negative.
+        sendJson(res, 500, { error: (err as Error).message });
       }
       return;
     }
@@ -469,6 +484,26 @@ export function isAdminProvisionedWorkspace(cwd: string): boolean {
   const managed = resolve(join(homedir(), 'OSCode'));
   const target = resolve(cwd);
   return target === managed || target.startsWith(managed + sep);
+}
+
+/**
+ * The outbox apply/verify endpoints take a repo path from the request body.
+ * Without a gate, any member token can commit and push to ANY repo on the
+ * admin's machine using the admin's ambient git credentials (a cross-repo
+ * escalation and an exfil path). Restrict both endpoints to the same
+ * admin-provisioned workspaces sessions use, plus any explicit
+ * daemon.outboxAllowedRoots (for a home repo outside ~/OSCode). Enforced for
+ * every caller, admins included: there is no legitimate apply/verify to a repo
+ * outside the configured set.
+ */
+export function isOutboxAllowedPath(cwd: string, config: OscConfig): boolean {
+  if (isAdminProvisionedWorkspace(cwd)) return true;
+  const target = resolve(cwd);
+  for (const root of config.daemon.outboxAllowedRoots ?? []) {
+    const allowed = resolve(root);
+    if (target === allowed || target.startsWith(allowed + sep)) return true;
+  }
+  return false;
 }
 
 /** Recent workspaces: session cwds, newest first, deduped, existing only. */

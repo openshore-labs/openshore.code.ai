@@ -124,12 +124,22 @@ export function backlinksTo(
   return out;
 }
 
+/** Obsidian embeds: ![[Target]]. Not rendered inline yet, so they are turned
+ *  into an explicit chip rather than a broken image (the vault: src would be
+ *  stripped by the markdown renderer and show a broken-image glyph). */
+const EMBED = /!\[\[([^\][|#^\n]+)(?:[#^][^\][|\n]*)?(?:\|([^\][\n]+))?\]\]/g;
+
 /** Rewrite wikilinks into standard markdown links carrying a vault: scheme,
  *  so the existing react-markdown renderer emits real anchors the Vault
  *  screen intercepts. Unresolved targets still get a link (they open as a
- *  fresh note), flagged with a query so the UI can style them dashed. */
+ *  fresh note), flagged with a query so the UI can style them dashed. Embeds
+ *  are handled first so their inner [[...]] is not also linked. */
 export function wikilinksToMarkdown(text: string, paths: string[]): string {
-  return text.replace(WIKILINK, (_m, rawTarget: string, rawAlias?: string) => {
+  const withoutEmbeds = text.replace(EMBED, (_m, rawTarget: string, rawAlias?: string) => {
+    const name = rawAlias?.trim() || rawTarget.trim();
+    return `\`embed not supported yet: ${name}\``;
+  });
+  return withoutEmbeds.replace(WIKILINK, (_m, rawTarget: string, rawAlias?: string) => {
     const target = rawTarget.trim();
     const alias = rawAlias?.trim();
     const resolved = resolveWikilink(target, paths);

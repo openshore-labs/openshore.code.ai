@@ -36,7 +36,26 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func resourceRoot(_ resourceId: String) -> URL? {
-        documentsRoot()?.appendingPathComponent(resourceId, isDirectory: true)
+        // A resource id names one vault or repo; it is never a path. Reject any
+        // separators or dot-dot so it cannot climb out of the Documents scope.
+        if resourceId.contains("/") || resourceId.contains("\\") || resourceId.contains("..") {
+            return nil
+        }
+        return documentsRoot()?.appendingPathComponent(resourceId, isDirectory: true)
+    }
+
+    /// Resolve a note path under a resource root, refusing any result that
+    /// escapes the root. The JS layer already strips dot-dot, but the plugin
+    /// must not trust it: a climb here could overwrite a sibling resource's
+    /// files or its lock (SEC path jail, native side).
+    private func confinedURL(_ root: URL, _ path: String) -> URL? {
+        let candidate = root.appendingPathComponent(path).standardizedFileURL
+        let base = root.standardizedFileURL
+        let basePrefix = base.path.hasSuffix("/") ? base.path : base.path + "/"
+        guard candidate.path != base.path, candidate.path.hasPrefix(basePrefix) else {
+            return nil
+        }
+        return candidate
     }
 
     @objc func available(_ call: CAPPluginCall) {
@@ -85,10 +104,28 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("iCloud is not available on this device.")
             return
         }
-        let url = root.appendingPathComponent(path)
+        guard let url = confinedURL(root, path) else {
+            call.reject("Invalid path.")
+            return
+        }
         coordinatorQueue.async {
+            let fm = FileManager.default
             // Ask iCloud to pull down a placeholder before the coordinated read.
-            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            try? fm.startDownloadingUbiquitousItem(at: url)
+            func downloadingStatus() -> URLUbiquitousItemDownloadingStatus? {
+                return (try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?
+                    .ubiquitousItemDownloadingStatus
+            }
+            // A not-yet-downloaded note is a placeholder, not a missing file.
+            // Wait briefly for it to materialize so the app is never told the
+            // note does not exist (which would open it empty and save the empty
+            // body back over the cloud copy). Bounded so a genuinely missing
+            // file still returns promptly.
+            var waited = 0.0
+            while let status = downloadingStatus(), status != .current, waited < 3.0 {
+                Thread.sleep(forTimeInterval: 0.2)
+                waited += 0.2
+            }
             var text: String?
             var updatedAt = Date().iso8601
             var coordError: NSError?
@@ -101,6 +138,10 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let text = text {
                 call.resolve(["found": true, "text": text, "updatedAt": updatedAt])
+            } else if let status = downloadingStatus(), status != .current {
+                // The file exists in iCloud but is not downloaded here yet. Tell
+                // the app so it shows a downloading state, never an empty note.
+                call.resolve(["found": false, "downloading": true])
             } else {
                 call.resolve(["found": false])
             }
@@ -118,7 +159,10 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("iCloud is not available on this device.")
             return
         }
-        let url = root.appendingPathComponent(path)
+        guard let url = confinedURL(root, path) else {
+            call.reject("Invalid path.")
+            return
+        }
         coordinatorQueue.async {
             let fm = FileManager.default
             try? fm.createDirectory(at: url.deletingLastPathComponent(),
@@ -147,7 +191,10 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("iCloud is not available on this device.")
             return
         }
-        let url = root.appendingPathComponent(path)
+        guard let url = confinedURL(root, path) else {
+            call.reject("Invalid path.")
+            return
+        }
         coordinatorQueue.async {
             var coordError: NSError?
             NSFileCoordinator().coordinate(writingItemAt: url, options: [.forDeleting], error: &coordError) { u in
