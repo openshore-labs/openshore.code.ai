@@ -225,6 +225,12 @@ export class RemoteDriver implements ChatDriver {
         }
         this.notFoundStreak = 0;
         if (!res.ok || !res.body) throw new Error(`daemon answered ${res.status}`);
+        // A successful reconnect (even before the first frame, and even on an
+        // idle session that only sends keepalives) means the outage is over.
+        // Reset here so backoff and the blip flag do not stay degraded on an
+        // idle stream that never emits a productive frame (TS-P2-3).
+        this.outageBlipped = false;
+        backoffMs = 600;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
