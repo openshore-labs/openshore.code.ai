@@ -58,3 +58,14 @@ verify_jwt = true
 # user, so no JWT; trust comes from the signed payload's Apple signature.
 [functions.apple-notifications]
 verify_jwt = false
+
+# A signed-in user mints a push-capability grant for their desktop daemon, so the
+# caller's JWT is required.
+[functions.push-grant]
+verify_jwt = true
+
+# The desktop daemon calls push-send with an opaque grant, not a user JWT, so no
+# JWT here; trust comes from the grant, which resolves the target user and
+# devices server-side (never from the request body).
+[functions.push-send]
+verify_jwt = false
