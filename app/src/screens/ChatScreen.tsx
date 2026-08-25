@@ -4,7 +4,7 @@
 // header that names the chat.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
-import { sourceLabel, type ConversationSource } from '../state/types.js';
+import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
 import { Composer } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
@@ -76,6 +76,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       <Composer
         busy={Boolean(thread?.busy)}
         source={composerSource}
+        visionSupported={sourceSupportsVision(composerSource)}
         onOpenModelSheet={() => setSheetOpen(true)}
         onSend={(text, attachments) => {
           if (!conv) {

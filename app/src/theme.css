@@ -1030,6 +1030,9 @@ textarea {
 .composer-add:hover {
   background: var(--surface-hover);
 }
+.composer-add.muted {
+  opacity: 0.5;
+}
 
 .composer-pill {
   font-size: 12.5px;

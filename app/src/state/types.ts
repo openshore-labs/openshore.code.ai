@@ -231,3 +231,15 @@ export function sourceLabel(source: ConversationSource): string {
 function isProbablyPhone(): boolean {
   return typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
 }
+
+// Can this brain actually see an attached image? Resolved at send time, per the
+// CTO's ruling: default false everywhere, opt in only where vision genuinely
+// works, so an image is never silently dropped into a text-only model. Today
+// that is Claude on its own driver (every current Claude 5 model reads images).
+// Extend here when a direct BYOM/OpenAI/Gemini vision chat or a vision pocket
+// model lands, or when the desktop daemon carries image blocks; keep the
+// default false.
+export function sourceSupportsVision(source?: ConversationSource): boolean {
+  if (!source) return false;
+  return source.kind === 'cloud' && source.provider === 'anthropic';
+}
