@@ -1328,19 +1328,19 @@ textarea {
    composer and the keyboard. Padding by the keyboard's own height closes that
    gap: the field is already inside the visible area, so there is nothing left
    for the auto-scroll to correct. Zero (the var's fallback) when no keyboard is
-   up, so this never affects the non-keyboard layout. 16px base gap, per
-   founder direction.
+   up, so this never affects the non-keyboard layout. 4px base gap, per founder
+   direction (was 16px, still read as too wide on device).
 
    max(), not +: --safe-bottom (the home-indicator clearance) and --kb-inset
    both describe the SAME strip of screen once the keyboard is up (the keyboard
-   already covers the home-indicator area entirely), so adding them stacked an
-   extra ~30-40px of unwanted gap on top of the intended 16px. Take whichever
-   is larger instead: --safe-bottom alone with no keyboard, --kb-inset alone
-   once there is one. */
+   already covers the home-indicator area entirely), so adding them stacks
+   unwanted extra gap on top of the intended base. Take whichever is larger
+   instead: --safe-bottom alone with no keyboard, --kb-inset alone once there
+   is one. */
 @media (pointer: coarse) {
   .composer-wrap {
     margin-top: auto;
-    padding-bottom: calc(16px + max(var(--safe-bottom), var(--kb-inset, 0px)));
+    padding-bottom: calc(4px + max(var(--safe-bottom), var(--kb-inset, 0px)));
   }
 }
 
@@ -1953,7 +1953,7 @@ textarea {
       only ever shrink to whatever room is actually left above the composer,
       never overflow the screen. justify-content: flex-end plus a small
       padding hugs it directly above the composer, which is itself hugging the
-      keyboard (see --kb-inset above) with the same 16px gap.
+      keyboard (see --kb-inset above) with its own, much smaller gap.
    2. FROZEN (.greeting-frozen, added by useKeyboardInset in ChatScreen once
       the keyboard has genuinely opened and settled): flex: none locks the box
       at exactly the height it had a moment ago, --greeting-frozen-height. From
