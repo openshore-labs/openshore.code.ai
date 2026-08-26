@@ -364,6 +364,18 @@ ipcMain.handle(
   ) => host.answerApproval(sessionId, approvalId, answer),
 );
 
+// Chat-to-terminal lane. runCommand returns the runId the renderer drives with
+// stdin/kill; command output arrives as command-* events on osc:event.
+ipcMain.handle('osc:runCommand', (_e, sessionId: string, command: string) =>
+  host.runCommand(sessionId, command),
+);
+ipcMain.handle('osc:sendCommandStdin', (_e, sessionId: string, runId: string, data: string) =>
+  host.sendCommandStdin(sessionId, runId, data),
+);
+ipcMain.handle('osc:killCommand', (_e, sessionId: string, runId: string) =>
+  host.killCommand(sessionId, runId),
+);
+
 ipcMain.handle('osc:status', () => host.status());
 ipcMain.handle('osc:catalog', () => host.catalog());
 ipcMain.handle('osc:stackHealth', (_e, range?: string) =>

@@ -8,8 +8,11 @@ import { ElectronDriver } from '../src/drivers/electronDriver.js';
 
 type EventPayload = { sessionId: string; seq: number; event: DriverEvent };
 
-function installBridge() {
+type CommandCall = { method: string; args: unknown[] };
+
+function installBridge(runId: string | undefined = 'r1') {
   let liveCb: ((p: EventPayload) => void) | undefined;
+  const calls: CommandCall[] = [];
   (globalThis as unknown as { window: unknown }).window = {
     oscode: {
       onEvent: (cb: (p: EventPayload) => void) => {
@@ -18,9 +21,21 @@ function installBridge() {
           liveCb = undefined;
         };
       },
+      runCommand: (...args: unknown[]) => {
+        calls.push({ method: 'runCommand', args });
+        return Promise.resolve(runId);
+      },
+      sendCommandStdin: (...args: unknown[]) => {
+        calls.push({ method: 'sendCommandStdin', args });
+        return Promise.resolve();
+      },
+      killCommand: (...args: unknown[]) => {
+        calls.push({ method: 'killCommand', args });
+        return Promise.resolve();
+      },
     },
   };
-  return { emitLive: (p: EventPayload) => liveCb?.(p) };
+  return { emitLive: (p: EventPayload) => liveCb?.(p), calls };
 }
 
 describe('ElectronDriver journal replay (G1)', () => {
@@ -68,6 +83,80 @@ describe('ElectronDriver journal replay (G1)', () => {
     const seen: number[] = [];
     driver.subscribe((_event, seq) => seen.push(seq));
     expect(seen).toEqual([]);
+    driver.dispose();
+  });
+});
+
+describe('ElectronDriver chat-to-terminal lane', () => {
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window;
+  });
+
+  it('runCommand forwards the sessionId and returns the runId', async () => {
+    const bridge = installBridge('run-42');
+    const driver = new ElectronDriver('s1');
+    const runId = await driver.runCommand('npm test');
+    expect(runId).toBe('run-42');
+    expect(bridge.calls).toEqual([{ method: 'runCommand', args: ['s1', 'npm test'] }]);
+    driver.dispose();
+  });
+
+  it('sendStdin and killCommand forward the sessionId and runId', () => {
+    const bridge = installBridge();
+    const driver = new ElectronDriver('s1');
+    driver.sendStdin('run-7', 'y\n');
+    driver.killCommand('run-7');
+    expect(bridge.calls).toEqual([
+      { method: 'sendCommandStdin', args: ['s1', 'run-7', 'y\n'] },
+      { method: 'killCommand', args: ['s1', 'run-7'] },
+    ]);
+    driver.dispose();
+  });
+
+  it('command-* events for this session reach the sink (CommandCard renders)', () => {
+    const bridge = installBridge();
+    const driver = new ElectronDriver('s1');
+    const seen: Array<{ seq: number; type: string }> = [];
+    driver.subscribe((event, seq) => seen.push({ seq, type: event.type }));
+
+    bridge.emitLive({
+      sessionId: 's1',
+      seq: 4,
+      event: {
+        type: 'command-start',
+        runId: 'run-7',
+        command: 'ls',
+        cwd: '/tmp',
+        source: 'user',
+      } as DriverEvent,
+    });
+    bridge.emitLive({
+      sessionId: 's1',
+      seq: 5,
+      event: {
+        type: 'command-output',
+        runId: 'run-7',
+        chunk: 'file',
+        stream: 'stdout',
+      } as DriverEvent,
+    });
+    bridge.emitLive({
+      sessionId: 's1',
+      seq: 6,
+      event: {
+        type: 'command-end',
+        runId: 'run-7',
+        exitCode: 0,
+        durationMs: 12,
+        truncated: false,
+      } as DriverEvent,
+    });
+
+    expect(seen).toEqual([
+      { seq: 4, type: 'command-start' },
+      { seq: 5, type: 'command-output' },
+      { seq: 6, type: 'command-end' },
+    ]);
     driver.dispose();
   });
 });

@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld('oscode', {
   answerApproval: invoke('osc:answerApproval'),
   onEvent: listen('osc:event'),
 
+  runCommand: invoke('osc:runCommand'),
+  sendCommandStdin: invoke('osc:sendCommandStdin'),
+  killCommand: invoke('osc:killCommand'),
+
   status: invoke('osc:status'),
   catalog: invoke('osc:catalog'),
   stackHealth: invoke('osc:stackHealth'),

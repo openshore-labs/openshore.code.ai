@@ -143,6 +143,26 @@ export class EngineHost {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
   }
 
+  // ---------------------------------------------------- chat-to-terminal lane
+  // The owner's tap on the desktop IS the approval, so runCommand runs straight
+  // away. Output streams back as command-* events on the same LocalDriver the
+  // host already subscribed in attach(), so nothing extra forwards them: they
+  // ride the existing osc:event channel and the CommandCard renders for free.
+
+  runCommand(sessionId: string, command: string): string | undefined {
+    const driver = this.drivers.get(sessionId);
+    if (!driver) return undefined;
+    return driver.runCommand(command, { source: 'user' }).runId;
+  }
+
+  sendCommandStdin(sessionId: string, runId: string, data: string): void {
+    this.drivers.get(sessionId)?.writeCommandStdin(runId, data);
+  }
+
+  killCommand(sessionId: string, runId: string): void {
+    this.drivers.get(sessionId)?.killCommand(runId);
+  }
+
   // ------------------------------------------------------------------ status
 
   async status() {
