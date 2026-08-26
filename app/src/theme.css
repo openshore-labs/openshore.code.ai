@@ -253,6 +253,20 @@ textarea {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* Everything below the header. Its own flex column (rather than putting
+   .greeting/.composer-wrap directly in .shell-main) gives the greeting a
+   position: relative reference point that starts exactly where the header
+   ends, with no need to know the header's own height (it varies with
+   safe-area-inset-top): .greeting's position: absolute top: 0 (touch only,
+   see below) lands right after the header for free, through normal document
+   flow, not arithmetic. */
+.chat-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   position: relative;
 }
 
@@ -1942,47 +1956,41 @@ textarea {
   gap: 18px;
 }
 
-/* Touch devices only: two states, per founder direction, not a continuous
-   reaction to the keyboard.
-   1. UNFROZEN (keyboard rising, or not yet measured): stays flex: 1, so it can
-      only ever shrink to whatever room is actually left above the composer,
-      never overflow the screen. justify-content: flex-end plus a small
-      padding hugs it directly above the composer, which is itself hugging the
-      keyboard (see --kb-inset above) with its own, much smaller gap.
-   2. FROZEN (.greeting-frozen, added by useKeyboardInset in ChatScreen once
-      the keyboard has genuinely opened and settled): taken OUT of the flex
-      flow entirely (position: absolute, against .shell-main's own
-      position: relative) and pinned at exactly the spot it had a moment ago,
-      --greeting-frozen-top / --greeting-frozen-height. From here it never
-      changes again for the rest of this empty state, keyboard dismissed or
-      not; the composer keeps tracking the keyboard live and is free to drop
-      to the bottom of the screen on its own once the greeting is no longer in
-      the flex column competing for space, so a gap opens up below the
-      greeting if the keyboard closes without a message being sent. That is
-      the intended trade-off: the greeting is anchored, full stop. Absolute
-      positioning (not just flex: none) is required here: a flex: none
-      greeting still sits IN the column, so the composer's own margin-top:
-      auto redistributes any space it reclaims on keyboard-close BETWEEN the
-      greeting and the composer, pulling the "frozen" greeting up the screen
-      right along with it.
-   A fixed height WITHOUT this two-step measure-then-freeze is what caused the
-   whole page to scroll off-screen on a shorter phone: a rigid height doesn't
-   know if the keyboard actually leaves that much room, and when it doesn't,
-   WKWebView's own "scroll the focused field into view" kicks in and drags
-   everything, header included, up and off the top of the screen. Freezing a
-   height that was ALREADY correctly laid out (via flex: 1, while still
-   in-flow) guarantees it always fits, on every device. */
+/* Touch devices only: a plain, static position. No JS keyboard detection is
+   involved at all, on purpose: four attempts at detecting "the keyboard is
+   open" from JS (a --kb-inset threshold; that threshold plus a settle
+   debounce; that threshold plus a requestAnimationFrame settle; watching the
+   composer's own getBoundingClientRect() instead of viewport math) each
+   shipped a greeting that kept tracking the composer, because whichever JS
+   trigger was in play silently never fired on the founder's device. A rule
+   with no trigger at all cannot fail to fire.
+
+   Positioned absolute against .chat-body (see above), which starts exactly
+   where the header ends, so top: 0 lands right after the header for free,
+   through ordinary document flow, with no need to know the header's own
+   height (it varies with safe-area-inset-top). The height is pixel-measured
+   directly off the founder's own confirmed-correct keyboard-up screenshot:
+   the header-to-composer gap there is ~34.6% of screen height. Expressed as a
+   vh share so it holds across phone sizes, with a px cap so it does not
+   balloon on a tablet.
+
+   Being position: absolute (not flex: none) also means the greeting never
+   counts toward .chat-body's flex total, so on ANY device or keyboard height
+   it cannot push the composer down past where it actually fits, the failure
+   mode of an even earlier, in-flow fixed-height attempt (WKWebView's native
+   "scroll the focused field into view" dragging the whole page, header
+   included, off the top of the screen). Whatever height is picked here, the
+   composer's own layout (driven entirely by --kb-inset, confirmed correct) is
+   completely unaffected by it. */
 @media (pointer: coarse) {
   .greeting {
-    justify-content: flex-end;
-    padding-bottom: 16px;
-  }
-  .greeting.greeting-frozen {
     position: absolute;
     left: 0;
     right: 0;
-    top: var(--greeting-frozen-top);
-    height: var(--greeting-frozen-height);
+    top: 0;
+    height: min(34.6vh, 330px);
+    justify-content: flex-end;
+    padding-bottom: 16px;
   }
 }
 
