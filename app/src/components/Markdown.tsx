@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useApp } from '../state/store.js';
+import { hapticTick } from '../lib/haptics.js';
 
 function extractText(node: ReactNode): string {
   if (typeof node === 'string') return node;
@@ -62,7 +63,14 @@ function CodeBlock({ children }: { children?: ReactNode }) {
         {lang ? <span className="md-code-lang">{lang}</span> : <span />}
         <span className="md-code-actions">
           {runnable ? (
-            <button type="button" className="md-code-run press-fb" onClick={() => runCommand(code)}>
+            <button
+              type="button"
+              className="md-code-run press-fb"
+              onClick={() => {
+                hapticTick();
+                runCommand(code);
+              }}
+            >
               Run
             </button>
           ) : null}

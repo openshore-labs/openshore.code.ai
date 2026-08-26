@@ -1254,6 +1254,21 @@ textarea {
 .composer-pill:hover {
   background: var(--surface-hover);
 }
+.composer-pill-term {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.composer-pill-term.active {
+  background: var(--local-soft);
+  border-color: var(--local);
+  color: var(--local);
+}
+.send-btn.terminal {
+  background: var(--local);
+  font-family: var(--font-mono);
+}
 .composer-pill-mode {
   display: inline-flex;
   align-items: center;
