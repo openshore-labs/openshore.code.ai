@@ -487,14 +487,49 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           ...CORS_HEADERS,
         });
         res.write(':ok\n\n');
+        // A phone that roams networks can leave this socket half-open for
+        // minutes. Guard the writes (TS-P2-7): stop and tear down once the peer
+        // stops draining (backpressure) or the socket errors or idles, instead
+        // of buffering every event into a dead response forever.
+        let closed = false;
+        let backpressure = 0;
+        const teardown: Array<() => void> = [];
+        const cleanup = (): void => {
+          if (closed) return;
+          closed = true;
+          for (const fn of teardown.splice(0)) fn();
+        };
+        const safeWrite = (chunk: string): void => {
+          if (closed || res.writableEnded) return;
+          if (res.write(chunk)) {
+            backpressure = 0;
+            return;
+          }
+          backpressure += 1;
+          if (backpressure >= 5 || res.writableLength > 1_000_000) {
+            cleanup();
+            res.destroy();
+          }
+        };
+        // subscribe replays journaled events synchronously; if that replay
+        // already tripped the backpressure teardown, unsubscribe and stop before
+        // arming the keepalive.
         const unsubscribe = driver.subscribe((event, seq) => {
-          res.write(`id: ${seq}\ndata: ${JSON.stringify(event)}\n\n`);
+          safeWrite(`id: ${seq}\ndata: ${JSON.stringify(event)}\n\n`);
         }, since);
-        const keepalive = setInterval(() => res.write(':ka\n\n'), 15_000);
-        req.on('close', () => {
-          clearInterval(keepalive);
+        if (closed) {
           unsubscribe();
+          return;
+        }
+        teardown.push(unsubscribe);
+        const keepalive = setInterval(() => safeWrite(':ka\n\n'), 15_000);
+        teardown.push(() => clearInterval(keepalive));
+        res.socket?.setTimeout(120_000, () => {
+          cleanup();
+          res.destroy();
         });
+        req.on('close', cleanup);
+        res.on('error', cleanup);
         return;
       }
     }

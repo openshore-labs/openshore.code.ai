@@ -7,6 +7,7 @@
 import { useRef, useState } from 'react';
 import { sourceLabel, type ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
+import { hapticTick } from '../lib/haptics.js';
 import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
 import { fileToAttachment, type Attachment } from '../lib/attachments.js';
 import { useDictation } from '../hooks/useDictation.js';
@@ -55,8 +56,15 @@ export function Composer({
   onOpenModeSheet: () => void;
 }) {
   const { settings, showToast } = useApp();
+  const runCommand = useApp((s) => s.runCommand);
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Terminal mode: on a desktop-backed chat, the composer can send its text to
+  // the connected machine as a command instead of a prompt (the "type ls from
+  // the couch" path of the chat-to-terminal bridge).
+  const canRunCommands = source?.kind === 'desktop';
+  const [termMode, setTermMode] = useState(false);
+  const terminal = canRunCommands && termMode;
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +79,16 @@ export function Composer({
 
   const submit = () => {
     const text = value.trim();
+    // Terminal mode: run the text as a command on the connected machine, not a
+    // prompt. Output streams into the transcript as a command card.
+    if (terminal) {
+      if (!text) return;
+      runCommand(text);
+      hapticTick();
+      setValue('');
+      if (areaRef.current) areaRef.current.style.height = 'auto';
+      return;
+    }
     // Send-time guard (belt and suspenders to the + gate): never forward images
     // to a brain that cannot see them. The model can change between attach and
     // send, so re-check here.
@@ -147,7 +165,9 @@ export function Composer({
           ref={areaRef}
           rows={1}
           value={value}
-          placeholder={placeholder ?? 'Chat with OpenShore'}
+          placeholder={
+            terminal ? 'Run a command on your desktop' : (placeholder ?? 'Chat with OpenShore')
+          }
           onChange={(e) => {
             setValue(e.target.value);
             e.target.style.height = 'auto';
@@ -192,6 +212,20 @@ export function Composer({
             {permissionModeLabel(mode)}
           </button>
 
+          {canRunCommands ? (
+            <button
+              className={`composer-pill composer-pill-term press-fb${terminal ? ' active' : ''}`}
+              onClick={() => setTermMode((t) => !t)}
+              aria-pressed={terminal}
+              aria-label="Terminal mode: run the next message as a command"
+            >
+              <span className="pill-code" aria-hidden="true">
+                {'$'}
+              </span>
+              Terminal
+            </button>
+          ) : null}
+
           <div className="composer-row-spacer" />
 
           <button
@@ -202,18 +236,18 @@ export function Composer({
             <MicIcon />
           </button>
 
-          {busy ? (
+          {busy && !terminal ? (
             <button className="send-btn stop press-fb" onClick={onStop} aria-label="Stop">
               {'■'}
             </button>
           ) : (
             <button
-              className="send-btn press-fb"
+              className={`send-btn press-fb${terminal ? ' terminal' : ''}`}
               onClick={submit}
-              disabled={!value.trim() && attachments.length === 0}
-              aria-label="Send"
+              disabled={terminal ? !value.trim() : !value.trim() && attachments.length === 0}
+              aria-label={terminal ? 'Run command' : 'Send'}
             >
-              {'↑'}
+              {terminal ? '$' : '↑'}
             </button>
           )}
         </div>

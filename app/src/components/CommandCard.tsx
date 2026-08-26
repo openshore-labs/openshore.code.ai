@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ThreadItem } from '../state/types.js';
 import { useApp } from '../state/store.js';
+import { hapticTick } from '../lib/haptics.js';
 
 type CommandItem = Extract<ThreadItem, { kind: 'command' }>;
 
@@ -66,7 +67,10 @@ export function CommandCard({ item }: { item: CommandItem }) {
           <button
             type="button"
             className="command-kill press-fb"
-            onClick={() => killCommand(item.runId)}
+            onClick={() => {
+              hapticTick();
+              killCommand(item.runId);
+            }}
           >
             Kill
           </button>
