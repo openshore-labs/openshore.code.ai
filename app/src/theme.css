@@ -1903,12 +1903,12 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Anchored just above the composer, not centered in the page, the way the
-     Claude app opens. So when the keyboard lifts the composer, the mark and the
-     line ride up with it and stay right above it, instead of jumping to the top
-     and colliding with the status bar. */
-  justify-content: flex-end;
-  padding: 24px 24px 20px;
+  /* Centered in the open space between the header and the composer, so the mark
+     and the line sit in the middle of the page on launch. When the keyboard
+     lifts the composer, the greeting re-centers in the smaller remaining space
+     rather than jumping to the top and colliding with the status bar. */
+  justify-content: center;
+  padding: 24px;
   text-align: center;
   gap: 14px;
 }
