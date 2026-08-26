@@ -258,7 +258,7 @@ function PhonePair() {
     setState(health.detail);
     if (health.ok) {
       await saveSettings({ daemon: { baseUrl, token: token.trim() } });
-      showToast('Connected. Pick "Your desktop" to chat with its models, free.');
+      showToast('Connected. Pick your computer in the model menu to chat or code.');
     }
   };
 
