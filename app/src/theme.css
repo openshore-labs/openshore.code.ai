@@ -1967,10 +1967,10 @@ textarea {
   }
 }
 
-/* The greeting line is quietly tappable: it swaps between its language and the
-   English translation. No pointer cursor, no underline, no tooltip. The only
-   tell is the press scale from press-fb, so finding it feels like an Easter
-   egg. Keyboard users still get a focus ring. */
+/* The greeting line is quietly tappable: each tap rotates on to the next
+   language. No pointer cursor, no underline, no tooltip. The only tell is the
+   press scale from press-fb and one gentle nudge after landing, so finding it
+   still feels like an Easter egg. Keyboard users get a focus ring. */
 .greeting-line {
   pointer-events: auto;
   cursor: default;
@@ -1984,22 +1984,75 @@ textarea {
   outline-offset: 8px;
   border-radius: 12px;
 }
-/* Keyed on the shown language, so each swap remounts and crossfades in. Calm,
+/* The outgoing and incoming languages share one grid cell so the old word can
+   crossfade out over the new one without either reflowing the centered line. */
+.greeting-swap-stack {
+  display: inline-grid;
+}
+.greeting-swap-stack > .greeting-swap {
+  grid-area: 1 / 1;
+}
+/* The incoming language rises in as the outgoing one lifts away. transform and
    opacity only, never layout. */
 .greeting-swap {
   display: inline-block;
-  animation: greet-swap 0.32s var(--ease-standard) backwards;
+  animation: greet-swap var(--dur-5) var(--ease-arrive) backwards;
 }
 @keyframes greet-swap {
   from {
     opacity: 0;
+    transform: translateY(7px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* The old word lifts up and fades, then drops itself on animationend (see
+   ChatScreen). Defined after .greeting-swap so it wins the animation property
+   while both classes are on the exiting layer. */
+.greeting-swap-out {
+  animation: greet-swap-out var(--dur-4) var(--ease-standard) forwards;
+}
+@keyframes greet-swap-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-7px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .greeting-swap {
+  /* The incoming word appears instantly. Scoped off the exiting layer (which
+     also carries .greeting-swap) so its greet-swap-out is NOT killed here: it
+     stays on the global reset (0.01ms) so its animationend still fires and the
+     layer is still removed, instead of piling up. */
+  .greeting-swap:not(.greeting-swap-out) {
+    animation: none;
+  }
+}
+/* A single slow nudge a beat after the line lands, hinting it is tappable
+   without breaking the Easter-egg quiet. Rides translateY, not scale, so it
+   never fights the press-fb scale. Plays once; ChatScreen drops the class on
+   animationend. */
+.greeting-hint {
+  animation: greet-hint var(--dur-6) var(--ease-loop) 1.8s backwards;
+}
+@keyframes greet-hint {
+  0% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(4px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .greeting-hint {
     animation: none;
   }
 }
