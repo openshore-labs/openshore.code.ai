@@ -49,6 +49,7 @@ vi.mock('../src/lib/insights.js', () => ({
 // simulate an offline or token-expired cloud vault.
 const files = new Map<string, string>();
 const fail = { list: false, read: false, write: false };
+let readCount = 0;
 let leaseHolder = 'me';
 const mockProvider = {
   id: 'local' as const,
@@ -59,22 +60,26 @@ const mockProvider = {
     if (fail.list) throw new Error('offline');
     return [...files.keys()].map((path) => ({
       path,
-      updatedAt: 'x',
+      // updatedAt changes with content, so the body cache invalidates on edit.
+      updatedAt: `v${files.get(path)!.length}`,
       size: files.get(path)!.length,
     }));
   },
   async stat(_r: string, path: string): Promise<StoredFileMeta | undefined> {
-    return files.has(path) ? { path, updatedAt: 'x', size: files.get(path)!.length } : undefined;
+    return files.has(path)
+      ? { path, updatedAt: `v${files.get(path)!.length}`, size: files.get(path)!.length }
+      : undefined;
   },
   async read(_r: string, path: string): Promise<StoredFile | undefined> {
     if (fail.read) throw new Error('offline');
+    readCount++;
     const text = files.get(path);
-    return text === undefined ? undefined : { path, text, updatedAt: 'x' };
+    return text === undefined ? undefined : { path, text, updatedAt: `v${text.length}` };
   },
   async write(_r: string, path: string, text: string): Promise<StoredFile> {
     if (fail.write) throw new Error('offline');
     files.set(path, text);
-    return { path, text, updatedAt: 'x' };
+    return { path, text, updatedAt: `v${text.length}` };
   },
   async remove(_r: string, path: string): Promise<void> {
     files.delete(path);
@@ -107,6 +112,7 @@ function reset() {
   mem.clear();
   files.clear();
   fail.list = fail.read = fail.write = false;
+  readCount = 0;
   leaseHolder = 'me';
   useApp.setState({
     settings: {
@@ -185,6 +191,23 @@ describe('vault data safety', () => {
     await useApp.getState().vaultOpen('brand-new');
     expect(useApp.getState().vaultNote?.path).toBe('brand-new.md');
     expect(useApp.getState().vaultNote?.text).toBe('');
+  });
+
+  it('caches note bodies so a second read pass re-reads only changed files (R-8)', async () => {
+    await useApp.getState().vaultCreate('a');
+    await useApp.getState().vaultCreate('b');
+    await useApp.getState().vaultRefresh();
+    readCount = 0;
+    await useApp.getState().vaultReadAll();
+    expect(readCount).toBe(2); // cold: both bodies read
+    readCount = 0;
+    await useApp.getState().vaultReadAll();
+    expect(readCount).toBe(0); // warm: nothing changed, no re-reads
+    // Editing one note invalidates only that entry.
+    await useApp.getState().vaultSave('a.md', 'changed body');
+    readCount = 0;
+    await useApp.getState().vaultReadAll();
+    expect(readCount).toBe(0); // the save primed the cache for 'a'
   });
 
   it('flags the vault read-only when another device holds the lease (FD-3)', async () => {

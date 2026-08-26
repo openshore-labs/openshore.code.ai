@@ -273,6 +273,11 @@ const unsubscribers = new Map<string, () => void>();
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
 let outboxSyncing = false;
+// Note bodies keyed by `${resourceId}::${path}`, so backlink derivation
+// (vaultReadAll on every note open) re-reads only files whose updatedAt moved.
+// Self-invalidating: a mismatched updatedAt misses; a distinct resource id
+// (personal vs a specific org vault) never collides.
+const vaultBodyCache = new Map<string, { updatedAt: string; text: string }>();
 
 export function driverFor(conversationId: string): ChatDriver | undefined {
   return drivers.get(conversationId);
@@ -2633,6 +2638,12 @@ export const useApp = create<AppState>((set, get) => {
       if (!target) return;
       try {
         const saved = await target.provider.write(target.resourceId, path, text);
+        // Keep the body cache current so the next backlink pass does not re-read
+        // the note we just wrote.
+        vaultBodyCache.set(`${target.resourceId}::${saved.path}`, {
+          updatedAt: saved.updatedAt,
+          text: saved.text,
+        });
         set({
           vaultFiles: await target.provider.list(target.resourceId),
           vaultNote:
@@ -2661,6 +2672,7 @@ export const useApp = create<AppState>((set, get) => {
       if (!target) return;
       try {
         await target.provider.remove(target.resourceId, path);
+        vaultBodyCache.delete(`${target.resourceId}::${path}`);
         // Drop any stashed draft for a note the user just deleted, so it cannot
         // resurrect on the next replay.
         const pending = await loadVaultPending();
@@ -2684,10 +2696,23 @@ export const useApp = create<AppState>((set, get) => {
       const target = vaultTarget();
       if (!target) return [];
       const files = await target.provider.list(target.resourceId);
+      // Read only the files that changed since we last saw them. Backlinks
+      // re-run this on every note open, so without a cache a 300-note Drive
+      // vault was 300+ serial reads per open (R-8). The cache key carries the
+      // resource id and the read is skipped when the file's updatedAt matches.
       const out: Array<{ path: string; text: string }> = [];
       for (const f of files) {
+        const key = `${target.resourceId}::${f.path}`;
+        const cached = vaultBodyCache.get(key);
+        if (cached && cached.updatedAt === f.updatedAt) {
+          out.push({ path: f.path, text: cached.text });
+          continue;
+        }
         const note = await target.provider.read(target.resourceId, f.path);
-        if (note) out.push({ path: note.path, text: note.text });
+        if (note) {
+          vaultBodyCache.set(key, { updatedAt: note.updatedAt, text: note.text });
+          out.push({ path: note.path, text: note.text });
+        }
       }
       return out;
     },

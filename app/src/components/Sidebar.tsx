@@ -285,7 +285,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
             return (
               <button
                 key={id}
-                className={`conv-item${id === activeId && view === 'chat' ? ' active' : ''}`}
+                className={`conv-item press-fb press-fb--row${id === activeId && view === 'chat' ? ' active' : ''}`}
                 onClick={() => openConversation(id)}
               >
                 {conv.ephemeral ? <span className="ephemeral-dot" aria-hidden="true" /> : null}
@@ -333,7 +333,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
       <nav className="sidebar-nav">
         {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
           <button
-            className={`nav-item${view === 'admin' ? ' active' : ''}`}
+            className={`nav-item press-fb press-fb--row${view === 'admin' ? ' active' : ''}`}
             onClick={() => setView('admin')}
           >
             <span className="glyph">
@@ -347,7 +347,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
           return (
             <button
               key={item.view}
-              className={`nav-item${view === item.view ? ' active' : ''}`}
+              className={`nav-item press-fb press-fb--row${view === item.view ? ' active' : ''}`}
               onClick={() => setView(item.view)}
             >
               <span className="glyph">
