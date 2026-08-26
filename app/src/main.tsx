@@ -19,7 +19,7 @@ root.render(
 // opening. THIS IS THE KNOB to make it slower or faster; pair it with the
 // entrance/exit durations in index.html. The mark holds until this time, then
 // the 0.5s cross-fade runs, so total opening is roughly SPLASH_MIN_MS + 500ms.
-const SPLASH_MIN_MS = 1700;
+const SPLASH_MIN_MS = 1800;
 
 // Dismiss the boot splash once BOTH the first React frame has painted AND the
 // deliberate minimum hold has elapsed, whichever is later. A double rAF waits

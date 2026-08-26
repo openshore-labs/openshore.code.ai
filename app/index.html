@@ -84,41 +84,50 @@
       #boot-splash .boot-wordmark .boot-accent {
         color: #2f5a66;
       }
-      /* The wordmark surfaces one letter at a time, each floating up as if from
-         under water: it starts deep, blurred and tinted the water teal, rises
-         and comes into focus, breaks the surface with a buoyant little bob, then
-         settles. --i is the letter's position, set inline, driving the stagger.
-         `backwards` holds the from-state through the delay so a letter waits
-         below the surface until its turn. The run finishes near 1.5s, inside the
-         1.7s splash hold. */
+      /* The wordmark surfaces one letter at a time, floating up as if from under
+         water. Each letter starts deep, blurred and tinted the water teal, rises
+         and comes into focus, then breaks the surface and settles with a damped
+         buoyant bob: it overshoots past its resting line and swells to ~109%,
+         eases back with a small undershoot, bobs once more, and rests. That
+         overshoot-and-settle is the standard motion-design trick for something
+         buoyant meeting water. --i drives the per-letter stagger; --dir alternates
+         the tilt so the letters bob independently, the way things floating on a
+         surface never move in lockstep. `backwards` holds each letter below the
+         surface until its turn. The run finishes near 1.6s, inside the 1.8s hold. */
       #boot-splash .boot-wordmark .boot-letter {
         display: inline-block;
         font-size: 36px;
         letter-spacing: 0.02em;
-        animation: boot-letter-float 0.78s ease-out backwards;
-        animation-delay: calc(0.14s + var(--i) * 0.08s);
+        animation: boot-letter-float 0.85s ease-out backwards;
+        animation-delay: calc(0.12s + var(--i) * 0.08s);
         will-change: transform, opacity, filter;
       }
       @keyframes boot-letter-float {
-        from {
+        0% {
           opacity: 0;
-          transform: translateY(0.95em) scale(0.94);
-          filter: blur(7px);
+          transform: translateY(1em) scale(0.9) rotate(calc(var(--dir, 1) * -2.4deg));
+          filter: blur(8px);
           color: #2f5a66;
         }
-        45% {
+        42% {
           opacity: 1;
         }
-        62% {
+        60% {
           filter: blur(0);
         }
-        80% {
-          /* Breaks the surface and bobs a touch high before settling. */
-          transform: translateY(-0.07em) scale(1.006);
+        70% {
+          /* Breaks the surface: past the line and swollen, tilted with the water. */
+          transform: translateY(-0.11em) scale(1.09) rotate(calc(var(--dir, 1) * 1.6deg));
         }
-        to {
+        84% {
+          transform: translateY(0.04em) scale(0.985) rotate(calc(var(--dir, 1) * -0.7deg));
+        }
+        93% {
+          transform: translateY(-0.015em) scale(1.004) rotate(calc(var(--dir, 1) * 0.2deg));
+        }
+        100% {
           opacity: 1;
-          transform: translateY(0) scale(1);
+          transform: translateY(0) scale(1) rotate(0deg);
           filter: blur(0);
         }
       }
@@ -173,15 +182,15 @@
         </g>
       </svg>
       <div class="boot-wordmark" aria-hidden="true">
-        <span class="boot-letter" style="--i: 0">O</span>
-        <span class="boot-letter" style="--i: 1">p</span>
-        <span class="boot-letter" style="--i: 2">e</span>
-        <span class="boot-letter" style="--i: 3">n</span>
-        <span class="boot-letter boot-accent" style="--i: 4">S</span>
-        <span class="boot-letter boot-accent" style="--i: 5">h</span>
-        <span class="boot-letter boot-accent" style="--i: 6">o</span>
-        <span class="boot-letter boot-accent" style="--i: 7">r</span>
-        <span class="boot-letter boot-accent" style="--i: 8">e</span>
+        <span class="boot-letter" style="--i: 0; --dir: 1">O</span>
+        <span class="boot-letter" style="--i: 1; --dir: -1">p</span>
+        <span class="boot-letter" style="--i: 2; --dir: 1">e</span>
+        <span class="boot-letter" style="--i: 3; --dir: -1">n</span>
+        <span class="boot-letter boot-accent" style="--i: 4; --dir: 1">S</span>
+        <span class="boot-letter boot-accent" style="--i: 5; --dir: -1">h</span>
+        <span class="boot-letter boot-accent" style="--i: 6; --dir: 1">o</span>
+        <span class="boot-letter boot-accent" style="--i: 7; --dir: -1">r</span>
+        <span class="boot-letter boot-accent" style="--i: 8; --dir: 1">e</span>
       </div>
     </div>
     <div id="root"></div>
