@@ -148,6 +148,17 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     }
 
     func download(id: String, from url: URL) {
+        // MP-F4: the weights may already be on disk (a background transfer that
+        // finished while the app was closed). Do not re-download; report it done
+        // so the caller records it as present instead of pulling it again.
+        let dest = localURL(for: id)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            lock.lock()
+            let complete = onComplete
+            lock.unlock()
+            complete?(id, .success(dest))
+            return
+        }
         lock.lock()
         if let existing = activeTasks[id] {
             lock.unlock()
