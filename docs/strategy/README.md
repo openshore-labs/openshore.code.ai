@@ -18,7 +18,7 @@ the app build.
   August 2026.
 
 - **`product-deep-dive.html`** — everything built in the app today, and what each
-  piece becomes at full strength, sequenced along the soup-to-nuts build loop
+  piece becomes at full strength, sequenced along the full build loop
   (idea, local models, the agent, owned storage, cross-device, ship). Every
   capability is graded Shipped / Partial / At full strength. Built from a
   code-level inventory of both `app/` and `os-code/`.
@@ -28,8 +28,8 @@ the app build.
 
 ## The through-line
 
-OpenShore is a way to build an app soup to nuts on your own machines, private the
-whole way. The competitive point and the product point are the same one: rivals
+OpenShore is a way to build an entire app on your own machines, private the whole
+way. The competitive point and the product point are the same one: rivals
 own a single slice of that loop, OpenShore owns the whole loop, and the moat is
 the closed loop executed to product finish, not "local AI" as an idea.
 
