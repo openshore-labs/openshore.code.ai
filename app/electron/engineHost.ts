@@ -1,9 +1,9 @@
 // The engine host: everything the renderer reaches through IPC, implemented
 // against the os-code engine in the Electron main process. One place, typed,
 // no Node in the renderer, keys never leave the machine.
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, mkdirSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
 import {
@@ -23,9 +23,72 @@ import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
 import { clone } from 'os-code/dist/src/git/index.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
-import { loadOrCreateToken } from 'os-code/dist/src/core/security/daemonAuth.js';
+import {
+  hashToken,
+  loadCredentials,
+  mintCredential,
+  revokeCredential,
+} from 'os-code/dist/src/core/security/credentials.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
 import type { DriverEvent, StackHealth, StackHealthRange } from 'os-code/protocol';
+
+// One paired device as the renderer sees it. `id` is the credential's token
+// hash, which is also the handle the revoke store matches on (revokeCredential
+// takes a label or a token-hash prefix). Structural, so no shared import with
+// electronBridge is needed.
+export interface PairedDeviceWire {
+  id: string;
+  label: string;
+  createdAt: string;
+  expiresAt?: string;
+}
+
+// The label every QR-minted pairing credential carries. Kept stable so the
+// mint-once path can recognize its own credential across restarts.
+const PAIRING_LABEL = 'iPhone via QR';
+
+function pairingTokenPath(): string {
+  return join(oscHome(), 'pairing-device.token');
+}
+
+/** Every paired device credential, mapped to the renderer's revoke-list shape. */
+export function listPairedDevices(): PairedDeviceWire[] {
+  return loadCredentials().map((c) => ({
+    id: c.tokenHash,
+    label: c.label,
+    createdAt: c.createdAt,
+    expiresAt: c.expiresAt,
+  }));
+}
+
+// Mint the pairing credential ONCE, then reuse it. The Pair screen polls
+// daemonInfo every few seconds, so minting per call would spawn a fresh
+// credential on every tick. Instead the clear token is cached on disk (mode
+// 600) and reused as long as its credential still lives in the store; a poll
+// costs one file read, not a mint. Revoking the credential (a lost device) drops
+// it from the store, so the next call finds no live match and mints a new one,
+// which also rotates the QR. Only the hash is kept in the credential store, so
+// the clear token has to persist here to survive a daemon restart.
+export function ensurePairingCredential(): { token: string; devices: PairedDeviceWire[] } {
+  const path = pairingTokenPath();
+  let token: string | undefined;
+  if (existsSync(path)) {
+    try {
+      token = readFileSync(path, 'utf8').trim();
+    } catch {}
+  }
+  const live = token
+    ? loadCredentials().some((c) => c.tokenHash === hashToken(token as string))
+    : false;
+  if (!token || !live) {
+    const minted = mintCredential({ role: 'admin', label: PAIRING_LABEL });
+    token = minted.token;
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${token}\n`, { mode: 0o600 });
+    chmodSync(path, 0o600);
+  }
+  return { token, devices: listPairedDevices() };
+}
 
 export type EventForward = (payload: {
   sessionId: string;
@@ -385,11 +448,20 @@ export class EngineHost {
   daemonInfo() {
     const { config } = loadConfig();
     const ts = this.tailscaleState();
+    const running = Boolean(this.daemon);
+    // The QR hands out a fresh per-device credential (mint-once), not the shared
+    // admin token, so a lost phone can be revoked on its own. Only mint while the
+    // daemon is actually up; when off, still surface the paired-device list so
+    // the revoke UI stays available.
+    const pairing = running
+      ? ensurePairingCredential()
+      : { token: '', devices: listPairedDevices() };
     return {
-      running: Boolean(this.daemon),
+      running,
       host: this.daemon?.host,
       port: this.daemon?.port ?? config.daemon.port,
-      token: loadOrCreateToken(join(oscHome(), 'daemon.token')),
+      token: pairing.token,
+      devices: pairing.devices,
       tailscaleIp: ts.ip,
       tailscaleUp: ts.running,
       // With dual-bind, a tailnet daemon's host is the 100.x address; only the
@@ -420,6 +492,17 @@ export class EngineHost {
   async daemonStop() {
     this.daemon?.close();
     this.daemon = undefined;
+  }
+
+  // Every paired device credential, for the desktop's revoke list.
+  listDeviceCredentials(): PairedDeviceWire[] {
+    return listPairedDevices();
+  }
+
+  // Cut off one device by its credential id (the token hash). A lost phone is
+  // revoked on its own, leaving every other paired device connected.
+  revokeDeviceCredential(id: string): { removed: number } {
+    return { removed: revokeCredential(id) };
   }
 
   disposeAll(): void {

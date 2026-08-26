@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('oscode', {
   daemonInfo: invoke('osc:daemonInfo'),
   daemonStart: invoke('osc:daemonStart'),
   daemonStop: invoke('osc:daemonStop'),
+  listDeviceCredentials: invoke('osc:listDeviceCredentials'),
+  revokeDeviceCredential: invoke('osc:revokeDeviceCredential'),
 
   vaultList: invoke('osc:vaultList'),
   vaultRead: invoke('osc:vaultRead'),
