@@ -255,13 +255,13 @@ textarea {
   min-width: 0;
 }
 
-/* Everything below the header. Its own flex column (rather than putting
-   .greeting/.composer-wrap directly in .shell-main) gives the greeting a
-   position: relative reference point that starts exactly where the header
-   ends, with no need to know the header's own height (it varies with
-   safe-area-inset-top): .greeting's position: absolute top: 0 (touch only,
-   see below) lands right after the header for free, through normal document
-   flow, not arithmetic. */
+/* Everything below the header: its own flex column so the composer (touch
+   only, via margin-top: auto, see .composer-wrap below) hugs the foot of
+   THIS space rather than the whole .shell-main including the header. The
+   greeting itself (touch) no longer positions against this wrapper; it is
+   position: fixed against the viewport instead (see .greeting's touch rule),
+   which is what survives the native page scroll iOS performs to keep the
+   composer visible above the keyboard. */
 .chat-body {
   flex: 1;
   display: flex;
@@ -1956,41 +1956,54 @@ textarea {
   gap: 18px;
 }
 
-/* Touch devices only: a plain, static position. No JS keyboard detection is
-   involved at all, on purpose: four attempts at detecting "the keyboard is
-   open" from JS (a --kb-inset threshold; that threshold plus a settle
-   debounce; that threshold plus a requestAnimationFrame settle; watching the
-   composer's own getBoundingClientRect() instead of viewport math) each
-   shipped a greeting that kept tracking the composer, because whichever JS
-   trigger was in play silently never fired on the founder's device. A rule
-   with no trigger at all cannot fail to fire.
+/* Touch devices only: a plain, static height, no JS keyboard detection
+   involved in picking it at all, on purpose. Four attempts at detecting "the
+   keyboard is open" from JS (a --kb-inset threshold; that threshold plus a
+   settle debounce; that threshold plus a requestAnimationFrame settle;
+   watching the composer's own getBoundingClientRect() instead of viewport
+   math) each shipped a greeting that kept tracking the composer, because
+   whichever JS trigger was in play silently never fired on the founder's
+   device. A rule with no trigger at all cannot fail to fire.
 
-   Positioned absolute against .chat-body (see above), which starts exactly
-   where the header ends, so top: 0 lands right after the header for free,
-   through ordinary document flow, with no need to know the header's own
-   height (it varies with safe-area-inset-top). The height is pixel-measured
-   directly off the founder's own confirmed-correct keyboard-up screenshot:
-   the header-to-composer gap there is ~34.6% of screen height. Expressed as a
-   vh share so it holds across phone sizes, with a px cap so it does not
-   balloon on a tablet.
+   position: fixed (not absolute) is required, not a preference: this device's
+   WKWebView performs a REAL page scroll to keep the composer visible above
+   the keyboard (confirmed: header and status bar shifted up in the founder's
+   own screenshot, right along with a then-position:absolute greeting), and
+   position: fixed is the only positioning mode that is not carried along by a
+   page scroll, since it is anchored to the viewport rather than to any
+   scrolling ancestor. --header-height (see useHeaderHeight in ChatScreen,
+   a plain measurement, not a keyboard-state trigger) supplies the top offset,
+   since fixed positioning is relative to the viewport rather than to a
+   nearby ancestor and so cannot rely on ordinary document flow to clear the
+   header the way absolute positioning against .chat-body could.
 
-   Being position: absolute (not flex: none) also means the greeting never
-   counts toward .chat-body's flex total, so on ANY device or keyboard height
-   it cannot push the composer down past where it actually fits, the failure
-   mode of an even earlier, in-flow fixed-height attempt (WKWebView's native
-   "scroll the focused field into view" dragging the whole page, header
-   included, off the top of the screen). Whatever height is picked here, the
-   composer's own layout (driven entirely by --kb-inset, confirmed correct) is
-   completely unaffected by it. */
+   iOS is ALSO known to drag position: fixed elements during that same native
+   scroll rather than holding them still the way the spec promises (a
+   long-standing WebKit quirk), which is what useKeyboardInset's continuous
+   translateY(visualViewport.offsetTop) compensation cancels: unlike the
+   freeze attempts above, that compensation runs on every single
+   visualViewport event, unconditionally, with no threshold or settle wait
+   gating it, so there is nothing there that can silently fail to trigger
+   either.
+
+   The height itself is pixel-measured directly off the founder's own
+   confirmed-correct keyboard-up screenshot: the header-to-composer gap there
+   is ~34.6% of screen height. Expressed as a vh share so it holds across
+   phone sizes, with a px cap so it does not balloon on a tablet.
+
+   pointer-events: none keeps this decorative fixed layer from ever blocking a
+   tap on the composer beneath it; .greeting-line re-enables pointer-events
+   for the one genuinely tappable thing inside it (the language easter egg). */
 @media (pointer: coarse) {
   .greeting {
-    position: absolute;
+    position: fixed;
     left: 0;
     right: 0;
-    top: 0;
+    top: var(--header-height, 0px);
     height: min(34.6vh, 330px);
     justify-content: flex-end;
     padding-bottom: 16px;
+    pointer-events: none;
   }
 }
 
