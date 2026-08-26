@@ -51,16 +51,26 @@ function useBooted(): boolean {
 // The greeting is two states, not a continuous reaction: while the keyboard is
 // rising, it stays flex: 1 (see .greeting's touch rule in theme.css) so it can
 // only ever shrink to whatever room is actually left, hugging the composer
-// directly, never overflowing the screen. The instant the keyboard has
-// genuinely opened and its rise animation has had a moment to settle, this
-// measures the greeting's OWN current (already-correct, already-fitting)
-// rendered height and freezes it there via --greeting-frozen-height, paired
-// with the .greeting-frozen class this hook's return value drives: flex: none
-// locks the box at that exact size, so it can never move again for the rest of
-// this empty state, keyboard dismissed or not. The composer keeps tracking the
-// live keyboard height regardless, so only the greeting stays put. `resetKey`
-// clears the freeze; ChatScreen bumps it each time a fresh empty state arrives
-// so the next one can settle fresh.
+// directly, never overflowing the screen. The moment the keyboard is confirmed
+// open (inset past a threshold, comfortably above safe-area/rounding noise),
+// this measures the greeting's OWN current rendered height and freezes it
+// there, synchronously, via --greeting-frozen-height, paired with the
+// .greeting-frozen class this hook's return value drives: flex: none locks the
+// box at that exact size, so it can never move again for the rest of this
+// empty state, keyboard dismissed or not. The composer keeps tracking the live
+// keyboard height regardless, so only the greeting stays put. `resetKey` clears
+// the freeze; ChatScreen bumps it each time a fresh empty state arrives so the
+// next one can settle fresh.
+//
+// Two earlier attempts tried to wait for the keyboard's rise animation to
+// finish first (a resettable debounce, then a one-shot delay) before freezing,
+// on the theory that freezing mid-animation would capture a transient height.
+// Both still shipped a greeting that kept tracking the composer, meaning
+// something about the delay itself, not just its length, was the problem on
+// device. Freezing synchronously on the very first qualifying event removes
+// that whole category: there is no timer to fail to fire. The height gets
+// locked as soon as it can be trusted at all, at worst a frame before the
+// keyboard's very last pixel of travel.
 //
 // A height that is fixed WITHOUT this measure-then-freeze step is what caused
 // the whole page to scroll off-screen on a shorter phone in an earlier attempt:
@@ -77,29 +87,15 @@ function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: numb
     if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
     const root = document.documentElement.style;
     const KEYBOARD_THRESHOLD = 80; // px; comfortably above safe-area/rounding noise
-    const SETTLE_MS = 350; // wait for the keyboard's rise animation to quiet down
     let didFreeze = false;
-    // Scheduled ONCE, on the first crossing, and never rescheduled: a keyboard
-    // rise can keep emitting visualViewport resize events past a short debounce
-    // window, and a debounce that resets on every event risks never getting a
-    // quiet gap to fire in, silently leaving the greeting stuck unfrozen (which
-    // reads as "it drops when the keyboard closes", since it then keeps
-    // tracking the composer forever instead of locking in place).
-    let scheduled = false;
-    const freeze = () => {
-      if (didFreeze || !greetingRef.current) return;
+    const apply = () => {
+      const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      root.setProperty('--kb-inset', `${inset}px`);
+      if (didFreeze || inset <= KEYBOARD_THRESHOLD || !greetingRef.current) return;
       didFreeze = true;
       const height = greetingRef.current.getBoundingClientRect().height;
       root.setProperty('--greeting-frozen-height', `${height}px`);
       setFrozen(true);
-    };
-    const apply = () => {
-      const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
-      root.setProperty('--kb-inset', `${inset}px`);
-      if (!didFreeze && !scheduled && inset > KEYBOARD_THRESHOLD) {
-        scheduled = true;
-        setTimeout(freeze, SETTLE_MS);
-      }
     };
     apply();
     vv.addEventListener('resize', apply);
