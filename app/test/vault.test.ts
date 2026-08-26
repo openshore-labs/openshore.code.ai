@@ -10,6 +10,7 @@ import {
   wikilinkContext,
   wikilinksToMarkdown,
 } from '../src/lib/vault.js';
+import { vaultUrlTransform } from '../src/components/VaultMarkdown.js';
 
 describe('wikilink parsing (Obsidian grammar)', () => {
   it('parses plain, aliased, and heading-suffixed links', () => {
@@ -40,6 +41,30 @@ describe('note paths', () => {
     expect(normalizeNotePath('already.md')).toBe('already.md');
     expect(normalizeNotePath('///')).toBeUndefined();
   });
+
+  it('drops dot and dot-dot segments so a name cannot escape the vault root', () => {
+    // SEC: a typed name or a wikilink target must never climb out of the vault
+    // and clobber a sibling resource.
+    expect(normalizeNotePath('../x')).toBe('x.md');
+    expect(normalizeNotePath('../../secrets/lease')).toBe('secrets/lease.md');
+    expect(normalizeNotePath('a/../../b')).toBe('a/b.md');
+    expect(normalizeNotePath('./note')).toBe('note.md');
+    expect(normalizeNotePath('../..')).toBeUndefined();
+  });
+
+  it('strips filesystem and Obsidian forbidden characters (R-6)', () => {
+    expect(normalizeNotePath('a:b*c?.md')).toBe('abc.md');
+    expect(normalizeNotePath('note#heading^block')).toBe('noteheadingblock.md');
+    expect(normalizeNotePath('<>|"')).toBeUndefined();
+  });
+
+  it('normalizes unicode to NFC so decomposed and composed names match (R-4)', () => {
+    // "e" + combining acute (NFD) and precomposed "e-acute" (NFC) must map to
+    // the same path.
+    const nfd = normalizeNotePath('cafe\u0301'); // e + combining acute
+    const nfc = normalizeNotePath('caf\u00e9'); // precomposed e-acute
+    expect(nfd).toBe(nfc);
+  });
 });
 
 describe('wikilink resolution', () => {
@@ -56,6 +81,25 @@ describe('wikilink resolution', () => {
     const md = wikilinksToMarkdown('Go to [[Roadmap|the plan]] then [[Missing]].', paths);
     expect(md).toContain('[the plan](vault:projects%2FRoadmap.md)');
     expect(md).toContain('[Missing](vault:Missing.md?new)');
+  });
+
+  it('renders an embed as a chip, not a broken image or a linked target', () => {
+    const md = wikilinksToMarkdown('Look: ![[Roadmap]] and ![[Art|the art]].', paths);
+    expect(md).toContain('`embed not supported yet: Roadmap`');
+    expect(md).toContain('`embed not supported yet: the art`');
+    // The embed's inner target is not turned into a vault link or an image.
+    expect(md).not.toContain('![');
+    expect(md).not.toContain('vault:projects%2FRoadmap.md)');
+  });
+});
+
+describe('vault url transform (COR-1: vault links must survive the renderer)', () => {
+  it('passes vault: hrefs through and blocks hostile protocols', () => {
+    expect(vaultUrlTransform('vault:Ideas.md')).toBe('vault:Ideas.md');
+    expect(vaultUrlTransform('vault:Missing.md?new')).toBe('vault:Missing.md?new');
+    // https keeps working; javascript is stripped by the default transform.
+    expect(vaultUrlTransform('https://example.com')).toBe('https://example.com');
+    expect(vaultUrlTransform('javascript:alert(1)')).toBe('');
   });
 });
 

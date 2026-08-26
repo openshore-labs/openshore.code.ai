@@ -13,7 +13,9 @@ export interface IcloudPluginContract {
   read(options: {
     resourceId: string;
     path: string;
-  }): Promise<{ found: boolean; text?: string; updatedAt?: string }>;
+    // `downloading` is true when the note exists in iCloud but its bytes are
+    // not on this device yet (a placeholder), distinct from truly missing.
+  }): Promise<{ found: boolean; text?: string; updatedAt?: string; downloading?: boolean }>;
   write(options: {
     resourceId: string;
     path: string;

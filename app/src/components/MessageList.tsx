@@ -32,18 +32,40 @@ export function MessageList({
   /** Open the Local LLMs sheet, offered when a turn stopped for no account usage. */
   onSwitchToLocal?: () => void;
 }) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true);
+  const prevCount = useRef(0);
   const itemCount = thread.items.length;
   const lastItem = thread.items[itemCount - 1];
   const streamingLen =
     lastItem && lastItem.kind === 'assistant' && lastItem.streaming ? lastItem.text.length : 0;
 
+  // Track whether the user is pinned to the bottom, so streaming tokens do not
+  // yank them back when they have scrolled up to reread (the iMessage rule).
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
-  }, [itemCount, streamingLen]);
+    const el = threadRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    // A new user turn always scrolls to the bottom (and re-pins); otherwise
+    // only follow streaming when already pinned. Scroll instantly so the
+    // container's smooth scroll-behavior never chases the growing text.
+    const newUserTurn = itemCount > prevCount.current && lastItem?.kind === 'user';
+    prevCount.current = itemCount;
+    if (newUserTurn) pinnedRef.current = true;
+    if (pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [itemCount, streamingLen, lastItem?.kind]);
 
   return (
-    <div className="thread">
+    <div className="thread" ref={threadRef}>
       <div className="thread-inner">
         {thread.items.map((item) => {
           switch (item.kind) {
@@ -98,7 +120,6 @@ export function MessageList({
             ))}
           </div>
         ) : null}
-        <div ref={endRef} />
       </div>
     </div>
   );

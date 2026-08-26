@@ -78,7 +78,9 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
             <div
               className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
               style={
-                harborDownload.indeterminate ? undefined : { width: `${harborDownload.percent}%` }
+                harborDownload.indeterminate
+                  ? undefined
+                  : { transform: `scaleX(${harborDownload.percent / 100})` }
               }
             />
           </div>
@@ -151,7 +153,7 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
               style={
                 harborMiniDownload.indeterminate
                   ? undefined
-                  : { width: `${harborMiniDownload.percent}%` }
+                  : { transform: `scaleX(${harborMiniDownload.percent / 100})` }
               }
             />
           </div>

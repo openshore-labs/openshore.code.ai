@@ -30,6 +30,10 @@ public class OscodeSpeechPlugin: CAPPlugin, CAPBridgedPlugin {
     private var recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    // Tracks whether a tap is on bus 0 so it is always removed, even when
+    // audioEngine.start() threw after installTap succeeded. Leaving it installed
+    // makes the next start() install a second tap, which raises an NSException.
+    private var tapInstalled = false
 
     override public func load() {
         // A phone call or Siri interrupting the audio session must stop dictation
@@ -98,6 +102,7 @@ public class OscodeSpeechPlugin: CAPPlugin, CAPBridgedPlugin {
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             self?.request?.append(buffer)
         }
+        tapInstalled = true
         audioEngine.prepare()
         do {
             try audioEngine.start()
@@ -126,17 +131,22 @@ public class OscodeSpeechPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
-        stopInternal()
+        // A user stop should let recognition finish and emit its final result,
+        // so finish the task rather than cancel it (cancel drops the result).
+        stopInternal(finishTask: true)
         call.resolve()
     }
 
-    private func stopInternal() {
+    private func stopInternal(finishTask: Bool = false) {
         if audioEngine.isRunning {
             audioEngine.stop()
+        }
+        if tapInstalled {
             audioEngine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
         }
         request?.endAudio()
-        task?.cancel()
+        if finishTask { task?.finish() } else { task?.cancel() }
         task = nil
         request = nil
         // Release the session so the user's other audio can resume. Leaking an

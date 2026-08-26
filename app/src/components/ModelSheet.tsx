@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
+import { useSheetExit } from '../hooks/useSheetExit.js';
 import { isDesktop } from '../lib/platform.js';
 import { CLAUDE_MODELS, claudeModelLabel } from '../lib/claudeModels.js';
 import { PROVIDERS } from '../lib/providers.js';
@@ -90,6 +91,7 @@ export function ModelSheet({
   const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView, showToast } =
     useApp();
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local'>(initialStage);
+  const { closing, dismiss } = useSheetExit(onClose);
   const effort = settings.effort ?? DEFAULT_EFFORT;
 
   const hasStack = Boolean(settings.stack);
@@ -113,7 +115,7 @@ export function ModelSheet({
       <button
         className="mode-close press-fb"
         aria-label={stage === 'root' ? 'Close' : 'Back'}
-        onClick={() => (stage === 'root' ? onClose() : setStage('root'))}
+        onClick={() => (stage === 'root' ? dismiss() : setStage('root'))}
       >
         {stage === 'root' ? '×' : '‹'}
       </button>
@@ -122,8 +124,11 @@ export function ModelSheet({
   );
 
   return (
-    <div className="sheet-scrim" onClick={onClose}>
-      <div className="sheet model-sheet" onClick={(e) => e.stopPropagation()}>
+    <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
+      <div
+        className={`sheet model-sheet${closing ? ' closing' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {stage === 'root' ? (
           <>
             <Header title="Select model" />

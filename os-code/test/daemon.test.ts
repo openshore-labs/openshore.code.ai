@@ -102,51 +102,9 @@ describe('daemon RBAC (D1)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('a member cannot apply an outbox commit into an arbitrary repo path', async () => {
-    // The apply pushes with the desktop's credentials, so an un-provisioned
-    // path (here the scratch home) must be refused before any git work.
-    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
-    const res = await fetch(`${base}/outbox/apply`, {
-      method: 'POST',
-      headers: auth(token),
-      body: JSON.stringify({
-        cwd: home,
-        clientOpId: 'op1',
-        itemId: 'it1',
-        branch: 'main',
-        baseCommit: 'HEAD',
-        files: [],
-      }),
-    });
-    expect(res.status).toBe(403);
-  });
-
-  it('a member cannot verify an outbox commit in an arbitrary repo path', async () => {
-    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
-    const res = await fetch(
-      `${base}/outbox/verify?cwd=${encodeURIComponent(home)}&commit=deadbeef&branch=main`,
-      { headers: auth(token) },
-    );
-    expect(res.status).toBe(403);
-  });
-
-  it('an admin may reach the outbox routes (past the path gate)', async () => {
-    // The scratch home is not a git repo, so apply fails downstream, but the
-    // admin is never stopped by the 403 path gate: the status is not 403.
-    const res = await fetch(`${base}/outbox/apply`, {
-      method: 'POST',
-      headers: auth(adminToken),
-      body: JSON.stringify({
-        cwd: home,
-        clientOpId: 'op2',
-        itemId: 'it2',
-        branch: 'main',
-        baseCommit: 'HEAD',
-        files: [],
-      }),
-    });
-    expect(res.status).not.toBe(403);
-  });
+  // Outbox path-allowlist gating is covered by the "daemon outbox path
+  // allowlist (SEC-2)" suite below (main's config-driven isOutboxAllowedPath,
+  // which applies to every caller, superseded an earlier role-based gate).
 });
 
 describe('command lane (chat-to-terminal bridge)', () => {
@@ -218,6 +176,36 @@ describe('command lane (chat-to-terminal bridge)', () => {
       body: JSON.stringify({ data: 'x\n' }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('daemon outbox path allowlist (SEC-2)', () => {
+  const applyBody = {
+    cwd: '',
+    clientOpId: 'op-1',
+    itemId: 'itm-1',
+    deviceId: 'dev-1',
+    branch: 'main',
+    baseCommit: 'abc123',
+    files: [{ path: 'x.txt', mode: 'upsert', contentBase64: 'aGk=' }],
+  };
+
+  it('rejects an apply to a repo outside the allowed roots, even for an admin', async () => {
+    // `home` exists but is not under ~/OSCode and is not a configured root.
+    const res = await fetch(`${base}/outbox/apply`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ ...applyBody, cwd: home }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a verify for a repo outside the allowed roots', async () => {
+    const qs = new URLSearchParams({ cwd: home, commit: 'abc123' });
+    const res = await fetch(`${base}/outbox/verify?${qs.toString()}`, {
+      headers: auth(adminToken),
+    });
+    expect(res.status).toBe(403);
   });
 });
 

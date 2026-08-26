@@ -12,6 +12,7 @@ import { ModelSheet } from '../components/ModelSheet.js';
 import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
+import { MenuIcon } from '../components/MenuIcon.js';
 import { timeGreeting } from '../lib/greeting.js';
 import type { Attachment } from '../lib/attachments.js';
 
@@ -58,8 +59,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     <div className="shell-main">
       <header className="topbar">
         {compact ? (
-          <button className="icon-btn" onClick={() => setDrawer(true)} aria-label="Menu">
-            {'☰'}
+          <button className="icon-btn menu-btn" onClick={() => setDrawer(true)} aria-label="Menu">
+            <MenuIcon />
           </button>
         ) : null}
         {conv ? (

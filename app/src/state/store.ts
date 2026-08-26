@@ -155,12 +155,14 @@ import {
   secretDelete,
   secretGet,
   secretSet,
+  storeDelete,
   storeGetJson,
   storeSetJson,
 } from '../lib/platform.js';
 
 export type ViewName =
   | 'chat'
+  | 'chats'
   | 'marketplace'
   | 'stack'
   | 'stackhealth'
@@ -225,6 +227,9 @@ export interface AppSettings {
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
+  /** Appearance: follow the system (default), or pin light or dark. Device
+   *  local by nature (a per-device viewing preference). */
+  theme?: 'system' | 'light' | 'dark';
   /** Reasoning effort for new turns, the same idea Claude exposes. Defaults to
    *  'high'. Chosen from the top of the model sheet. */
   effort?: Effort;
@@ -266,6 +271,14 @@ function vaultProviderId(settings: AppSettings): StorageProviderId {
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
 const unsubscribers = new Map<string, () => void>();
+// Guards against two interleaved outbox syncs (a double "Sync now" tap): the
+// second returns immediately rather than racing the first's snapshot save.
+let outboxSyncing = false;
+// Note bodies keyed by `${resourceId}::${path}`, so backlink derivation
+// (vaultReadAll on every note open) re-reads only files whose updatedAt moved.
+// Self-invalidating: a mismatched updatedAt misses; a distinct resource id
+// (personal vs a specific org vault) never collides.
+const vaultBodyCache = new Map<string, { updatedAt: string; text: string }>();
 
 export function driverFor(conversationId: string): ChatDriver | undefined {
   return drivers.get(conversationId);
@@ -311,8 +324,20 @@ interface AppState {
   searchKeyConfigured: boolean;
   /** The active vault's file list, loaded through the gitOS seam. */
   vaultFiles: StoredFileMeta[];
-  /** The open vault note, when one is open. */
-  vaultNote?: { path: string; text: string; updatedAt: string };
+  /** The open vault note, when one is open. `fresh` marks a just-created note
+   *  so the editor opens in write mode without treating every empty-bodied
+   *  saved note as fresh. */
+  vaultNote?: { path: string; text: string; updatedAt: string; fresh?: boolean };
+  /** The last vault storage failure, cleared on any success. 'load' means the
+   *  file list could not be read (show an offline state, not the first-run
+   *  empty state); 'save' means a write failed and the draft was stashed for
+   *  replay. Undefined when the vault is healthy. */
+  vaultError?: 'load' | 'save';
+  /** True when a live single-writer lease on the personal vault is held by
+   *  another device, so this one shows read-only. Cloud folder syncs (iCloud,
+   *  Drive) have no Git-aware locking, so the lease bounds the concurrent-edit
+   *  clobber window (the conflict-copy write is the durable backstop). */
+  vaultLeaseHeldByOther?: boolean;
   /** Which vault the Vault screen is showing: the personal one (on the chosen
    *  storage provider) or the shared team vault (org tier, Supabase-backed).
    *  Team is only reachable when signed in as an active member of an org. */
@@ -486,6 +511,10 @@ interface AppState {
   vaultRefresh(): Promise<void>;
   /** Open a note into vaultNote. A missing path opens as a fresh empty note. */
   vaultOpen(path: string): Promise<void>;
+  /** Create a note: write an empty file so it persists immediately (a fresh
+   *  note no longer evaporates on back-out), then open it in write mode. If it
+   *  already exists, just opens it. */
+  vaultCreate(path: string): Promise<void>;
   /** Close the open note (back to the tree). */
   vaultCloseNote(): void;
   /** Write a note body and refresh the file list. */
@@ -494,6 +523,12 @@ interface AppState {
   vaultDelete(path: string): Promise<void>;
   /** Every note body, for backlink derivation. */
   vaultReadAll(): Promise<Array<{ path: string; text: string }>>;
+  /** Take or renew the personal vault's single-writer lease, and record whether
+   *  another device holds it live (which puts the screen read-only). No-op for
+   *  the team vault (the server resolves concurrency). */
+  vaultAcquireLease(): Promise<void>;
+  /** Release the personal vault lease this device holds. */
+  vaultReleaseLease(): Promise<void>;
   /** Move the personal vault to a different storage provider (e.g. iCloud):
    *  copy every note across, then repoint the resource. Returns false when the
    *  target is not usable right now. */
@@ -606,6 +641,42 @@ export function isOrgAdmin(account?: Account): boolean {
 export function stackAdmin(account?: Account): boolean {
   if (account?.previewAsMember) return false;
   return isOrgAdmin(account);
+}
+
+/** The device StackModelRef for the flagship guide (Harbor). Harbor Mini has
+ *  its own harborRef() in stack.js; this is its bigger sibling. */
+function harborFullRef(): StackModelRef {
+  return { kind: 'device', modelId: HARBOR_MODEL_ID, modelName: HARBOR_MODEL_NAME };
+}
+
+/**
+ * Decide whether a freshly downloaded guide should become the stack's Reasoning
+ * anchor, so "My Stack" chat can start right away. Promote when there is no
+ * anchor yet, or the current anchor is a built-in guide that is not actually on
+ * this device. The preferred guide (Harbor) also upgrades a ready Harbor Mini;
+ * Mini never demotes a ready guide, and neither ever overrides a cloud, BYOM,
+ * or user-chosen device model the user deliberately set. `ref` is assumed to be
+ * a guide that is already downloaded.
+ */
+function reasoningPromotion(
+  stack: AppStack | undefined,
+  ref: StackModelRef,
+  opts: { harborReady: boolean; harborMiniReady: boolean; preferred: boolean },
+): StackModelRef | undefined {
+  const current = stack?.reasoning;
+  if (!current) return ref;
+  if (stackRefKey(current) === stackRefKey(ref)) return undefined;
+  if (current.kind !== 'device') return undefined;
+  const id = current.modelId;
+  const currentReady =
+    id === HARBOR_MODEL_ID
+      ? opts.harborReady
+      : id === HARBOR_MINI_MODEL_ID
+        ? opts.harborMiniReady
+        : true; // a user-chosen pocket model: respect it
+  if (!currentReady) return ref;
+  const currentIsGuide = id === HARBOR_MODEL_ID || id === HARBOR_MINI_MODEL_ID;
+  return opts.preferred && currentIsGuide ? ref : undefined;
 }
 
 // Only these statuses grant paid access; every other status (past_due, unpaid,
@@ -949,6 +1020,47 @@ export const useApp = create<AppState>((set, get) => {
     return { provider, resourceId: VAULT_RESOURCE_ID };
   }
 
+  // Durable draft rescue for the vault. When a provider write fails (offline
+  // cloud vault, expired token), the typed text is stashed to the sealed local
+  // store keyed by resource+path, and replayed the next time a write or a list
+  // succeeds against that resource. This is what makes a cloud-backed vault
+  // safe to type into offline: nothing typed is lost to an unhandled rejection.
+  const VAULT_PENDING_KEY = 'oscode.vault.pending';
+  type VaultPending = Record<
+    string,
+    { resourceId: string; path: string; text: string; at: string }
+  >;
+  async function loadVaultPending(): Promise<VaultPending> {
+    return (await storeGetJson<VaultPending>(VAULT_PENDING_KEY)) ?? {};
+  }
+  async function saveVaultPending(p: VaultPending): Promise<void> {
+    if (Object.keys(p).length === 0) await storeDelete(VAULT_PENDING_KEY);
+    else await storeSetJson(VAULT_PENDING_KEY, p);
+  }
+  async function stashVaultDraft(resourceId: string, path: string, text: string): Promise<void> {
+    const p = await loadVaultPending();
+    p[`${resourceId}::${path}`] = { resourceId, path, text, at: new Date().toISOString() };
+    await saveVaultPending(p);
+  }
+  async function replayVaultPending(target: {
+    provider: StorageProvider;
+    resourceId: string;
+  }): Promise<void> {
+    const p = await loadVaultPending();
+    let changed = false;
+    for (const [key, item] of Object.entries(p)) {
+      if (item.resourceId !== target.resourceId) continue;
+      try {
+        await target.provider.write(item.resourceId, item.path, item.text);
+        delete p[key];
+        changed = true;
+      } catch {
+        // Still failing; keep the stash for the next attempt.
+      }
+    }
+    if (changed) await saveVaultPending(p);
+  }
+
   // verified email, claim any invited org seat, and read the server role.
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
@@ -1078,6 +1190,36 @@ export const useApp = create<AppState>((set, get) => {
         }
       }
       let settingsDirty = false;
+
+      // Heal a stack whose Reasoning anchor is a built-in guide that is not
+      // actually on this device: if the other guide is downloaded, promote it so
+      // "My Stack" chat starts right away instead of failing with "download it
+      // first." This is exactly the case a fresh stack (seeded with Harbor Mini)
+      // hits when the user only downloaded Harbor. Prefer Harbor when both are
+      // present. Only a not-present guide anchor is touched; a cloud, BYOM, or
+      // user-chosen device anchor is left alone.
+      const anchor = settings.stack?.reasoning;
+      if (anchor?.kind === 'device') {
+        const anchorId = anchor.modelId;
+        const anchorIsGuide = anchorId === HARBOR_MODEL_ID || anchorId === HARBOR_MINI_MODEL_ID;
+        const anchorReady =
+          anchorId === HARBOR_MODEL_ID
+            ? Boolean(settings.harborReady)
+            : anchorId === HARBOR_MINI_MODEL_ID
+              ? Boolean(settings.harborMiniReady)
+              : true;
+        if (anchorIsGuide && !anchorReady) {
+          const promote = settings.harborReady
+            ? harborFullRef()
+            : settings.harborMiniReady
+              ? harborRef()
+              : undefined;
+          if (promote) {
+            settings.stack = { ...settings.stack!, reasoning: promote };
+            settingsDirty = true;
+          }
+        }
+      }
 
       // A stable device id, generated once, for rescue-branch names and sync.
       if (!settings.deviceId) {
@@ -1447,39 +1589,51 @@ export const useApp = create<AppState>((set, get) => {
         return;
       }
       const seed = seedFromTranscript(conv.thread.items);
-      // Clear the cached model badge so the top bar shows the new brain right
-      // away; the next turn-start refreshes it with live cost/context.
-      const nextConv: Conversation = {
-        ...conv,
-        source,
-        thread: { ...conv.thread, model: undefined },
-        updatedAt: new Date().toISOString(),
-      };
-      set((s) => ({ conversations: { ...s.conversations, [activeId]: nextConv } }));
+      // Build the new driver BEFORE committing the model change. If the build
+      // fails (for example a Claude model with no key stored), the conversation
+      // stays on its current brain instead of showing the new model in the top
+      // bar while the old driver keeps answering.
+      let driver: ChatDriver;
       try {
-        // attachDriver disposes the old driver and keeps the thread, so the
-        // visible history is untouched; the new driver starts with the seeded
-        // transcript so the next turn has full context.
-        const driver = await buildDriver(nextConv, seed);
-        attachDriver(activeId, driver);
-        set((s) => {
-          const c = s.conversations[activeId];
-          if (!c) return s;
-          const note: ThreadItem = {
-            kind: 'note',
-            id: newId(),
-            text: `Now using ${sourceLabel(source)}.`,
-          };
-          return {
-            conversations: {
-              ...s.conversations,
-              [activeId]: { ...c, thread: { ...c.thread, items: [...c.thread.items, note] } },
-            },
-          };
-        });
+        driver = await buildDriver(
+          { ...conv, source, thread: { ...conv.thread, model: undefined } },
+          seed,
+        );
       } catch (err) {
         get().showToast(err instanceof Error ? err.message : String(err));
+        return;
       }
+      // attachDriver disposes the old driver and keeps the thread, so the
+      // visible history is untouched; the new driver starts with the seeded
+      // transcript so the next turn has full context.
+      attachDriver(activeId, driver);
+      // Disclose when a private on-device chat's history is about to cross to a
+      // network brain, and when earlier images will not carry over. No request
+      // fires until the next send, so these notes land before anything leaves.
+      const crossedToNetwork = conv.source.kind === 'device' && source.kind !== 'device';
+      let text = `Now using ${sourceLabel(source)}.`;
+      if (crossedToNetwork) {
+        text += " Your next message sends this chat's history to it for context.";
+      }
+      if (conv.hadVisionInput) {
+        text += ' Images from earlier in this chat are not carried across the switch.';
+      }
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const note: ThreadItem = { kind: 'note', id: newId(), text };
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: {
+              ...c,
+              source,
+              thread: { ...c.thread, model: undefined, items: [...c.thread.items, note] },
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
       void persistConversations(get());
     },
 
@@ -2079,6 +2233,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async syncOutbox() {
+      if (outboxSyncing) return;
       const s = get().settings;
       const daemon = s.daemon;
       const home = s.repo?.homeRepo;
@@ -2093,65 +2248,83 @@ export const useApp = create<AppState>((set, get) => {
       }
       const pending = pendingForRepo(outbox, home.id);
       if (!pending.length) return;
-      const deviceId = s.deviceId ?? 'dev_unknown';
-      let items = [...outbox];
-      const patch = (id: string, next: (typeof outbox)[number]) => {
-        items = items.map((i) => (i.id === id ? next : i));
-      };
+      outboxSyncing = true;
+      try {
+        const deviceId = s.deviceId ?? 'dev_unknown';
+        let items = [...outbox];
+        const patch = (id: string, next: (typeof outbox)[number]) => {
+          items = items.map((i) => (i.id === id ? next : i));
+        };
 
-      for (const item of pending) {
-        let current = item;
-        try {
-          const res = await daemonApplyOutbox(daemon, {
-            cwd: home.homePath,
-            clientOpId: item.clientOpId,
-            itemId: item.id,
-            deviceId,
-            branch: item.branch,
-            message: item.message,
-            baseCommit: item.baseCommit,
-            files: item.files.map((f) => ({
-              path: f.path,
-              mode: f.mode,
-              contentBase64: f.contentBase64,
-            })),
-          });
-          current = applyResult(item, res);
-        } catch (err) {
-          current = {
-            ...item,
-            state: 'failed',
-            attempts: item.attempts + 1,
-            lastError: err instanceof Error ? err.message : String(err),
-          };
-        }
-        patch(current.id, current);
-
-        // Independent confirmation before an item is ever considered done. A 200
-        // is not confirmation; the ref re-read is.
-        if (current.state === 'offloading' && current.resultCommit) {
-          const v = await daemonVerifyCommit(
-            daemon,
-            home.homePath,
-            current.resultCommit,
-            current.branch,
-          );
-          current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
+        for (const item of pending) {
+          let current = item;
+          try {
+            const res = await daemonApplyOutbox(daemon, {
+              cwd: home.homePath,
+              clientOpId: item.clientOpId,
+              itemId: item.id,
+              deviceId,
+              branch: item.branch,
+              message: item.message,
+              baseCommit: item.baseCommit,
+              files: item.files.map((f) => ({
+                path: f.path,
+                mode: f.mode,
+                contentBase64: f.contentBase64,
+              })),
+            });
+            current = applyResult(item, res);
+          } catch (err) {
+            current = {
+              ...item,
+              state: 'failed',
+              attempts: item.attempts + 1,
+              lastError: err instanceof Error ? err.message : String(err),
+            };
+          }
           patch(current.id, current);
+
+          // Independent confirmation before an item is ever considered done. A 200
+          // is not confirmation; the ref re-read is.
+          if (current.state === 'offloading' && current.resultCommit) {
+            try {
+              const v = await daemonVerifyCommit(
+                daemon,
+                home.homePath,
+                current.resultCommit,
+                current.branch,
+              );
+              current = confirm(current, { refExists: v.exists, treeMatches: v.onBranch });
+              patch(current.id, current);
+            } catch {
+              // The verify call itself failed (transient, or path not yet
+              // allowed): leave the item offloading so it retries on the next
+              // sync, rather than falsely marking a landed commit failed.
+            }
+          }
+
+          // A conflict or failure halts this repo's batch: later items were
+          // composed assuming the earlier ones landed.
+          if (stopsBatch(current)) break;
         }
 
-        // A conflict or failure halts this repo's batch: later items were
-        // composed assuming the earlier ones landed.
-        if (stopsBatch(current)) break;
+        // Re-read the live outbox at save time and merge our results into it,
+        // rather than writing back the pre-sync snapshot. An item buffered while
+        // this sync ran (bufferCommitIntent appends to settings) must survive
+        // (DL-5). Apply our processed version where we have one, keep any newer
+        // item untouched, and clear only confirmed items.
+        const liveRepo = get().settings.repo;
+        const live = liveRepo?.outbox ?? [];
+        const processed = new Map(items.map((i) => [i.id, i]));
+        const merged = live
+          .map((i) => processed.get(i.id) ?? i)
+          .filter((i) => i.state !== 'confirmed');
+        const cleared = live.length - merged.length;
+        await get().saveSettings({ repo: { ...(liveRepo ?? { outbox: [] }), outbox: merged } });
+        logEvent('outbox_sync', { pending: pending.length, cleared });
+      } finally {
+        outboxSyncing = false;
       }
-
-      // Confirmed items are already in the home repo, so clearing their buffered
-      // copy loses nothing. Everything not confirmed (pending, conflict, failed)
-      // stays, so no unsynced work is ever deleted.
-      const kept = items.filter((i) => i.state !== 'confirmed');
-      const cleared = items.length - kept.length;
-      await get().saveSettings({ repo: { ...s.repo!, outbox: kept } });
-      logEvent('outbox_sync', { pending: pending.length, cleared });
     },
 
     async bufferCommitIntent(input) {
@@ -2186,7 +2359,10 @@ export const useApp = create<AppState>((set, get) => {
         return undefined;
       }
       const item: OutboxItem = {
-        id: `o${Date.now().toString(36).padStart(9, '0')}${(convSeq++).toString(36)}`,
+        // Fixed-width time and sequence so the id sorts in creation order
+        // lexicographically (the pendingForRepo ULID-order assumption): an
+        // unpadded seq would put 'z' after '10' within the same millisecond.
+        id: `o${Date.now().toString(36).padStart(9, '0')}${(convSeq++).toString(36).padStart(4, '0')}`,
         clientOpId: outboxOpId(),
         repoId: input.repoId,
         branch: input.branch,
@@ -2259,6 +2435,15 @@ export const useApp = create<AppState>((set, get) => {
         set({ harborMiniDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborMiniReady: true });
         logEvent('harbor_mini_ready');
+        // Make Harbor Mini the Reasoning anchor when the stack has none or its
+        // anchor is a guide that is not on the device, so My Stack chat works
+        // right away. Never demotes a ready Harbor.
+        const miniTarget = reasoningPromotion(get().settings.stack, harborRef(), {
+          harborReady: Boolean(get().settings.harborReady),
+          harborMiniReady: true,
+          preferred: false,
+        });
+        if (miniTarget) await get().setReasoning(miniTarget);
         set({ harborMiniDownload: undefined });
         return true;
       } catch (err) {
@@ -2306,6 +2491,16 @@ export const useApp = create<AppState>((set, get) => {
         set({ harborDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborReady: true });
         logEvent('harbor_ready');
+        // Make Harbor the Reasoning anchor when the stack has none, its anchor
+        // is a guide not on the device, or the anchor is Harbor Mini (Harbor is
+        // the preferred pick). So My Stack chat works right away. Never
+        // overrides a cloud, BYOM, or user-chosen device model.
+        const harborTarget = reasoningPromotion(get().settings.stack, harborFullRef(), {
+          harborReady: true,
+          harborMiniReady: Boolean(get().settings.harborMiniReady),
+          preferred: true,
+        });
+        if (harborTarget) await get().setReasoning(harborTarget);
         set({ harborDownload: undefined });
         return true;
       } catch (err) {
@@ -2438,7 +2633,23 @@ export const useApp = create<AppState>((set, get) => {
         }
       }
       const target = vaultTarget();
-      set({ vaultFiles: target ? await target.provider.list(target.resourceId) : [] });
+      if (!target) {
+        set({ vaultFiles: [], vaultError: undefined });
+        return;
+      }
+      try {
+        const files = await target.provider.list(target.resourceId);
+        set({ vaultFiles: files, vaultError: undefined });
+        // The list came back, so the provider is reachable: flush any drafts
+        // stranded by an earlier offline write.
+        await replayVaultPending(target);
+      } catch {
+        // Keep the last-known file list so the screen can show an offline
+        // state rather than the first-run "empty vault" greeting over notes
+        // that really exist.
+        set({ vaultError: 'load' });
+        get().showToast('Could not reach your vault storage. Showing the last loaded notes.');
+      }
     },
 
     async vaultOpen(path) {
@@ -2446,11 +2657,70 @@ export const useApp = create<AppState>((set, get) => {
       if (!normalized) return;
       const target = vaultTarget();
       if (!target) return;
-      const existing = await target.provider.read(target.resourceId, normalized);
+      // Resolve to an existing note case-insensitively: opening "note" when
+      // "Note.md" already exists must open the existing note, not fork a second
+      // divergent one (storage keys are case-sensitive, resolution is not).
+      const openPath =
+        get().vaultFiles.find((f) => f.path.toLowerCase() === normalized.toLowerCase())?.path ??
+        normalized;
+      const known = get().vaultFiles.some((f) => f.path === openPath);
+      let existing;
+      try {
+        existing = await target.provider.read(target.resourceId, openPath);
+      } catch {
+        get().showToast('Could not open that note. Check your vault storage connection.');
+        return;
+      }
+      if (!existing && known) {
+        // The file is listed in the vault but its bytes are not here yet (for
+        // example iCloud has not finished downloading it). Never fabricate an
+        // empty note over it, which a keystroke would then save back as empty.
+        get().showToast('Still downloading this note from your vault storage. Try again shortly.');
+        return;
+      }
       set({
-        vaultNote: existing ?? { path: normalized, text: '', updatedAt: new Date().toISOString() },
+        vaultNote: existing ?? { path: openPath, text: '', updatedAt: new Date().toISOString() },
       });
       logEvent('vault_note_open', { fresh: !existing });
+    },
+
+    async vaultCreate(path) {
+      const normalized = normalizeNotePath(path);
+      if (!normalized) return;
+      const target = vaultTarget();
+      if (!target) return;
+      if (get().vaultFiles.some((f) => f.path.toLowerCase() === normalized.toLowerCase())) {
+        await get().vaultOpen(normalized);
+        return;
+      }
+      try {
+        const saved = await target.provider.write(target.resourceId, normalized, '');
+        set({
+          vaultFiles: await target.provider.list(target.resourceId),
+          vaultNote: {
+            path: normalized,
+            text: saved.text,
+            updatedAt: saved.updatedAt,
+            fresh: true,
+          },
+          vaultError: undefined,
+        });
+        logEvent('vault_note_create');
+      } catch {
+        // Offline: still open the editor so the user can write, and stash the
+        // empty note so the create is not lost.
+        await stashVaultDraft(target.resourceId, normalized, '');
+        set({
+          vaultNote: {
+            path: normalized,
+            text: '',
+            updatedAt: new Date().toISOString(),
+            fresh: true,
+          },
+          vaultError: 'save',
+        });
+        get().showToast('Working offline. This note saves when your storage reconnects.');
+      }
     },
 
     vaultCloseNote() {
@@ -2460,38 +2730,119 @@ export const useApp = create<AppState>((set, get) => {
     async vaultSave(path, text) {
       const target = vaultTarget();
       if (!target) return;
-      const saved = await target.provider.write(target.resourceId, path, text);
-      set({
-        vaultFiles: await target.provider.list(target.resourceId),
-        vaultNote:
-          get().vaultNote?.path === path
-            ? { path, text: saved.text, updatedAt: saved.updatedAt }
-            : get().vaultNote,
-      });
-      logEvent('vault_note_save');
+      try {
+        const saved = await target.provider.write(target.resourceId, path, text);
+        // Keep the body cache current so the next backlink pass does not re-read
+        // the note we just wrote.
+        vaultBodyCache.set(`${target.resourceId}::${saved.path}`, {
+          updatedAt: saved.updatedAt,
+          text: saved.text,
+        });
+        set({
+          vaultFiles: await target.provider.list(target.resourceId),
+          vaultNote:
+            get().vaultNote?.path === path
+              ? { path, text: saved.text, updatedAt: saved.updatedAt }
+              : get().vaultNote,
+          vaultError: undefined,
+        });
+        // A successful write means the provider is back; flush the backlog.
+        await replayVaultPending(target);
+        logEvent('vault_note_save');
+      } catch {
+        // Never drop typed text on a failed write. Stash it durably and tell
+        // the user; it replays on the next successful write or list.
+        await stashVaultDraft(target.resourceId, path, text);
+        set({ vaultError: 'save' });
+        get().showToast(
+          'Could not save to your vault. Your text is kept and saves when the connection returns.',
+        );
+        logEvent('vault_note_save_failed');
+      }
     },
 
     async vaultDelete(path) {
       const target = vaultTarget();
       if (!target) return;
-      await target.provider.remove(target.resourceId, path);
-      set({
-        vaultFiles: await target.provider.list(target.resourceId),
-        vaultNote: get().vaultNote?.path === path ? undefined : get().vaultNote,
-      });
-      logEvent('vault_note_delete');
+      try {
+        await target.provider.remove(target.resourceId, path);
+        vaultBodyCache.delete(`${target.resourceId}::${path}`);
+        // Drop any stashed draft for a note the user just deleted, so it cannot
+        // resurrect on the next replay.
+        const pending = await loadVaultPending();
+        if (pending[`${target.resourceId}::${path}`]) {
+          delete pending[`${target.resourceId}::${path}`];
+          await saveVaultPending(pending);
+        }
+        set({
+          vaultFiles: await target.provider.list(target.resourceId),
+          vaultNote: get().vaultNote?.path === path ? undefined : get().vaultNote,
+          vaultError: undefined,
+        });
+        logEvent('vault_note_delete');
+      } catch {
+        set({ vaultError: 'save' });
+        get().showToast('Could not delete that note. Check your vault storage connection.');
+      }
     },
 
     async vaultReadAll() {
       const target = vaultTarget();
       if (!target) return [];
       const files = await target.provider.list(target.resourceId);
+      // Read only the files that changed since we last saw them. Backlinks
+      // re-run this on every note open, so without a cache a 300-note Drive
+      // vault was 300+ serial reads per open (R-8). The cache key carries the
+      // resource id and the read is skipped when the file's updatedAt matches.
       const out: Array<{ path: string; text: string }> = [];
       for (const f of files) {
+        const key = `${target.resourceId}::${f.path}`;
+        const cached = vaultBodyCache.get(key);
+        if (cached && cached.updatedAt === f.updatedAt) {
+          out.push({ path: f.path, text: cached.text });
+          continue;
+        }
         const note = await target.provider.read(target.resourceId, f.path);
-        if (note) out.push({ path: note.path, text: note.text });
+        if (note) {
+          vaultBodyCache.set(key, { updatedAt: note.updatedAt, text: note.text });
+          out.push({ path: note.path, text: note.text });
+        }
       }
       return out;
+    },
+
+    async vaultAcquireLease() {
+      // Only the personal vault leases; the team vault's server resolves
+      // concurrency, so acquiring there is unnecessary.
+      if (get().vaultScope !== 'personal') {
+        set({ vaultLeaseHeldByOther: false });
+        return;
+      }
+      const target = vaultTarget();
+      if (!target) return;
+      const deviceId = get().settings.deviceId ?? 'dev_unknown';
+      try {
+        const lease = await target.provider.acquireLease(target.resourceId, deviceId, 90_000);
+        const heldByOther =
+          lease.holder !== deviceId && new Date(lease.expiresAt).getTime() > Date.now();
+        set({ vaultLeaseHeldByOther: heldByOther });
+      } catch {
+        // A lease read/write failure must not block editing; leave state as is.
+      }
+    },
+
+    async vaultReleaseLease() {
+      if (get().vaultScope !== 'personal') return;
+      const target = vaultTarget();
+      const deviceId = get().settings.deviceId ?? 'dev_unknown';
+      if (target) {
+        try {
+          await target.provider.releaseLease(target.resourceId, deviceId);
+        } catch {
+          // Best-effort; the lease's TTL reclaims it regardless.
+        }
+      }
+      set({ vaultLeaseHeldByOther: false });
     },
 
     async vaultMoveTo(providerId) {
@@ -2515,7 +2866,23 @@ export const useApp = create<AppState>((set, get) => {
         if (note) notes.push({ path: note.path, text: note.text });
       }
       for (const note of notes) {
-        await target.write(VAULT_RESOURCE_ID, note.path, note.text);
+        // Do not blindly overwrite a note already at the target path: another
+        // device may have written a newer version there. When the target's copy
+        // is newer, land the source copy under a conflict name instead, so the
+        // move cannot regress newer work (COR-9).
+        const targetMeta = await target.stat(VAULT_RESOURCE_ID, note.path).catch(() => undefined);
+        const sourceMeta = files.find((f) => f.path === note.path);
+        const targetIsNewer =
+          targetMeta && sourceMeta ? targetMeta.updatedAt > sourceMeta.updatedAt : false;
+        if (targetIsNewer) {
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const dot = note.path.lastIndexOf('.');
+          const base = dot === -1 ? note.path : note.path.slice(0, dot);
+          const ext = dot === -1 ? '' : note.path.slice(dot);
+          await target.write(VAULT_RESOURCE_ID, `${base} (from ${from} ${stamp})${ext}`, note.text);
+        } else {
+          await target.write(VAULT_RESOURCE_ID, note.path, note.text);
+        }
       }
       const resources = (get().settings.gitosResources ?? []).map((r) =>
         r.id === VAULT_RESOURCE_ID ? { ...r, providerId } : r,
@@ -2544,7 +2911,12 @@ export const useApp = create<AppState>((set, get) => {
       // Leaving a quick chat for a saved one: drop the quick chat.
       pruneEphemeral(id);
       if (!drivers.has(id)) {
-        // Reattach lazily; desktop threads replay their journal into the UI.
+        // Reattach lazily. Desktop threads replay their journal into the UI, so
+        // they reset the thread and rebuild from the daemon with no seed. Chat
+        // brains (device/cloud/stack) live only in a module-level driver map
+        // that is empty after a reload, so a reopened chat MUST reseed the new
+        // driver from the persisted transcript, or the model has no memory of a
+        // conversation the user is looking at in full.
         if (conv.source.kind === 'desktop') {
           set((s) => ({
             conversations: {
@@ -2552,10 +2924,15 @@ export const useApp = create<AppState>((set, get) => {
               [id]: { ...s.conversations[id]!, thread: emptyThread() },
             },
           }));
+          void buildDriver(conv)
+            .then((driver) => attachDriver(id, driver))
+            .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)));
+        } else {
+          const seed = seedFromTranscript(conv.thread.items);
+          void buildDriver(conv, seed)
+            .then((driver) => attachDriver(id, driver))
+            .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)));
         }
-        void buildDriver(conv)
-          .then((driver) => attachDriver(id, driver))
-          .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)));
       }
     },
 
@@ -2583,6 +2960,17 @@ export const useApp = create<AppState>((set, get) => {
       if (!driver) {
         get().showToast('This chat is not connected yet. Give it a second, or reopen it.');
         return;
+      }
+      // Remember that this chat carried an image, so a later model switch can
+      // disclose that earlier images do not cross over (the transcript is text).
+      if (attachments?.some((a) => a.mime.startsWith('image/'))) {
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c || c.hadVisionInput) return s;
+          return {
+            conversations: { ...s.conversations, [activeId]: { ...c, hadVisionInput: true } },
+          };
+        });
       }
       driver.send(text, attachments);
     },

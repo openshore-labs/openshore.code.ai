@@ -21,7 +21,8 @@ import { bridge } from '../electronBridge.js';
 const IOS_CLIENT_ID = import.meta.env.VITE_GDRIVE_IOS_CLIENT_ID as string | undefined;
 const DESKTOP_CLIENT_ID = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID as string | undefined;
 const DESKTOP_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_SECRET as
-  string | undefined;
+  | string
+  | undefined;
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -271,8 +272,22 @@ export async function gdriveAccessToken(): Promise<string | undefined> {
     const json = (await res.json().catch(() => ({}))) as {
       access_token?: string;
       expires_in?: number;
+      error?: string;
     };
-    if (!res.ok || !json.access_token) return undefined;
+    if (!res.ok || !json.access_token) {
+      // A revoked grant or an expired refresh token (invalid_grant) is
+      // permanent: clear the stored tokens so isGdriveConnected() reports the
+      // truth and the UI prompts a reconnect, instead of showing Drive as
+      // healthy while every call fails. A transient network error keeps them.
+      if (json.error === 'invalid_grant') {
+        await Promise.all([
+          secretDelete(ACCESS_KEY),
+          secretDelete(REFRESH_KEY),
+          secretDelete(EXPIRY_KEY),
+        ]);
+      }
+      return undefined;
+    }
     const next: TokenSet = {
       accessToken: json.access_token,
       expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
@@ -291,7 +306,13 @@ export async function disconnectGdrive(): Promise<void> {
   const token = refresh ?? access;
   if (token) {
     try {
-      await fetch(`${REVOKE_ENDPOINT}?token=${encodeURIComponent(token)}`, { method: 'POST' });
+      // The token goes in the POST body, never the URL query, so it cannot land
+      // in a proxy or server access log.
+      await fetch(REVOKE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: `token=${encodeURIComponent(token)}`,
+      });
     } catch {
       // Best-effort: the local tokens are cleared below regardless, so this
       // device stops using them even if the revoke call itself is offline.

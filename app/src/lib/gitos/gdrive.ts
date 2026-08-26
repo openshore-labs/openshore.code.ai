@@ -26,6 +26,9 @@ const OSCODE_FOLDER = '.oscode';
 
 interface DriveIndex {
   files: Record<string, { id: string; updatedAt: string; size: number }>;
+  // Deleted paths and when, so a merge with a stale remote index (or another
+  // device's) never resurrects a note that was intentionally removed.
+  tombstones?: Record<string, string>;
 }
 
 interface ResourceHandle {
@@ -37,6 +40,51 @@ interface ResourceHandle {
 }
 
 const handleCache = new Map<string, ResourceHandle>();
+// In-flight handle builds, memoized per resource so two concurrent first calls
+// (e.g. a refresh racing a save on app start) cannot each create a duplicate
+// root folder and fork the vault into two trees.
+const handlePromises = new Map<string, Promise<ResourceHandle>>();
+
+let createSeq = 0;
+
+/** Union two index snapshots: newest-wins per path, honoring tombstones from
+ *  either side, so a save never clobbers a concurrent device's entries and a
+ *  deletion is not undone by an older remote copy. Exported for testing. */
+export function mergeIndex(local: DriveIndex, remote: DriveIndex): DriveIndex {
+  const files: DriveIndex['files'] = { ...local.files };
+  const tombstones: Record<string, string> = {
+    ...(remote.tombstones ?? {}),
+    ...(local.tombstones ?? {}),
+  };
+  // Keep the newer tombstone when both sides recorded one.
+  for (const [path, at] of Object.entries(remote.tombstones ?? {})) {
+    const mine = (local.tombstones ?? {})[path];
+    if (!mine || at > mine) tombstones[path] = at;
+  }
+  for (const [path, meta] of Object.entries(remote.files)) {
+    const mine = files[path];
+    if (!mine || meta.updatedAt > mine.updatedAt) files[path] = meta;
+  }
+  // A file newer than its tombstone is live again; drop the tombstone. A file
+  // older than (or equal to) its tombstone was deleted after that version; drop
+  // the file.
+  for (const [path, at] of Object.entries(tombstones)) {
+    const meta = files[path];
+    if (meta && meta.updatedAt > at) delete tombstones[path];
+    else if (meta) delete files[path];
+  }
+  return { files, tombstones };
+}
+
+/** The conflict-copy name for a path, mirroring the org vault's rule: the base
+ *  note is preserved and the incoming write lands beside it. */
+function conflictPath(path: string, stamp: string): string {
+  const dot = path.lastIndexOf('.');
+  const base = dot === -1 ? path : path.slice(0, dot);
+  const ext = dot === -1 ? '' : path.slice(dot);
+  const safeStamp = stamp.replace(/[:.]/g, '-');
+  return `${base} (conflict ${safeStamp})${ext}`;
+}
 
 // --------------------------------------------------------------- transport
 
@@ -101,14 +149,19 @@ async function findFilesByName(name: string, parentId: string): Promise<DriveFil
   return json.files ?? [];
 }
 
-async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
+async function queryFolderIds(name: string, parentId?: string): Promise<string[]> {
   const parentClause = parentId ? ` and '${parentId}' in parents` : '';
   const q = `name='${escapeQ(name)}' and mimeType='${FOLDER_MIME}' and trashed=false${parentClause}`;
   const res = await driveFetch(
-    `/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive&pageSize=1`,
+    `/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive&pageSize=10`,
   );
   const json = (await res.json()) as { files?: Array<{ id: string }> };
-  if (json.files?.[0]) return json.files[0].id;
+  return (json.files ?? []).map((f) => f.id);
+}
+
+async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
+  const existing = await queryFolderIds(name, parentId);
+  if (existing.length) return existing.sort()[0]!;
   const body: Record<string, unknown> = { name, mimeType: FOLDER_MIME };
   if (parentId) body.parents = [parentId];
   const create = await driveFetch('/files', {
@@ -116,8 +169,16 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const created = (await create.json()) as { id: string };
-  return created.id;
+  const created = ((await create.json()) as { id: string }).id;
+  // Re-query to detect a device that created the same folder concurrently
+  // (Drive allows duplicate names). Everyone adopts the lexicographically
+  // smallest id and trashes the rest, so all clients converge on one folder
+  // instead of forking the tree.
+  const all = await queryFolderIds(name, parentId);
+  if (all.length <= 1) return created;
+  const winner = all.sort()[0]!;
+  for (const id of all) if (id !== winner) await trashFile(id).catch(() => {});
+  return winner;
 }
 
 async function readTextFile(id: string): Promise<string> {
@@ -134,14 +195,24 @@ async function putContent(id: string, text: string): Promise<void> {
 }
 
 async function createFile(name: string, parentId: string, text: string): Promise<string> {
-  const create = await driveFetch('/files', {
+  // One multipart request creates metadata and content together, so a crash
+  // can never leave a named-but-empty file that later reads as an empty note.
+  const boundary = `oscode-${Date.now().toString(36)}-${(createSeq++).toString(36)}`;
+  const metadata = JSON.stringify({ name, parents: [parentId] });
+  const body =
+    `--${boundary}\r\n` +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    `${metadata}\r\n` +
+    `--${boundary}\r\n` +
+    'Content-Type: text/plain; charset=UTF-8\r\n\r\n' +
+    `${text}\r\n` +
+    `--${boundary}--`;
+  const res = await authedFetch(`${UPLOAD_API}/files?uploadType=multipart&fields=id`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name, parents: [parentId] }),
+    headers: { 'content-type': `multipart/related; boundary=${boundary}` },
+    body,
   });
-  const { id } = (await create.json()) as { id: string };
-  await putContent(id, text);
-  return id;
+  return ((await res.json()) as { id: string }).id;
 }
 
 async function trashFile(id: string): Promise<void> {
@@ -172,9 +243,21 @@ async function resolveDirId(handle: ResourceHandle, dirs: string[]): Promise<str
 // -------------------------------------------------------------- the handle
 
 async function saveIndex(handle: ResourceHandle): Promise<void> {
-  const text = JSON.stringify(handle.index);
-  if (handle.indexId) await putContent(handle.indexId, text);
-  else handle.indexId = await createFile('index.json', handle.oscodeId, text);
+  if (handle.indexId) {
+    // Merge with the current remote index before writing, so a concurrent
+    // device's entries are not clobbered by our stale snapshot (an added note
+    // would otherwise vanish from every list and never come back).
+    let remote: DriveIndex = { files: {} };
+    try {
+      remote = JSON.parse(await readTextFile(handle.indexId)) as DriveIndex;
+    } catch {
+      remote = { files: {} };
+    }
+    handle.index = mergeIndex(handle.index, remote);
+    await putContent(handle.indexId, JSON.stringify(handle.index));
+  } else {
+    handle.indexId = await createFile('index.json', handle.oscodeId, JSON.stringify(handle.index));
+  }
 }
 
 async function rebuildIndex(handle: ResourceHandle): Promise<void> {
@@ -193,13 +276,23 @@ async function rebuildIndex(handle: ResourceHandle): Promise<void> {
     }
   };
   await walk(handle.rootId, '');
-  handle.index = { files };
+  // Keep any tombstones so a rebuild does not resurrect a note deleted while
+  // the index was empty or unparseable.
+  handle.index = { files, tombstones: handle.index.tombstones };
   await saveIndex(handle);
 }
 
 async function handleFor(resourceId: string): Promise<ResourceHandle> {
   const cached = handleCache.get(resourceId);
   if (cached) return cached;
+  const inFlight = handlePromises.get(resourceId);
+  if (inFlight) return inFlight;
+  const build = buildHandle(resourceId).finally(() => handlePromises.delete(resourceId));
+  handlePromises.set(resourceId, build);
+  return build;
+}
+
+async function buildHandle(resourceId: string): Promise<ResourceHandle> {
   const rootId = await findOrCreateFolder(resourceId);
   const oscodeId = await findOrCreateFolder(OSCODE_FOLDER, rootId);
   const infra = await listChildren(oscodeId);
@@ -282,6 +375,22 @@ async function writeFile(resourceId: string, path: string, text: string): Promis
   const cached = handle.index.files[path];
   let id: string;
   if (cached) {
+    // Concurrent-edit guard: if the file changed on Drive since we last saw it
+    // (another device wrote), do not overwrite. Land this write as a conflict
+    // copy beside the original, so neither side's edit is lost.
+    const live = await getMeta(cached.id).catch(() => undefined);
+    if (live && live.updatedAt !== cached.updatedAt) {
+      const cpath = conflictPath(path, new Date().toISOString());
+      const { dirs, name } = splitPath(cpath);
+      const dirId = await resolveDirId(handle, dirs);
+      const cid = await createFile(name, dirId, text);
+      const cmeta = await getMeta(cid);
+      handle.index.files[cpath] = { id: cid, updatedAt: cmeta.updatedAt, size: cmeta.size };
+      // Refresh the base entry to the version we just observed on Drive.
+      handle.index.files[path] = { id: cached.id, updatedAt: live.updatedAt, size: live.size };
+      await saveIndex(handle);
+      return { path: cpath, text, updatedAt: cmeta.updatedAt };
+    }
     await putContent(cached.id, text);
     id = cached.id;
   } else {
@@ -310,9 +419,25 @@ async function writeFile(resourceId: string, path: string, text: string): Promis
 
 async function removeFile(resourceId: string, path: string): Promise<void> {
   const handle = await handleFor(resourceId);
-  const cached = handle.index.files[path];
-  if (!cached) return;
-  await trashFile(cached.id);
+  let cached = handle.index.files[path];
+  if (!cached) {
+    // The index can be stale (another device wrote after our last read), so a
+    // cache miss must not make delete a silent no-op: resolve against the live
+    // folder before giving up.
+    const { dirs, name } = splitPath(path);
+    const dirId = await resolveDirId(handle, dirs).catch(() => undefined);
+    const match = dirId ? (await findFilesByName(name, dirId))[0] : undefined;
+    if (match) {
+      cached = { id: match.id, updatedAt: match.modifiedTime, size: Number(match.size ?? 0) };
+    }
+  }
+  // Record a tombstone regardless, so a merge with a stale remote index cannot
+  // resurrect the note.
+  handle.index.tombstones = {
+    ...(handle.index.tombstones ?? {}),
+    [path]: new Date().toISOString(),
+  };
+  if (cached) await trashFile(cached.id);
   delete handle.index.files[path];
   await saveIndex(handle);
 }
