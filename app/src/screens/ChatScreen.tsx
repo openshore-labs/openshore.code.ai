@@ -17,6 +17,28 @@ import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { hapticTick } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 
+// True once the boot splash has lifted off the screen. The composer waits for
+// this before it focuses, so the keyboard pulls up gracefully as the greeting is
+// revealed, never underneath the splash. Starts true when there is no splash
+// (the desktop shell, or any later return to the empty state within a session),
+// so nothing ever waits needlessly.
+function useBooted(): boolean {
+  const [booted, setBooted] = useState(() => !document.getElementById('boot-splash'));
+  useEffect(() => {
+    if (booted) return;
+    const gone = () => {
+      if (document.getElementById('boot-splash')) return false;
+      setBooted(true);
+      return true;
+    };
+    if (gone()) return;
+    const obs = new MutationObserver(() => gone());
+    obs.observe(document.body, { childList: true });
+    return () => obs.disconnect();
+  }, [booted]);
+  return booted;
+}
+
 export function ChatScreen({ compact }: { compact: boolean }) {
   const {
     activeId,
@@ -37,6 +59,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // The brain a new chat will use, chosen from the composer. Defaults to the
   // stack, which is what "My Stack" selects.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
+  const booted = useBooted();
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -73,30 +96,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     wasEmpty.current = isEmpty;
   }, [isEmpty]);
   const greeting = rotation[rotIdx];
-
-  // Keep the empty-state greeting anchored to the center of the screen while the
-  // keyboard is up, instead of letting it jump upward. iOS shifts a
-  // position:fixed element by the keyboard's scroll offset (and can nudge it as
-  // the visual viewport settles); we cancel that by translating the overlay back
-  // down by the same offset, so the mark and the line hold dead center until a
-  // real transcript replaces them. No-op on desktop and whenever offsetTop is 0.
-  const greetRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    const el = greetRef.current;
-    if (!isEmpty || !vv || !el || !window.matchMedia('(pointer: coarse)').matches) return;
-    const apply = () => {
-      el.style.transform = `translateY(${vv.offsetTop}px)`;
-    };
-    apply();
-    vv.addEventListener('resize', apply);
-    vv.addEventListener('scroll', apply);
-    return () => {
-      vv.removeEventListener('resize', apply);
-      vv.removeEventListener('scroll', apply);
-      el.style.transform = '';
-    };
-  }, [isEmpty]);
 
   const rotate = () => {
     hapticTick();
@@ -166,7 +165,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
         />
       ) : (
-        <div className="greeting" ref={greetRef}>
+        <div className="greeting">
           <BrandMark size={40} />
           <h1
             className="greeting-line press-fb"
@@ -217,7 +216,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         busy={Boolean(thread?.busy)}
         source={composerSource}
         visionSupported={sourceSupportsVision(composerSource)}
-        autoFocus={isEmpty}
+        autoFocus={isEmpty && booted}
         onOpenModelSheet={() => {
           setSheetStage('root');
           setSheetOpen(true);
