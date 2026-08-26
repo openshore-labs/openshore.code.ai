@@ -45,32 +45,27 @@ function useBooted(): boolean {
 // to keep the focused field visible and overshoots, leaving a dead gap between
 // the composer and the keyboard. Track it via visualViewport instead, as a live
 // CSS variable on the root, --kb-inset: the composer reads it (see
-// .composer-wrap in theme.css) so it always hugs the keyboard with no gap,
-// regardless of which resize mode the device uses.
+// .composer-wrap in theme.css) so it always hugs the keyboard with no gap.
+// Confirmed correct on device (composer-to-keyboard spacing reads as
+// intended); left untouched.
 //
-// The greeting has to detect "the keyboard is up" a different way than a raw
-// --kb-inset threshold: on a device that DOES shrink the layout viewport for
-// the keyboard (window.innerHeight drops right along with visualViewport,
-// unlike the device assumed above), --kb-inset never exceeds a fixed pixel
-// threshold, so a threshold on that alone can silently never fire, leaving the
-// greeting stuck in its flexible, composer-tracking state forever. The signal
-// that IS reliable on every device is the visual viewport's own height
-// dropping below its keyboard-down baseline (auto-calibrated as the tallest
-// height seen so far, --kb-open toggled on document root once it drops more
-// than OPEN_THRESHOLD below that baseline).
+// The greeting's freeze does NOT use --kb-inset or any other visual-viewport
+// math, on purpose, after three attempts that each tried a different way of
+// deciding "the keyboard is open" from viewport measurements (a fixed
+// --kb-inset threshold; that same threshold with a settle debounce; that
+// threshold with a settle debounce driven by requestAnimationFrame instead of
+// a timer). All three shipped a greeting that kept tracking the composer,
+// meaning the open-detection itself was silently never firing on the
+// founder's device, not the settle timing. Rather than guess a fourth model of
+// how this device reports viewport changes, the freeze now watches the one
+// thing that is unconditionally true regardless of which resize model a
+// device or WebView uses: the composer's own on-screen position, read
+// directly via getBoundingClientRect(). Polling that every frame ties the
+// freeze to the real, observed effect (the composer visibly rising) instead
+// of an inferred cause (some viewport property crossing a threshold).
 //
-// Two earlier attempts tried to wait for the keyboard's rise animation to
-// finish (a resettable debounce, then a one-shot delay) before freezing the
-// greeting's height, on the theory that freezing mid-animation would capture a
-// transient height. Both still shipped a greeting that kept tracking the
-// composer, because the OPEN signal itself (the old --kb-inset threshold)
-// never crossed on the founder's device, so neither timer ever got the chance
-// to run. Detecting open via visual-viewport height instead of layout-space
-// inset fixes the actual gap; settling via a short run of stable
-// requestAnimationFrame samples (rather than a fixed delay) then captures the
-// truly-final height without guessing a duration.
-//
-// Once open and settled, this captures the greeting's CURRENT on-screen box
+// Once the composer has risen past a threshold and held still for a few
+// consecutive frames, this captures the greeting's CURRENT on-screen box
 // (offsetTop relative to its offset parent, .shell-main, plus its rendered
 // height) into --greeting-frozen-top / --greeting-frozen-height, and the
 // .greeting-frozen class (driven by this hook's return value) switches the
@@ -96,39 +91,10 @@ function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: numb
     if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
     const rootEl = document.documentElement;
     const OPEN_THRESHOLD = 80; // px the visual viewport must lose to count as keyboard-up
-    const STABLE_FRAMES = 3; // consecutive unchanged frames before trusting the height
     let baseHeight = vv.height; // tallest visual viewport seen: the keyboard-down height
-    let didFreeze = false;
-    let settleRaf = 0;
-    let lastHeight = -1;
-    let stableCount = 0;
 
-    // Polls with requestAnimationFrame until the visual viewport height holds
-    // steady for a few consecutive frames, then captures the greeting's resting
-    // box. rAF always fires and naturally stops once motion ends, so (unlike a
-    // fixed-delay timer) it cannot be scheduled for the wrong duration or fail
-    // to run at all.
-    const settleThenFreeze = () => {
-      if (Math.abs(vv.height - lastHeight) < 1) {
-        stableCount += 1;
-      } else {
-        stableCount = 0;
-        lastHeight = vv.height;
-      }
-      if (stableCount >= STABLE_FRAMES && greetingRef.current) {
-        didFreeze = true;
-        const el = greetingRef.current;
-        rootEl.style.setProperty('--greeting-frozen-top', `${el.offsetTop}px`);
-        rootEl.style.setProperty(
-          '--greeting-frozen-height',
-          `${el.getBoundingClientRect().height}px`,
-        );
-        setFrozen(true);
-        return;
-      }
-      settleRaf = requestAnimationFrame(settleThenFreeze);
-    };
-
+    // --kb-inset / kb-open: confirmed correct on device (composer-to-keyboard
+    // spacing reads as intended). Left exactly as it was.
     const apply = () => {
       if (vv.height > baseHeight) baseHeight = vv.height; // auto-calibrate the baseline
 
@@ -137,20 +103,69 @@ function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: numb
       // does (there the shell already ends above the keyboard on its own).
       const inset = Math.max(0, rootEl.clientHeight - vv.height - vv.offsetTop);
       rootEl.style.setProperty('--kb-inset', `${inset}px`);
-
-      const open = vv.height < baseHeight - OPEN_THRESHOLD;
-      rootEl.classList.toggle('kb-open', open);
-
-      if (open && !didFreeze && !settleRaf) settleRaf = requestAnimationFrame(settleThenFreeze);
+      rootEl.classList.toggle('kb-open', vv.height < baseHeight - OPEN_THRESHOLD);
     };
-
     apply();
     vv.addEventListener('resize', apply);
     vv.addEventListener('scroll', apply);
+
+    // Freezing the greeting used to trigger off this same visual-viewport
+    // math (a threshold on vv.height, then a settle wait). Across three
+    // attempts, on the founder's device that trigger silently never fired at
+    // all: no crash, no visible sign, the greeting just stayed in its normal
+    // flex-tracking state forever, which reads on screen as "it follows the
+    // composer down." Rather than guess a fourth time at how THIS device
+    // reports viewport changes, drop viewport math from the freeze path
+    // entirely and watch the one thing that is unconditionally true no matter
+    // which resizing model a given device or WebView uses: the composer
+    // itself visibly moves up when the keyboard opens. Polling its actual
+    // getBoundingClientRect() every frame ties the freeze directly to the
+    // real, observed effect on screen instead of an inferred cause.
+    const RISE_THRESHOLD = 40; // px the composer must rise above its resting spot
+    const STABLE_FRAMES = 4; // consecutive unchanged frames before trusting the position
+    let restingTop = -1; // composer's lowest (keyboard-down) top seen so far
+    let lastTop = -1;
+    let stableCount = 0;
+    let watchRaf = 0;
+
+    const watchComposer = () => {
+      const composerEl = document.querySelector<HTMLElement>('.composer-wrap');
+      if (!composerEl || !greetingRef.current) {
+        watchRaf = requestAnimationFrame(watchComposer);
+        return;
+      }
+      const top = composerEl.getBoundingClientRect().top;
+      if (restingTop < 0 || top > restingTop) restingTop = top; // track the resting position
+      const risen = restingTop - top > RISE_THRESHOLD;
+      if (!risen) {
+        stableCount = 0;
+        watchRaf = requestAnimationFrame(watchComposer);
+        return;
+      }
+      if (Math.abs(top - lastTop) < 1) stableCount += 1;
+      else {
+        stableCount = 0;
+        lastTop = top;
+      }
+      if (stableCount < STABLE_FRAMES) {
+        watchRaf = requestAnimationFrame(watchComposer);
+        return;
+      }
+      const el = greetingRef.current;
+      rootEl.style.setProperty('--greeting-frozen-top', `${el.offsetTop}px`);
+      rootEl.style.setProperty(
+        '--greeting-frozen-height',
+        `${el.getBoundingClientRect().height}px`,
+      );
+      setFrozen(true);
+      // watchRaf left unscheduled: done for this empty state until resetKey clears it.
+    };
+    watchRaf = requestAnimationFrame(watchComposer);
+
     return () => {
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
-      if (settleRaf) cancelAnimationFrame(settleRaf);
+      if (watchRaf) cancelAnimationFrame(watchRaf);
       rootEl.classList.remove('kb-open');
     };
   }, [resetKey, greetingRef]);
