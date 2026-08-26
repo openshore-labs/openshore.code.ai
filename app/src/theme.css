@@ -1320,27 +1320,22 @@ textarea {
 }
 
 /* Touch devices only: pin the composer to the foot of the column (the way it
-   sits once a transcript is open) and pad it by --kb-inset, the height of
-   screen the on-screen keyboard currently covers (see useKeyboardInset in
-   ChatScreen). Without that padding the layout viewport does not shrink for the
-   keyboard the way the visual one does, so WKWebView auto-scrolls the page to
-   keep the field visible and overshoots, leaving a dead gap between the
-   composer and the keyboard. Padding by the keyboard's own height closes that
-   gap: the field is already inside the visible area, so there is nothing left
-   for the auto-scroll to correct. Zero (the var's fallback) when no keyboard is
-   up, so this never affects the non-keyboard layout. 4px base gap, per founder
-   direction (was 16px, still read as too wide on device).
-
-   max(), not +: --safe-bottom (the home-indicator clearance) and --kb-inset
-   both describe the SAME strip of screen once the keyboard is up (the keyboard
-   already covers the home-indicator area entirely), so adding them stacks
-   unwanted extra gap on top of the intended base. Take whichever is larger
-   instead: --safe-bottom alone with no keyboard, --kb-inset alone once there
-   is one. */
+   sits once a transcript is open). Bottom padding splits on --kb-open (see
+   useKeyboardInset in ChatScreen) rather than combining --safe-bottom and
+   --kb-inset in one expression: once the keyboard is up it already covers the
+   home-indicator strip, so --safe-bottom no longer applies at all, only
+   --kb-inset (the extra lift some devices need because their LAYOUT viewport
+   does not shrink for the keyboard the way the visual one does; ~0 on a
+   device that already shrinks it, since there the shell already ends above
+   the keyboard on its own). Either way the field lands 4px above whatever is
+   below it. */
 @media (pointer: coarse) {
   .composer-wrap {
     margin-top: auto;
-    padding-bottom: calc(4px + max(var(--safe-bottom), var(--kb-inset, 0px)));
+    padding-bottom: calc(4px + var(--safe-bottom));
+  }
+  :root.kb-open .composer-wrap {
+    padding-bottom: calc(4px + var(--kb-inset, 0px));
   }
 }
 
@@ -1955,27 +1950,38 @@ textarea {
       padding hugs it directly above the composer, which is itself hugging the
       keyboard (see --kb-inset above) with its own, much smaller gap.
    2. FROZEN (.greeting-frozen, added by useKeyboardInset in ChatScreen once
-      the keyboard has genuinely opened and settled): flex: none locks the box
-      at exactly the height it had a moment ago, --greeting-frozen-height. From
-      here it never changes again for the rest of this empty state, keyboard
-      dismissed or not; only the composer keeps tracking the keyboard live, so
-      a gap opens up below the greeting if the keyboard closes without a
-      message being sent. That is the intended trade-off: the greeting is
-      anchored, full stop.
+      the keyboard has genuinely opened and settled): taken OUT of the flex
+      flow entirely (position: absolute, against .shell-main's own
+      position: relative) and pinned at exactly the spot it had a moment ago,
+      --greeting-frozen-top / --greeting-frozen-height. From here it never
+      changes again for the rest of this empty state, keyboard dismissed or
+      not; the composer keeps tracking the keyboard live and is free to drop
+      to the bottom of the screen on its own once the greeting is no longer in
+      the flex column competing for space, so a gap opens up below the
+      greeting if the keyboard closes without a message being sent. That is
+      the intended trade-off: the greeting is anchored, full stop. Absolute
+      positioning (not just flex: none) is required here: a flex: none
+      greeting still sits IN the column, so the composer's own margin-top:
+      auto redistributes any space it reclaims on keyboard-close BETWEEN the
+      greeting and the composer, pulling the "frozen" greeting up the screen
+      right along with it.
    A fixed height WITHOUT this two-step measure-then-freeze is what caused the
    whole page to scroll off-screen on a shorter phone: a rigid height doesn't
    know if the keyboard actually leaves that much room, and when it doesn't,
    WKWebView's own "scroll the focused field into view" kicks in and drags
    everything, header included, up and off the top of the screen. Freezing a
-   height that was ALREADY correctly laid out (via flex: 1) guarantees it
-   always fits, on every device. */
+   height that was ALREADY correctly laid out (via flex: 1, while still
+   in-flow) guarantees it always fits, on every device. */
 @media (pointer: coarse) {
   .greeting {
     justify-content: flex-end;
     padding-bottom: 16px;
   }
   .greeting.greeting-frozen {
-    flex: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--greeting-frozen-top);
     height: var(--greeting-frozen-height);
   }
 }
