@@ -3,6 +3,44 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-26, greeting)
+
+**Empty-state greeting reworked, composer moved back to the bottom, plus a
+polish pass.** Two founder-requested changes to the chat splash, then a polish
+follow-on, all on main.
+- **Composer back at the bottom.** The earlier keyboard-steady work pinned the
+  greeting out of flow (position: fixed on pointer: coarse) so the keyboard
+  could not drag it, which left the composer with nothing to push it down and it
+  floated up under the header. Anchored it with margin-top: auto scoped to
+  pointer: coarse, the spot it holds once a transcript is open. Desktop is
+  unchanged (the flex:1 greeting already keeps it at the foot of the column).
+- **English lands, tap rotates languages.** English is now the landing line on
+  every startup and every return to the empty state, instead of a random
+  language. Tapping the line rotates on through the languages (replacing the old
+  tap-to-translate toggle), in an order freshly shuffled each time we reach the
+  empty state so the sequence past English differs on every launch. Expanded the
+  set from 18 to 53 languages. `buildRotation()` puts English first, then a
+  Fisher-Yates shuffle of the rest; the English translation rides along as the
+  accessible label so a screen reader still announces the meaning of a
+  non-English line. Code in `app/src/lib/greeting.ts` (ENGLISH_GREETING,
+  GREETINGS, buildRotation) and `app/src/screens/ChatScreen.tsx`.
+- **Polish.** The language swap crossfades (outgoing word lifts up and fades,
+  incoming rises in beneath it, sharing one inline-grid cell so neither reflows
+  the centered line; the exiting layer drops itself on animationend). A single
+  slow one-time discovery nudge a beat after landing hints the line is tappable
+  without breaking the Easter-egg quiet, riding translateY not scale so it never
+  fights the press-fb press. A light haptic tick fires on each rotate through
+  the haptics bus (silent no-op off device). Reduced motion is honored: the
+  incoming word appears instantly, but the exiting layer stays on the global
+  reset rather than animation:none so its animationend still fires and layers
+  never pile up.
+Gates green: app 41 files / 247 tests (em-dash, motion-tokens, and
+polish-standards fill-mode guards included), typecheck (app + electron), lint
+--max-warnings 0, Prettier clean. Straight to main (fast-forward, commits
+`fbffc50` then `a6b44aa`), which fires deploy.yml. Not device-verified (no iOS
+here); founder to confirm the bottom composer, tap-to-rotate, and the swap
+crossfade on device.
+
 ## Current state (2026-08-26, later)
 
 **Your model, on your machine, from your phone (the daemon path, celebrated).**
