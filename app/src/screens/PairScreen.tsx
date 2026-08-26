@@ -232,10 +232,11 @@ function PhonePair() {
     <div className="screen">
       <BackBar title="Desktop connection" />
       <div className="screen-inner">
-        <h1>Connect your desktop</h1>
+        <h1>Connect your computer</h1>
         <p className="lead">
-          One time, two minutes. Then every model and repo on your desktop works from here, over
-          your own private network.
+          One time, two minutes. Then your own model runs on your machine and you reach it from
+          here, over your private network. Your computer does the work, so a long task keeps going
+          even when you close the app.
         </p>
 
         <div className="card">

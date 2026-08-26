@@ -224,6 +224,21 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
       ) : (
         <>
           <div className="card">
+            <h3>Use your own model, from anywhere</h3>
+            <div className="sub" style={{ marginBottom: 10 }}>
+              Run your model on your own computer and reach it from your phone over your private
+              Tailscale network. Your machine does the work, so it does not drain your battery, and
+              a long answer keeps going even when you close the app.
+            </div>
+            <button
+              className="btn primary"
+              style={{ width: '100%' }}
+              onClick={() => void go('pair')}
+            >
+              Connect your computer
+            </button>
+          </div>
+          <div className="card">
             <h3>Add a bigger pocket model</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
               When you want more than a guide, download a larger model that runs fully on this
@@ -235,16 +250,6 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
               onClick={() => void go('marketplace')}
             >
               Browse pocket models
-            </button>
-          </div>
-          <div className="card">
-            <h3>Connect your desktop</h3>
-            <div className="sub" style={{ marginBottom: 10 }}>
-              The full experience: your big models and your repos, from anywhere, over your own
-              private Tailscale network.
-            </div>
-            <button className="btn ghost" style={{ width: '100%' }} onClick={() => void go('pair')}>
-              Connect over Tailscale
             </button>
           </div>
         </>

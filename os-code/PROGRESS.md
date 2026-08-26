@@ -3,6 +3,32 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-26, later)
+
+**Your model, on your machine, from your phone (the daemon path, celebrated).**
+Founder call: rather than build phone-side BYOM streaming (R-16, which makes
+the phone run the loop and fights iOS suspension), deliver the same vision the
+durable way, on the already-built desktop-daemon path where the box runs the
+loop and the phone is the remote control. Two pieces landed:
+- The model sheet now shows a "My computer" group on the phone: it reads the
+  paired box's stack (daemonStack / the /stack endpoint) and, picking it,
+  starts a box-run session over the daemon (RemoteDriver), so the model runs on
+  the machine and a long answer keeps going when the app is backgrounded. States
+  cover not-paired ("Connect your computer" to pairing), unreachable
+  ("Reconnect"), and no-model-configured. A box model can be any provider the
+  box config names, including an OpenAI-compatible BYOM endpoint the box reaches
+  (the engine's provider schema already expresses this, so no engine change was
+  needed).
+- Pairing is now the celebrated first-run path: the onboarding "Connect your
+  computer" card is primary and framed around the value prop (your machine does
+  the work, nothing drains the phone, nothing gets cut off on background), and
+  the PairScreen lead matches. Daemon tests added for the box-run path (the
+  /stack report and a no-cwd box-run session). R-16 stays the narrow escape
+  hatch for bare hosted endpoints with no daemon, still deferred.
+Gates (on the merged tree, after rebasing onto the parallel review-remediation
+pass already on main): os-code 34 files / 276 tests, app 39 files / 226 tests,
+lint/typecheck clean, vite build passes.
+
 ## Current state (2026-08-26)
 
 **Chat-surface refinements + a polish pass landed on main.** Four
@@ -115,11 +141,12 @@ Layer status:
 - [ ] **Repositories offload: wire the producer + homePath picker** to flip
       `REPO_OUTBOX_ENABLED` on (its own scoped feature, per CTO FD-1). Also
       PAR-3: platform-remote (GitHub/GitLab) home repos have no push path yet.
-- [ ] **Claude Code parity roadmap (Part 5a)**, ranked: make desktop pairing
-      the celebrated first-run path + a phone-side read-only tool slice (the
-      app default surface is chat-only today); MCP-stdio on the engine;
-      checkpoints/rewind; replace the stack regex classifier with a Harbor Mini
-      classification call; vision beyond Claude.
+- [ ] **Claude Code parity roadmap (Part 5a)**, remaining after the
+      pair-your-box work landed: MCP-stdio on the engine; checkpoints/rewind;
+      replace the stack regex classifier with a Harbor Mini classification call;
+      vision beyond Claude; a phone-side read-only tool slice for the pure-chat
+      case. (Making desktop pairing the celebrated first-run path, and routing a
+      box-hosted BYOM model through the daemon, are DONE.)
 - [ ] **Founder config before Drive/dark ship:** Google OAuth client ids (see
       DECISIONS gdrive entry); the warm dark palette accents are a first pass,
       a designer contrast/shadow audit pass is the polish (Creative Studio
