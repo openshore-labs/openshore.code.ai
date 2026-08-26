@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import OscodeLlamaPlugin
 import UserNotifications
+import WebKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -28,6 +29,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // here). Registration itself is requested contextually from JS, not at
         // launch.
         UNUserNotificationCenter.current().delegate = self
+        // Let the web layer raise the keyboard from code, so the empty chat
+        // screen can open with the keyboard already up (the Claude app does the
+        // same). Guarded end to end, see ProgrammaticKeyboard below.
+        ProgrammaticKeyboard.install()
         return true
     }
 
@@ -88,5 +93,42 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                                           sessionRole: connectingSceneSession.role)
         config.delegateClass = SceneDelegate.self
         return config
+    }
+}
+
+// Allow the web layer to raise the keyboard from code. WKWebView normally
+// refuses to show the keyboard for a field focused without a real touch, so a
+// JS `element.focus()` on load leaves the field blinking with no keyboard. The
+// empty chat screen wants the keyboard up immediately, so we swizzle
+// WKContentView's private focus entry point to report the focus as user-driven.
+//
+// Every step is guarded: if the private class or selector is ever missing on a
+// future iOS, `install()` simply does nothing and normal touch-driven focus is
+// untouched. Nothing here can crash; the worst case is the keyboard again
+// waiting for a tap. The selector below is the iOS 13.4+ form, which covers our
+// 16.0 deployment minimum.
+enum ProgrammaticKeyboard {
+    private static var installed = false
+
+    static func install() {
+        guard !installed else { return }
+        installed = true
+
+        guard let contentViewClass = NSClassFromString("WKContentView") else { return }
+        let selector = sel_registerName(
+            "_elementDidFocus:userIsInteracting:blurPreviousNode:changingActivityState:userObject:")
+        guard let method = class_getInstanceMethod(contentViewClass, selector) else { return }
+
+        typealias FocusIMP = @convention(c) (
+            AnyObject, Selector, UnsafeRawPointer, Bool, Bool, Bool, AnyObject?) -> Void
+        let original = unsafeBitCast(method_getImplementation(method), to: FocusIMP.self)
+
+        let replacement: @convention(block) (
+            AnyObject, UnsafeRawPointer, Bool, Bool, Bool, AnyObject?) -> Void = {
+            me, node, _, blurPrevious, changingActivity, userObject in
+            // Force userIsInteracting to true so the keyboard is allowed to show.
+            original(me, selector, node, true, blurPrevious, changingActivity, userObject)
+        }
+        _ = method_setImplementation(method, imp_implementationWithBlock(replacement))
     }
 }
