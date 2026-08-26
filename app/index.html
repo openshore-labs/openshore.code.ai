@@ -93,14 +93,57 @@
          buoyant meeting water. --i drives the per-letter stagger; --dir alternates
          the tilt so the letters bob independently, the way things floating on a
          surface never move in lockstep. `backwards` holds each letter below the
-         surface until its turn. The run finishes near 1.6s, inside the 1.8s hold. */
+         surface until its turn. The run finishes near 1.6s, inside the 2.0s hold. */
       #boot-splash .boot-wordmark .boot-letter {
+        position: relative;
         display: inline-block;
         font-size: 36px;
         letter-spacing: 0.02em;
         animation: boot-letter-float 0.85s ease-out backwards;
         animation-delay: calc(0.12s + var(--i) * 0.08s);
         will-change: transform, opacity, filter;
+      }
+      /* Two water rings spread from each letter's base the moment it breaks the
+         surface, then fade as it bobs to rest, the way a droplet piercing water
+         throws concentric ripples. They are foreshortened (wider than tall) so
+         they read as rings lying on a horizontal surface, and staggered off the
+         same --i so each letter's ripples fire in turn with the float. */
+      #boot-splash .boot-wordmark .boot-letter::before,
+      #boot-splash .boot-wordmark .boot-letter::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        bottom: 0.05em;
+        width: 0.82em;
+        height: 0.3em;
+        margin-left: -0.41em;
+        border: 0.045em solid #2f5a66;
+        border-radius: 50%;
+        opacity: 0;
+        pointer-events: none;
+        animation: boot-ripple 0.9s ease-out forwards;
+      }
+      #boot-splash .boot-wordmark .boot-letter::before {
+        animation-delay: calc(0.56s + var(--i) * 0.08s);
+      }
+      #boot-splash .boot-wordmark .boot-letter::after {
+        width: 0.5em;
+        height: 0.19em;
+        margin-left: -0.25em;
+        animation-delay: calc(0.7s + var(--i) * 0.08s);
+      }
+      @keyframes boot-ripple {
+        0% {
+          opacity: 0;
+          transform: scale(0.35);
+        }
+        16% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.9);
+        }
       }
       @keyframes boot-letter-float {
         0% {
@@ -150,6 +193,11 @@
           transition: opacity 0.3s linear;
           transform: none;
           opacity: 1;
+        }
+        #boot-splash .boot-wordmark .boot-letter::before,
+        #boot-splash .boot-wordmark .boot-letter::after {
+          animation: none;
+          opacity: 0;
         }
         #boot-splash.boot-splash-hidden {
           transform: none;
