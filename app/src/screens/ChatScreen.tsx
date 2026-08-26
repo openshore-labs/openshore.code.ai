@@ -2,7 +2,7 @@
 // and a time-of-day greeting, with the model, effort, and everything else
 // living in the composer. A live conversation swaps in the transcript and a
 // header that names the chat.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useApp } from '../state/store.js';
 import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
@@ -48,19 +48,52 @@ function useBooted(): boolean {
 // composer reads it so it always hugs the keyboard (or the safe area when there
 // is none) with no gap.
 //
-// The greeting itself does NOT use this. Mirroring the Claude app, its box is a
-// plain static height set in CSS (see .greeting's touch rule in theme.css), with
-// no dependency on the composer or the keyboard at all, so there is nothing for
-// it to "follow": it never moves once shown, keyboard up, keyboard down, or
-// anywhere in between.
-function useKeyboardInset(): void {
+// The greeting is two states, not a continuous reaction: while the keyboard is
+// rising, it stays flex: 1 (see .greeting's touch rule in theme.css) so it can
+// only ever shrink to whatever room is actually left, hugging the composer
+// directly, never overflowing the screen. The instant the keyboard has
+// genuinely opened and its rise animation has had a moment to settle, this
+// measures the greeting's OWN current (already-correct, already-fitting)
+// rendered height and freezes it there via --greeting-frozen-height, paired
+// with the .greeting-frozen class this hook's return value drives: flex: none
+// locks the box at that exact size, so it can never move again for the rest of
+// this empty state, keyboard dismissed or not. The composer keeps tracking the
+// live keyboard height regardless, so only the greeting stays put. `resetKey`
+// clears the freeze; ChatScreen bumps it each time a fresh empty state arrives
+// so the next one can settle fresh.
+//
+// A height that is fixed WITHOUT this measure-then-freeze step is what caused
+// the whole page to scroll off-screen on a shorter phone in an earlier attempt:
+// a rigid guess doesn't know whether the keyboard actually leaves that much
+// room, and when it doesn't, WKWebView's native "scroll the focused field into
+// view" kicks in and drags everything, header included, off the top of the
+// screen. Freezing a height that was already laid out correctly (via flex: 1)
+// guarantees it always fits, on every device.
+function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: number): boolean {
+  const [frozen, setFrozen] = useState(false);
   useEffect(() => {
+    setFrozen(false);
     const vv = window.visualViewport;
     if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
     const root = document.documentElement.style;
+    const KEYBOARD_THRESHOLD = 80; // px; comfortably above safe-area/rounding noise
+    const SETTLE_MS = 150; // wait for the keyboard's rise animation to quiet down
+    let didFreeze = false;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    const freeze = () => {
+      if (didFreeze || !greetingRef.current) return;
+      didFreeze = true;
+      const height = greetingRef.current.getBoundingClientRect().height;
+      root.setProperty('--greeting-frozen-height', `${height}px`);
+      setFrozen(true);
+    };
     const apply = () => {
       const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
       root.setProperty('--kb-inset', `${inset}px`);
+      if (!didFreeze && inset > KEYBOARD_THRESHOLD) {
+        if (settleTimer) clearTimeout(settleTimer);
+        settleTimer = setTimeout(freeze, SETTLE_MS);
+      }
     };
     apply();
     vv.addEventListener('resize', apply);
@@ -68,8 +101,10 @@ function useKeyboardInset(): void {
     return () => {
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
+      if (settleTimer) clearTimeout(settleTimer);
     };
-  }, []);
+  }, [resetKey, greetingRef]);
+  return frozen;
 }
 
 export function ChatScreen({ compact }: { compact: boolean }) {
@@ -93,7 +128,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // stack, which is what "My Stack" selects.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
   const booted = useBooted();
-  useKeyboardInset();
+  // Bumped each time a fresh empty state arrives, so the greeting's frozen
+  // height (see useKeyboardInset) resets and can settle again for it.
+  const [kbGen, setKbGen] = useState(0);
+  const greetingRef = useRef<HTMLDivElement>(null);
+  const greetingFrozen = useKeyboardInset(greetingRef, kbGen);
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -126,6 +165,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       setRotIdx(0);
       seq.current += 1;
       setLayers([{ id: seq.current, g: rot[0] }]);
+      setKbGen((g) => g + 1);
     }
     wasEmpty.current = isEmpty;
   }, [isEmpty]);
@@ -199,7 +239,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
         />
       ) : (
-        <div className="greeting">
+        <div className={`greeting${greetingFrozen ? ' greeting-frozen' : ''}`} ref={greetingRef}>
           <BrandMark size={40} />
           <h1
             className="greeting-line press-fb"
