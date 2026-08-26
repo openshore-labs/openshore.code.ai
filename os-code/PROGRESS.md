@@ -815,6 +815,23 @@ Layer status:
 
 ## Log
 
+- **2026-08-26: Desktop (Electron) interactive PTY terminal wired (the one
+  documented Phase 2 follow-up).** The interactive terminal already ran
+  phone-to-desktop over the daemon; this wires the same TerminalManager into
+  the Electron desktop app, so a desktop-backed chat opens a real local PTY
+  over IPC (not only remotely). EngineHost holds a TerminalManager and forwards
+  output on a new channel; six osc:terminal* IPC handlers + preload/bridge
+  methods + onTerminalData; ElectronDriver implements the ChatDriver terminal
+  methods (the output listener registers before subscribing so ring replay is
+  never missed, and tears down on abort). A terminalReader is also passed into
+  both bootstrapSession calls so read_terminal sees PTY scrollback on desktop.
+  Owner is the local user on desktop, so no cross-user gate is needed here; PTY
+  output rides its own forwarder and is never journaled; stdin is never logged.
+  3 new ElectronDriver tests. Gates green (os-code 36 files, app 41 files,
+  typecheck incl. electron tsconfig, lint --max-warnings 0, vite build).
+  Still needs the machine: electron-rebuild of node-pty for the Electron ABI to
+  run a real PTY (absent, openTerminal reports unavailable and chat is unaffected).
+
 - **2026-08-26: Second round, founder-approved builds + all scoped follow-ups.**
   The founder approved both team recommendations and asked for every "left for
   their own scoping" item. All built, test-backed, merged to main. Gates green
@@ -841,8 +858,9 @@ Layer status:
     reviewed: the terminal surface is ADMIN-only and owner-only; PTY output
     rides its own SSE endpoint, never the journal (only content-free
     opened/closed markers); stdin is never journaled or logged. Ring buffer with
-    absolute byte offsets for lossless reattach. Electron terminal wiring is the
-    one documented follow-up (phone-to-desktop works today).
+    absolute byte offsets for lossless reattach. Electron terminal wiring was
+    the one documented follow-up; it is now DONE (see the 2026-08-26 desktop
+    PTY entry at the top of the Log).
   - **MP-F2:** a paired phone installs a desktop model over the tailnet (daemon
     /models/install + progress polling).
   - **MP-F4:** pocket models that finished downloading while the app was closed
