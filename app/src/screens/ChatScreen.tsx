@@ -13,7 +13,7 @@ import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
-import { GREETINGS, pickGreeting } from '../lib/greeting.js';
+import { buildRotation } from '../lib/greeting.js';
 import type { Attachment } from '../lib/attachments.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
@@ -41,23 +41,25 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const thread = conv?.thread;
   const approval = thread?.pendingApprovals[0];
 
-  // The rotating splash greeting. A different language each time we land on the
-  // empty state; tapping the line reveals its English translation and back.
+  // The splash greeting. English always lands first; tapping the line rotates
+  // on through the other languages, in an order freshly shuffled each time we
+  // arrive at the empty state.
   const isEmpty = !(conv && thread && thread.items.length > 0);
-  const [greetIdx, setGreetIdx] = useState(() => pickGreeting());
-  const [translated, setTranslated] = useState(false);
+  const [rotation, setRotation] = useState(() => buildRotation());
+  const [rotIdx, setRotIdx] = useState(0);
   const wasEmpty = useRef(true);
   useEffect(() => {
-    // Re-roll only when we return to the empty state from a conversation, so
-    // the first paint keeps its initial pick (no flash) and every fresh chat
-    // gets a new language.
+    // Reshuffle and land on English again only when we return to the empty
+    // state from a conversation, so the first paint keeps its initial rotation
+    // (no flash) and every fresh chat starts from English with a new order.
     if (isEmpty && !wasEmpty.current) {
-      setGreetIdx((prev) => pickGreeting(prev));
-      setTranslated(false);
+      setRotation(buildRotation());
+      setRotIdx(0);
     }
     wasEmpty.current = isEmpty;
   }, [isEmpty]);
-  const greeting = GREETINGS[greetIdx];
+  const greeting = rotation[rotIdx];
+  const rotate = () => setRotIdx((i) => (i + 1) % rotation.length);
 
   // The composer pill shows the live chat's brain when one is open, otherwise
   // the pending selection for the next new chat.
@@ -124,20 +126,20 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           <h1
             className="greeting-line press-fb"
             dir="auto"
-            lang={translated ? 'en' : greeting.code}
+            lang={greeting.code}
             role="button"
             tabIndex={0}
             aria-label={greeting.english}
-            onClick={() => setTranslated((t) => !t)}
+            onClick={rotate}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                setTranslated((t) => !t);
+                rotate();
               }
             }}
           >
-            <span key={translated ? 'en' : 'native'} className="greeting-swap">
-              {translated ? greeting.english : greeting.native}
+            <span key={rotIdx} className="greeting-swap">
+              {greeting.native}
             </span>
           </h1>
         </div>
