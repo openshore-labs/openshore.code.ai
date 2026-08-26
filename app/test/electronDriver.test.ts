@@ -160,3 +160,82 @@ describe('ElectronDriver chat-to-terminal lane', () => {
     driver.dispose();
   });
 });
+
+describe('ElectronDriver interactive terminal (Phase 2)', () => {
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window;
+  });
+
+  function installTermBridge() {
+    let termCb: ((p: { termId: string; b64: string; offset: number }) => void) | undefined;
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const rec =
+      (method: string, ret?: unknown) =>
+      (...args: unknown[]) => {
+        calls.push({ method, args });
+        return Promise.resolve(ret);
+      };
+    (globalThis as unknown as { window: unknown }).window = {
+      oscode: {
+        onEvent: () => () => {},
+        onTerminalData: (cb: (p: { termId: string; b64: string; offset: number }) => void) => {
+          termCb = cb;
+          return () => {
+            termCb = undefined;
+          };
+        },
+        openTerminal: rec('openTerminal', { termId: 'tm1', cols: 100, rows: 30 }),
+        terminalSubscribe: rec('terminalSubscribe', true),
+        terminalUnsubscribe: rec('terminalUnsubscribe'),
+        terminalStdin: rec('terminalStdin', true),
+        terminalResize: rec('terminalResize', true),
+        terminalKill: rec('terminalKill', true),
+      },
+    };
+    return { calls, emit: (p: { termId: string; b64: string; offset: number }) => termCb?.(p) };
+  }
+
+  it('opens a terminal via the bridge', async () => {
+    const bridge = installTermBridge();
+    const driver = new ElectronDriver('s1');
+    const opened = await driver.openTerminal({ cols: 100, rows: 30 });
+    expect(opened).toEqual({ termId: 'tm1', cols: 100, rows: 30 });
+    expect(bridge.calls[0]).toEqual({ method: 'openTerminal', args: ['s1', 100, 30] });
+    driver.dispose();
+  });
+
+  it('streams forwarded output to onChunk and unsubscribes on abort', async () => {
+    const bridge = installTermBridge();
+    const driver = new ElectronDriver('s1');
+    const chunks: Array<{ text: string; offset: number }> = [];
+    const ac = new AbortController();
+    const streamP = driver.terminalStream(
+      'tm1',
+      0,
+      (bytes, offset) => chunks.push({ text: new TextDecoder().decode(bytes), offset }),
+      ac.signal,
+    );
+    // A chunk for tm1 lands; a chunk for another terminal is ignored.
+    bridge.emit({ termId: 'tm1', b64: btoa('hello'), offset: 5 });
+    bridge.emit({ termId: 'other', b64: btoa('nope'), offset: 4 });
+    expect(chunks).toEqual([{ text: 'hello', offset: 5 }]);
+    expect(bridge.calls.some((c) => c.method === 'terminalSubscribe')).toBe(true);
+
+    ac.abort();
+    await streamP; // resolves on abort
+    expect(bridge.calls.some((c) => c.method === 'terminalUnsubscribe')).toBe(true);
+    driver.dispose();
+  });
+
+  it('forwards stdin, resize, and kill to the bridge', () => {
+    const bridge = installTermBridge();
+    const driver = new ElectronDriver('s1');
+    driver.terminalStdin('tm1', 'ls\n');
+    driver.terminalResize('tm1', 120, 40);
+    driver.terminalKill('tm1');
+    expect(bridge.calls.find((c) => c.method === 'terminalStdin')?.args).toEqual(['tm1', 'ls\n']);
+    expect(bridge.calls.find((c) => c.method === 'terminalResize')?.args).toEqual(['tm1', 120, 40]);
+    expect(bridge.calls.find((c) => c.method === 'terminalKill')?.args).toEqual(['tm1']);
+    driver.dispose();
+  });
+});

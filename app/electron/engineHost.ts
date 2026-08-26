@@ -12,6 +12,7 @@ import {
   type LocalDriver,
 } from 'os-code/dist/src/daemon/session.js';
 import { startDaemon, type RunningDaemon } from 'os-code/dist/src/daemon/serve.js';
+import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/terminal.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
 import { getAnthropicKey, loginWithApiKey, logoutClaude } from 'os-code/dist/src/auth/claude.js';
 import { loginWithPat, logoutGithub, isGithubConnected } from 'os-code/dist/src/auth/github.js';
@@ -104,16 +105,25 @@ export type InstallForward = (payload: {
   total?: number;
 }) => void;
 
+// Raw PTY output for the renderer's xterm, base64 with its absolute end offset
+// so a reopened terminal resumes from where it left off (Phase 2 desktop).
+export type TerminalForward = (payload: { termId: string; b64: string; offset: number }) => void;
+
 const OPENAI_KEY_NAME = 'openai-api-key';
 
 export class EngineHost {
   private drivers = new Map<string, LocalDriver>();
   private unsubs = new Map<string, () => void>();
   private daemon?: RunningDaemon;
+  // The desktop app's own PTYs (the same TerminalManager the daemon uses), plus
+  // the live output subscriptions the renderer opened, keyed by termId.
+  private terminals = new TerminalManager();
+  private termSubs = new Map<string, () => void>();
 
   constructor(
     private readonly forwardEvent: EventForward,
     private readonly forwardInstall: InstallForward,
+    private readonly forwardTerminal: TerminalForward,
   ) {
     // Reseal any pre-encryption sessions once the host is up. Off the launch
     // path and failure-tolerant: sealing protects data, it never blocks the app.
@@ -148,9 +158,19 @@ export class EngineHost {
     return journal;
   }
 
+  // The agent's readTerminal tool reads this session's live PTY (Phase 2). Wired
+  // through bootstrapSession the same way the daemon wires it, so the desktop
+  // agent can look at the terminal too.
+  private readTerminal = (sessionId: string, lines: number, termId?: string): string | undefined =>
+    this.terminals.readForSession(sessionId, lines, termId);
+
   async createSession(cwd?: string): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
-    const { driver, warnings } = bootstrapSession({ cwd: workDir, profile: 'local-interactive' });
+    const { driver, warnings } = bootstrapSession({
+      cwd: workDir,
+      profile: 'local-interactive',
+      terminalReader: this.readTerminal,
+    });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
   }
@@ -173,6 +193,7 @@ export class EngineHost {
         cwd: stored.cwd,
         profile: 'local-interactive',
         sessionId: id,
+        terminalReader: this.readTerminal,
       });
       const journal = this.attach(driver);
       return { id, cwd: stored.cwd, journal };
@@ -224,6 +245,64 @@ export class EngineHost {
 
   killCommand(sessionId: string, runId: string): void {
     this.drivers.get(sessionId)?.killCommand(runId);
+  }
+
+  // ------------------------------------------- interactive terminal (Phase 2)
+  // The desktop app runs the same TerminalManager the daemon does. A PTY is an
+  // unjailed interactive shell; on the desktop the local user IS the owner, so
+  // there is no cross-user boundary to enforce here (that gate lives on the
+  // daemon, for a remote phone). Output rides its own forwarder, never the event
+  // journal; stdin is never logged.
+
+  async openTerminal(
+    sessionId: string,
+    cols: number,
+    rows: number,
+  ): Promise<
+    { termId: string; cols: number; rows: number } | { unavailable: true; error: string }
+  > {
+    const driver = this.drivers.get(sessionId);
+    if (!driver) return { unavailable: true, error: 'That session is not open.' };
+    try {
+      const info = await this.terminals.ensure({ sessionId, cwd: driver.cwd, cols, rows });
+      // Content-free audit marker only (never output or stdin).
+      driver.emit({ type: 'terminal-opened', termId: info.termId, cwd: driver.cwd });
+      return info;
+    } catch (err) {
+      if (err instanceof TerminalUnavailable) return { unavailable: true, error: err.message };
+      return { unavailable: true, error: (err as Error).message };
+    }
+  }
+
+  /** Start forwarding a terminal's output (ring replay from sinceOffset, then
+   *  live) to the renderer. Idempotent: a re-subscribe replaces the old one. */
+  terminalSubscribe(termId: string, sinceOffset: number): boolean {
+    this.termSubs.get(termId)?.();
+    this.termSubs.delete(termId);
+    const unsub = this.terminals.subscribe(termId, sinceOffset, (data, offset) => {
+      this.forwardTerminal({ termId, b64: data.toString('base64'), offset });
+    });
+    if (!unsub) return false;
+    this.termSubs.set(termId, unsub);
+    return true;
+  }
+
+  terminalUnsubscribe(termId: string): void {
+    this.termSubs.get(termId)?.();
+    this.termSubs.delete(termId);
+  }
+
+  terminalStdin(termId: string, data: string): boolean {
+    return this.terminals.write(termId, data);
+  }
+
+  terminalResize(termId: string, cols: number, rows: number): boolean {
+    return this.terminals.resize(termId, cols, rows);
+  }
+
+  terminalKill(termId: string): boolean {
+    this.terminalUnsubscribe(termId);
+    return this.terminals.kill(termId);
   }
 
   // ------------------------------------------------------------------ status
@@ -508,6 +587,8 @@ export class EngineHost {
   disposeAll(): void {
     for (const off of this.unsubs.values()) off();
     this.unsubs.clear();
+    for (const off of this.termSubs.values()) off();
+    this.termSubs.clear();
     this.daemon?.close();
   }
 }

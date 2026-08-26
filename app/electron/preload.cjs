@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld('oscode', {
   sendCommandStdin: invoke('osc:sendCommandStdin'),
   killCommand: invoke('osc:killCommand'),
 
+  openTerminal: invoke('osc:openTerminal'),
+  terminalSubscribe: invoke('osc:terminalSubscribe'),
+  terminalUnsubscribe: invoke('osc:terminalUnsubscribe'),
+  terminalStdin: invoke('osc:terminalStdin'),
+  terminalResize: invoke('osc:terminalResize'),
+  terminalKill: invoke('osc:terminalKill'),
+  onTerminalData: listen('osc:terminal-data'),
+
   status: invoke('osc:status'),
   catalog: invoke('osc:catalog'),
   stackHealth: invoke('osc:stackHealth'),

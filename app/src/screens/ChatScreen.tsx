@@ -76,9 +76,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         ) : (
           <div className="topbar-spacer" />
         )}
-        {/* Terminal entry, desktop-backed chats only: a real PTY on the desktop
-            over the same daemon connection. Non-desktop chats have no terminal,
-            so it stays hidden for them. */}
+        {/* Terminal entry, desktop-backed chats only: a real PTY on the desktop,
+            reached over the daemon from the phone and over IPC in the desktop
+            app. Non-desktop chats have no terminal, so it stays hidden. */}
         {conv && conv.source.kind === 'desktop' ? (
           <button
             className="icon-btn press-fb"
