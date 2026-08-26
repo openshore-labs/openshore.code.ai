@@ -84,53 +84,71 @@
       #boot-splash .boot-wordmark .boot-accent {
         color: #2f5a66;
       }
-      /* The wordmark surfaces one letter at a time, floating up as if from under
-         water. Each letter starts deep, blurred and tinted the water teal, rises
-         and comes into focus, then breaks the surface and settles with a damped
-         buoyant bob: it overshoots past its resting line and swells to ~109%,
-         eases back with a small undershoot, bobs once more, and rests. That
-         overshoot-and-settle is the standard motion-design trick for something
-         buoyant meeting water. --i drives the per-letter stagger; --dir alternates
-         the tilt so the letters bob independently, the way things floating on a
-         surface never move in lockstep. `backwards` holds each letter below the
-         surface until its turn. The run finishes near 1.6s, inside the 2.0s hold. */
+      /* The wordmark surfaces one letter at a time, animated on the classic
+         character-animation principles so it reads hand-keyed, not tweened:
+         squash and stretch (the letter elongates as it pushes through the
+         surface, then squashes flat when it lands, volume roughly conserved),
+         anticipation (a faint ring bulges the water just before it emerges),
+         and follow-through (a damped two-beat bob before rest). The transform
+         origin sits at the waterline so the squash plants on the surface the
+         way a bouncing ball plants on the ground. --i drives the per-letter
+         stagger; --dir alternates the tilt so no two letters move in lockstep.
+         `backwards` holds each letter below the surface until its turn. The
+         run finishes near 1.7s, inside the 2.0s hold. */
       #boot-splash .boot-wordmark .boot-letter {
         position: relative;
         display: inline-block;
         font-size: 36px;
         letter-spacing: 0.02em;
-        animation: boot-letter-float 0.85s ease-out backwards;
+        transform-origin: 50% 90%;
+        animation: boot-letter-float 0.95s ease-out backwards;
         animation-delay: calc(0.12s + var(--i) * 0.08s);
         will-change: transform, opacity, filter;
       }
-      /* Two water rings spread from each letter's base the moment it breaks the
-         surface, then fade as it bobs to rest, the way a droplet piercing water
-         throws concentric ripples. They are foreshortened (wider than tall) so
-         they read as rings lying on a horizontal surface, and staggered off the
-         same --i so each letter's ripples fire in turn with the float. */
+      /* Two water rings per letter, foreshortened (wider than tall) so they
+         read as lying on a horizontal surface, staggered off the same --i as
+         the float. The first is ANTICIPATION: a small faint ring that bulges
+         the water just before the letter emerges, telegraphing where it will
+         break through. The second is the BREAK: a bigger, brighter ring thrown
+         outward as the letter actually pierces the surface, fading while the
+         letter bobs to rest. */
       #boot-splash .boot-wordmark .boot-letter::before,
       #boot-splash .boot-wordmark .boot-letter::after {
         content: '';
         position: absolute;
         left: 50%;
         bottom: 0.05em;
-        width: 0.82em;
-        height: 0.3em;
-        margin-left: -0.41em;
         border: 0.045em solid #2f5a66;
         border-radius: 50%;
         opacity: 0;
         pointer-events: none;
-        animation: boot-ripple 0.9s ease-out forwards;
       }
       #boot-splash .boot-wordmark .boot-letter::before {
-        animation-delay: calc(0.56s + var(--i) * 0.08s);
-      }
-      #boot-splash .boot-wordmark .boot-letter::after {
         width: 0.5em;
         height: 0.19em;
         margin-left: -0.25em;
-        animation-delay: calc(0.7s + var(--i) * 0.08s);
+        animation: boot-ripple-pre 0.55s ease-out forwards;
+        animation-delay: calc(0.42s + var(--i) * 0.08s);
+      }
+      #boot-splash .boot-wordmark .boot-letter::after {
+        width: 0.85em;
+        height: 0.31em;
+        margin-left: -0.425em;
+        animation: boot-ripple 0.9s ease-out forwards;
+        animation-delay: calc(0.66s + var(--i) * 0.08s);
+      }
+      @keyframes boot-ripple-pre {
+        0% {
+          opacity: 0;
+          transform: scale(0.4);
+        }
+        30% {
+          opacity: 0.28;
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.25);
+        }
       }
       @keyframes boot-ripple {
         0% {
@@ -142,35 +160,97 @@
         }
         100% {
           opacity: 0;
-          transform: scale(1.9);
+          transform: scale(2);
         }
       }
+      /* Secondary action: on a few star letters a droplet is flung up off the
+         pop, decelerates to its apex, then falls back under gravity and winks
+         out at the surface. --dx picks the throw direction. Restraint on
+         purpose: a gag on every letter stops reading as a gag. */
+      #boot-splash .boot-wordmark .boot-drop {
+        position: absolute;
+        left: 50%;
+        bottom: 0.12em;
+        width: 0.09em;
+        height: 0.09em;
+        margin-left: -0.045em;
+        border-radius: 50%;
+        background: #2f5a66;
+        opacity: 0;
+        pointer-events: none;
+        animation: boot-drop 0.6s linear forwards;
+        animation-delay: calc(0.68s + var(--i) * 0.08s);
+      }
+      #boot-splash .boot-wordmark .boot-drop.boot-drop-b {
+        width: 0.06em;
+        height: 0.06em;
+        margin-left: -0.03em;
+        animation-duration: 0.5s;
+        animation-delay: calc(0.74s + var(--i) * 0.08s);
+      }
+      @keyframes boot-drop {
+        0% {
+          opacity: 0;
+          transform: translate(0, 0) scale(1);
+          animation-timing-function: ease-out;
+        }
+        12% {
+          opacity: 0.85;
+        }
+        45% {
+          /* Apex: eased out on the way up, eased in on the way down. */
+          transform: translate(calc(var(--dx, 1) * 0.24em), -0.78em) scale(0.85);
+          animation-timing-function: ease-in;
+        }
+        88% {
+          opacity: 0.7;
+        }
+        100% {
+          opacity: 0;
+          transform: translate(calc(var(--dx, 1) * 0.4em), 0.02em) scale(0.7);
+        }
+      }
+      /* scale(x, y) is deliberately non-uniform throughout: the letter drifts
+         up compressed, elongates as it strains through the surface tension,
+         pops through stretched tall, then squashes wide when it lands on the
+         waterline, with volume roughly conserved at every key. Fall segments
+         switch to ease-in so gravity reads. */
       @keyframes boot-letter-float {
         0% {
           opacity: 0;
-          transform: translateY(1em) scale(0.9) rotate(calc(var(--dir, 1) * -2.4deg));
+          transform: translateY(1em) scale(0.94, 0.88) rotate(calc(var(--dir, 1) * -2.4deg));
           filter: blur(8px);
           color: #2f5a66;
         }
-        42% {
+        32% {
           opacity: 1;
         }
-        60% {
+        52% {
+          /* Nearing the surface: starting to stretch against the tension. */
+          transform: translateY(0.22em) scale(0.97, 1.05) rotate(calc(var(--dir, 1) * -1deg));
+          filter: blur(2px);
+        }
+        64% {
+          /* The pop: through the surface, stretched tall and clean. */
+          transform: translateY(-0.13em) scale(0.9, 1.17) rotate(calc(var(--dir, 1) * 1.4deg));
           filter: blur(0);
+          animation-timing-function: ease-in;
         }
-        70% {
-          /* Breaks the surface: past the line and swollen, tilted with the water. */
-          transform: translateY(-0.11em) scale(1.09) rotate(calc(var(--dir, 1) * 1.6deg));
+        76% {
+          /* Lands and squashes wide on the waterline. */
+          transform: translateY(0.035em) scale(1.09, 0.91) rotate(calc(var(--dir, 1) * -0.8deg));
         }
-        84% {
-          transform: translateY(0.04em) scale(0.985) rotate(calc(var(--dir, 1) * -0.7deg));
+        87% {
+          /* Rebound, most of the energy spent. */
+          transform: translateY(-0.03em) scale(0.98, 1.035) rotate(calc(var(--dir, 1) * 0.3deg));
+          animation-timing-function: ease-in;
         }
-        93% {
-          transform: translateY(-0.015em) scale(1.004) rotate(calc(var(--dir, 1) * 0.2deg));
+        94% {
+          transform: translateY(0.008em) scale(1.012, 0.99) rotate(0deg);
         }
         100% {
           opacity: 1;
-          transform: translateY(0) scale(1) rotate(0deg);
+          transform: translateY(0) scale(1, 1) rotate(0deg);
           filter: blur(0);
         }
       }
@@ -195,7 +275,8 @@
           opacity: 1;
         }
         #boot-splash .boot-wordmark .boot-letter::before,
-        #boot-splash .boot-wordmark .boot-letter::after {
+        #boot-splash .boot-wordmark .boot-letter::after,
+        #boot-splash .boot-wordmark .boot-drop {
           animation: none;
           opacity: 0;
         }
@@ -230,15 +311,23 @@
         </g>
       </svg>
       <div class="boot-wordmark" aria-hidden="true">
-        <span class="boot-letter" style="--i: 0; --dir: 1">O</span>
+        <span class="boot-letter" style="--i: 0; --dir: 1"
+          >O<i class="boot-drop" style="--dx: -1"></i
+          ><i class="boot-drop boot-drop-b" style="--dx: 1"></i
+        ></span>
         <span class="boot-letter" style="--i: 1; --dir: -1">p</span>
         <span class="boot-letter" style="--i: 2; --dir: 1">e</span>
         <span class="boot-letter" style="--i: 3; --dir: -1">n</span>
-        <span class="boot-letter boot-accent" style="--i: 4; --dir: 1">S</span>
+        <span class="boot-letter boot-accent" style="--i: 4; --dir: 1"
+          >S<i class="boot-drop" style="--dx: 1"></i
+          ><i class="boot-drop boot-drop-b" style="--dx: -1"></i
+        ></span>
         <span class="boot-letter boot-accent" style="--i: 5; --dir: -1">h</span>
         <span class="boot-letter boot-accent" style="--i: 6; --dir: 1">o</span>
         <span class="boot-letter boot-accent" style="--i: 7; --dir: -1">r</span>
-        <span class="boot-letter boot-accent" style="--i: 8; --dir: 1">e</span>
+        <span class="boot-letter boot-accent" style="--i: 8; --dir: 1"
+          >e<i class="boot-drop" style="--dx: 1"></i
+        ></span>
       </div>
     </div>
     <div id="root"></div>
