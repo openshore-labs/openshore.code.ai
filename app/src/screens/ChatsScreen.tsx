@@ -1,18 +1,31 @@
 // The Chats room: one place that lists every saved chat in the active project,
 // the way the Claude app keeps its chat history behind a "Chats" button instead
 // of stacking it down the side of every screen. Start a new chat from the top,
-// or tap one to reopen it.
+// tap one to reopen it, or swipe a row to delete it (with a confirm, since it
+// cannot be undone).
+import { useState, type CSSProperties } from 'react';
 import { useApp } from '../state/store.js';
 import { sourceLabel } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
+import { SwipeRow } from '../components/SwipeRow.js';
 
 export function ChatsScreen() {
-  const { order, conversations, activeId, view, openConversation, startNewChat, quickChat, settings } =
-    useApp();
+  const {
+    order,
+    conversations,
+    activeId,
+    view,
+    openConversation,
+    startNewChat,
+    quickChat,
+    deleteConversation,
+    showToast,
+    settings,
+  } = useApp();
+  const [confirmId, setConfirmId] = useState<string | undefined>();
 
   const projects = settings.projects ?? [];
-  const activeProject =
-    projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
+  const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
 
   // The saved chats in the active project. A live quick chat is transient, so it
   // shows only while it is the one open, matching the old sidebar rule.
@@ -23,6 +36,8 @@ export function ChatsScreen() {
     if (activeProject) return conv.projectId === activeProject.id;
     return !conv.projectId;
   });
+
+  const confirmConv = confirmId ? conversations[confirmId] : undefined;
 
   return (
     <div className="screen">
@@ -40,7 +55,7 @@ export function ChatsScreen() {
             + New chat
           </button>
           <button
-            className="btn"
+            className="btn ghost"
             onClick={() => {
               void quickChat();
             }}
@@ -56,28 +71,61 @@ export function ChatsScreen() {
               : 'Create a project to start saving your chats.'}
           </p>
         ) : (
-          <div className="chat-list">
-            {shown.map((id) => {
+          <div className="chat-group">
+            {shown.map((id, i) => {
               const conv = conversations[id]!;
+              // Cap the stagger so a long history never keeps the eye waiting.
+              const stagger = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
               return (
-                <button
+                <SwipeRow
                   key={id}
-                  className={`chat-row${id === activeId && view === 'chat' ? ' active' : ''}`}
-                  onClick={() => openConversation(id)}
+                  variant="danger"
+                  label="Delete"
+                  style={stagger}
+                  onTap={() => openConversation(id)}
+                  onToggle={() => setConfirmId(id)}
                 >
-                  <span className="chat-row-title">
-                    {conv.ephemeral ? <span className="ephemeral-dot" aria-hidden="true" /> : null}
-                    {conv.title}
-                  </span>
-                  <span className="chat-row-sub">
-                    {conv.ephemeral ? 'Quick chat · not saved' : sourceLabel(conv.source)}
-                  </span>
-                </button>
+                  <div className={`chat-row${id === activeId && view === 'chat' ? ' active' : ''}`}>
+                    <span className="chat-row-title">
+                      {conv.ephemeral ? (
+                        <span className="ephemeral-dot" aria-hidden="true" />
+                      ) : null}
+                      {conv.title}
+                    </span>
+                    <span className="chat-row-sub">
+                      {conv.ephemeral ? 'Quick chat · not saved' : sourceLabel(conv.source)}
+                    </span>
+                  </div>
+                </SwipeRow>
               );
             })}
           </div>
         )}
       </div>
+
+      {confirmConv ? (
+        <div className="confirm-scrim" onClick={() => setConfirmId(undefined)}>
+          <div className="confirm-card" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete this chat?</h3>
+            <p>{confirmConv.title}. This cannot be undone.</p>
+            <div className="confirm-row">
+              <button className="btn ghost" onClick={() => setConfirmId(undefined)}>
+                Cancel
+              </button>
+              <button
+                className="btn danger"
+                onClick={() => {
+                  deleteConversation(confirmId!);
+                  setConfirmId(undefined);
+                  showToast('Chat deleted.');
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

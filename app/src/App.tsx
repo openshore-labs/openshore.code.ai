@@ -139,7 +139,12 @@ export function App() {
   return (
     <div className="shell">
       {!compact ? <Sidebar /> : null}
-      <div className="shell-main">{room}</div>
+      {/* Keyed on the view so switching rooms replays a soft fade-in instead of
+          a hard cut. Same view (e.g. opening another chat) keeps the key, so a
+          live transcript is never remounted mid-stream. */}
+      <div className="shell-main room-swap" key={view}>
+        {room}
+      </div>
       {compact && drawerOpen ? <Sidebar drawer /> : null}
       <Paywall />
       {toast ? (
