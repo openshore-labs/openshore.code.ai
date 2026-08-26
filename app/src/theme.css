@@ -1311,6 +1311,17 @@ textarea {
   background: linear-gradient(transparent, var(--bg) 30%);
 }
 
+/* Touch devices only: the empty-state greeting is pinned out of flow (fixed to
+   the layout viewport, see .greeting below), so nothing in the column pushes the
+   composer down. Anchor it to the bottom where it belongs, the way it sits once
+   a transcript is open. Desktop keeps its in-flow layout, where the flex:1
+   greeting already holds the composer at the foot of the column. */
+@media (pointer: coarse) {
+  .composer-wrap {
+    margin-top: auto;
+  }
+}
+
 .composer {
   max-width: 760px;
   margin: 0 auto;
