@@ -13,7 +13,7 @@ import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
-import { buildRotation, ENGLISH_GREETING, type Greeting } from '../lib/greeting.js';
+import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { hapticTick } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 
@@ -42,17 +42,17 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const thread = conv?.thread;
   const approval = thread?.pendingApprovals[0];
 
-  // The splash greeting. English always lands first; tapping the line rotates
-  // on through the other languages, in an order freshly shuffled each time we
-  // arrive at the empty state.
+  // The splash greeting. A fresh time-and-day-aware landing line lands first;
+  // tapping the line rotates on through the world languages, in an order freshly
+  // shuffled each time we arrive at the empty state.
   const isEmpty = !(conv && thread && thread.items.length > 0);
   const [rotation, setRotation] = useState(() => buildRotation());
   const [rotIdx, setRotIdx] = useState(0);
   // Crossfade layers: the last is the current word rising in; any earlier ones
   // are lifting out and drop themselves on animationend. Each carries a unique
-  // id from this monotonic counter so a wrap back to English still remounts.
+  // id from this monotonic counter so a wrap back to the landing still remounts.
   const [layers, setLayers] = useState<{ id: number; g: Greeting }[]>(() => [
-    { id: 0, g: ENGLISH_GREETING },
+    { id: 0, g: rotation[0] },
   ]);
   const seq = useRef(0);
   // One-time discovery nudge, played on the first empty-state paint of the
@@ -60,9 +60,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [hint, setHint] = useState(true);
   const wasEmpty = useRef(true);
   useEffect(() => {
-    // Reshuffle and land on English again only when we return to the empty
-    // state from a conversation, so the first paint keeps its initial rotation
-    // (no flash) and every fresh chat starts from English with a new order.
+    // Reshuffle and re-pick a fresh landing line only when we return to the
+    // empty state from a conversation, so the first paint keeps its initial
+    // rotation (no flash) and every fresh chat gets a new greeting and order.
     if (isEmpty && !wasEmpty.current) {
       const rot = buildRotation();
       setRotation(rot);
@@ -167,7 +167,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         />
       ) : (
         <div className="greeting" ref={greetRef}>
-          <BrandMark size={48} />
+          <BrandMark size={40} />
           <h1
             className="greeting-line press-fb"
             dir="auto"

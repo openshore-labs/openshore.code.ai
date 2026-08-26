@@ -1,8 +1,9 @@
-// The chat splash greeting. English is always the landing line when you start
-// up or return to the empty state; tapping the line rotates on through a big
-// pile of languages, in a freshly shuffled order each time so the sequence past
-// English differs on every launch. All local: no network, no account, no device
-// locale sniffing.
+// The chat splash greeting. The landing line is a warm, time-and-day-aware
+// English greeting, picked fresh each time you land on the empty state (a friend
+// who knows what time it is). Tapping the line rotates on through a big pile of
+// languages, in a freshly shuffled order each time so the sequence past the
+// landing differs on every launch. All local: no network, no account, no device
+// locale sniffing, just the device clock.
 
 export interface Greeting {
   // The language's English name, for reference and tests. Not shown in the UI.
@@ -17,14 +18,118 @@ export interface Greeting {
   english: string;
 }
 
-// The landing line: plain English, shown first on every startup and every time
-// we come back to the empty state, before any tap.
+// A neutral English fallback. The real landing line is chosen by pickLanding
+// from the time-of-day library below; this stands in only if a pool is ever
+// empty, and gives tests a stable reference for the reserved 'en' code.
 export const ENGLISH_GREETING: Greeting = {
   lang: 'English',
   code: 'en',
   native: 'Hi. What are we building today?',
   english: 'Hi. What are we building today?',
 };
+
+// Time-of-day buckets for the landing line. The hour ranges are half-open and
+// wrap for late night (21:00 through 04:59). Kept as an ordered type so tests
+// and the picker share one vocabulary.
+export type TimeBucket =
+  'earlyMorning' | 'morning' | 'midday' | 'afternoon' | 'evening' | 'lateNight';
+
+// The landing library, by time bucket. Warm maker's-delight, mostly soft
+// questions, held at an even indoor volume so no random pick shouts over its
+// neighbors. Final set from the Creative Studio + CMO voice pass. No em dashes,
+// by policy and by design.
+export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
+  earlyMorning: [
+    'Up before the sun?',
+    'Early start today.',
+    'Coffee’s brewing?',
+    'First light, first commit.',
+    'The world’s still asleep.',
+    'Quiet hours, clear head.',
+    'Fresh morning, fresh branch.',
+    'A calm start today.',
+  ],
+  morning: [
+    'Coffee and coding?',
+    'Good morning. Where do we start?',
+    'Morning. What’s first?',
+    'A clean slate today.',
+    'Ready when you are.',
+    'What’s on the workbench?',
+    'Let’s make something good.',
+    'Morning. Pick a thread.',
+    'What are we shipping today?',
+  ],
+  midday: [
+    'Midday momentum.',
+    'Halfway there, still flowing?',
+    'What’s next on the list?',
+    'Fueled up and ready?',
+    'One more before lunch?',
+    'Still in the zone?',
+    'A good stretch ahead.',
+  ],
+  afternoon: [
+    'Where were we?',
+    'Afternoon stretch. What’s next?',
+    'Second wind?',
+    'Let’s close a few loops.',
+    'What can we finish today?',
+    'Chipping away today?',
+    'A quiet afternoon build.',
+    'Pick up the thread?',
+  ],
+  evening: [
+    'Evening session?',
+    'Winding down, or just starting?',
+    'What are we building tonight?',
+    'Off the clock, on a roll?',
+    'Evening. Let’s tinker.',
+    'A little something before bed?',
+    'What’s on your mind tonight?',
+  ],
+  lateNight: [
+    'Late night flow?',
+    'The quiet hours are yours.',
+    'Just you and the cursor.',
+    'One more commit before bed?',
+    'The world’s asleep. Let’s build.',
+    'Deep in it tonight?',
+    'Still up, still building?',
+    'The house is quiet.',
+  ],
+};
+
+// Day-flavor pools, mixed into the time bucket (see pickLanding). Weekend lines
+// are time-agnostic; Monday and Friday carry the start/close of the week.
+export const WEEKEND_LINES: readonly string[] = [
+  'Weekend project?',
+  'Saturday’s for side projects.',
+  'Sunday tinkering?',
+  'A slow weekend build?',
+  'Weekend hours, the best kind.',
+  'What are we making for fun?',
+  'Time for the passion project?',
+  'No rush today.',
+];
+
+export const MONDAY_LINES: readonly string[] = [
+  'Fresh week. Fresh start.',
+  'New week, clean branch.',
+  'Monday. Let’s set the tone.',
+  'The week’s first move?',
+  'Ease into it. Where do we start?',
+  'Monday. One thing at a time.',
+];
+
+export const FRIDAY_LINES: readonly string[] = [
+  'Friday. Ship it?',
+  'Land it before the weekend?',
+  'Close the week out strong?',
+  'One good push left?',
+  'Friday flow.',
+  'Almost the weekend. What’s left?',
+];
 
 // The languages the tap rotates through, after English. Warm and a touch
 // cheeky, never over the top. Every line is a real greeting a speaker would
@@ -361,11 +466,48 @@ function shuffle(items: Greeting[], rng: () => number): Greeting[] {
   return out;
 }
 
-// Build the tap-through rotation for one turn on the empty state: English always
-// lands first, then every other language in a freshly shuffled order so the
-// sequence past the first tap differs each launch. Tapping walks this list and
-// wraps back to English at the end. `rng` is injectable for tests; defaults to
-// Math.random.
-export function buildRotation(rng: () => number = Math.random): Greeting[] {
-  return [ENGLISH_GREETING, ...shuffle([...GREETINGS], rng)];
+// Which time bucket an hour (0 to 23, local) belongs to. Half-open ranges;
+// late night wraps midnight, covering 21:00 through 04:59.
+export function bucketForHour(hour: number): TimeBucket {
+  if (hour >= 5 && hour < 8) return 'earlyMorning';
+  if (hour >= 8 && hour < 11) return 'morning';
+  if (hour >= 11 && hour < 14) return 'midday';
+  if (hour >= 14 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 21) return 'evening';
+  return 'lateNight';
+}
+
+// The day-flavor pool for a date, or null on a plain weekday (Tue to Thu). Sat
+// and Sun get the weekend pool; Monday and Friday get their own. Friday is read
+// as a weekday, so its flavor wins over the weekend even into Friday evening.
+export function dayFlavorLines(date: Date): readonly string[] | null {
+  const day = date.getDay(); // 0 = Sunday, 6 = Saturday
+  if (day === 0 || day === 6) return WEEKEND_LINES;
+  if (day === 1) return MONDAY_LINES;
+  if (day === 5) return FRIDAY_LINES;
+  return null;
+}
+
+// Pick the landing line for a moment in time. The base pool is the time bucket;
+// when the day carries a flavor (weekend, Monday, Friday), a gem from that pool
+// lands about one time in three, so the day shows through without drowning out
+// the hour. Returns a Greeting on the reserved 'en' code, with `english` equal
+// to the line itself so a screen reader voices exactly what is shown. `rng` is
+// injectable for tests; defaults to Math.random.
+export function pickLanding(date: Date = new Date(), rng: () => number = Math.random): Greeting {
+  const base = LANDING_LINES[bucketForHour(date.getHours())];
+  const flavor = dayFlavorLines(date);
+  const pool = flavor && rng() < 1 / 3 ? flavor : base;
+  const text = pool[Math.floor(rng() * pool.length)] ?? ENGLISH_GREETING.native;
+  return { lang: 'English', code: 'en', native: text, english: text };
+}
+
+// Build the tap-through rotation for one turn on the empty state: a fresh
+// time-and-day-aware landing line first, then every language in a freshly
+// shuffled order so the sequence past the first tap differs each launch. Tapping
+// walks this list and wraps back to the same landing line at the end. `rng` and
+// `now` are injectable for tests; they default to Math.random and the current
+// moment.
+export function buildRotation(rng: () => number = Math.random, now: Date = new Date()): Greeting[] {
+  return [pickLanding(now, rng), ...shuffle([...GREETINGS], rng)];
 }
