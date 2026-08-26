@@ -107,6 +107,43 @@ describe('daemon RBAC (D1)', () => {
   // which applies to every caller, superseded an earlier role-based gate).
 });
 
+describe('model install from a paired phone (MP-F2)', () => {
+  it('rejects an install with no modelId', async () => {
+    const res = await fetch(`${base}/models/install`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('404s an install for an unknown model', async () => {
+    const res = await fetch(`${base}/models/install`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ modelId: 'no-such-model-xyz' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('a member cannot start an install (admin-gated)', async () => {
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await fetch(`${base}/models/install`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ modelId: 'qwen2.5-coder-7b' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('404s progress for a model with no install running', async () => {
+    const res = await fetch(`${base}/models/install/qwen2.5-coder-7b/progress`, {
+      headers: auth(adminToken),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('command lane (chat-to-terminal bridge)', () => {
   it('runs a user command and streams its output over the session SSE', async () => {
     const created = await createSessionAs(adminToken, home);
