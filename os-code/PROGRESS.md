@@ -5,6 +5,23 @@ Uki app repo: current state first, then what remains, then the log.
 
 ## Current state (2026-08-26)
 
+**Chat-surface refinements + a polish pass landed on main.** Four
+founder-requested changes to the chat surfaces, then a polish follow-on. The
+menu (hamburger) is a drawn, fuller-weight glyph on a larger tap target; the
+empty-state greeting is anchored just above the composer (Claude-style) so the
+keyboard lifts it with the composer instead of shoving it into the status bar; a
+freshly downloaded guide (Harbor or Harbor Mini) is promoted to the stack's
+Reasoning anchor, with an init reconcile that heals a seeded-but-absent Mini
+anchor, so "My Stack" chat starts right away; and chat history moved out of the
+drawer into a new Chats room reached from a nav button. Polish: capped
+easeOutQuint row stagger, an opacity-only room cross-fade (keyed on the view so
+a live transcript never remounts mid-stream), a menu-glyph press spring, and
+grouped flat rows that swipe left to delete behind a confirm. Gates green: app
+37 files / 209 tests, typecheck (app + electron), lint --max-warnings 0, vite
+build, em-dash, and the polish-standards fill-mode rule (animations use
+`backwards`, never `both`). Not device-verified (no iOS here); founder confirms
+the keyboard-anchored greeting and swipe-delete on device.
+
 **Review close-out: dark-mode audit + remaining polish and vault follow-ups.**
 The deferred items from the remediation are now done: the dark theme's
 elevation shadows are tokenized to flip to a black base on dark (syntax tints,
@@ -769,6 +786,28 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-26: Chat-surface refinements + polish (bigger menu, anchored
+  greeting, guide-as-reasoning, a Chats room).** Founder asks over four
+  screenshots. (1) Menu button: a drawn SVG glyph (`components/MenuIcon.tsx`),
+  fuller weight in the primary ink on a 40px target, in the chat top bar and the
+  room BackBar. (2) Empty-state greeting: `.greeting` switched to
+  `justify-content: flex-end` so the mark + line sit just above the composer and
+  ride up with it under the keyboard, instead of centering and colliding with
+  the status bar. (3) Downloaded guide becomes the Reasoning anchor:
+  `reasoningPromotion` in `state/store.ts` promotes a just-downloaded Harbor /
+  Harbor Mini when there is no anchor or the anchor is a guide not on the device
+  (Harbor also upgrades a ready Mini); a matching init reconcile heals the seeded
+  Mini anchor a Harbor-only user hit ("download it first"). Cloud/BYOM/user
+  device anchors untouched. (4) Chats room: new `chats` view +
+  `screens/ChatsScreen.tsx` lists the active project's chats with an easy new
+  chat; the recent-chats list left the drawer, New chat + Quick chat stayed.
+  Polish: capped row stagger, opacity room cross-fade (keyed on view),
+  menu-glyph press spring, grouped flat rows that swipe to delete behind a
+  confirm (SwipeRow gained an optional label + danger variant + style, pin
+  behavior unchanged). Dead `.conv-list`/`.conv-empty` pruned. Animations use
+  `backwards` per the polish-standards rule. Green: 209 app tests, typecheck,
+  lint, build, em-dash. Not iOS-verified here.
 
 - **2026-08-25: App Vault opens the on-disk folder (file-backed provider).** The
   paired follow-up to agent vault writes: the app's Vault can now live in the
