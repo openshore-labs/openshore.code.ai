@@ -183,6 +183,40 @@ function DesktopPair() {
           </div>
         ) : null}
 
+        {info?.devices && info.devices.length > 0 ? (
+          <div className="card">
+            <h3>Paired devices</h3>
+            <div className="sub" style={{ marginBottom: 12 }}>
+              Each paired phone gets its own credential. Lost a phone? Revoke just that one. The
+              rest stay connected.
+            </div>
+            {info.devices.map((d) => (
+              <div key={d.id} className="card-row" style={{ alignItems: 'center' }}>
+                <div className="grow">
+                  <div>{d.label}</div>
+                  <div className="sub">
+                    Paired {new Date(d.createdAt).toLocaleDateString()}
+                    {d.expiresAt ? ` · expires ${new Date(d.expiresAt).toLocaleDateString()}` : ''}
+                  </div>
+                </div>
+                <button
+                  className="btn ghost"
+                  style={{ padding: '8px 14px' }}
+                  onClick={async () => {
+                    const b = bridge();
+                    if (!b) return;
+                    await b.revokeDeviceCredential(d.id);
+                    showToast('Device revoked. It can no longer connect.');
+                    await refresh();
+                  }}
+                >
+                  Revoke
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <p className="hint">
           Both devices sign into the same tailnet (the Tailscale app, free for personal use). The
           connection needs its own token on top of the tailnet, and phone sessions are stricter than

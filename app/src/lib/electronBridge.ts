@@ -22,11 +22,25 @@ export interface DesktopStatus {
   connections: { anthropic: boolean; openai: boolean; github: boolean };
 }
 
+/** One device paired to this desktop, as shown in the revoke list. `id` is the
+ *  credential's token hash, the handle revokeDeviceCredential matches on. */
+export interface PairedDevice {
+  id: string;
+  label: string;
+  createdAt: string;
+  expiresAt?: string;
+}
+
 export interface DaemonInfo {
   running: boolean;
   host?: string;
   port: number;
+  /** A fresh per-device pairing credential (mint-once while the daemon runs),
+   *  NOT the shared admin token, so a lost phone can be revoked on its own.
+   *  Empty when the daemon is off. */
   token: string;
+  /** Credentials paired to this desktop, for the revoke UI. */
+  devices?: PairedDevice[];
   tailscaleIp?: string;
   tailscaleUp: boolean;
   /** 'loopback' means the tailnet bind failed and the daemon serves only this
@@ -105,6 +119,11 @@ export interface OscodeBridge {
   daemonInfo(): Promise<DaemonInfo>;
   daemonStart(): Promise<DaemonInfo | { error: string }>;
   daemonStop(): Promise<void>;
+  /** Every device credential paired to this desktop, for the revoke list. */
+  listDeviceCredentials(): Promise<PairedDevice[]>;
+  /** Cut off one device by its credential id (a lost phone). Returns how many
+   *  credentials were removed. Other paired devices stay connected. */
+  revokeDeviceCredential(id: string): Promise<{ removed: number }>;
 
   // On-disk vault: plain .md files under the agent's vault dir (~/OSCode/Vault),
   // so the app's Vault and the agent share one folder. Paths are jailed to that

@@ -409,6 +409,8 @@ ipcMain.handle('osc:recentWorkspaces', () => host.recentWorkspaces());
 ipcMain.handle('osc:daemonInfo', () => host.daemonInfo());
 ipcMain.handle('osc:daemonStart', () => host.daemonStart());
 ipcMain.handle('osc:daemonStop', () => host.daemonStop());
+ipcMain.handle('osc:listDeviceCredentials', () => host.listDeviceCredentials());
+ipcMain.handle('osc:revokeDeviceCredential', (_e, id: string) => host.revokeDeviceCredential(id));
 
 // On-disk vault: the SAME markdown folder the agent's daemon tools write
 // (~/OSCode/Vault, or config vault.dir), so the app's Vault and the agent share
