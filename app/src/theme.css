@@ -1939,21 +1939,19 @@ textarea {
   gap: 18px;
 }
 
-/* Touch devices only: mirrors the Claude app's opening, where the greeting
-   simply centers in whatever space is left above the composer rather than
-   hugging it. While unfrozen this just inherits the base rule's
-   justify-content: center, so it tracks the composer as the keyboard animates
-   in, the same way Claude's does. useKeyboardInset (ChatScreen) then freezes it
-   the moment the keyboard has genuinely opened and settled: --greeting-frozen-
-   height locks the box at that exact size (flex: none replaces flex: 1), so
-   centering inside it can never shift again for the rest of this empty state,
-   even if the keyboard is later dismissed. The composer keeps tracking the live
-   keyboard height regardless (see --kb-inset above), so only the greeting stays
-   put. */
+/* Touch devices only: mirrors the Claude app's opening, where the greeting is
+   anchored at a fixed spot and never moves, not even a little, regardless of
+   the composer or the keyboard. A plain static height (not measured, not
+   reactive to anything) is what makes that true: it has zero relationship to
+   the composer's own live height (which keeps tracking the keyboard via
+   --kb-inset above, so IT can still hug the keyboard), so there is nothing for
+   the greeting to follow in the first place. `flex: none` takes it out of the
+   flex distribution entirely; centering inside this fixed box still comes from
+   the base rule's justify-content: center. */
 @media (pointer: coarse) {
-  .greeting.greeting-frozen {
+  .greeting {
     flex: none;
-    height: var(--greeting-frozen-height);
+    height: min(50vh, 480px);
   }
 }
 
