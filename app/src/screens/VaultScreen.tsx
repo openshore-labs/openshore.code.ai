@@ -35,11 +35,16 @@ export function VaultScreen() {
     teamVaultAvailable,
     vaultRefresh,
     vaultOpen,
+    vaultCreate,
     vaultCloseNote,
     vaultSave,
     vaultDelete,
     vaultReadAll,
     vaultMoveTo,
+    vaultError,
+    vaultAcquireLease,
+    vaultReleaseLease,
+    vaultLeaseHeldByOther,
     connectGdriveAccount,
     disconnectGdriveAccount,
     settings,
@@ -47,6 +52,8 @@ export function VaultScreen() {
   } = useApp();
 
   const team = vaultScope === 'team';
+  // Another device holds the vault's write lease: show the note read-only.
+  const readOnly = Boolean(vaultLeaseHeldByOther);
   const teamAvailable = teamVaultAvailable();
 
   const [folder, setFolder] = useState('');
@@ -56,6 +63,7 @@ export function VaultScreen() {
   const [newName, setNewName] = useState('');
   const [storageOpen, setStorageOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
   const [ready, setReady] = useState<Partial<Record<StorageProviderId, boolean>>>({});
   const [moving, setMoving] = useState(false);
@@ -107,13 +115,26 @@ export function VaultScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Hold the single-writer lease while the vault is open, renewed on a
+  // heartbeat (TTL is 90s, renew at 40s), and released on the way out. If
+  // another device holds it live, the screen goes read-only.
+  useEffect(() => {
+    void vaultAcquireLease();
+    const beat = setInterval(() => void vaultAcquireLease(), 40_000);
+    return () => {
+      clearInterval(beat);
+      void vaultReleaseLease();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultScope]);
+
   const paths = useMemo(() => vaultFiles.map((f) => f.path), [vaultFiles]);
 
   // Load the draft and Linked mentions whenever a note opens.
   useEffect(() => {
     if (!vaultNote) return;
     setDraft(vaultNote.text);
-    setEditing(vaultNote.text === '');
+    setEditing(vaultNote.fresh === true);
     let live = true;
     void vaultReadAll().then((notes) => {
       if (live) setBacklinks(backlinksTo(vaultNote.path, notes));
@@ -125,25 +146,75 @@ export function VaultScreen() {
   }, [vaultNote?.path]);
 
   // Obsidian saves as you type; so do we, debounced so the sealed store is
-  // not hammered per keystroke. Anything pending flushes on unmount.
+  // not hammered per keystroke. The pending draft is held in a ref so it can
+  // be flushed (not just cancelled) whenever the screen leaves: unmount, app
+  // background, note switch, or scope change. Dropping the timer without
+  // flushing is what lost the last keystrokes before the debounce elapsed.
+  const pendingSave = useRef<{ path: string; text: string } | null>(null);
   const scheduleSave = useCallback(
     (path: string, text: string) => {
+      pendingSave.current = { path, text };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         saveTimer.current = undefined;
+        pendingSave.current = null;
         void vaultSave(path, text);
       }, 600);
     },
     [vaultSave],
   );
-  useEffect(
-    () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    },
-    [],
-  );
+  // Write the pending draft now. Runs vaultSave synchronously up to its first
+  // await, so the target vault is captured before any following scope change.
+  const flushSave = useCallback(() => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+    }
+    const p = pendingSave.current;
+    pendingSave.current = null;
+    if (p) void vaultSave(p.path, p.text);
+  }, [vaultSave]);
+  // Drop the pending draft without writing it (used when deleting the note it
+  // belongs to, so a stale timer cannot recreate what was just deleted).
+  const cancelSave = useCallback(() => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+    }
+    pendingSave.current = null;
+  }, []);
+  // Flush on background (iOS may suspend or jetsam the app) and on unmount.
+  // On return to foreground, refresh so edits synced from another device (or
+  // the desktop agent) show up without a manual reopen.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushSave();
+      else void vaultRefresh();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    let remove: (() => void) | undefined;
+    void import('@capacitor/app')
+      .then(({ App }) =>
+        App.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) flushSave();
+        }),
+      )
+      .then((handle) => {
+        remove = () => void handle.remove();
+      })
+      .catch(() => {
+        // Not on a Capacitor host; visibilitychange covers the web/desktop case.
+      });
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      remove?.();
+      flushSave();
+    };
+  }, [flushSave, vaultRefresh]);
 
   const openNote = (path: string) => {
+    // Persist any in-flight edit to the current note before switching away.
+    flushSave();
     void vaultOpen(path);
   };
 
@@ -155,7 +226,7 @@ export function VaultScreen() {
     }
     setNewOpen(false);
     setNewName('');
-    void vaultOpen(path);
+    void vaultCreate(path);
   };
 
   const entries = treeAt(folder, vaultFiles);
@@ -213,6 +284,7 @@ export function VaultScreen() {
             <button
               className="linklike"
               onClick={() => {
+                flushSave();
                 setFolder(parent);
                 vaultCloseNote();
               }}
@@ -224,7 +296,8 @@ export function VaultScreen() {
               className="icon-btn"
               aria-label={editing ? 'Read' : 'Edit'}
               aria-pressed={editing}
-              onClick={() => setEditing((e) => !e)}
+              disabled={readOnly}
+              onClick={() => !readOnly && setEditing((e) => !e)}
             >
               {editing ? (
                 <svg
@@ -267,7 +340,14 @@ export function VaultScreen() {
             {(parent || 'Vault') + ' · ' + words + (words === 1 ? ' word' : ' words')}
           </p>
 
-          {editing ? (
+          {readOnly ? (
+            <p className="hint" style={{ marginTop: 8, color: 'var(--warn)' }}>
+              This vault is open on another device. Read-only here until it closes there, so your
+              edits do not collide.
+            </p>
+          ) : null}
+
+          {editing && !readOnly ? (
             <div className="vault-editor-wrap">
               <textarea
                 ref={editorRef}
@@ -326,8 +406,10 @@ export function VaultScreen() {
               text={draft}
               paths={paths}
               onOpenNote={(p, isNew) => {
-                if (isNew) showToast('A fresh note. It saves as you write.');
-                openNote(p);
+                if (isNew) {
+                  flushSave();
+                  void vaultCreate(p);
+                } else openNote(p);
               }}
             />
           )}
@@ -349,22 +431,44 @@ export function VaultScreen() {
         </div>
 
         {menuOpen ? (
-          <div className="sheet-scrim" onClick={() => setMenuOpen(false)}>
+          <div
+            className="sheet-scrim"
+            onClick={() => {
+              setMenuOpen(false);
+              setConfirmDelete(false);
+            }}
+          >
             <div className="sheet" onClick={(e) => e.stopPropagation()}>
               <h2>Options</h2>
               <div className="sheet-actions">
                 <button
-                  className="btn quiet"
+                  className={`btn quiet press-fb${confirmDelete ? ' danger' : ''}`}
                   onClick={() => {
+                    // Two taps to delete: a single tap is too easy to hit by
+                    // accident, and a local or iCloud delete is unrecoverable.
+                    if (!confirmDelete) {
+                      setConfirmDelete(true);
+                      return;
+                    }
                     const path = vaultNote.path;
+                    // Drop any pending debounced save first, or its stale timer
+                    // would recreate the note we are deleting.
+                    cancelSave();
                     setMenuOpen(false);
+                    setConfirmDelete(false);
                     void vaultDelete(path);
                     showToast('Note deleted.');
                   }}
                 >
-                  Delete this note
+                  {confirmDelete ? 'Really delete? Tap to confirm.' : 'Delete this note'}
                 </button>
-                <button className="btn quiet" onClick={() => setMenuOpen(false)}>
+                <button
+                  className="btn quiet press-fb"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setConfirmDelete(false);
+                  }}
+                >
                   Cancel
                 </button>
               </div>
@@ -460,7 +564,18 @@ export function VaultScreen() {
           </p>
         ) : null}
 
-        {vaultFiles.length === 0 ? (
+        {vaultFiles.length === 0 && vaultError === 'load' ? (
+          <div className="greeting" style={{ minHeight: '40vh' }}>
+            <h1>Your vault storage is offline.</h1>
+            <p>
+              Your notes are safe where they live. This device could not reach the storage to load
+              them. Check your connection and try again.
+            </p>
+            <button className="btn primary" onClick={() => void vaultRefresh()}>
+              Retry
+            </button>
+          </div>
+        ) : vaultFiles.length === 0 ? (
           <div className="greeting" style={{ minHeight: '40vh' }}>
             <h1>{team ? 'Your team vault is empty.' : 'Your vault starts with one note.'}</h1>
             <p>
@@ -478,7 +593,7 @@ export function VaultScreen() {
               e.kind === 'folder' ? (
                 <button
                   key={e.path}
-                  className="conv-item vault-row"
+                  className="conv-item vault-row press-fb press-fb--row"
                   onClick={() => setFolder(e.path)}
                 >
                   <span className="vault-row-chevron" aria-hidden="true" />
@@ -487,7 +602,7 @@ export function VaultScreen() {
               ) : (
                 <button
                   key={e.path}
-                  className="conv-item vault-row"
+                  className="conv-item vault-row press-fb press-fb--row"
                   onClick={() => openNote(e.path)}
                 >
                   {e.name}
@@ -620,12 +735,16 @@ export function VaultScreen() {
                     showToast('Nothing to export yet. Write a note first.');
                     return;
                   }
-                  const count = await exportVaultToFiles(notes).catch(() => undefined);
-                  showToast(
-                    count === undefined
-                      ? 'Export needs the app on a device, not the browser.'
-                      : `${count} ${count === 1 ? 'note' : 'notes'} exported to Files, under OS Code / Vault. Obsidian opens that folder as a vault.`,
-                  );
+                  try {
+                    const count = await exportVaultToFiles(notes);
+                    showToast(
+                      count === undefined
+                        ? 'Export needs the app on a device, not the browser.'
+                        : `${count} ${count === 1 ? 'note' : 'notes'} exported to Files, under OS Code / Vault. Obsidian opens that folder as a vault.`,
+                    );
+                  } catch {
+                    showToast('Could not export your vault. Check device storage and try again.');
+                  }
                 }}
               >
                 Export as plain files

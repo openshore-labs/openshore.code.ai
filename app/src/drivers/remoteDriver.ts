@@ -142,7 +142,10 @@ export async function daemonVerifyCommit(
   const res = await fetch(`${target.baseUrl}/outbox/verify?${qs.toString()}`, {
     headers: headers(target),
   });
-  if (!res.ok) return { exists: false, onBranch: false };
+  // A non-OK response is not proof the commit is missing (the lookup itself
+  // failed, or the path is not yet allowed). Throw so the caller keeps the item
+  // buffered for a retry, rather than reading it as "commit not found".
+  if (!res.ok) throw new Error(`Verify failed (${res.status}).`);
   return (await res.json()) as { exists: boolean; onBranch: boolean };
 }
 

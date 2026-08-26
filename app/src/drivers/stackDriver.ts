@@ -79,6 +79,15 @@ export function classifyTask(text: string): StackCategory | 'reasoning' {
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
+// Monotonic request ids, so two sends in the same millisecond cannot share an
+// id and interleave their token streams into one answer.
+let stackRequestSeq = 0;
+
+// A routed specialist could not run this turn (no key, load failure, HTTP
+// error). Distinct from a generic failure so run() can degrade to the Reasoning
+// anchor instead of dead-ending the turn, the way the engine's router does.
+class RouteUnavailable extends Error {}
+
 function locationOf(ref: StackModelRef): 'home' | 'cloud' | 'device' {
   // A BYOM endpoint goes over the network (its own or someone else's server),
   // so it shares the cloud reachability rules: available online, held back on
@@ -235,17 +244,64 @@ export class StackDriver implements ChatDriver {
     }
 
     this.answer = '';
+    const reasoning = this.stack.reasoning ?? harborRef();
     try {
-      if (target.ref.kind === 'device') await this.runDevice(target.ref, target.placement);
-      else if (target.ref.kind === 'byom') await this.runByom(target.ref, target.placement);
-      else await this.runCloud(target.ref, target.placement);
+      await this.runRef(target.ref, target.placement);
     } catch (err) {
+      // A stop is a calm end, not an error: settle with whatever streamed so
+      // far so the partial reply stays in context for the next turn.
+      if (this.aborted || (err instanceof Error && err.name === 'AbortError')) {
+        this.finish('aborted');
+        return;
+      }
+      // Graceful degradation is the contract: if a placed specialist could not
+      // run, fall back to the Reasoning anchor for this turn rather than
+      // dead-ending, exactly as the desktop router does.
+      const isSpecialist = target.category !== 'reasoning' && !!target.placement;
+      const canFallback =
+        err instanceof RouteUnavailable &&
+        isSpecialist &&
+        refName(reasoning) !== refName(target.ref) &&
+        this.reachable(reasoning);
+      if (canFallback) {
+        this.emit({
+          type: 'status',
+          message: `${refName(target.ref)} is not available right now. Falling back to ${refName(reasoning)}.`,
+        });
+        this.emit({
+          type: 'turn-start',
+          turn: this.history.length,
+          model: refName(reasoning),
+          providerKind: reasoning.kind === 'device' ? 'local' : 'cloud',
+        });
+        this.answer = '';
+        try {
+          await this.runRef(reasoning, undefined);
+        } catch (err2) {
+          if (this.aborted || (err2 instanceof Error && err2.name === 'AbortError')) {
+            this.finish('aborted');
+            return;
+          }
+          this.emit({
+            type: 'task-done',
+            reason: 'error',
+            message: err2 instanceof Error ? err2.message : String(err2),
+          });
+        }
+        return;
+      }
       this.emit({
         type: 'task-done',
         reason: 'error',
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  private async runRef(ref: StackModelRef, placement?: Placement): Promise<void> {
+    if (ref.kind === 'device') await this.runDevice(ref, placement);
+    else if (ref.kind === 'byom') await this.runByom(ref, placement);
+    else await this.runCloud(ref, placement);
   }
 
   private finish(reason: 'complete' | 'aborted' | 'error', message?: string): void {
@@ -288,16 +344,11 @@ export class StackDriver implements ChatDriver {
         contextSize: isHarborMini(ref.modelId) ? 2048 : 4096,
       });
       if (!load.ok) {
-        this.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: load.detail ?? `${ref.modelName} would not load.`,
-        });
-        return;
+        throw new RouteUnavailable(load.detail ?? `${ref.modelName} would not load.`);
       }
       this.loadedDeviceId = ref.modelId;
     }
-    this.activeRequestId = `req_${Date.now()}`;
+    this.activeRequestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
     await Llama.generate({
       requestId: this.activeRequestId,
       system: this.systemFor(ref, placement),
@@ -315,24 +366,14 @@ export class StackDriver implements ChatDriver {
   ): Promise<void> {
     const key = await secretGet(providerSecretKey(ref.provider));
     if (!key) {
-      this.emit({
-        type: 'task-done',
-        reason: 'error',
-        message: `Connect ${ref.provider} under Cloud Connections first.`,
-      });
-      return;
+      throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
     }
     const system = this.systemFor(ref, placement);
     if (ref.provider === 'anthropic') await this.runAnthropic(key, ref.model, system);
     else {
       const base = providerInfo(ref.provider)?.openaiBaseUrl;
       if (!base) {
-        this.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: `No endpoint configured for ${ref.provider}.`,
-        });
-        return;
+        throw new RouteUnavailable(`No endpoint configured for ${ref.provider}.`);
       }
       await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system);
     }
@@ -405,12 +446,7 @@ export class StackDriver implements ChatDriver {
         body: JSON.stringify({ model, stream: false, messages }),
       });
       if (!res.ok) {
-        this.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: `${label} answered ${res.status}.`,
-        });
-        return;
+        throw new RouteUnavailable(`${label} answered ${res.status}.`);
       }
       if (!this.aborted) {
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -431,12 +467,7 @@ export class StackDriver implements ChatDriver {
       signal: this.abortController?.signal,
     });
     if (!res.ok || !res.body) {
-      this.emit({
-        type: 'task-done',
-        reason: 'error',
-        message: `${label} answered ${res.status}.`,
-      });
-      return;
+      throw new RouteUnavailable(`${label} answered ${res.status}.`);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

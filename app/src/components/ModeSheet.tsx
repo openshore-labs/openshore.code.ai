@@ -2,6 +2,7 @@
 // edits, Plan. Opened from the composer's mode pill. Governs how the coding
 // agent's tool approvals are handled; inert for plain chat.
 import { useApp } from '../state/store.js';
+import { useSheetExit } from '../hooks/useSheetExit.js';
 import {
   PERMISSION_MODES,
   permissionModeLabel,
@@ -49,12 +50,16 @@ function ModeIcon({ mode }: { mode: PermissionMode }) {
 export function ModeSheet({ onClose }: { onClose: () => void }) {
   const { settings, saveSettings } = useApp();
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
+  const { closing, dismiss } = useSheetExit(onClose);
 
   return (
-    <div className="sheet-scrim" onClick={onClose}>
-      <div className="sheet mode-sheet" onClick={(e) => e.stopPropagation()}>
+    <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
+      <div
+        className={`sheet mode-sheet${closing ? ' closing' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mode-head">
-          <button className="mode-close press-fb" aria-label="Close" onClick={onClose}>
+          <button className="mode-close press-fb" aria-label="Close" onClick={dismiss}>
             {'×'}
           </button>
           <h2>Select mode</h2>
@@ -63,10 +68,10 @@ export function ModeSheet({ onClose }: { onClose: () => void }) {
           {PERMISSION_MODES.map((m) => (
             <button
               key={m}
-              className={`mode-row press-fb${m === mode ? ' active' : ''}`}
+              className={`mode-row press-fb press-fb--row${m === mode ? ' active' : ''}`}
               onClick={() => {
                 void saveSettings({ permissionMode: m });
-                onClose();
+                dismiss();
               }}
             >
               <span className={`mode-row-icon mode-${m}`}>

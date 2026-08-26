@@ -4,6 +4,7 @@
 // nothing (Apple 3.1.1 / 3.1.3); on desktop it opens Stripe checkout in the
 // browser. Chat keeps working behind this, so the dismiss is non-punitive.
 import { useApp } from '../state/store.js';
+import { useSheetExit } from '../hooks/useSheetExit.js';
 import { iapAvailable } from '../lib/iap.js';
 
 const BULLETS = [
@@ -18,6 +19,8 @@ export function Paywall() {
   const buyPersonal = useApp((s) => s.buyPersonal);
   const restorePurchases = useApp((s) => s.restorePurchases);
   const closePaywall = useApp((s) => s.closePaywall);
+  // Hooks run unconditionally, before the reason gate.
+  const { closing, dismiss } = useSheetExit(closePaywall);
   if (!reason) return null;
 
   const ios = iapAvailable();
@@ -37,8 +40,8 @@ export function Paywall() {
   const secondaryLabel = ios ? 'Restore purchases' : 'Already bought? Refresh your license';
 
   return (
-    <div className="sheet-scrim" onClick={() => closePaywall()}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
+      <div className={`sheet${closing ? ' closing' : ''}`} onClick={(e) => e.stopPropagation()}>
         <span className="approval-badge tool">Personal</span>
         <h2>{headline}</h2>
         <p className="sheet-sub">{subhead}</p>
@@ -49,13 +52,13 @@ export function Paywall() {
         </ul>
         <p className="paywall-price">{priceLine}</p>
         <div className="sheet-actions">
-          <button className="btn primary" onClick={() => void buyPersonal()}>
+          <button className="btn primary press-fb" onClick={() => void buyPersonal()}>
             {primaryLabel}
           </button>
-          <button className="btn ghost" onClick={() => void restorePurchases()}>
+          <button className="btn ghost press-fb" onClick={() => void restorePurchases()}>
             {secondaryLabel}
           </button>
-          <button className="btn quiet" onClick={() => closePaywall()}>
+          <button className="btn quiet press-fb" onClick={dismiss}>
             Not now. Keep chatting.
           </button>
         </div>

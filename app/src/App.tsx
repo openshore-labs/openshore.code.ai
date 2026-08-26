@@ -8,6 +8,7 @@ import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
 import { ChatScreen } from './screens/ChatScreen.js';
+import { ChatsScreen } from './screens/ChatsScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
 import { StackScreen } from './screens/StackScreen.js';
 import { StackHealthScreen } from './screens/StackHealthScreen.js';
@@ -34,6 +35,7 @@ function useCompact(): boolean {
 
 export function App() {
   const { ready, view, drawerOpen, toast, init } = useApp();
+  const theme = useApp((s) => s.settings.theme);
   const compact = useCompact();
   useAuthDeepLink();
 
@@ -41,6 +43,14 @@ export function App() {
     void init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Apply the appearance preference to the document root. 'system' removes the
+  // attribute so prefers-color-scheme decides; light/dark pin it.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+    else delete root.dataset.theme;
+  }, [theme]);
 
   // Keep a focused field above the on-screen keyboard. iOS shrinks the visual
   // viewport for the keyboard but not the layout, and our scroll lives in a
@@ -86,7 +96,11 @@ export function App() {
     return (
       <div className="shell">
         <OnboardingScreen />
-        {toast ? <div className="toast">{toast}</div> : null}
+        {toast ? (
+          <div className="toast" role="status" aria-live="polite">
+            {toast}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -116,6 +130,8 @@ export function App() {
       <PairScreen />
     ) : view === 'settings' ? (
       <SettingsScreen />
+    ) : view === 'chats' ? (
+      <ChatsScreen />
     ) : (
       <ChatScreen compact={compact} />
     );
@@ -123,10 +139,19 @@ export function App() {
   return (
     <div className="shell">
       {!compact ? <Sidebar /> : null}
-      <div className="shell-main">{room}</div>
+      {/* Keyed on the view so switching rooms replays a soft fade-in instead of
+          a hard cut. Same view (e.g. opening another chat) keeps the key, so a
+          live transcript is never remounted mid-stream. */}
+      <div className="shell-main room-swap" key={view}>
+        {room}
+      </div>
       {compact && drawerOpen ? <Sidebar drawer /> : null}
       <Paywall />
-      {toast ? <div className="toast">{toast}</div> : null}
+      {toast ? (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
     </div>
   );
 }

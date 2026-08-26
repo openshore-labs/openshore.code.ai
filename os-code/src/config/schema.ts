@@ -167,6 +167,13 @@ export const GuardrailsSchema = z.object({
 export const DaemonSchema = z.object({
   bind: z.enum(['loopback', 'tailscale']).default('loopback'),
   port: z.number().int().min(1).max(65535).default(4816),
+  // Repos the outbox apply/verify endpoints may touch, in addition to the
+  // admin-provisioned workspaces under ~/OSCode. Admin-owned config, so a home
+  // repo living outside ~/OSCode can still receive buffered commits. A request
+  // cwd outside every allowed root is rejected 403 for every caller, admins
+  // included: there is no reason apply/verify should reach an arbitrary repo,
+  // and the ambient-credential push path makes it a real escalation surface.
+  outboxAllowedRoots: z.array(z.string()).default([]),
 });
 
 export const CatalogSchema = z.object({

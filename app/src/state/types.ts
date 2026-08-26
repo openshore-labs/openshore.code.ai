@@ -95,6 +95,10 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   thread: ThreadState;
+  /** True once any turn in this chat carried an image. The transcript stores
+   *  only text, so a mid-chat model switch cannot carry images forward; this
+   *  lets the switch disclose that earlier images are dropped from context. */
+  hadVisionInput?: boolean;
 }
 
 // A project buckets related chats and keeps their context together. Repos can

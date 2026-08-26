@@ -62,14 +62,21 @@ export function noteFolder(path: string): string {
 
 /** Normalize a user-typed note name or path into a vault-relative .md path:
  *  strips leading/trailing slashes and whitespace, collapses separators, and
- *  appends .md when absent. Returns undefined for an empty result. */
+ *  appends .md when absent. Returns undefined for an empty result. Dot and
+ *  dot-dot segments are dropped so a typed name or a wikilink can never climb
+ *  out of the vault root and clobber a sibling resource (SEC: path jail). */
 export function normalizeNotePath(raw: string): string | undefined {
   const cleaned = raw
+    // Normalize to NFC so a name typed on one device matches the same name an
+    // NFD filesystem (iCloud/APFS) stored, instead of forking into two notes.
+    .normalize('NFC')
     .trim()
     .replace(/\\/g, '/')
     .split('/')
-    .map((s) => s.trim())
-    .filter(Boolean)
+    // Strip characters forbidden on common filesystems and Obsidian's own link
+    // syntax (a note containing these could never be wikilinked anyway).
+    .map((s) => s.trim().replace(/[<>:"|?*#^[\]]/g, ''))
+    .filter((s) => s && s !== '.' && s !== '..')
     .join('/');
   if (!cleaned) return undefined;
   return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
@@ -100,21 +107,25 @@ export function backlinksTo(
   path: string,
   notes: Array<{ path: string; text: string }>,
 ): Array<{ path: string; excerpt: string }> {
-  const title = noteTitle(path).toLowerCase();
-  const full = path.replace(/\.md$/i, '').toLowerCase();
+  const paths = notes.map((n) => n.path);
   const out: Array<{ path: string; excerpt: string }> = [];
   for (const note of notes) {
     if (note.path === path) continue;
-    const links = parseWikilinks(note.text);
-    const hit = links.find((l) => {
-      const t = l.target.replace(/\.md$/i, '').toLowerCase();
-      return t === full || t === title || t.split('/').pop() === title;
-    });
-    if (!hit) continue;
-    const idx = note.text.toLowerCase().indexOf('[[');
-    const start = Math.max(0, idx - 40);
+    // Find the wikilink that actually resolves to this note (resolved against
+    // the real path list, so [[x/B]] is credited to x/B.md, not to root B.md),
+    // and excerpt around THAT link, not merely the note's first "[[".
+    let hitIndex = -1;
+    for (const m of note.text.matchAll(WIKILINK)) {
+      const resolved = resolveWikilink(m[1]!.trim(), paths);
+      if (resolved === path) {
+        hitIndex = m.index ?? -1;
+        break;
+      }
+    }
+    if (hitIndex === -1) continue;
+    const start = Math.max(0, hitIndex - 40);
     const excerpt = note.text
-      .slice(start, idx + 80)
+      .slice(start, hitIndex + 80)
       .replace(/\n+/g, ' ')
       .trim();
     out.push({ path: note.path, excerpt });
@@ -122,12 +133,22 @@ export function backlinksTo(
   return out;
 }
 
+/** Obsidian embeds: ![[Target]]. Not rendered inline yet, so they are turned
+ *  into an explicit chip rather than a broken image (the vault: src would be
+ *  stripped by the markdown renderer and show a broken-image glyph). */
+const EMBED = /!\[\[([^\][|#^\n]+)(?:[#^][^\][|\n]*)?(?:\|([^\][\n]+))?\]\]/g;
+
 /** Rewrite wikilinks into standard markdown links carrying a vault: scheme,
  *  so the existing react-markdown renderer emits real anchors the Vault
  *  screen intercepts. Unresolved targets still get a link (they open as a
- *  fresh note), flagged with a query so the UI can style them dashed. */
+ *  fresh note), flagged with a query so the UI can style them dashed. Embeds
+ *  are handled first so their inner [[...]] is not also linked. */
 export function wikilinksToMarkdown(text: string, paths: string[]): string {
-  return text.replace(WIKILINK, (_m, rawTarget: string, rawAlias?: string) => {
+  const withoutEmbeds = text.replace(EMBED, (_m, rawTarget: string, rawAlias?: string) => {
+    const name = rawAlias?.trim() || rawTarget.trim();
+    return `\`embed not supported yet: ${name}\``;
+  });
+  return withoutEmbeds.replace(WIKILINK, (_m, rawTarget: string, rawAlias?: string) => {
     const target = rawTarget.trim();
     const alias = rawAlias?.trim();
     const resolved = resolveWikilink(target, paths);
