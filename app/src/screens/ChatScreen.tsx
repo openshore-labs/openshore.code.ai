@@ -217,6 +217,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         busy={Boolean(thread?.busy)}
         source={composerSource}
         visionSupported={sourceSupportsVision(composerSource)}
+        autoFocus={isEmpty}
         onOpenModelSheet={() => {
           setSheetStage('root');
           setSheetOpen(true);

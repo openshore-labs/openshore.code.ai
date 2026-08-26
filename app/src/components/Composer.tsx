@@ -4,7 +4,7 @@
 // voice-to-text, and one round button that is send or stop. Attachments ride
 // along to vision-capable models; the mic uses the platform's speech engine
 // where it exists.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sourceLabel, type ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -39,6 +39,7 @@ export function Composer({
   source,
   visionSupported,
   placeholder,
+  autoFocus,
   onSend,
   onStop,
   onOpenModelSheet,
@@ -50,6 +51,10 @@ export function Composer({
    *  an image is never stranded on a text-only model. */
   visionSupported: boolean;
   placeholder?: string;
+  /** Focus the field (and, on device, raise the keyboard) when this turns true.
+   *  Used to open the empty chat screen with the keyboard already up, the way
+   *  the Claude app does. */
+  autoFocus?: boolean;
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
   onOpenModelSheet: () => void;
@@ -67,6 +72,13 @@ export function Composer({
   const terminal = canRunCommands && termMode;
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Open the empty chat screen with the field focused so the keyboard comes up
+  // right away (Claude does the same). Fires when autoFocus flips to true, so a
+  // fresh empty state re-raises it while a live transcript leaves it alone.
+  useEffect(() => {
+    if (autoFocus) areaRef.current?.focus();
+  }, [autoFocus]);
 
   // Voice-to-text. On start we remember the text already typed and append the
   // live transcript after it, so dictation adds to the field instead of wiping
