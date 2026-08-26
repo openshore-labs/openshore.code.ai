@@ -3232,7 +3232,9 @@ textarea {
   animation: fade-in 0.18s ease;
 }
 .market-card {
-  animation: msg-in 0.28s cubic-bezier(0.32, 0.72, 0.28, 1) both;
+  /* backwards, never both: both pins the entrance transform and would silently
+     kill the :active pressed scale below (polish standard). */
+  animation: msg-in 0.28s cubic-bezier(0.32, 0.72, 0.28, 1) backwards;
 }
 
 /* Card feel: rest shadow, hover lift, pressed scale, shore-edge accent. */
@@ -3252,6 +3254,96 @@ textarea {
 .market-card:active {
   transform: scale(0.99);
   transition: transform 0.07s ease;
+}
+
+/* ---- Starter stacks (preset shelf) ---- */
+.shelf-head.static {
+  display: flex;
+  padding: 0 2px 8px;
+}
+.preset-shelf .shelf-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+}
+.preset-card {
+  scroll-snap-align: start;
+  flex: 0 0 78%;
+  max-width: 320px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(28, 42, 51, 0.04);
+}
+.preset-name {
+  font-weight: 650;
+  color: var(--ink);
+}
+.preset-tagline {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+.preset-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.preset-member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.preset-member-name {
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preset-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.preset-size {
+  color: var(--muted);
+}
+
+/* ---- Focused single-model product view ---- */
+.market-back {
+  margin-bottom: 12px;
+}
+.market-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* ---- Marketplace skeleton ---- */
+.hero-card.skeleton {
+  min-height: 150px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.store-row.skeleton {
+  height: 68px;
+  border-radius: var(--radius);
+}
+.skeleton-line {
+  border-radius: 6px;
+  margin-bottom: 10px;
 }
 .market-card.edge-local {
   box-shadow:

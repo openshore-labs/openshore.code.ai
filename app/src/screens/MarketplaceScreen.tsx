@@ -104,6 +104,9 @@ export function MarketplaceScreen() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [memoryGB, setMemoryGB] = useState<number>(16);
   const [usageByModel, setUsageByModel] = useState<Map<string, number> | undefined>();
+  // A single model opened as a product page: an exact id, not a name search, so
+  // a sibling whose name happens to fuzzy-match never rides along.
+  const [focusedId, setFocusedId] = useState<string | undefined>();
 
   useEffect(() => {
     // Snap the machine tier to detected hardware on the desktop, so fit badges
@@ -268,11 +271,13 @@ export function MarketplaceScreen() {
 
   const visible = useMemo(() => {
     if (!catalog) return [];
+    // A focused model is its own one-card product page.
+    if (focusedId) return catalog.models.filter((m) => m.id === focusedId);
     let models = filterModels(catalog.models, facets, memoryGB);
     // The editorial shelf: only the picks, kept in curated order.
     if (sort === 'staff') models = models.filter((m) => m.recommended?.isRecommended);
     return sortModels(models, sort, memoryGB, usageByModel);
-  }, [catalog, facets, sort, memoryGB, usageByModel]);
+  }, [catalog, focusedId, facets, sort, memoryGB, usageByModel]);
 
   const compareModels = useMemo(
     () =>
@@ -285,7 +290,8 @@ export function MarketplaceScreen() {
   // The store front (App Store "Apps" tab) shows when nothing is being searched
   // or filtered: a featured row and themed shelves to browse. The moment a
   // search term or any facet is set, we fall back to the full sortable list.
-  const browsing = !facets.query.trim() && activeFacetCount(facets) === 0;
+  const browsing = !focusedId && !facets.query.trim() && activeFacetCount(facets) === 0;
+  const focusedModel = focusedId ? catalog?.models.find((m) => m.id === focusedId) : undefined;
 
   const featured = useMemo(() => (catalog ? featuredModels(catalog.models) : []), [catalog]);
   const shelves = useMemo(
@@ -294,11 +300,33 @@ export function MarketplaceScreen() {
   );
 
   if (!catalog) {
+    // A skeleton store front instead of a bare line: two hero placeholders and
+    // two shelves of rows, using the existing shimmer, so the catalog fetch
+    // (up to several seconds on a cold cellular tailnet) reads as loading, not
+    // stalled. The shimmer is killed by the global reduced-motion reset.
     return (
       <div className="screen">
         <BackBar title="Marketplace" />
         <div className="screen-inner">
-          <p className="hint">Loading the catalog.</p>
+          <h1>Models, in plain language</h1>
+          <p className="lead">Curated for what they are actually good at.</p>
+          <div className="hero-scroll" aria-hidden="true">
+            <div className="hero-card skeleton build-shimmer" />
+            <div className="hero-card skeleton build-shimmer" />
+          </div>
+          {[0, 1].map((s) => (
+            <section className="shelf" key={s} aria-hidden="true">
+              <div className="skeleton-line build-shimmer" style={{ width: '40%', height: 16 }} />
+              <div className="shelf-scroll">
+                <div className="shelf-col">
+                  {[0, 1, 2].map((r) => (
+                    <div className="store-row skeleton build-shimmer" key={r} />
+                  ))}
+                </div>
+              </div>
+            </section>
+          ))}
+          <span className="visually-hidden">Loading the catalog.</span>
         </div>
       </div>
     );
@@ -314,8 +342,11 @@ export function MarketplaceScreen() {
       (p) => p.stack.orchestrator === id || Object.values(p.stack.specialists).includes(id),
     );
 
-  const setFacet = <K extends keyof Facets>(key: K, value: Facets[K]) =>
+  const setFacet = <K extends keyof Facets>(key: K, value: Facets[K]) => {
+    // Any search or filter leaves the single-model product view.
+    setFocusedId(undefined);
     setFacets((f) => ({ ...f, [key]: value }));
+  };
 
   const renderCard = (model: CatalogModel, index: number) => {
     const dl = downloads[model.id];
@@ -506,12 +537,13 @@ export function MarketplaceScreen() {
     );
   };
 
-  // Open the full list scoped to one model, the store's stand-in for an App
-  // Store product page: the list card carries the ratings, license, details, and
-  // compare that a shelf tile deliberately leaves out.
+  // Open one model as its own product page: an exact focus (not a name search),
+  // its full card with ratings, license, and details expanded up front.
   const openModel = (model: CatalogModel) => {
-    setFacets({ ...EMPTY_FACETS, query: model.name });
-    setSort('recommended');
+    setFacets(EMPTY_FACETS);
+    setFocusedId(model.id);
+    setDetailOpen(model.id);
+    window.scrollTo?.({ top: 0 });
   };
 
   // The compact download control shared by hero cards and shelf rows: a Get
@@ -547,11 +579,22 @@ export function MarketplaceScreen() {
     const pill = FIT_PILL[fit];
     const eyebrow = model.recommended?.isRecommended ? 'OpenShore pick' : 'Featured';
     return (
-      <button
+      // A div, not a button: it contains the Get button, and a button inside a
+      // button is invalid and fires unpredictably. role/tabIndex/onKeyDown keep
+      // it keyboard reachable (MP-F10).
+      <div
         className={`hero-card${model.onDevice ? ' on-device' : ''}`}
         key={model.id}
+        role="button"
+        tabIndex={0}
         style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
         onClick={() => openModel(model)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openModel(model);
+          }
+        }}
         aria-label={`${model.name}. ${model.tagline}`}
       >
         <div className="hero-eyebrow">{eyebrow}</div>
@@ -565,7 +608,7 @@ export function MarketplaceScreen() {
           </div>
           <span className="hero-get-wrap">{getControl(model)}</span>
         </div>
-      </button>
+      </div>
     );
   };
 
@@ -575,7 +618,19 @@ export function MarketplaceScreen() {
       ? `On device · ${model.sizeGB} GB`
       : `${model.sizeGB} GB · ${model.quantization}`;
     return (
-      <button className="store-row" key={model.id} onClick={() => openModel(model)}>
+      <div
+        className="store-row"
+        key={model.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => openModel(model)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openModel(model);
+          }
+        }}
+      >
         <ModelTile name={model.name} onDevice={Boolean(model.onDevice)} size={52} />
         <div className="store-row-body">
           <div className="store-row-name">{model.name}</div>
@@ -586,7 +641,7 @@ export function MarketplaceScreen() {
           </div>
         </div>
         <span className="store-row-get">{getControl(model)}</span>
-      </button>
+      </div>
     );
   };
 
@@ -638,13 +693,79 @@ export function MarketplaceScreen() {
     );
   };
 
+  // Preset stacks as a browsable "Starter stacks" shelf: each card names the
+  // stack, its member models (tap one to open its product page), the combined
+  // size, and whether it fits this machine. The catalog ships these and the CLI
+  // can apply them; here they are at least discoverable and drillable.
+  const presetMembers = (preset: (typeof catalog.presets)[number]): CatalogModel[] => {
+    const ids = [preset.stack.orchestrator, ...Object.values(preset.stack.specialists)].filter(
+      (v): v is string => Boolean(v),
+    );
+    const seen = new Set<string>();
+    const out: CatalogModel[] = [];
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const m = catalog!.models.find((mm) => mm.id === id);
+      if (m) out.push(m);
+    }
+    return out;
+  };
+
+  const renderPresetShelf = () => (
+    <section className="shelf preset-shelf" key="starter-stacks">
+      <div className="shelf-head static">
+        <span className="shelf-head-text">
+          <span className="shelf-title">Starter stacks</span>
+          <span className="shelf-sub">Curated combinations to set up in one look.</span>
+        </span>
+      </div>
+      <div className="shelf-scroll">
+        {catalog!.presets.map((preset) => {
+          const members = presetMembers(preset);
+          const totalGB = members.reduce((sum, m) => sum + m.sizeGB, 0);
+          const pill = FIT_PILL[fitFor(totalGB, memoryGB)];
+          return (
+            <div className="preset-card" key={preset.id}>
+              <div className="preset-name">{preset.name}</div>
+              <div className="preset-tagline">{preset.tagline}</div>
+              <div className="preset-members">
+                {members.map((m) => (
+                  <button
+                    key={m.id}
+                    className="preset-member press-fb"
+                    onClick={() => openModel(m)}
+                    aria-label={`${m.name} in ${preset.name}`}
+                  >
+                    <ModelTile name={m.name} onDevice={Boolean(m.onDevice)} size={34} />
+                    <span className="preset-member-name">{m.name}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="preset-foot">
+                <span className={`pill ${pill.cls}`}>{pill.text}</span>
+                <span className="preset-size">
+                  {totalGB.toFixed(1)} GB
+                  {preset.minVramGB > 0 ? ` · needs ${preset.minVramGB} GB VRAM` : ''}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+
   const categoryRail = (
     <div className="cat-rail" role="tablist" aria-label="Browse by capability">
       <button
         role="tab"
         aria-selected={browsing}
         className={`cat-chip${browsing ? ' active' : ''}`}
-        onClick={() => setFacets({ ...EMPTY_FACETS })}
+        onClick={() => {
+          setFocusedId(undefined);
+          setFacets({ ...EMPTY_FACETS });
+        }}
       >
         <span className="cat-chip-glyph all" aria-hidden="true">
           <svg
@@ -895,6 +1016,21 @@ export function MarketplaceScreen() {
               ) : null}
 
               {shelves.map(renderShelf)}
+
+              {catalog.presets.length ? renderPresetShelf() : null}
+            </div>
+          ) : focusedModel ? (
+            <div className="focused-view">
+              <button
+                className="btn quiet market-back"
+                onClick={() => {
+                  setFocusedId(undefined);
+                  setDetailOpen(undefined);
+                }}
+              >
+                All models
+              </button>
+              <div className="market-list">{renderCard(focusedModel, 0)}</div>
             </div>
           ) : (
             <>
@@ -940,7 +1076,20 @@ export function MarketplaceScreen() {
                     {visible.length ? (
                       visible.map(renderCard)
                     ) : (
-                      <p className="hint">No models match these filters yet.</p>
+                      <div className="market-empty">
+                        <p className="hint">No models match these filters yet.</p>
+                        {activeFacetCount(facets) > 0 || facets.query.trim() ? (
+                          <button
+                            className="btn quiet"
+                            onClick={() => {
+                              setFocusedId(undefined);
+                              setFacets(EMPTY_FACETS);
+                            }}
+                          >
+                            Clear filters
+                          </button>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 </div>
