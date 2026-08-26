@@ -33,6 +33,9 @@
     "turndown": "7.2.4",
     "zod": "4.4.3"
   },
+  "optionalDependencies": {
+    "node-pty": "1.0.0"
+  },
   "devDependencies": {
     "@types/node": "20.19.43",
     "@types/qrcode-terminal": "0.12.2",

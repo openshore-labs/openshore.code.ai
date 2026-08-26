@@ -79,4 +79,10 @@ export type DriverEvent =
       signal?: string;
       durationMs: number;
       truncated: boolean;
-    };
+    }
+  // The interactive PTY terminal (Phase 2). Content-free audit markers ONLY: a
+  // terminal's raw ANSI bytes never enter the journal (they cannot be redacted
+  // line-wise and ride their own offset-based stream). These record that a
+  // terminal opened or closed, with its cwd, never its output and never stdin.
+  | { type: 'terminal-opened'; termId: string; cwd: string }
+  | { type: 'terminal-closed'; termId: string };

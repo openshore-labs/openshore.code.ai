@@ -26,6 +26,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     newConversation,
     switchModel,
     setDrawer,
+    setView,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
   // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
@@ -75,6 +76,19 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         ) : (
           <div className="topbar-spacer" />
         )}
+        {/* Terminal entry, desktop-backed chats only: a real PTY on the desktop
+            over the same daemon connection. Non-desktop chats have no terminal,
+            so it stays hidden for them. */}
+        {conv && conv.source.kind === 'desktop' ? (
+          <button
+            className="icon-btn press-fb"
+            onClick={() => setView('terminal')}
+            aria-label="Open terminal"
+            title="Terminal"
+          >
+            {'>_'}
+          </button>
+        ) : null}
         <ProfileStatus />
       </header>
 

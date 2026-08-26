@@ -27,6 +27,12 @@ export interface BootstrapOptions {
   persist?: boolean;
   /** Preloaded config (tests); defaults to loading from disk. */
   config?: OscConfig;
+  /**
+   * Read this session's live PTY terminal output (Phase 2 bridge). Wired only by
+   * the daemon, which owns the TerminalManager. CLI and test bootstraps leave it
+   * undefined, so the readTerminal tool degrades to "no terminal here".
+   */
+  terminalReader?: (sessionId: string, lines: number, termId?: string) => string | undefined;
 }
 
 export interface BootstrapResult {
@@ -73,6 +79,15 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   }
 
   const driver = new LocalDriver(options.cwd, { id: options.sessionId, persist: options.persist });
+
+  // Wire the readTerminal accessor to this driver's id, if the daemon provided
+  // a terminal reader. Keyed by session id so the tool only ever sees this
+  // session's own terminals.
+  if (options.terminalReader) {
+    const reader = options.terminalReader;
+    toolContext.terminal = (lines, termId) => reader(driver.id, lines, termId);
+  }
+
   const agent = new AgentSession({
     config,
     router,

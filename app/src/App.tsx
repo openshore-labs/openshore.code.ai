@@ -20,6 +20,7 @@ import { CrewScreen } from './screens/CrewScreen.js';
 import { AdminScreen } from './screens/AdminScreen.js';
 import { LaunchScreen } from './screens/LaunchScreen.js';
 import { PairScreen } from './screens/PairScreen.js';
+import { TerminalScreen } from './screens/TerminalScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
 
@@ -128,6 +129,8 @@ export function App() {
       <LaunchScreen />
     ) : view === 'pair' ? (
       <PairScreen />
+    ) : view === 'terminal' ? (
+      <TerminalScreen />
     ) : view === 'settings' ? (
       <SettingsScreen />
     ) : view === 'chats' ? (

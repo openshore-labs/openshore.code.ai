@@ -176,6 +176,7 @@ export type ViewName =
   | 'launch'
   | 'pair'
   | 'settings'
+  | 'terminal'
   | 'onboarding';
 
 // Which locked surface triggered the Personal upgrade sheet. Free is chat only;

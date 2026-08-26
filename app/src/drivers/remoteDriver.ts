@@ -3,8 +3,26 @@
 // sequence number, so a subway tunnel costs nothing; this driver reconnects
 // with backoff and resumes from the last sequence it saw.
 import type { ApprovalAnswer, DaemonSessionInfo, DriverEvent } from 'os-code/protocol';
-import type { ChatDriver, DriverEventSink } from './types.js';
+import type { ChatDriver, DriverEventSink, TerminalOpen } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
+
+/** Base64 -> raw bytes, for a terminal stream frame. atob exists in the WebView
+ *  and every browser build target. */
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Raw text -> base64, for terminal stdin (keystrokes). Handles multi-byte
+ *  characters by encoding utf8 first. */
+function textToB64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
 
 export interface DaemonTarget {
   /** e.g. http://100.101.1.2:4816 (the desktop's tailnet address). */
@@ -388,6 +406,100 @@ export class RemoteDriver implements ChatDriver {
   killCommand(runId: string): void {
     void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/commands/${runId}/kill`, {
       method: 'POST',
+      headers: headers(this.target),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => {});
+  }
+
+  // ---- interactive PTY terminal (Phase 2 bridge) ----
+  // Its own SSE endpoint with offset-based replay, completely separate from the
+  // session event journal above. Raw bytes go base64 on the wire.
+  async openTerminal(opts: { cols: number; rows: number }): Promise<TerminalOpen> {
+    try {
+      const res = await fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/term`, {
+        method: 'POST',
+        headers: { ...headers(this.target), 'content-type': 'application/json' },
+        body: JSON.stringify({ cols: opts.cols, rows: opts.rows }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.status === 503) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        return {
+          unavailable: true,
+          error: body.error ?? 'Terminal support is not installed on the desktop.',
+        };
+      }
+      const body = (await res.json().catch(() => ({}))) as {
+        termId?: string;
+        cols?: number;
+        rows?: number;
+        error?: string;
+      };
+      if (!res.ok || !body.termId) {
+        return {
+          unavailable: true,
+          error: body.error ?? `The desktop answered ${res.status}.`,
+        };
+      }
+      return { termId: body.termId, cols: body.cols ?? opts.cols, rows: body.rows ?? opts.rows };
+    } catch {
+      return { unavailable: true, error: 'Could not reach the desktop to open a terminal.' };
+    }
+  }
+
+  async terminalStream(
+    termId: string,
+    sinceOffset: number,
+    onChunk: (bytes: Uint8Array, endOffset: number) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const res = await streamingFetch(
+      `${this.target.baseUrl}/sessions/${this.sessionId}/term/${termId}/stream?since=${sinceOffset}`,
+      { headers: headers(this.target), signal },
+    );
+    if (!res.ok || !res.body) throw new Error(`daemon answered ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done || signal.aborted) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
+        if (!dataLine) continue;
+        try {
+          const payload = JSON.parse(dataLine.slice(5).trim()) as { b64?: string; offset?: number };
+          if (payload.b64) onChunk(b64ToBytes(payload.b64), payload.offset ?? sinceOffset);
+        } catch {}
+      }
+    }
+  }
+
+  terminalStdin(termId: string, data: string): void {
+    void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/term/${termId}/stdin`, {
+      method: 'POST',
+      headers: { ...headers(this.target), 'content-type': 'application/json' },
+      body: JSON.stringify({ dataBase64: textToB64(data) }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => {});
+  }
+
+  terminalResize(termId: string, cols: number, rows: number): void {
+    void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/term/${termId}/resize`, {
+      method: 'POST',
+      headers: { ...headers(this.target), 'content-type': 'application/json' },
+      body: JSON.stringify({ cols, rows }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => {});
+  }
+
+  terminalKill(termId: string): void {
+    void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/term/${termId}`, {
+      method: 'DELETE',
       headers: headers(this.target),
       signal: AbortSignal.timeout(10_000),
     }).catch(() => {});

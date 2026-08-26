@@ -50,6 +50,15 @@ export interface ToolContext {
   /** Absolute path to the on-device knowledge vault (markdown files). The vault
    *  tools resolve note paths under here, jailed to it. */
   vaultRoot?: string;
+  /**
+   * Read the recent raw output of this session's interactive terminal (Phase 2
+   * PTY bridge), so the agent can look at the user's terminal with no
+   * screenshot. Returns the last `lines` lines with ANSI still intact (the
+   * readTerminal tool strips, redacts, and caps them), or undefined when there
+   * is no terminal. Wired only by the daemon bootstrap; CLI/test bootstraps
+   * leave it undefined and the tool degrades to "no terminal here".
+   */
+  terminal?: (lines: number, termId?: string) => string | undefined;
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
