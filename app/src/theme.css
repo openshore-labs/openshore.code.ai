@@ -1925,27 +1925,17 @@ textarea {
   gap: 18px;
 }
 
-/* Touch devices only: pin the greeting to the layout viewport instead of laying
-   it out in the column with the composer, so the mark and the line hold dead
-   center while the keyboard lifts the composer beneath them. iOS is not content
-   to leave a position:fixed element alone once the keyboard is up (it drags it
-   with the keyboard scroll), so ChatScreen also cancels that drift with a
-   transform driven by the visual viewport. `translateY(0)` is the resting state
-   it writes back to. There is no sidebar on a phone, so spanning the full width
-   is safe. Empty state only, so it never overlaps a transcript. */
+/* Touch devices only: the on-screen keyboard is up whenever the empty state is
+   shown (the composer autofocuses once the boot splash lifts), so the greeting
+   lives in the space above the composer. Anchor the mark and the line to the
+   BOTTOM of that space so they sit just above the composer, with the keyboard
+   beneath it, and ride up together as the keyboard pulls in, instead of floating
+   in the middle or overlapping the field. Still in flow, so it never covers the
+   composer. */
 @media (pointer: coarse) {
   .greeting {
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: var(--safe-top);
-    bottom: 0;
-    flex: none;
-    transform: translateY(0);
-    will-change: transform;
-    /* The line is the only live target. Taps anywhere else in this overlay fall
-       through to the composer underneath. */
-    pointer-events: none;
+    justify-content: flex-end;
+    padding-bottom: 12px;
   }
 }
 
