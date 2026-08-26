@@ -3,6 +3,44 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-26, keyboard)
+
+**Greeting-anchoring saga closed out: stopped WKWebView from scrolling the
+page for the keyboard, instead of continuing to chase it from the web layer.**
+The empty-chat greeting kept moving whenever the keyboard opened or retracted,
+across many rounds of founder-tested-on-device fixes this session: a
+`--kb-inset` threshold, that threshold plus a settle debounce, watching the
+composer's own position, a static pixel-measured height with no JS at all, and
+finally `position: fixed` with a `translateY(visualViewport.offsetTop)`
+compensation for the classic WebKit "fixed elements drift during a scroll"
+bug (commit `3676c21`). Each still let the greeting move on the founder's
+actual device in some new way (most recently: header scrolling fully
+off-screen and the greeting overlapping the composer). The real cause was
+never in the web layer: WKWebView itself was performing a genuine native
+scroll to keep the focused composer above the keyboard, which no
+`visualViewport`-based trick can fully out-guess.
+- Installed `@capacitor/keyboard` and set `resize: 'none'` in
+  `capacitor.config.ts`, which stops WKWebView from resizing or scrolling the
+  page at all when the keyboard shows. With nothing left to drag it, the
+  greeting's existing `position: fixed` + static pixel-measured height (see
+  `.greeting`'s touch rule in `app/src/theme.css`) simply holds, with zero JS
+  involvement, for both keyboard states.
+- The composer's gap above the keyboard (`--kb-inset`, in `ChatScreen.tsx`)
+  and `App.tsx`'s "recenter a focused field the keyboard is covering" effect
+  (for non-composer inputs elsewhere in the app) both used to read
+  `visualViewport`, which no longer shrinks under `resize: none`. Both now
+  read the real keyboard height directly from the plugin's
+  `keyboardWillShow`/`keyboardWillHide` events instead.
+Gates green: 41 files / 258 tests, typecheck, lint --max-warnings 0, Prettier,
+vite build, `npx cap sync ios` (confirms the plugin registers and
+`resize: 'none'` lands in the native config). Pushed straight to `main`
+(fast-forward, commit `c0d5a9f`). Not device-verified (no iOS here), and this
+is a new class of fix (disables a native WKWebView behavior rather than
+patching CSS/JS), so if the greeting still moves after this, the next
+signal to check is whether WKWebView has its own independent
+scroll-to-reveal-focused-field behavior that survives `resize: 'none'`
+(would need a small native-side tweak, not just JS/CSS).
+
 ## Current state (2026-08-26, greeting)
 
 **Empty-state greeting reworked, composer moved back to the bottom, plus a
