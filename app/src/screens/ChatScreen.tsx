@@ -13,7 +13,8 @@ import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
-import { buildRotation } from '../lib/greeting.js';
+import { buildRotation, ENGLISH_GREETING, type Greeting } from '../lib/greeting.js';
+import { hapticTick } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
@@ -47,19 +48,38 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const isEmpty = !(conv && thread && thread.items.length > 0);
   const [rotation, setRotation] = useState(() => buildRotation());
   const [rotIdx, setRotIdx] = useState(0);
+  // Crossfade layers: the last is the current word rising in; any earlier ones
+  // are lifting out and drop themselves on animationend. Each carries a unique
+  // id from this monotonic counter so a wrap back to English still remounts.
+  const [layers, setLayers] = useState<{ id: number; g: Greeting }[]>(() => [
+    { id: 0, g: ENGLISH_GREETING },
+  ]);
+  const seq = useRef(0);
+  // One-time discovery nudge, played on the first empty-state paint of the
+  // session and never again.
+  const [hint, setHint] = useState(true);
   const wasEmpty = useRef(true);
   useEffect(() => {
     // Reshuffle and land on English again only when we return to the empty
     // state from a conversation, so the first paint keeps its initial rotation
     // (no flash) and every fresh chat starts from English with a new order.
     if (isEmpty && !wasEmpty.current) {
-      setRotation(buildRotation());
+      const rot = buildRotation();
+      setRotation(rot);
       setRotIdx(0);
+      seq.current += 1;
+      setLayers([{ id: seq.current, g: rot[0] }]);
     }
     wasEmpty.current = isEmpty;
   }, [isEmpty]);
   const greeting = rotation[rotIdx];
-  const rotate = () => setRotIdx((i) => (i + 1) % rotation.length);
+  const rotate = () => {
+    hapticTick();
+    const next = (rotIdx + 1) % rotation.length;
+    seq.current += 1;
+    setRotIdx(next);
+    setLayers((ls) => [...ls, { id: seq.current, g: rotation[next] }]);
+  };
 
   // The composer pill shows the live chat's brain when one is open, otherwise
   // the pending selection for the next new chat.
@@ -138,8 +158,31 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               }
             }}
           >
-            <span key={rotIdx} className="greeting-swap">
-              {greeting.native}
+            <span
+              className={`greeting-swap-stack${hint ? ' greeting-hint' : ''}`}
+              onAnimationEnd={(e) => {
+                if (e.animationName === 'greet-hint') setHint(false);
+              }}
+            >
+              {layers.map((layer, i) => {
+                const current = i === layers.length - 1;
+                return (
+                  <span
+                    key={layer.id}
+                    className={current ? 'greeting-swap' : 'greeting-swap greeting-swap-out'}
+                    onAnimationEnd={
+                      current
+                        ? undefined
+                        : (e) => {
+                            if (e.animationName === 'greet-swap-out')
+                              setLayers((ls) => ls.filter((l) => l.id !== layer.id));
+                          }
+                    }
+                  >
+                    {layer.g.native}
+                  </span>
+                );
+              })}
             </span>
           </h1>
         </div>
