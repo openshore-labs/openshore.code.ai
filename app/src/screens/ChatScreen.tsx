@@ -77,9 +77,15 @@ function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: numb
     if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
     const root = document.documentElement.style;
     const KEYBOARD_THRESHOLD = 80; // px; comfortably above safe-area/rounding noise
-    const SETTLE_MS = 150; // wait for the keyboard's rise animation to quiet down
+    const SETTLE_MS = 350; // wait for the keyboard's rise animation to quiet down
     let didFreeze = false;
-    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    // Scheduled ONCE, on the first crossing, and never rescheduled: a keyboard
+    // rise can keep emitting visualViewport resize events past a short debounce
+    // window, and a debounce that resets on every event risks never getting a
+    // quiet gap to fire in, silently leaving the greeting stuck unfrozen (which
+    // reads as "it drops when the keyboard closes", since it then keeps
+    // tracking the composer forever instead of locking in place).
+    let scheduled = false;
     const freeze = () => {
       if (didFreeze || !greetingRef.current) return;
       didFreeze = true;
@@ -90,9 +96,9 @@ function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: numb
     const apply = () => {
       const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
       root.setProperty('--kb-inset', `${inset}px`);
-      if (!didFreeze && inset > KEYBOARD_THRESHOLD) {
-        if (settleTimer) clearTimeout(settleTimer);
-        settleTimer = setTimeout(freeze, SETTLE_MS);
+      if (!didFreeze && !scheduled && inset > KEYBOARD_THRESHOLD) {
+        scheduled = true;
+        setTimeout(freeze, SETTLE_MS);
       }
     };
     apply();
@@ -101,7 +107,6 @@ function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: numb
     return () => {
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
-      if (settleTimer) clearTimeout(settleTimer);
     };
   }, [resetKey, greetingRef]);
   return frozen;
