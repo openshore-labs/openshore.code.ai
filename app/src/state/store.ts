@@ -2243,7 +2243,7 @@ export const useApp = create<AppState>((set, get) => {
         return;
       }
       if (!home?.homePath) {
-        get().showToast('Set your home repo location on the desktop first.');
+        get().showToast('Set the home repo path first, in Repositories.');
         return;
       }
       const pending = pendingForRepo(outbox, home.id);

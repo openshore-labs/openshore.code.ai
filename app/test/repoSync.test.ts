@@ -2,7 +2,8 @@
 // every rule: order, idempotency, independent confirmation, reset-only-when-
 // confirmed, and batch-stop on conflict.
 import { describe, expect, it } from 'vitest';
-import type { OutboxItem } from '../src/lib/repos.js';
+import type { HomeRepo, OutboxItem } from '../src/lib/repos.js';
+import { homeRepoReady } from '../src/lib/repos.js';
 import {
   applyResult,
   bufferHealth,
@@ -90,6 +91,29 @@ describe('repo sync protocol', () => {
   it('does not confirm an item that was never offloaded', () => {
     const pending = item('b1', { state: 'pending' });
     expect(confirm(pending, { refExists: true, treeMatches: true })).toBe(pending);
+  });
+});
+
+describe('home repo readiness gates sync', () => {
+  const home = (over: Partial<HomeRepo> = {}): HomeRepo => ({
+    id: 'h1',
+    label: 'Home',
+    kind: 'home',
+    defaultBranch: 'main',
+    ...over,
+  });
+
+  it('is not ready when there is no home repo', () => {
+    expect(homeRepoReady(undefined)).toBe(false);
+  });
+
+  it('is not ready until an on-desktop path is set', () => {
+    expect(homeRepoReady(home())).toBe(false);
+    expect(homeRepoReady(home({ homePath: '' }))).toBe(false);
+  });
+
+  it('is ready once a homePath is set', () => {
+    expect(homeRepoReady(home({ homePath: '/home/dev/repo' }))).toBe(true);
   });
 });
 
