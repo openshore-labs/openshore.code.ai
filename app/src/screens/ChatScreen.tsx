@@ -73,6 +73,31 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     wasEmpty.current = isEmpty;
   }, [isEmpty]);
   const greeting = rotation[rotIdx];
+
+  // Keep the empty-state greeting anchored to the center of the screen while the
+  // keyboard is up, instead of letting it jump upward. iOS shifts a
+  // position:fixed element by the keyboard's scroll offset (and can nudge it as
+  // the visual viewport settles); we cancel that by translating the overlay back
+  // down by the same offset, so the mark and the line hold dead center until a
+  // real transcript replaces them. No-op on desktop and whenever offsetTop is 0.
+  const greetRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = greetRef.current;
+    if (!isEmpty || !vv || !el || !window.matchMedia('(pointer: coarse)').matches) return;
+    const apply = () => {
+      el.style.transform = `translateY(${vv.offsetTop}px)`;
+    };
+    apply();
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    return () => {
+      vv.removeEventListener('resize', apply);
+      vv.removeEventListener('scroll', apply);
+      el.style.transform = '';
+    };
+  }, [isEmpty]);
+
   const rotate = () => {
     hapticTick();
     const next = (rotIdx + 1) % rotation.length;
@@ -141,7 +166,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
         />
       ) : (
-        <div className="greeting">
+        <div className="greeting" ref={greetRef}>
           <BrandMark size={48} />
           <h1
             className="greeting-line press-fb"

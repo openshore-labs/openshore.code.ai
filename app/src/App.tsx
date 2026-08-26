@@ -66,6 +66,11 @@ export function App() {
       const el = e.target;
       if (!(el instanceof HTMLElement)) return;
       if (!el.matches('input, textarea, [contenteditable="true"]')) return;
+      // The composer is already anchored just above the keyboard, so it never
+      // needs recentering. Scrolling it to center forces a large page scroll
+      // that drags the pinned empty-state greeting upward, which is exactly the
+      // jump we do not want. Leave it be.
+      if (el.closest('.composer')) return;
       window.setTimeout(() => {
         const visibleBottom = vv.offsetTop + vv.height;
         if (el.getBoundingClientRect().bottom > visibleBottom - 24) {
