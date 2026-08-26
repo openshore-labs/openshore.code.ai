@@ -715,11 +715,29 @@ Layer status:
 
 ## Log
 
-- **2026-08-25: Review remediation (branch `claude/openshore-code-review-ud4bt9`,
-  NOT yet on main).** Acted on the 2026-08-25 review
-  (`CODE-REVIEW-FINDINGS-2026-08-25.md`) across the three focus areas, each fix
-  test-backed; gates green (os-code 268 tests, app 189, typecheck, lint,
-  vite build). Awaiting founder review before merge to main.
+- **2026-08-26: Review remediation, full pass, merged to main.** Acted on the
+  2026-08-25 review (`CODE-REVIEW-FINDINGS-2026-08-25.md`) across the three
+  focus areas, closing out the substantive findings and a full premium-polish
+  pass, each fix test-backed; gates green (os-code 275 tests, app 192,
+  typecheck, lint, vite build). Founder directed the push to main.
+  Additions beyond the first pass below: the chat-to-terminal bridge now works
+  on the DESKTOP app too (Electron command lane over IPC) and gains a composer
+  Terminal mode ($) for typing your own command; the Marketplace got a premium
+  pass (a real single-model product page replacing the fuzzy-search stand-in, a
+  browsable Starter-stacks preset shelf, a shimmer skeleton loader, an installed
+  state for desktop models, a quantization gloss, brand-safe hero variety, a
+  button-in-button a11y fix, a filter-clear empty state); macOS Tailscale
+  detection and CGNAT alignment; honest loopback pairing state (no unreachable
+  QR); SSE write backpressure; a cached Tailscale probe so the Pair poll never
+  freezes the desktop; and polish haptics on the terminal commits. Still a
+  founder decision, deliberately NOT built: the desktop-chat paywall change
+  (C-suite recommended opening free desktop chat, a monetization-foundation
+  change needing explicit approval) and terminal-bridge Phase 2 (full PTY tab).
+  Still needs founder/device verification: the P0 streaming fix on a real
+  iPhone, and the native Swift changes compile on TestFlight. Larger follow-ups
+  left for their own scoping: the daemon model-install endpoint (MP-F2),
+  background-download adoption (MP-F4), per-device pairing credentials (TS-P2-4),
+  and the home-repo path writer (TS-P1-5).
   - **Tailscale / phone (P0 + P1s).** Fixed the flagship phone bug: the daemon
     SSE stream and Anthropic SDK were routed through Capacitor's native-HTTP
     fetch (buffers, cannot stream), so a paired phone rendered nothing during a
