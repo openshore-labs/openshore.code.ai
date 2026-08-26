@@ -28,6 +28,9 @@ importers:
       '@capacitor/haptics':
         specifier: 8.0.1
         version: 8.0.1(@capacitor/core@8.5.0)
+      '@capacitor/keyboard':
+        specifier: 8.0.5
+        version: 8.0.5(@capacitor/core@8.5.0)
       '@capacitor/preferences':
         specifier: 8.0.1
         version: 8.0.1(@capacitor/core@8.5.0)
@@ -260,6 +263,11 @@ packages:
     resolution: {integrity: sha512-7k1TfohJu5BzRXc1F3g04Q8QQ0fyQgms6h1AvhnHb04VaNr9EdHOx03hL8O+OigEKMQnyJd1ZOjTPPNHCqL5Yw==}
     peerDependencies:
       '@capacitor/core': ^8.5.0
+
+  '@capacitor/keyboard@8.0.5':
+    resolution: {integrity: sha512-oFXygC4eKYA5l2MdpTR06L2M/4x6e2SLD5yS1T9+UBDKTkzyvhWKEhbYLUaTIBPpLKqlfGudJw1X73S1H9eUzQ==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   '@capacitor/preferences@8.0.1':
     resolution: {integrity: sha512-T6no3ebi79XJCk91U3Jp/liJUwgBdvHR+s6vhvPkPxSuch7z3zx5Rv1bdWM6sWruNx+pViuEGqZvbfCdyBvcHQ==}
@@ -3354,6 +3362,10 @@ snapshots:
       '@capacitor/core': 8.5.0
 
   '@capacitor/ios@8.5.0(@capacitor/core@8.5.0)':
+    dependencies:
+      '@capacitor/core': 8.5.0
+
+  '@capacitor/keyboard@8.0.5(@capacitor/core@8.5.0)':
     dependencies:
       '@capacitor/core': 8.5.0
 

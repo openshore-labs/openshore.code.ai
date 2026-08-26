@@ -1,6 +1,7 @@
 // The shell: persistent sidebar on wide screens, drawer on the phone, one
 // active room. The chat is home; everything else is a short visit.
 import { useEffect, useState } from 'react';
+import { Keyboard } from '@capacitor/keyboard';
 import { useApp } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
 import { hapticTick } from './lib/haptics.js';
@@ -53,15 +54,27 @@ export function App() {
     else delete root.dataset.theme;
   }, [theme]);
 
-  // Keep a focused field above the on-screen keyboard. iOS shrinks the visual
-  // viewport for the keyboard but not the layout, and our scroll lives in a
+  // Keep a focused field above the on-screen keyboard. Our scroll lives in a
   // nested container, so Safari does not reliably lift the field itself. On a
   // touch device, once the keyboard has settled, center any focused field that
   // the keyboard is actually covering (fields already in view are left alone,
   // so a sticky composer is untouched).
+  //
+  // Coverage used to be measured from visualViewport shrinking for the
+  // keyboard, but capacitor.config.ts now sets Keyboard.resize: 'none' (see
+  // useKeyboardInset in ChatScreen.tsx for why), which means the webview's
+  // frame, and so visualViewport, no longer shrinks for the keyboard at all.
+  // Coverage is measured against the plugin's own keyboardHeight instead,
+  // which stays correct under 'none'.
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    let keyboardHeight = 0;
+    const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
+      keyboardHeight = info.keyboardHeight;
+    });
+    const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
+      keyboardHeight = 0;
+    });
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target;
       if (!(el instanceof HTMLElement)) return;
@@ -72,14 +85,18 @@ export function App() {
       // jump we do not want. Leave it be.
       if (el.closest('.composer')) return;
       window.setTimeout(() => {
-        const visibleBottom = vv.offsetTop + vv.height;
+        const visibleBottom = window.innerHeight - keyboardHeight;
         if (el.getBoundingClientRect().bottom > visibleBottom - 24) {
           el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         }
       }, 300);
     };
     document.addEventListener('focusin', onFocusIn);
-    return () => document.removeEventListener('focusin', onFocusIn);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      void showHandle.then((h) => h.remove());
+      void hideHandle.then((h) => h.remove());
+    };
   }, []);
 
   // Every tap gets a light haptic, one listener instead of wiring hapticTick
