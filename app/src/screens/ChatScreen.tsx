@@ -2,7 +2,7 @@
 // and a time-of-day greeting, with the model, effort, and everything else
 // living in the composer. A live conversation swaps in the transcript and a
 // header that names the chat.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useApp } from '../state/store.js';
 import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
@@ -49,18 +49,19 @@ function useBooted(): boolean {
 // Confirmed correct on device (composer-to-keyboard spacing reads as
 // intended).
 //
-// The greeting used to freeze off a JS-detected "keyboard is open" signal
-// (four attempts: a --kb-inset threshold; that threshold plus a settle
-// debounce; that threshold plus a requestAnimationFrame settle; watching the
-// composer's own getBoundingClientRect() instead of viewport math). All four
-// shipped a greeting that kept tracking the composer, meaning some JS trigger
-// was silently never firing on the founder's device, not the specific
-// detection strategy. The greeting's position is now plain, unconditional CSS
-// instead (see .greeting's touch rule in theme.css): a fixed height, measured
-// directly off the founder's own confirmed-correct keyboard-up screenshot and
-// expressed as a share of the viewport height. There is no JS trigger left to
-// silently fail, because there is no trigger at all.
-function useKeyboardInset(): void {
+// That same native "scroll to keep the composer visible" is also what was
+// dragging the greeting: on this device it is a REAL page scroll (the header
+// and status bar shifted up in the same screenshot the greeting did), and
+// position: fixed does not automatically survive that on iOS the way it
+// should, it drifts along with everything else unless compensated for.
+// visualViewport.offsetTop is exactly how far that scroll has moved the
+// visual viewport down within the layout viewport, so translating the
+// greeting back by the same amount, every single time this fires, cancels it.
+// This runs unconditionally on every event, with no "is the keyboard open"
+// threshold or settle wait involved at all, so unlike the four earlier
+// attempts at freezing a value once some detected condition became true,
+// there is no trigger here that can silently fail to fire.
+function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>): void {
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
@@ -75,6 +76,17 @@ function useKeyboardInset(): void {
       const inset = Math.max(0, rootEl.clientHeight - vv.height - vv.offsetTop);
       rootEl.style.setProperty('--kb-inset', `${inset}px`);
       rootEl.classList.toggle('kb-open', vv.height < baseHeight - 80);
+
+      // Read greetingRef.current fresh, not captured: the greeting div
+      // unmounts and remounts (replaced by MessageList and back) across the
+      // life of this one long-lived effect, and this stays correct across
+      // every one of those cycles since it always reflects whichever
+      // instance is live right now. A stale, once-captured node would only
+      // ever compensate the FIRST greeting, silently doing nothing for any
+      // later one.
+      if (greetingRef.current) {
+        greetingRef.current.style.transform = vv.offsetTop ? `translateY(${vv.offsetTop}px)` : '';
+      }
     };
     apply();
     vv.addEventListener('resize', apply);
@@ -83,8 +95,34 @@ function useKeyboardInset(): void {
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
       rootEl.classList.remove('kb-open');
+      // Not clearing the greeting's transform here: whatever instance is
+      // live at teardown unmounts along with the rest of ChatScreen, so
+      // there is no residual style left behind to clean up.
     };
-  }, []);
+  }, [greetingRef]);
+}
+
+// .greeting is position: fixed (see theme.css), so its top offset is measured
+// from the actual viewport, not from anywhere in the document, and needs to
+// clear the header itself. The header's rendered height is not a constant we
+// can hardcode: it varies with env(safe-area-inset-top), which differs by
+// notch/Dynamic-Island depth across devices and can even change at runtime
+// (a Live Activity or phone-call status bar can grow it). Measuring it is a
+// plain, unconditional "how tall is this element right now" question, nothing
+// to do with detecting keyboard state, so unlike useKeyboardInset's history
+// there is no failure-prone trigger involved.
+function useHeaderHeight(headerRef: RefObject<HTMLElement>): void {
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const apply = () => {
+      document.documentElement.style.setProperty('--header-height', `${el.offsetHeight}px`);
+    };
+    apply();
+    const obs = new ResizeObserver(apply);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [headerRef]);
 }
 
 export function ChatScreen({ compact }: { compact: boolean }) {
@@ -108,7 +146,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // stack, which is what "My Stack" selects.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
   const booted = useBooted();
-  useKeyboardInset();
+  const headerRef = useRef<HTMLElement>(null);
+  const greetingRef = useRef<HTMLDivElement>(null);
+  useHeaderHeight(headerRef);
+  useKeyboardInset(greetingRef);
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -171,7 +212,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   return (
     <div className="shell-main">
-      <header className="topbar">
+      <header className="topbar" ref={headerRef}>
         {compact ? (
           <button className="icon-btn menu-btn" onClick={() => setDrawer(true)} aria-label="Menu">
             <MenuIcon />
@@ -215,7 +256,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             }}
           />
         ) : (
-          <div className="greeting">
+          <div className="greeting" ref={greetingRef}>
             <BrandMark size={40} />
             <h1
               className="greeting-line press-fb"
