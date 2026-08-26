@@ -119,6 +119,9 @@ export function MarketplaceScreen() {
   // A single model opened as a product page: an exact id, not a name search, so
   // a sibling whose name happens to fuzzy-match never rides along.
   const [focusedId, setFocusedId] = useState<string | undefined>();
+  // Desktop models already pulled onto the paired machine (by source ref), so a
+  // model that is installed shows as installed rather than an endless Get.
+  const [installedRefs, setInstalledRefs] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     // Snap the machine tier to detected hardware on the desktop, so fit badges
@@ -127,7 +130,10 @@ export function MarketplaceScreen() {
     if (!b) return;
     void b
       .status()
-      .then((s) => setMemoryGB(nearestTier(parseMemoryGB(s.hardwareSummary))))
+      .then((s) => {
+        setMemoryGB(nearestTier(parseMemoryGB(s.hardwareSummary)));
+        setInstalledRefs(new Set(s.ollama.models));
+      })
       .catch(() => {});
   }, []);
 
@@ -363,7 +369,7 @@ export function MarketplaceScreen() {
   const renderCard = (model: CatalogModel, index: number) => {
     const dl = downloads[model.id];
     const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
-    const owned = target === 'device' && Boolean(settings.deviceModels[model.id]);
+    const owned = isOwned(model);
     const fit = fitFor(model.sizeGB, memoryGB);
     const pill = FIT_PILL[fit];
     const isRecommended = model.recommended?.isRecommended;
@@ -388,7 +394,7 @@ export function MarketplaceScreen() {
             <div className="sub">{model.tagline}</div>
           </div>
           {owned ? (
-            <span className="pill local">on device</span>
+            <span className="pill local">{model.onDevice ? 'on device' : 'installed'}</span>
           ) : dl && !dl.failed ? null : (
             <button
               className="btn ghost market-get"
@@ -563,13 +569,20 @@ export function MarketplaceScreen() {
     window.scrollTo?.({ top: 0 });
   };
 
+  // A model already present: on-device by the device-models record, a desktop
+  // model by whether its source ref is in the paired machine's Ollama list.
+  const isOwned = (model: CatalogModel): boolean =>
+    model.onDevice ? Boolean(settings.deviceModels[model.id]) : installedRefs.has(model.source.ref);
+
   // The compact download control shared by hero cards and shelf rows: a Get
   // button, its in-flight percent, a Retry on failure, or the owned state.
   const getControl = (model: CatalogModel) => {
     const dl = downloads[model.id];
     const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
-    const owned = target === 'device' && Boolean(settings.deviceModels[model.id]);
-    if (owned) return <span className="pill local">on device</span>;
+    const owned = isOwned(model);
+    if (owned) {
+      return <span className="pill local">{model.onDevice ? 'on device' : 'installed'}</span>;
+    }
     if (dl && !dl.failed) {
       return (
         <span className="get-progress" aria-live="polite">
