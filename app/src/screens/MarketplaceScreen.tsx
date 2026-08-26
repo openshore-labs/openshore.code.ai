@@ -146,6 +146,48 @@ export function MarketplaceScreen() {
   }, [settings.daemon]);
 
   useEffect(() => {
+    // MP-F4: adopt pocket models that finished downloading while the app was
+    // closed. iOS completes a background transfer with no app UI, so a model can
+    // be on disk yet untracked, which would show Get and re-download on tap.
+    // Once the catalog is known (for real names), record any present-but-
+    // untracked catalog model, and reseed the progress UI for one still running.
+    if (!catalog || !isPhone()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [{ models }, active] = await Promise.all([
+          Llama.listModels(),
+          Llama.activeDownloads().catch(() => ({ ids: [] as string[] })),
+        ]);
+        if (cancelled) return;
+        const present = new Set(models.map((m) => m.id));
+        for (const m of catalog.models) {
+          if (m.onDevice && present.has(m.id) && !settings.deviceModels[m.id]) {
+            void addDeviceModel(m.id, m.name);
+          }
+        }
+        if (active.ids.length) {
+          setDownloads((d) => {
+            const next = { ...d };
+            for (const id of active.ids) {
+              if (!next[id] && catalog.models.some((m) => m.id === id)) {
+                next[id] = { percent: 0, label: 'Resuming', indeterminate: true };
+              }
+            }
+            return next;
+          });
+        }
+      } catch {
+        // Native side unreachable: leave state as is.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog]);
+
+  useEffect(() => {
     // The user's OWN local, lifetime usage, read through the desktop bridge and
     // folded from the session journals on THIS machine. No bridge (iOS/web)
     // means no usage axis. Private by construction: nothing here is cross-user
