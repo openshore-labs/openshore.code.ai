@@ -376,6 +376,11 @@ export class EngineHost {
       token: loadOrCreateToken(join(oscHome(), 'daemon.token')),
       tailscaleIp: tailscaleIp(),
       tailscaleUp: ts.running,
+      // With dual-bind, a tailnet daemon's host is the 100.x address; only the
+      // loopback fallback (Tailscale down) reports 127.0.0.1. The Pair screen
+      // uses this to avoid publishing an unreachable QR with false copy.
+      mode: (this.daemon?.host === '127.0.0.1' ? 'loopback' : 'tailscale') as
+        'loopback' | 'tailscale',
     };
   }
 

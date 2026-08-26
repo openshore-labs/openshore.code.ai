@@ -47,6 +47,18 @@ function gb(bytes: number): string {
   return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
+// Plain-language gloss for a quantization tag, so a spec like "Q4_K_M" reads as
+// a tradeoff rather than jargon.
+function quantGloss(q: string): string | undefined {
+  const t = q.toUpperCase();
+  if (/Q8|F16|FP16|BF16/.test(t)) return 'Near-full quality, the largest download.';
+  if (/Q6/.test(t)) return 'High quality, a little larger.';
+  if (/Q5/.test(t)) return 'A touch sharper than Q4, a little larger.';
+  if (/Q4/.test(t)) return 'The balanced default: strong quality, runs on modest hardware.';
+  if (/Q3|Q2/.test(t)) return 'Smallest and fastest, with some quality traded away.';
+  return undefined;
+}
+
 const MEMORY_TIERS = [8, 16, 24, 48];
 
 function parseMemoryGB(summary?: string): number {
@@ -519,6 +531,11 @@ export function MarketplaceScreen() {
                 ))}
               </div>
             ) : null}
+            {quantGloss(model.quantization) ? (
+              <p className="detail-quant">
+                <strong>{model.quantization}</strong> · {quantGloss(model.quantization)}
+              </p>
+            ) : null}
             <div className="pull-cmd">
               <code>{model.source.pullCommand}</code>
             </div>
@@ -587,6 +604,7 @@ export function MarketplaceScreen() {
         key={model.id}
         role="button"
         tabIndex={0}
+        data-cap={model.categories[0] ?? 'reasoning'}
         style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
         onClick={() => openModel(model)}
         onKeyDown={(e) => {

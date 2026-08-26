@@ -94,7 +94,9 @@ function DesktopPair() {
     if (!b) return;
     const next = await b.daemonInfo();
     setInfo(next);
-    if (next.running && next.host) {
+    // Only publish a QR the phone can actually reach: a loopback-only fallback
+    // (Tailscale down) would hand out an address that points at the phone itself.
+    if (next.running && next.host && next.mode !== 'loopback') {
       const payload = JSON.stringify({ u: `http://${next.host}:${next.port}`, t: next.token });
       setQr(
         await QRCode.toDataURL(payload, {
@@ -110,6 +112,11 @@ function DesktopPair() {
 
   useEffect(() => {
     void refresh();
+    // Poll so starting Tailscale after opening this screen updates the state
+    // (the daemon can move from loopback-only to the tailnet without a reload).
+    const timer = setInterval(() => void refresh(), 4000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -128,7 +135,9 @@ function DesktopPair() {
               <h3>Phone connection</h3>
               <div className="sub">
                 {info?.running
-                  ? `Serving on ${info.host}:${info.port} over the tailnet.`
+                  ? info.mode === 'loopback'
+                    ? 'On, but only for this machine. Tailscale is not up, so the phone cannot reach it yet. Start it (sudo tailscale up).'
+                    : `Serving on ${info.host}:${info.port} over the tailnet.`
                   : info?.tailscaleUp
                     ? 'Off. Turn it on and the phone app can connect.'
                     : 'Tailscale is not up on this machine. Start it (sudo tailscale up), then turn this on.'}
@@ -215,7 +224,7 @@ function PhonePair() {
     setState(health.detail);
     if (health.ok) {
       await saveSettings({ daemon: { baseUrl, token: token.trim() } });
-      showToast('Connected. Your desktop stack is now in the model picker.');
+      showToast('Connected. Open a repo from Repositories to work on your desktop.');
     }
   };
 
