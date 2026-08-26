@@ -63,6 +63,13 @@ export interface HomeRepo {
   defaultBranch: string;
 }
 
+// A home repo can only offload buffered work once its on-desktop working path
+// is known: syncOutbox applies commits into that cwd, then pushes. Until a path
+// is picked, the Sync affordance stays hidden rather than enabled-but-doomed.
+export function homeRepoReady(home: HomeRepo | undefined): boolean {
+  return Boolean(home?.homePath);
+}
+
 // A single file's post-image in a buffered commit-intent. Full content is
 // content-addressed (sha256) and stored as a sealed blob (blobRef), so a retry
 // is byte-identical and idempotent.

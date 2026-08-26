@@ -7,16 +7,18 @@ import { isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonCloneRepo, daemonWorkspaces } from '../drivers/remoteDriver.js';
-import { REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.js';
+import { homeRepoReady, REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 
 // The phone-to-home commit-offload pipeline (home repo + buffered deploys) is
-// built and tested end to end on the desktop engine, but no app flow produces
-// buffered commit-intents and no UI sets the home repo path yet, so the section
-// would only ever show its empty state. Hidden until the producer and the
-// homePath picker land (CTO ruling FD-1). Flip this to reveal it, a one-line
-// change; the store actions and the desktop apply engine stay intact.
+// built and tested end to end on the desktop engine. The homePath picker now
+// lands in HomeRepoEditor below, so the home repo can actually be pointed at an
+// on-desktop clone and Sync is gated on that path. Still hidden by default
+// until an app flow produces buffered commit-intents (the offload producer,
+// CTO ruling FD-1), or the section would only ever show its empty state. Flip
+// this to reveal it, a one-line change; the store actions and the desktop apply
+// engine stay intact.
 const REPO_OUTBOX_ENABLED = false;
 
 export function ReposScreen() {
@@ -196,6 +198,7 @@ export function ReposScreen() {
               {editingHome && admin ? (
                 <HomeRepoEditor
                   initial={homeRepo}
+                  workspaces={workspaces}
                   onSave={async (h) => {
                     await setHomeRepo(h);
                     setEditingHome(false);
@@ -264,20 +267,28 @@ export function ReposScreen() {
                           </span>
                         </div>
                       ))}
+                      {!homeRepoReady(homeRepo) ? (
+                        <p className="hint" style={{ marginTop: 8 }}>
+                          Set the home repo path first. Tap Change above and pick the desktop clone
+                          this repo lands in, then Sync appears here.
+                        </p>
+                      ) : null}
                       <div
                         className="suggestion-row"
                         style={{ justifyContent: 'flex-start', marginTop: 10 }}
                       >
-                        <button
-                          className="suggestion"
-                          disabled={!settings.daemon}
-                          onClick={async () => {
-                            await syncOutbox();
-                            showToast('Synced what the home repo could confirm.');
-                          }}
-                        >
-                          Sync now
-                        </button>
+                        {homeRepoReady(homeRepo) ? (
+                          <button
+                            className="suggestion"
+                            disabled={!settings.daemon}
+                            onClick={async () => {
+                              await syncOutbox();
+                              showToast('Synced what the home repo could confirm.');
+                            }}
+                          >
+                            Sync now
+                          </button>
+                        ) : null}
                         <button
                           className="suggestion"
                           onClick={async () => {
@@ -395,10 +406,12 @@ export function ReposScreen() {
 
 function HomeRepoEditor({
   initial,
+  workspaces,
   onSave,
   onCancel,
 }: {
   initial?: HomeRepo;
+  workspaces: Array<{ cwd: string; name: string }>;
   onSave: (home: HomeRepo) => void;
   onCancel: () => void;
 }) {
@@ -407,8 +420,21 @@ function HomeRepoEditor({
   const [kind, setKind] = useState<HomeRepo['kind']>(initial?.kind ?? 'home');
   const [remoteUrl, setRemoteUrl] = useState(initial?.remoteUrl ?? '');
   const [branch, setBranch] = useState(initial?.defaultBranch ?? 'main');
+  // The on-desktop clone the home engine applies buffered commits into. v1
+  // requires picking a workspace already cloned on the desktop; cloning a
+  // platform remote on first sync is a follow-up (see review TS-P1-5).
+  const [homePath, setHomePath] = useState(initial?.homePath ?? '');
 
   const platformKinds = REPO_CONNECTORS.filter((c) => connectedRepoPlatforms[c.id]);
+
+  const pickWorkspace = (cwd: string) => {
+    setHomePath(cwd);
+    // Offer the workspace name as the label when the user has not typed one.
+    if (!label.trim()) {
+      const ws = workspaces.find((w) => w.cwd === cwd);
+      if (ws) setLabel(ws.name);
+    }
+  };
 
   const save = () => {
     const home: HomeRepo = {
@@ -418,6 +444,7 @@ function HomeRepoEditor({
       defaultBranch: branch.trim() || 'main',
       remoteUrl: kind === 'home' ? undefined : remoteUrl.trim() || undefined,
       connectorId: kind === 'home' ? undefined : (kind as RepoPlatform),
+      homePath: homePath.trim() || undefined,
     };
     onSave(home);
   };
@@ -464,6 +491,32 @@ function HomeRepoEditor({
           network, so nothing depends on a third party.
         </p>
       )}
+      <div className="field">
+        <label>On the desktop</label>
+        {workspaces.length ? (
+          <select
+            className="select"
+            value={homePath}
+            onChange={(e) => pickWorkspace(e.target.value)}
+          >
+            <option value="">Pick a cloned workspace</option>
+            {workspaces.map((ws) => (
+              <option key={ws.cwd} value={ws.cwd}>
+                {ws.name} · {ws.cwd}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="hint">
+            No cloned workspaces found. Clone this repo on the desktop first, below, then set it as
+            the home repo here.
+          </p>
+        )}
+        <p className="hint" style={{ marginTop: 8 }}>
+          Buffered deploys land in this clone on the home engine, then push. Sync stays hidden until
+          a path is set here.
+        </p>
+      </div>
       <div className="field">
         <label>Default branch</label>
         <input
