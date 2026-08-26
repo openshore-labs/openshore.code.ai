@@ -63,6 +63,46 @@ async function createSessionAs(token: string, cwd: string): Promise<Response> {
   });
 }
 
+describe('box-run model, reached from the phone', () => {
+  it('reports the configured stack so the phone can label "My computer"', async () => {
+    // The phone reads /stack (daemonStack) to show which model the box runs.
+    // Start a daemon configured with an orchestrator so the report is non-empty.
+    const cfg = defaultConfig();
+    cfg.stack.orchestrator = { provider: 'ollama', model: 'qwen' };
+    let box: RunningDaemon | undefined;
+    for (let attempt = 0; attempt < 30 && !box; attempt++) {
+      const port = 40000 + Math.floor(Math.random() * 20000);
+      try {
+        box = await startDaemon({ config: cfg, bind: 'loopback', port });
+      } catch (err) {
+        if (!String(err).includes('EADDRINUSE')) throw err;
+      }
+    }
+    try {
+      const res = await fetch(`http://127.0.0.1:${box!.port}/stack`, { headers: auth(adminToken) });
+      expect(res.status).toBe(200);
+      const stack = (await res.json()) as { orchestrator?: { model: string } };
+      expect(stack.orchestrator?.model).toBe('qwen');
+    } finally {
+      box!.close();
+    }
+  });
+
+  it('opens a box-run session with no cwd (the "My computer" pick)', async () => {
+    // Picking "My computer" starts a desktop session with no repo; the daemon
+    // runs the loop in its own working directory. Admin (the box owner) is
+    // unrestricted, so this must succeed.
+    const res = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id?: string };
+    expect(body.id).toBeTruthy();
+  });
+});
+
 describe('daemon RBAC (D1)', () => {
   it('a member cannot open a session outside an admin-provisioned workspace', async () => {
     const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });

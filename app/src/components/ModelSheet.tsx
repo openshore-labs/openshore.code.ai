@@ -5,11 +5,13 @@
 // state that routes to setup. When no stack exists yet, My Stack is greyed with a
 // link to build one. Models in the category sheets swipe left to pin; a pinned
 // model rides under My Stack for one-tap use and swipes there to unpin.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { isDesktop } from '../lib/platform.js';
+import { daemonStack } from '../drivers/remoteDriver.js';
+import type { DaemonStackInfo } from 'os-code/protocol';
 import { CLAUDE_MODELS, claudeModelLabel } from '../lib/claudeModels.js';
 import { PROVIDERS } from '../lib/providers.js';
 import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
@@ -94,6 +96,25 @@ export function ModelSheet({
   const { closing, dismiss } = useSheetExit(onClose);
   const effort = settings.effort ?? DEFAULT_EFFORT;
 
+  // Your paired computer's stack: the model(s) your machine runs, reachable
+  // over your connection. Picking it runs the agent ON the box (the phone is
+  // the remote control), so backgrounding never truncates a reply. Fetched
+  // when a daemon is paired; 'error' means paired but unreachable right now.
+  const daemon = settings.daemon;
+  const [boxStack, setBoxStack] = useState<DaemonStackInfo | 'error' | undefined>(undefined);
+  useEffect(() => {
+    if (!daemon) return;
+    let live = true;
+    daemonStack(daemon)
+      .then((s) => live && setBoxStack(s))
+      .catch(() => live && setBoxStack('error'));
+    return () => {
+      live = false;
+    };
+  }, [daemon]);
+  const boxModel =
+    boxStack && boxStack !== 'error' ? (boxStack.orchestrator?.model ?? undefined) : undefined;
+
   const hasStack = Boolean(settings.stack);
   const claudeReady = cloudKeyPresent || isDesktop();
   const otherProviders = PROVIDERS.filter((p) => p.id !== 'anthropic' && connectedProviders[p.id]);
@@ -132,6 +153,43 @@ export function ModelSheet({
         {stage === 'root' ? (
           <>
             <Header title="Select model" />
+            {!isDesktop() ? (
+              <div className="ms-group">
+                {!daemon ? (
+                  <Row
+                    main="Connect your computer"
+                    sub="Run your own model on your machine, from anywhere"
+                    chevron
+                    onClick={() => goto('pair')}
+                  />
+                ) : boxStack === undefined ? (
+                  <Row main="My computer" sub="Checking your connection..." onClick={() => {}} />
+                ) : boxStack === 'error' ? (
+                  <div className="ms-row ms-row-disabled">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">My computer</span>
+                      <button className="ms-sublink press-fb" onClick={() => goto('pair')}>
+                        Not reachable right now. Reconnect
+                      </button>
+                    </span>
+                  </div>
+                ) : boxModel ? (
+                  <Row
+                    main="My computer"
+                    sub={`${boxModel}, running on your machine`}
+                    highlight
+                    onClick={() => onPick({ kind: 'desktop' })}
+                  />
+                ) : (
+                  <div className="ms-row ms-row-disabled">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">My computer</span>
+                      <span className="ms-row-sub">No model set up on your computer yet.</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : null}
             <div className="ms-group">
               {hasStack ? (
                 <Row
