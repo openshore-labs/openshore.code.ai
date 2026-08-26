@@ -176,3 +176,20 @@ execution contract. Newest at the bottom.
   the shared-device leak it would prevent; the personal vault is treated as
   device-local property, like the on-device model files. A future encrypted,
   per-account vault at rest is the real fix for a shared device.
+
+- **Free desktop chat is a stateless /chat endpoint, not a neutered session
+  (CTO ruling, founder approved).** Chat with a paired desktop's own local
+  models is free; the coding agent, Marketplace, and repo writes stay Personal
+  ($20). The free surface is a new daemon route POST /chat that builds only a
+  provider and streams one completion, instantiating none of the acting
+  machinery (no AgentSession, LocalDriver, ToolRegistry, command lane, outbox,
+  journal) and pinned to the local orchestrator (no cloud spend). A
+  "zero-tools session" was rejected: the user-command lane (POST
+  /sessions/:id/commands) bypasses the tool registry, so a tool-less session
+  could still run shell. The app uses a distinct source.kind 'desktop-chat'
+  (not a flag on 'desktop'), so the free path can never reach the
+  session-creating branch that opens the paid agent, and the gate stays
+  `coding = source.kind === 'desktop'`. Honest limit: the $20 wall is not
+  server-enforceable against a user's own daemon (they hold both ends); this
+  change confines the free surface so it cannot act, it does not claim to
+  enforce entitlement against a hostile self-daemon.
