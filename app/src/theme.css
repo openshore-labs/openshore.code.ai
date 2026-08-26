@@ -1920,7 +1920,9 @@ textarea {
   justify-content: center;
   padding: 24px;
   text-align: center;
-  gap: 14px;
+  /* Airier than the mark-hugs-line default, so the words breathe on the empty
+     field the way the Claude opening does. */
+  gap: 18px;
 }
 
 /* Touch devices only: pin the greeting to the layout viewport instead of laying
@@ -2065,7 +2067,9 @@ textarea {
 .greeting h1 {
   font-family: var(--font-display);
   font-weight: 500;
-  font-size: clamp(24px, 4.5vw, 34px);
+  /* The display serif is the hero of the empty screen, so give it a touch more
+     size now that the mark whispers beneath it. */
+  font-size: clamp(26px, 5vw, 36px);
   line-height: 1.15;
   letter-spacing: -0.014em;
   text-wrap: balance;
