@@ -84,26 +84,42 @@
       #boot-splash .boot-wordmark .boot-accent {
         color: #2f5a66;
       }
-      /* The wordmark types itself in, one letter at a time, each rising a beat
-         after the last. --i is the letter's position, set inline. `backwards`
-         holds the from-state through the stagger delay and settles to the
-         natural transform, so it never fights the container's exit scale. The
-         whole run finishes near 1s, well inside the 1.5s splash hold. */
+      /* The wordmark surfaces one letter at a time, each floating up as if from
+         under water: it starts deep, blurred and tinted the water teal, rises
+         and comes into focus, breaks the surface with a buoyant little bob, then
+         settles. --i is the letter's position, set inline, driving the stagger.
+         `backwards` holds the from-state through the delay so a letter waits
+         below the surface until its turn. The run finishes near 1.5s, inside the
+         1.7s splash hold. */
       #boot-splash .boot-wordmark .boot-letter {
         display: inline-block;
         font-size: 36px;
         letter-spacing: 0.02em;
-        animation: boot-letter 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-        animation-delay: calc(0.14s + var(--i) * 0.055s);
+        animation: boot-letter-float 0.78s ease-out backwards;
+        animation-delay: calc(0.14s + var(--i) * 0.08s);
+        will-change: transform, opacity, filter;
       }
-      @keyframes boot-letter {
+      @keyframes boot-letter-float {
         from {
           opacity: 0;
-          transform: translateY(0.36em) scale(0.9);
+          transform: translateY(0.95em) scale(0.94);
+          filter: blur(7px);
+          color: #2f5a66;
+        }
+        45% {
+          opacity: 1;
+        }
+        62% {
+          filter: blur(0);
+        }
+        80% {
+          /* Breaks the surface and bobs a touch high before settling. */
+          transform: translateY(-0.07em) scale(1.006);
         }
         to {
           opacity: 1;
           transform: translateY(0) scale(1);
+          filter: blur(0);
         }
       }
       @keyframes boot-rise {
