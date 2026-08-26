@@ -29,6 +29,9 @@ export interface DaemonInfo {
   token: string;
   tailscaleIp?: string;
   tailscaleUp: boolean;
+  /** 'loopback' means the tailnet bind failed and the daemon serves only this
+   *  machine, so a pairing QR would be unreachable from the phone. */
+  mode?: 'loopback' | 'tailscale';
 }
 
 export interface SessionRow {
