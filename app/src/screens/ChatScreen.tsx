@@ -3,6 +3,7 @@
 // living in the composer. A live conversation swaps in the transcript and a
 // header that names the chat.
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Keyboard } from '@capacitor/keyboard';
 import { useApp } from '../state/store.js';
 import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
@@ -39,67 +40,43 @@ function useBooted(): boolean {
   return booted;
 }
 
-// How much of the screen the on-screen keyboard covers is not something CSS can
-// see on its own: on a device whose LAYOUT viewport does not shrink for the
-// keyboard the way the visual viewport does, the browser auto-scrolls the page
-// to keep the focused field visible and overshoots, leaving a dead gap between
-// the composer and the keyboard. Track it via visualViewport instead, as a live
-// CSS variable on the root, --kb-inset: the composer reads it (see
-// .composer-wrap in theme.css) so it always hugs the keyboard with no gap.
-// Confirmed correct on device (composer-to-keyboard spacing reads as
-// intended).
+// How much of the screen the on-screen keyboard covers used to not be
+// something CSS could see on its own, so this tracked visualViewport as a
+// proxy and set a live CSS var, --kb-inset, for the composer to hug the
+// keyboard with no gap (see .composer-wrap in theme.css). That approach also
+// had to fight the SAME cause behind a much worse bug: on this device
+// WKWebView was performing a real native scroll to keep the focused composer
+// above the keyboard, which dragged the whole page, including the header and
+// a position: fixed greeting, off its anchored spot no matter how that drag
+// was compensated for from the web layer (translateY(visualViewport.offsetTop)
+// and three detection strategies before it each shipped and each still let
+// the greeting move on the founder's device).
 //
-// That same native "scroll to keep the composer visible" is also what was
-// dragging the greeting: on this device it is a REAL page scroll (the header
-// and status bar shifted up in the same screenshot the greeting did), and
-// position: fixed does not automatically survive that on iOS the way it
-// should, it drifts along with everything else unless compensated for.
-// visualViewport.offsetTop is exactly how far that scroll has moved the
-// visual viewport down within the layout viewport, so translating the
-// greeting back by the same amount, every single time this fires, cancels it.
-// This runs unconditionally on every event, with no "is the keyboard open"
-// threshold or settle wait involved at all, so unlike the four earlier
-// attempts at freezing a value once some detected condition became true,
-// there is no trigger here that can silently fail to fire.
-function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>): void {
+// capacitor.config.ts now sets Keyboard.resize: 'none', which stops WKWebView
+// from touching the page at all when the keyboard opens: nothing scrolls,
+// nothing resizes, so there is no drag left to compensate for and the
+// greeting's position: fixed layout (see .greeting in theme.css) simply holds,
+// by construction, with no JS involvement whatsoever. All that is left for
+// JS to report is the keyboard's own height, which the plugin hands over
+// directly and exactly, no visualViewport math or device-model guessing
+// needed.
+function useKeyboardInset(): void {
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
     const rootEl = document.documentElement;
-    let baseHeight = vv.height; // tallest visual viewport seen: the keyboard-down height
-    const apply = () => {
-      if (vv.height > baseHeight) baseHeight = vv.height; // auto-calibrate the baseline
-
-      // Layout-space bottom coverage. Lifts the composer on a device whose
-      // layout viewport does NOT shrink for the keyboard; ~0 on a device that
-      // does (there the shell already ends above the keyboard on its own).
-      const inset = Math.max(0, rootEl.clientHeight - vv.height - vv.offsetTop);
-      rootEl.style.setProperty('--kb-inset', `${inset}px`);
-      rootEl.classList.toggle('kb-open', vv.height < baseHeight - 80);
-
-      // Read greetingRef.current fresh, not captured: the greeting div
-      // unmounts and remounts (replaced by MessageList and back) across the
-      // life of this one long-lived effect, and this stays correct across
-      // every one of those cycles since it always reflects whichever
-      // instance is live right now. A stale, once-captured node would only
-      // ever compensate the FIRST greeting, silently doing nothing for any
-      // later one.
-      if (greetingRef.current) {
-        greetingRef.current.style.transform = vv.offsetTop ? `translateY(${vv.offsetTop}px)` : '';
-      }
-    };
-    apply();
-    vv.addEventListener('resize', apply);
-    vv.addEventListener('scroll', apply);
-    return () => {
-      vv.removeEventListener('resize', apply);
-      vv.removeEventListener('scroll', apply);
+    const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
+      rootEl.style.setProperty('--kb-inset', `${info.keyboardHeight}px`);
+      rootEl.classList.add('kb-open');
+    });
+    const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
       rootEl.classList.remove('kb-open');
-      // Not clearing the greeting's transform here: whatever instance is
-      // live at teardown unmounts along with the rest of ChatScreen, so
-      // there is no residual style left behind to clean up.
+    });
+    return () => {
+      void showHandle.then((h) => h.remove());
+      void hideHandle.then((h) => h.remove());
+      rootEl.classList.remove('kb-open');
     };
-  }, [greetingRef]);
+  }, []);
 }
 
 // .greeting is position: fixed (see theme.css), so its top offset is measured
@@ -147,9 +124,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
   const booted = useBooted();
   const headerRef = useRef<HTMLElement>(null);
-  const greetingRef = useRef<HTMLDivElement>(null);
   useHeaderHeight(headerRef);
-  useKeyboardInset(greetingRef);
+  useKeyboardInset();
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -256,7 +232,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             }}
           />
         ) : (
-          <div className="greeting" ref={greetingRef}>
+          <div className="greeting">
             <BrandMark size={40} />
             <h1
               className="greeting-line press-fb"

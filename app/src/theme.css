@@ -260,8 +260,9 @@ textarea {
    THIS space rather than the whole .shell-main including the header. The
    greeting itself (touch) no longer positions against this wrapper; it is
    position: fixed against the viewport instead (see .greeting's touch rule),
-   which is what survives the native page scroll iOS performs to keep the
-   composer visible above the keyboard. */
+   which now needs no special survival trick at all, since capacitor.config.ts
+   disables the native keyboard resize/scroll behavior outright (see the
+   .greeting touch rule's comment for the full story). */
 .chat-body {
   flex: 1;
   display: flex;
@@ -1338,11 +1339,11 @@ textarea {
    useKeyboardInset in ChatScreen) rather than combining --safe-bottom and
    --kb-inset in one expression: once the keyboard is up it already covers the
    home-indicator strip, so --safe-bottom no longer applies at all, only
-   --kb-inset (the extra lift some devices need because their LAYOUT viewport
-   does not shrink for the keyboard the way the visual one does; ~0 on a
-   device that already shrinks it, since there the shell already ends above
-   the keyboard on its own). Either way the field lands 4px above whatever is
-   below it. */
+   --kb-inset, which is now the exact native keyboardHeight handed over by the
+   Keyboard plugin's keyboardWillShow event (capacitor.config.ts sets
+   Keyboard.resize: 'none', so WKWebView never resizes itself for the keyboard
+   and there is no device-dependent guessing left to do). Either way the
+   field lands 4px above whatever is below it. */
 @media (pointer: coarse) {
   .composer-wrap {
     margin-top: auto;
@@ -1961,30 +1962,24 @@ textarea {
    keyboard is open" from JS (a --kb-inset threshold; that threshold plus a
    settle debounce; that threshold plus a requestAnimationFrame settle;
    watching the composer's own getBoundingClientRect() instead of viewport
-   math) each shipped a greeting that kept tracking the composer, because
-   whichever JS trigger was in play silently never fired on the founder's
-   device. A rule with no trigger at all cannot fail to fire.
+   math), and a fifth attempt keeping the greeting position: fixed and
+   fighting a real WKWebView page scroll with a continuous
+   translateY(visualViewport.offsetTop) compensation, each still let the
+   greeting move on the founder's device in some new way. The actual cause
+   was not any of those five detection or compensation strategies: it was
+   WKWebView itself performing a native scroll/resize to keep the focused
+   composer visible above the keyboard, which no web-layer trick fully
+   neutralized. capacitor.config.ts now sets Keyboard.resize: 'none', which
+   stops that native behavior outright, so nothing about the page ever
+   scrolls or resizes when the keyboard opens or closes. With nothing left to
+   drag it, position: fixed here needs no compensation at all: it is simply
+   static, by construction, for both keyboard states.
 
-   position: fixed (not absolute) is required, not a preference: this device's
-   WKWebView performs a REAL page scroll to keep the composer visible above
-   the keyboard (confirmed: header and status bar shifted up in the founder's
-   own screenshot, right along with a then-position:absolute greeting), and
-   position: fixed is the only positioning mode that is not carried along by a
-   page scroll, since it is anchored to the viewport rather than to any
-   scrolling ancestor. --header-height (see useHeaderHeight in ChatScreen,
-   a plain measurement, not a keyboard-state trigger) supplies the top offset,
-   since fixed positioning is relative to the viewport rather than to a
-   nearby ancestor and so cannot rely on ordinary document flow to clear the
-   header the way absolute positioning against .chat-body could.
-
-   iOS is ALSO known to drag position: fixed elements during that same native
-   scroll rather than holding them still the way the spec promises (a
-   long-standing WebKit quirk), which is what useKeyboardInset's continuous
-   translateY(visualViewport.offsetTop) compensation cancels: unlike the
-   freeze attempts above, that compensation runs on every single
-   visualViewport event, unconditionally, with no threshold or settle wait
-   gating it, so there is nothing there that can silently fail to trigger
-   either.
+   --header-height (see useHeaderHeight in ChatScreen, a plain measurement,
+   not a keyboard-state trigger) supplies the top offset, since fixed
+   positioning is relative to the viewport rather than to a nearby ancestor
+   and so cannot rely on ordinary document flow to clear the header the way
+   absolute positioning against .chat-body could.
 
    The height itself is pixel-measured directly off the founder's own
    confirmed-correct keyboard-up screenshot: the header-to-composer gap there
