@@ -188,6 +188,15 @@ export function ModelSheet({
                     </span>
                   </div>
                 )}
+                {/* The free companion to the paid agent above: read-only chat
+                    with the same local models, no repo, no edits, no charge. */}
+                {daemon && boxStack && boxStack !== 'error' ? (
+                  <Row
+                    main="Chat with your computer"
+                    sub="Free. Read-only, no repo or edits."
+                    onClick={() => onPick({ kind: 'desktop-chat' })}
+                  />
+                ) : null}
               </div>
             ) : null}
             <div className="ms-group">
@@ -208,13 +217,6 @@ export function ModelSheet({
                   </span>
                 </div>
               )}
-              {settings.daemon ? (
-                <Row
-                  main="Your desktop"
-                  sub="Chat with your desktop's local models. Free."
-                  onClick={() => onPick({ kind: 'desktop-chat' })}
-                />
-              ) : null}
               {pins.map((src) => (
                 <SwipeRow
                   key={pinKey(src)}
