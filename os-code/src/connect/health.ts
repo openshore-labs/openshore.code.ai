@@ -91,7 +91,9 @@ export async function checkLinks(
       ? undefined
       : ts.installed
         ? 'sudo tailscale up'
-        : 'curl -fsSL https://tailscale.com/install.sh | sh',
+        : process.platform === 'darwin'
+          ? 'Install Tailscale from the Mac App Store.'
+          : 'curl -fsSL https://tailscale.com/install.sh | sh',
   });
 
   // SSH server, the phone's way in.
@@ -127,6 +129,7 @@ export async function checkLinks(
 }
 
 function checkSsh(): LinkReport {
+  if (process.platform === 'darwin') return checkSshMac();
   for (const unit of ['sshd', 'ssh']) {
     const res = spawnSync('systemctl', ['is-active', unit], { encoding: 'utf8', timeout: 3000 });
     if (res.stdout?.trim() === 'active') {
@@ -142,7 +145,24 @@ function checkSsh(): LinkReport {
   };
 }
 
+// macOS runs sshd through launchd ("Remote Login"), not systemd, and enables it
+// with systemsetup rather than apt, so a Mac user needs Mac hints.
+function checkSshMac(): LinkReport {
+  const res = spawnSync('systemsetup', ['-getremotelogin'], { encoding: 'utf8', timeout: 3000 });
+  if (res.status === 0 && /\bon\b/i.test(res.stdout)) {
+    return { id: 'ssh', label: 'SSH server', state: 'ok', detail: 'Remote Login is on.' };
+  }
+  return {
+    id: 'ssh',
+    label: 'SSH server',
+    state: 'warn',
+    detail: 'Remote Login is off, so a phone cannot connect.',
+    fix: 'sudo systemsetup -setremotelogin on',
+  };
+}
+
 function checkSleep(): LinkReport {
+  if (process.platform === 'darwin') return checkSleepMac();
   // GNOME: suspend on AC power kills in-flight runs for remote users.
   const res = spawnSync(
     'gsettings',
@@ -171,5 +191,37 @@ function checkSleep(): LinkReport {
     state: 'skip',
     detail: 'Could not read power settings; if this desktop sleeps, remote runs will die with it.',
     fix: 'systemd-inhibit --what=sleep osc serve',
+  };
+}
+
+// macOS: pmset reports idle sleep in minutes, and caffeinate (not systemd) is
+// the tool that holds a Mac awake for the lifetime of a wrapped command.
+function checkSleepMac(): LinkReport {
+  const res = spawnSync('pmset', ['-g'], { encoding: 'utf8', timeout: 3000 });
+  if (res.status === 0) {
+    const match = /^\s*sleep\s+(\d+)/m.exec(res.stdout);
+    const minutes = match ? Number(match[1]) : undefined;
+    if (minutes !== undefined && minutes > 0) {
+      return {
+        id: 'power',
+        label: 'Desktop sleep',
+        state: 'warn',
+        detail: `This Mac sleeps after ${minutes} min idle, which kills runs mid-flight for phone users.`,
+        fix: 'caffeinate -s osc serve',
+      };
+    }
+    return {
+      id: 'power',
+      label: 'Desktop sleep',
+      state: 'ok',
+      detail: 'Stays awake while serving.',
+    };
+  }
+  return {
+    id: 'power',
+    label: 'Desktop sleep',
+    state: 'skip',
+    detail: 'Could not read power settings; if this Mac sleeps, remote runs will die with it.',
+    fix: 'caffeinate -s osc serve',
   };
 }
