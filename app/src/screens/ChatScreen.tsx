@@ -40,69 +40,118 @@ function useBooted(): boolean {
 }
 
 // How much of the screen the on-screen keyboard covers is not something CSS can
-// see on its own: the layout viewport (100%, driving our flex column) does not
-// shrink for the keyboard the way the visual viewport does, so without this the
-// browser auto-scrolls the page to keep the focused field visible and overshoots,
-// leaving a dead gap between the composer and the keyboard. Track it via
-// visualViewport instead, as a live CSS variable on the root, --kb-inset: the
-// composer reads it so it always hugs the keyboard (or the safe area when there
-// is none) with no gap.
+// see on its own: on a device whose LAYOUT viewport does not shrink for the
+// keyboard the way the visual viewport does, the browser auto-scrolls the page
+// to keep the focused field visible and overshoots, leaving a dead gap between
+// the composer and the keyboard. Track it via visualViewport instead, as a live
+// CSS variable on the root, --kb-inset: the composer reads it (see
+// .composer-wrap in theme.css) so it always hugs the keyboard with no gap,
+// regardless of which resize mode the device uses.
 //
-// The greeting is two states, not a continuous reaction: while the keyboard is
-// rising, it stays flex: 1 (see .greeting's touch rule in theme.css) so it can
-// only ever shrink to whatever room is actually left, hugging the composer
-// directly, never overflowing the screen. The moment the keyboard is confirmed
-// open (inset past a threshold, comfortably above safe-area/rounding noise),
-// this measures the greeting's OWN current rendered height and freezes it
-// there, synchronously, via --greeting-frozen-height, paired with the
-// .greeting-frozen class this hook's return value drives: flex: none locks the
-// box at that exact size, so it can never move again for the rest of this
-// empty state, keyboard dismissed or not. The composer keeps tracking the live
-// keyboard height regardless, so only the greeting stays put. `resetKey` clears
-// the freeze; ChatScreen bumps it each time a fresh empty state arrives so the
-// next one can settle fresh.
+// The greeting has to detect "the keyboard is up" a different way than a raw
+// --kb-inset threshold: on a device that DOES shrink the layout viewport for
+// the keyboard (window.innerHeight drops right along with visualViewport,
+// unlike the device assumed above), --kb-inset never exceeds a fixed pixel
+// threshold, so a threshold on that alone can silently never fire, leaving the
+// greeting stuck in its flexible, composer-tracking state forever. The signal
+// that IS reliable on every device is the visual viewport's own height
+// dropping below its keyboard-down baseline (auto-calibrated as the tallest
+// height seen so far, --kb-open toggled on document root once it drops more
+// than OPEN_THRESHOLD below that baseline).
 //
 // Two earlier attempts tried to wait for the keyboard's rise animation to
-// finish first (a resettable debounce, then a one-shot delay) before freezing,
-// on the theory that freezing mid-animation would capture a transient height.
-// Both still shipped a greeting that kept tracking the composer, meaning
-// something about the delay itself, not just its length, was the problem on
-// device. Freezing synchronously on the very first qualifying event removes
-// that whole category: there is no timer to fail to fire. The height gets
-// locked as soon as it can be trusted at all, at worst a frame before the
-// keyboard's very last pixel of travel.
+// finish (a resettable debounce, then a one-shot delay) before freezing the
+// greeting's height, on the theory that freezing mid-animation would capture a
+// transient height. Both still shipped a greeting that kept tracking the
+// composer, because the OPEN signal itself (the old --kb-inset threshold)
+// never crossed on the founder's device, so neither timer ever got the chance
+// to run. Detecting open via visual-viewport height instead of layout-space
+// inset fixes the actual gap; settling via a short run of stable
+// requestAnimationFrame samples (rather than a fixed delay) then captures the
+// truly-final height without guessing a duration.
 //
-// A height that is fixed WITHOUT this measure-then-freeze step is what caused
-// the whole page to scroll off-screen on a shorter phone in an earlier attempt:
-// a rigid guess doesn't know whether the keyboard actually leaves that much
-// room, and when it doesn't, WKWebView's native "scroll the focused field into
-// view" kicks in and drags everything, header included, off the top of the
-// screen. Freezing a height that was already laid out correctly (via flex: 1)
-// guarantees it always fits, on every device.
+// Once open and settled, this captures the greeting's CURRENT on-screen box
+// (offsetTop relative to its offset parent, .shell-main, plus its rendered
+// height) into --greeting-frozen-top / --greeting-frozen-height, and the
+// .greeting-frozen class (driven by this hook's return value) switches the
+// greeting to position: absolute at exactly that spot (see theme.css). Once
+// out of the flex flow like that, nothing the composer does afterward, keyboard
+// dismissed or not, can move it again for the rest of this empty state.
+// `resetKey` clears the freeze; ChatScreen bumps it each time a fresh empty
+// state arrives so the next one can settle fresh.
+//
+// A rigid, guessed height (no measure-then-freeze step at all) is what caused
+// the whole page to scroll off-screen on a shorter phone in an earlier
+// attempt: a fixed height doesn't know whether the keyboard actually leaves
+// that much room, and when it doesn't, WKWebView's native "scroll the focused
+// field into view" kicks in and drags everything, header included, off the
+// top of the screen. Freezing a height that was already laid out correctly
+// (via flex: 1, while still in-flow) guarantees it always fits, on every
+// device.
 function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: number): boolean {
   const [frozen, setFrozen] = useState(false);
   useEffect(() => {
     setFrozen(false);
     const vv = window.visualViewport;
     if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
-    const root = document.documentElement.style;
-    const KEYBOARD_THRESHOLD = 80; // px; comfortably above safe-area/rounding noise
+    const rootEl = document.documentElement;
+    const OPEN_THRESHOLD = 80; // px the visual viewport must lose to count as keyboard-up
+    const STABLE_FRAMES = 3; // consecutive unchanged frames before trusting the height
+    let baseHeight = vv.height; // tallest visual viewport seen: the keyboard-down height
     let didFreeze = false;
-    const apply = () => {
-      const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
-      root.setProperty('--kb-inset', `${inset}px`);
-      if (didFreeze || inset <= KEYBOARD_THRESHOLD || !greetingRef.current) return;
-      didFreeze = true;
-      const height = greetingRef.current.getBoundingClientRect().height;
-      root.setProperty('--greeting-frozen-height', `${height}px`);
-      setFrozen(true);
+    let settleRaf = 0;
+    let lastHeight = -1;
+    let stableCount = 0;
+
+    // Polls with requestAnimationFrame until the visual viewport height holds
+    // steady for a few consecutive frames, then captures the greeting's resting
+    // box. rAF always fires and naturally stops once motion ends, so (unlike a
+    // fixed-delay timer) it cannot be scheduled for the wrong duration or fail
+    // to run at all.
+    const settleThenFreeze = () => {
+      if (Math.abs(vv.height - lastHeight) < 1) {
+        stableCount += 1;
+      } else {
+        stableCount = 0;
+        lastHeight = vv.height;
+      }
+      if (stableCount >= STABLE_FRAMES && greetingRef.current) {
+        didFreeze = true;
+        const el = greetingRef.current;
+        rootEl.style.setProperty('--greeting-frozen-top', `${el.offsetTop}px`);
+        rootEl.style.setProperty(
+          '--greeting-frozen-height',
+          `${el.getBoundingClientRect().height}px`,
+        );
+        setFrozen(true);
+        return;
+      }
+      settleRaf = requestAnimationFrame(settleThenFreeze);
     };
+
+    const apply = () => {
+      if (vv.height > baseHeight) baseHeight = vv.height; // auto-calibrate the baseline
+
+      // Layout-space bottom coverage. Lifts the composer on a device whose
+      // layout viewport does NOT shrink for the keyboard; ~0 on a device that
+      // does (there the shell already ends above the keyboard on its own).
+      const inset = Math.max(0, rootEl.clientHeight - vv.height - vv.offsetTop);
+      rootEl.style.setProperty('--kb-inset', `${inset}px`);
+
+      const open = vv.height < baseHeight - OPEN_THRESHOLD;
+      rootEl.classList.toggle('kb-open', open);
+
+      if (open && !didFreeze && !settleRaf) settleRaf = requestAnimationFrame(settleThenFreeze);
+    };
+
     apply();
     vv.addEventListener('resize', apply);
     vv.addEventListener('scroll', apply);
     return () => {
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
+      if (settleRaf) cancelAnimationFrame(settleRaf);
+      rootEl.classList.remove('kb-open');
     };
   }, [resetKey, greetingRef]);
   return frozen;
