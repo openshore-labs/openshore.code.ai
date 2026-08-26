@@ -8,7 +8,7 @@ import type { Attachment } from '../lib/attachments.js';
 export type DriverEventSink = (event: DriverEvent, seq: number) => void;
 
 export interface ChatDriver {
-  readonly kind: 'desktop' | 'device' | 'cloud' | 'mock' | 'stack';
+  readonly kind: 'desktop' | 'desktop-chat' | 'device' | 'cloud' | 'mock' | 'stack';
   /** Attachments are optional and only used by vision-capable drivers (cloud
    *  Claude today). Drivers that cannot use them ignore the argument, so a
    *  plain `send(text)` implementation still satisfies the contract. */

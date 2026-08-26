@@ -150,6 +150,13 @@ export function ModelSheet({
                   </span>
                 </div>
               )}
+              {settings.daemon ? (
+                <Row
+                  main="Your desktop"
+                  sub="Chat with your desktop's local models. Free."
+                  onClick={() => onPick({ kind: 'desktop-chat' })}
+                />
+              ) : null}
               {pins.map((src) => (
                 <SwipeRow
                   key={pinKey(src)}

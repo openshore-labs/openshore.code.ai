@@ -75,6 +75,10 @@ export function emptyThread(): ThreadState {
 /** Where a conversation's brain lives. */
 export type ConversationSource =
   | { kind: 'desktop'; sessionId?: string; cwd?: string; repoName?: string }
+  // Free, read-only chat with the paired desktop's local models (no repo, no
+  // tools, no agent). A distinct kind, not a flag on 'desktop', so it can never
+  // reach the session-creating path that opens the full paid agent (CTO ruling).
+  | { kind: 'desktop-chat'; model?: string }
   | { kind: 'device'; modelId: string; modelName: string }
   | { kind: 'cloud'; provider: 'anthropic'; model: string }
   | { kind: 'stack' }
@@ -239,6 +243,8 @@ export function sourceLabel(source: ConversationSource): string {
   switch (source.kind) {
     case 'desktop':
       return source.repoName ? `Desktop · ${source.repoName}` : 'Desktop stack';
+    case 'desktop-chat':
+      return 'Your desktop · chat';
     case 'device':
       if (isHarborMini(source.modelId)) return 'Harbor Mini · built-in guide';
       if (isHarbor(source.modelId)) return 'Harbor · built-in guide';

@@ -107,6 +107,7 @@ import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
 import { StackDriver } from '../drivers/stackDriver.js';
+import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
 import {
   HARBOR_MINI_GREETING,
   HARBOR_MINI_MODEL_ID,
@@ -823,6 +824,15 @@ export const useApp = create<AppState>((set, get) => {
         void ensureDesktopPush();
         // Replay from zero so the transcript rebuilds exactly.
         return new RemoteDriver(sessionId, settings.daemon, 0);
+      }
+      case 'desktop-chat': {
+        // Free, read-only chat with the paired desktop's local models over the
+        // daemon's stateless /chat endpoint. No session is created, so this can
+        // never become the paid agent. Needs a paired daemon.
+        if (!settings.daemon) {
+          throw new Error('Connect to your desktop first (Menu, then Desktop connection).');
+        }
+        return new DesktopChatDriver(settings.daemon, conv.source.model, seed);
       }
       case 'device':
         return new OnDeviceDriver(conv.source.modelId, conv.source.modelName, seed);

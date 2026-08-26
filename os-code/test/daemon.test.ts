@@ -107,6 +107,42 @@ describe('daemon RBAC (D1)', () => {
   // which applies to every caller, superseded an earlier role-based gate).
 });
 
+describe('free desktop chat (/chat, read-only)', () => {
+  it('rejects a chat with no messages', async () => {
+    const res = await fetch(`${base}/chat`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('opens an SSE stream for a valid chat against the local orchestrator', async () => {
+    const res = await fetch(`${base}/chat`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    // The test config's Ollama is not running, so the provider errors fast and
+    // the stream ends with an error frame. The point is the endpoint streams.
+    const text = await res.text();
+    expect(text).toMatch(/"type":"(error|done|text)"/);
+  });
+
+  it('a member may open free chat (not admin-gated)', async () => {
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await fetch(`${base}/chat`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+  });
+});
+
 describe('model install from a paired phone (MP-F2)', () => {
   it('rejects an install with no modelId', async () => {
     const res = await fetch(`${base}/models/install`, {

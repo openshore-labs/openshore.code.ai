@@ -258,7 +258,7 @@ function PhonePair() {
     setState(health.detail);
     if (health.ok) {
       await saveSettings({ daemon: { baseUrl, token: token.trim() } });
-      showToast('Connected. Open a repo from Repositories to work on your desktop.');
+      showToast('Connected. Pick "Your desktop" to chat with its models, free.');
     }
   };
 
