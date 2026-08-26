@@ -366,15 +366,31 @@ export class EngineHost {
 
   // ------------------------------------------------------------------ daemon
 
+  // Tailscale detection shells out (up to a few seconds if tailscaled hangs).
+  // The Pair screen polls daemonInfo every few seconds, so cache the result on
+  // a short TTL to keep those spawns off the main process's hot path (TS-P2-9).
+  private tsCache?: { at: number; running: boolean; ip: string | undefined };
+
+  private tailscaleState(): { running: boolean; ip: string | undefined } {
+    const now = Date.now();
+    if (this.tsCache && now - this.tsCache.at < 3000) {
+      return { running: this.tsCache.running, ip: this.tsCache.ip };
+    }
+    const running = detectTailscale().running;
+    const ip = tailscaleIp();
+    this.tsCache = { at: now, running, ip };
+    return { running, ip };
+  }
+
   daemonInfo() {
     const { config } = loadConfig();
-    const ts = detectTailscale();
+    const ts = this.tailscaleState();
     return {
       running: Boolean(this.daemon),
       host: this.daemon?.host,
       port: this.daemon?.port ?? config.daemon.port,
       token: loadOrCreateToken(join(oscHome(), 'daemon.token')),
-      tailscaleIp: tailscaleIp(),
+      tailscaleIp: ts.ip,
       tailscaleUp: ts.running,
       // With dual-bind, a tailnet daemon's host is the 100.x address; only the
       // loopback fallback (Tailscale down) reports 127.0.0.1. The Pair screen
