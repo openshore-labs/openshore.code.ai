@@ -2,7 +2,7 @@
 // and a time-of-day greeting, with the model, effort, and everything else
 // living in the composer. A live conversation swaps in the transcript and a
 // header that names the chat.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
@@ -13,7 +13,7 @@ import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
-import { timeGreeting } from '../lib/greeting.js';
+import { GREETINGS, pickGreeting } from '../lib/greeting.js';
 import type { Attachment } from '../lib/attachments.js';
 
 export function ChatScreen({ compact }: { compact: boolean }) {
@@ -40,6 +40,24 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
   const approval = thread?.pendingApprovals[0];
+
+  // The rotating splash greeting. A different language each time we land on the
+  // empty state; tapping the line reveals its English translation and back.
+  const isEmpty = !(conv && thread && thread.items.length > 0);
+  const [greetIdx, setGreetIdx] = useState(() => pickGreeting());
+  const [translated, setTranslated] = useState(false);
+  const wasEmpty = useRef(true);
+  useEffect(() => {
+    // Re-roll only when we return to the empty state from a conversation, so
+    // the first paint keeps its initial pick (no flash) and every fresh chat
+    // gets a new language.
+    if (isEmpty && !wasEmpty.current) {
+      setGreetIdx((prev) => pickGreeting(prev));
+      setTranslated(false);
+    }
+    wasEmpty.current = isEmpty;
+  }, [isEmpty]);
+  const greeting = GREETINGS[greetIdx];
 
   // The composer pill shows the live chat's brain when one is open, otherwise
   // the pending selection for the next new chat.
@@ -103,7 +121,25 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ) : (
         <div className="greeting">
           <BrandMark size={48} />
-          <h1>{timeGreeting()}. What are we building?</h1>
+          <h1
+            className="greeting-line press-fb"
+            dir="auto"
+            lang={translated ? 'en' : greeting.code}
+            role="button"
+            tabIndex={0}
+            aria-label={greeting.english}
+            onClick={() => setTranslated((t) => !t)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setTranslated((t) => !t);
+              }
+            }}
+          >
+            <span key={translated ? 'en' : 'native'} className="greeting-swap">
+              {translated ? greeting.english : greeting.native}
+            </span>
+          </h1>
         </div>
       )}
 
