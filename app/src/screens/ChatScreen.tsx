@@ -2,7 +2,7 @@
 // and a time-of-day greeting, with the model, effort, and everything else
 // living in the composer. A live conversation swaps in the transcript and a
 // header that names the chat.
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
@@ -48,42 +48,19 @@ function useBooted(): boolean {
 // composer reads it so it always hugs the keyboard (or the safe area when there
 // is none) with no gap.
 //
-// The greeting is different: mirroring the Claude app, it should simply CENTER
-// in whatever space is left above the composer (the base .greeting rule already
-// centers; touch inherits that while unfrozen), then settle into place and never
-// move again once the keyboard has opened, even if the keyboard is later
-// dismissed. So once the keyboard genuinely opens (past a threshold, ignoring
-// safe-area noise) and its rise animation has had a moment to settle, this
-// measures the greeting's OWN current rendered height and freezes it there
-// (--greeting-frozen-height, paired with the .greeting-frozen class this hook's
-// return value drives): the box itself stops resizing, so centering inside it
-// can never shift again. `resetKey` clears the freeze; ChatScreen bumps it each
-// time a fresh empty state arrives so the next one can settle fresh.
-function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: number): boolean {
-  const [frozen, setFrozen] = useState(false);
+// The greeting itself does NOT use this. Mirroring the Claude app, its box is a
+// plain static height set in CSS (see .greeting's touch rule in theme.css), with
+// no dependency on the composer or the keyboard at all, so there is nothing for
+// it to "follow": it never moves once shown, keyboard up, keyboard down, or
+// anywhere in between.
+function useKeyboardInset(): void {
   useEffect(() => {
-    setFrozen(false);
     const vv = window.visualViewport;
     if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
     const root = document.documentElement.style;
-    const KEYBOARD_THRESHOLD = 80; // px; comfortably above safe-area/rounding noise
-    const SETTLE_MS = 120; // wait for the keyboard's rise animation to quiet down
-    let didFreeze = false;
-    let settleTimer: ReturnType<typeof setTimeout> | undefined;
-    const freeze = () => {
-      if (didFreeze || !greetingRef.current) return;
-      didFreeze = true;
-      const height = greetingRef.current.getBoundingClientRect().height;
-      root.setProperty('--greeting-frozen-height', `${height}px`);
-      setFrozen(true);
-    };
     const apply = () => {
       const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
       root.setProperty('--kb-inset', `${inset}px`);
-      if (!didFreeze && inset > KEYBOARD_THRESHOLD) {
-        if (settleTimer) clearTimeout(settleTimer);
-        settleTimer = setTimeout(freeze, SETTLE_MS);
-      }
     };
     apply();
     vv.addEventListener('resize', apply);
@@ -91,10 +68,8 @@ function useKeyboardInset(greetingRef: RefObject<HTMLDivElement>, resetKey: numb
     return () => {
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
-      if (settleTimer) clearTimeout(settleTimer);
     };
-  }, [resetKey, greetingRef]);
-  return frozen;
+  }, []);
 }
 
 export function ChatScreen({ compact }: { compact: boolean }) {
@@ -118,11 +93,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // stack, which is what "My Stack" selects.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
   const booted = useBooted();
-  // Bumped each time a fresh empty state arrives, so the greeting's frozen
-  // height (see useKeyboardInset) resets and can settle again for it.
-  const [kbGen, setKbGen] = useState(0);
-  const greetingRef = useRef<HTMLDivElement>(null);
-  const greetingFrozen = useKeyboardInset(greetingRef, kbGen);
+  useKeyboardInset();
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -155,7 +126,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       setRotIdx(0);
       seq.current += 1;
       setLayers([{ id: seq.current, g: rot[0] }]);
-      setKbGen((g) => g + 1);
     }
     wasEmpty.current = isEmpty;
   }, [isEmpty]);
@@ -229,7 +199,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
         />
       ) : (
-        <div className={`greeting${greetingFrozen ? ' greeting-frozen' : ''}`} ref={greetingRef}>
+        <div className="greeting">
           <BrandMark size={40} />
           <h1
             className="greeting-line press-fb"
