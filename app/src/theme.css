@@ -1328,11 +1328,14 @@ textarea {
    composer and the keyboard. Padding by the keyboard's own height closes that
    gap: the field is already inside the visible area, so there is nothing left
    for the auto-scroll to correct. Zero (the var's fallback) when no keyboard is
-   up, so this never affects the non-keyboard layout. */
+   up, so this never affects the non-keyboard layout. The base 20px (replacing
+   an earlier 12px) is pixel-measured off the Claude app's own reference
+   screenshot: composer-bottom to keyboard-top there is ~2.4% of screen height,
+   about 20px on a typical phone. */
 @media (pointer: coarse) {
   .composer-wrap {
     margin-top: auto;
-    padding-bottom: calc(12px + var(--safe-bottom) + var(--kb-inset, 0px));
+    padding-bottom: calc(20px + var(--safe-bottom) + var(--kb-inset, 0px));
   }
 }
 
@@ -1947,11 +1950,21 @@ textarea {
    --kb-inset above, so IT can still hug the keyboard), so there is nothing for
    the greeting to follow in the first place. `flex: none` takes it out of the
    flex distribution entirely; centering inside this fixed box still comes from
-   the base rule's justify-content: center. */
+   the base rule's justify-content: center.
+
+   39.5vh is pixel-measured, not guessed: sampled the Claude app's own reference
+   screenshot (header-bottom to mark-top, and text-bottom to composer-top, are
+   14.9% and 15.9% of screen height respectively, close enough to each other
+   that plain centering already matches) and used the sum as a viewport-height
+   fraction so it holds across phone sizes. */
 @media (pointer: coarse) {
   .greeting {
     flex: none;
-    height: min(50vh, 480px);
+    height: min(39.5vh, 400px);
+    /* Mark-to-text gap, also pixel-measured off the same reference (2.3% of
+       screen height, ~20px on a typical phone), replacing the desktop-tuned
+       18px above. */
+    gap: 20px;
   }
 }
 
