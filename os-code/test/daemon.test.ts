@@ -252,6 +252,50 @@ describe('command lane (chat-to-terminal bridge)', () => {
   });
 });
 
+describe('interactive terminal (Phase 2 PTY bridge)', () => {
+  it('a member cannot create a terminal (admin + owner only)', async () => {
+    // Admin owns a session; a member device must be refused the PTY surface,
+    // which is admin-only because a PTY is an unjailed interactive shell.
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await fetch(`${base}/sessions/${id}/term`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ cols: 80, rows: 24 }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('answers 503 (not a crash) when node-pty is not installed', async () => {
+    // node-pty is an optional native module and is absent in this environment,
+    // so ensure() throws TerminalUnavailable and the route returns a clean 503.
+    // The daemon must keep serving after it.
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    const res = await fetch(`${base}/sessions/${id}/term`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cols: 80, rows: 24 }),
+    });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/not installed/i);
+    // The daemon is still alive.
+    const health = await fetch(`${base}/health`, { headers: auth(adminToken) });
+    expect(health.status).toBe(200);
+  });
+
+  it('404s a stream for an unknown terminal id', async () => {
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    const res = await fetch(`${base}/sessions/${id}/term/nope/stream?since=0`, {
+      headers: auth(adminToken),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('daemon outbox path allowlist (SEC-2)', () => {
   const applyBody = {
     cwd: '',

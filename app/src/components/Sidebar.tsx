@@ -7,13 +7,13 @@ import { useAuth } from '../hooks/useAuth.js';
 import { useDismissable } from '../lib/useDismissable.js';
 import { BrandMark } from './BrandMark.js';
 
-// Every view that has a nav glyph: all ViewNames except the two that never
-// appear as a nav item (chat is home; onboarding is a full-screen takeover).
-// 'admin' is already a ViewName, so this is the honest form of the reviewer's
-// `Record<ViewName | 'admin', ...>` without demanding unused chat/onboarding
-// icons. Typing ICON_NODES and NavIcon by it makes a missing or misspelled key
-// a compile error instead of a silently empty SVG (CR3).
-type NavIconName = Exclude<ViewName, 'chat' | 'onboarding'>;
+// Every view that has a nav glyph: all ViewNames except the ones that never
+// appear as a nav item (chat is home; onboarding and terminal are full-screen
+// takeovers reached from within a chat). 'admin' is already a ViewName, so this
+// is the honest form of the reviewer's `Record<ViewName | 'admin', ...>` without
+// demanding unused icons. Typing ICON_NODES and NavIcon by it makes a missing or
+// misspelled key a compile error instead of a silently empty SVG (CR3).
+type NavIconName = Exclude<ViewName, 'chat' | 'onboarding' | 'terminal'>;
 
 const NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'chats', label: 'Chats' },

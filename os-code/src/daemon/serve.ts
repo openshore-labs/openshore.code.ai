@@ -24,6 +24,7 @@ import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { LocalDriver, listSessions, sealSessionsAtRest } from './session.js';
+import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { PushNotifier, savePushConfig } from './push.js';
 import { clone } from '../git/index.js';
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
@@ -42,7 +43,7 @@ import { logger } from '../util/log.js';
 // bearer token still gates everything; CORS is transport manners, not auth.
 const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
   'access-control-allow-headers': 'authorization, content-type',
   'access-control-max-age': '600',
 };
@@ -99,6 +100,13 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   // no phone is watching.
   const egress = new EgressPolicy(options.config.egress);
   const notifier = new PushNotifier(egress);
+  // The interactive PTY host (Phase 2 bridge). Terminals live here, outliving
+  // phone connections; their raw bytes never enter a session journal. Its
+  // readForSession backs the agent's readTerminal tool, wired into every
+  // bootstrapped session below.
+  const terminals = new TerminalManager();
+  const terminalReader = (sessionId: string, lines: number, termId?: string): string | undefined =>
+    terminals.readForSession(sessionId, lines, termId);
 
   // Register a driver and attach the push watcher exactly once, wherever a
   // driver is created or rehydrated.
@@ -512,7 +520,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       try {
-        const { driver, warnings } = bootstrapSession({ cwd, profile: 'remote-attached' });
+        const { driver, warnings } = bootstrapSession({
+          cwd,
+          profile: 'remote-attached',
+          terminalReader,
+        });
         trackDriver(driver);
         driver.setOwner(auth.userId);
         sendJson(res, 201, { id: driver.id, cwd, warnings });
@@ -544,6 +556,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               cwd: stored.cwd,
               profile: 'remote-attached',
               sessionId: id,
+              terminalReader,
             });
             trackDriver(revived);
             driver = revived;
@@ -613,6 +626,152 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         }
         sendJson(res, 200, { killed: true });
         return;
+      }
+
+      // ---- interactive PTY terminal (Phase 2 chat-to-terminal bridge) ----
+      // A PTY is an UNJAILED interactive shell (unlike the command lane, which
+      // is still a shell but every run is journaled and content-capped). So the
+      // whole terminal surface is ADMIN-only, owner already established above via
+      // ownedBy. Members keep the approval-gated agent lane and the user command
+      // lane; they never get a raw shell. The raw byte stream rides its OWN SSE
+      // endpoint with offset replay, entirely separate from the event journal:
+      // only content-free terminal-opened/terminal-closed markers are journaled,
+      // and stdin (where sudo passwords live) is never journaled or logged.
+      if (parts[2] === 'term') {
+        if (!requireAdmin()) return;
+
+        // POST /sessions/:id/term  -> ensure/create, returns {termId, cols, rows}.
+        if (req.method === 'POST' && !parts[3]) {
+          const body = await readJson(req);
+          const cols = typeof body.cols === 'number' ? body.cols : undefined;
+          const rows = typeof body.rows === 'number' ? body.rows : undefined;
+          try {
+            const info = await terminals.ensure({ sessionId: id, cwd: driver.cwd, cols, rows });
+            // Content-free audit marker only (cwd allowed, never output/stdin).
+            driver.emit({ type: 'terminal-opened', termId: info.termId, cwd: driver.cwd });
+            sendJson(res, 201, info);
+          } catch (err) {
+            if (err instanceof TerminalUnavailable) {
+              sendJson(res, 503, { error: err.message });
+              return;
+            }
+            sendJson(res, 500, { error: (err as Error).message });
+          }
+          return;
+        }
+
+        const termId = parts[3];
+        if (termId) {
+          // GET /sessions/:id/term/:termId/stream?since=<byteOffset>  -> SSE of
+          // base64 output chunks, each frame carrying its END offset; replay
+          // from the ring buffer then live. Same backpressure/cleanup discipline
+          // as the /events route.
+          if (req.method === 'GET' && parts[4] === 'stream') {
+            if (!terminals.has(termId)) {
+              sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
+              return;
+            }
+            const sinceRaw = Number(url.searchParams.get('since') ?? 0);
+            const since = Number.isFinite(sinceRaw) && sinceRaw >= 0 ? sinceRaw : 0;
+            res.writeHead(200, {
+              'content-type': 'text/event-stream',
+              'cache-control': 'no-cache',
+              connection: 'keep-alive',
+              ...CORS_HEADERS,
+            });
+            res.write(':ok\n\n');
+            let closed = false;
+            let backpressure = 0;
+            const teardown: Array<() => void> = [];
+            const cleanup = (): void => {
+              if (closed) return;
+              closed = true;
+              for (const fn of teardown.splice(0)) fn();
+            };
+            const safeWrite = (chunk: string): void => {
+              if (closed || res.writableEnded) return;
+              if (res.write(chunk)) {
+                backpressure = 0;
+                return;
+              }
+              backpressure += 1;
+              if (backpressure >= 5 || res.writableLength > 1_000_000) {
+                cleanup();
+                res.destroy();
+              }
+            };
+            const unsubscribe = terminals.subscribe(termId, since, (data, endOffset) => {
+              safeWrite(
+                `data: ${JSON.stringify({ b64: data.toString('base64'), offset: endOffset })}\n\n`,
+              );
+            });
+            // has() passed with no await since, so subscribe finds it; guard
+            // regardless, and stop if the synchronous replay tripped teardown.
+            if (!unsubscribe || closed) {
+              unsubscribe?.();
+              cleanup();
+              return;
+            }
+            teardown.push(unsubscribe);
+            const keepalive = setInterval(() => safeWrite(':ka\n\n'), 15_000);
+            teardown.push(() => clearInterval(keepalive));
+            res.socket?.setTimeout(120_000, () => {
+              cleanup();
+              res.destroy();
+            });
+            req.on('close', cleanup);
+            res.on('error', cleanup);
+            return;
+          }
+
+          // POST /sessions/:id/term/:termId/stdin  -> {dataBase64}. NEVER
+          // journaled or logged: keystrokes carry sudo passwords.
+          if (req.method === 'POST' && parts[4] === 'stdin') {
+            const body = await readJson(req);
+            if (typeof body.dataBase64 !== 'string') {
+              sendJson(res, 400, { error: 'Send {"dataBase64": "..."}.' });
+              return;
+            }
+            const data = Buffer.from(body.dataBase64, 'base64').toString('utf8');
+            const ok = terminals.write(termId, data);
+            if (!ok) {
+              sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
+              return;
+            }
+            sendJson(res, 200, { wrote: true });
+            return;
+          }
+
+          // POST /sessions/:id/term/:termId/resize -> {cols, rows}.
+          if (req.method === 'POST' && parts[4] === 'resize') {
+            const body = await readJson(req);
+            const cols = typeof body.cols === 'number' ? body.cols : 0;
+            const rows = typeof body.rows === 'number' ? body.rows : 0;
+            if (!cols || !rows) {
+              sendJson(res, 400, { error: 'Send {"cols": N, "rows": N}.' });
+              return;
+            }
+            const ok = terminals.resize(termId, cols, rows);
+            if (!ok) {
+              sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
+              return;
+            }
+            sendJson(res, 200, { resized: true });
+            return;
+          }
+
+          // DELETE /sessions/:id/term/:termId -> kill.
+          if (req.method === 'DELETE' && !parts[4]) {
+            const ok = terminals.kill(termId);
+            if (!ok) {
+              sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
+              return;
+            }
+            driver.emit({ type: 'terminal-closed', termId });
+            sendJson(res, 200, { killed: true });
+            return;
+          }
+        }
       }
       if (req.method === 'POST' && parts[2] === 'approvals' && parts[3]) {
         const body = await readJson(req);

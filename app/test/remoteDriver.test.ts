@@ -2,6 +2,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RemoteDriver, parseSseFrame } from '../src/drivers/remoteDriver.js';
 
+interface FetchCall {
+  url: string;
+  method: string;
+  body?: unknown;
+}
+
 describe('SSE frame parsing', () => {
   it('parses id and data into a sequenced event', () => {
     const parsed = parseSseFrame('id: 42\ndata: {"type":"text-delta","text":"hello"}');
@@ -73,5 +79,64 @@ describe('RemoteDriver reconnect (G5)', () => {
 
     expect(calls).toBe(1); // no retry loop on a fatal answer
     expect(messages.some((m) => /re-pair/i.test(m))).toBe(true);
+  });
+});
+
+// The Phase 2 terminal routes: the driver talks to its own PTY endpoints,
+// carries bytes as base64, and surfaces "no PTY on this machine" cleanly.
+describe('RemoteDriver terminal (Phase 2)', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  function mockFetch(termResponse: Partial<Response> & { jsonBody?: unknown }): FetchCall[] {
+    const calls: FetchCall[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      const method = init?.method ?? 'GET';
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      calls.push({ url: u, method, body });
+      // The constructor's event stream loop hits /events: keep it inert.
+      if (u.includes('/events')) {
+        return { ok: false, status: 500, body: null } as unknown as Response;
+      }
+      return {
+        ok: termResponse.status ? termResponse.status < 400 : true,
+        status: termResponse.status ?? 200,
+        json: async () => termResponse.jsonBody ?? {},
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    return calls;
+  }
+
+  it('opens a terminal and returns its id and size', async () => {
+    mockFetch({ status: 201, jsonBody: { termId: 'tm1', cols: 100, rows: 30 } });
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    const opened = await driver.openTerminal({ cols: 100, rows: 30 });
+    driver.dispose();
+    expect(opened).toEqual({ termId: 'tm1', cols: 100, rows: 30 });
+  });
+
+  it('reports unavailable when the desktop has no PTY support (503)', async () => {
+    mockFetch({ status: 503, jsonBody: { error: 'Terminal support is not installed.' } });
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    const opened = await driver.openTerminal({ cols: 80, rows: 24 });
+    driver.dispose();
+    expect(opened).toEqual({ unavailable: true, error: 'Terminal support is not installed.' });
+  });
+
+  it('sends stdin as base64 and kills over DELETE', async () => {
+    const calls = mockFetch({ status: 200, jsonBody: {} });
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    driver.terminalStdin('tm1', 'ls\n');
+    driver.terminalKill('tm1');
+    driver.dispose();
+    const stdin = calls.find((c) => c.url.endsWith('/term/tm1/stdin'));
+    expect(stdin?.method).toBe('POST');
+    // "ls\n" utf8 -> base64.
+    expect((stdin?.body as { dataBase64: string }).dataBase64).toBe(btoa('ls\n'));
+    const kill = calls.find((c) => c.url.endsWith('/term/tm1') && c.method === 'DELETE');
+    expect(kill).toBeTruthy();
   });
 });

@@ -1173,6 +1173,61 @@ textarea {
   color: var(--ink);
 }
 
+/* ------------------------------------------------ interactive terminal (PTY) */
+.terminal-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.terminal-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #0b0d12;
+  padding: 8px 10px;
+  overflow: hidden;
+}
+
+/* xterm sizes to its container, so the container must have a real height. */
+.terminal-host .xterm,
+.terminal-host .xterm-viewport,
+.terminal-host .xterm-screen {
+  height: 100%;
+}
+
+.terminal-message {
+  padding: 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.terminal-accessory {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.accessory-key {
+  flex: 0 0 auto;
+  min-width: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.accessory-key.armed {
+  background: var(--link);
+  color: #fff;
+  border-color: var(--link);
+}
+
 /* --------------------------------------------- code block toolbar (Run/Copy) */
 
 .md-code {

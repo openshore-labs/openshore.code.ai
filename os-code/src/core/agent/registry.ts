@@ -8,6 +8,7 @@ import { readFileTool } from '../tools/readFile.js';
 import { writeFileTool } from '../tools/writeFile.js';
 import { editFileTool } from '../tools/editFile.js';
 import { runShellTool } from '../tools/runShell.js';
+import { readTerminalTool } from '../tools/readTerminal.js';
 import { grepTool } from '../tools/grep.js';
 import { globTool } from '../tools/glob.js';
 import { gitCommitTool, gitDiffTool, gitStatusTool } from '../tools/git.js';
@@ -34,6 +35,10 @@ export function buildToolRegistry(options: {
   registry.register(grepTool);
   registry.register(globTool);
   registry.register(runShellTool);
+  // Read-only look at the user's live PTY terminal (Phase 2 bridge). The
+  // accessor is wired only in the daemon bootstrap; elsewhere the tool degrades
+  // to "no terminal here", so registering it unconditionally is safe.
+  registry.register(readTerminalTool);
   registry.register(gitStatusTool);
   registry.register(gitDiffTool);
   registry.register(gitCommitTool);

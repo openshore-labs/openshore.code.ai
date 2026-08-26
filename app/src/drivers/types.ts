@@ -28,7 +28,31 @@ export interface ChatDriver {
   runCommand?(command: string): Promise<string | undefined>;
   sendStdin?(runId: string, data: string): void;
   killCommand?(runId: string): void;
+  /**
+   * Phase 2 interactive PTY terminal (desktop-backed drivers only). openTerminal
+   * ensures a real terminal on the connected machine and returns its id and
+   * size, or an unavailable marker when the machine has no PTY support.
+   * terminalStream replays the ring buffer from a byte offset and then streams
+   * live raw bytes (with the running end offset, for resume) until the signal
+   * aborts. The rest drive a live terminal. Non-desktop drivers omit these, so
+   * the terminal entry point stays hidden for them.
+   */
+  openTerminal?(opts: { cols: number; rows: number }): Promise<TerminalOpen>;
+  terminalStream?(
+    termId: string,
+    sinceOffset: number,
+    onChunk: (bytes: Uint8Array, endOffset: number) => void,
+    signal: AbortSignal,
+  ): Promise<void>;
+  terminalStdin?(termId: string, data: string): void;
+  terminalResize?(termId: string, cols: number, rows: number): void;
+  terminalKill?(termId: string): void;
 }
+
+/** The result of opening a terminal: its id and starting size, or a clean
+ *  "no PTY on this machine" marker the UI shows instead of a blank panel. */
+export type TerminalOpen =
+  { termId: string; cols: number; rows: number } | { unavailable: true; error: string };
 
 /** Shared helper: a tiny fan-out emitter drivers can compose. */
 export class DriverEmitter {
