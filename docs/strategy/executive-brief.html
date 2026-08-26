@@ -1,0 +1,193 @@
+<title>OpenShore in Brief</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f6f4ef; --surface: #fcfbf7; --surface-2: #edeae0;
+    --ink: #1c2a33; --mid: #45535b; --muted: #7c868c;
+    --rule: #e5e0d3; --rule-strong: #d6d0c2; --deep: #16232b; --deep-ink: #f2efe6;
+    --teal: #2f5a66; --teal-light: #4b90a3; --teal-deep: #24454f;
+    --amber: #a35f0a; --plum: #6b4a7a;
+    --wash: rgba(47,90,102,0.10); --wash-strong: rgba(47,90,102,0.16);
+    --plum-wash: rgba(107,74,122,0.12); --amber-wash: rgba(163,95,10,0.12);
+    --shadow: 0 1px 2px rgba(28,42,51,0.06), 0 12px 30px -18px rgba(28,42,51,0.30);
+    --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #141e24; --surface: #1b262d; --surface-2: #212e36;
+    --ink: #f2efe6; --mid: #c2cace; --muted: #879197;
+    --rule: #2a3841; --rule-strong: #37474f; --deep: #0f181d;
+    --teal: #4b90a3; --teal-light: #6fb1c2; --teal-deep: #3c7a8c;
+    --amber: #d8912f; --plum: #b988a8;
+    --wash: rgba(75,144,163,0.14); --wash-strong: rgba(75,144,163,0.20);
+    --plum-wash: rgba(185,136,168,0.16); --amber-wash: rgba(216,145,47,0.15);
+    --shadow: 0 1px 2px rgba(0,0,0,0.45), 0 14px 34px -18px rgba(0,0,0,0.75);
+  } }
+  :root[data-theme="dark"] {
+    --bg: #141e24; --surface: #1b262d; --surface-2: #212e36;
+    --ink: #f2efe6; --mid: #c2cace; --muted: #879197;
+    --rule: #2a3841; --rule-strong: #37474f; --deep: #0f181d;
+    --teal: #4b90a3; --teal-light: #6fb1c2; --teal-deep: #3c7a8c;
+    --amber: #d8912f; --plum: #b988a8;
+    --wash: rgba(75,144,163,0.14); --wash-strong: rgba(75,144,163,0.20);
+    --plum-wash: rgba(185,136,168,0.16); --amber-wash: rgba(216,145,47,0.15);
+    --shadow: 0 1px 2px rgba(0,0,0,0.45), 0 14px 34px -18px rgba(0,0,0,0.75);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 22px; }
+  .hero { background: linear-gradient(180deg, var(--surface-2), var(--bg) 78%); border-bottom: 1px solid var(--rule); padding: 52px 0 36px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--teal); margin: 0 0 14px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .eyebrow { color: var(--teal-light); } }
+  :root[data-theme="dark"] .eyebrow { color: var(--teal-light); }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(28px, 4.4vw, 42px); line-height: 1.07; letter-spacing: -0.015em; margin: 0 0 16px; max-width: 18ch; }
+  h1 .glow { color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) h1 .glow { color: var(--teal-light); } }
+  :root[data-theme="dark"] h1 .glow { color: var(--teal-light); }
+  .lede { font-size: 16px; color: var(--mid); max-width: 68ch; margin: 0; }
+  .lede b { color: var(--ink); }
+  section { padding: 34px 0; border-bottom: 1px solid var(--rule); }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 21px; margin: 0 0 16px; }
+  .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--teal); margin: 0 0 14px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .k { color: var(--teal-light); } }
+  :root[data-theme="dark"] .k { color: var(--teal-light); }
+
+  .arc-strip { display: grid; grid-template-columns: repeat(6, 1fr); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow); }
+  .arc-step { padding: 13px 12px; border-right: 1px solid var(--rule); }
+  .arc-step:last-child { border-right: none; }
+  .arc-step .an { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.1em; color: var(--muted); }
+  .arc-step .at { font-family: var(--serif); font-size: 14px; font-weight: 600; margin: 4px 0 0; }
+  .arc-step.ship { background: var(--wash); }
+
+  .pillars { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pill { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .pill h3 { font-family: var(--serif); font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+  .pill .pr { font-size: 13.5px; color: var(--ink); margin: 0 0 5px; font-weight: 500; }
+  .pill p.pc { font-size: 13px; color: var(--mid); margin: 0; }
+
+  .moat { background: var(--deep); color: var(--deep-ink); border-radius: 14px; padding: 24px 26px; }
+  .moat h2 { color: var(--deep-ink); margin-bottom: 10px; }
+  .moat p { color: rgba(242,239,230,0.88); font-size: 14.5px; margin: 0 0 10px; max-width: 76ch; }
+  .moat p:last-child { margin-bottom: 0; }
+  .moat b { color: #fff; }
+
+  .price { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .pc2 { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 15px 16px; box-shadow: var(--shadow); }
+  .pc2.flag { border-color: rgba(47,90,102,0.5); }
+  .pc2 .seg { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .pc2 .nm { font-family: var(--serif); font-size: 17px; font-weight: 600; margin: 3px 0 1px; }
+  .pc2 .pp { font-family: var(--mono); font-size: 12.5px; color: var(--teal); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pc2 .pp { color: var(--teal-light); } }
+  :root[data-theme="dark"] .pc2 .pp { color: var(--teal-light); }
+  .pc2 p { font-size: 12px; color: var(--mid); margin: 7px 0 0; }
+
+  .status { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sc { border: 1px solid var(--rule); border-radius: 12px; padding: 16px 18px; }
+  .sc.now { background: var(--wash); border-color: rgba(47,90,102,0.34); }
+  .sc.next { background: var(--plum-wash); border-color: rgba(107,74,122,0.34); }
+  .sc h4 { margin: 0 0 8px; font-size: 12px; font-family: var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .sc.now h4 { color: var(--teal); } .sc.next h4 { color: var(--plum); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sc.now h4 { color: var(--teal-light); } }
+  :root[data-theme="dark"] .sc.now h4 { color: var(--teal-light); }
+  .sc ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 5px; }
+  .sc li { font-size: 12.5px; color: var(--mid); }
+  .sc li b { color: var(--ink); }
+
+  .link { margin-top: 18px; font-size: 13px; color: var(--mid); }
+  a { color: var(--teal); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) a { color: var(--teal-light); } }
+  :root[data-theme="dark"] a { color: var(--teal-light); }
+  footer { padding: 24px 0 40px; color: var(--muted); font-size: 11.5px; font-family: var(--mono); }
+  @media (max-width: 760px) { .arc-strip { grid-template-columns: 1fr 1fr; } .pillars, .price, .status { grid-template-columns: 1fr; } }
+</style>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">OpenShore &middot; Executive Brief</p>
+    <h1>Build an app soup to nuts, <span class="glow">on your own machines, private the whole way.</span></h1>
+    <p class="lede">OpenShore is a native coding companion for Linux desktop and iPhone that closes the entire app-building loop into one private circuit: local models do the thinking, an agent writes and runs the code, your repositories and notes live on storage you own, the work follows you from desk to phone over your own network, and you ship to the App Store or Google Play from inside the app. Cloud stays one deliberate tap away, on your own keys. <b>Your machine. Your models. Your keys.</b></p>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="wrap">
+      <p class="k">The loop, end to end</p>
+      <div class="arc-strip">
+        <div class="arc-step"><div class="an">01</div><div class="at">Idea</div></div>
+        <div class="arc-step"><div class="an">02</div><div class="at">Local models</div></div>
+        <div class="arc-step"><div class="an">03</div><div class="at">Agent builds</div></div>
+        <div class="arc-step"><div class="an">04</div><div class="at">You own it</div></div>
+        <div class="arc-step"><div class="an">05</div><div class="at">Desk to pocket</div></div>
+        <div class="arc-step ship"><div class="an">06</div><div class="at">Ship it</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="k">What makes it different</p>
+      <div class="pillars">
+        <div class="pill"><h3>Local first</h3><p class="pr">Your models run on your hardware, not someone else's cloud.</p><p class="pc">A pocket model on the iPhone, big models on the desktop, reached over your own network. On a plane, it still works.</p></div>
+        <div class="pill"><h3>Your stack</h3><p class="pr">One reasoning model runs the show and routes every task.</p><p class="pc">Set the quarterback, place specialists by category. It sends each task to the right model and covers what you have not placed.</p></div>
+        <div class="pill"><h3>Own your substrate</h3><p class="pr">Your code and notes live where you choose.</p><p class="pc">Repositories and an Obsidian-compatible Vault on storage you control (local, iCloud, Drive), encrypted, portable, no vendor in the middle.</p></div>
+        <div class="pill"><h3>Launch</h3><p class="pr">Take a finished build to the stores from inside the app.</p><p class="pc">The model walks the setup and reads the build result, so a failure comes back as a fix, not a wall of logs.</p></div>
+        <div class="pill" style="grid-column:1 / -1;"><h3>Private by construction</h3><p class="pr">Sealed on your device, answering only to you.</p><p class="pc">Everything encrypted at rest with AES-256. Cloud sees only the calls you choose, on your own keys. No telemetry, no analytics, no phone-home, ever. Where it can be, privacy is measured on your machine, not asserted.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="moat">
+        <h2>Why the arc is the moat</h2>
+        <p>A fast 2026 wave (Paseo, OpenMono, and others) is racing for the same "sovereign, cross-device" corner. Each owns one slice: Paseo owns the remote control but orchestrates cloud brains; OpenMono owns the local agent but is a terminal tool and a marketing funnel; the local runners own compute but stop at chat; the cloud agents own polish but rent the brains and never leave the desk.</p>
+        <p><b>OpenShore owns the whole loop</b>, idea to shipped app, native and finished, with the code never leaving your machines. Any rival can copy one box on the strip. Becoming the entire strip is the thing none of them can do without becoming a different company. The moat is not "local AI." It is <b>the closed loop, executed to product finish.</b></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="k">Free to chat, flat to build</p>
+      <div class="price">
+        <div class="pc2"><div class="seg">Your own work</div><div class="nm">Free</div><div class="pp">$0</div><p>Full chat with any local model. No account, no telemetry.</p></div>
+        <div class="pc2 flag"><div class="seg">One person</div><div class="nm">Personal</div><div class="pp">$20 / year</div><p>The coding agent and full Marketplace. Web via Stripe, iPhone via Apple.</p></div>
+        <div class="pc2"><div class="seg">Teams</div><div class="nm">Micro to Scale</div><div class="pp">$20 to $500 / yr</div><p>A company umbrella by headcount, one admin-owned shared stack.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="k">Where it stands</p>
+      <div class="status">
+        <div class="sc now">
+          <h4>Shipped and running</h4>
+          <ul>
+            <li>The <b>full loop end to end</b>: stack, agent, repos, Vault, cross-device box-run, Launch.</li>
+            <li>On-device models and voice, the daemon and reattaching terminal, Marketplace, Stack Health.</li>
+            <li>Private-by-construction security, enforced and measured. Free and Personal billing live.</li>
+          </ul>
+        </div>
+        <div class="sc next">
+          <h4>At full strength</h4>
+          <ul>
+            <li>Smarter routing (Harbor Mini classifier), MCP and checkpoints, a hosted cloud runner.</li>
+            <li>Complete "own your GitHub" (real git, more storage homes), the multi-writer Team Vault.</li>
+            <li>Team billing live, named-agent crew stats, vision beyond the cloud.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="link">A pre-launch product. The direction is set and the loop runs; the roadmap is depth on the same arc, not a new direction.</p>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <footer>OpenShore &middot; executive brief &middot; a product of Open Shore, LLC</footer>
+  </div>
+</main>

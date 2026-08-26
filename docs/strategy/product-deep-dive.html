@@ -1,0 +1,589 @@
+<title>OpenShore at Full Strength</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f6f4ef; --surface: #fcfbf7; --surface-2: #edeae0;
+    --ink: #1c2a33; --mid: #45535b; --muted: #7c868c;
+    --rule: #e5e0d3; --rule-strong: #d6d0c2;
+    --deep: #16232b; --deep-ink: #f2efe6;
+    --teal: #2f5a66; --teal-light: #4b90a3; --teal-deep: #24454f;
+    --amber: #a35f0a; --amber-light: #c47d1f;
+    --plum: #6b4a7a; --plum-light: #8a6b99;
+    --danger: #c0392b; --good: #2f8f4e; --slate: #5a6b72;
+    --wash: rgba(47, 90, 102, 0.10); --wash-strong: rgba(47, 90, 102, 0.16);
+    --amber-wash: rgba(163, 95, 10, 0.12); --plum-wash: rgba(107, 74, 122, 0.12);
+    --shadow: 0 1px 2px rgba(28, 42, 51, 0.06), 0 12px 30px -18px rgba(28, 42, 51, 0.30);
+    --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141e24; --surface: #1b262d; --surface-2: #212e36;
+      --ink: #f2efe6; --mid: #c2cace; --muted: #879197;
+      --rule: #2a3841; --rule-strong: #37474f;
+      --deep: #0f181d; --deep-ink: #f2efe6;
+      --teal: #4b90a3; --teal-light: #6fb1c2; --teal-deep: #3c7a8c;
+      --amber: #d8912f; --amber-light: #eaa945;
+      --plum: #b988a8; --plum-light: #cda3c0;
+      --danger: #e5695c; --good: #4ade80; --slate: #7f8c93;
+      --wash: rgba(75, 144, 163, 0.14); --wash-strong: rgba(75, 144, 163, 0.20);
+      --amber-wash: rgba(216, 145, 47, 0.15); --plum-wash: rgba(185, 136, 168, 0.16);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 14px 34px -18px rgba(0, 0, 0, 0.75);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141e24; --surface: #1b262d; --surface-2: #212e36;
+    --ink: #f2efe6; --mid: #c2cace; --muted: #879197;
+    --rule: #2a3841; --rule-strong: #37474f;
+    --deep: #0f181d; --deep-ink: #f2efe6;
+    --teal: #4b90a3; --teal-light: #6fb1c2; --teal-deep: #3c7a8c;
+    --amber: #d8912f; --amber-light: #eaa945;
+    --plum: #b988a8; --plum-light: #cda3c0;
+    --danger: #e5695c; --good: #4ade80; --slate: #7f8c93;
+    --wash: rgba(75, 144, 163, 0.14); --wash-strong: rgba(75, 144, 163, 0.20);
+    --amber-wash: rgba(216, 145, 47, 0.15); --plum-wash: rgba(185, 136, 168, 0.16);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 14px 34px -18px rgba(0, 0, 0, 0.75);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.62; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 22px; }
+  .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--teal); margin: 0 0 14px; }
+
+  /* hero */
+  .hero { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--surface-2), var(--bg) 72%); border-bottom: 1px solid var(--rule); padding: 64px 0 48px; }
+  .hero .grooves { position: absolute; inset: 0; pointer-events: none; opacity: 0.5; background: radial-gradient(120% 90% at 88% -10%, var(--wash) 0%, transparent 55%), repeating-linear-gradient(90deg, transparent 0 26px, rgba(47,90,102,0.035) 26px 27px); }
+  .hero h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 5vw, 50px); line-height: 1.06; letter-spacing: -0.015em; margin: 0 0 20px; max-width: 17ch; }
+  .hero .glow { color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hero .glow { color: var(--teal-light); } }
+  :root[data-theme="dark"] .hero .glow { color: var(--teal-light); }
+  .hero .deck { font-size: 16.5px; color: var(--mid); max-width: 70ch; margin: 0; }
+  .hero .deck b { color: var(--ink); }
+  .hero .metaline { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 8px 10px; }
+  .chip { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mid); background: var(--surface); border: 1px solid var(--rule-strong); border-radius: 20px; padding: 5px 12px; }
+
+  /* maturity key (sticky) */
+  .keybar { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 14px 0; position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px); }
+  .keybar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+  .keybar .lead { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .keybar .k { font-size: 12.5px; color: var(--mid); display: inline-flex; align-items: center; gap: 7px; }
+  .badge { display: inline-block; font-family: var(--mono); font-weight: 600; font-size: 9px; letter-spacing: 0.09em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; white-space: nowrap; vertical-align: middle; }
+  .badge.shipped { background: var(--wash); color: var(--teal); border: 1px solid rgba(47,90,102,0.5); }
+  .badge.partial { background: var(--amber-wash); color: var(--amber); border: 1px solid rgba(163,95,10,0.45); }
+  .badge.full { background: var(--plum-wash); color: var(--plum); border: 1px solid rgba(107,74,122,0.5); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .badge.shipped { color: var(--teal-light); }
+    :root:not([data-theme="light"]) .badge.full { color: var(--plum-light); }
+  }
+  :root[data-theme="dark"] .badge.shipped { color: var(--teal-light); }
+  :root[data-theme="dark"] .badge.full { color: var(--plum-light); }
+
+  section { padding: 44px 0; border-bottom: 1px solid var(--rule); }
+  .kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--teal); margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+  .kicker .n { font-family: var(--mono); color: var(--muted); font-size: 11px; }
+  h2.sec { font-family: var(--serif); font-weight: 600; font-size: clamp(22px, 3vw, 30px); line-height: 1.14; letter-spacing: -0.01em; margin: 0 0 12px; max-width: 26ch; }
+  .sec-intro { font-size: 15.5px; color: var(--mid); margin: 0 0 22px; max-width: 78ch; }
+  .sec-intro b { color: var(--ink); }
+
+  /* feature cards */
+  .feats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .feat { background: var(--surface); border: 1px solid var(--rule); border-radius: 15px; padding: 20px 21px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 11px; }
+  .feat.wide { grid-column: 1 / -1; }
+  .feat .fhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .feat h3 { font-family: var(--serif); font-size: 18.5px; font-weight: 600; margin: 0; line-height: 1.15; }
+  .feat .code { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .feat .today { font-size: 14px; color: var(--mid); margin: 0; }
+  .feat .today b { color: var(--ink); }
+  .feat .full { font-size: 13.5px; color: var(--mid); margin: 0; padding: 12px 14px; background: var(--plum-wash); border-radius: 10px; border-left: 3px solid var(--plum); }
+  .feat .full .lbl { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--plum); display: block; margin-bottom: 4px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .feat .full .lbl { color: var(--plum-light); } }
+  :root[data-theme="dark"] .feat .full .lbl { color: var(--plum-light); }
+  .feat .full b { color: var(--ink); }
+
+  /* architecture diagram */
+  .arch { background: var(--surface); border: 1px solid var(--rule); border-radius: 18px; box-shadow: var(--shadow); padding: 26px; }
+  .arch-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: stretch; }
+  .node { border: 1px solid var(--rule-strong); border-radius: 14px; padding: 18px; background: var(--surface-2); position: relative; }
+  .node.home { border-color: rgba(47,90,102,0.45); background: linear-gradient(180deg, var(--wash), var(--surface-2) 60%); }
+  .node.cloud { border-color: rgba(163,95,10,0.4); }
+  .node .nt { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .node h4 { font-family: var(--serif); font-size: 17px; font-weight: 600; margin: 0 0 8px; }
+  .node p { font-size: 13px; color: var(--mid); margin: 0; }
+  .node .tag { display: inline-block; margin-top: 10px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.05em; color: var(--teal); background: var(--wash); border-radius: 6px; padding: 3px 8px; }
+  .node.cloud .tag { color: var(--amber); background: var(--amber-wash); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .node .tag { color: var(--teal-light); } }
+  :root[data-theme="dark"] .node .tag { color: var(--teal-light); }
+  .arch-note { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--mid); }
+  .arch-note b { color: var(--ink); }
+  .arch-link { text-align: center; font-family: var(--mono); font-size: 18px; color: var(--rule-strong); align-self: center; }
+
+  ul.plain { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+  ul.plain li { font-size: 13.5px; color: var(--mid); }
+  ul.plain li b { color: var(--ink); }
+
+  /* full-strength synthesis */
+  .synth { background: var(--deep); color: var(--deep-ink); border-radius: 18px; padding: 30px 32px; }
+  .synth .kicker { color: var(--plum-light); }
+  .synth h2 { font-family: var(--serif); font-size: 24px; font-weight: 600; margin: 0 0 10px; color: var(--deep-ink); max-width: 26ch; }
+  .synth > p { color: rgba(242,239,230,0.86); font-size: 15px; max-width: 76ch; margin: 0 0 20px; }
+  .synth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .sitem { border: 1px solid rgba(242,239,230,0.16); border-radius: 12px; padding: 15px 16px; }
+  .sitem h4 { font-size: 14px; margin: 0 0 6px; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .sitem p { font-size: 12.5px; color: rgba(242,239,230,0.78); margin: 0; }
+  .sitem .badge.full { background: rgba(185,136,168,0.2); color: var(--plum-light); border-color: rgba(185,136,168,0.4); }
+
+  .pricebar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .pcard { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+  .pcard.flag { border-color: rgba(47,90,102,0.5); }
+  .pcard .pseg { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .pcard .pname { font-family: var(--serif); font-size: 19px; font-weight: 600; margin: 4px 0 2px; }
+  .pcard .pprice { font-size: 13px; color: var(--teal); font-family: var(--mono); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pcard .pprice { color: var(--teal-light); } }
+  :root[data-theme="dark"] .pcard .pprice { color: var(--teal-light); }
+  .pcard p.pd { font-size: 12.5px; color: var(--mid); margin: 8px 0 0; }
+
+  /* build arc strip */
+  .arc-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; margin: 0 0 26px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow); }
+  .arc-step { padding: 16px 14px; border-right: 1px solid var(--rule); position: relative; }
+  .arc-step:last-child { border-right: none; }
+  .arc-step .an { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--muted); }
+  .arc-step .at { font-family: var(--serif); font-size: 15px; font-weight: 600; margin: 5px 0 3px; color: var(--ink); }
+  .arc-step .ad { font-size: 11.5px; color: var(--mid); line-height: 1.4; }
+  .arc-step.ship { background: var(--wash); }
+  .profiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+  .prof { border: 1px solid var(--rule); border-radius: 12px; padding: 15px 16px; background: var(--surface); }
+  .prof .pn { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--teal); margin: 0 0 6px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .prof .pn { color: var(--teal-light); } }
+  :root[data-theme="dark"] .prof .pn { color: var(--teal-light); }
+  .prof p { font-size: 12.5px; color: var(--mid); margin: 0; }
+  @media (max-width: 820px) { .arc-strip { grid-template-columns: 1fr 1fr; } .arc-step { border-bottom: 1px solid var(--rule); } .profiles { grid-template-columns: 1fr; } }
+
+  footer { padding: 30px 0 46px; color: var(--muted); font-size: 12px; font-family: var(--mono); letter-spacing: 0.02em; display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; }
+  a { color: var(--teal); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) a { color: var(--teal-light); } }
+  :root[data-theme="dark"] a { color: var(--teal-light); }
+
+  @media (max-width: 820px) {
+    .feats { grid-template-columns: 1fr; }
+    .arch-row { grid-template-columns: 1fr; }
+    .arch-link { transform: rotate(90deg); }
+    .synth-grid { grid-template-columns: 1fr; }
+    .pricebar { grid-template-columns: 1fr; }
+  }
+</style>
+
+<header class="hero">
+  <div class="grooves" aria-hidden="true"></div>
+  <div class="wrap">
+    <p class="eyebrow">OpenShore &middot; Product Deep Dive</p>
+    <h1>Build an app soup to nuts, <span class="glow">on your own machines, private the whole way.</span></h1>
+    <p class="deck">OpenShore closes the entire app-building loop into one private circuit: an idea becomes working software without your code ever leaving hardware you own. A stack of local models does the thinking, an agent writes and runs the code, your repositories and notes live on storage you control, the work follows you from desk to phone over your own network, and you ship to the App Store or Google Play from inside the app. Cloud stays one deliberate tap away, always on your own keys. This is that whole system as it stands today, honestly graded, and the shape each piece takes at full strength. <b>Your machine. Your models. Your keys.</b></p>
+    <div class="metaline">
+      <span class="chip">Native desktop + iPhone</span>
+      <span class="chip">Local-model stack</span>
+      <span class="chip">Private by construction</span>
+      <span class="chip">Own your storage</span>
+      <span class="chip">Ship to the stores</span>
+    </div>
+  </div>
+</header>
+
+<div class="keybar">
+  <div class="wrap">
+    <span class="lead">How each capability is graded</span>
+    <span class="k"><span class="badge shipped">Shipped</span> built and on main</span>
+    <span class="k"><span class="badge partial">Partial</span> built, behind config or a scoped follow-up</span>
+    <span class="k"><span class="badge full">At full strength</span> the finished shape, roadmapped</span>
+  </div>
+</div>
+
+<main>
+  <section>
+    <div class="wrap">
+      <p class="kicker">The shape &middot; one private loop</p>
+      <h2 class="sec">The whole build lifecycle, closed on hardware you own.</h2>
+      <p class="sec-intro">Every other tool owns one slice of building software. OpenShore owns the arc end to end, and keeps it private the whole way. Read the sections below as this loop, left to right.</p>
+
+      <div class="arc-strip">
+        <div class="arc-step"><div class="an">01</div><div class="at">Idea</div><div class="ad">A chat with a guide or your stack. Free, no account.</div></div>
+        <div class="arc-step"><div class="an">02</div><div class="at">Local models</div><div class="ad">A quarterback plus specialists on your own hardware.</div></div>
+        <div class="arc-step"><div class="an">03</div><div class="at">The agent builds</div><div class="ad">Reads, edits, runs, and commits, with your approval.</div></div>
+        <div class="arc-step"><div class="an">04</div><div class="at">You own it</div><div class="ad">Repos and notes on storage you control.</div></div>
+        <div class="arc-step"><div class="an">05</div><div class="at">Desk to pocket</div><div class="ad">The same work follows you over your own network.</div></div>
+        <div class="arc-step ship"><div class="an">06</div><div class="at">Ship it</div><div class="ad">To the App Store or Play, from inside the app.</div></div>
+      </div>
+
+      <div class="arch">
+        <div class="arch-row">
+          <div class="node home">
+            <p class="nt">Home</p>
+            <h4>The desktop</h4>
+            <p>Runs the engine in-process and a private daemon. Big local models, the agent loop, repositories, terminals, Stack Health. This is where the work runs.</p>
+            <span class="tag">Engine + daemon</span>
+          </div>
+          <div class="arch-link" aria-hidden="true">&harr;</div>
+          <div class="node">
+            <p class="nt">Rides along</p>
+            <h4>The iPhone</h4>
+            <p>Pairs to the desktop over your own Tailscale network and drives it as a remote control, or runs a pocket model fully on-device when there is no signal at all.</p>
+            <span class="tag">Pocket model + remote</span>
+          </div>
+          <div class="arch-link" aria-hidden="true">&harr;</div>
+          <div class="node cloud">
+            <p class="nt">One tap away</p>
+            <h4>Cloud</h4>
+            <p>Your own Claude, OpenAI, or Gemini account, on your own key. Never automatic, always spend-confirmed, marked amber so it never looks like a free local turn.</p>
+            <span class="tag">Your keys, your spend</span>
+          </div>
+        </div>
+        <div class="arch-note"><b>Reach changes, the system does not.</b> One stack, everywhere. What changes is what it can reach, auto-detected and only ever tightened by hand:</div>
+        <div class="profiles">
+          <div class="prof"><p class="pn">Docked</p><p>Home system reachable. The full stack, every specialist, big models.</p></div>
+          <div class="prof"><p class="pn">Offshore</p><p>Online but home unreachable. Cloud on your keys plus on-device models.</p></div>
+          <div class="prof"><p class="pn">Offline</p><p>No signal. On-device models only. On a plane, it still works.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">02</span> Local models &middot; the brains</p>
+      <h2 class="sec">Your stack: one quarterback, specialists on the bench.</h2>
+      <p class="sec-intro">OpenShore is not one model, it is a <b>stack you assemble</b>. One reasoning model runs the show and routes every task. Specialists plug in by role. Anything you have not placed, the quarterback covers itself. It is the piece that makes "bring your own model" into a coherent product rather than a model picker.</p>
+
+      <div class="feats">
+        <div class="feat wide">
+          <div class="fhead"><h3>The quarterback and the bench</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">A required <b>Reasoning LLM</b> anchor plus a bench of models you place into industry-standard roles: coding, writing, analysis, vision, embedding, fast. Each placement can carry a trigger ("when called") and a custom persona. The router sends each turn to the reachable specialist for the job, and <b>degrades gracefully</b>: if a specialist cannot run, it falls back to the anchor instead of dead-ending. A single-model setup is a fully supported path, and the engine only ever shows tools the stack can actually serve.</p>
+          <p class="full"><span class="lbl">At full strength</span> The turn classifier, a keyword heuristic today, becomes a real <b>Harbor Mini classification call</b>, and specialists gain tool use and multi-step delegation on the phone side, closing the gap between the desktop engine's routing and the pocket router.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Bring your own model</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Connect any OpenAI-compatible endpoint you control, a self-hosted vLLM or Ollama, a fine-tune behind your gateway, another provider. Name, base URL, model id, optional key. The key lives in the device secret store, scoped, never synced. It lands on the bench and places like any other model, and a box-hosted endpoint can be driven through the daemon.</p>
+          <p class="full"><span class="lbl">At full strength</span> True streaming and cancel for BYOM endpoints on iPhone and desktop (buffer-then-dump today), via native IPC and SSE bridges.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Cloud, only when you say so</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Add Claude, OpenAI, or Gemini on your own key; their models join the bench. The agent can offer to <b>escalate to cloud</b> after repeated local failures, but never spends without a confirm sheet that shows a cost estimate and the session total, in amber so it never reads as a free local turn. With no key connected, escalation simply reads as off, so you are never asked to approve spend that would error.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Harbor and Harbor Mini</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Two built-in on-device guides so the app is useful the instant it opens. <b>Harbor Mini</b> (Qwen2.5-0.5B, ~380 MB) seeds a fresh stack and keeps first-run small. <b>Harbor</b> (Qwen3-1.7B, ~1.1 GB) reasons and does real <b>web search on-device</b> via a one-line protocol, with citations. Both are honest: not coders, they point you to a real model for real work. Weights pull straight from Hugging Face, never from OpenShore.</p>
+          <p class="full"><span class="lbl">At full strength</span> Harbor Mini graduates from guide to the stack's routing brain, classifying every turn.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Mid-chat switching, effort, and mode</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Change the model mid-thread and keep the conversation (Claude-style reseed, only when idle). A reasoning-<b>effort</b> selector rides into every turn. The three <b>permission modes</b> (Auto, Accept edits, Plan) govern how the agent's tool approvals flow. All from the composer, without leaving the chat.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">03</span> The agent &middot; the making</p>
+      <h2 class="sec">A real coding agent, tuned to survive on local models.</h2>
+      <p class="sec-intro">The engine is a streaming ReAct loop in the familiar shape of a modern coding agent: it reads, edits, runs, searches, and commits, feeding each result back until the work is done. The hard part, and where most of the engineering went, is making that reliable on small local models that are not as forgiving as a frontier cloud model.</p>
+
+      <div class="feats">
+        <div class="feat">
+          <div class="fhead"><h3>The toolset</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Read (numbered, sliced), write, edit, glob, and grep (ripgrep with a pure-JS fallback); a default-deny <b>shell</b> with per-command approval; git status/diff/commit; web search and fetch (readable markdown, egress-checked); <b>delegate</b> to a specialist; analyze and generate images; semantic repo search; and a read-only view of your live terminal. Every tool validates its arguments, declares a risk class, and caps its output.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>The edit engine</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Edits arrive as search/replace blocks and land through a deliberate <b>match hierarchy</b>: exact, then whitespace-tolerant, then context-anchored fuzzy, applied only when the anchors are unique. <b>Any ambiguity is refused</b> with a teaching error that names the closest line and counts duplicates, because a tolerant matcher landing a hunk in the wrong place is silent corruption. Every apply is diffed and verified before it returns.</p>
+        </div>
+
+        <div class="feat wide">
+          <div class="fhead"><h3>The tool-call bridge</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">The make-or-break piece for local models. The loop accepts native tool calls <b>and</b> a JSON-in-text fallback, with a fence-aware, string-aware extractor and a bounded repair pass that fixes the things small models get wrong: smart quotes, Python literals, trailing commas, unquoted keys, unbalanced braces. Backends that support it get a grammar-constrained retry; persistent failures draw a corrective prompt, then an offer to escalate. Per-family prompt adapters (qwen, llama, generic) tune preamble, stop tokens, and tool format per model. This is the difference between "local models sort of work" and a real agent on your own hardware.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Approvals, spend, and guardrails</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Reads flow; writes ask with a diff; shell asks with the exact command; cloud spend gets its own amber confirm. Session-wide "always allow" is profile-gated, and knowledge-base writes are <b>always-ask</b> no matter what. Hard stops bound every run: max steps, repeated-call loop detection, wall-clock, token, and dollar budgets, each halting with a plain sentence rather than a runaway.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Repo awareness</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">An incremental <b>embedding index</b> (with a keyword fallback when no embedder is present) powers semantic repo search, and a compact <b>code map</b>, a tree plus a regex symbol outline across seven languages, is injected into the prompt so the first tool call is aimed right. Older turns compact automatically to keep small context windows honest.</p>
+          <p class="full"><span class="lbl">At full strength</span> The symbol map moves from regex to a tree-sitter parser behind the existing seam, and <b>MCP-stdio</b> plus <b>checkpoints and rewind</b> land for full Claude Code parity.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">04</span> Desk to pocket &middot; the reach</p>
+      <h2 class="sec">Your machine does the work, your phone carries it.</h2>
+      <p class="sec-intro">The standing principle: long or agentic work runs <b>off the phone</b>, on your own daemon, as a durable, journaled, resumable job, because iOS grants no app minutes-long background compute. The phone is a remote control and a viewer, so a long answer keeps going when you put it in your pocket. This is the piece that behaves like Claude Code, on hardware you own.</p>
+
+      <div class="feats">
+        <div class="feat">
+          <div class="fhead"><h3>Pairing, the celebrated first run</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Turn on the desktop daemon, scan a QR from the phone, done. Everything runs over your own <b>Tailscale</b> network; the daemon binds Tailscale or loopback, <b>never 0.0.0.0</b>, behind a bearer token, and every paired device gets its own revocable credential. Onboarding leads with "Connect your computer" because that is the value: your machine does the work, nothing drains the phone, nothing gets cut off in the background.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Box-run, and it survives the subway</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Pick your computer's stack from the phone and the agent runs <b>on the machine</b>, streamed to your hand. Every event is journaled and replayable from any sequence number, so a tunnel or a locked screen costs nothing: the phone reconnects with backoff, resumes from the last event, and drops a single "connection blipped" row. The generation lives on the daemon, not in an app process that iOS would suspend.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>A real terminal, reattaching</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">A full PTY on the desktop, rendered on the phone with xterm.js over the same connection. Colors, cursor addressing, sudo, vim. The PTY <b>outlives the screen</b> (tmux-like) and replays its ring buffer from the last byte on reconnect. An iOS accessory key row adds Esc, Tab, Ctrl, arrows, and pipe. No Termius, no screenshots.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Models on the phone itself</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">A native plugin runs <b>GGUF models on-device via llama.cpp on Metal</b>: load, stream, stop, with resumable background downloads that adopt on relaunch and a background assertion so an in-flight reply is not killed the instant you glance away. This is the offline half of the stack, and the engine behind both guides.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Voice, on-device only</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Dictation through a native plugin with on-device recognition <b>forced on</b>, so mic audio never leaves the phone; it reports unavailable rather than quietly falling back to Apple's servers, and handles call and Siri interruptions. The web build falls through to the Web Speech API.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>It taps you when it needs you</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">When a desktop run needs your input and no phone is watching, the daemon sends a content-free "session needs you" push. While you are watching, it holds the banner back. The push grant is opaque and server-minted, held sealed at rest.</p>
+          <p class="full"><span class="lbl">At full strength</span> A hosted <b>cloud runner</b> joins the desktop daemon as a second off-device home, so long jobs can run even when your own machine is off.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">05</span> You own it &middot; the substrate</p>
+      <h2 class="sec">Repositories: your code lives where you choose, not on someone&rsquo;s servers.</h2>
+      <p class="sec-intro">This is the piece no rival in the sovereign-agent cohort has. Underneath Repositories and Vault sits <b>gitOS</b>, one storage seam that hands the file store back to you: a repo or a vault is a named tree of bytes that live <b>where you chose</b>, and everything above the seam reads through it without ever learning the backend. It extends sovereignty from your compute to your data.</p>
+
+      <div class="feats">
+        <div class="feat wide">
+          <div class="fhead"><h3>The gitOS storage seam</h3><span class="badge shipped">Shipped</span> <span class="badge partial">Backends expanding</span></div>
+          <p class="today">One path-and-bytes interface (list, read, write, remove, plus a single-writer lease) that Vault and repos share. Live backends: <b>Local</b> (sealed on the device), a plain <b>on-disk folder</b> that Obsidian opens directly, <b>iCloud Drive</b> (native plugin, synced by iOS), and <b>Google Drive</b> (real OAuth PKCE, drive.file scope only, a real folder tree you can find in Drive). Secrets on untrusted storage seal under a per-repo key, never the device key, so the cloud provider never sees plaintext. Not-yet-wired backends render honestly as "Arriving," never faked.</p>
+          <p class="full"><span class="lbl">At full strength</span> <b>Dropbox and Proton Drive</b> providers wire up, real git shells out on the desktop engine for true branch and merge semantics, and the per-repo secrets model completes. The seam was designed so each new home is an additive plugin, not a rewrite.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Connect and build a repo</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Connect GitHub or another platform on <b>your own token</b> (kept in the device keychain). Clone from a URL, or open a local folder on the desktop, and either opens a coding chat that reads, edits, tests, and commits with per-change approval. A recent-workspaces list gets you back in fast.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>The offline commit outbox</h3><span class="badge partial">Partial &middot; flag-gated</span></div>
+          <p class="today">A pipeline that lets the phone author commits offline: intents are sealed on-device, then materialized into real commits by git plumbing <b>without ever touching the live working tree</b>, idempotent, with conflicts landing on a rescue branch and never a force-push. Built and tested end to end on the desktop engine, held behind a flag until the app flow that produces buffered intents ships.</p>
+          <p class="full"><span class="lbl">At full strength</span> The producer and home-path picker flip the outbox on, and platform remotes (GitHub, GitLab) gain a real push path so "your own GitHub, hosted where you like" is complete.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">05b</span> You own it &middot; your knowledge</p>
+      <h2 class="sec">Vault: an Obsidian-compatible knowledge base, on the same owned storage.</h2>
+      <p class="sec-intro">The first thing built on the gitOS seam, and proof the seam is real. Your notes are <b>plain markdown files you can walk away with</b>, in OpenShore's own paper-and-ink theme, that the agent can read and (with approval) write.</p>
+
+      <div class="feats">
+        <div class="feat wide">
+          <div class="fhead"><h3>Personal Vault</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Folders of <b>.md files with live [[wikilinks]]</b> (autocomplete, create-on-link), read/edit toggle, linked mentions (backlinks), and Obsidian-style save-as-you-type that flushes on background and switch so nothing is lost. A "where it lives" sheet moves the whole vault between storage backends. Export to real files in the iOS Files app, and <b>point Obsidian at the same folder, it just opens</b>. A single-writer lease makes a note read-only when another device holds it. Your notes are device property: they survive signing out, like your on-device model files. The agent's vault writes are always-ask, never silent.</p>
+          <p class="full"><span class="lbl">At full strength</span> The <b>Team Vault</b>, a real multi-writer backend (last-write-wins with conflict copies, not a naive folder sync) so a company can share one knowledge base with genuine concurrent editing. The Supabase backend exists; hardening it into the organization tier is the one tracked open follow-up.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">05c</span> You own it &middot; your workflow</p>
+      <h2 class="sec">Projects keep the context. Crew makes the agents yours.</h2>
+      <p class="sec-intro">Two features that turn a chat tool into a way of working. Both persist to the account, so your setup is yours across devices.</p>
+
+      <div class="feats">
+        <div class="feat">
+          <div class="fhead"><h3>Projects</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">Buckets that hold chats and their context. <b>Standing instructions ride into every chat</b> in the project, and repositories can be shared across projects. Switch the active project from the sidebar. Deleting a project keeps its chats, they just lose the link.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>My Crew</h3><span class="badge shipped">Shipped</span> <span class="badge partial">Auto-invocation partial</span></div>
+          <p class="today">Build your own agents, each with a name, a persona, and a call rule, scoped to specific projects or all of them. Three activity levels: <b>Reviews builds</b> (runs before a deploy), <b>Auto-reasoning</b> (the quarterback can bring it in on its own), and <b>Request only</b> (dormant until named). Personas are woven into the router's prompt as your own authored perspectives.</p>
+          <p class="full"><span class="lbl">At full strength</span> Stack Health upgrades from stack roles to <b>your named agents with per-agent stats</b>, and one-tap suggestions with thumbs feedback close the loop.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">06</span> Ship it &middot; the finish</p>
+      <h2 class="sec">Launch: from a working build to the App Store, without leaving the app.</h2>
+      <p class="sec-intro">This is the capstone that closes the loop, and the piece the whole sovereign-agent cohort lacks. Every other tool hands you code and stops. OpenShore walks the last mile to a release.</p>
+
+      <div class="feats">
+        <div class="feat wide">
+          <div class="fhead"><h3>Ship to the stores, guided</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">One place to get a built app onto the <b>App Store or Google Play</b> through Codemagic, guided from inside OpenShore. A "guide me" button spins up a stack chat that walks every account and setting. Connect a Codemagic token (kept in the keychain), set a target (platform, app id, workflow, branch), and build: the app triggers Codemagic, follows the build over its API, and <b>on failure reads the redacted log so the model hands you a fix, not a wall of logs</b>. If you have review-level crew, they can vet the build first. Idea to shipped app, and the code never left your machines to get there.</p>
+          <p class="full"><span class="lbl">At full strength</span> More build targets and platforms, and the review-before-deploy hook fully wired to your named crew, so a failing build comes back as a proposed change rather than a report.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">&#9670;</span> Why the arc is the moat</p>
+      <h2 class="sec">Everyone else owns a slice. OpenShore owns the loop.</h2>
+      <p class="sec-intro">A small, fast wave of 2026 tools is racing for the same "sovereign, cross-device" corner. Reading them against this arc shows exactly where OpenShore is different, and it is not the idea, it is the depth.</p>
+      <div style="background:var(--surface); border:1px solid var(--rule); border-left:3px solid var(--plum); border-radius:14px; padding:22px 24px; box-shadow:var(--shadow);">
+        <ul class="plain" style="gap:11px;">
+          <li><b>Paseo</b> (15k+ stars) nails the control plane: a private daemon you drive from any device. But it <b>orchestrates other agents</b> whose models are usually cloud. It owns the remote, not the brains, and it has no owned storage, no vault, no ship step.</li>
+          <li><b>OpenMono</b> is the near-twin on thesis, a local-LLM coding agent with a phone companion, but it is a terminal tool and a marketing funnel for a bootcamp, not a finished product. No native app, no owned-storage seam, no launch.</li>
+          <li><b>The local runners</b> (Ollama, Jan, LM Studio) own your compute but stop at chat. <b>The cloud agents</b> (Cursor, Copilot, Claude Code) own the polish but rent the brains and never leave the desk.</li>
+        </ul>
+        <p style="font-size:14.5px; color:var(--ink); margin:16px 0 0; max-width:82ch;"><b>The difference is the whole arc.</b> OpenShore is the only one that owns every step from idea to shipped app: local brains, a real agent, storage you control, desk-to-pocket reach, and a launch button, with the code never leaving your machines. Each rival can copy one box on the strip. Becoming the whole strip, native and finished, is the thing none of them can do without becoming a different company. The moat is not "local AI." It is <b>the closed loop, executed to product finish.</b></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">+</span> The supply &middot; where models come from</p>
+      <h2 class="sec">A Marketplace that is a catalog, not a weight host.</h2>
+      <p class="sec-intro">An App-Store-style storefront for picking models in plain language, built on a strict honesty posture. OpenShore <b>never rehosts or proxies weights</b>: they download straight from Hugging Face or Ollama, and licenses are shown before you pull.</p>
+
+      <div class="feats">
+        <div class="feat">
+          <div class="fhead"><h3>Rated to your hardware, honestly</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">A featured row and themed shelves ("Runs on your phone," per-capability). <b>Hardware-fit ratings</b> ("Runs here / Tight fit / Too big") snap to your detected RAM and VRAM. Quality stars are computed server-side from benchmarks, <b>never crowd-sourced</b>, and popularity is labeled as popularity, not quality. Plain-language quantization glosses and a compare sheet round it out.</p>
+        </div>
+
+        <div class="feat">
+          <div class="fhead"><h3>Curated by a fail-closed pipeline</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">A CI catalog builder gathers <b>metadata only</b> (never weights), enriches license, ratings, and fit, and gates on an SPDX allow-list so an unmapped license drops the model. An eval harness probes each model on tool-call formatting, edit discipline, and instruction-following; a score above the bar earns a <b>"blessed"</b> mark that feeds the fit rating.</p>
+          <p class="full"><span class="lbl">At full strength</span> An opt-in, anonymized <b>"popular in OpenShore"</b> signal, deliberately parked until it can be built without breaking the no-telemetry promise.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">+</span> The feedback &middot; how it is going</p>
+      <h2 class="sec">Stack Health: an Apple-Health read of your own machine, folded locally.</h2>
+      <div class="feats">
+        <div class="feat wide">
+          <div class="fhead"><h3>What your stack is doing, and what it saved you</h3><span class="badge shipped">Shipped &middot; desktop</span></div>
+          <p class="today">Three concentric rings, <b>Local and private (teal), Flow, and Saved dollars (amber)</b>, deliberately never Apple's red-green-blue, over a count-up of the money not spent versus a cloud-model equivalent, a local-vs-cloud timeline, and your configured crew. It is folded <b>100% locally</b> from on-disk session journals and sent nowhere. A <b>privacy seal</b> band shows live-measured facts, encryption at rest verified by a full-disk scan, not asserted, and pulses with a haptic the first time it reads fully sealed. The color equation is load-bearing: teal is private, amber is spend.</p>
+          <p class="full"><span class="lbl">At full strength</span> The crew view upgrades from stack roles to <b>your named agents with per-agent stats</b>, plus one-tap tuning suggestions.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">+</span> The guarantee &middot; private by construction</p>
+      <h2 class="sec">Privacy is not a setting here. It is how the thing is built.</h2>
+      <p class="sec-intro">Every claim in this section is enforced in code and, where it can be, <b>measured on your machine rather than asserted</b>. This is the structural difference from tools that keep your code local by policy.</p>
+      <div class="feats">
+        <div class="feat wide">
+          <div class="fhead"><h3>The security posture, in full</h3><span class="badge shipped">Shipped</span></div>
+          <ul class="plain">
+            <li><b>Nothing leaves by default.</b> Local models run the work; cloud is a manual, spend-confirmed flip on your own key, and OpenShore never routes to the cloud on its own.</li>
+            <li><b>The daemon is locked down.</b> Bearer token on every request, per-device revocable credentials, binds Tailscale or loopback but <b>never 0.0.0.0</b>, and refuses to start otherwise.</li>
+            <li><b>Path jail and symlink escape refusal</b> on every file operation; the vault has its own jail.</li>
+            <li><b>Secret redaction</b> scrubs API keys, tokens, JWTs, and private keys before anything reaches a transcript, log, journal, or model, quote-safe so it never corrupts JSON.</li>
+            <li><b>Egress policy</b> checks every outbound request by purpose and <b>re-checks every redirect hop</b>, so an allowed URL cannot redirect into a blocked host.</li>
+            <li><b>Encrypted at rest.</b> Chats, projects, crew, journals, and vault sealed with AES-256, the key in the device secure store; credentials on untrusted cloud storage seal under a per-repo key the provider never holds.</li>
+            <li><b>Stricter on the phone.</b> Three tightening profiles (local, remote-attached, headless); remote is always more restrictive than at the desk.</li>
+            <li><b>No telemetry, no analytics, no phone-home, ever.</b> The only activity log is opt-in and local-only, and never sent unless you copy it out yourself.</li>
+          </ul>
+          <p class="full"><span class="lbl">At full strength</span> An encrypted, <b>per-account vault at rest</b> for shared devices, and server-enforced roles once accounts move fully to the cloud (client-enforced today), closing the last gaps a hostile local user could reach.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">+</span> The finish &middot; why it feels like a product</p>
+      <h2 class="sec">Craft, enforced by tests, not left to memory.</h2>
+      <div class="feats">
+        <div class="feat wide">
+          <div class="fhead"><h3>A single motion and brand vocabulary</h3><span class="badge shipped">Shipped</span></div>
+          <p class="today">One declared set of curves, durations, and asymmetric press physics; every surface that animates in animates out; transforms only, never layout; reduced motion honored; theme-aware light, dark, and system with tokenized dark elevation. Haptics route to the native Taptic engine, never a web no-op. <b>Bursty local token streams are smoothed</b> to a calm ~40fps so a small model reads like steady typing. The whole thing wears the openshore.ai brand (Fraunces and Inter, cream paper and deep ink, teal for local and amber for cloud) down to hand-drawn line icons. Motion tokens, polish standards, and a <b>total em-dash ban</b> are all enforced by CI tests, so the craft cannot quietly regress.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <p class="kicker"><span class="n">+</span> The business &middot; free to chat, flat to build</p>
+      <h2 class="sec">One price, not a meter.</h2>
+      <p class="sec-intro">The pricing carries the thesis: OpenShore runs on your machine, your models, your keys, so it never meters your work. Chat is free forever. Building is a small flat fee. Because personal storage is user-owned, the cost of goods is near zero.</p>
+      <div class="pricebar">
+        <div class="pcard">
+          <div class="pseg">For your own work</div>
+          <div class="pname">Free</div>
+          <div class="pprice">$0</div>
+          <p class="pd">Full chat with any local model, Harbor or Ollama. No account, no telemetry. Yours to keep.</p>
+        </div>
+        <div class="pcard flag">
+          <div class="pseg">For one person</div>
+          <div class="pname">Personal</div>
+          <div class="pprice">$20 / year</div>
+          <p class="pd">Chat becomes a coding agent: reads your repo, writes edits, runs tools, with real diffs and approvals, plus the full Marketplace. Buyable on the web via Stripe or on iPhone via Apple.</p>
+        </div>
+        <div class="pcard">
+          <div class="pseg">For teams</div>
+          <div class="pname">Micro to Scale</div>
+          <div class="pprice">$20 to $500 / year</div>
+          <p class="pd">A company umbrella by headcount (5, 30, 100, or more), an admin who owns the shared stack, everyone keeping their own chats, projects, and crew.</p>
+        </div>
+      </div>
+      <div class="feats" style="margin-top:16px;">
+        <div class="feat wide">
+          <div class="fhead"><h3>How the money path is built</h3><span class="badge shipped">Shipped</span> <span class="badge partial">Commercial billing pending config</span></div>
+          <p class="today">Dual rails: <b>Apple In-App Purchase (StoreKit 2)</b> on iPhone, <b>Stripe in the browser</b> on web and desktop, with Supabase as the entitlement authority and the client claim treated as a hint. The paywall is Apple-compliant (no web price named on iOS) and non-punitive ("Not now. Keep chatting."). The honest boundary: the $20 wall cannot be enforced against a user's own daemon since they hold both ends, so the free surface is <b>confined so it cannot act</b> (a stateless, tool-less chat route) rather than pretending to police entitlement.</p>
+          <p class="full"><span class="lbl">At full strength</span> Commercial team billing goes live (built, pending Stripe and Apple config), server-enforced org roles, and a hosted license-verify endpoint replaces the documented client stub.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="wrap">
+      <div class="synth">
+        <p class="kicker">At full strength &middot; the finished loop</p>
+        <h2>What is left is depth, not direction.</h2>
+        <p>The soup-to-nuts loop already runs end to end: idea, local models, agent, owned storage, cross-device, ship. Almost nothing on the roadmap is a new direction. It is each piece of the existing arc reaching its finished form, and most of it is already built and waiting on config, a flag, or one hardening pass.</p>
+        <div class="synth-grid">
+          <div class="sitem"><h4>Smarter routing <span class="badge full">Full strength</span></h4><p>Harbor Mini becomes the stack's turn classifier, replacing the keyword heuristic, and phone-side specialists gain tool use and delegation.</p></div>
+          <div class="sitem"><h4>Claude Code parity <span class="badge full">Full strength</span></h4><p>MCP-stdio on the engine, plus checkpoints and rewind, so any tool ecosystem plugs in and any step is reversible.</p></div>
+          <div class="sitem"><h4>A cloud runner <span class="badge full">Full strength</span></h4><p>A second off-device home beside your daemon, so long jobs run even when your own machine is off, same journaled and resumable contract.</p></div>
+          <div class="sitem"><h4>Your own GitHub, complete <span class="badge full">Full strength</span></h4><p>Real git on the desktop, the offline outbox flipped on, platform-remote push, and Dropbox and Proton as storage homes.</p></div>
+          <div class="sitem"><h4>The Team Vault <span class="badge full">Full strength</span></h4><p>A true multi-writer backend so a company shares one knowledge base with real concurrent editing, not a folder sync.</p></div>
+          <div class="sitem"><h4>Named crew, everywhere <span class="badge full">Full strength</span></h4><p>Your agents with per-agent stats in Stack Health, auto-review before every deploy, one-tap tuning.</p></div>
+          <div class="sitem"><h4>Vision past the cloud <span class="badge full">Full strength</span></h4><p>Local and BYOM vision, and images over the desktop-daemon protocol, so eyes are not a cloud-only feature.</p></div>
+          <div class="sitem"><h4>Team commerce live <span class="badge full">Full strength</span></h4><p>Commercial billing switched on, server-enforced org roles, and a hosted license endpoint replacing the client stub.</p></div>
+        </div>
+      </div>
+
+      <div style="margin-top:26px; font-size:15.5px; color:var(--mid); max-width:80ch;">
+        <p><b style="color:var(--ink);">The one-line read.</b> OpenShore already does the thing it set out to do: build an app soup to nuts, on your own machines, private the whole way. What is shipped is the working loop; what is at full strength is the same loop with every seam widened, every backend wired, and every rough edge finished. The direction is set. The rest is depth.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <footer>
+      <span>OpenShore &middot; Product deep dive &middot; internal</span>
+      <span>Shipped / partial / at full strength &middot; your machine, your models, your keys</span>
+    </footer>
+  </div>
+</main>

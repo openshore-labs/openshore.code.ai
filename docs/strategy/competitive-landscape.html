@@ -1,0 +1,742 @@
+<title>OpenShore Competitive Landscape</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --surface: #fcfbf7;
+    --surface-2: #edeae0;
+    --ink: #1c2a33;
+    --mid: #45535b;
+    --muted: #7c868c;
+    --rule: #e5e0d3;
+    --rule-strong: #d6d0c2;
+    --deep: #16232b;
+    --deep-ink: #f2efe6;
+    --teal: #2f5a66;
+    --teal-light: #4b90a3;
+    --teal-deep: #24454f;
+    --amber: #a35f0a;
+    --amber-light: #c47d1f;
+    --danger: #c0392b;
+    --good: #2f8f4e;
+    --slate: #5a6b72;
+    --emerge: #7a4b6b;
+    --wash: rgba(47, 90, 102, 0.10);
+    --wash-strong: rgba(47, 90, 102, 0.16);
+    --amber-wash: rgba(163, 95, 10, 0.12);
+    --dot-neutral: #5a6b72;
+    --shadow: 0 1px 2px rgba(28, 42, 51, 0.06), 0 12px 30px -18px rgba(28, 42, 51, 0.30);
+    --serif: "Fraunces", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141e24; --surface: #1b262d; --surface-2: #212e36;
+      --ink: #f2efe6; --mid: #c4ccd0; --muted: #8792977;
+      --mid: #c2cace; --muted: #879197;
+      --rule: #2a3841; --rule-strong: #37474f;
+      --deep: #0f181d; --deep-ink: #f2efe6;
+      --teal: #4b90a3; --teal-light: #6fb1c2; --teal-deep: #3c7a8c;
+      --amber: #d8912f; --amber-light: #eaa945;
+      --danger: #e5695c; --good: #4ade80;
+      --slate: #8792977; --slate: #7f8c93;
+      --wash: rgba(75, 144, 163, 0.14); --wash-strong: rgba(75, 144, 163, 0.20);
+      --amber-wash: rgba(216, 145, 47, 0.15);
+      --dot-neutral: #7f8c93;
+      --emerge: #b988a8;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 14px 34px -18px rgba(0, 0, 0, 0.75);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141e24; --surface: #1b262d; --surface-2: #212e36;
+    --ink: #f2efe6; --mid: #c2cace; --muted: #879197;
+    --rule: #2a3841; --rule-strong: #37474f;
+    --deep: #0f181d; --deep-ink: #f2efe6;
+    --teal: #4b90a3; --teal-light: #6fb1c2; --teal-deep: #3c7a8c;
+    --amber: #d8912f; --amber-light: #eaa945;
+    --danger: #e5695c; --good: #4ade80;
+    --slate: #7f8c93;
+    --wash: rgba(75, 144, 163, 0.14); --wash-strong: rgba(75, 144, 163, 0.20);
+    --amber-wash: rgba(216, 145, 47, 0.15);
+    --dot-neutral: #7f8c93;
+    --emerge: #b988a8;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 14px 34px -18px rgba(0, 0, 0, 0.75);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.62;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 22px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--teal); margin: 0 0 14px;
+  }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--surface-2), var(--bg) 70%); border-bottom: 1px solid var(--rule); padding: 62px 0 46px; }
+  .hero .grooves { position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+    background:
+      radial-gradient(120% 90% at 88% -10%, var(--wash) 0%, transparent 55%),
+      repeating-linear-gradient(90deg, transparent 0 26px, rgba(47,90,102,0.035) 26px 27px); }
+  .hero h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(28px, 4.6vw, 45px); line-height: 1.08; letter-spacing: -0.01em; margin: 0 0 20px; max-width: 20ch; }
+  .hero .glow { color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hero .glow { color: var(--teal-light); } }
+  :root[data-theme="dark"] .hero .glow { color: var(--teal-light); }
+  .hero .deck { font-size: 16.5px; color: var(--mid); max-width: 72ch; margin: 0; }
+  .hero .deck b { color: var(--ink); }
+
+  /* ---------- grade key ---------- */
+  .gradekey { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 15px 0; position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px); }
+  .gradekey .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+  .gradekey .lead { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .gradekey .k { font-size: 12.5px; color: var(--mid); display: inline-flex; align-items: center; gap: 7px; }
+
+  section { padding: 46px 0; border-bottom: 1px solid var(--rule); }
+  .kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--teal); margin: 0 0 10px; }
+  .section-head h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(22px, 3vw, 29px); line-height: 1.16; letter-spacing: -0.01em; margin: 0 0 12px; max-width: 24ch; }
+  .section-head > p { font-size: 15.5px; color: var(--mid); margin: 0 0 4px; max-width: 76ch; }
+  .section-head > p b { color: var(--ink); }
+  .claim { font-size: 16px; color: var(--mid); max-width: 78ch; margin: 18px 0 0; }
+  .claim b { color: var(--ink); }
+
+  /* ---------- grade + risk badges ---------- */
+  .grade, .risk, .bar {
+    display: inline-block; font-family: var(--mono); font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; vertical-align: middle;
+  }
+  .grade { font-size: 9.5px; padding: 3px 8px; border-radius: 6px; }
+  .grade.bench { background: var(--surface-2); color: var(--ink); border: 1px solid var(--rule-strong); }
+  .grade.assumed { background: var(--wash); color: var(--teal); border: 1px solid rgba(47,90,102,0.5); }
+  .grade.measured { background: transparent; color: var(--muted); border: 1px dashed var(--rule-strong); }
+  .risk { font-size: 9px; padding: 2px 7px; border-radius: 5px; }
+  .risk.high { background: rgba(192,57,43,0.13); color: var(--danger); border: 1px solid rgba(192,57,43,0.4); }
+  .risk.mod { background: var(--amber-wash); color: var(--amber); border: 1px solid rgba(163,95,10,0.4); }
+  .risk.low { background: rgba(47,143,78,0.13); color: var(--good); border: 1px solid rgba(47,143,78,0.4); }
+
+  /* ---------- strands ---------- */
+  .strands { list-style: none; margin: 26px 0 0; padding: 0; display: grid; gap: 16px; }
+  .strand { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .strand p { margin: 0; }
+  .strand > p:first-child { font-size: 15px; color: var(--ink); }
+  .strand > p:first-child b { color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .strand > p:first-child b { color: var(--teal-light); } }
+  :root[data-theme="dark"] .strand > p:first-child b { color: var(--teal-light); }
+  .strand .cite { font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1.5; margin-top: 9px; }
+
+  .knowassume { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
+  .ka { border-radius: 14px; padding: 18px 20px; border: 1px solid var(--rule); }
+  .ka.know { background: var(--surface-2); }
+  .ka.assume { background: var(--wash); border-color: rgba(47,90,102,0.34); }
+  .ka h4 { margin: 0 0 8px; font-size: 13px; display: flex; align-items: center; gap: 9px; }
+  .ka p { margin: 0; font-size: 14px; color: var(--mid); }
+  .caveat { margin-top: 22px; border-left: 3px solid var(--amber); padding: 4px 0 4px 18px; font-size: 15px; color: var(--mid); max-width: 76ch; }
+  .caveat b { color: var(--ink); }
+
+  /* ---------- mechanism cards ---------- */
+  .mech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 8px; }
+  .mcard { background: var(--surface); border: 1px solid var(--rule); border-radius: 16px; padding: 22px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 11px; }
+  .mcard.wide { grid-column: 1 / -1; border-color: rgba(47,90,102,0.42); background: linear-gradient(180deg, var(--wash), var(--surface) 46%); }
+  .mcard .top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .mcard h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; margin: 0; line-height: 1.15; }
+  .mcard .whatis { font-size: 14px; color: var(--mid); margin: 0; }
+  .mcard .cite { font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+  .mcard .predicts { font-size: 14px; color: var(--ink); margin: 0; }
+  .mcard .predicts .lbl { font-weight: 600; color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mcard .predicts .lbl { color: var(--teal-light); } }
+  :root[data-theme="dark"] .mcard .predicts .lbl { color: var(--teal-light); }
+  .mcard .grades { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 2px; }
+  .flag { font-size: 13px; color: var(--mid); background: var(--surface-2); border: 1px solid var(--rule); border-left: 3px solid var(--amber); border-radius: 8px; padding: 11px 14px; margin: 2px 0 0; }
+  .flag b { color: var(--ink); }
+  .mcard .strategy { font-size: 14px; color: var(--ink); background: var(--wash); border-radius: 10px; padding: 13px 15px; margin: 0; }
+  .mcard .strategy b { color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mcard .strategy b { color: var(--teal-light); } }
+  :root[data-theme="dark"] .mcard .strategy b { color: var(--teal-light); }
+
+  /* ---------- map ---------- */
+  .map-frame { background: var(--surface); border: 1px solid var(--rule); border-radius: 18px; box-shadow: var(--shadow); padding: 26px 26px 20px; }
+  .map-shell { display: grid; grid-template-columns: 26px 1fr; grid-template-rows: 1fr 26px; gap: 10px; }
+  .axis-y { grid-column: 1; grid-row: 1; position: relative; }
+  .axis-y span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); white-space: nowrap; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .axis-x { grid-column: 2; grid-row: 2; display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .plot { grid-column: 2; grid-row: 1; position: relative; aspect-ratio: 1 / 0.86; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--surface-2); overflow: hidden; }
+  .quad { position: absolute; width: 50%; height: 50%; display: flex; padding: 13px 15px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); z-index: 1; line-height: 1.4; }
+  .quad.tl { top: 0; left: 0; align-items: flex-start; justify-content: flex-start; }
+  .quad.tr { top: 0; right: 0; align-items: flex-start; justify-content: flex-end; text-align: right; background: var(--wash-strong); color: var(--teal-deep); font-weight: 600; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .quad.tr { color: var(--teal-light); } }
+  :root[data-theme="dark"] .quad.tr { color: var(--teal-light); }
+  .quad.bl { bottom: 0; left: 0; align-items: flex-end; justify-content: flex-start; }
+  .quad.br { bottom: 0; right: 0; align-items: flex-end; justify-content: flex-end; text-align: right; }
+  .plot .grid-v, .plot .grid-h { position: absolute; background: var(--rule-strong); z-index: 2; }
+  .plot .grid-v { left: 50%; top: 0; bottom: 0; width: 1px; }
+  .plot .grid-h { top: 50%; left: 0; right: 0; height: 1px; }
+  .pin { position: absolute; z-index: 4; width: 23px; height: 23px; border-radius: 50%; background: var(--dot-neutral); color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; font-weight: 600; transform: translate(-50%, 50%); box-shadow: 0 0 0 2.5px var(--surface), 0 4px 10px -3px rgba(28,42,51,0.4); opacity: 0; animation: dotIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+  .pin.c-cloud { background: var(--amber); }
+  .pin.c-local { background: var(--teal); }
+  .pin.c-mobile { background: var(--teal-light); }
+  .pin.c-oss { background: var(--slate); }
+  .pin.c-emerge { background: var(--emerge); }
+  .os-dot { position: absolute; z-index: 6; width: 27px; height: 27px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--teal-light), var(--teal) 55%, var(--teal-deep) 100%); transform: translate(-50%, 50%); box-shadow: 0 0 0 4px var(--surface), 0 0 0 11px var(--wash), 0 8px 22px -6px rgba(47,90,102,0.7); opacity: 0; animation: osDrop 0.72s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; animation-delay: 1.15s; }
+  .os-dot::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 1.5px solid var(--teal); opacity: 0; animation: ping 2.6s ease-out infinite; animation-delay: 1.9s; }
+  .os-dot .lbl { position: absolute; right: 38px; top: 50%; transform: translateY(-50%); text-align: right; white-space: nowrap; }
+  .os-dot .lbl b { display: block; font-family: var(--serif); font-size: 18px; font-weight: 700; color: var(--teal-deep); line-height: 1; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .os-dot .lbl b { color: var(--teal-light); } }
+  :root[data-theme="dark"] .os-dot .lbl b { color: var(--teal-light); }
+  @keyframes dotIn { from { opacity: 0; transform: translate(-50%, 50%) scale(0.2); } to { opacity: 1; transform: translate(-50%, 50%) scale(1); } }
+  @keyframes osDrop { 0% { opacity: 0; transform: translate(-50%, calc(50% - 26px)) scale(0.4); } 70% { opacity: 1; } 100% { opacity: 1; transform: translate(-50%, 50%) scale(1); } }
+  @keyframes ping { 0% { opacity: 0.7; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(2.1); } }
+
+  .class-key { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; font-size: 12.5px; color: var(--mid); }
+  .class-key .ck { display: inline-flex; align-items: center; gap: 7px; }
+  .class-key .sw { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .sw.c-cloud { background: var(--amber); } .sw.c-local { background: var(--teal); }
+  .sw.c-mobile { background: var(--teal-light); } .sw.c-oss { background: var(--slate); }
+  .sw.c-emerge { background: var(--emerge); }
+  .sw.c-os { background: radial-gradient(circle at 35% 30%, var(--teal-light), var(--teal-deep)); }
+
+  .map-legend { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--rule); }
+  .hero-key { display: flex; align-items: center; gap: 11px; font-size: 15px; color: var(--mid); margin-bottom: 18px; }
+  .hero-key .star { width: 24px; height: 24px; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, var(--teal-light), var(--teal) 58%, var(--teal-deep) 100%); box-shadow: 0 0 0 4px var(--wash); }
+  .hero-key b { font-family: var(--serif); color: var(--teal-deep); font-weight: 700; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hero-key b { color: var(--teal-light); } }
+  :root[data-theme="dark"] .hero-key b { color: var(--teal-light); }
+  .legend-group { margin-bottom: 16px; }
+  .legend-group > .gl { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 9px; display: flex; align-items: center; gap: 7px; }
+  .legend-group ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 9px 24px; }
+  .legend-group li { display: flex; align-items: baseline; gap: 10px; font-size: 13px; color: var(--muted); }
+  .legend-group .num { flex: none; width: 21px; height: 21px; border-radius: 50%; color: #fff; font-family: var(--mono); font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; transform: translateY(4px); }
+  .num.c-cloud { background: var(--amber); } .num.c-local { background: var(--teal); }
+  .num.c-mobile { background: var(--teal-light); } .num.c-oss { background: var(--slate); }
+  .num.c-emerge { background: var(--emerge); }
+  .legend-group li b { color: var(--ink); font-weight: 600; }
+
+  .map-reading { margin-top: 26px; display: flex; flex-direction: column; gap: 14px; }
+  .map-reading .r { display: flex; gap: 13px; font-size: 14.5px; color: var(--mid); max-width: 80ch; }
+  .map-reading .r b { color: var(--ink); }
+  .map-reading .r .ax { flex: none; width: 6px; border-radius: 3px; background: var(--teal); }
+
+  /* ---------- table ---------- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 16px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 880px; font-size: 13.5px; background: var(--surface); }
+  thead th { font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 500; text-align: center; padding: 14px 8px; border-bottom: 1px solid var(--rule-strong); vertical-align: bottom; }
+  thead th.name-col { text-align: left; padding-left: 18px; }
+  thead th.barrier-col { color: var(--teal); }
+  tbody td { padding: 12px 8px; text-align: center; border-bottom: 1px solid var(--rule); color: var(--mid); vertical-align: middle; }
+  tbody td.name-col { text-align: left; padding-left: 18px; }
+  tbody tr:last-child td { border-bottom: none; }
+  .player-name { font-weight: 600; color: var(--ink); font-size: 14px; }
+  .yes { color: var(--teal); font-size: 15px; }
+  .part { color: var(--teal); font-size: 15px; opacity: 0.6; }
+  .no { color: var(--rule-strong); font-size: 15px; }
+  .bar { font-size: 10px; padding: 3px 9px; border-radius: 6px; }
+  .bar.you { background: var(--wash-strong); color: var(--teal-deep); border: 1px solid rgba(47,90,102,0.5); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bar.you { color: var(--teal-light); } }
+  :root[data-theme="dark"] .bar.you { color: var(--teal-light); }
+  .bar.cloud { background: var(--amber-wash); color: var(--amber); border: 1px solid rgba(163,95,10,0.4); }
+  .bar.mixed { background: rgba(90,107,114,0.14); color: var(--slate); border: 1px solid rgba(90,107,114,0.4); }
+  .bar.na { background: transparent; color: var(--muted); border: 1px dashed var(--rule-strong); }
+  .barrier-cell { text-align: left; }
+  .barrier-cell small { display: block; font-size: 10.5px; color: var(--muted); margin-top: 4px; text-transform: none; letter-spacing: 0; font-family: var(--sans); line-height: 1.35; }
+  tbody tr.row-os { background: var(--wash); }
+  tbody tr.row-os .player-name { color: var(--teal-deep); font-family: var(--serif); font-size: 15.5px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) tbody tr.row-os .player-name { color: var(--teal-light); } }
+  :root[data-theme="dark"] tbody tr.row-os .player-name { color: var(--teal-light); }
+  .glyph-key { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.03em; margin: 14px 0 0; }
+  .table-read { font-size: 14px; color: var(--mid); margin: 14px 0 0; max-width: 80ch; }
+  .table-read b { color: var(--ink); }
+
+  /* ---------- claim vs instrument ---------- */
+  .ci-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; align-items: start; }
+  .ci-col { background: var(--surface); border: 1px solid var(--rule); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); }
+  .ci-col.instrument { border-color: rgba(47,90,102,0.4); }
+  .ci-col h3 { margin: 0 0 16px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+  .ci-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+  .ci-list li { font-size: 14px; color: var(--mid); padding-left: 20px; position: relative; }
+  .ci-list li::before { content: ""; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; }
+  .ci-col.claim-col .ci-list li::before { background: var(--good); }
+  .ci-col.instrument .ci-list li::before { background: var(--teal); }
+  .ci-list li b { color: var(--ink); }
+  .ci-list li .metric { font-weight: 600; color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ci-list li .metric { color: var(--teal-light); } }
+  :root[data-theme="dark"] .ci-list li .metric { color: var(--teal-light); }
+
+  .experiment { margin-top: 24px; background: var(--deep); color: var(--deep-ink); border-radius: 16px; padding: 28px 30px; }
+  .experiment .kicker { color: var(--teal-light); margin-bottom: 14px; }
+  .experiment h3 { font-family: var(--serif); font-size: 22px; font-weight: 600; margin: 0 0 16px; color: var(--deep-ink); }
+  .experiment dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; font-size: 14px; }
+  .experiment dt { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal-light); padding-top: 2px; }
+  .experiment dd { margin: 0; color: rgba(242,239,230,0.9); }
+  .experiment dd b { color: #fff; }
+
+  .n1 { margin-top: 24px; border-left: 3px solid var(--teal); padding: 6px 0 6px 18px; font-size: 15px; color: var(--mid); max-width: 76ch; }
+  .n1 b { color: var(--ink); }
+
+  /* ---------- honesty + citations ---------- */
+  .honesty { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 14px; padding: 22px 24px; font-size: 14px; color: var(--mid); max-width: 82ch; }
+  .honesty b { color: var(--ink); }
+  .cites { margin-top: 34px; }
+  .cites h3 { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; }
+  .cites ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; }
+  .cites li { font-size: 12px; color: var(--muted); line-height: 1.5; padding-left: 14px; text-indent: -14px; }
+  .cites li b { color: var(--mid); font-weight: 600; }
+  .cites a { color: var(--teal); text-decoration: none; border-bottom: 1px solid rgba(47,90,102,0.4); }
+  .cites a:hover { border-bottom-color: var(--teal); }
+
+  footer { padding: 30px 0 46px; color: var(--muted); font-size: 12px; font-family: var(--mono); letter-spacing: 0.02em; display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; }
+
+  a:focus-visible, .grade:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  @media (max-width: 780px) {
+    .mech-grid { grid-template-columns: 1fr; }
+    .knowassume { grid-template-columns: 1fr; }
+    .ci-grid { grid-template-columns: 1fr; }
+    .cites ul { grid-template-columns: 1fr; }
+    .legend-group ol { grid-template-columns: 1fr; }
+    .plot .quad { font-size: 8px; padding: 8px 9px; letter-spacing: 0.06em; }
+    .pin { width: 20px; height: 20px; font-size: 10px; }
+    .os-dot .lbl b { font-size: 15px; }
+    .experiment dl { grid-template-columns: 1fr; gap: 3px 0; }
+    .experiment dt { margin-top: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pin, .os-dot { animation: none !important; opacity: 1 !important; transform: translate(-50%, 50%) !important; }
+    .os-dot::after { animation: none; opacity: 0; }
+  }
+</style>
+
+<header class="hero">
+  <div class="grooves" aria-hidden="true"></div>
+  <div class="wrap">
+    <p class="eyebrow">Competitive Landscape &middot; Evidence Brief</p>
+    <h1>Every capable coding agent runs on someone else&rsquo;s servers. <span class="glow">OpenShore runs on machines you own, and follows you from desk to pocket.</span></h1>
+    <p class="deck">Here is the bet. The best coding agents are being rented, not owned. Your code, your context, and your workflow live on a vendor&rsquo;s cloud, on their pricing, their model choices, their uptime, their data policy. OpenShore makes a different trade: it is a full coding agent that runs on your own hardware, private by construction, and it travels across your devices, a pocket model on the phone and your big models on the desk, synced over a network you own. That corner was empty until 2026. It is not any longer: a small, mostly open-source wave has started racing into it, which is a signal the demand is real and a warning that the moat is execution, not category. If the bet holds, the developers who care about owning their tools, and the ones who legally cannot send code to a cloud, will choose sovereignty without giving up the agent, and pick the most finished version of it. That is a claim we have to <b>measure, not assert.</b></p>
+  </div>
+</header>
+
+<div class="gradekey">
+  <div class="wrap">
+    <span class="lead">How every claim is graded</span>
+    <span class="k"><span class="grade bench">Benchmarked</span> established outside research or verified fact</span>
+    <span class="k"><span class="grade assumed">Assumed</span> our inference, not yet measured</span>
+    <span class="k"><span class="grade measured">Measured</span> OpenShore&rsquo;s own data, none of which exists yet</span>
+  </div>
+</div>
+
+<main>
+  <!-- LEAD PILLAR -->
+  <section>
+    <div class="wrap">
+      <p class="kicker">The lead argument &middot; sovereignty and cross-device</p>
+      <div class="section-head">
+        <h2>Two moves rivals cannot copy without becoming a different company.</h2>
+      </div>
+      <p class="claim">Rivals can match OpenShore on model quality by renting the best cloud model of the month. They cannot match it on <b>where the work runs</b> without unwinding the business they built. A cloud-agent company sells inference by the token; running fully on your hardware deletes its meter. And almost none of them travel: the coding agent lives in one place, a desktop IDE, a terminal, or a web tab, while the phone gets nothing or a thin chat. OpenShore does both at once. The reasoning model that quarterbacks the work runs on a box you own, specialists plug in by task, and the same stack answers from your iPhone over your own private network, or from a pocket model fully on the phone when there is no signal at all. Three separate bodies of evidence say this combination matters more than a feature list makes it look.</p>
+
+      <ol class="strands">
+        <li class="strand">
+          <p><b>A large share of developers legally or contractually cannot send code to a cloud model.</b> Confidential source, regulated industries, air-gapped environments, and client contracts all forbid it. When a well-known firm banned public AI tools after engineers pasted proprietary code into ChatGPT, it named a constraint that a local-only agent removes by construction.</p>
+          <p class="cite">Samsung internal ban on public generative AI, 2023 (Bloomberg). Cisco 2024 Data Privacy Benchmark: a majority of organizations restricted or limited generative-AI use over data and IP concerns. <span class="risk mod">Transfer risk: Moderate</span>. The constraint is real and documented; how many developers switch tools because of it is the open question.</p>
+        </li>
+        <li class="strand">
+          <p><b>Local models have crossed the &ldquo;good enough for real coding&rdquo; line for a growing share of tasks.</b> Open-weight coding models now handle a large fraction of everyday edits, refactors, and questions on consumer hardware, which is the enabling condition that makes a local-first agent viable rather than a compromise. The frontier still leads on the hardest tasks, which is exactly why OpenShore keeps cloud one deliberate tap away on your own key.</p>
+          <p class="cite">Open coding-model benchmark trends (HumanEval, SWE-bench families), 2024&ndash;2026. <span class="risk high">Transfer risk: High</span>. A fast-moving target. The direction is clear, but any specific &ldquo;local matches cloud&rdquo; claim dates quickly and must be re-checked, not asserted.</p>
+        </li>
+        <li class="strand">
+          <p><b>People prefer a fixed price over a meter, even against their own arithmetic.</b> The flat-rate bias is well documented: consumers choose flat tariffs over metered ones to avoid the anxiety of a running counter, even when metered would cost them less. A coding agent priced by the token keeps that counter running while you work; an owned agent removes it.</p>
+          <p class="cite">Lambrecht &amp; Skiera (2006), tariff-choice biases, <em>J. Marketing Research</em>. <span class="risk mod">Transfer risk: Moderate</span>. Robust in telecom and utilities; its pull on developer tool choice is an analogy to test.</p>
+        </li>
+      </ol>
+
+      <div class="knowassume">
+        <div class="ka know">
+          <h4><span class="grade bench">Benchmarked</span> What we know</h4>
+          <p>Real constraints forbid cloud code in large segments. Local models are increasingly capable on consumer hardware. Buyers dislike meters and lock-in. Configured, self-built tools accrue attachment and switching cost. All established outside OpenShore.</p>
+        </div>
+        <div class="ka assume">
+          <h4><span class="grade assumed">Assumed</span> What we don&rsquo;t yet know</h4>
+          <p>Whether sovereignty plus cross-device is a strong enough draw to move developers off a polished cloud agent, and how large the segment that will pay for it really is. The forces are real. The first-party evidence is zero.</p>
+        </div>
+      </div>
+
+      <p class="caveat"><b>The N=1 caveat.</b> The founder is close to the ideal user: a builder who wants to own the stack and distrusts renting the tools. That makes OpenShore obviously valuable to the founder and tells us almost nothing about strangers. The sovereignty thesis is a claim about how many people share that preference strongly enough to switch and to pay. Only data from strangers can confirm it.</p>
+    </div>
+  </section>
+
+  <!-- MECHANISM CARDS -->
+  <section>
+    <div class="wrap">
+      <p class="kicker">Why owning your stack compounds</p>
+      <div class="section-head">
+        <h2>Five forces explain why an owned, private, cross-device agent holds a user.</h2>
+        <p>Ownership here is not a slogan. It is the condition that switches these forces on. A rented cloud agent, however polished, sits on the weak end of the first four, and one of the five is a caution, not a tailwind.</p>
+      </div>
+
+      <div class="mech-grid">
+        <div class="mcard">
+          <div class="top"><h3>The IKEA effect, on your stack</h3></div>
+          <p class="whatis">Self-invested labor raises how much you value and keep the result. You pick the quarterback, place specialists by task, and build a crew of named agents. That configured stack is yours in a way a default never is.</p>
+          <p class="cite">Norton, Mochon &amp; Ariely (2012), <em>J. Consumer Psychology</em> 22(3), 453-460.</p>
+          <p class="predicts"><span class="lbl">Predicts for OpenShore:</span> a stack the user assembled is valued above a faceless cloud default, which supports attachment and retention. The boundary condition holds: the effect only lands if the setup actually succeeds, so first-run must finish.</p>
+          <div class="grades"><span class="grade bench">Benchmarked</span> <span class="grade assumed">Transfer to a dev tool: Assumed</span></div>
+        </div>
+
+        <div class="mcard">
+          <div class="top"><h3>Loss aversion &amp; the rug-pull</h3></div>
+          <p class="whatis">People weigh losses far more than equal gains. A rented agent can change its price, deprecate the model you rely on, alter its terms, or go down, and you absorb it. An owned, local stack cannot be taken away or repriced from the outside.</p>
+          <p class="cite">Kahneman &amp; Tversky, prospect theory; endowment effect (Kahneman, Knetsch &amp; Thaler, 1990).</p>
+          <p class="predicts"><span class="lbl">Predicts for OpenShore:</span> as cloud tools reprice, deprecate models, and shift terms, the value of an agent that cannot be changed out from under you rises. In 2025 to 2026 alone, Cursor moved to a usage meter and Windsurf was acquired and folded into Devin. Immunity to the rug-pull is a durable, structural draw.</p>
+          <div class="grades"><span class="grade bench">Benchmarked</span> <span class="grade assumed">OpenShore relevance: Assumed</span></div>
+        </div>
+
+        <div class="mcard wide">
+          <div class="top"><h3>Data sovereignty, the whole thesis in one line</h3><span class="grade bench">Benchmarked constraint</span></div>
+          <p class="whatis">For a large class of work, sending code to a third-party cloud is not a preference, it is prohibited. Confidential IP, regulated data, client contracts, and air-gapped environments all draw a hard line the mainstream tools cannot cross.</p>
+          <p class="cite">Cisco 2024 Data Privacy Benchmark (organizational limits on generative AI). Samsung public-AI ban, 2023 (Bloomberg). GDPR and data-residency regimes.</p>
+          <p class="strategy"><b>This is OpenShore&rsquo;s design thesis, not a marketing angle.</b> The others treat privacy as a setting. OpenShore makes it structural: the work runs where you put it, keys never leave your devices, everything is encrypted at rest, and cloud sees only the calls you deliberately make on your own account. For the segment under a hard line, that is not a nicer option, it is the <b>only</b> option that also gives them a real agent.</p>
+          <div class="grades"><span class="grade bench">Constraint: Benchmarked</span> <span class="grade assumed">Segment size: Assumed</span></div>
+        </div>
+
+        <div class="mcard">
+          <div class="top"><h3>Flat price beats the meter</h3></div>
+          <p class="whatis">Buyers choose fixed prices over metered ones to escape the running counter, even when the meter would be cheaper. Token-metered agents keep that counter visible while you work; an owned agent removes it.</p>
+          <p class="cite">Lambrecht &amp; Skiera (2006), tariff-choice biases, <em>J. Marketing Research</em> 43(2).</p>
+          <p class="predicts"><span class="lbl">Predicts for OpenShore:</span> a flat, owned price (free to chat, a small flat fee to build) reads as calmer than a meter, and removes the self-throttling that suppresses how much people use metered tools. It should raise depth of use.</p>
+          <div class="grades"><span class="grade bench">Benchmarked</span> <span class="grade assumed">Dev-tool transfer: Assumed</span></div>
+        </div>
+
+        <div class="mcard">
+          <div class="top"><h3>The privacy paradox</h3></div>
+          <p class="whatis">People say they value privacy, then routinely fail to pay for it or change behavior to protect it. Stated preference and revealed preference diverge sharply.</p>
+          <p class="cite">Norberg, Horne &amp; Horne (2007), <em>J. Consumer Affairs</em> 41(1). Replicated widely.</p>
+          <p class="flag"><b>Honesty flag:</b> this is the mechanism that can <em>break</em> the thesis. If privacy converts only as a stated preference and not a purchase, the sovereignty draw collapses to a niche. The bet must rest on the segment with a <em>hard constraint or a real cost</em>, confidential-code, regulated, offline, cost-sensitive, not on privacy sentiment in the general developer market.</p>
+          <div class="grades"><span class="grade bench">Benchmarked (caution)</span> <span class="grade assumed">Where OpenShore lands: Assumed</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAP -->
+  <section>
+    <div class="wrap">
+      <p class="kicker">The landscape</p>
+      <div class="section-head">
+        <h2>Two axes, and a race is now forming for the top-right.</h2>
+        <p>Two things separate every product here, and they are exactly the two halves of OpenShore&rsquo;s bet. <b>Sovereignty</b> folds together three questions that move as one: does it run on your hardware or their cloud, is it open and yours or a locked box, and is it private or surveilled and metered. <b>Reach</b> is whether the agent lives on a single surface or truly travels across your devices, pocket and desk, synced over a network you own. Plot both, and the top-right was empty until 2026, when a small, mostly open-source wave (the plum pins) began racing into it. That is the real competitive story: not an empty quadrant, a nascent one. Pins are colored by neighborhood so you can read the field and pick who to study.</p>
+      </div>
+
+      <div class="map-frame">
+        <div class="map-shell">
+          <div class="axis-y"><span>Single surface &nbsp;&rarr;&nbsp; Cross-device &middot; pocket + desk</span></div>
+          <div class="plot">
+            <div class="quad tl">The Everywhere Cloud</div>
+            <div class="quad tr">The Sovereign Companion</div>
+            <div class="quad bl">The Desk-bound Rental</div>
+            <div class="quad br">The Local Workbench</div>
+            <span class="grid-v" aria-hidden="true"></span>
+            <span class="grid-h" aria-hidden="true"></span>
+
+            <!-- Cloud agents (amber) -->
+            <div class="pin c-cloud" style="left:16%; bottom:22%; animation-delay:0.10s" aria-label="Cursor">1</div>
+            <div class="pin c-cloud" style="left:21%; bottom:48%; animation-delay:0.16s" aria-label="GitHub Copilot">2</div>
+            <div class="pin c-cloud" style="left:24%; bottom:68%; animation-delay:0.22s" aria-label="Claude Code">3</div>
+            <div class="pin c-cloud" style="left:15%; bottom:31%; animation-delay:0.28s" aria-label="Windsurf">4</div>
+            <div class="pin c-cloud" style="left:12%; bottom:40%; animation-delay:0.34s" aria-label="Devin">5</div>
+            <div class="pin c-cloud" style="left:12%; bottom:69%; animation-delay:0.40s" aria-label="Replit Agent">6</div>
+            <div class="pin c-cloud" style="left:52%; bottom:25%; animation-delay:0.46s" aria-label="Zed AI">7</div>
+
+            <!-- Local runners (teal) -->
+            <div class="pin c-local" style="left:82%; bottom:20%; animation-delay:0.52s" aria-label="Ollama">8</div>
+            <div class="pin c-local" style="left:73%; bottom:17%; animation-delay:0.58s" aria-label="LM Studio">9</div>
+            <div class="pin c-local" style="left:88%; bottom:31%; animation-delay:0.64s" aria-label="Jan">10</div>
+            <div class="pin c-local" style="left:85%; bottom:13%; animation-delay:0.70s" aria-label="GPT4All">11</div>
+            <div class="pin c-local" style="left:66%; bottom:26%; animation-delay:0.76s" aria-label="Msty">12</div>
+
+            <!-- Mobile on-device (light teal) -->
+            <div class="pin c-mobile" style="left:83%; bottom:39%; animation-delay:0.82s" aria-label="PocketPal">13</div>
+            <div class="pin c-mobile" style="left:79%; bottom:47%; animation-delay:0.88s" aria-label="Private LLM">14</div>
+            <div class="pin c-mobile" style="left:86%; bottom:37%; animation-delay:0.94s" aria-label="Enclave">15</div>
+            <div class="pin c-mobile" style="left:45%; bottom:82%; animation-delay:1.00s" aria-label="Apple Intelligence">16</div>
+
+            <!-- OSS / self-hosted (slate) -->
+            <div class="pin c-oss" style="left:59%; bottom:30%; animation-delay:1.04s" aria-label="Cline">17</div>
+            <div class="pin c-oss" style="left:63%; bottom:22%; animation-delay:1.06s" aria-label="Aider">18</div>
+            <div class="pin c-oss" style="left:56%; bottom:36%; animation-delay:1.08s" aria-label="Continue.dev">19</div>
+            <div class="pin c-oss" style="left:77%; bottom:29%; animation-delay:1.10s" aria-label="Tabby">20</div>
+
+            <!-- Emerging sovereign, cross-device agents (plum) -->
+            <div class="pin c-emerge" style="left:81%; bottom:71%; animation-delay:1.12s" aria-label="OpenMono">21</div>
+            <div class="pin c-emerge" style="left:61%; bottom:78%; animation-delay:1.14s" aria-label="Paseo">22</div>
+
+            <!-- OpenShore -->
+            <div class="os-dot" aria-label="OpenShore" style="left:87%; bottom:83%"><span class="lbl"><b>OpenShore</b></span></div>
+          </div>
+          <div class="axis-x">
+            <span>&larr; Rented cloud, closed, metered</span>
+            <span>Owned, local, open, private &rarr;</span>
+          </div>
+        </div>
+
+        <div class="class-key">
+          <span class="ck"><span class="sw c-os"></span> OpenShore</span>
+          <span class="ck"><span class="sw c-cloud"></span> Cloud coding agents &amp; AI IDEs</span>
+          <span class="ck"><span class="sw c-local"></span> Local model runners</span>
+          <span class="ck"><span class="sw c-mobile"></span> On-device mobile</span>
+          <span class="ck"><span class="sw c-oss"></span> Open-source / self-hosted assistants</span>
+          <span class="ck"><span class="sw c-emerge"></span> Emerging sovereign, cross-device agents</span>
+        </div>
+
+        <div class="map-legend">
+          <div class="hero-key"><span class="star" aria-hidden="true"></span> <span><b>OpenShore</b> shares the top-right with a brand-new, mostly open-source wave (OpenMono, Paseo). Its edge is not being alone: it is arriving as the finished, local-models-first product that runs on the desk and in the pocket, not a terminal tool or a remote for cloud agents.</span></div>
+
+          <div class="legend-group">
+            <p class="gl"><span class="sw c-cloud" style="width:10px;height:10px;border-radius:50%"></span> Cloud coding agents &amp; AI IDEs &middot; full agents, but on their cloud</p>
+            <ol>
+              <li><span class="num c-cloud">1</span> <span><b>Cursor</b> &middot; the category-defining AI IDE, desktop, cloud models</span></li>
+              <li><span class="num c-cloud">2</span> <span><b>GitHub Copilot</b> &middot; the incumbent, IDE + CLI, some mobile chat</span></li>
+              <li><span class="num c-cloud">3</span> <span><b>Claude Code</b> &middot; terminal + web + mobile, Anthropic cloud</span></li>
+              <li><span class="num c-cloud">4</span> <span><b>Windsurf</b> &middot; now Devin Desktop, Cognition-owned, desktop cloud</span></li>
+              <li><span class="num c-cloud">5</span> <span><b>Devin</b> &middot; autonomous cloud agent, web and Slack</span></li>
+              <li><span class="num c-cloud">6</span> <span><b>Replit Agent</b> &middot; cloud IDE, web + mobile, nothing local</span></li>
+              <li><span class="num c-cloud">7</span> <span><b>Zed AI</b> &middot; fast open editor, runs local models, but desktop only and cloud-default</span></li>
+            </ol>
+          </div>
+
+          <div class="legend-group">
+            <p class="gl"><span class="sw c-local" style="width:10px;height:10px;border-radius:50%"></span> Local model runners &middot; your hardware, but plumbing, not an agent</p>
+            <ol>
+              <li><span class="num c-local">8</span> <span><b>Ollama</b> &middot; the local-model standard, CLI + app, no first-party phone</span></li>
+              <li><span class="num c-local">9</span> <span><b>LM Studio</b> &middot; polished local desktop runner, closed source</span></li>
+              <li><span class="num c-local">10</span> <span><b>Jan</b> &middot; open-source, local-first, private, the closest on sovereignty</span></li>
+              <li><span class="num c-local">11</span> <span><b>GPT4All</b> &middot; open local desktop runner (Nomic)</span></li>
+              <li><span class="num c-local">12</span> <span><b>Msty</b> &middot; polished local + cloud hybrid, single surface</span></li>
+            </ol>
+          </div>
+
+          <div class="legend-group">
+            <p class="gl"><span class="sw c-mobile" style="width:10px;height:10px;border-radius:50%"></span> On-device mobile &middot; local on the phone, but stuck on one device</p>
+            <ol>
+              <li><span class="num c-mobile">13</span> <span><b>PocketPal</b> &middot; on-device GGUF chat, iOS/Android, phone only</span></li>
+              <li><span class="num c-mobile">14</span> <span><b>Private LLM</b> &middot; on-device iOS + macOS, one-time price, not synced</span></li>
+              <li><span class="num c-mobile">15</span> <span><b>Enclave</b> &middot; private on-device mobile AI</span></li>
+              <li><span class="num c-mobile">16</span> <span><b>Apple Intelligence</b> &middot; cross-device and private, but closed and not an agent</span></li>
+            </ol>
+          </div>
+
+          <div class="legend-group">
+            <p class="gl"><span class="sw c-oss" style="width:10px;height:10px;border-radius:50%"></span> Open-source / self-hosted assistants &middot; can go local, but IDE-bound</p>
+            <ol>
+              <li><span class="num c-oss">17</span> <span><b>Cline</b> &middot; open VS Code agent, BYO key, can run on Ollama</span></li>
+              <li><span class="num c-oss">18</span> <span><b>Aider</b> &middot; open CLI agent, BYO key, local-capable</span></li>
+              <li><span class="num c-oss">19</span> <span><b>Continue.dev</b> &middot; open IDE extension, local models supported</span></li>
+              <li><span class="num c-oss">20</span> <span><b>Tabby</b> &middot; self-hosted open assistant, you run the server</span></li>
+            </ol>
+          </div>
+
+          <div class="legend-group">
+            <p class="gl"><span class="sw c-emerge" style="width:10px;height:10px;border-radius:50%"></span> Emerging sovereign, cross-device agents &middot; the 2026 wave racing for this corner</p>
+            <ol>
+              <li><span class="num c-emerge">21</span> <span><b>OpenMono</b> &middot; local-LLM coding agent, home GPU + iPhone control, open source, on both app stores. The near-twin.</span></li>
+              <li><span class="num c-emerge">22</span> <span><b>Paseo</b> &middot; daemon + phone/desktop/web/CLI, no telemetry (15k+ stars), but orchestrates cloud agents, not local models</span></li>
+            </ol>
+            <p style="font-size:12px;color:var(--muted);margin:10px 0 0;line-height:1.5;">Cousins just off this coding map: <b style="color:var(--mid)">OpenClaw</b> (self-hosted gateway, iOS/Android nodes, but a general &ldquo;does things&rdquo; agent) and phone-first tools like <b style="color:var(--mid)">pocketdev</b>. All young, mostly open source, mostly developer-run.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-reading">
+        <div class="r"><span class="ax" aria-hidden="true"></span><span><b>The horizontal axis is sovereignty, and it is the switching-cost and trust axis.</b> Ownership, openness, and privacy move together: the products on the right run on your hardware, keep your keys, and cannot reprice or deprecate the tool from the outside. The whole left column, the cloud agents, competes on model polish and re-earns your trust and your bill every month.</span></div>
+        <div class="r"><span class="ax" aria-hidden="true"></span><span><b>The vertical axis is reach.</b> Almost every sovereign product is stranded on one surface, a desktop runner, an IDE plugin, or a phone-only app. Almost every cross-device product is a cloud that you do not own. Apple Intelligence is the telling near-miss: genuinely cross-device and private, but closed, not your models, and not a coding agent.</span></div>
+        <div class="r"><span class="ax" aria-hidden="true"></span><span><b>The top-right is where both are true, and until 2026 it was empty.</b> Now OpenMono and Paseo are racing into it. OpenShore&rsquo;s bet is not being alone there, it is arriving as the finished, local-models-first product while the newcomers are terminal tools, cloud-agent remotes, or general assistants. <span class="grade bench" style="margin-left:4px">Positions: verified</span> <span class="grade assumed">Who wins the corner: Assumed</span></span></div>
+      </div>
+
+      <div style="margin-top:26px; background:var(--surface); border:1px solid var(--rule); border-left:3px solid var(--emerge); border-radius:14px; padding:20px 22px; box-shadow:var(--shadow);">
+        <p style="font-family:var(--mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--emerge); margin:0 0 10px;">The corner is contested &middot; read this honestly</p>
+        <p style="font-size:14.5px; color:var(--mid); margin:0 0 12px; max-width:82ch;">An empty quadrant is partly an artifact of the axes you choose, and this one is filling in real time. The honest read is not &ldquo;nobody is here,&rdquo; it is &ldquo;a nascent cohort is converging, and OpenShore has to out-execute it.&rdquo; What the newcomers are, precisely:</p>
+        <ul style="margin:0; padding-left:18px; font-size:14px; color:var(--mid); display:flex; flex-direction:column; gap:9px; max-width:82ch;">
+          <li><b style="color:var(--ink);">OpenMono</b> is the near-twin: a local-LLM coding agent (llama.cpp), home GPU plus iPhone control, open source and free, shipping on both app stores, with an explicit &ldquo;AI shouldn&rsquo;t have a meter&rdquo; thesis. It is the single closest competitor and it is live.</li>
+          <li><b style="color:var(--ink);">Paseo</b> (15k+ GitHub stars) nails cross-device and privacy, but it <em>orchestrates other agents</em> whose models are usually cloud. It is a sovereign remote control, not local-models-first.</li>
+          <li><b style="color:var(--ink);">OpenClaw</b> and the phone-first tools are cousins, either general assistants or thin on the coding agent.</li>
+        </ul>
+        <p style="font-size:14.5px; color:var(--ink); margin:14px 0 0; max-width:82ch;"><b>So where is OpenShore&rsquo;s defensible edge?</b> Not the category, which is now contested. It is product finish: a native, polished app rather than a terminal or a dev kit, real on-device phone inference rather than a remote for a box, a curated quarterback-plus-specialists stack, and a commercial product with launch-to-store, crew, and projects. The moat is execution and integration, and the newcomers validate the demand rather than refute it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TABLE -->
+  <section>
+    <div class="wrap">
+      <p class="kicker">Capabilities &amp; where the work runs</p>
+      <div class="section-head">
+        <h2>The field splits on one question rivals answer the opposite way: where does your code live while the agent works?</h2>
+        <p>The capability columns are verified fact. The <b style="color:var(--teal)">where it runs</b> column carries the lead insight: on your hardware, in a shared cloud, or your choice.</p>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="name-col">Product</th>
+              <th>Runs on-device (phone)</th>
+              <th>Local desktop models</th>
+              <th>Cross-device sync</th>
+              <th>Full coding agent</th>
+              <th>BYO cloud, your keys</th>
+              <th>Open / no lock-in</th>
+              <th>Private, no telemetry</th>
+              <th class="barrier-col">Where your code runs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="row-os">
+              <td class="name-col"><span class="player-name">OpenShore</span></td>
+              <td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td>
+              <td class="barrier-cell"><span class="bar you">Your hardware</span><small>Local by default, phone or desk. Cloud only on a deliberate tap, your key</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Cursor</span></td>
+              <td><span class="no">&#9675;</span></td><td><span class="part" title="Limited local-model support, cloud-first">&#9680;</span></td><td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="part" title="Some BYO key, cloud-first">&#9680;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td>
+              <td class="barrier-cell"><span class="bar cloud">Their cloud</span><small>Code and context flow to the cloud for indexing and inference</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">GitHub Copilot</span></td>
+              <td><span class="part" title="Copilot chat in GitHub Mobile">&#9680;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td>
+              <td class="barrier-cell"><span class="bar cloud">Their cloud</span><small>Microsoft / GitHub cloud, enterprise data controls but not local</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Claude Code</span></td>
+              <td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="part" title="Same account across terminal, web, mobile">&#9680;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td>
+              <td class="barrier-cell"><span class="bar cloud">Their cloud</span><small>Anthropic cloud, no local model path</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Windsurf / Devin</span></td>
+              <td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td>
+              <td class="barrier-cell"><span class="bar cloud">Their cloud</span><small>Cloud-hosted agents, code uploaded to run</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Replit Agent</span></td>
+              <td><span class="part" title="Mobile app, cloud-run">&#9680;</span></td><td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td>
+              <td class="barrier-cell"><span class="bar cloud">Their cloud</span><small>Everything runs in Replit&rsquo;s cloud IDE</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Zed AI</span></td>
+              <td><span class="no">&#9675;</span></td><td><span class="yes" title="Ollama, LM Studio, llama.cpp supported out of the box, incl. agentic editing">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="part" title="Editor open source; hosted AI is not">&#9680;</span></td><td><span class="part" title="Local models private; hosted AI is not">&#9680;</span></td>
+              <td class="barrier-cell"><span class="bar mixed">Your choice</span><small>Runs local models incl. agentic editing, but AI is cloud by default, desktop only</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Ollama / LM Studio / Jan</span></td>
+              <td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="part" title="Can add cloud endpoints">&#9680;</span></td><td><span class="part" title="Ollama and Jan open; LM Studio closed">&#9680;</span></td><td><span class="yes">&#9679;</span></td>
+              <td class="barrier-cell"><span class="bar you">Your hardware</span><small>Fully local and private, but a chat runner, not a coding agent, and desk-bound</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">PocketPal / Private LLM</span></td>
+              <td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="part" title="PocketPal open; Private LLM closed">&#9680;</span></td><td><span class="yes">&#9679;</span></td>
+              <td class="barrier-cell"><span class="bar you">Your hardware</span><small>On-device and private, but phone only, no desktop, and chat, not an agent</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Apple Intelligence</span></td>
+              <td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="no">&#9675;</span></td><td><span class="part" title="Private Cloud Compute, but Apple-controlled">&#9680;</span></td>
+              <td class="barrier-cell"><span class="bar mixed">Device + Apple</span><small>Cross-device and private-ish, but closed, not your models, and not a coding agent</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Cline / Aider / Continue</span></td>
+              <td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td><td><span class="part" title="Local-capable and open, but default flows are cloud">&#9680;</span></td>
+              <td class="barrier-cell"><span class="bar mixed">Your choice</span><small>Open and local-capable, but IDE or terminal bound, desk only, cloud-leaning defaults</small></td>
+            </tr>
+            <tr>
+              <td class="name-col"><span class="player-name">Tabby</span></td>
+              <td><span class="no">&#9675;</span></td><td><span class="yes">&#9679;</span></td><td><span class="no">&#9675;</span></td><td><span class="part" title="Completion + chat, not a full tool-running agent">&#9680;</span></td><td><span class="part" title="Self-hosted, can point at models">&#9680;</span></td><td><span class="yes">&#9679;</span></td><td><span class="yes">&#9679;</span></td>
+              <td class="barrier-cell"><span class="bar you">Your server</span><small>Self-hosted and private, but you run the infra, and it is IDE completion, desk only</small></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="glyph-key">&#9679; yes &nbsp;&middot;&nbsp; &#9680; partial or conditional &nbsp;&middot;&nbsp; &#9675; no</p>
+      <p class="table-read"><b>The read:</b> the field sorts three ways by where your code runs. The cloud agents (their cloud) have the polish and the reach but never the ownership. The local runners and on-device apps (your hardware) have the ownership but are chat, not agents, and stranded on one surface. The open, local-capable assistants (your choice) can be sovereign if you wire them up, but they live inside an IDE or a terminal and never leave the desk. The one row that now matches OpenShore on all three, full agent, your hardware, desk-to-pocket, is the emerging <b>OpenMono</b>. OpenShore&rsquo;s separation from that new cohort is product finish: a native app, real on-device phone models, and a curated stack, not a terminal tool or a cloud-agent remote. <span class="grade bench" style="margin-left:2px">Capabilities: verified</span> <span class="grade assumed">&ldquo;Finish wins the contested corner&rdquo;: Assumed</span></p>
+    </div>
+  </section>
+
+  <!-- CLAIM VS INSTRUMENT -->
+  <section>
+    <div class="wrap">
+      <p class="kicker">Discipline</p>
+      <div class="section-head">
+        <h2>What we can claim today, and what we must measure next.</h2>
+        <p>The forces are real and the map positions are verifiable. The OpenShore-specific predictions stay hypotheses until strangers, especially the constrained segments, show up in the data.</p>
+      </div>
+
+      <div class="ci-grid">
+        <div class="ci-col claim-col">
+          <h3>Can claim now <span class="grade bench">Benchmarked</span></h3>
+          <ul class="ci-list">
+            <li>OpenShore is in a <b>tiny, brand-new cluster</b> (with OpenMono and Paseo) that is a full coding agent, local-first, and cross-device. It is the only one arriving as a <b>finished, local-models-first native product</b> across phone and desk, rather than a terminal tool or a cloud-agent remote.</li>
+            <li>The <b>constraints are real</b>: large segments legally cannot send code to a cloud, and cloud tools do reprice, deprecate, and go down.</li>
+            <li>Behavioral forces (self-built attachment, loss aversion, flat-rate preference) <b>point toward</b> retention and depth of use for an owned tool (direction only).</li>
+          </ul>
+        </div>
+        <div class="ci-col instrument">
+          <h3>Must instrument <span class="grade assumed">Assumed, no OpenShore data</span></h3>
+          <ul class="ci-list">
+            <li><span class="metric">Segment pull</span>: activation and paid conversion split by constrained (confidential-code, regulated, offline) vs. general developers. The number the whole thesis rests on.</li>
+            <li><span class="metric">Sovereignty willingness-to-pay</span>: do people pay the flat fee to build, or stall at free chat? Tests the privacy-paradox risk head on.</li>
+            <li><span class="metric">Cross-device usage</span>: what share actually pair a phone to a desk, and does pairing lift retention, or is it a demo that goes unused?</li>
+            <li><span class="metric">Local first-run success</span>: share who reach a first working local model on their own hardware. The IKEA boundary condition, failed setup erases the effect.</li>
+            <li><span class="metric">Local-only sufficiency</span>: how often users escalate to cloud. If it is constant, the local promise is thin; if rare, it is real.</li>
+            <li><span class="metric">Retention vs. stack investment</span>: does building a crew and projects raise D30, testing the self-built switching cost directly?</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="experiment">
+        <p class="kicker">The one cheap experiment that most reduces uncertainty</p>
+        <h3>Do the constrained segments convert to paid at a higher rate than general developers?</h3>
+        <dl>
+          <dt>Primary metric</dt><dd><b>Free-to-paid conversion</b>, segmented by a one-question intake: is your code under a constraint that forbids cloud AI (confidential, regulated, air-gapped, contractual), yes or no.</dd>
+          <dt>Guardrails</dt><dd>Local first-run success rate (setup must finish), local-only sufficiency (escalation frequency), support-contact rate.</dd>
+          <dt>Design</dt><dd>Onboard the first stranger cohorts. Tag each by the constraint question at intake. Compare paid conversion and D30 across the two segments. Even a few hundred users gives a directional read on whether the <b>constrained</b> segment is the real market.</dd>
+          <dt>Decision rule</dt><dd>Set before running: if constrained-segment conversion clearly beats general, lead the product and the story at that segment. If both convert similarly and high, sovereignty is broader than assumed. If neither converts, the privacy-paradox risk was decisive and the wedge must be re-found.</dd>
+        </dl>
+      </div>
+
+      <p class="n1"><b>The discipline.</b> The founder is close to the ideal user, so the founder&rsquo;s own conviction is not evidence, it is a sample of one who already believes. Every &ldquo;Assumed&rdquo; claim here becomes &ldquo;Measured&rdquo; only when strangers, and specifically the constrained segments, activate, pay, and retain in the data. Until then this is a grounded set of hypotheses, not a proven scorecard.</p>
+    </div>
+  </section>
+
+  <!-- HONESTY + CITATIONS -->
+  <section>
+    <div class="wrap">
+      <div class="honesty">
+        <b>Evidence limits, stated plainly.</b> The map positions and capability columns are verifiable and current as of this brief, but this is a fast-moving field: ownership, mobile plans, and model support shift, so re-check any single competitor claim before you act on it. <b>The top-right is contested, not empty.</b> An earlier draft of this map overstated OpenShore&rsquo;s isolation; the honest picture is a nascent 2026 cohort (OpenMono, a near-twin shipping on both app stores; Paseo, 15k+ stars; OpenClaw and phone-first tools as cousins) racing into the same corner. That validates demand and means the moat is execution, not category. The behavioral forces are well established, but the privacy paradox is a genuine threat to the thesis, not a footnote: privacy as sentiment does not reliably convert to purchase, so the bet rests on segments with a hard constraint or a real cost. The &ldquo;local models are good enough&rdquo; claim dates the fastest of all. OpenShore has <b>no funnel or retention data yet</b>. Every OpenShore-specific prediction here is a graded hypothesis awaiting data from strangers, not a measured result.
+      </div>
+
+      <div class="cites">
+        <h3>Sources and references</h3>
+        <ul>
+          <li>Norton, Mochon &amp; Ariely (2012). <b>The IKEA Effect.</b> <em>J. Consumer Psychology</em> 22(3), 453-460. <a href="https://www.hbs.edu/faculty/Pages/item.aspx?num=41121">link</a></li>
+          <li>Kahneman, Knetsch &amp; Thaler (1990). <b>Experimental Tests of the Endowment Effect.</b> <em>J. Political Economy</em> 98(6). <a href="https://www.journals.uchicago.edu/doi/abs/10.1086/261737">link</a></li>
+          <li>Kahneman &amp; Tversky (1979). <b>Prospect Theory.</b> <em>Econometrica</em> 47(2), loss aversion. <a href="https://www.jstor.org/stable/1914185">link</a></li>
+          <li>Lambrecht &amp; Skiera (2006). <b>Paying Too Much and Being Happy About It.</b> Tariff-choice biases, <em>J. Marketing Research</em> 43(2). <a href="https://journals.sagepub.com/doi/10.1509/jmkr.43.2.212">link</a></li>
+          <li>Norberg, Horne &amp; Horne (2007). <b>The Privacy Paradox.</b> <em>J. Consumer Affairs</em> 41(1). <a href="https://onlinelibrary.wiley.com/doi/10.1111/j.1745-6606.2006.00070.x">link</a></li>
+          <li>Cisco (2024). <b>Data Privacy Benchmark Study.</b> Organizational limits on generative AI. <a href="https://www.cisco.com/c/en/us/about/trust-center/data-privacy-benchmark-study.html">link</a></li>
+          <li>Bloomberg (2023). <b>Samsung bans staff use of public generative AI</b> after a source-code leak. <a href="https://www.bloomberg.com/news/articles/2023-05-02/samsung-bans-chatgpt-and-other-generative-ai-use-by-staff-after-leak">link</a></li>
+          <li>Rogers. <b>Diffusion of Innovations.</b> Relative advantage and complexity as adoption predictors.</li>
+          <li>Cognition (2025-26). <b>Windsurf acquired and folded into Devin</b> (now Devin Desktop). Cursor moved to usage-based billing, June 2025. <a href="https://cursor.com/pricing">Cursor pricing</a>.</li>
+          <li><b>Emerging sovereign cross-device cohort.</b> Paseo, self-hosted daemon, 15k+ stars, AGPL-3.0 <a href="https://github.com/getpaseo/paseo">repo</a>. OpenMono, local-LLM coding agent, home GPU + phone <a href="https://www.openmonoagent.ai/">site</a>. OpenClaw iOS/Android launch, June 2026 <a href="https://techcrunch.com/2026/06/30/openclaw-is-finally-available-on-android-and-ios/">TechCrunch</a>.</li>
+          <li>Competitor positions verified against each product&rsquo;s official site, docs, and pricing, August 2026. A fast-moving field, re-check before acting.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <footer>
+      <span>OpenShore &middot; Competitive landscape &middot; internal evidence brief</span>
+      <span>Claims graded: benchmarked / assumed / measured &middot; your machine, your models, your keys</span>
+    </footer>
+  </div>
+</main>
