@@ -39,6 +39,47 @@ function useBooted(): boolean {
   return booted;
 }
 
+// How much of the screen the on-screen keyboard covers is not something CSS can
+// see on its own: the layout viewport (100%, driving our flex column) does not
+// shrink for the keyboard the way the visual viewport does, so without this the
+// browser auto-scrolls the page to keep the focused field visible and overshoots,
+// leaving a dead gap between the composer and the keyboard. Track it via
+// visualViewport instead, as two CSS variables on the root:
+//   --kb-inset          live, in lockstep with the keyboard. The composer reads
+//                        this so it always hugs the keyboard (or the safe area
+//                        when there is none) with no gap.
+//   --greeting-kb-inset  frozen the first time the keyboard genuinely opens (past
+//                        a small threshold, to ignore safe-area noise) and held
+//                        from then on, so the greeting settles into place once
+//                        and never re-centers when the keyboard is later
+//                        dismissed, per founder preference. `resetKey` clears
+//                        the freeze; ChatScreen bumps it each time a fresh empty
+//                        state arrives so the next one can settle fresh.
+function useKeyboardInset(resetKey: number): void {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !window.matchMedia('(pointer: coarse)').matches) return;
+    const root = document.documentElement.style;
+    const KEYBOARD_THRESHOLD = 80; // px; comfortably above safe-area/rounding noise
+    let frozen = false;
+    const apply = () => {
+      const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      root.setProperty('--kb-inset', `${inset}px`);
+      if (!frozen && inset > KEYBOARD_THRESHOLD) {
+        frozen = true;
+        root.setProperty('--greeting-kb-inset', `${inset}px`);
+      }
+    };
+    apply();
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    return () => {
+      vv.removeEventListener('resize', apply);
+      vv.removeEventListener('scroll', apply);
+    };
+  }, [resetKey]);
+}
+
 export function ChatScreen({ compact }: { compact: boolean }) {
   const {
     activeId,
@@ -60,6 +101,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // stack, which is what "My Stack" selects.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
   const booted = useBooted();
+  // Bumped each time a fresh empty state arrives, so the greeting's frozen
+  // keyboard inset (see useKeyboardInset) resets and can settle again for it.
+  const [kbGen, setKbGen] = useState(0);
+  useKeyboardInset(kbGen);
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -92,6 +137,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       setRotIdx(0);
       seq.current += 1;
       setLayers([{ id: seq.current, g: rot[0] }]);
+      setKbGen((g) => g + 1);
     }
     wasEmpty.current = isEmpty;
   }, [isEmpty]);

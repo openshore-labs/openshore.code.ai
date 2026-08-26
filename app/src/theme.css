@@ -232,6 +232,14 @@ textarea {
   border-radius: 4px;
 }
 
+/* WebKit is the exception: it treats a TAPPED text field as focus-visible too
+   (unlike a tapped button), so the rule above would ring the composer on every
+   touch. Founder preference: no ring there. Scoped to the composer only, so a
+   real keyboard user still sees the ring on every other focusable element. */
+.composer textarea:focus-visible {
+  outline: none;
+}
+
 /* ------------------------------------------------------------------ shell */
 
 .shell {
@@ -1311,14 +1319,20 @@ textarea {
   background: linear-gradient(transparent, var(--bg) 30%);
 }
 
-/* Touch devices only: the empty-state greeting is pinned out of flow (fixed to
-   the layout viewport, see .greeting below), so nothing in the column pushes the
-   composer down. Anchor it to the bottom where it belongs, the way it sits once
-   a transcript is open. Desktop keeps its in-flow layout, where the flex:1
-   greeting already holds the composer at the foot of the column. */
+/* Touch devices only: pin the composer to the foot of the column (the way it
+   sits once a transcript is open) and pad it by --kb-inset, the height of
+   screen the on-screen keyboard currently covers (see useKeyboardInset in
+   ChatScreen). Without that padding the layout viewport does not shrink for the
+   keyboard the way the visual one does, so WKWebView auto-scrolls the page to
+   keep the field visible and overshoots, leaving a dead gap between the
+   composer and the keyboard. Padding by the keyboard's own height closes that
+   gap: the field is already inside the visible area, so there is nothing left
+   for the auto-scroll to correct. Zero (the var's fallback) when no keyboard is
+   up, so this never affects the non-keyboard layout. */
 @media (pointer: coarse) {
   .composer-wrap {
     margin-top: auto;
+    padding-bottom: calc(12px + var(--safe-bottom) + var(--kb-inset, 0px));
   }
 }
 
@@ -1928,14 +1942,18 @@ textarea {
 /* Touch devices only: the on-screen keyboard is up whenever the empty state is
    shown (the composer autofocuses once the boot splash lifts), so the greeting
    lives in the space above the composer. Anchor the mark and the line to the
-   BOTTOM of that space so they sit just above the composer, with the keyboard
-   beneath it, and ride up together as the keyboard pulls in, instead of floating
-   in the middle or overlapping the field. Still in flow, so it never covers the
-   composer. */
+   BOTTOM of that space so they sit just above the composer, still in flow so it
+   never covers the field. --greeting-kb-inset (see useKeyboardInset in
+   ChatScreen) accounts for the keyboard the same way the composer's own
+   --kb-inset does, EXCEPT it freezes the first time the keyboard genuinely
+   opens and holds that value: once the greeting has settled into place it never
+   moves again for the rest of this empty state, even if the keyboard is later
+   dismissed. The composer keeps tracking the live keyboard height regardless, so
+   only the greeting stays put. */
 @media (pointer: coarse) {
   .greeting {
     justify-content: flex-end;
-    padding-bottom: 12px;
+    padding-bottom: calc(12px + var(--greeting-kb-inset, 0px));
   }
 }
 
