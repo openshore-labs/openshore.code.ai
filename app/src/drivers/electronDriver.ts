@@ -44,6 +44,22 @@ export class ElectronDriver implements ChatDriver {
     void requireBridge().answerApproval(this.sessionId, approvalId, answer);
   }
 
+  // ---- chat-to-terminal bridge ----
+  // Output for a started run streams back as command-* events on the same
+  // onEvent channel the main process already forwards, so these only kick off /
+  // drive a run. runCommand returns the runId the store drives with stdin/kill.
+  async runCommand(command: string): Promise<string | undefined> {
+    return requireBridge().runCommand(this.sessionId, command);
+  }
+
+  sendStdin(runId: string, data: string): void {
+    void requireBridge().sendCommandStdin(this.sessionId, runId, data);
+  }
+
+  killCommand(runId: string): void {
+    void requireBridge().killCommand(this.sessionId, runId);
+  }
+
   dispose(): void {
     this.offEvents();
     this.sinks.clear();

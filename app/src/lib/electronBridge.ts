@@ -67,6 +67,14 @@ export interface OscodeBridge {
     cb: (payload: { sessionId: string; seq: number; event: DriverEvent }) => void,
   ): () => void;
 
+  // Chat-to-terminal lane. runCommand runs a command on this machine and
+  // returns its runId (undefined if the session is gone); output streams back as
+  // command-* DriverEvents on the onEvent channel. sendCommandStdin and
+  // killCommand drive a live run.
+  runCommand(sessionId: string, command: string): Promise<string | undefined>;
+  sendCommandStdin(sessionId: string, runId: string, data: string): Promise<void>;
+  killCommand(sessionId: string, runId: string): Promise<void>;
+
   // Machine, stack, marketplace.
   status(): Promise<DesktopStatus>;
   catalog(): Promise<{ catalog: Catalog; note?: string }>;
