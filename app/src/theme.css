@@ -1938,6 +1938,42 @@ textarea {
   }
 }
 
+/* The greeting line is quietly tappable: it swaps between its language and the
+   English translation. No pointer cursor, no underline, no tooltip. The only
+   tell is the press scale from press-fb, so finding it feels like an Easter
+   egg. Keyboard users still get a focus ring. */
+.greeting-line {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+.greeting-line:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 8px;
+  border-radius: 12px;
+}
+/* Keyed on the shown language, so each swap remounts and crossfades in. Calm,
+   opacity only, never layout. */
+.greeting-swap {
+  display: inline-block;
+  animation: greet-swap 0.32s var(--ease-standard) backwards;
+}
+@keyframes greet-swap {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .greeting-swap {
+    animation: none;
+  }
+}
+
 .greeting h1 {
   font-family: var(--font-display);
   font-weight: 500;
