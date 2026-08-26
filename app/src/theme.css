@@ -1939,21 +1939,21 @@ textarea {
   gap: 18px;
 }
 
-/* Touch devices only: the on-screen keyboard is up whenever the empty state is
-   shown (the composer autofocuses once the boot splash lifts), so the greeting
-   lives in the space above the composer. Anchor the mark and the line to the
-   BOTTOM of that space so they sit just above the composer, still in flow so it
-   never covers the field. --greeting-kb-inset (see useKeyboardInset in
-   ChatScreen) accounts for the keyboard the same way the composer's own
-   --kb-inset does, EXCEPT it freezes the first time the keyboard genuinely
-   opens and holds that value: once the greeting has settled into place it never
-   moves again for the rest of this empty state, even if the keyboard is later
-   dismissed. The composer keeps tracking the live keyboard height regardless, so
-   only the greeting stays put. */
+/* Touch devices only: mirrors the Claude app's opening, where the greeting
+   simply centers in whatever space is left above the composer rather than
+   hugging it. While unfrozen this just inherits the base rule's
+   justify-content: center, so it tracks the composer as the keyboard animates
+   in, the same way Claude's does. useKeyboardInset (ChatScreen) then freezes it
+   the moment the keyboard has genuinely opened and settled: --greeting-frozen-
+   height locks the box at that exact size (flex: none replaces flex: 1), so
+   centering inside it can never shift again for the rest of this empty state,
+   even if the keyboard is later dismissed. The composer keeps tracking the live
+   keyboard height regardless (see --kb-inset above), so only the greeting stays
+   put. */
 @media (pointer: coarse) {
-  .greeting {
-    justify-content: flex-end;
-    padding-bottom: calc(12px + var(--greeting-kb-inset, 0px));
+  .greeting.greeting-frozen {
+    flex: none;
+    height: var(--greeting-frozen-height);
   }
 }
 
