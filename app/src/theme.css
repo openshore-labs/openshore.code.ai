@@ -248,6 +248,27 @@ textarea {
   position: relative;
 }
 
+/* A room fades in when you switch to it, so navigation feels like a dissolve
+   rather than a jump cut. Short and calm, on opacity only (never layout). */
+.room-swap {
+  animation: room-in 0.16s ease backwards;
+}
+
+@keyframes room-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-swap {
+    animation: none;
+  }
+}
+
 /* --------------------------------------------------------------- sidebar */
 
 .sidebar {
@@ -311,12 +332,6 @@ textarea {
 
 .new-chat-btn:active {
   transform: scale(0.985);
-}
-
-.conv-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 8px;
 }
 
 .conv-item {
@@ -552,6 +567,16 @@ textarea {
   width: 40px;
   height: 40px;
   color: var(--ink);
+}
+
+/* On press the bars give a little, then spring back on release (backOut), so
+   the button feels physical rather than flat. */
+.menu-glyph {
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.menu-btn:active .menu-glyph {
+  transform: scale(1.1);
 }
 
 /* Stack header: title on the left, the bring-your-own-model "+" on the right. */
@@ -1988,6 +2013,11 @@ textarea {
   color: var(--muted);
 }
 
+.btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
 .btn:disabled {
   opacity: 0.4;
 }
@@ -2081,43 +2111,61 @@ textarea {
   margin-bottom: 18px;
 }
 
-/* The Chats room: a new-chat row, then the saved chats as full-width cards. */
+/* The Chats room: a new-chat row, then the saved chats as one grouped, flat
+   list (Claude-style), each row swipeable to delete. */
 .chats-actions {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
 }
 
-.chat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* One rounded card holds the whole list; the swipe rows divide it and the
+   overflow clip keeps a revealed Delete action inside the corners. */
+.chat-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.chat-group > .swipe-row:last-child {
+  border-bottom: none;
+}
+
+/* The rows settle in on entry, each a beat behind the last, the same
+   easeOutQuint the greeting and splash use. Capped so a long list never holds
+   the eye; --stagger is set inline per row. */
+.chat-group > .swipe-row {
+  animation: chat-row-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: var(--stagger, 0ms);
+}
+
+@keyframes chat-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-group > .swipe-row {
+    animation: none;
+  }
 }
 
 .chat-row {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  transition:
-    background 0.12s ease,
-    border-color 0.12s ease,
-    transform 0.06s ease;
-}
-
-.chat-row:hover {
-  background: var(--surface);
-}
-
-.chat-row:active {
-  transform: scale(0.99);
+  padding: 13px 14px;
 }
 
 .chat-row.active {
-  border-color: var(--local);
+  box-shadow: inset 3px 0 0 var(--local);
 }
 
 .chat-row-title {
@@ -2134,6 +2182,81 @@ textarea {
   margin-top: 2px;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Destructive confirm before a chat is deleted (the delete cannot be undone). */
+.confirm-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(20, 30, 36, 0.42);
+  animation: confirm-fade 0.16s ease backwards;
+}
+
+.confirm-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: 0 18px 48px rgba(20, 30, 36, 0.28);
+  animation: confirm-pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.confirm-card h3 {
+  font-size: 16px;
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+
+.confirm-card p {
+  color: var(--muted);
+  font-size: 13.5px;
+  margin-bottom: 16px;
+}
+
+.confirm-row {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-row .btn {
+  flex: 1;
+}
+
+@keyframes confirm-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes confirm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-scrim,
+  .confirm-card {
+    animation: none;
+  }
+}
+
+.swipe-action-danger {
+  background: var(--danger);
 }
 
 .card {
@@ -2509,13 +2632,6 @@ textarea {
 .quick-chat-note {
   color: var(--muted);
   font-size: 11px;
-}
-
-.conv-empty {
-  padding: 8px 12px;
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
 }
 
 /* Searchable multi-select (projects) */

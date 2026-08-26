@@ -6,7 +6,7 @@
 // never stolen; a light haptic ticks the instant the action is fully revealed
 // (armed), the way iOS marks a swipe edge; and a fast flick commits even short of
 // the distance threshold. Pointer events, so touch and mouse behave the same.
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { hapticSuccess, hapticTick } from '../lib/haptics.js';
 
 const ACTION_WIDTH = 96;
@@ -19,16 +19,29 @@ const FLICK_MIN = 28; // but only once the row has actually opened this far
 type Axis = 'none' | 'h' | 'v';
 
 export function SwipeRow({
-  pinned,
+  pinned = false,
   onTap,
   onToggle,
   children,
+  label,
+  variant = 'pin',
+  style,
 }: {
-  pinned: boolean;
+  /** Pin variant only: whether the row is currently pinned (flips the label). */
+  pinned?: boolean;
   onTap: () => void;
   onToggle: () => void;
   children: ReactNode;
+  /** Override the revealed action's text. Defaults to Pin/Unpin. */
+  label?: string;
+  /** 'pin' keeps the teal/pin styling; 'danger' paints the action red. */
+  variant?: 'pin' | 'danger';
+  /** Applied to the row root, e.g. a per-row entrance-stagger custom property. */
+  style?: CSSProperties;
 }) {
+  const actionLabel = label ?? (pinned ? 'Unpin' : 'Pin');
+  const actionClass =
+    variant === 'danger' ? ' swipe-action-danger' : pinned ? ' swipe-action-unpin' : '';
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const startX = useRef(0);
@@ -110,9 +123,9 @@ export function SwipeRow({
   };
 
   return (
-    <div className="swipe-row">
-      <div className={`swipe-action${pinned ? ' swipe-action-unpin' : ''}`} aria-hidden="true">
-        {pinned ? 'Unpin' : 'Pin'}
+    <div className="swipe-row" style={style}>
+      <div className={`swipe-action${actionClass}`} aria-hidden="true">
+        {actionLabel}
       </div>
       <div
         className={`swipe-fore${dragging ? ' dragging' : ''}`}
