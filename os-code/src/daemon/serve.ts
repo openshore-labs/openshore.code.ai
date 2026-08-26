@@ -28,7 +28,8 @@ import { PushNotifier, savePushConfig } from './push.js';
 import { clone } from '../git/index.js';
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
 import { withKeyLock } from '../git/applyQueue.js';
-import { loadCatalog } from '../market/catalog.js';
+import { loadCatalog, findModel } from '../market/catalog.js';
+import { installModel, type InstallProgress } from '../market/install.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
 
@@ -74,6 +75,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   assertSafeBind(host);
   const token = loadOrCreateToken(join(oscHome(), 'daemon.token'));
   const drivers = new Map<string, LocalDriver>();
+  // Model installs kicked off from a paired phone (MP-F2). Progress is buffered
+  // per model id so the phone can poll it, the same shape the Electron bridge
+  // streams to the desktop app.
+  type InstallState = InstallProgress & { done: boolean; ok?: boolean; detail?: string };
+  const installs = new Map<string, InstallState>();
   // One egress policy for every outbound call (catalog refresh, completion push),
   // and the notifier that fires a content-free push when a run needs the user and
   // no phone is watching.
@@ -229,6 +235,71 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       } catch (err) {
         sendJson(res, 400, { error: `Could not clone: ${(err as Error).message}` });
       }
+      return;
+    }
+
+    // Install a catalog model onto this machine from a paired phone (MP-F2).
+    // Admin-gated like clone: pulling weights provisions shared machine state.
+    if (req.method === 'POST' && url.pathname === '/models/install') {
+      if (!requireAdmin()) return;
+      const body = await readJson(req);
+      const modelId = typeof body.modelId === 'string' ? body.modelId : '';
+      if (!modelId) {
+        sendJson(res, 400, { error: 'Send {"modelId": "..."}.' });
+        return;
+      }
+      let model;
+      try {
+        const loaded = await loadCatalog(options.config, egress);
+        model = findModel(loaded.catalog, modelId);
+      } catch (err) {
+        sendJson(res, 502, { error: `Could not load the catalog: ${(err as Error).message}` });
+        return;
+      }
+      if (!model) {
+        sendJson(res, 404, { error: `No catalog model "${modelId}".` });
+        return;
+      }
+      const running = installs.get(modelId);
+      if (running && !running.done) {
+        sendJson(res, 202, { modelId, alreadyRunning: true });
+        return;
+      }
+      installs.set(modelId, { line: 'starting', done: false });
+      void installModel(model, (p) => {
+        installs.set(modelId, { ...p, done: false });
+      })
+        .then((result) => {
+          const prev = installs.get(modelId);
+          installs.set(modelId, {
+            line: result.detail,
+            percent: prev?.percent,
+            completed: prev?.completed,
+            total: prev?.total,
+            done: true,
+            ok: result.ok,
+            detail: result.detail,
+          });
+        })
+        .catch((err) => {
+          installs.set(modelId, { line: String(err), done: true, ok: false, detail: String(err) });
+        });
+      sendJson(res, 202, { modelId });
+      return;
+    }
+    if (
+      req.method === 'GET' &&
+      parts[0] === 'models' &&
+      parts[1] === 'install' &&
+      parts[2] &&
+      parts[3] === 'progress'
+    ) {
+      const state = installs.get(decodeURIComponent(parts[2]));
+      if (!state) {
+        sendJson(res, 404, { error: 'No install in progress for that model.' });
+        return;
+      }
+      sendJson(res, 200, state);
       return;
     }
     // Apply a buffered commit-intent from a phone into a real commit + push.

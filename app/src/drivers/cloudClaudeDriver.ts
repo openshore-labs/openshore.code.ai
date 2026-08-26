@@ -72,12 +72,10 @@ export class CloudClaudeDriver implements ChatDriver {
     const imageBlocks = (attachments ?? [])
       .map(imageBlockParts)
       .filter((p): p is { mediaType: string; base64: string } => Boolean(p))
-      .map(
-        (p): Anthropic.ImageBlockParam => ({
-          type: 'image',
-          source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
-        }),
-      );
+      .map((p): Anthropic.ImageBlockParam => ({
+        type: 'image',
+        source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
+      }));
     if (imageBlocks.length) {
       this.history.push({
         role: 'user',

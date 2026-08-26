@@ -16,6 +16,44 @@ function headers(target: DaemonTarget): Record<string, string> {
   return { authorization: `Bearer ${target.token}` };
 }
 
+export interface DaemonInstallProgress {
+  line: string;
+  percent?: number;
+  completed?: number;
+  total?: number;
+  done: boolean;
+  ok?: boolean;
+  detail?: string;
+}
+
+/** Start a model install on the paired desktop (MP-F2). Output is polled. */
+export async function daemonInstallModel(target: DaemonTarget, modelId: string): Promise<void> {
+  const res = await fetch(`${target.baseUrl}/models/install`, {
+    method: 'POST',
+    headers: { ...headers(target), 'content-type': 'application/json' },
+    body: JSON.stringify({ modelId }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `The desktop answered ${res.status}.`);
+  }
+}
+
+/** Poll a desktop install's progress; undefined once it is no longer tracked. */
+export async function daemonInstallProgress(
+  target: DaemonTarget,
+  modelId: string,
+): Promise<DaemonInstallProgress | undefined> {
+  const res = await fetch(
+    `${target.baseUrl}/models/install/${encodeURIComponent(modelId)}/progress`,
+    { headers: headers(target), signal: AbortSignal.timeout(10_000) },
+  );
+  if (res.status === 404) return undefined;
+  if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
+  return (await res.json()) as DaemonInstallProgress;
+}
+
 export async function daemonHealth(target: DaemonTarget): Promise<{ ok: boolean; detail: string }> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {

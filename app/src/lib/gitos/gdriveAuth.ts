@@ -21,8 +21,7 @@ import { bridge } from '../electronBridge.js';
 const IOS_CLIENT_ID = import.meta.env.VITE_GDRIVE_IOS_CLIENT_ID as string | undefined;
 const DESKTOP_CLIENT_ID = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID as string | undefined;
 const DESKTOP_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_SECRET as
-  | string
-  | undefined;
+  string | undefined;
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';

@@ -9,6 +9,7 @@ import type { Catalog, CatalogModel, CapabilityCategory } from 'os-code/protocol
 import { CAPABILITIES } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
+import { daemonInstallModel, daemonInstallProgress } from '../drivers/remoteDriver.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isPhone } from '../lib/platform.js';
@@ -235,6 +236,12 @@ export function MarketplaceScreen() {
   const pullToDesktop = async (model: CatalogModel) => {
     const b = bridge();
     if (!b) {
+      // No desktop app here. If a daemon is paired, install onto that machine
+      // over the tailnet (MP-F2); otherwise this phone can only browse.
+      if (settings.daemon) {
+        void installViaDaemon(model);
+        return;
+      }
       showToast('Desktop models install from the desktop app. This phone can browse them.');
       return;
     }
@@ -254,6 +261,61 @@ export function MarketplaceScreen() {
           percent: d[model.id]?.percent ?? 0,
           label: err instanceof Error ? err.message : 'Install failed.',
           failed: true,
+        },
+      }));
+    }
+  };
+
+  // Install a desktop model onto a paired machine over the tailnet, polling the
+  // daemon for progress so the same download UI animates as on the desktop.
+  const installViaDaemon = async (model: CatalogModel) => {
+    const daemon = settings.daemon;
+    if (!daemon) return;
+    setDownloads((d) => ({
+      ...d,
+      [model.id]: { percent: 0, label: 'Connecting', indeterminate: true },
+    }));
+    try {
+      await daemonInstallModel(daemon, model.id);
+    } catch (err) {
+      setDownloads((d) => ({
+        ...d,
+        [model.id]: {
+          percent: 0,
+          label: err instanceof Error ? err.message : 'Install failed.',
+          failed: true,
+        },
+      }));
+      return;
+    }
+    // Poll until the desktop reports the install done.
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1200));
+      let p;
+      try {
+        p = await daemonInstallProgress(daemon, model.id);
+      } catch {
+        continue; // a transient blip; keep polling
+      }
+      if (!p) break; // no longer tracked
+      if (p.done) {
+        clearDownload(model.id);
+        if (p.ok) {
+          hapticSuccess();
+          setInstalledRefs((s) => new Set(s).add(model.source.ref));
+        }
+        showToast(p.detail ?? (p.ok ? 'Installed on your desktop.' : 'Install failed.'));
+        break;
+      }
+      setDownloads((d) => ({
+        ...d,
+        [model.id]: {
+          percent: p.percent ?? 0,
+          label:
+            p.total && p.completed !== undefined
+              ? `${Math.round(p.percent ?? 0)}% · ${gb(p.completed)} of ${gb(p.total)}`
+              : p.line,
+          indeterminate: p.percent === undefined,
         },
       }));
     }
