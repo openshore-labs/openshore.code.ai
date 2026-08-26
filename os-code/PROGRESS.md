@@ -3,6 +3,51 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-26, gitOS self-hosted repos)
+
+**gitOS is now a real self-hosted git home: clone GitHub with the storage
+location the user picks, and back it up.** The founder's ask ("make gitOS a
+self hosted GitHub pointing at a local source, storage locally selected by the
+user") is built on the desktop/daemon engine, behind the CTO's rulings. The gap
+was that the branded "gitOS" seam was a text-only file store powering Vault,
+while the real git stack (simple-git clone/commit/push, the outbox) always
+cloned to a fixed `~/OSCode/<name>` and its Repositories surface was hidden.
+This joins them at the LOCATION layer (never routing repos through the text
+seam) and closes the gap:
+
+- **Storage-location picker at clone time** (`ReposScreen`): "This device" or
+  "A folder I choose" (a local disk, a NAS, or a Tailscale mount, all real
+  filesystem paths where a live `.git` is safe). Cloud drives are deliberately
+  not live homes; they are a backup target.
+- **Safe clone-to-chosen-path**, shared by the daemon and the Electron host in
+  one place (`os-code/src/git/repoHome.ts`) with the CTO's four must-fix
+  guardrails: realpath-confined parent with sensitive roots refused; an existing
+  target reused only when its origin matches (never clobbered); private-repo
+  auth via a one-shot GIT_ASKPASS (token never in the URL or .git/config); and
+  the chosen root appended to `daemon.outboxAllowedRoots` instead of widening
+  the member-isolation gates.
+- **A repo registry** (`RepoState.repos`, `app/src/lib/repos.ts`) that records
+  where each repo lives and reconnects it (origin + platform connector + default
+  branch) on clone, plus a shared `StorageLocation` descriptor
+  (`app/src/lib/gitos/location.ts`) as the one location vocabulary.
+- **Backups, the headline differentiator**: a binary-safe mirror (or bundle) to
+  a second user-chosen local/NAS folder, on demand and on an opportunistic
+  daily/weekly schedule (`mirrorRepo`/`bundleRepo`/`backupRepoHome`, the
+  `/repos/backup` daemon endpoint + `backupRepo` bridge, per-repo `BackupConfig`
+  with `backupDue`). Cloud-drive bundle backup is the one deferred fast-follow
+  (needs a binary write path on the text providers).
+- **Repositories surface revealed** (`REPO_OUTBOX_ENABLED` on): the picker now
+  registers each repo home into the outbox allowlist as it clones, which was the
+  guardrail the outbox path was waiting on.
+
+Gates green: os-code 39 files / 320 tests (adds repoHome + gitBackup), app 43
+files / 251 tests (adds repos), `pnpm -r typecheck`/`lint --max-warnings 0`
+clean, vite build + electron tsc pass. Not device-verified (no desktop/iOS in
+this web session); a first real clone-into-a-NAS and a scheduled backup on the
+founder's Pop!_OS box is the proof. Still box-required by design (phone is the
+remote control). Non-goals for v1, flagged not built: GitHub's collaboration
+surface (PRs/issues/CI runners) and cloud-drive live repos.
+
 ## Current state (2026-08-26, later)
 
 **Your model, on your machine, from your phone (the daemon path, celebrated).**
@@ -138,9 +183,19 @@ Layer status:
       The full press-fb adoption sweep across every remaining chip/row, and a
       focus-trap on sheets, are the last cosmetic bits of the UI polish (Escape,
       dialog roles, and primary-navigation press feedback already landed).
-- [ ] **Repositories offload: wire the producer + homePath picker** to flip
-      `REPO_OUTBOX_ENABLED` on (its own scoped feature, per CTO FD-1). Also
-      PAR-3: platform-remote (GitHub/GitLab) home repos have no push path yet.
+- [x] **Repositories offload + storage-location picker: DONE (2026-08-26).**
+      `REPO_OUTBOX_ENABLED` is on; the clone flow now takes a user-picked storage
+      folder and registers it into the outbox allowlist (the missing guardrail),
+      and platform-remote clone/commit/push works through the safe repoHome path.
+      See the current-state entry. Remaining fast-follows below.
+- [ ] **gitOS fast-follows:** (1) cloud-drive BACKUP via a binary write path on
+      the text providers (`writeBytes`), so a `git bundle` can round-trip to
+      Drive/iCloud (v1 backups are local/NAS mirror only, binary-safe). (2) A
+      background/dock backup trigger beyond the on-open opportunistic scheduler.
+      (3) Per-repo attached secrets (deploy hooks/keys) sealed and reconnected;
+      v1 reconnects the platform token + origin + default branch, which covers
+      the push path. (4) Later phases (non-goals for v1): PRs/issues and a
+      CI-runner equivalent.
 - [ ] **Claude Code parity roadmap (Part 5a)**, remaining after the
       pair-your-box work landed: MCP-stdio on the engine; checkpoints/rewind;
       replace the stack regex classifier with a Harbor Mini classification call;
@@ -814,6 +869,20 @@ Layer status:
   ```
 
 ## Log
+
+- **2026-08-26: gitOS self-hosted repos, storage location chosen by the user.**
+  New engine module `os-code/src/git/repoHome.ts` (clone into a picked parent
+  safely; the CTO's four guardrails; outbox allowlisting; `backupRepoHome`) plus
+  `mirrorRepo`/`bundleRepo`/`currentBranch` in `git/index.ts`. Daemon gains
+  `/repos/backup` and a `parent` arg on `/workspaces/clone`; Electron host gains
+  `backupRepo` and a location arg on `cloneRepo`; both go through repoHome. App:
+  shared `StorageLocation` (`lib/gitos/location.ts`), a repo registry
+  (`RepoRecord`/`BackupConfig` in `lib/repos.ts`, `RepoState.repos`), store
+  actions (`registerClonedRepo`, `setRepoBackup`, `backupRepoNow`,
+  `runDueBackups`), a storage picker + repos list + backup UI in `ReposScreen`,
+  and `REPO_OUTBOX_ENABLED` flipped on. Tests: `os-code/test/repoHome.test.ts`,
+  `os-code/test/gitBackup.test.ts`, `app/test/repos.test.ts`. Decisions logged in
+  `DECISIONS.md`. CTO ruled the three architecture forks before build.
 
 - **2026-08-26: Desktop (Electron) interactive PTY terminal wired (the one
   documented Phase 2 follow-up).** The interactive terminal already ran

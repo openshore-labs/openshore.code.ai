@@ -22,7 +22,7 @@ import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
 import { installModel } from 'os-code/dist/src/market/install.js';
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
-import { clone } from 'os-code/dist/src/git/index.js';
+import { cloneRepoHome, backupRepoHome, RepoHomeError } from 'os-code/dist/src/git/repoHome.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
 import {
   hashToken,
@@ -478,19 +478,44 @@ export class EngineHost {
 
   // ------------------------------------------------------------------- repos
 
-  async cloneRepo(url: string): Promise<{ cwd: string; name: string } | { error: string }> {
+  async cloneRepo(
+    url: string,
+    parent?: string,
+  ): Promise<
+    { cwd: string; name: string; defaultBranch: string; parent: string } | { error: string }
+  > {
     if (!/^(https:\/\/|git@)/.test(url.trim())) {
       return { error: 'That does not look like a git URL.' };
     }
-    const name = basename(url.trim().replace(/\.git$/, '')) || 'repo';
-    const parent = join(homedir(), 'OSCode');
-    mkdirSync(parent, { recursive: true });
-    const target = join(parent, name);
     try {
-      if (!existsSync(target)) await clone(url.trim(), target);
-      return { cwd: target, name };
+      // A user-picked storage folder (or ~/OSCode by default). All the safety
+      // (path confinement, existing-dir match, private-repo askpass token,
+      // outbox allowlisting) lives in cloneRepoHome, shared with the daemon.
+      const result = await cloneRepoHome({ url: url.trim(), parent: parent?.trim() || undefined });
+      return {
+        cwd: result.cwd,
+        name: result.name,
+        defaultBranch: result.defaultBranch,
+        parent: result.parent,
+      };
     } catch (err) {
-      return { error: `Could not clone: ${(err as Error).message}` };
+      const msg =
+        err instanceof RepoHomeError ? err.message : `Could not clone: ${(err as Error).message}`;
+      return { error: msg };
+    }
+  }
+
+  /** Back up a repo to a second user-chosen folder (a binary-safe mirror). */
+  async backupRepo(
+    cwd: string,
+    destParent: string,
+  ): Promise<{ destPath: string; backedUpAt: string } | { error: string }> {
+    try {
+      return await backupRepoHome(cwd, destParent);
+    } catch (err) {
+      const msg =
+        err instanceof RepoHomeError ? err.message : `Backup failed: ${(err as Error).message}`;
+      return { error: msg };
     }
   }
 
@@ -547,7 +572,8 @@ export class EngineHost {
       // loopback fallback (Tailscale down) reports 127.0.0.1. The Pair screen
       // uses this to avoid publishing an unreachable QR with false copy.
       mode: (this.daemon?.host === '127.0.0.1' ? 'loopback' : 'tailscale') as
-        'loopback' | 'tailscale',
+        | 'loopback'
+        | 'tailscale',
     };
   }
 

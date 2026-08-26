@@ -35,17 +35,23 @@ import {
 import {
   REPO_CONNECTORS,
   repoSecretKey,
+  backupDue,
+  connectorForUrl,
+  type BackupConfig,
   type HomeRepo,
   type OutboxFile,
   type OutboxItem,
+  type RepoRecord,
   type RepoState,
 } from '../lib/repos.js';
+import type { StorageLocation } from '../lib/gitos/location.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
 import {
   RemoteDriver,
   daemonApplyOutbox,
+  daemonBackupRepo,
   daemonCreateSession,
   daemonHealth,
   daemonVerifyCommit,
@@ -475,6 +481,21 @@ interface AppState {
   }): Promise<string | undefined>;
   /** A portable JSON backup of everything not yet synced (the S2 escape hatch). */
   exportBuffer(): string;
+  /** Register a repo the box just cloned, with the storage location the user
+   *  picked, so it is tracked, reconnects, and can be backed up. */
+  registerClonedRepo(input: {
+    name: string;
+    cwd: string;
+    location: StorageLocation;
+    remoteUrl?: string;
+    defaultBranch: string;
+  }): Promise<RepoRecord>;
+  /** Turn scheduled backups on or off for a repo, and where they land. */
+  setRepoBackup(repoId: string, backup: BackupConfig | undefined): Promise<void>;
+  /** Back up one repo now (a binary-safe mirror to its second folder). */
+  backupRepoNow(repoId: string): Promise<void>;
+  /** Run any scheduled backups that are due (opportunistic, on open/dock). */
+  runDueBackups(): Promise<void>;
 
   // My Crew: user-authored agents.
   /** Create a crew agent and return its id. */
@@ -2403,6 +2424,97 @@ export const useApp = create<AppState>((set, get) => {
         null,
         2,
       );
+    },
+
+    async registerClonedRepo(input) {
+      const s = get().settings;
+      const repos = s.repo?.repos ?? [];
+      // Same cwd re-cloned: refresh the existing record rather than duplicate it.
+      const existing = repos.find((r) => r.cwd === input.cwd);
+      const record: RepoRecord = {
+        id: existing?.id ?? `repo${Date.now().toString(36)}${(convSeq++).toString(36)}`,
+        name: input.name,
+        cwd: input.cwd,
+        location: input.location,
+        remoteUrl: input.remoteUrl,
+        connectorId: input.remoteUrl ? connectorForUrl(input.remoteUrl) : undefined,
+        defaultBranch: input.defaultBranch,
+        backup: existing?.backup,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        lastOpenedAt: new Date().toISOString(),
+      };
+      const next = [...repos.filter((r) => r.cwd !== input.cwd), record];
+      await get().saveSettings({ repo: { ...(s.repo ?? { outbox: [] }), repos: next } });
+      logEvent('repo_registered', { location: input.location.kind });
+      return record;
+    },
+
+    async setRepoBackup(repoId, backup) {
+      const s = get().settings;
+      const repos = s.repo?.repos ?? [];
+      const next = repos.map((r) => (r.id === repoId ? { ...r, backup } : r));
+      await get().saveSettings({ repo: { ...(s.repo ?? { outbox: [] }), repos: next } });
+      logEvent('repo_backup_set', {
+        enabled: Boolean(backup?.enabled),
+        interval: backup?.interval ?? 'none',
+      });
+    },
+
+    async backupRepoNow(repoId) {
+      const s = get().settings;
+      const repo = (s.repo?.repos ?? []).find((r) => r.id === repoId);
+      if (!repo) return;
+      if (!repo.backup?.destParent) {
+        get().showToast('Choose a backup folder first.');
+        return;
+      }
+      // Backups run on the box: the desktop bridge, or the paired daemon.
+      const b = bridge();
+      let error: string | undefined;
+      let backedUpAt: string | undefined;
+      try {
+        if (isDesktop() && b) {
+          const r = await b.backupRepo(repo.cwd, repo.backup.destParent);
+          if ('error' in r) error = r.error;
+          else backedUpAt = r.backedUpAt;
+        } else if (s.daemon) {
+          const r = await daemonBackupRepo(s.daemon, repo.cwd, repo.backup.destParent);
+          backedUpAt = r.backedUpAt;
+        } else {
+          get().showToast('Connect your desktop to back up. Repos live there.');
+          return;
+        }
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+      const live = get().settings.repo;
+      const repos = (live?.repos ?? []).map((r) =>
+        r.id === repoId && r.backup
+          ? {
+              ...r,
+              backup: {
+                ...r.backup,
+                lastBackupAt: backedUpAt ?? r.backup.lastBackupAt,
+                lastError: error,
+              },
+            }
+          : r,
+      );
+      await get().saveSettings({ repo: { ...(live ?? { outbox: [] }), repos } });
+      get().showToast(error ? `Backup failed. ${error}` : 'Backed up.');
+      logEvent('repo_backup_run', { ok: !error });
+    },
+
+    async runDueBackups() {
+      const repos = get().settings.repo?.repos ?? [];
+      const now = Date.now();
+      for (const repo of repos) {
+        if (backupDue(repo, now)) {
+          // Sequential on purpose: one mirror at a time keeps disk and the box
+          // calm, and a failure on one never blocks the next repo's attempt.
+          await get().backupRepoNow(repo.id);
+        }
+      }
     },
 
     async createCrewAgent(input) {

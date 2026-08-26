@@ -130,7 +130,20 @@ export interface OscodeBridge {
 
   // Repos.
   pickFolder(): Promise<string | null>;
-  cloneRepo(url: string): Promise<{ cwd: string; name: string } | { error: string }>;
+  /** Clone into a user-chosen storage folder (or ~/OSCode when parent is
+   *  omitted). The bytes live where the user picked; all path/token safety is
+   *  enforced in the engine. */
+  cloneRepo(
+    url: string,
+    parent?: string,
+  ): Promise<
+    { cwd: string; name: string; defaultBranch: string; parent: string } | { error: string }
+  >;
+  /** Snapshot a repo into a second folder as a binary-safe mirror. */
+  backupRepo(
+    cwd: string,
+    destParent: string,
+  ): Promise<{ destPath: string; backedUpAt: string } | { error: string }>;
   recentWorkspaces(): Promise<Array<{ cwd: string; name: string; lastUsed?: string }>>;
 
   // Phone pairing (the daemon).

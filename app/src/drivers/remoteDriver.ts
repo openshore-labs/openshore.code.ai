@@ -132,19 +132,42 @@ export async function daemonWorkspaces(target: DaemonTarget) {
   return ((await res.json()) as { workspaces: Array<{ cwd: string; name: string }> }).workspaces;
 }
 
-export async function daemonCloneRepo(target: DaemonTarget, url: string) {
+export async function daemonCloneRepo(target: DaemonTarget, url: string, parent?: string) {
   const res = await fetch(`${target.baseUrl}/workspaces/clone`, {
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify(parent ? { url, parent } : { url }),
   });
   const body = (await res.json().catch(() => ({}))) as {
     cwd?: string;
     name?: string;
+    defaultBranch?: string;
+    parent?: string;
     error?: string;
   };
   if (!res.ok || !body.cwd) throw new Error(body.error ?? `Clone failed (${res.status}).`);
-  return { cwd: body.cwd, name: body.name ?? 'repo' };
+  return {
+    cwd: body.cwd,
+    name: body.name ?? 'repo',
+    defaultBranch: body.defaultBranch ?? 'main',
+    parent: body.parent ?? '',
+  };
+}
+
+/** Ask the desktop to snapshot a repo into a second folder (a binary mirror). */
+export async function daemonBackupRepo(target: DaemonTarget, cwd: string, destParent: string) {
+  const res = await fetch(`${target.baseUrl}/repos/backup`, {
+    method: 'POST',
+    headers: { ...headers(target), 'content-type': 'application/json' },
+    body: JSON.stringify({ cwd, destParent }),
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    destPath?: string;
+    backedUpAt?: string;
+    error?: string;
+  };
+  if (!res.ok || !body.backedUpAt) throw new Error(body.error ?? `Backup failed (${res.status}).`);
+  return { destPath: body.destPath ?? '', backedUpAt: body.backedUpAt };
 }
 
 export async function daemonStack(target: DaemonTarget) {

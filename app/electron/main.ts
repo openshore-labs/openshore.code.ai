@@ -421,7 +421,10 @@ ipcMain.handle('osc:pickFolder', async () => {
   });
   return result.canceled ? null : (result.filePaths[0] ?? null);
 });
-ipcMain.handle('osc:cloneRepo', (_e, url: string) => host.cloneRepo(url));
+ipcMain.handle('osc:cloneRepo', (_e, url: string, parent?: string) => host.cloneRepo(url, parent));
+ipcMain.handle('osc:backupRepo', (_e, cwd: string, destParent: string) =>
+  host.backupRepo(cwd, destParent),
+);
 ipcMain.handle('osc:recentWorkspaces', () => host.recentWorkspaces());
 
 ipcMain.handle('osc:daemonInfo', () => host.daemonInfo());

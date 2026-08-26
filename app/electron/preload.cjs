@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('oscode', {
 
   pickFolder: invoke('osc:pickFolder'),
   cloneRepo: invoke('osc:cloneRepo'),
+  backupRepo: invoke('osc:backupRepo'),
   recentWorkspaces: invoke('osc:recentWorkspaces'),
 
   daemonInfo: invoke('osc:daemonInfo'),

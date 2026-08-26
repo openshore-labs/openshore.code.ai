@@ -193,3 +193,26 @@ execution contract. Newest at the bottom.
   server-enforceable against a user's own daemon (they hold both ends); this
   change confines the free surface so it cannot act, it does not claim to
   enforce entitlement against a hostile self-daemon.
+
+- **gitOS self-hosted repos: unify at the LOCATION layer, not the byte
+  transport** (CTO ruling). A live `.git` needs a real filesystem, so a repo
+  resolves a real path and uses the existing git stack, and is NEVER routed
+  through the text `StorageProvider` seam Vault uses. The shared `StorageLocation`
+  descriptor (`app/src/lib/gitos/location.ts`) is the merge: device or a
+  user-picked folder (local/NAS/Tailscale). Cloud drives are a BACKUP target
+  only (binary corrupts under naive sync), so v1 backups are a local/NAS mirror;
+  a cloud-drive bundle is a fast-follow needing a binary write path.
+- **User-picked repo homes, four must-fix guardrails** (all in
+  `os-code/src/git/repoHome.ts`): (1) the chosen root is realpath-confined and
+  sensitive roots ($HOME, /, ~/.ssh, ~/.os-code, inside a .git) are refused;
+  (2) an existing target is reused only when it is a git repo whose origin
+  matches the URL, never clobbered; (3) private-repo auth goes through a
+  one-shot GIT_ASKPASS reading the token from the env, never baked into the URL
+  or .git/config; (4) a repo outside ~/OSCode is appended to
+  daemon.outboxAllowedRoots rather than widening the isolation gates.
+- **Keep the box requirement** (CTO): the phone stays a remote control; the
+  working tree lives on the desktop/daemon. Phone-local git is not v1.
+- **REPO_OUTBOX_ENABLED flipped on** now that the storage picker registers each
+  repo home into the outbox allowlist as it clones (the guardrail that was
+  missing). Founder said "build all of it"; the outbox apply engine and homePath
+  gating were already built and tested.

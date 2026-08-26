@@ -11,7 +11,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { basename, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import {
   assertSafeBind,
   bearerFrom,
@@ -26,7 +26,7 @@ import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { LocalDriver, listSessions, sealSessionsAtRest } from './session.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { PushNotifier, savePushConfig } from './push.js';
-import { clone } from '../git/index.js';
+import { cloneRepoHome, backupRepoHome, RepoHomeError } from '../git/repoHome.js';
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
 import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
@@ -247,15 +247,57 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 400, { error: 'Send {"url": "https://github.com/owner/repo"}.' });
         return;
       }
-      const name = basename(gitUrl.replace(/\.git$/, '')) || 'repo';
-      const parent = join(homedir(), 'OSCode');
-      mkdirSync(parent, { recursive: true });
-      const target = join(parent, name);
+      // Optional storage location: a user-picked absolute folder (a local disk,
+      // a NAS, a Tailscale mount). Omitted, the repo lands in ~/OSCode. Every
+      // safety check (path confinement, existing-dir match, private-repo token
+      // via askpass, outbox allowlisting) lives in cloneRepoHome.
+      const parent = typeof body.parent === 'string' ? body.parent.trim() : '';
       try {
-        if (!existsSync(target)) await clone(gitUrl, target);
-        sendJson(res, 200, { cwd: target, name });
+        const result = await cloneRepoHome({ url: gitUrl, parent: parent || undefined });
+        // A repo that landed outside ~/OSCode was persisted into
+        // outboxAllowedRoots; mirror it into THIS running daemon's config too so
+        // its buffered commits are accepted now, not only after a restart.
+        if (result.registeredRoot) {
+          const roots = options.config.daemon.outboxAllowedRoots;
+          if (!roots.includes(result.cwd)) roots.push(result.cwd);
+        }
+        sendJson(res, 200, {
+          cwd: result.cwd,
+          name: result.name,
+          defaultBranch: result.defaultBranch,
+          parent: result.parent,
+        });
       } catch (err) {
-        sendJson(res, 400, { error: `Could not clone: ${(err as Error).message}` });
+        const msg =
+          err instanceof RepoHomeError ? err.message : `Could not clone: ${(err as Error).message}`;
+        sendJson(res, 400, { error: msg });
+      }
+      return;
+    }
+
+    // Back up a repo to a second user-chosen folder (a binary-safe mirror).
+    // Admin-gated (touches shared machine storage) and confined to repos the
+    // outbox may already reach, so it cannot be pointed at an arbitrary repo.
+    if (req.method === 'POST' && url.pathname === '/repos/backup') {
+      if (!requireAdmin()) return;
+      const body = await readJson(req);
+      const cwd = typeof body.cwd === 'string' ? body.cwd : '';
+      const destParent = typeof body.destParent === 'string' ? body.destParent : '';
+      if (!cwd || !existsSync(cwd) || !destParent) {
+        sendJson(res, 400, { error: 'Send {"cwd": "...", "destParent": "..."}.' });
+        return;
+      }
+      if (!isOutboxAllowedPath(cwd, options.config)) {
+        sendJson(res, 403, { error: 'That repo is not one this desktop manages.' });
+        return;
+      }
+      try {
+        const result = await backupRepoHome(cwd, destParent);
+        sendJson(res, 200, result);
+      } catch (err) {
+        const msg =
+          err instanceof RepoHomeError ? err.message : `Backup failed: ${(err as Error).message}`;
+        sendJson(res, 400, { error: msg });
       }
       return;
     }
