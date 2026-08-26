@@ -815,6 +815,47 @@ Layer status:
 
 ## Log
 
+- **2026-08-26: Second round, founder-approved builds + all scoped follow-ups.**
+  The founder approved both team recommendations and asked for every "left for
+  their own scoping" item. All built, test-backed, merged to main. Gates green
+  (os-code 302 tests, app 239, typecheck, lint, vite build).
+  - **Free desktop chat (paywall change, C-suite approved, CTO-designed).** Chat
+    with a paired desktop's own local models is now FREE; the coding agent,
+    Marketplace, and repo writes stay Personal. The CTO rejected a
+    "zero-tools session" (the command lane would have bypassed the tool registry
+    and let a free session run shell) and specced a stateless daemon route POST
+    /chat that builds only a provider and streams one completion: no
+    AgentSession, no LocalDriver, no ToolRegistry, no command lane, no journal,
+    pinned to the local orchestrator (no cloud spend). It cannot act by
+    construction. A distinct source.kind 'desktop-chat' (not a flag on
+    'desktop') keeps the free path off the session-creating branch; the gate is
+    unchanged. New DesktopChatDriver; a free-chat picker row beside the merged
+    "My computer" agent entry. Honest limit (CTO): the $20 wall is not
+    server-enforceable against a user's own daemon; this confines the free
+    surface, it does not police entitlement. Logged in DECISIONS.md.
+  - **Terminal bridge Phase 2: a full interactive PTY.** xterm.js on the phone
+    driving a live PTY on the desktop over new daemon term routes; agent reads it
+    with a new readTerminal tool (no writeTerminal). node-pty is an OPTIONAL dep,
+    lazy-imported: absent, the create route returns 503 and the daemon keeps
+    serving (the whole tree stays green with no native module). Security
+    reviewed: the terminal surface is ADMIN-only and owner-only; PTY output
+    rides its own SSE endpoint, never the journal (only content-free
+    opened/closed markers); stdin is never journaled or logged. Ring buffer with
+    absolute byte offsets for lossless reattach. Electron terminal wiring is the
+    one documented follow-up (phone-to-desktop works today).
+  - **MP-F2:** a paired phone installs a desktop model over the tailnet (daemon
+    /models/install + progress polling).
+  - **MP-F4:** pocket models that finished downloading while the app was closed
+    are adopted instead of re-downloaded (app adoption + a native guard).
+  - **TS-P2-4:** per-device, revocable pairing credentials; the QR no longer
+    hands out the shared admin token (mint-once, cached, revoke rotates the QR).
+  - **TS-P1-5:** the home-repo path writer, so "Sync now" stops being
+    enabled-but-doomed (pick an on-desktop cloned workspace).
+  - **Still needs founder / device:** confirm the free-chat and P0 streaming on a
+    real iPhone; node-pty built for the machine's ABI to run the real PTY (and
+    electron-rebuild for the Electron terminal follow-up); the Swift changes
+    compile on TestFlight.
+
 - **2026-08-26: Review remediation, full pass, merged to main.** Acted on the
   2026-08-25 review (`CODE-REVIEW-FINDINGS-2026-08-25.md`) across the three
   focus areas, closing out the substantive findings and a full premium-polish
