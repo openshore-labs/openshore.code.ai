@@ -19,7 +19,7 @@ import {
   loadOrCreateToken,
   resolveAuth,
 } from '../core/security/daemonAuth.js';
-import { oscHome } from '../config/load.js';
+import { oscHome, loadConfig } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
@@ -30,6 +30,10 @@ import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/o
 import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
 import { installModel, type InstallProgress } from '../market/install.js';
+import { ProviderRegistry } from '../providers/registry.js';
+import { resolveStack } from '../router/stack.js';
+import { getAnthropicKey } from '../auth/claude.js';
+import type { ChatMessage } from '../providers/types.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
 
@@ -44,6 +48,16 @@ const CORS_HEADERS: Record<string, string> = {
 };
 
 const log = logger('daemon');
+
+// The free desktop-chat surface: read-only conversation with the user's own
+// LOCAL models, no tools and no acting machinery (CTO ruling). The system line
+// makes the model own that it is chat, not the coding agent.
+const CHAT_SYSTEM = [
+  'You are OpenShore, a warm, capable companion running as read-only chat over a phone-to-desktop link.',
+  'Answer directly and concretely. Use markdown, and fence code with a language tag.',
+  'You have no tools here: you cannot read or edit files, run commands, or commit. When a task needs that, say so and point the user to opening a repo on their desktop (the coding agent).',
+  'Never use em dashes. Use a period or a comma instead.',
+].join('\n');
 
 export interface DaemonOptions {
   config: OscConfig;
@@ -403,6 +417,78 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       } catch (err) {
         sendJson(res, 500, { error: (err as Error).message });
       }
+      return;
+    }
+    // Free, read-only chat with the desktop's LOCAL models (the free tier the
+    // C-suite approved). This path instantiates NONE of the acting machinery:
+    // no AgentSession, no LocalDriver, no ToolRegistry, no command lane, no
+    // outbox, no journal, no cloud escalation. It builds only a provider and
+    // streams one completion, so it physically cannot read, edit, run, or
+    // commit. Member-auth, same bearer gate as everything else.
+    if (req.method === 'POST' && url.pathname === '/chat') {
+      const body = await readJson(req);
+      const rawMessages = Array.isArray(body.messages) ? body.messages : undefined;
+      if (!rawMessages) {
+        sendJson(res, 400, { error: 'Send {"messages": [{"role","content"}, ...]}.' });
+        return;
+      }
+      // Load the config fresh (like bootstrapSession) so this reflects the
+      // user's actual stack, not the snapshot the daemon started with.
+      const chatConfig = loadConfig().config;
+      const providers = new ProviderRegistry(chatConfig, getAnthropicKey);
+      let orchestrator;
+      try {
+        orchestrator = resolveStack(chatConfig, providers).orchestrator;
+      } catch (err) {
+        sendJson(res, 400, {
+          error: `No local model to chat with: ${(err as Error).message}`,
+        });
+        return;
+      }
+      // Pin to local: a free surface never spends the user's cloud budget.
+      if (orchestrator.provider.kind !== 'local') {
+        sendJson(res, 400, {
+          error:
+            'Free desktop chat runs your local models. Set a local orchestrator in your stack.',
+        });
+        return;
+      }
+      const model =
+        typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
+      const messages: ChatMessage[] = [
+        { role: 'system', content: CHAT_SYSTEM },
+        ...rawMessages
+          .filter(
+            (m: unknown): m is { role: string; content: string } =>
+              Boolean(m) &&
+              typeof (m as { content?: unknown }).content === 'string' &&
+              ['user', 'assistant'].includes((m as { role?: unknown }).role as string),
+          )
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      ];
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+        ...CORS_HEADERS,
+      });
+      const controller = new AbortController();
+      req.on('close', () => controller.abort());
+      try {
+        for await (const ev of orchestrator.provider.chat({ model, messages }, controller.signal)) {
+          // Tools are never sent, so a tool-call event cannot occur; only text
+          // is streamed. Anything else is ignored, keeping the surface inert.
+          if (ev.type === 'text' && ev.delta) {
+            res.write(`data: ${JSON.stringify({ type: 'text', delta: ev.delta })}\n\n`);
+          }
+        }
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      } catch (err) {
+        res.write(
+          `data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`,
+        );
+      }
+      res.end();
       return;
     }
     if (req.method === 'GET' && url.pathname === '/sessions') {
