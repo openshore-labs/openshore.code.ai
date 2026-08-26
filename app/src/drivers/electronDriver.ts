@@ -2,7 +2,15 @@
 // over IPC already in DriverEvent shape, so this is a thin adapter.
 import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
 import { requireBridge } from '../lib/electronBridge.js';
-import type { ChatDriver, DriverEventSink } from './types.js';
+import type { ChatDriver, DriverEventSink, TerminalOpen } from './types.js';
+
+/** Base64 -> raw bytes, for a terminal output chunk arriving over IPC. */
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 
 export class ElectronDriver implements ChatDriver {
   readonly kind = 'desktop' as const;
@@ -58,6 +66,55 @@ export class ElectronDriver implements ChatDriver {
 
   killCommand(runId: string): void {
     void requireBridge().killCommand(this.sessionId, runId);
+  }
+
+  // ---- interactive terminal (Phase 2) ----
+  // The PTY lives in the main process (the same TerminalManager the daemon
+  // uses). openTerminal ensures one; terminalStream registers for the output
+  // events the main process forwards, then asks it to start (ring replay from
+  // the offset, then live), until the caller's signal aborts.
+  async openTerminal(opts: { cols: number; rows: number }): Promise<TerminalOpen> {
+    return requireBridge().openTerminal(this.sessionId, opts.cols, opts.rows);
+  }
+
+  terminalStream(
+    termId: string,
+    sinceOffset: number,
+    onChunk: (bytes: Uint8Array, endOffset: number) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const bridgeApi = requireBridge();
+    return new Promise<void>((resolve) => {
+      // Register the listener BEFORE subscribing, so the ring replay (sent right
+      // after subscribe) is never missed.
+      const off = bridgeApi.onTerminalData((payload) => {
+        if (payload.termId !== termId) return;
+        onChunk(b64ToBytes(payload.b64), payload.offset);
+      });
+      const cleanup = (): void => {
+        off();
+        void bridgeApi.terminalUnsubscribe(termId);
+        resolve();
+      };
+      if (signal.aborted) {
+        cleanup();
+        return;
+      }
+      signal.addEventListener('abort', cleanup, { once: true });
+      void bridgeApi.terminalSubscribe(termId, sinceOffset);
+    });
+  }
+
+  terminalStdin(termId: string, data: string): void {
+    void requireBridge().terminalStdin(termId, data);
+  }
+
+  terminalResize(termId: string, cols: number, rows: number): void {
+    void requireBridge().terminalResize(termId, cols, rows);
+  }
+
+  terminalKill(termId: string): void {
+    void requireBridge().terminalKill(termId);
   }
 
   dispose(): void {

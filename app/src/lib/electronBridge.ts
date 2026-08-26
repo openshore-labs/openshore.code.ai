@@ -92,6 +92,24 @@ export interface OscodeBridge {
   sendCommandStdin(sessionId: string, runId: string, data: string): Promise<void>;
   killCommand(sessionId: string, runId: string): Promise<void>;
 
+  // Interactive terminal (Phase 2). openTerminal ensures a PTY on this machine
+  // for the session; output arrives as osc:terminal-data via onTerminalData
+  // once terminalSubscribe registers it (ring replay from the offset, then
+  // live). The rest drive the live PTY. stdin is never logged.
+  openTerminal(
+    sessionId: string,
+    cols: number,
+    rows: number,
+  ): Promise<{ termId: string; cols: number; rows: number } | { unavailable: true; error: string }>;
+  terminalSubscribe(termId: string, sinceOffset: number): Promise<boolean>;
+  terminalUnsubscribe(termId: string): Promise<void>;
+  terminalStdin(termId: string, data: string): Promise<boolean>;
+  terminalResize(termId: string, cols: number, rows: number): Promise<boolean>;
+  terminalKill(termId: string): Promise<boolean>;
+  onTerminalData(
+    cb: (payload: { termId: string; b64: string; offset: number }) => void,
+  ): () => void;
+
   // Machine, stack, marketplace.
   status(): Promise<DesktopStatus>;
   catalog(): Promise<{ catalog: Catalog; note?: string }>;

@@ -289,6 +289,7 @@ let win: BrowserWindow | undefined;
 const host = new EngineHost(
   (payload) => win?.webContents.send('osc:event', payload),
   (payload) => win?.webContents.send('osc:install-progress', payload),
+  (payload) => win?.webContents.send('osc:terminal-data', payload),
 );
 
 function createWindow(): void {
@@ -375,6 +376,23 @@ ipcMain.handle('osc:sendCommandStdin', (_e, sessionId: string, runId: string, da
 ipcMain.handle('osc:killCommand', (_e, sessionId: string, runId: string) =>
   host.killCommand(sessionId, runId),
 );
+
+// Interactive terminal (Phase 2). Output streams as osc:terminal-data events;
+// stdin/resize/kill drive the live PTY.
+ipcMain.handle('osc:openTerminal', (_e, sessionId: string, cols: number, rows: number) =>
+  host.openTerminal(sessionId, cols, rows),
+);
+ipcMain.handle('osc:terminalSubscribe', (_e, termId: string, sinceOffset: number) =>
+  host.terminalSubscribe(termId, sinceOffset),
+);
+ipcMain.handle('osc:terminalUnsubscribe', (_e, termId: string) => host.terminalUnsubscribe(termId));
+ipcMain.handle('osc:terminalStdin', (_e, termId: string, data: string) =>
+  host.terminalStdin(termId, data),
+);
+ipcMain.handle('osc:terminalResize', (_e, termId: string, cols: number, rows: number) =>
+  host.terminalResize(termId, cols, rows),
+);
+ipcMain.handle('osc:terminalKill', (_e, termId: string) => host.terminalKill(termId));
 
 ipcMain.handle('osc:status', () => host.status());
 ipcMain.handle('osc:catalog', () => host.catalog());
