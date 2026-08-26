@@ -35,5 +35,14 @@ export function useSheetExit(
     });
   }, [exitMs]);
 
+  // Escape closes the sheet (desktop keyboard users), the way a dialog should.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismiss();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [dismiss]);
+
   return { closing, dismiss };
 }

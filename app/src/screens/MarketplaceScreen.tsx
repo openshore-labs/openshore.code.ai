@@ -420,7 +420,7 @@ export function MarketplaceScreen() {
             <div className="progress-track">
               <div
                 className={`progress-fill${dl.indeterminate ? ' indeterminate' : ''}`}
-                style={dl.indeterminate ? undefined : { width: `${dl.percent}%` }}
+                style={dl.indeterminate ? undefined : { transform: `scaleX(${dl.percent / 100})` }}
               />
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
@@ -822,7 +822,7 @@ export function MarketplaceScreen() {
                       style={
                         harborDownload.indeterminate
                           ? undefined
-                          : { width: `${harborDownload.percent}%` }
+                          : { transform: `scaleX(${harborDownload.percent / 100})` }
                       }
                     />
                   </div>
@@ -853,7 +853,7 @@ export function MarketplaceScreen() {
                       style={
                         harborMiniDownload.indeterminate
                           ? undefined
-                          : { width: `${harborMiniDownload.percent}%` }
+                          : { transform: `scaleX(${harborMiniDownload.percent / 100})` }
                       }
                     />
                   </div>

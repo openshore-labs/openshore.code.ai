@@ -3,6 +3,25 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-26)
+
+**Review close-out: dark-mode audit + remaining polish and vault follow-ups.**
+The deferred items from the remediation are now done: the dark theme's
+elevation shadows are tokenized to flip to a black base on dark (syntax tints,
+accents, and status colors were already token-driven, so they flip too); the
+Tier 2/3 UI polish landed (download progress animates a transform not width,
+small icon buttons get ~44pt hit areas, landscape safe-area insets,
+room-change fade-and-rise on screen navigation, Escape-closes-sheets, toast
+role=status, press feedback broadened to the primary navigation and vault
+rows); and the vault got a body cache so backlink derivation re-reads only
+changed files (R-8) plus an export that clears stale files and reports a real
+device error distinctly (R-13). BYOM/OpenAI-compatible on-device streaming
+(R-16) is the one item left deferred: it needs new native plumbing (an
+Electron IPC streaming channel and an iOS URLSession SSE bridge) that cannot
+be verified in a headless web session, so it stays a scoped follow-up rather
+than ship untested native code. Gates green: os-code 30 files / 238 tests,
+app 37 files / 210 tests, lint/typecheck clean, vite build passes.
+
 ## Current state (2026-08-25)
 
 **Local-first review remediation landed (7 waves).** A full review
@@ -69,15 +88,13 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Review follow-ups deferred from the remediation** (all captured, none
-      shipped): Vault backlink perf (opening a note reads every note serially,
-      cache bodies keyed by updatedAt, R-8); export cleanup of stale files
-      under the export root (R-13); BYOM/OpenAI-compatible true streaming and
-      cancel on iOS and Electron (buffer-then-dump today, needs a native SSE
-      bridge, R-16); the remaining UI Tier 2/3 polish (progress-bar layout
-      animation, sub-44pt tap targets, landscape safe-area-left/right,
-      room-change transition, full press-fb adoption on bare tappables, dialog
-      role/Escape/focus-trap on sheets). See `CODE-REVIEW-LOCAL-FIRST.md`.
+- [ ] **BYOM on-device streaming (R-16), still deferred:** true streaming and
+      cancel for BYOM/OpenAI-compatible endpoints on iOS and Electron
+      (buffer-then-dump today). Needs an Electron IPC streaming channel and an
+      iOS URLSession SSE bridge, both native and unverifiable in a web session.
+      The full press-fb adoption sweep across every remaining chip/row, and a
+      focus-trap on sheets, are the last cosmetic bits of the UI polish (Escape,
+      dialog roles, and primary-navigation press feedback already landed).
 - [ ] **Repositories offload: wire the producer + homePath picker** to flip
       `REPO_OUTBOX_ENABLED` on (its own scoped feature, per CTO FD-1). Also
       PAR-3: platform-remote (GitHub/GitLab) home repos have no push path yet.

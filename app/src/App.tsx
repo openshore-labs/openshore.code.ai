@@ -95,7 +95,11 @@ export function App() {
     return (
       <div className="shell">
         <OnboardingScreen />
-        {toast ? <div className="toast">{toast}</div> : null}
+        {toast ? (
+          <div className="toast" role="status" aria-live="polite">
+            {toast}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -135,7 +139,11 @@ export function App() {
       <div className="shell-main">{room}</div>
       {compact && drawerOpen ? <Sidebar drawer /> : null}
       <Paywall />
-      {toast ? <div className="toast">{toast}</div> : null}
+      {toast ? (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -593,7 +593,7 @@ export function VaultScreen() {
               e.kind === 'folder' ? (
                 <button
                   key={e.path}
-                  className="conv-item vault-row"
+                  className="conv-item vault-row press-fb press-fb--row"
                   onClick={() => setFolder(e.path)}
                 >
                   <span className="vault-row-chevron" aria-hidden="true" />
@@ -602,7 +602,7 @@ export function VaultScreen() {
               ) : (
                 <button
                   key={e.path}
-                  className="conv-item vault-row"
+                  className="conv-item vault-row press-fb press-fb--row"
                   onClick={() => openNote(e.path)}
                 >
                   {e.name}
@@ -735,12 +735,16 @@ export function VaultScreen() {
                     showToast('Nothing to export yet. Write a note first.');
                     return;
                   }
-                  const count = await exportVaultToFiles(notes).catch(() => undefined);
-                  showToast(
-                    count === undefined
-                      ? 'Export needs the app on a device, not the browser.'
-                      : `${count} ${count === 1 ? 'note' : 'notes'} exported to Files, under OS Code / Vault. Obsidian opens that folder as a vault.`,
-                  );
+                  try {
+                    const count = await exportVaultToFiles(notes);
+                    showToast(
+                      count === undefined
+                        ? 'Export needs the app on a device, not the browser.'
+                        : `${count} ${count === 1 ? 'note' : 'notes'} exported to Files, under OS Code / Vault. Obsidian opens that folder as a vault.`,
+                    );
+                  } catch {
+                    showToast('Could not export your vault. Check device storage and try again.');
+                  }
                 }}
               >
                 Export as plain files
