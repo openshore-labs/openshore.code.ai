@@ -1999,36 +1999,42 @@ textarea {
 .greeting-swap-stack > .greeting-swap {
   grid-area: 1 / 1;
 }
-/* The incoming language rises in as the outgoing one lifts away. transform and
-   opacity only, never layout. */
+/* The incoming language rises in as the outgoing one lifts away, each moving
+   through depth rather than sliding on a flat plane: the new word arrives toward
+   you on a gentle spring, the old one recedes and softens. Transform, opacity,
+   and filter only, never layout. The spring lives here on the tap crossfade only
+   so the first landing greeting keeps its slower, unhurried settle. */
 .greeting-swap {
   display: inline-block;
-  animation: greet-swap var(--dur-5) var(--ease-arrive) backwards;
+  animation: greet-swap var(--dur-6) var(--ease-spring) backwards;
 }
 @keyframes greet-swap {
   from {
     opacity: 0;
-    transform: translateY(7px);
+    transform: translateY(8px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
-/* The old word lifts up and fades, then drops itself on animationend (see
-   ChatScreen). Defined after .greeting-swap so it wins the animation property
-   while both classes are on the exiting layer. */
+/* The old word lifts, scales up a touch, and blurs to soft focus as it fades,
+   then drops itself on animationend (see ChatScreen). Defined after
+   .greeting-swap so it wins the animation property while both classes are on the
+   exiting layer. */
 .greeting-swap-out {
-  animation: greet-swap-out var(--dur-4) var(--ease-standard) forwards;
+  animation: greet-swap-out var(--dur-5) var(--ease-standard) forwards;
 }
 @keyframes greet-swap-out {
   from {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
   to {
     opacity: 0;
-    transform: translateY(-7px);
+    transform: translateY(-8px) scale(1.04);
+    filter: blur(2px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
