@@ -3,6 +3,24 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-27, greeting)
+
+**Long-press language reveal added to the greeting line.** A second, quieter
+Easter egg alongside the existing tap-to-rotate: holding the greeting line
+down for 450ms now pops a small pill bubble above it naming the language's
+English name (e.g. "Hungarian"), fires a light haptic tick, and fades the
+bubble out again after 1.4s or on release. A `longPressFired` ref suppresses
+that gesture's own click so it never also triggers the tap-to-rotate. Bubble
+styling rides the existing motion tokens (`--ease-spring`/`--ease-standard`,
+`--dur-3`/`--dur-4`) and the base UI font rather than the greeting's display
+serif; relies on the global `prefers-reduced-motion` reset rather than a
+separate override, since it is a plain transition, not a keyframed animation.
+Code in `app/src/screens/ChatScreen.tsx` and `.greeting-lang-bubble` in
+`app/src/theme.css`.
+Gates green: 41 files / 258 tests, typecheck (app + electron), lint
+--max-warnings 0, Prettier clean. Pushed straight to `main` (fast-forward,
+commit `9291d76`), which fires deploy.yml. Not device-verified.
+
 ## Current state (2026-08-26, keyboard)
 
 **Greeting-anchoring saga closed out: stopped WKWebView from scrolling the
