@@ -49,6 +49,17 @@ Positioning math untouched, only how the change between states plays out.
 Gates green (same suite), pushed straight to `main` (fast-forward, commit
 `14072c7`). Not yet device-verified.
 
+**Second follow-on, same day:** founder caught the mark itself moving too,
+on languages whose greeting wraps to two lines at phone width (English
+mostly does not, several others do). The column is flex-end anchored from
+its bottom, so a second line grew the stack and dragged the mark and first
+line up with it. Capped `.greeting-line`'s own box to exactly one line
+(`1lh`, with an `em` fallback for pre-16.4 iOS, plus `min-height: 0` to
+defeat flexbox's automatic content-based minimum size), so a second line now
+spills below the capped box instead of pushing anything above it. Gates
+green (same suite), compiled output checked for the rule, pushed straight to
+`main` (fast-forward, commit `84a5cfa`). Not yet device-verified.
+
 ## Current state (2026-08-26, greeting)
 
 **Empty-state greeting reworked, composer moved back to the bottom, plus a
