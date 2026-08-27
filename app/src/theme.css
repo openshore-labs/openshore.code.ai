@@ -1343,14 +1343,28 @@ textarea {
    Keyboard plugin's keyboardWillShow event (capacitor.config.ts sets
    Keyboard.resize: 'none', so WKWebView never resizes itself for the keyboard
    and there is no device-dependent guessing left to do). Either way the
-   field lands 4px above whatever is below it. */
+   field lands 4px above whatever is below it.
+
+   The padding-bottom change transitions on --ease-standard, the same iOS
+   system curve UIKit itself uses for the keyboard's own slide, at a duration
+   close to the keyboard's real one (~250ms), so the composer's rise reads as
+   riding up WITH the keyboard instead of snapping to its final position the
+   instant keyboardWillShow reports a height. Values only, not positions: the
+   4px/--kb-inset math above is untouched. */
 @media (pointer: coarse) {
   .composer-wrap {
     margin-top: auto;
     padding-bottom: calc(4px + var(--safe-bottom));
+    transition: padding-bottom var(--dur-4) var(--ease-standard);
   }
   :root.kb-open .composer-wrap {
     padding-bottom: calc(4px + var(--kb-inset, 0px));
+  }
+}
+
+@media (pointer: coarse) and (prefers-reduced-motion: reduce) {
+  .composer-wrap {
+    transition: none;
   }
 }
 
