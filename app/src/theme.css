@@ -2014,6 +2014,25 @@ textarea {
     padding-bottom: 16px;
     pointer-events: none;
   }
+
+  /* Some languages in the rotation wrap to a second line where English does
+     not (a wider greeting reads onto two lines at a narrow phone width). The
+     column above is flex-end anchored from its BOTTOM, so a second line grew
+     the stack upward and dragged the mark up with it. Capping the line's own
+     box to exactly one line's height, with overflow left visible, pins the
+     mark and the first line in place no matter how many lines the text
+     actually renders: a second line simply spills below the capped box
+     instead of pushing anything above it. min-height: 0 is required, not
+     decorative: flexbox items default to an automatic minimum size based on
+     their content when overflow is visible, which would silently override
+     the explicit height otherwise. The em fallback preserves the same box on
+     engines predating the lh unit (Safari 16.4, iOS 16.4); this project's
+     deployment target is iOS 16.0. */
+  .greeting-line {
+    height: calc(1.15em);
+    height: 1lh;
+    min-height: 0;
+  }
 }
 
 /* The opening greeting settles in, the mark first and the line a beat behind,
