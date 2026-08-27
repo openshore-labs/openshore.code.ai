@@ -178,7 +178,7 @@ change to the curation inputs / builder / schema, or on demand
    publishes nothing, so the live catalog keeps serving).
 4. Publishes by committing the result to the marketing repo at
    `src/static/os-code/catalog.json`. openshore.ai is a Cloudflare Pages site
-   built from `Open-Shore-LLC-Homepage`, whose Eleventy build passes
+   built from `OpenShore.ai-marketing-site`, whose Eleventy build passes
    `src/static` through to the site root, so that file is served at
    `openshore.ai/os-code/catalog.json`, which is exactly the default
    `config.catalog.url`. The Cloudflare Pages deploy ships it.
@@ -188,10 +188,13 @@ change to the curation inputs / builder / schema, or on demand
 ### The one secret the founder must add
 
 - **`MARKETING_DEPLOY_TOKEN`** (repository secret on `openshore.code.ai`): a
-  fine-grained personal access token scoped to `openshore-labs/Open-Shore-LLC-Homepage`
+  fine-grained personal access token scoped to `openshore-labs/OpenShore.ai-marketing-site`
   with **Contents: read and write**. Without it the job still builds and gates
   the catalog (and uploads the artifact) but skips the publish step. Nothing
   else needs wiring: `config.catalog.url` already points at the published URL.
+  (This moved from `Open-Shore-LLC-Homepage` when OpenShore got its own
+  standalone site at openshore.ai; the existing token is scoped to the old
+  repo only, so a new one must be issued for the new repo.)
 
 An initial `catalog.json` is committed in the marketing repo alongside this
 change, so the URL is live from the first Cloudflare deploy without waiting for

@@ -5,18 +5,20 @@
 # source; OpenShore never rehosts them.
 #
 # Where it publishes: openshore.ai is a Cloudflare Pages site built from the
-# Open-Shore-LLC-Homepage repo, whose Eleventy build passes src/static through
-# to the site root. So a file committed to that repo at
-# src/static/os-code/catalog.json is served at openshore.ai/os-code/catalog.json,
-# which is exactly what config.catalog.url defaults to. This job builds the
-# catalog here (where the os-code toolchain lives) and commits it there; the
-# Cloudflare Pages deploy then ships it. On any gate breach the job writes and
-# publishes NOTHING, and the previously published catalog keeps serving.
+# OpenShore.ai-marketing-site repo (formerly a subpage of
+# Open-Shore-LLC-Homepage; that repo now serves openshorellc.com instead),
+# whose Eleventy build passes src/static through to the site root. So a file
+# committed to that repo at src/static/os-code/catalog.json is served at
+# openshore.ai/os-code/catalog.json, which is exactly what config.catalog.url
+# defaults to. This job builds the catalog here (where the os-code toolchain
+# lives) and commits it there; the Cloudflare Pages deploy then ships it. On
+# any gate breach the job writes and publishes NOTHING, and the previously
+# published catalog keeps serving.
 #
 # One-time setup (see os-code/docs/MARKETPLACE.md): a repository secret named
-# MARKETING_DEPLOY_TOKEN, a fine-grained PAT scoped to Open-Shore-LLC-Homepage
-# with Contents: read and write. Without it the publish step is skipped and the
-# job just proves the catalog builds.
+# MARKETING_DEPLOY_TOKEN, a fine-grained PAT scoped to
+# OpenShore.ai-marketing-site with Contents: read and write. Without it the
+# publish step is skipped and the job just proves the catalog builds.
 name: Publish model catalog
 
 on:
@@ -116,7 +118,7 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 \
-            "https://x-access-token:${MARKETING_DEPLOY_TOKEN}@github.com/openshore-labs/Open-Shore-LLC-Homepage.git" \
+            "https://x-access-token:${MARKETING_DEPLOY_TOKEN}@github.com/openshore-labs/OpenShore.ai-marketing-site.git" \
             marketing
           install -D os-code/build/catalog.json marketing/src/static/os-code/catalog.json
           cd marketing
