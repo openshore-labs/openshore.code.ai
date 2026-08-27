@@ -2065,6 +2065,7 @@ textarea {
    press scale from press-fb and one gentle nudge after landing, so finding it
    still feels like an Easter egg. Keyboard users get a focus ring. */
 .greeting-line {
+  position: relative;
   pointer-events: auto;
   cursor: default;
   user-select: none;
@@ -2076,6 +2077,37 @@ textarea {
   outline: 2px solid var(--accent, currentColor);
   outline-offset: 8px;
   border-radius: 12px;
+}
+/* A second, quieter Easter egg on the same line: holding it down surfaces the
+   language's English name in a small bubble above the text, then it lingers
+   a moment and fades. A plain opacity/transform transition, not a keyframed
+   animation, so the global prefers-reduced-motion reset (near-zero duration)
+   is all it needs. */
+.greeting-lang-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(6px) scale(0.92);
+  opacity: 0;
+  pointer-events: none;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  white-space: nowrap;
+  box-shadow: 0 10px 34px rgba(var(--shadow-rgb), 0.22);
+  transition:
+    opacity var(--dur-4) var(--ease-standard),
+    transform var(--dur-4) var(--ease-standard);
+}
+.greeting-lang-bubble-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+  transition:
+    opacity var(--dur-3) var(--ease-spring),
+    transform var(--dur-3) var(--ease-spring);
 }
 /* The outgoing and incoming languages share one grid cell so the old word can
    crossfade out over the new one without either reflowing the centered line. */

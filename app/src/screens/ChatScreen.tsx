@@ -148,6 +148,39 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // session and never again.
   const [hint, setHint] = useState(true);
   const wasEmpty = useRef(true);
+
+  // A second Easter egg on the same line: holding it down reveals the
+  // language's English name in a small bubble, so the tap-through rotation
+  // stays guessable without a label sitting there year-round. longPressFired
+  // tracks whether the hold actually fired, so the pointerup's click doesn't
+  // also rotate to the next language.
+  const [langBubbleVisible, setLangBubbleVisible] = useState(false);
+  const longPressFired = useRef(false);
+  const longPressTimer = useRef<number | null>(null);
+  const bubbleHideTimer = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+      if (bubbleHideTimer.current !== null) window.clearTimeout(bubbleHideTimer.current);
+    };
+  }, []);
+  const startLangPress = () => {
+    longPressFired.current = false;
+    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = window.setTimeout(() => {
+      longPressFired.current = true;
+      hapticTick();
+      setLangBubbleVisible(true);
+      if (bubbleHideTimer.current !== null) window.clearTimeout(bubbleHideTimer.current);
+      bubbleHideTimer.current = window.setTimeout(() => setLangBubbleVisible(false), 1400);
+    }, 450);
+  };
+  const endLangPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
   useEffect(() => {
     // Reshuffle and re-pick a fresh landing line only when we return to the
     // empty state from a conversation, so the first paint keeps its initial
@@ -241,13 +274,23 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               role="button"
               tabIndex={0}
               aria-label={greeting.english}
-              onClick={rotate}
+              onClick={() => {
+                if (longPressFired.current) {
+                  longPressFired.current = false;
+                  return;
+                }
+                rotate();
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   rotate();
                 }
               }}
+              onPointerDown={startLangPress}
+              onPointerUp={endLangPress}
+              onPointerLeave={endLangPress}
+              onPointerCancel={endLangPress}
             >
               <span
                 className={`greeting-swap-stack${hint ? ' greeting-hint' : ''}`}
@@ -274,6 +317,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                     </span>
                   );
                 })}
+              </span>
+              <span
+                className={`greeting-lang-bubble${langBubbleVisible ? ' greeting-lang-bubble-visible' : ''}`}
+                aria-hidden={!langBubbleVisible}
+              >
+                {greeting.lang}
               </span>
             </h1>
           </div>
