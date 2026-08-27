@@ -34,12 +34,20 @@ scroll to keep the focused composer above the keyboard, which no
 Gates green: 41 files / 258 tests, typecheck, lint --max-warnings 0, Prettier,
 vite build, `npx cap sync ios` (confirms the plugin registers and
 `resize: 'none'` lands in the native config). Pushed straight to `main`
-(fast-forward, commit `c0d5a9f`). Not device-verified (no iOS here), and this
-is a new class of fix (disables a native WKWebView behavior rather than
-patching CSS/JS), so if the greeting still moves after this, the next
-signal to check is whether WKWebView has its own independent
-scroll-to-reveal-focused-field behavior that survives `resize: 'none'`
-(would need a small native-side tweak, not just JS/CSS).
+(fast-forward, commit `c0d5a9f`). **Founder-confirmed on device: the greeting
+holds its spot through both keyboard states.** This closes out the saga; the
+greeting's positioning is locked in and should not be revisited without a new
+founder ask.
+
+**Follow-on polish, same day:** the composer's padding-bottom jump when
+`kb-open` toggled had no transition, so it snapped to its final position the
+instant `keyboardWillShow` reported a height instead of riding up with the
+keyboard's own slide. Added a `transition: padding-bottom var(--dur-4)
+var(--ease-standard)` on `.composer-wrap` (touch only, killed under
+`prefers-reduced-motion`), matching the keyboard's own animation duration.
+Positioning math untouched, only how the change between states plays out.
+Gates green (same suite), pushed straight to `main` (fast-forward, commit
+`14072c7`). Not yet device-verified.
 
 ## Current state (2026-08-26, greeting)
 
