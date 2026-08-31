@@ -13,6 +13,8 @@
     "test": "vitest run",
     "desktop": "vite build && tsc -p electron/tsconfig.json && electron .",
     "package:linux": "vite build && tsc -p electron/tsconfig.json && electron-builder --linux",
+    "package:mac": "vite build && tsc -p electron/tsconfig.json && electron-builder --mac",
+    "package:win": "vite build && tsc -p electron/tsconfig.json && electron-builder --win",
     "ios:sync": "vite build && cap sync ios"
   },
   "dependencies": {
@@ -71,6 +73,14 @@
     "directories": {
       "output": "release"
     },
+    "protocols": [
+      {
+        "name": "OpenShore",
+        "schemes": [
+          "oscode"
+        ]
+      }
+    ],
     "linux": {
       "target": [
         "AppImage",
@@ -78,6 +88,30 @@
       ],
       "category": "Development",
       "maintainer": "OpenShore Labs"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
     }
   }
 }

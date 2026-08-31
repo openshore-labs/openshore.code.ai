@@ -53,6 +53,19 @@ workflows:
           npm install -g pnpm@10.33.0
           pnpm --version
           pnpm install --frozen-lockfile
+      - name: Gate the build on the test suite
+        script: |
+          set -euo pipefail
+          # The GitHub CI on main and this TestFlight pipeline were two
+          # independent triggers on the same branch: a red suite could still
+          # ship to TestFlight because Codemagic never ran the tests. Gate the
+          # build on the same checks a contributor runs locally, so broken code
+          # can never reach a tester. os-code must build first (the app imports
+          # its compiled protocol types).
+          pnpm --filter os-code build
+          pnpm -r lint
+          pnpm -r typecheck
+          pnpm -r test
       - name: Build the engine and the web app, sync the iOS project
         script: |
           set -euo pipefail
