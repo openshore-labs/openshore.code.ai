@@ -75,4 +75,6 @@ contextBridge.exposeInMainWorld('oscode', {
   gdriveOAuthListen: invoke('osc:gdriveOAuthListen'),
   gdriveOAuthWait: invoke('osc:gdriveOAuthWait'),
   gdriveOAuthCancel: invoke('osc:gdriveOAuthCancel'),
+
+  onDeepLink: listen('osc:deep-link'),
 });

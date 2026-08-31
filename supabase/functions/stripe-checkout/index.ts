@@ -31,7 +31,16 @@ const PRICE_BY_TIER: Record<string, string | undefined> = {
   personal: Deno.env.get('STRIPE_PRICE_PERSONAL'),
 };
 
-const SUCCESS_URL = Deno.env.get('CHECKOUT_SUCCESS_URL') ?? 'https://openshore.ai/os-code/?checkout=success';
+// After payment, return the buyer to the checkout-return function, which
+// deep-links back into the app (oscode://checkout-success) so it re-reads the
+// entitlement and unlocks. Defaults derive from this project's own functions
+// base, so checkout returns into the app with zero extra founder config; set
+// CHECKOUT_SUCCESS_URL to override. {CHECKOUT_SESSION_ID} is Stripe's own
+// placeholder, filled with the real session id on redirect.
+const FUNCTIONS_BASE = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1`;
+const SUCCESS_URL =
+  Deno.env.get('CHECKOUT_SUCCESS_URL') ??
+  `${FUNCTIONS_BASE}/checkout-return?session_id={CHECKOUT_SESSION_ID}`;
 const CANCEL_URL = Deno.env.get('CHECKOUT_CANCEL_URL') ?? 'https://openshore.ai/os-code/';
 const PORTAL_RETURN = Deno.env.get('PORTAL_RETURN_URL') ?? 'https://openshore.ai/os-code/';
 

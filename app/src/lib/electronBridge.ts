@@ -171,6 +171,11 @@ export interface OscodeBridge {
   gdriveOAuthListen(): Promise<{ port: number }>;
   gdriveOAuthWait(): Promise<{ code: string; state: string } | { error: string }>;
   gdriveOAuthCancel(): Promise<void>;
+
+  // Deep links the OS routed to this app over the oscode:// scheme (Supabase
+  // auth callback, Stripe checkout return). The renderer subscribes and routes
+  // each URL. Returns an unsubscribe function.
+  onDeepLink(cb: (url: string) => void): () => void;
 }
 
 export function bridge(): OscodeBridge | undefined {

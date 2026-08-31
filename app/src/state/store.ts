@@ -66,8 +66,12 @@ import {
   invokeFunction as supabaseInvoke,
   isConfigured as authConfigured,
   parseAuthCallback,
+  authCallbackType,
   rpc as supabaseRpc,
   select as supabaseSelect,
+  sendPasswordReset as supabaseSendPasswordReset,
+  resendConfirmation as supabaseResendConfirmation,
+  updatePassword as supabaseUpdatePassword,
   signInWithOtp,
   signInWithPassword,
   signOut as supabaseSignOut,
@@ -127,6 +131,9 @@ import {
   emptyStack,
   refKey as stackRefKey,
   harborRef,
+  refReady,
+  stackReady,
+  type ReadinessSignals,
   type AppStack,
   type Placement,
   type StackModelRef,
@@ -272,6 +279,10 @@ function vaultProviderId(settings: AppSettings): StorageProviderId {
 
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
+
+// Throttle for the foreground entitlement re-check, so returning to the app many
+// times in a row never hammers the entitlement read.
+let lastEntitlementForegroundAt = 0;
 const unsubscribers = new Map<string, () => void>();
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
@@ -310,6 +321,9 @@ interface AppState {
   authConfigured: boolean;
   /** The server-verified org role for the signed-in user, when known. */
   serverRole?: 'admin' | 'member';
+  /** True after a password-reset link signs the user in, so the UI prompts them
+   *  to set a new password before doing anything else. Cleared once they do. */
+  passwordRecovery?: boolean;
   /** The org's billing entitlement (Stripe webhook is the writer), when known. */
   entitlement?: Entitlement;
   /** The signed-in individual's Personal entitlement (Stripe or Apple IAP is the
@@ -364,6 +378,11 @@ interface AppState {
    *  individual Personal subscription OR an entitled commercial org). Free
    *  (signed out or no entitlement) is chat only. */
   personalUnlockedNow(): boolean;
+  /** Whether a chat source can produce a real answer on this device right now
+   *  (a downloaded on-device model, a paired computer, or a stored cloud key).
+   *  The empty-state composer checks this before starting a chat, so a first
+   *  message is never sent into a brain that cannot answer. */
+  sourceReady(source: ConversationSource): boolean;
   /** Buy Personal: Apple In-App Purchase on iOS, Stripe web checkout elsewhere.
    *  Resolves once the purchase flow has been handed off (IAP sheet shown, or
    *  the browser opened); entitlement lands via refreshEntitlement. */
@@ -426,6 +445,12 @@ interface AppState {
   signUpAccount(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
   /** Send a magic-link email that returns to the app's deep-link origin. */
   sendMagicLink(email: string): Promise<void>;
+  /** Email a password-reset link that returns to the app to set a new password. */
+  sendPasswordReset(email: string): Promise<void>;
+  /** Resend the sign-up confirmation email (lost or expired link). */
+  resendConfirmation(email: string): Promise<void>;
+  /** Set a new password for the signed-in user and clear the recovery prompt. */
+  updateMyPassword(password: string): Promise<void>;
   /** Finish a magic-link sign-in from the callback URL the app was opened with. */
   completeAuthCallback(url: string): Promise<boolean>;
   /** Sign out and forget the session. */
@@ -434,6 +459,14 @@ interface AppState {
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
   refreshEntitlement(): Promise<void>;
+  /** Re-check entitlement when the app returns to the foreground, so a purchase
+   *  completed in the browser lands without the user hunting for a refresh.
+   *  Fires only when signed in and not already unlocked, and is self-throttled. */
+  reconcileEntitlementOnForeground(): Promise<void>;
+  /** Handle the checkout-return deep link: refresh entitlement now (unthrottled)
+   *  and reflect the result, so a Stripe payer is unlocked the moment they land
+   *  back in the app. */
+  onCheckoutReturn(): Promise<void>;
   /** Open web billing: the Stripe customer portal if subscribed, else the
    *  purchase page. Always in the system browser (Apple 3.1.1); seats are
    *  never bought in-app. */
@@ -888,7 +921,10 @@ export const useApp = create<AppState>((set, get) => {
       case 'ios':
         return 'oscode://auth-callback';
       case 'electron':
-        return 'http://127.0.0.1:4817/auth-callback';
+        // Desktop registers the oscode:// scheme (see electron/main.ts), so the
+        // callback returns straight into the app the same way iOS does. The old
+        // fixed-port loopback (127.0.0.1:4817) had no listener and dead-ended.
+        return 'oscode://auth-callback';
       default:
         return typeof window !== 'undefined'
           ? `${window.location.origin}/auth-callback`
@@ -1441,6 +1477,38 @@ export const useApp = create<AppState>((set, get) => {
       return personalUnlocked(get().userEntitlement, get().entitlement);
     },
 
+    sourceReady(source) {
+      const s = get();
+      const st = s.settings;
+      const signals: ReadinessSignals = {
+        onDeviceHost: platform() === 'ios',
+        deviceModelReady: (id) =>
+          Boolean(st.deviceModels[id]) ||
+          (id === HARBOR_MINI_MODEL_ID && Boolean(st.harborMiniReady)) ||
+          (id === HARBOR_MODEL_ID && Boolean(st.harborReady)),
+        cloudReady: (provider) =>
+          provider === 'anthropic'
+            ? s.cloudKeyPresent
+            : Boolean(s.connectedProviders[provider]),
+      };
+      switch (source.kind) {
+        case 'stack':
+          return stackReady(st.stack, signals);
+        case 'device':
+          return refReady(
+            { kind: 'device', modelId: source.modelId, modelName: source.modelName },
+            signals,
+          );
+        case 'cloud':
+          return signals.cloudReady(source.provider);
+        case 'desktop':
+        case 'desktop-chat':
+          return isDesktop() || Boolean(st.daemon);
+        case 'mock':
+          return true;
+      }
+    },
+
     async buyPersonal() {
       const session = get().authSession;
       // Buying requires an account to attach the entitlement to.
@@ -1483,6 +1551,22 @@ export const useApp = create<AppState>((set, get) => {
           return;
         }
         openExternal(url);
+        // The webhook writes the entitlement while the user is in the browser.
+        // Poll for it so the unlock lands even if the app is never cleanly
+        // re-foregrounded (the foreground listener is the other, faster path).
+        // Roughly two minutes, then stop; a return to the app re-checks anyway.
+        void (async () => {
+          for (let i = 0; i < 24; i++) {
+            await new Promise((r) => setTimeout(r, 5000));
+            if (get().personalUnlockedNow()) return;
+            await get().refreshEntitlement();
+            if (get().personalUnlockedNow()) {
+              set({ paywall: undefined });
+              get().showToast('Personal is unlocked. Welcome.');
+              return;
+            }
+          }
+        })();
       } catch (err) {
         get().showToast(err instanceof Error ? err.message : 'Could not start checkout.');
       }
@@ -1895,7 +1979,9 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async signUpAccount(email, password) {
-      const session = await supabaseSignUp(email.trim(), password);
+      // Pass the app's own deep-link origin so the confirmation link returns
+      // into the app, not onto a generic dashboard page.
+      const session = await supabaseSignUp(email.trim(), password, authRedirectTo());
       if (session) {
         await onSignedIn(session);
         return { needsConfirmation: false };
@@ -1907,13 +1993,37 @@ export const useApp = create<AppState>((set, get) => {
       await signInWithOtp(email.trim(), authRedirectTo());
     },
 
+    async sendPasswordReset(email) {
+      await supabaseSendPasswordReset(email.trim(), authRedirectTo());
+    },
+
+    async resendConfirmation(email) {
+      await supabaseResendConfirmation(email.trim(), authRedirectTo());
+    },
+
+    async updateMyPassword(password) {
+      const session = get().authSession;
+      if (!session) {
+        get().showToast('Sign in first.');
+        return;
+      }
+      await supabaseUpdatePassword(session.accessToken, password);
+      set({ passwordRecovery: false });
+      get().showToast('Password updated.');
+    },
+
     async completeAuthCallback(url) {
       const parsed = parseAuthCallback(url);
       if (!parsed) return false;
+      // A password-reset link signs the user in with a recovery session; flag it
+      // so the UI prompts for a new password instead of dropping them in as if
+      // nothing else is needed.
+      const recovery = authCallbackType(url) === 'recovery';
       // Fill the user id/email the callback URL does not carry.
       const user = await getUser(parsed.accessToken);
       const session: Session = { ...parsed, user: user ?? parsed.user };
       await onSignedIn(session);
+      if (recovery) set({ passwordRecovery: true });
       return true;
     },
 
@@ -2020,6 +2130,32 @@ export const useApp = create<AppState>((set, get) => {
         });
       } catch {
         // Offline or transient: keep whatever entitlement we last knew.
+      }
+    },
+
+    async reconcileEntitlementOnForeground() {
+      const s = get();
+      if (!authConfigured() || !s.authSession) return;
+      // Already unlocked: nothing to reconcile.
+      if (s.personalUnlockedNow()) return;
+      const now = Date.now();
+      if (now - lastEntitlementForegroundAt < 30000) return;
+      lastEntitlementForegroundAt = now;
+      await get().refreshEntitlement();
+      if (get().personalUnlockedNow()) {
+        set({ paywall: undefined });
+        get().showToast('Personal is unlocked. Welcome.');
+      }
+    },
+
+    async onCheckoutReturn() {
+      if (!authConfigured() || !get().authSession) return;
+      await get().refreshEntitlement();
+      if (get().personalUnlockedNow()) {
+        set({ paywall: undefined });
+        get().showToast('Personal is unlocked. Welcome.');
+      } else {
+        get().showToast('Payment received. Your unlock will appear shortly.');
       }
     },
 

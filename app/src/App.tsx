@@ -36,7 +36,7 @@ function useCompact(): boolean {
 }
 
 export function App() {
-  const { ready, view, drawerOpen, toast, init } = useApp();
+  const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();
   const theme = useApp((s) => s.settings.theme);
   const compact = useCompact();
   useAuthDeepLink();
@@ -112,6 +112,33 @@ export function App() {
     document.addEventListener('click', onTap, true);
     return () => document.removeEventListener('click', onTap, true);
   }, []);
+
+  // When the app returns to the foreground, re-check the Personal entitlement.
+  // Stripe checkout completes in the system browser, so the unlock is written
+  // server-side while OS Code is backgrounded. This makes it land on return
+  // instead of leaving a paid user staring at the paywall. Native uses the
+  // Capacitor app-state event; web and Electron use visibilitychange.
+  useEffect(() => {
+    let removeNative: (() => void) | undefined;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void reconcileEntitlementOnForeground();
+    };
+    if (platform() === 'ios') {
+      void (async () => {
+        const { App: CapApp } = await import('@capacitor/app');
+        const l = await CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) void reconcileEntitlementOnForeground();
+        });
+        removeNative = () => void l.remove();
+      })();
+    } else {
+      document.addEventListener('visibilitychange', onVisible);
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      removeNative?.();
+    };
+  }, [reconcileEntitlementOnForeground]);
 
   if (!ready) return <div className="shell" />;
 

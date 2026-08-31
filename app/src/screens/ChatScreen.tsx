@@ -113,6 +113,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     switchModel,
     setDrawer,
     setView,
+    sourceReady,
+    showToast,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
   // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
@@ -122,6 +124,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // The brain a new chat will use, chosen from the composer. Defaults to the
   // stack, which is what "My Stack" selects.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
+  // A first message typed before any brain can answer (no model downloaded, no
+  // computer paired, no cloud key) is held here while the model sheet opens as a
+  // chooser, then sent the instant a working brain is picked. This is what keeps
+  // a first send from dead-ending on a fake reply or a raw load error.
+  const [pending, setPending] = useState<{ text: string; attachments?: Attachment[] } | undefined>(
+    undefined,
+  );
   const booted = useBooted();
   const headerRef = useRef<HTMLElement>(null);
   useHeaderHeight(headerRef);
@@ -340,6 +349,16 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           onOpenModeSheet={() => setModeSheetOpen(true)}
           onSend={(text, attachments) => {
             if (!conv) {
+              // Never start a chat on a brain that cannot answer yet. Hold the
+              // message and open the model sheet as a chooser (download a model,
+              // connect your computer, or add a cloud key); the pick sends it.
+              if (!sourceReady(selectedSource)) {
+                setPending({ text, attachments });
+                setSheetStage('root');
+                setSheetOpen(true);
+                showToast('Pick where your first answer comes from, then this sends.');
+                return;
+              }
               void startWith(selectedSource, text, attachments);
               return;
             }
@@ -365,9 +384,29 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             // With a chat open, switch its model in place and carry the thread
             // (Claude-style). With none open, this just sets the brain the next
             // send will use.
-            if (conv) void switchModel(source);
+            if (conv) {
+              void switchModel(source);
+              return;
+            }
+            // A held first message: send it now that a working brain is chosen.
+            // If the pick still cannot answer (rare), keep holding, never
+            // dead-end into a broken chat.
+            if (pending) {
+              if (sourceReady(source)) {
+                const p = pending;
+                setPending(undefined);
+                void startWith(source, p.text, p.attachments);
+              } else {
+                showToast('That one is not ready yet. Finish setting it up, then send.');
+              }
+            }
           }}
-          onClose={() => setSheetOpen(false)}
+          onClose={() => {
+            setSheetOpen(false);
+            // Leaving the chooser (dismiss, or a jump to a setup screen) drops
+            // the held message so a later pick never sends stale text.
+            setPending(undefined);
+          }}
         />
       ) : null}
 
