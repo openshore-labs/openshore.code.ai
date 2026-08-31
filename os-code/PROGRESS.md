@@ -3,6 +3,48 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-08-31, P0 beta remediation)
+
+**Full P0 beta audit + first four remediation phases landed on the feature
+branch `claude/openshore-audit-p0-roadmap-o1e3vj` (NOT main).** A four-track
+audit of the sign-in, pay, and start-building journey is written up in
+`AUDIT-P0-BETA-ROADMAP.md`; the founder-facing config/verification checklist
+is `AUDIT-P0-ACTION-ITEMS.md`. What was built (all gate-green: workspace
+lint/typecheck, os-code 302 tests, app 268 tests):
+
+- **Phase 0, truthfulness + money path.** The web/desktop llama fallback no
+  longer fabricates a "(demo)" answer: it reports the device unsupported,
+  fails load with a real message, and refuses to generate. A shared stack
+  readiness definition (`stackReady`/`refReady` in `app/src/lib/stack.ts`)
+  gates the empty-state composer, so a first message opens a guided model
+  chooser instead of dead-ending. Entitlement now re-checks on app foreground
+  and polls after Stripe checkout; a new `checkout-return` edge function
+  deep-links back into the app over `oscode://checkout-success`, and the
+  Electron `oscode://` protocol handler is wired (the old 127.0.0.1:4817
+  redirect had no listener). Auth dead ends closed: sign-up confirmation
+  redirect, forgot-password (recover + set-new-password), resend confirmation.
+- **Phase 1, honest first-answer paths + calmer nav.** Sidebar trimmed to a
+  primary five (Chats, Projects, Repositories, Your stack, Settings) with the
+  rest under "More rooms" (CMO). BYOK reframed as the free on-ramp (CMO copy);
+  desktop free onboarding no longer dead-ends at the Marketplace paywall (CFO:
+  Marketplace stays Personal). Provider keys are validated before "connected".
+  Inert Dropbox/Proton storage rows collapsed to one "arriving" line.
+- **Phase 2, distribution config.** Codemagic gates on the test suite before
+  TestFlight; mac/win electron-builder targets added (unsigned closed beta, no
+  auto-update yet, per CTO); `oscode://` registered.
+- **Phases 3-4, honesty + money-safety.** Phone Repos says tokens activate
+  after pairing; terminal shows a Connecting state; a drift test fails the
+  build if the commercial seat bands in `plans.ts` and the server
+  `entitlement.ts` diverge.
+
+Advisor rulings that shaped the forks are recorded in the action-items doc
+(CFO: BYOK-only fallback, one free starter model; CMO: primary nav + BYOK
+framing; CTO: checkout-return host, unsigned desktop beta, keep Tailscale-only
+bind). Remaining P0 work is founder config + on-device verification + a few
+native items (QR pairing, low-storage preflight, first-repo desktop golden
+path), all listed in `AUDIT-P0-ACTION-ITEMS.md`. Nothing here has shipped to
+main or been device-verified.
+
 ## Current state (2026-08-27, greeting)
 
 **Long-press language reveal added to the greeting line.** A second, quieter
