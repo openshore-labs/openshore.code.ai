@@ -196,15 +196,15 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
           <div className="card">
             <h3>Set up your local stack</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Grab a starter model from the marketplace. It runs on this machine through Ollama;
-              nothing leaves your desk.
+              Point OpenShore at a model running on this machine through Ollama. It stays on your
+              desk. The full model marketplace is part of Personal.
             </div>
             <button
               className="btn primary"
               style={{ width: '100%' }}
-              onClick={() => void go('marketplace')}
+              onClick={() => void go('stack')}
             >
-              Open the marketplace
+              Build your stack
             </button>
           </div>
           <div className="card">
@@ -256,16 +256,17 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
       )}
 
       <div className="card">
-        <h3>Or connect Claude</h3>
+        <h3>Connect your own key</h3>
         <div className="sub" style={{ marginBottom: 10 }}>
-          Cloud on your own key, for the hardest tasks. Always asks before it spends.
+          Chat stays free. Add a key for Claude, OpenAI, or Gemini and go further, at your
+          provider's price. Your key stays on your device.
         </div>
         <button
           className="btn ghost"
           style={{ width: '100%' }}
           onClick={() => void go('connections')}
         >
-          Add an API key
+          Add a key
         </button>
       </div>
     </>

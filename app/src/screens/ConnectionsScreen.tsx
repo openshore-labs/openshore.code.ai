@@ -4,7 +4,7 @@
 // Keychain, scoped to the provider, and are spent only with your approval.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
-import { PROVIDERS } from '../lib/providers.js';
+import { PROVIDERS, validateProviderKey } from '../lib/providers.js';
 import { BackBar } from '../components/BackBar.js';
 import { openInAppBrowser } from '../lib/platform.js';
 
@@ -12,14 +12,33 @@ export function ConnectionsScreen() {
   const { connectedProviders, connectProvider, disconnectProvider, showToast, setView } = useApp();
   const [editing, setEditing] = useState<string | undefined>();
   const [value, setValue] = useState('');
+  const [checking, setChecking] = useState(false);
 
   const save = async (id: string, name: string) => {
     const key = value.trim();
+    if (!key) return;
+    // Verify the key actually works before claiming "connected", so a typo is
+    // caught here, not later mid-chat. A hard rejection keeps the field open;
+    // an unverifiable result (offline, dev CORS) saves but says so.
+    setChecking(true);
+    let check: Awaited<ReturnType<typeof validateProviderKey>> = 'unverifiable';
+    try {
+      check = await validateProviderKey(id, key);
+    } finally {
+      setChecking(false);
+    }
+    if (check === 'invalid') {
+      showToast(`That ${name} key was rejected. Check it and try again.`);
+      return;
+    }
     setEditing(undefined);
     setValue('');
-    if (!key) return;
     await connectProvider(id, key);
-    showToast(`${name} connected. Its models are on your bench.`);
+    showToast(
+      check === 'valid'
+        ? `${name} connected. Its models are on your bench.`
+        : `${name} key saved. We could not verify it right now.`,
+    );
   };
 
   return (
@@ -91,9 +110,10 @@ export function ConnectionsScreen() {
                   <button
                     className="btn primary"
                     style={{ width: '100%' }}
+                    disabled={checking}
                     onClick={() => void save(p.id, p.name)}
                   >
-                    Save
+                    {checking ? 'Checking...' : 'Save'}
                   </button>
                 </div>
               ) : null}

@@ -650,7 +650,7 @@ export function VaultScreen() {
               the same files and it just opens.
             </p>
             <div className="sheet-actions">
-              {PROVIDER_ROSTER.map((p) => {
+              {PROVIDER_ROSTER.filter((p) => !p.arriving).map((p) => {
                 const isCurrent = p.id === currentProviderId;
                 const isReady = ready[p.id] ?? p.ready;
                 const move = async () => {
@@ -726,6 +726,15 @@ export function VaultScreen() {
                   </div>
                 );
               })}
+              {PROVIDER_ROSTER.some((p) => p.arriving) ? (
+                <p className="hint" style={{ margin: '4px 2px 0' }}>
+                  More storage arriving:{' '}
+                  {PROVIDER_ROSTER.filter((p) => p.arriving)
+                    .map((p) => p.label)
+                    .join(', ')}
+                  .
+                </p>
+              ) : null}
               <button
                 className="btn ghost"
                 onClick={async () => {

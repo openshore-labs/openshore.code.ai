@@ -6,6 +6,8 @@
 // NOTE: model ids below should be verified against each provider's current API
 // before shipping (this sandbox has no network to check them). They are wired
 // so the Stack can reference them; the router (stage 3) calls them.
+import { nativeFetch } from './nativeFetch.js';
+
 export interface ProviderModel {
   id: string;
   label: string;
@@ -75,4 +77,38 @@ export function providerModelLabel(providerId: string, modelId: string): string 
 /** The secret-store key for a provider's API key. */
 export function providerSecretKey(providerId: string): string {
   return `oscode.secret.${providerId}`;
+}
+
+// Whether a pasted key actually works, so a mistyped key never lands as a
+// cheerful "connected" that only fails later mid-chat. 'invalid' is a real
+// rejection from the provider (block the save); 'unverifiable' means we could
+// not reach the provider to check right now, e.g. offline or a browser CORS
+// wall in dev (save, but say it is unverified rather than claim it works).
+export type KeyCheck = 'valid' | 'invalid' | 'unverifiable';
+
+export async function validateProviderKey(id: string, key: string): Promise<KeyCheck> {
+  try {
+    if (id === 'anthropic') {
+      const res = await nativeFetch('https://api.anthropic.com/v1/models', {
+        method: 'GET',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+        responseType: 'json',
+      });
+      if (res.status === 401 || res.status === 403) return 'invalid';
+      return res.ok ? 'valid' : 'unverifiable';
+    }
+    const info = providerInfo(id);
+    if (info?.openaiBaseUrl) {
+      const res = await nativeFetch(`${info.openaiBaseUrl}/models`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${key}` },
+        responseType: 'json',
+      });
+      if (res.status === 401 || res.status === 403) return 'invalid';
+      return res.ok ? 'valid' : 'unverifiable';
+    }
+    return 'unverifiable';
+  } catch {
+    return 'unverifiable';
+  }
 }
