@@ -458,6 +458,18 @@ textarea {
   padding-bottom: calc(8px + var(--safe-bottom));
 }
 
+/* The "More rooms" divider between the primary nav and the Explore group. Quiet
+   by design: it reads as depth beneath the day-one rooms, never a heading that
+   competes with them. */
+.nav-section-label {
+  padding: 12px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .nav-item {
   display: flex;
   align-items: center;

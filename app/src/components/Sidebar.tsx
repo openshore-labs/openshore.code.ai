@@ -15,19 +15,27 @@ import { BrandMark } from './BrandMark.js';
 // misspelled key a compile error instead of a silently empty SVG (CR3).
 type NavIconName = Exclude<ViewName, 'chat' | 'onboarding' | 'terminal'>;
 
-const NAV: Array<{ view: NavIconName; label: string }> = [
+// The nav is split so a first-week user is not met with a dozen destinations
+// at once (CMO ruling). PRIMARY is the day-one set: chat, its project bucket,
+// the coding surface (Repositories), where a model is attached (Your stack), and
+// Settings. Everything else is real but second-session, grouped under an honest
+// "More rooms" so it reads as depth, not clutter.
+const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'chats', label: 'Chats' },
   { view: 'projects', label: 'Projects' },
+  { view: 'repos', label: 'Repositories' },
+  { view: 'stack', label: 'Your stack' },
+  { view: 'settings', label: 'Settings' },
+];
+
+const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'crew', label: 'My Crew' },
   { view: 'marketplace', label: 'Marketplace' },
-  { view: 'stack', label: 'Your stack' },
   { view: 'stackhealth', label: 'Stack Health' },
-  { view: 'repos', label: 'Repositories' },
   { view: 'vault', label: 'Vault' },
   { view: 'launch', label: 'Launch' },
   { view: 'connections', label: 'Cloud Connections' },
   { view: 'pair', label: 'Desktop + phone' },
-  { view: 'settings', label: 'Settings' },
 ];
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
@@ -312,20 +320,24 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
             Admin
           </button>
         ) : null}
-        {NAV.map((item) => {
+        {[...PRIMARY_NAV, ...EXPLORE_NAV].map((item, i) => {
           const locked = !unlocked && LOCKED_VIEWS.has(item.view);
           return (
-            <button
-              key={item.view}
-              className={`nav-item press-fb press-fb--row${view === item.view ? ' active' : ''}`}
-              onClick={() => setView(item.view)}
-            >
-              <span className="glyph">
-                <NavIcon name={item.view} />
-              </span>
-              {item.label}
-              {locked ? <span className="nav-lock-pill">Personal</span> : null}
-            </button>
+            <div key={item.view} style={{ display: 'contents' }}>
+              {i === PRIMARY_NAV.length ? (
+                <div className="nav-section-label">More rooms</div>
+              ) : null}
+              <button
+                className={`nav-item press-fb press-fb--row${view === item.view ? ' active' : ''}`}
+                onClick={() => setView(item.view)}
+              >
+                <span className="glyph">
+                  <NavIcon name={item.view} />
+                </span>
+                {item.label}
+                {locked ? <span className="nav-lock-pill">Personal</span> : null}
+              </button>
+            </div>
           );
         })}
       </nav>

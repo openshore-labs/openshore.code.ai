@@ -92,6 +92,10 @@ export const PROVIDER_ROSTER: Array<{
   blurb: string;
   ready: boolean;
   pending?: string;
+  // No wiring at all yet (no OAuth, no plugin): shown as a single quiet
+  // "more storage arriving" line rather than a tappable row that only toasts.
+  // Distinct from icloud/gdrive, which are wired and become ready at runtime.
+  arriving?: boolean;
 }> = [
   {
     id: 'local',
@@ -124,6 +128,7 @@ export const PROVIDER_ROSTER: Array<{
     blurb: 'Your Dropbox account, your bytes.',
     ready: false,
     pending: 'Arriving. Needs the Dropbox connection.',
+    arriving: true,
   },
   {
     id: 'gdrive',
@@ -141,5 +146,6 @@ export const PROVIDER_ROSTER: Array<{
     blurb: 'End-to-end encrypted storage you already trust.',
     ready: false,
     pending: 'Arriving. Needs the Proton connection.',
+    arriving: true,
   },
 ];
