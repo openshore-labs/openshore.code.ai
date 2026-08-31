@@ -101,3 +101,37 @@ export function harborRef(): StackModelRef {
 export function emptyStack(): AppStack {
   return { reasoning: harborRef(), active: [], saved: {} };
 }
+
+// Whether a model can actually produce an answer on this device right now. An
+// on-device model runs only on a device that hosts local inference (iPhone or
+// iPad) and only once it is downloaded; a cloud ref needs its provider's key; a
+// connected BYOM endpoint carries its own stored key, so it is treated as ready.
+// This is the ONE definition of "ready" that the first-answer gate and the model
+// sheet share, so they never disagree and a user is never routed to a brain that
+// cannot answer. The signals are supplied by the caller (the store) from live
+// state, keeping this pure and testable.
+export interface ReadinessSignals {
+  /** This platform can host on-device (llama.cpp) inference. */
+  onDeviceHost: boolean;
+  /** A downloaded, loadable on-device model with this id exists here. */
+  deviceModelReady: (modelId: string) => boolean;
+  /** A usable key is stored for this cloud provider. */
+  cloudReady: (provider: string) => boolean;
+}
+
+export function refReady(ref: StackModelRef, s: ReadinessSignals): boolean {
+  switch (ref.kind) {
+    case 'device':
+      return s.onDeviceHost && s.deviceModelReady(ref.modelId);
+    case 'cloud':
+      return s.cloudReady(ref.provider);
+    case 'byom':
+      return true;
+  }
+}
+
+/** A stack can answer when its Reasoning anchor can. Specialists are optional:
+ *  the anchor executes any task no placed specialist covers. */
+export function stackReady(stack: AppStack | undefined, s: ReadinessSignals): boolean {
+  return stack?.reasoning ? refReady(stack.reasoning, s) : false;
+}

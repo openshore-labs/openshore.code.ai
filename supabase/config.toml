@@ -74,3 +74,9 @@ verify_jwt = true
 # devices server-side (never from the request body).
 [functions.push-send]
 verify_jwt = false
+
+# The Stripe checkout return page. The browser lands here after payment, with no
+# user JWT, so it serves plain HTML that deep-links back into the app. It reads
+# no secrets and writes nothing.
+[functions.checkout-return]
+verify_jwt = false

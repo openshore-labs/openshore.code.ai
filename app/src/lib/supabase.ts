@@ -72,9 +72,19 @@ export async function signInWithPassword(email: string, password: string): Promi
 }
 
 /** Create an account with email + password. Returns a session when the project
- *  does not require email confirmation, otherwise null (confirm, then sign in). */
-export async function signUp(email: string, password: string): Promise<Session | null> {
-  const res = await fetch(`${base()}/auth/v1/signup`, {
+ *  does not require email confirmation, otherwise null (confirm, then sign in).
+ *  redirectTo is where the confirmation link returns; passing the app's own
+ *  deep-link origin means the link lands back in the app, not on a generic
+ *  dashboard page. */
+export async function signUp(
+  email: string,
+  password: string,
+  redirectTo?: string,
+): Promise<Session | null> {
+  const url = redirectTo
+    ? `${base()}/auth/v1/signup?redirect_to=${encodeURIComponent(redirectTo)}`
+    : `${base()}/auth/v1/signup`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ email, password }),
@@ -82,6 +92,45 @@ export async function signUp(email: string, password: string): Promise<Session |
   if (!res.ok) throw new Error(await readError(res));
   const body = (await res.json()) as Partial<GoTrueSession>;
   return body.access_token ? toSession(body as GoTrueSession) : null;
+}
+
+/** Send a password-reset email. The link returns to redirectTo with a recovery
+ *  session in the URL, which the callback signs in so the user can set a new
+ *  password (see updatePassword). */
+export async function sendPasswordReset(email: string, redirectTo: string): Promise<void> {
+  const res = await fetch(
+    `${base()}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ email }),
+    },
+  );
+  if (!res.ok) throw new Error(await readError(res));
+}
+
+/** Set a new password for the signed-in user (used to finish a recovery, or to
+ *  change a password while signed in). */
+export async function updatePassword(accessToken: string, password: string): Promise<void> {
+  const res = await fetch(`${base()}/auth/v1/user`, {
+    method: 'PUT',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+}
+
+/** Resend the sign-up confirmation email, for a link that was lost or expired. */
+export async function resendConfirmation(email: string, redirectTo: string): Promise<void> {
+  const res = await fetch(
+    `${base()}/auth/v1/resend?redirect_to=${encodeURIComponent(redirectTo)}`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ type: 'signup', email }),
+    },
+  );
+  if (!res.ok) throw new Error(await readError(res));
 }
 
 /** Send a magic-link / OTP email. The link returns to redirectTo (the app's own
@@ -128,6 +177,18 @@ export function parseAuthCallback(url: string): Session | null {
       expiresAt: Date.now() + expires_in * 1000,
       user: { id: '', email: undefined }, // filled by getUser after the callback
     };
+  } catch {
+    return null;
+  }
+}
+
+/** The GoTrue link type a callback URL carries ('recovery', 'signup', ...), so
+ *  a recovery link can be told apart from an ordinary sign-in. */
+export function authCallbackType(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const params = new URLSearchParams(u.hash.startsWith('#') ? u.hash.slice(1) : u.search);
+    return params.get('type');
   } catch {
     return null;
   }

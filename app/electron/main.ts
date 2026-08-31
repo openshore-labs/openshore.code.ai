@@ -344,7 +344,36 @@ function createWindow(): void {
     });
   }
 
+  // A deep link (oscode://auth-callback or oscode://checkout-success) may arrive
+  // before the renderer has subscribed, on a cold start launched by the link
+  // itself. Flush any buffered one once the page is up.
+  win.webContents.on('did-finish-load', () => {
+    if (pendingDeepLink) {
+      win?.webContents.send('osc:deep-link', pendingDeepLink);
+      pendingDeepLink = undefined;
+    }
+  });
+
   void win.loadFile(join(here, '..', 'dist', 'index.html'));
+}
+
+// ------------------------------------------------------ deep links (oscode://)
+// Both the Supabase auth callback and the Stripe checkout-return page bounce
+// back into the desktop app through the oscode:// scheme. The OS hands us the
+// URL via open-url (macOS) or a second-instance argv (Windows/Linux); we
+// forward it to the renderer, buffering one that arrives before the window is
+// ready. The renderer routes it (see useElectronDeepLink): auth-callback signs
+// in, checkout-success re-checks the entitlement.
+let pendingDeepLink: string | undefined;
+
+function deliverDeepLink(url: string | undefined): void {
+  if (!url || !url.startsWith('oscode://')) return;
+  if (win && !win.webContents.isLoading()) win.webContents.send('osc:deep-link', url);
+  else pendingDeepLink = url;
+}
+
+function deepLinkFromArgv(argv: string[]): string | undefined {
+  return argv.find((a) => a.startsWith('oscode://'));
 }
 
 // ------------------------------------------------------------------ IPC map
@@ -520,12 +549,36 @@ ipcMain.handle('osc:httpFetch', async (_e, req: HttpFetchReq) => {
 
 // -------------------------------------------------------------- app lifecycle
 
-void app.whenReady().then(() => {
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Single-instance: a second launch (including one triggered by an oscode:// link
+// on Windows/Linux) forwards its URL to the running instance instead of opening
+// a duplicate window. Register oscode:// as this app's protocol so the OS routes
+// those links here at all.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.setAsDefaultProtocolClient('oscode');
+  app.on('second-instance', (_e, argv) => {
+    deliverDeepLink(deepLinkFromArgv(argv));
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
   });
-});
+  // macOS delivers the link as an event rather than argv.
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    deliverDeepLink(url);
+  });
+
+  void app.whenReady().then(() => {
+    createWindow();
+    // Cold start on Windows/Linux: the link is in this process's own argv.
+    deliverDeepLink(deepLinkFromArgv(process.argv));
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   closeGdriveServer();

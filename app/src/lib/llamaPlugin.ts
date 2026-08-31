@@ -73,21 +73,32 @@ export interface LlamaPluginContract {
 }
 
 // ---------------------------------------------------------------------------
-// Web mock: a tiny canned brain so the UI is drivable in a browser and in
-// screenshots. It is honest about being a demo.
+// Web / desktop fallback: this device has no native llama.cpp, so on-device
+// inference genuinely cannot run here. This stub is HONEST about that: it never
+// fabricates an answer. It still serves the download-progress and secure-store
+// surfaces so those flows are drivable off a phone, but load() reports an
+// unavailable model (the drivers surface that as a real, guided error) and
+// generate() refuses outright. A shipping desktop/web build must route real
+// answers to the daemon, Ollama, or a cloud key, never to a device model, so
+// the stack-readiness gate (see stackReady in stack.ts) keeps callers off this
+// path in the first place; this refusal is the belt-and-suspenders behind it.
 // ---------------------------------------------------------------------------
+
+// The single source of truth for the "no on-device inference here" message, so
+// the driver error, the readiness gate, and this stub all say the same thing.
+export const DEVICE_INFERENCE_UNAVAILABLE =
+  'On-device models run on iPhone and iPad. This device runs your models through your computer, Ollama, or a cloud key instead.';
 
 class LlamaWeb {
   private models: DeviceModelInfo[] = [];
   private listeners = new Map<string, Set<(data: any) => void>>();
-  private stopped = new Set<string>();
 
   private fire(event: string, data: unknown): void {
     for (const cb of this.listeners.get(event) ?? []) cb(data);
   }
 
   async isSupported() {
-    return { supported: true, reason: 'demo mode (no native inference in a browser)' };
+    return { supported: false, reason: DEVICE_INFERENCE_UNAVAILABLE };
   }
 
   async listModels() {
@@ -116,38 +127,21 @@ class LlamaWeb {
   }
 
   async load() {
-    return { ok: true };
+    // Never claim a load succeeded here. The drivers read load.ok/detail and
+    // turn this into a real "run your model another way" message instead of a
+    // fake answer.
+    return { ok: false, detail: DEVICE_INFERENCE_UNAVAILABLE };
   }
 
   async unload() {}
 
-  async generate({
-    requestId,
-    messages,
-  }: {
-    requestId: string;
-    messages: Array<{ content: string }>;
-  }) {
-    const last = messages[messages.length - 1]?.content ?? '';
-    const reply = `(demo) A local model would answer "${last.slice(0, 60)}" right here, fully offline. On an iPhone this streams from llama.cpp on the Metal GPU.`;
-    void (async () => {
-      for (const word of reply.split(' ')) {
-        if (this.stopped.has(requestId)) break;
-        await new Promise((r) => setTimeout(r, 40));
-        this.fire('token', { requestId, delta: `${word} ` });
-      }
-      this.fire('generationDone', {
-        requestId,
-        stopReason: this.stopped.has(requestId) ? 'stopped' : 'end',
-      });
-      this.stopped.delete(requestId);
-    })();
-    return { started: true };
+  async generate(): Promise<{ started: boolean }> {
+    // Refuse rather than fabricate. Reaching here means a caller skipped the
+    // readiness gate; fail loud so the bug is caught, never a canned reply.
+    throw new Error(DEVICE_INFERENCE_UNAVAILABLE);
   }
 
-  async stop({ requestId }: { requestId: string }) {
-    this.stopped.add(requestId);
-  }
+  async stop() {}
 
   async requestPushPermission() {
     // No APNs off a real iPhone; the guide flow treats this as "no push here".

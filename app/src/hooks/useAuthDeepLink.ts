@@ -1,46 +1,58 @@
-// Native deep-link sign-in. Supabase magic-link and email-confirmation links
-// return to the app through the oscode:// URL scheme (see authRedirectTo in the
-// store). Capacitor hands us that URL both on a warm open (the appUrlOpen event)
-// and on a cold launch (getLaunchUrl); either way we pass it to
-// completeAuthCallback, which parses the token out of the fragment and signs in.
-// Off native this is a no-op: the browser origin receives the redirect directly.
+// Deep-link router for the two moments the OS bounces a flow back into the app
+// over the oscode:// scheme: a Supabase auth callback (magic link, email
+// confirmation, or password reset) and the Stripe checkout-return page. On iOS
+// Capacitor hands us the URL via appUrlOpen (warm) and getLaunchUrl (cold); on
+// Electron the main process forwards it over the bridge's onDeepLink (see
+// electron/main.ts). Off both, the browser origin receives the redirect
+// directly and this is a no-op.
 import { useEffect } from 'react';
 import { useApp } from '../state/store.js';
 import { platform } from '../lib/platform.js';
+import { bridge } from '../lib/electronBridge.js';
 
 export function useAuthDeepLink(): void {
-  const { completeAuthCallback, showToast } = useApp();
+  const { completeAuthCallback, onCheckoutReturn, showToast } = useApp();
   useEffect(() => {
-    if (platform() !== 'ios') return;
     let cancelled = false;
-    let remove: (() => void) | undefined;
+    const removers: Array<() => void> = [];
 
-    const handle = async (url: string | undefined | null) => {
-      if (!url || !url.includes('auth-callback')) return;
-      try {
-        const ok = await completeAuthCallback(url);
-        if (ok) showToast('Signed in.');
-      } catch (err) {
-        showToast(err instanceof Error ? err.message : String(err));
+    const route = async (url: string | undefined | null) => {
+      if (!url) return;
+      if (url.includes('checkout-success')) {
+        await onCheckoutReturn();
+        return;
+      }
+      if (url.includes('auth-callback')) {
+        try {
+          const ok = await completeAuthCallback(url);
+          if (ok) showToast('Signed in.');
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : String(err));
+        }
       }
     };
 
-    void (async () => {
-      const { App } = await import('@capacitor/app');
-      const listener = await App.addListener('appUrlOpen', (e) => void handle(e.url));
-      remove = () => void listener.remove();
-      if (cancelled) {
-        remove();
-        return;
-      }
-      // Cold start: the app may have been launched by the link itself.
-      const launch = await App.getLaunchUrl();
-      await handle(launch?.url);
-    })();
+    if (platform() === 'ios') {
+      void (async () => {
+        const { App } = await import('@capacitor/app');
+        const listener = await App.addListener('appUrlOpen', (e) => void route(e.url));
+        if (cancelled) {
+          void listener.remove();
+          return;
+        }
+        removers.push(() => void listener.remove());
+        // Cold start: the app may have been launched by the link itself.
+        const launch = await App.getLaunchUrl();
+        await route(launch?.url);
+      })();
+    } else {
+      const b = bridge();
+      if (b) removers.push(b.onDeepLink((url) => void route(url)));
+    }
 
     return () => {
       cancelled = true;
-      remove?.();
+      for (const r of removers) r();
     };
-  }, [completeAuthCallback, showToast]);
+  }, [completeAuthCallback, onCheckoutReturn, showToast]);
 }

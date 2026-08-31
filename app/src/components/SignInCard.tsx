@@ -11,13 +11,73 @@ type Mode = 'signin' | 'signup';
 
 export function SignInCard() {
   const { showToast } = useApp();
-  const { configured, signedIn, email, role, signIn, signUp, sendMagicLink, signOut } = useAuth();
+  const {
+    configured,
+    signedIn,
+    email,
+    role,
+    passwordRecovery,
+    signIn,
+    signUp,
+    sendMagicLink,
+    sendPasswordReset,
+    resendConfirmation,
+    updateMyPassword,
+    signOut,
+  } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [addr, setAddr] = useState('');
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
+  const [newPw, setNewPw] = useState('');
 
   if (!configured) return null;
+
+  // A password-reset link signs the user in with a recovery session. Prompt for
+  // a new password before anything else, so the reset actually completes.
+  if (signedIn && passwordRecovery) {
+    const saveNewPw = async () => {
+      if (newPw.length < 8) {
+        showToast('Use at least 8 characters for your password.');
+        return;
+      }
+      setBusy(true);
+      try {
+        await updateMyPassword(newPw);
+        setNewPw('');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    };
+    return (
+      <div className="card">
+        <h3>Set a new password</h3>
+        <div className="sub" style={{ marginBottom: 10 }}>
+          You are signed in from the reset link. Choose a new password to finish.
+        </div>
+        <div className="field">
+          <input
+            type="password"
+            placeholder="New password"
+            autoComplete="new-password"
+            value={newPw}
+            onChange={(e) => setNewPw(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void saveNewPw()}
+          />
+        </div>
+        <button
+          className="btn primary"
+          style={{ width: '100%' }}
+          disabled={busy}
+          onClick={() => void saveNewPw()}
+        >
+          {busy ? 'Working...' : 'Save new password'}
+        </button>
+      </div>
+    );
+  }
 
   if (signedIn) {
     return (
@@ -155,6 +215,39 @@ export function SignInCard() {
           Email me a link instead
         </button>
       </div>
+      {mode === 'signin' ? (
+        <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
+          <button
+            className="linklike"
+            disabled={busy}
+            onClick={() =>
+              void run(
+                false,
+                () => sendPasswordReset(addr),
+                'Check your email for a reset link.',
+              )
+            }
+          >
+            Forgot your password?
+          </button>
+        </div>
+      ) : (
+        <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
+          <button
+            className="linklike"
+            disabled={busy}
+            onClick={() =>
+              void run(
+                false,
+                () => resendConfirmation(addr),
+                'Confirmation email sent again. Check your inbox.',
+              )
+            }
+          >
+            Resend confirmation email
+          </button>
+        </div>
+      )}
     </div>
   );
 }
