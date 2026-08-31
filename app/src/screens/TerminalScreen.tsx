@@ -219,6 +219,9 @@ export function TerminalScreen() {
         <div className="terminal-message">{message}</div>
       ) : (
         <>
+          {status === 'connecting' ? (
+            <div className="terminal-message">Connecting to your desktop terminal...</div>
+          ) : null}
           <div className="terminal-host" ref={containerRef} />
           {status === 'ready' ? (
             <div className="terminal-accessory">

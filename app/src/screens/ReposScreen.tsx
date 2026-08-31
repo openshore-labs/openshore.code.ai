@@ -107,6 +107,12 @@ export function ReposScreen() {
 
         {/* Connect a platform. */}
         <h3 style={{ margin: '4px 0 10px' }}>Connect a platform</h3>
+        {!connected ? (
+          <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
+            You can add a token now. Repositories open once this phone is connected to your
+            computer, where the code lives.
+          </p>
+        ) : null}
         {REPO_CONNECTORS.map((c) => {
           const on = Boolean(connectedRepoPlatforms[c.id]);
           return (
