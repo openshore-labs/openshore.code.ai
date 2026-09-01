@@ -42,8 +42,20 @@ Advisor rulings that shaped the forks are recorded in the action-items doc
 framing; CTO: checkout-return host, unsigned desktop beta, keep Tailscale-only
 bind). Remaining P0 work is founder config + on-device verification + a few
 native items (QR pairing, low-storage preflight, first-repo desktop golden
-path), all listed in `AUDIT-P0-ACTION-ITEMS.md`. Nothing here has shipped to
-main or been device-verified.
+path), all listed in `AUDIT-P0-ACTION-ITEMS.md`.
+
+**Follow-up (2026-08-31): Personal is Apple-only.** Founder call: the $20/yr
+Personal tier is bought ONLY as the Apple auto-renewable subscription in the
+app on iPhone/iPad. There is no Stripe purchase for Personal. On web/desktop
+the paywall points the user to buy on their iPhone, then "I bought it"
+(restorePurchases -> refreshEntitlement) unlocks the same account there, since
+the entitlement is one server row read on every device. `buyPersonal` no longer
+opens Stripe on web/desktop; `Paywall` shows no web price/button. Stripe stays
+ONLY for commercial team plans (seat-based SaaS, which Apple forbids in-app).
+The public pricing page's Stripe "Get Personal" button still needs to change to
+an App Store call to action (marketing repo, tracked in the action items). This
+supersedes the earlier "Apple IAP on iOS and Stripe on web/desktop" framing for
+Personal specifically. On `main`.
 
 ## Current state (2026-08-27, greeting)
 

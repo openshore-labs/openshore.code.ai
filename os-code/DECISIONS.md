@@ -193,3 +193,10 @@ execution contract. Newest at the bottom.
   server-enforceable against a user's own daemon (they hold both ends); this
   change confines the free surface so it cannot act, it does not claim to
   enforce entitlement against a hostile self-daemon.
+
+- **Personal is Apple-only (2026-08-31, founder).** The $20/yr Personal tier is
+  an Apple auto-renewable subscription bought only in-app on iPhone/iPad. No
+  Stripe purchase for Personal; web/desktop points to buy on iPhone, then
+  refreshes the shared entitlement row to unlock. Stripe stays only for
+  commercial team plans (Apple forbids seat-based SaaS in-app). Code:
+  buyPersonal/Paywall no longer offer web Stripe checkout for Personal.
