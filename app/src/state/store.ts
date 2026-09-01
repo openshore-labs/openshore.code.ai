@@ -1536,40 +1536,11 @@ export const useApp = create<AppState>((set, get) => {
         }
         return;
       }
-      // Desktop/web: Stripe checkout in the system browser. The webhook writes
-      // the entitlement; refreshEntitlement picks it up on return.
-      try {
-        const { url } = await supabaseInvoke<{ url: string }>(
-          'stripe-checkout',
-          session.accessToken,
-          {
-            tierId: 'personal',
-          },
-        );
-        if (!url) {
-          get().showToast('Could not start checkout. Try again.');
-          return;
-        }
-        openExternal(url);
-        // The webhook writes the entitlement while the user is in the browser.
-        // Poll for it so the unlock lands even if the app is never cleanly
-        // re-foregrounded (the foreground listener is the other, faster path).
-        // Roughly two minutes, then stop; a return to the app re-checks anyway.
-        void (async () => {
-          for (let i = 0; i < 24; i++) {
-            await new Promise((r) => setTimeout(r, 5000));
-            if (get().personalUnlockedNow()) return;
-            await get().refreshEntitlement();
-            if (get().personalUnlockedNow()) {
-              set({ paywall: undefined });
-              get().showToast('Personal is unlocked. Welcome.');
-              return;
-            }
-          }
-        })();
-      } catch (err) {
-        get().showToast(err instanceof Error ? err.message : 'Could not start checkout.');
-      }
+      // Web/desktop: Personal is an Apple subscription, so there is no purchase
+      // here. Point the user to buy it in the app on their iPhone, then unlock
+      // this computer with "I bought it" (restorePurchases refreshes the
+      // entitlement). Commercial team plans still use Stripe, via manageBilling.
+      get().showToast('Buy Personal in the OS Code app on your iPhone, then refresh here.');
     },
 
     async restorePurchases() {

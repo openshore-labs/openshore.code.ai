@@ -17,79 +17,81 @@ can build next; not P0-blocking.
 
 ---
 
-## Group A: Turn on the money path (do first, unblocks paid beta)
+## Decision (2026-08-31): Personal is an Apple subscription, not Stripe
 
-### A1. [CONFIG] Stripe Personal price + secret
-The $20/yr Personal price must exist and its id must be a function secret.
-- In the Stripe dashboard (live mode), create a recurring yearly price of $20
-  on a "Personal" product. Copy its price id (`price_...`).
-- Set it as a Supabase function secret named `STRIPE_PRICE_PERSONAL`.
-Why: without it, "Get Personal" checkout errors.
-Verify: A5 below (one real purchase) proves it end to end.
+Per the founder: the Personal tier ($20/yr) is bought ONLY as an Apple
+auto-renewable subscription in the app on iPhone/iPad. There is no Stripe
+purchase for Personal. On web/desktop the paywall points the user to buy it on
+their iPhone, then "I bought it" refreshes the entitlement to unlock the same
+account on that computer (the entitlement is one row, read on every device).
+The app code already reflects this (`buyPersonal`/`Paywall`). Stripe stays ONLY
+for commercial team plans (seat-based SaaS, which Apple forbids in-app anyway),
+which are not required for the iOS beta.
 
-### A2. [CONFIG] Apply migrations + deploy the billing functions
-The Personal entitlement tables and the new checkout-return page must be live.
-- Run `supabase db push` (applies through `0010`, including the
-  `user_entitlements` tables).
-- Deploy the functions (now including the new one):
-  `supabase functions deploy stripe-checkout stripe-webhook stripe-portal link-apple-purchase apple-notifications checkout-return`
-Why: `checkout-return` is the page Stripe sends buyers to; it deep-links back
-into the app so the unlock lands. Its config entry (`verify_jwt = false`) is
-already in `supabase/config.toml`.
-Verify: visiting the `checkout-return` function URL in a browser shows a
-"Payment complete / Return to OS Code" page.
-
-### A3. [CONFIG] Confirm the live Stripe secrets are non-empty
-A past incident had `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` set to blank
-strings, which 401'd all checkout.
-- Confirm both are set to the real live values as Supabase function secrets,
-  and that the OS Code webhook endpoint is enabled and in live mode.
-Why: blank secrets fail silently.
-Verify: A5.
-
-### A4. [CONFIG] Set the checkout-return + CORS values (optional but recommended)
-- The success URL now defaults to this project's own `checkout-return`
-  function, so no action is required for the happy path.
-- Optional: set `CHECKOUT_FALLBACK_URL` if you want the "continue in your
-  browser" link to point somewhere other than `openshore.ai/os-code/`.
-
-### A5. [VERIFY] One real, refundable Personal purchase on web/desktop
-- Sign in on the web/desktop build, tap Get Personal, complete a live $20
-  checkout.
-- Confirm: the browser lands on the return page, tapping "Return to OS Code"
-  (or just re-opening the app) unlocks Personal within a few seconds, and the
-  paywall dismisses itself with "Personal is unlocked. Welcome."
-Then refund the charge and cancel the sub in Stripe.
-Why: secret values cannot be read back; a live transaction is the only proof.
+So do **Group A (Apple)** to turn on paid beta. **Group A-Stripe is optional**,
+only if you want to sell commercial team plans during the beta.
 
 ---
 
-## Group B: Apple IAP (required for the iOS paid path)
+## Group A: Turn on Personal (Apple subscription), do first
 
-### B1. [CONFIG] Create the subscription product
+### A1. [CONFIG] Create the subscription product
 - In App Store Connect, create the auto-renewable subscription
   `ai.openshore.oscode.personal.yearly` at $20/yr.
 - Enable the In-App Purchase capability on the App ID.
+- Confirm `cap sync ios` links the `oscode-iap` plugin.
 
-### B2. [CONFIG] Apple verification secrets (this is the current hard blocker)
+### A2. [CONFIG] Apply migrations + deploy the functions
+- Run `supabase db push` (applies through `0010`, including `user_entitlements`
+  and the Apple-notification dedupe table).
+- Deploy: `supabase functions deploy link-apple-purchase apple-notifications checkout-return`
+Why: `link-apple-purchase` verifies the StoreKit transaction and writes the
+entitlement; `apple-notifications` keeps it in sync on renew/cancel/refund.
+(`checkout-return` is only used by commercial Stripe purchases; deploying it now
+is harmless and keeps the set complete.)
+
+### A3. [CONFIG] Apple verification secrets (the current hard blocker)
 The four Apple Root CA constants in `supabase/functions/_shared/apple.ts` are
 still placeholder strings, so every Apple purchase verification throws today.
-- Set `APPLE_ROOT_CA_G3_DER_BASE64` (the real base64 DER of Apple's root CA)
-  as a function secret, OR paste the real DER into `apple.ts`.
+- Set `APPLE_ROOT_CA_G3_DER_BASE64` (real base64 DER of Apple's root CA) as a
+  function secret, OR paste the real DER into `apple.ts`.
 - Set `APPLE_BUNDLE_ID` and `APPLE_APP_APPLE_ID`.
 - Register the `apple-notifications` function URL as the App Store Server
   Notifications V2 endpoint.
 Why: without a real root cert, a real iOS buyer is charged and stays locked.
 
-### B3. [CONFIG] Sandbox toggle, only during review
+### A4. [CONFIG] Sandbox toggle, only during review
 - Set `APPLE_ALLOW_SANDBOX=1` ONLY while Apple is reviewing the build, and
-  clear it afterward. Leaving it on in production would accept $0 sandbox
-  purchases as real unlocks.
+  clear it afterward. Leaving it on in production accepts $0 sandbox purchases
+  as real unlocks.
 
-### B4. [VERIFY] Sandbox purchase + restore on a real device
-- On a TestFlight/sandbox device, buy and then restore Personal; confirm the
-  entitlement links and the app unlocks, and that an App Store Server
-  Notification is received.
+### A5. [VERIFY] Sandbox purchase + restore on a real device
+- On a TestFlight/sandbox device, buy Personal, confirm the app unlocks and an
+  App Store Server Notification is received, then restore on the same device
+  and (optionally) sign in on desktop and use "I bought it" to confirm the
+  entitlement unlocks that computer too.
+
+### A6. [CONFIG] Update the public pricing page (marketing repo)
+- The `Open-Shore-LLC-Homepage` pricing page still has a Stripe "Get Personal"
+  buy button. With Personal now Apple-only, change that to a "Download on the
+  App Store / buy Personal in the app" call to action. Commercial tiers keep
+  their Stripe buttons. (Separate repo; say the word and I will do it.)
+
+---
+
+## Group A-Stripe (OPTIONAL): Commercial team plans only
+
+Skip this entirely unless you want to sell commercial (team, seat-based) plans
+during the beta. Personal does NOT use any of it.
+- [CONFIG] Confirm `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are the real
+  live values (a past incident had them blank, which 401'd checkout), the four
+  commercial price ids are set, and the webhook endpoint is live.
+- [CONFIG] Deploy `stripe-checkout stripe-webhook stripe-portal`.
+- The commercial checkout return path already deep-links back into the app via
+  `checkout-return` (no extra config for the happy path); set
+  `CHECKOUT_FALLBACK_URL` only to override the fallback link target.
+- [VERIFY] One real, refundable commercial purchase proves the secret values,
+  which cannot be read back.
 
 ---
 

@@ -1,8 +1,10 @@
 // The Personal upgrade sheet. Free is chat only; tapping the coding agent or the
-// Marketplace opens this. Copy is the CMO's. Two variants: on iOS the purchase
-// is an Apple In-App Purchase and the sheet names no web price and links out to
-// nothing (Apple 3.1.1 / 3.1.3); on desktop it opens Stripe checkout in the
-// browser. Chat keeps working behind this, so the dismiss is non-punitive.
+// Marketplace opens this. Copy is the CMO's. Personal is an Apple subscription:
+// bought only as an Apple In-App Purchase on iPhone or iPad (Apple 3.1.1 /
+// 3.1.3, no web price named there). On web and desktop there is no purchase
+// button; the sheet points the user to buy it in the app on their iPhone, then
+// refresh here to unlock the same account on this computer. Chat keeps working
+// behind this, so the dismiss is non-punitive.
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { iapAvailable } from '../lib/iap.js';
@@ -33,11 +35,7 @@ export function Paywall() {
   // price and the label the founder configures the product at.
   const priceLine = ios
     ? '$20 per year. One person, the whole app.'
-    : '$20 per year. One person, the whole app. Same price on iPhone.';
-  const primaryLabel = ios
-    ? 'Unlock Personal · $20/year'
-    : 'Get Personal · $20/year (opens your browser)';
-  const secondaryLabel = ios ? 'Restore purchases' : 'Already bought? Refresh your license';
+    : '$20 per year. One person, the whole app. Bought on your iPhone.';
 
   return (
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
@@ -52,11 +50,18 @@ export function Paywall() {
         </ul>
         <p className="paywall-price">{priceLine}</p>
         <div className="sheet-actions">
-          <button className="btn primary press-fb" onClick={() => void buyPersonal()}>
-            {primaryLabel}
-          </button>
+          {ios ? (
+            <button className="btn primary press-fb" onClick={() => void buyPersonal()}>
+              Unlock Personal · $20/year
+            </button>
+          ) : (
+            <p className="sheet-sub" style={{ marginTop: 0 }}>
+              Personal is an in-app purchase in OS Code on iPhone or iPad. Buy it there, then
+              refresh here to unlock it on this computer.
+            </p>
+          )}
           <button className="btn ghost press-fb" onClick={() => void restorePurchases()}>
-            {secondaryLabel}
+            {ios ? 'Restore purchases' : 'I bought it. Unlock'}
           </button>
           <button className="btn quiet press-fb" onClick={dismiss}>
             Not now. Keep chatting.
