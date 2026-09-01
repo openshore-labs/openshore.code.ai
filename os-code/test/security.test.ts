@@ -1,7 +1,7 @@
 // Security layer: the jail, redaction, egress, daemon auth, permissions, and
 // profiles. These are the promises the product makes; they get tests.
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -23,7 +23,10 @@ describe('the jail', () => {
   it('resolves inside and refuses traversal out', () => {
     const root = mkdtempSync(join(tmpdir(), 'jail-'));
     const jail = new Jail(root);
-    expect(jail.resolve('src/index.ts')).toBe(join(root, 'src/index.ts'));
+    // Jail resolves its root through realpath (symlink-escape safety), so the
+    // expectation must too: os.tmpdir() is itself a symlink on macOS
+    // (/var -> /private/var), which the raw mkdtempSync() value is not.
+    expect(jail.resolve('src/index.ts')).toBe(join(realpathSync(root), 'src/index.ts'));
     expect(() => jail.resolve('../outside.txt')).toThrow(JailViolation);
     expect(() => jail.resolve('/etc/passwd')).toThrow(JailViolation);
   });

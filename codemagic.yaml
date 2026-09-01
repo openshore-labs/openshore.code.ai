@@ -62,6 +62,14 @@ workflows:
           # build on the same checks a contributor runs locally, so broken code
           # can never reach a tester. os-code must build first (the app imports
           # its compiled protocol types).
+          #
+          # test/daemonBind.test.ts mocks the tailnet IP as 127.0.0.2 and binds
+          # a real socket to it, to prove the daemon answers on both the
+          # tailnet address and loopback. Unlike Linux (where the whole
+          # 127.0.0.0/8 range auto-binds), macOS only brings up 127.0.0.1 on
+          # lo0 by default, so that bind fails with EADDRNOTAVAIL on this mac
+          # runner unless the alias is added first.
+          sudo ifconfig lo0 alias 127.0.0.2 up
           pnpm --filter os-code build
           pnpm -r lint
           pnpm -r typecheck
