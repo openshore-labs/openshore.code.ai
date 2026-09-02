@@ -5489,6 +5489,18 @@ textarea {
   color: var(--muted);
   font-size: 11px;
 }
+.todo-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-5) var(--ease-standard);
+}
+.todo-reveal.open {
+  grid-template-rows: 1fr;
+}
+.todo-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
 .todo-list {
   list-style: none;
   margin: 0;
@@ -5544,6 +5556,7 @@ textarea {
   border-radius: var(--radius-lg);
   padding: 14px 16px;
   animation: msg-in var(--dur-4) var(--ease-arrive);
+  transition: border-color var(--dur-5) var(--ease-arrive);
 }
 .plan-card.approved {
   border-color: var(--ok);
@@ -5751,6 +5764,9 @@ textarea {
   box-shadow: 0 0 0 3px var(--local-soft);
 }
 .composer-menu {
+  max-height: 44vh;
+  overflow-y: auto;
+  scroll-snap-type: y proximity;
   position: absolute;
   left: 12px;
   right: 12px;
@@ -5761,7 +5777,6 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.18);
-  overflow: hidden;
   z-index: 6;
   animation: menu-in var(--dur-2) var(--ease-arrive) backwards;
 }
@@ -5783,10 +5798,25 @@ textarea {
   padding: 10px 14px;
   text-align: left;
   font-size: 14px;
-  transition: background var(--dur-1) var(--ease-standard);
+  scroll-snap-align: start;
 }
 .composer-menu-row.active {
+  background: transparent;
+}
+.composer-menu-row {
+  position: relative;
+  z-index: 1;
+}
+/* The highlight glides between rows on transform; rows themselves never
+   repaint. Height follows the row (set directly, not animated). */
+.composer-menu-glide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
   background: var(--surface);
+  transition: transform var(--dur-3) var(--ease-standard);
+  pointer-events: none;
 }
 .composer-menu-name {
   font-family: var(--font-mono);
@@ -5860,6 +5890,15 @@ textarea {
   display: flex;
   align-items: center;
 }
+.approval-skip {
+  opacity: 0.7;
+}
+.skel-group {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: fade-in var(--dur-4) var(--ease-standard) backwards;
+}
 .approval-mode {
   display: block;
   margin: 12px auto 0;
@@ -5917,7 +5956,9 @@ textarea {
   width: 100%;
   transform-origin: left;
   background: var(--local);
-  transition: transform var(--dur-5) var(--ease-standard);
+  transition:
+    transform var(--dur-5) var(--ease-standard),
+    background var(--dur-5) var(--ease-standard);
 }
 .ctx-bar.warm i {
   background: var(--warn, #b7791f);

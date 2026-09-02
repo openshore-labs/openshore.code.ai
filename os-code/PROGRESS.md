@@ -77,6 +77,15 @@ audit against Claude Code produced a 34-item gap list; all of it is built.
   placeholder unless the person renamed the chat (`Conversation.renamed`). A
   stored `'auto'` mode maps to bypass on load. A completed task taps the
   success haptic.
+- **Polish pass, all three tiers (founder: "Do all the polish").** The
+  approval sheet orders its buttons by likelihood (once, then the project
+  rule, then session-only) with the skip quieted; the plan card settles its
+  border to green on `--ease-arrive` when approved; the task list folds
+  itself 600ms after the last check lands (a grid-row reveal, never a height
+  transition). The command menu and the file popover share one `ComposerMenu`
+  whose highlight glides between rows on transform, scroll-snapped; the
+  context bar's warm and hot colors settle on `--dur-5`. The resume skeleton
+  takes its shape from `Conversation.lastItemCount`, saved at persist.
 - **Not device-verified.** Everything here is built in a web session and
   gated (typecheck, lint, 307 app tests, 338 engine tests, both builds). The
   first real run on the desktop app and a TestFlight build is the proof; a
@@ -745,7 +754,7 @@ Layer status:
       **Founder config before deploy (one at a time):** 1. Stripe: create a $20/yr **Personal** price; set `STRIPE_PRICE_PERSONAL`
       as a function secret. 2. `supabase db push` (applies 0006, 0007, 0008) then
       `supabase functions deploy stripe-checkout stripe-webhook stripe-portal
-       link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
+     link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
       in App Store Connect; add `oscode-iap` to app/package.json is done, but
       confirm `cap sync ios` links it; enable the In-App Purchase capability. 4. Apple secrets: paste the real Apple Root CA DER base64 into
       `_shared/apple.ts` (egress here blocked www.apple.com) OR set
