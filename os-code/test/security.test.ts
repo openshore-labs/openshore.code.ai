@@ -1,7 +1,7 @@
 // Security layer: the jail, redaction, egress, daemon auth, permissions, and
 // profiles. These are the promises the product makes; they get tests.
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -21,7 +21,10 @@ import { minimatch } from '../src/core/util/minimatch.js';
 
 describe('the jail', () => {
   it('resolves inside and refuses traversal out', () => {
-    const root = mkdtempSync(join(tmpdir(), 'jail-'));
+    // realpath the root so the expectation matches the jail's own canonical
+    // resolution. On macOS tmpdir() is under /var, a symlink to /private/var,
+    // so the raw mkdtemp path and the jail's resolved path would differ.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'jail-')));
     const jail = new Jail(root);
     expect(jail.resolve('src/index.ts')).toBe(join(root, 'src/index.ts'));
     expect(() => jail.resolve('../outside.txt')).toThrow(JailViolation);
@@ -29,8 +32,8 @@ describe('the jail', () => {
   });
 
   it('refuses symlink escapes', () => {
-    const root = mkdtempSync(join(tmpdir(), 'jail-'));
-    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'jail-')));
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'outside-')));
     writeFileSync(join(outside, 'secret.txt'), 'secret');
     symlinkSync(outside, join(root, 'sneaky'));
     const jail = new Jail(root);
