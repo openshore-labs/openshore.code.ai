@@ -43,10 +43,12 @@ export interface RepoDetail {
   likes?: number;
 }
 
-/** The two metadata reads discovery needs. Fixtures in tests, HF in CI. */
+/** The metadata reads discovery needs. Fixtures in tests, HF in CI. */
 export interface DiscoveryClient {
   /** GGUF repos, best first, for one sort axis. */
   list(sort: 'trendingScore' | 'createdAt', limit: number): Promise<DiscoveredRepo[]>;
+  /** One publisher's GGUF repos, most recently modified first. */
+  listByAuthor(author: string, limit: number): Promise<DiscoveredRepo[]>;
   /** One repo with its file list and sizes. Undefined when it cannot be read. */
   detail(repoId: string): Promise<RepoDetail | undefined>;
 }
@@ -124,6 +126,14 @@ export const TRUSTED_PUBLISHERS = new Set([
   'jinaai',
   'quantfactory',
   'maziyarpanahi',
+  'liquidai',
+  'arcee-ai',
+  'inclusionai',
+  'tencent',
+  'minimaxai',
+  'xiaomimimo',
+  'baidu',
+  'cohereforai',
 ]);
 
 /** A trending repo must have real pulls behind it; below this it is noise
@@ -146,8 +156,12 @@ const PHONE_MAX_GB = 2.5;
 /** Anything bigger than this will not fit a normal desktop; skip it. */
 const DESKTOP_MAX_GB = 40;
 
-export const DEFAULT_CAP = 25;
+export const DEFAULT_CAP = 40;
 export const DEFAULT_PER_AXIS = 40;
+/** Recent uploads read per trusted publisher. */
+export const PER_PUBLISHER = 12;
+/** Metadata reads per build, across every axis. */
+export const MAX_DETAIL_READS = 160;
 
 export async function discoverModels(
   client: DiscoveryClient,
@@ -187,7 +201,29 @@ export async function discoverModels(
       }
     }
   }
-  const listed = [...trending, ...newest];
+  // Third axis, and the one that actually fills the shelf: each trusted
+  // publisher's own most recent uploads. The global GGUF listings are
+  // dominated by community re-uploads (the third live crop found six trusted
+  // repos in eighty listings), so the labs' and quantizers' drops are read
+  // straight from their pages. Round-robin across publishers, so one prolific
+  // quantizer cannot eat the cap.
+  const perPublisher: DiscoveredRepo[][] = [];
+  for (const author of TRUSTED_PUBLISHERS) {
+    let repos: DiscoveredRepo[] = [];
+    try {
+      repos = await client.listByAuthor(author, PER_PUBLISHER);
+    } catch (err) {
+      console.warn(`discovery: ${author} listing failed: ${String(err)}`);
+    }
+    const mine = repos.filter((r) => r?.id && !seen.has(r.id));
+    for (const r of mine) seen.add(r.id);
+    if (mine.length) perPublisher.push(mine);
+  }
+  const publisherRecent: DiscoveredRepo[] = [];
+  for (let i = 0; perPublisher.some((list) => i < list.length); i++) {
+    for (const list of perPublisher) if (i < list.length) publisherRecent.push(list[i]!);
+  }
+  const listed = [...trending, ...newest, ...publisherRecent];
 
   const previousByRepo = new Map<string, CatalogModel>();
   for (const m of options.previous ?? []) {
@@ -198,8 +234,15 @@ export async function discoverModels(
   // quantizers and as imatrix ("i1") twins. First in shelf order wins.
   const bases = new Set<string>();
   const fresh: CatalogModel[] = [];
+  let detailReads = 0;
   for (const repo of listed) {
     if (fresh.length >= cap) break;
+    // Bound the metadata reads per build; a long tail of sharded or
+    // "other"-licensed repos must not turn one build into hundreds of calls.
+    if (detailReads >= MAX_DETAIL_READS) {
+      skipped.push({ repo: repo.id, reason: 'detail-read budget spent this build' });
+      continue;
+    }
     const cheap = cheapReject(repo);
     if (cheap) {
       skipped.push({ repo: repo.id, reason: cheap });
@@ -210,6 +253,7 @@ export async function discoverModels(
       skipped.push({ repo: repo.id, reason: `duplicate of an earlier upload (${base})` });
       continue;
     }
+    detailReads += 1;
     const detail = await client.detail(repo.id);
     if (!detail) {
       skipped.push({ repo: repo.id, reason: 'detail unreadable' });
@@ -451,6 +495,21 @@ export class HuggingFaceDiscovery implements DiscoveryClient {
   async list(sort: 'trendingScore' | 'createdAt', limit: number): Promise<DiscoveredRepo[]> {
     const url =
       `${this.base}/api/models?filter=gguf&sort=${sort}&direction=-1&limit=${limit}` +
+      `&expand[]=gated&expand[]=private&expand[]=tags&expand[]=downloads&expand[]=likes&expand[]=createdAt`;
+    try {
+      const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return [];
+      const body = (await res.json()) as unknown;
+      return Array.isArray(body) ? (body as DiscoveredRepo[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async listByAuthor(author: string, limit: number): Promise<DiscoveredRepo[]> {
+    const url =
+      `${this.base}/api/models?author=${encodeURIComponent(author)}&filter=gguf` +
+      `&sort=lastModified&direction=-1&limit=${limit}` +
       `&expand[]=gated&expand[]=private&expand[]=tags&expand[]=downloads&expand[]=likes&expand[]=createdAt`;
     try {
       const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(10000) });

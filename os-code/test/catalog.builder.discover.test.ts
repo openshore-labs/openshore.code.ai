@@ -39,11 +39,13 @@ function client(
   trending: DiscoveredRepo[],
   newest: DiscoveredRepo[],
   details: Record<string, RepoDetail | undefined>,
+  byAuthor: Record<string, DiscoveredRepo[]> = {},
 ): DiscoveryClient & { detailCalls: string[] } {
   const detailCalls: string[] = [];
   return {
     detailCalls,
     list: async (sort) => (sort === 'trendingScore' ? trending : newest),
+    listByAuthor: async (author) => byAuthor[author] ?? [],
     detail: async (id) => {
       detailCalls.push(id);
       return details[id];
@@ -163,6 +165,44 @@ describe('discoverModels', () => {
     expect(skipped[1]!.reason).toMatch(/unlisted publisher/);
     // Unlisted publishers never cost a detail read.
     expect(c.detailCalls).toEqual(['unsloth/Loud-GGUF', 'bartowski/Fresh2-GGUF']);
+  });
+
+  it('reads each trusted publisher page, round-robin, after the global axes', async () => {
+    const byAuthor = {
+      bartowski: [repo('bartowski/B1-GGUF'), repo('bartowski/B2-GGUF'), repo('bartowski/B3-GGUF')],
+      unsloth: [repo('unsloth/U1-GGUF'), repo('unsloth/U2-GGUF')],
+      nobody: [repo('nobody/N1-GGUF')],
+    };
+    const ids = [...byAuthor.bartowski, ...byAuthor.unsloth].map((r) => r.id);
+    const details = Object.fromEntries(ids.map((id) => [id, detail(id)]));
+    const c = client(
+      [repo('unsloth/Trend-GGUF')],
+      [],
+      { ...details, 'unsloth/Trend-GGUF': detail('unsloth/Trend-GGUF') },
+      byAuthor,
+    );
+    const { models } = await discoverModels(c, { today: '2026-09-02', cap: 4 });
+    // Trending leads; then publishers interleave so one cannot eat the cap.
+    expect(models.map((m) => m.discovery?.repo)).toEqual([
+      'unsloth/Trend-GGUF',
+      'bartowski/B1-GGUF',
+      'unsloth/U1-GGUF',
+      'bartowski/B2-GGUF',
+    ]);
+    // The page of an unlisted publisher is never even requested.
+    expect(c.detailCalls).not.toContain('nobody/N1-GGUF');
+  });
+
+  it('stops reading metadata once the per-build budget is spent', async () => {
+    const many = Array.from({ length: 200 }, (_, i) => repo(`unsloth/M${i}-GGUF`));
+    const details = Object.fromEntries(
+      many.map((r) => [r.id, detail(r.id, { cardData: { license: 'other' } })]),
+    );
+    const c = client(many, [], details);
+    const { models, skipped } = await discoverModels(c, { today: '2026-09-02' });
+    expect(models).toEqual([]);
+    expect(c.detailCalls).toHaveLength(160);
+    expect(skipped.filter((s) => /budget/.test(s.reason))).toHaveLength(40);
   });
 
   it('keeps one entry per underlying model across quantizers and imatrix twins', async () => {

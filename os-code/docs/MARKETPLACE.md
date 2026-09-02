@@ -59,10 +59,15 @@ Pipeline, in order:
    before enrichment. The bar: public, not gated, a license on the allow-list, a
    single-file GGUF at a supported quant (Q4_K_M preferred), 0.3 to 40 GB, no
    denylisted name (guardrail removals under any spelling, adult content,
-   speech models). Both axes are limited to `TRUSTED_PUBLISHERS` (the labs and
-   the quantizers the community pulls from); trending additionally needs 100+
-   downloads. Every unlisted publisher is logged as skipped, so the list grows
-   on evidence. One entry per underlying model: the same
+   speech models). Three axes: the global trending and newest GGUF listings,
+   both limited to `TRUSTED_PUBLISHERS` (the labs and the quantizers the
+   community pulls from; trending additionally needs 100+ downloads), and
+   each trusted publisher's own most recent uploads, read round-robin so one
+   prolific quantizer cannot eat the cap. The publisher pages are what fill
+   the shelf: the global listings are dominated by community re-uploads.
+   Every unlisted publisher is logged as skipped, so the list grows on
+   evidence. Metadata reads are capped per build. One entry per underlying
+   model: the same
    weights from several quantizers, and imatrix "i1" twins, collapse to the
    first in shelf order (`baseKey`). An entry is labelled `discovery: {source, repo, foundAt}`,
    is never `orchestratorCapable`, carries no ratings, ranks after every seed
