@@ -36,7 +36,10 @@ describe('prefab stack helpers', () => {
   });
 
   it('returns undefined when a member is not in the catalog', () => {
-    const missing = { ...catalog, models: catalog.models.filter((m) => m.id !== 'embed') } as Catalog;
+    const missing = {
+      ...catalog,
+      models: catalog.models.filter((m) => m.id !== 'embed'),
+    } as Catalog;
     expect(presetTotalGB(preset, missing)).toBeUndefined();
   });
 });

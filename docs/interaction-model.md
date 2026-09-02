@@ -96,6 +96,16 @@ person using the app:
   states, always the most premium-feeling option when choosing. Tenet 7, and
   the bar every screen is held to.
 
+## Motion: the same bar as Uki
+
+Every screen, sheet, drawer, toast, and button in this app moves on one
+vocabulary (`theme.css :root` tokens), answers the finger with an asymmetric
+press, and leaves the way it arrived. The seven rules and the CI guards are in
+`CLAUDE.md` under "Motion and interaction polish is a standard." In short:
+tokens, not raw curves; press-fb on every tappable; an exit before every
+unmount; transform and opacity, never layout; native haptics; reduced motion
+honored; gestures that track the finger.
+
 ## What to hold new work to
 
 Before a screen ships, answer: What is the goal in the person's words? Where is

@@ -238,7 +238,14 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     <div className="shell-main">
       <header className="topbar" ref={headerRef}>
         {compact ? (
-          <button className="icon-btn menu-btn" onClick={() => setDrawer(true)} aria-label="Menu">
+          <button
+            className="icon-btn menu-btn press-fb"
+            onClick={() => {
+              hapticTick();
+              setDrawer(true);
+            }}
+            aria-label="Menu"
+          >
             <MenuIcon />
           </button>
         ) : null}
@@ -252,7 +259,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               {/* A quick chat is thrown away on exit. Once it has grown into a
                   real conversation, offer to keep it, right where the loss
                   would otherwise be discovered too late. */}
-              {conv.ephemeral && (thread?.items.filter((i) => i.kind === 'user').length ?? 0) >= 3 ? (
+              {conv.ephemeral &&
+              (thread?.items.filter((i) => i.kind === 'user').length ?? 0) >= 3 ? (
                 <>
                   {' · not saved · '}
                   <button className="linklike" onClick={() => void keepQuickChat()}>

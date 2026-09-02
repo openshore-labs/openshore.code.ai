@@ -302,3 +302,10 @@ execution contract. Newest at the bottom.
   in the Chats and Projects rooms, so removing them from the panel loses
   nothing. A room's top bar opens the panel (hamburger) instead of jumping
   back to chat, because the panel is where the next destination is chosen.
+- **Motion standard ported from Uki, with adoption enforced.** The tokens
+  and guards already existed in the app; the drift was raw values and
+  surfaces that snap-unmounted. A presence-aware `Sheet` component was the
+  cheapest way to give fifteen state-driven sheets an exit without rewriting
+  each parent's state. The guard bans raw easing and sub-second raw durations
+  in motion declarations; loops and delays of a second or more stay raw by
+  design (the tokens do not reach that range).

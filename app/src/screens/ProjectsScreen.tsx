@@ -9,6 +9,7 @@ import { isDesktop } from '../lib/platform.js';
 import { daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import type { Project } from '../state/types.js';
+import { Sheet } from '../components/Sheet.js';
 
 export function ProjectsScreen() {
   const {
@@ -153,9 +154,9 @@ export function ProjectsScreen() {
       </div>
 
       {/* Edit sheet: name, standing instructions, shared repos. */}
-      {editing ? (
-        <div className="sheet-scrim" onClick={() => setEditing(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(editing)} onClose={() => setEditing(undefined)}>
+        {editing ? (
+          <>
             <h2>Edit project</h2>
             <div className="field">
               <label>Name</label>
@@ -212,14 +213,14 @@ export function ProjectsScreen() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
       {/* Delete confirmation. Chats survive; they just lose the project link. */}
-      {confirmDelete ? (
-        <div className="sheet-scrim" onClick={() => setConfirmDelete(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(confirmDelete)} onClose={() => setConfirmDelete(undefined)}>
+        {confirmDelete ? (
+          <>
             <h2>Delete this project?</h2>
             <p className="sheet-sub">
               Its chats are kept. They just stop belonging to a project. This cannot be undone.
@@ -240,9 +241,9 @@ export function ProjectsScreen() {
                 Keep it
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
     </div>
   );
 }

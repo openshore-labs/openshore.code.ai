@@ -11,6 +11,7 @@ import { daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { CLAUDE_MODELS } from '../drivers/cloudClaudeDriver.js';
 import { HARBOR_MODEL_ID } from '../lib/harbor.js';
 import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
+import { useSheetExit } from '../hooks/useSheetExit.js';
 
 export function SourcePicker({
   onPick,
@@ -25,6 +26,7 @@ export function SourcePicker({
     'sources',
   );
 
+  const { closing, dismiss } = useSheetExit(onClose);
   const desktopAvailable = isDesktop() || Boolean(settings.daemon);
   const deviceModels = Object.entries(settings.deviceModels);
 
@@ -41,8 +43,8 @@ export function SourcePicker({
   }, [stage, settings.daemon]);
 
   return (
-    <div className="sheet-scrim" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
+      <div className={`sheet${closing ? ' closing' : ''}`} onClick={(e) => e.stopPropagation()}>
         {stage === 'sources' ? (
           <>
             <h2>Who answers this chat?</h2>

@@ -190,8 +190,7 @@ export class StackDriver implements ChatDriver {
     // coding specialist, and a cloud or BYOM reasoning anchor. On-device
     // pocket models skip it to protect their small context (the engine's
     // agent on the desktop always carries it).
-    const buildsCode =
-      placement?.category === 'coding' || (!placement && ref.kind !== 'device');
+    const buildsCode = placement?.category === 'coding' || (!placement && ref.kind !== 'device');
     if (buildsCode) parts.push(uxStandardPrompt());
     return parts.join('\n\n');
   }

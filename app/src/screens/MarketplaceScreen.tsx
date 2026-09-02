@@ -37,6 +37,7 @@ import {
   type Shelf,
   type SortKey,
 } from '../components/marketplace.js';
+import { Sheet } from '../components/Sheet.js';
 
 interface DownloadState {
   percent: number;
@@ -1456,9 +1457,9 @@ export function MarketplaceScreen() {
         />
       ) : null}
 
-      {showFilters ? (
-        <div className="sheet-scrim" onClick={() => setShowFilters(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(showFilters)} onClose={() => setShowFilters(false)}>
+        {showFilters ? (
+          <>
             <h2>Filters</h2>
             <div className="sheet-sub">{visible.length} models match.</div>
             {filterRail}
@@ -1467,9 +1468,9 @@ export function MarketplaceScreen() {
                 Show {visible.length} models
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
       {libraryIntro ? <LibraryIntro onDone={endLibraryIntro} /> : null}
     </>

@@ -171,7 +171,7 @@ function NavIcon({ name }: { name: NavIconName }) {
   );
 }
 
-export function Sidebar({ drawer }: { drawer?: boolean }) {
+export function Sidebar({ drawer, closing }: { drawer?: boolean; closing?: boolean }) {
   const { view, setView, setDrawer, settings, personalUnlockedNow } = useApp();
   const { configured: authConfigured, signedIn } = useAuth();
   // Free is chat only. The Marketplace needs Personal, so a locked pill signals
@@ -197,7 +197,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   };
 
   const body = (
-    <aside className={`sidebar${drawer ? ' drawer' : ''}`}>
+    <aside className={`sidebar${drawer ? ' drawer' : ''}${closing ? ' closing' : ''}`}>
       <div className="sidebar-head">
         <span className="brand-lockup">
           <BrandMark size={26} />
@@ -267,7 +267,10 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   if (!drawer) return body;
   return (
     <>
-      <div className="drawer-scrim" onClick={() => setDrawer(false)} />
+      <div
+        className={`drawer-scrim${closing ? ' closing' : ''}`}
+        onClick={() => setDrawer(false)}
+      />
       {body}
     </>
   );
