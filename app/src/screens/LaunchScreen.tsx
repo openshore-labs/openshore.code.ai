@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import type { BuildRun, LaunchTarget } from '../state/types.js';
+import { EmbeddedSite, embeddedSitesAvailable } from '../components/EmbeddedSite.js';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'Queued',
@@ -64,6 +65,9 @@ export function LaunchScreen() {
     label: target?.label ?? '',
   });
   const [editingTarget, setEditingTarget] = useState(!target);
+  // Codemagic itself, contained inside the desktop shell.
+  const canEmbed = embeddedSitesAvailable();
+  const [embedded, setEmbedded] = useState(false);
 
   const guideMe = async () => {
     const id = await newConversation({ kind: 'stack' });
@@ -89,6 +93,15 @@ export function LaunchScreen() {
     setEditingTarget(false);
     showToast('Launch target saved.');
   };
+
+  if (embedded && canEmbed) {
+    return (
+      <div className="screen screen-embed">
+        <BackBar title="Launch" />
+        <EmbeddedSite site="codemagic" label="Codemagic" onClose={() => setEmbedded(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="screen">
@@ -118,6 +131,28 @@ export function LaunchScreen() {
             </button>
           </div>
         </div>
+
+        {/* Codemagic, contained inside the app (desktop only). */}
+        {canEmbed ? (
+          <div className="card">
+            <div className="card-row">
+              <div className="grow">
+                <h3>Codemagic dashboard</h3>
+                <div className="sub">
+                  Sign in and manage your apps, workflows, and builds right here. It stays inside
+                  Codemagic.
+                </div>
+              </div>
+              <button
+                className="btn ghost"
+                style={{ padding: '8px 14px' }}
+                onClick={() => setEmbedded(true)}
+              >
+                Open here
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Connect Codemagic. */}
         <div className="card">

@@ -6111,3 +6111,82 @@ textarea {
     display: none;
   }
 }
+
+/* A contained third-party site inside the desktop shell (Codemagic in
+   Launch). The native view is placed over .embed-host by the main process;
+   this only draws the frame, the toolbar, and the placeholder beneath it. */
+.screen-embed {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.embed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px 16px 12px;
+  gap: 8px;
+}
+.embed-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.embed-toolbar .icon-btn:disabled {
+  opacity: 0.35;
+}
+.embed-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink);
+}
+.embed-site {
+  font-weight: 600;
+}
+.embed-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 38vw;
+}
+.embed-loading {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--local);
+  animation: pulse-dot var(--loop-2) var(--ease-loop) infinite;
+}
+.embed-host {
+  flex: 1;
+  min-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.embed-placeholder {
+  color: var(--muted);
+  font-size: 14px;
+  animation: fade-in var(--dur-4) var(--ease-standard);
+}
+.embed-note {
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .embed-loading {
+    animation: none;
+  }
+}

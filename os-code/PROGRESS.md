@@ -3,6 +3,39 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, Codemagic runs inside Launch, contained)
+
+Founder: host codemagic.io as a contained entity inside the Launch section,
+signed in and working as it would in a browser, but unable to browse anywhere
+else. Built for the desktop app (an iframe is not an option: authenticated
+dashboards refuse to be framed, and Safari's cookie rules would break the
+session anyway).
+
+- **`electron/embeddedWeb.ts`.** One `WebContentsView` on its own persistent
+  cookie partition (`persist:embedded-codemagic`), so the sign-in survives
+  relaunches and never mixes with the app's session. The renderer names the
+  site (`'codemagic'`), never a URL; the main process owns the allow list:
+  `*.codemagic.io` in full, the sign-in providers held to their sign-in paths
+  (GitHub `/login`, GitLab `/oauth`, Bitbucket `/site/oauth2`, Atlassian id,
+  Google accounts). `will-navigate`, `will-redirect`, and the window-open
+  handler enforce it; an OAuth popup gets its own fenced child window on the
+  same partition; anything outside goes to the system browser. Sandboxed, no
+  preload, no Node. The Electron token is stripped from the user agent so the
+  dashboard treats it as a normal Chrome.
+- **`components/EmbeddedSite.tsx`.** Measures its host rectangle live
+  (ResizeObserver, resize, scroll) and keeps the native view placed over it;
+  a toolbar with Back, Reload, the site and path crumb (tap for home), Open
+  in browser, Sign out (clears the partition), and Done; hides the view while
+  the drawer is open. Launch gets a "Codemagic dashboard: Open here" card on
+  the desktop only; the phone never sees it.
+- **Caveat, by design.** Google refuses to complete OAuth inside any embedded
+  view. A GitHub, GitLab, or Bitbucket sign-in to Codemagic works; a
+  Google-backed Codemagic account will see Google's notice. Not device
+  verified; the first run in the built desktop app is the proof.
+- **The API-token path stays** as the substrate for triggering and following
+  builds; the contained dashboard is where builds are watched and managed
+  with the full Codemagic UI.
+
 ## Current state (2026-09-02, chat and projects work the way Claude Code works)
 
 Founder: "make sure that the way chat and projects work is exactly like
@@ -768,7 +801,7 @@ Layer status:
       **Founder config before deploy (one at a time):** 1. Stripe: create a $20/yr **Personal** price; set `STRIPE_PRICE_PERSONAL`
       as a function secret. 2. `supabase db push` (applies 0006, 0007, 0008) then
       `supabase functions deploy stripe-checkout stripe-webhook stripe-portal
-   link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
+ link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
       in App Store Connect; add `oscode-iap` to app/package.json is done, but
       confirm `cap sync ios` links it; enable the In-App Purchase capability. 4. Apple secrets: paste the real Apple Root CA DER base64 into
       `_shared/apple.ts` (egress here blocked www.apple.com) OR set
@@ -937,29 +970,29 @@ Layer status:
       instead of centralized hosting).
 
       **Partial (2026-08-25): the storage seam is framed and live, and the
-      full advisory org ruled on every decision point** (founder delegated
-      the calls to the advisors, then build; rulings logged in DECISIONS.md).
-      Shipped: `app/src/lib/gitos/` with the path/bytes StorageProvider seam
-      (list/stat/read/write/remove plus single-writer lease ops, per the CTO
-      must-fix), the Local provider over the sealed store, and the provider
-      roster with Dropbox/Proton registered but honestly marked not ready
-      pending OAuth wiring. Vault ships as the seam's first consumer (see the
-      Vault item). Two cloud providers landed the same day: iCloud (native
-      Capacitor plugin, `app/plugins/oscode-icloud/`, ubiquity container,
-      needs the App ID capability enabled in the Apple Developer portal
-      before each distribution build) and Google Drive (`app/src/lib/gitos/
-      gdrive.ts` + `gdriveAuth.ts`, drive.file scope only per the CFO, real
-      folder tree with a `.oscode/index.json` cache, OAuth PKCE with an iOS
-      client via the app's own URL scheme and a Desktop client via a
-      loopback redirect for Electron, per the CTO's architecture ruling;
-      founder still needs to register both OAuth clients in Google Cloud
-      Console and fill in `VITE_GDRIVE_*` before either build can connect).
-      STILL OPEN: real-git shell-out on the desktop engine, the Repositories
-      surface merge, Dropbox (app-folder scope per CTO), Proton (no public
-      OAuth API today, stays an honest stub), a Google Drive disconnect
-      affordance beyond the storage sheet's inline button, and the per-repo
-      secrets key model. Ships as "Repositories"; gitOS is the internal name
-      (CMO, Git trademark policy). Personal-gated (CFO).
+          full advisory org ruled on every decision point** (founder delegated
+          the calls to the advisors, then build; rulings logged in DECISIONS.md).
+          Shipped: `app/src/lib/gitos/` with the path/bytes StorageProvider seam
+          (list/stat/read/write/remove plus single-writer lease ops, per the CTO
+          must-fix), the Local provider over the sealed store, and the provider
+          roster with Dropbox/Proton registered but honestly marked not ready
+          pending OAuth wiring. Vault ships as the seam's first consumer (see the
+          Vault item). Two cloud providers landed the same day: iCloud (native
+          Capacitor plugin, `app/plugins/oscode-icloud/`, ubiquity container,
+          needs the App ID capability enabled in the Apple Developer portal
+          before each distribution build) and Google Drive (`app/src/lib/gitos/
+          gdrive.ts` + `gdriveAuth.ts`, drive.file scope only per the CFO, real
+          folder tree with a `.oscode/index.json` cache, OAuth PKCE with an iOS
+          client via the app's own URL scheme and a Desktop client via a
+          loopback redirect for Electron, per the CTO's architecture ruling;
+          founder still needs to register both OAuth clients in Google Cloud
+          Console and fill in `VITE_GDRIVE_*` before either build can connect).
+          STILL OPEN: real-git shell-out on the desktop engine, the Repositories
+          surface merge, Dropbox (app-folder scope per CTO), Proton (no public
+          OAuth API today, stays an honest stub), a Google Drive disconnect
+          affordance beyond the storage sheet's inline button, and the per-repo
+          secrets key model. Ships as "Repositories"; gitOS is the internal name
+          (CMO, Git trademark policy). Personal-gated (CFO).
 
   ```
   ROLE
@@ -1096,16 +1129,16 @@ Layer status:
       4.8 build prompt.
 
       **Partial (2026-08-24): the individual in-stack connector shipped.** The
-      founder's concrete ask (a "+" button top-right of the Stack, point at a
-      model you control, it lands on the Bench and places into the stack) is
-      built: `app/src/lib/byom.ts`, a `byom` `StackModelRef` kind, `connectByom`
-      / `disconnectByom` in the store (key in the device secret store, never in
-      settings), and the StackManager connect/disconnect UI. It reuses the
-      existing OpenAI-compatible adapter (now endpoint-driven, with an optional
-      key so keyless local servers work). STILL OPEN from the prompt below:
-      org-level configuration (set once for a whole team), a pre-flight
-      capability check, and graceful degradation when a connected model lacks a
-      needed capability. Keep this item open until those land.
+          founder's concrete ask (a "+" button top-right of the Stack, point at a
+          model you control, it lands on the Bench and places into the stack) is
+          built: `app/src/lib/byom.ts`, a `byom` `StackModelRef` kind, `connectByom`
+          / `disconnectByom` in the store (key in the device secret store, never in
+          settings), and the StackManager connect/disconnect UI. It reuses the
+          existing OpenAI-compatible adapter (now endpoint-driven, with an optional
+          key so keyless local servers work). STILL OPEN from the prompt below:
+          org-level configuration (set once for a whole team), a pre-flight
+          capability check, and graceful degradation when a connected model lacks a
+          needed capability. Keep this item open until those land.
 
   ```
   ROLE
@@ -1227,65 +1260,65 @@ Layer status:
       founder is not settled on it.
 
       **Partial (2026-08-25): the personal Vault shipped, on the gitOS seam,
-      after the full advisory org answered the decision points.** Name: Vault
-      ships (CMO: generic term, safe, and earned because compat is TRUE).
-      Compat ruling: true Obsidian compatibility. Plain .md paths, Obsidian's
-      own [[wikilink]] grammar including alias and heading-ref tolerance,
-      bare-name resolution with shortest-path tiebreak, and export as real
-      files (Documents/Vault via the new @capacitor/filesystem plugin plus
-      UIFileSharingEnabled, so the Files app shows the folder and Obsidian
-      mobile opens it as a vault). Shipped surface (`VaultScreen`, in the
-      sidebar nav): folder tree with breadcrumbs, edit/read toggle, autosave
-      as you type (debounced), clickable wikilinks that create missing notes,
-      Linked mentions backlinks card, the storage-location sheet with Local
-      live and the other providers honestly Arriving, and the export action.
-      Free tier (CFO: the daily-habit hook; the agent side is what Personal
-      gates).
+          after the full advisory org answered the decision points.** Name: Vault
+          ships (CMO: generic term, safe, and earned because compat is TRUE).
+          Compat ruling: true Obsidian compatibility. Plain .md paths, Obsidian's
+          own [[wikilink]] grammar including alias and heading-ref tolerance,
+          bare-name resolution with shortest-path tiebreak, and export as real
+          files (Documents/Vault via the new @capacitor/filesystem plugin plus
+          UIFileSharingEnabled, so the Files app shows the folder and Obsidian
+          mobile opens it as a vault). Shipped surface (`VaultScreen`, in the
+          sidebar nav): folder tree with breadcrumbs, edit/read toggle, autosave
+          as you type (debounced), clickable wikilinks that create missing notes,
+          Linked mentions backlinks card, the storage-location sheet with Local
+          live and the other providers honestly Arriving, and the export action.
+          Free tier (CFO: the daily-habit hook; the agent side is what Personal
+          gates).
 
-      **Org tier BUILT (2026-08-25).** The shared, multi-writer team vault
-      shipped: a Supabase-backed gitOS provider ('org', Team vault) behind the
-      same seam, so the Vault UI never learns the bytes live in Postgres.
-      Migration `supabase/migrations/0010_org_vault.sql` adds `org_vault_notes`
-      (keyed org_id + path), RLS so only active members read (is_org_member),
-      table writes revoked so the two SECURITY DEFINER RPCs are the ONLY write
-      path, `org_vault_put` doing last-write-wins with a conflict copy (the
-      overwritten body is preserved as a "(conflict ...)" note, never lost),
-      and `org_vault_delete` as a tombstone. The Vault screen gains a
-      Personal | Team switcher (Team shown only to signed-in org members), and
-      `[[` autocompletion landed for both vaults (pure `wikilinkContext` in
-      vault.ts, a mobile-first chip row in the editor). iCloud sync for the
-      PERSONAL vault is already covered by the landed iCloud gitOS provider.
-      The founder must apply the migration (supabase db push) for the live team
-      vault to work. (Applied 2026-08-25.)
+          **Org tier BUILT (2026-08-25).** The shared, multi-writer team vault
+          shipped: a Supabase-backed gitOS provider ('org', Team vault) behind the
+          same seam, so the Vault UI never learns the bytes live in Postgres.
+          Migration `supabase/migrations/0010_org_vault.sql` adds `org_vault_notes`
+          (keyed org_id + path), RLS so only active members read (is_org_member),
+          table writes revoked so the two SECURITY DEFINER RPCs are the ONLY write
+          path, `org_vault_put` doing last-write-wins with a conflict copy (the
+          overwritten body is preserved as a "(conflict ...)" note, never lost),
+          and `org_vault_delete` as a tombstone. The Vault screen gains a
+          Personal | Team switcher (Team shown only to signed-in org members), and
+          `[[` autocompletion landed for both vaults (pure `wikilinkContext` in
+          vault.ts, a mobile-first chip row in the editor). iCloud sync for the
+          PERSONAL vault is already covered by the landed iCloud gitOS provider.
+          The founder must apply the migration (supabase db push) for the live team
+          vault to work. (Applied 2026-08-25.)
 
-      **Agent vault writes BUILT (2026-08-25), daemon side.** The founder chose
-      a PRIVATE ON-DEVICE vault (local-first, no token crossing to the daemon)
-      over the team vault as the agent's write target. New daemon tools in
-      `os-code/src/core/tools/vault.ts`: `vaultRead` and `vaultList` (read risk,
-      flow) and `vaultWrite` (write risk, alwaysAsk). Notes are plain markdown
-      under `~/OSCode/Vault` (config `vault.dir`), path-jailed to that root, so
-      Obsidian or any editor opens the folder. "Never silent" is enforced hard:
-      a new `ToolDef.alwaysAsk` flag, honored by the permission engine BEFORE
-      any auto-allow path (session grant, rule, trusted repo), so no setting can
-      make an agent vault write skip its approval diff. The approval reuses the
-      existing app ApprovalSheet + CLI/TUI prompt (a unified diff). 236 os-code
-      tests green (adds vaultTools.test), lint, em-dash.
+          **Agent vault writes BUILT (2026-08-25), daemon side.** The founder chose
+          a PRIVATE ON-DEVICE vault (local-first, no token crossing to the daemon)
+          over the team vault as the agent's write target. New daemon tools in
+          `os-code/src/core/tools/vault.ts`: `vaultRead` and `vaultList` (read risk,
+          flow) and `vaultWrite` (write risk, alwaysAsk). Notes are plain markdown
+          under `~/OSCode/Vault` (config `vault.dir`), path-jailed to that root, so
+          Obsidian or any editor opens the folder. "Never silent" is enforced hard:
+          a new `ToolDef.alwaysAsk` flag, honored by the permission engine BEFORE
+          any auto-allow path (session grant, rule, trusted repo), so no setting can
+          make an agent vault write skip its approval diff. The approval reuses the
+          existing app ApprovalSheet + CLI/TUI prompt (a unified diff). 236 os-code
+          tests green (adds vaultTools.test), lint, em-dash.
 
-      **App folder view BUILT (2026-08-25), desktop.** The paired follow-up
-      shipped: a file-backed gitOS provider ('files', "This folder") that the app
-      points the personal vault at, reading and writing the SAME `~/OSCode/Vault`
-      folder the agent writes, so agent notes show in the app's Vault and vice
-      versa, and Obsidian opens the folder. New Electron IPC (osc:vaultList /
-      Read / Write / Remove in electron/main.ts, path-jailed with os-code's Jail),
-      exposed on the bridge + preload; the provider (app/src/lib/gitos/
-      deviceFolder.ts) is a thin client over it, in PROVIDER_ROSTER and offered
-      in the "Where it lives" sheet on desktop only (probeReady gates it off the
-      phone). Move the personal vault to it from that sheet. Green: app typecheck
-      (incl. electron), lint, 176 tests (adds deviceFolder.test), vite build,
-      em-dash. Not device-verified (no Electron in the web session); founder
-      confirms on Pop!_OS. Minor known gap: no live fs-watch, so an agent write
-      appears in the app on the next Vault refresh (navigate away and back), not
-      instantly.
+          **App folder view BUILT (2026-08-25), desktop.** The paired follow-up
+          shipped: a file-backed gitOS provider ('files', "This folder") that the app
+          points the personal vault at, reading and writing the SAME `~/OSCode/Vault`
+          folder the agent writes, so agent notes show in the app's Vault and vice
+          versa, and Obsidian opens the folder. New Electron IPC (osc:vaultList /
+          Read / Write / Remove in electron/main.ts, path-jailed with os-code's Jail),
+          exposed on the bridge + preload; the provider (app/src/lib/gitos/
+          deviceFolder.ts) is a thin client over it, in PROVIDER_ROSTER and offered
+          in the "Where it lives" sheet on desktop only (probeReady gates it off the
+          phone). Move the personal vault to it from that sheet. Green: app typecheck
+          (incl. electron), lint, 176 tests (adds deviceFolder.test), vite build,
+          em-dash. Not device-verified (no Electron in the web session); founder
+          confirms on Pop!_OS. Minor known gap: no live fs-watch, so an agent write
+          appears in the app on the next Vault refresh (navigate away and back), not
+          instantly.
 
   ```
   ROLE

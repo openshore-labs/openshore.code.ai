@@ -82,4 +82,14 @@ contextBridge.exposeInMainWorld('oscode', {
   gdriveOAuthCancel: invoke('osc:gdriveOAuthCancel'),
 
   onDeepLink: listen('osc:deep-link'),
+
+  embeddedOpen: invoke('osc:embeddedOpen'),
+  embeddedBounds: invoke('osc:embeddedBounds'),
+  embeddedVisible: invoke('osc:embeddedVisible'),
+  embeddedBack: invoke('osc:embeddedBack'),
+  embeddedReload: invoke('osc:embeddedReload'),
+  embeddedHome: invoke('osc:embeddedHome'),
+  embeddedSignOut: invoke('osc:embeddedSignOut'),
+  embeddedClose: invoke('osc:embeddedClose'),
+  onEmbeddedState: listen('osc:embedded-state'),
 });
