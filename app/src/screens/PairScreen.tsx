@@ -230,7 +230,7 @@ function DesktopPair() {
 }
 
 function PhonePair() {
-  const { settings, saveSettings, showToast } = useApp();
+  const { settings, saveSettings, showToast, startGuideChat } = useApp();
   const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
   const [token, setToken] = useState(settings.daemon?.token ?? '');
   const [testing, setTesting] = useState(false);
@@ -288,6 +288,13 @@ function PhonePair() {
           here, over your private network. Your computer does the work, so a long task keeps going
           even when you close the app.
         </p>
+        <button
+          className="btn ghost press-fb"
+          style={{ width: '100%', marginBottom: 12 }}
+          onClick={() => void startGuideChat('pair-computer')}
+        >
+          Walk me through it
+        </button>
 
         <div className="card">
           <h3>Before this screen</h3>
@@ -297,7 +304,10 @@ function PhonePair() {
             2. In OpenShore on the desktop: Menu, Desktop + phone, Turn on.
           </div>
           <div className="sub" style={{ marginTop: 12 }}>
-            Get Tailscale (free for personal use):
+            Get Tailscale (free for personal use):{' '}
+            <button className="linklike" onClick={() => void startGuideChat('install-tailscale')}>
+              walk me through Tailscale
+            </button>
           </div>
           <div className="dl-list">
             {TAILSCALE_LINKS.map((l) => (

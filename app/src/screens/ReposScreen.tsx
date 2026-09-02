@@ -125,7 +125,13 @@ export function ReposScreen() {
         {!connected ? (
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
             You can add a token now. Repositories open once this phone is connected to your
-            computer, where the code lives.
+            computer, where the code lives.{' '}
+            <button
+              className="linklike"
+              onClick={() => void useApp.getState().startGuideChat('pair-computer')}
+            >
+              Walk me through connecting it
+            </button>
           </p>
         ) : null}
         {REPO_CONNECTORS.map((c) => {

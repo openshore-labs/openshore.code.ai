@@ -217,3 +217,14 @@ execution contract. Newest at the bottom.
   postinstall rebuilds node-pty for Electron's ABI. The Electron build wins the
   single build dir on purpose (desktop app + in-app daemon); the system-Node
   `osc` CLI reports its terminal unavailable rather than crash.
+
+- **The app works the way the founder works with a coding agent (2026-09-02).**
+  `docs/interaction-model.md` is the standard: goal in the person's words, a
+  plan first, forks as pickers with a recommendation, one step at a time when
+  the person must act, every change shown before it lands, verify then report
+  plainly, honest states, keep moving. Setup surfaces express it as guided
+  chats ("Walk me through it"); the Marketplace expresses it as bundles (one
+  decision, total size shown) instead of fifteen model choices.
+- **Guide steps are written, not generated (2026-09-02).** A guide chat opens
+  with a seeded plan so it is correct even on Harbor Mini; the model's job is
+  questions between steps, never inventing the procedure.

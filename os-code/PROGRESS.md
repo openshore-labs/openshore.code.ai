@@ -71,6 +71,33 @@ Gates green: app typecheck/lint, app 275 tests (46 files), os-code 302 tests.
   display (the founder hit this over SSH; the live display was `:1`).
 Gates green: app typecheck/lint, app 279 tests (48 files).
 
+**Third batch (founder: bundles, guided setup, "make the whole app work the
+way I work with Claude Code"):**
+- **Stack bundles in the Marketplace.** Five one-tap profiles, each showing
+  its total download summed from the live catalog: Pocket (iPhone, on-device),
+  Starter, Coding, Creative, Performance (desktop via Ollama; Starter, Coding,
+  and Performance mirror the engine's own `osc init` presets). Install pulls
+  each model through the existing install channel and progress UI, then sets
+  the orchestrator and specialists (phone: sets the on-device Reasoning LLM).
+  `app/src/lib/bundles.ts`; `bundles.test.ts` pins every id, platform, role
+  category, and size against `catalog.sample.json`.
+- **Walk me through it.** Every setup surface (Cloud Connections, Desktop +
+  phone, Tailscale, Your stack, Repositories, Launch) has a button that opens
+  a chat seeded with the guide: the goal, the numbered plan, one step at a
+  time, how you know it worked. Steps are written, not generated, so they are
+  right on a small model; the model answers questions between steps. Runs on
+  whatever brain can answer here (this computer's engine, a Claude key, or
+  Harbor Mini, downloaded on the spot). `newConversation` gained an additive
+  `seedItems`/`title` option so seeded turns render and enter the model's
+  history. `app/src/lib/setupGuides.ts`; Harbor's knowledge base learned both
+  features and the working loop.
+- **The interaction model, written down.** `docs/interaction-model.md`: the
+  eight tenets of how the founder works with a coding agent (goal, plan,
+  forks as pickers, one step at a time when the person acts, every change
+  shown before it lands, verify then report plainly, honest states, keep it
+  moving), and the checklist every new surface is held to.
+Gates green: app typecheck/lint, app 285 tests (50 files).
+
 ## Current state (2026-08-31, P0 beta remediation)
 
 **Full P0 beta audit + first four remediation phases landed on the feature

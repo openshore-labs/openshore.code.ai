@@ -10,6 +10,7 @@ import { CAPABILITIES } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { daemonInstallModel, daemonInstallProgress } from '../drivers/remoteDriver.js';
+import { bundleModelIds, bundleTotalGB, bundlesFor, type StackBundle } from '../lib/bundles.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isPhone } from '../lib/platform.js';
@@ -106,6 +107,9 @@ export function MarketplaceScreen() {
     harborDownload,
   } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
+  // Which stack bundle is installing, if any (hooks stay above every early
+  // return; the bundle logic itself lives further down with the other installs).
+  const [bundleBusy, setBundleBusy] = useState<string | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
   const [detailOpen, setDetailOpen] = useState<string | undefined>();
@@ -458,6 +462,126 @@ export function MarketplaceScreen() {
     setCompareIds((ids) =>
       ids.includes(id) ? ids.filter((x) => x !== id) : ids.length >= 3 ? ids : [...ids, id],
     );
+
+  // ---- stack bundles ------------------------------------------------------
+  // One tap fills the whole stack for a profile. Desktop: pull each model
+  // through the engine (the same install channel and progress UI as a single
+  // model), then set the orchestrator and specialists. Phone: the Pocket bundle
+  // downloads its on-device model and makes it the Reasoning LLM. Sizes are
+  // summed from the live catalog, never hardcoded.
+  const sizeOf = (id: string) => catalog?.models.find((m) => m.id === id)?.sizeGB;
+  const installBundle = async (bundle: StackBundle) => {
+    if (!catalog || bundleBusy) return;
+    const ids = bundleModelIds(bundle);
+    const models = ids.map((id) => catalog.models.find((m) => m.id === id));
+    if (models.some((m) => !m)) {
+      showToast('This bundle names a model the catalog does not have yet.');
+      return;
+    }
+    setBundleBusy(bundle.id);
+    try {
+      if (bundle.platform === 'phone') {
+        const m = models[0]!;
+        await pullToDevice(m);
+        await useApp.getState().setReasoning({ kind: 'device', modelId: m.id, modelName: m.name });
+        showToast(`${bundle.name} is your stack. Ready to chat, offline.`);
+        return;
+      }
+      const b = bridge();
+      if (!b) {
+        showToast('Desktop bundles install from the OpenShore desktop app.');
+        return;
+      }
+      for (const m of models) {
+        const r = await b.installModel(m!.id);
+        clearDownload(m!.id);
+        if (!r.ok) {
+          showToast(r.detail);
+          return;
+        }
+      }
+      const orch = models[0]!;
+      const set = await b.setOrchestrator(orch.source.ref);
+      if (!set.ok) {
+        showToast(set.detail);
+        return;
+      }
+      for (const [role, id] of Object.entries(bundle.specialists)) {
+        const m = catalog.models.find((x) => x.id === id);
+        if (m) await b.enableSpecialist(role, m.source.ref);
+      }
+      await useApp.getState().refreshDesktopStatus();
+      hapticSuccess();
+      logEvent('bundle_installed', { id: bundle.id });
+      showToast(`${bundle.name} is your stack. Ready to chat and build.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not install the bundle.');
+    } finally {
+      setBundleBusy(undefined);
+    }
+  };
+
+  const renderBundleShelf = () => {
+    const list = bundlesFor(isPhone() ? 'phone' : 'desktop');
+    const other = bundlesFor(isPhone() ? 'desktop' : 'phone');
+    return (
+      <section className="shelf" key="bundles">
+        <div className="shelf-head">
+          <h2>Fill your stack in one tap</h2>
+          <p className="hint">
+            A bundle sets your Reasoning LLM and specialists for a profile. Each shows its total
+            download. Weights come straight from their source.
+          </p>
+        </div>
+        <div className="market-list">
+          {list.map((bundle) => {
+            const total = bundleTotalGB(bundle, sizeOf);
+            const names = bundleModelIds(bundle)
+              .map((id) => catalog?.models.find((m) => m.id === id)?.name ?? id)
+              .join(' · ');
+            const busy = bundleBusy === bundle.id;
+            const progressLine = busy
+              ? bundleModelIds(bundle)
+                  .map((id) => downloads[id]?.label)
+                  .find(Boolean)
+              : undefined;
+            return (
+              <div className="card" key={bundle.id}>
+                <div className="card-row">
+                  <div className="grow">
+                    <h3>{bundle.name}</h3>
+                    <div className="sub">{bundle.tagline}</div>
+                  </div>
+                  <span className="pill local">
+                    {total !== undefined ? `${total} GB` : 'size unknown'}
+                  </span>
+                </div>
+                <p className="hint" style={{ marginTop: 6 }}>
+                  {names}
+                  {bundle.minVramGB ? ` · needs about ${bundle.minVramGB} GB of GPU memory` : ''}
+                </p>
+                <button
+                  className="btn primary press-fb"
+                  style={{ width: '100%', marginTop: 8 }}
+                  disabled={Boolean(bundleBusy)}
+                  onClick={() => void installBundle(bundle)}
+                >
+                  {busy ? (progressLine ?? 'Installing...') : `Install ${bundle.name}`}
+                </button>
+              </div>
+            );
+          })}
+          {other.length ? (
+            <p className="hint">
+              {isPhone()
+                ? 'Desktop bundles (Starter, Coding, Creative, Performance) install from the OpenShore desktop app.'
+                : 'The Pocket bundle runs on your iPhone; get it there.'}
+            </p>
+          ) : null}
+        </div>
+      </section>
+    );
+  };
 
   const presetsFor = (id: string) =>
     catalog.presets.filter(
@@ -1149,6 +1273,8 @@ export function MarketplaceScreen() {
                   uses them over Tailscale.
                 </p>
               ) : null}
+
+              {renderBundleShelf()}
 
               {shelves.map(renderShelf)}
 
