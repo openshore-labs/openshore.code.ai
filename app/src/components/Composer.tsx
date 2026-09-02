@@ -74,6 +74,26 @@ export const SLASH_COMMANDS: Array<{
   { name: 'rename', hint: 'Name this chat', arg: 'name' },
 ];
 
+/** The brain's short name for the pill: the row is narrow and the full label
+ *  lives in the model sheet. */
+function shortLabel(source?: ConversationSource): string {
+  if (!source) return 'My Stack';
+  switch (source.kind) {
+    case 'cloud':
+      return 'Claude';
+    case 'desktop':
+      return source.repoName ?? 'Desktop';
+    case 'desktop-chat':
+      return 'Desktop chat';
+    case 'device':
+      return sourceLabel(source).split(' · ')[0] ?? 'On device';
+    case 'stack':
+      return 'My Stack';
+    case 'mock':
+      return 'Demo';
+  }
+}
+
 /** A paste long enough to fold into a chip rather than fill the field. */
 const PASTE_FOLD_CHARS = 1500;
 const PASTE_FOLD_LINES = 25;
@@ -440,7 +460,7 @@ export function Composer({
     dictation.toggle();
   };
 
-  const modelLabel = source ? sourceLabel(source) : 'My Stack';
+  const modelLabel = shortLabel(source);
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -689,18 +709,21 @@ export function Composer({
             {'+'}
           </button>
 
-          <button className="composer-pill press-fb" onClick={onOpenModelSheet}>
-            {modelLabel}
+          <button
+            className="composer-pill press-fb"
+            onClick={onOpenModelSheet}
+            aria-label={`Model: ${source ? sourceLabel(source) : 'My Stack'}`}
+          >
+            <span className="composer-pill-text">{modelLabel}</span>
+            <span className="composer-pill-chevron" aria-hidden="true" />
           </button>
           <button
             className={`composer-pill composer-pill-mode mode-${mode} press-fb`}
             onClick={onOpenModeSheet}
             aria-label={`Mode: ${permissionModeLabel(mode)}. Shift and Tab cycles.`}
           >
-            <span className="pill-code" aria-hidden="true">
-              {'</>'}
-            </span>
-            {permissionModeLabel(mode)}
+            <span className="composer-pill-dot" aria-hidden="true" />
+            <span className="composer-pill-text">{permissionModeLabel(mode)}</span>
           </button>
 
           {canRunCommands ? (
@@ -710,10 +733,10 @@ export function Composer({
               aria-pressed={terminal}
               aria-label="Terminal mode: run the next message as a command"
             >
-              <span className="pill-code" aria-hidden="true">
+              <span className="composer-pill-glyph" aria-hidden="true">
                 {'$'}
               </span>
-              Terminal
+              <span className="composer-pill-text">Terminal</span>
             </button>
           ) : null}
 
