@@ -102,17 +102,43 @@ export function providerSecretKey(providerId: string): string {
 // rejection from the provider (block the save); 'unverifiable' means we could
 // not reach the provider to check right now, e.g. offline or a browser CORS
 // wall in dev (save, but say it is unverified rather than claim it works).
-export type KeyCheck = 'valid' | 'invalid' | 'unverifiable';
+export type KeyCheck = 'valid' | 'invalid' | 'unverifiable' | 'needs-workspace';
 
-export async function validateProviderKey(id: string, key: string): Promise<KeyCheck> {
+/** The header an identity-linked Anthropic key must carry: the workspace it
+ *  acts in. A workspace-scoped key needs nothing. */
+export function anthropicHeaders(key: string, workspaceId?: string): Record<string, string> {
+  const ws = workspaceId?.trim();
+  return {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+    ...(ws ? { 'anthropic-workspace-id': ws } : {}),
+  };
+}
+
+/** True when an error body is the API asking for anthropic-workspace-id. */
+export function needsWorkspaceId(text: string): boolean {
+  return /anthropic-workspace-id/i.test(text);
+}
+
+export const WORKSPACE_HINT =
+  'This key is linked to your identity, so Claude needs the id of the workspace it acts in. Find it in the Anthropic Console under Settings, Workspaces (it starts with wrkspc_), and add it under Cloud Connections.';
+
+export async function validateProviderKey(
+  id: string,
+  key: string,
+  workspaceId?: string,
+): Promise<KeyCheck> {
   try {
     if (id === 'anthropic') {
       const res = await nativeFetch('https://api.anthropic.com/v1/models', {
         method: 'GET',
-        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+        headers: anthropicHeaders(key, workspaceId),
         responseType: 'json',
       });
       if (res.status === 401 || res.status === 403) return 'invalid';
+      if (res.status === 400 && needsWorkspaceId(await res.text().catch(() => ''))) {
+        return 'needs-workspace';
+      }
       return res.ok ? 'valid' : 'unverifiable';
     }
     const info = providerInfo(id);

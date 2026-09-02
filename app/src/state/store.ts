@@ -248,6 +248,9 @@ export interface AppSettings {
   /** How tool approvals are handled for the coding agent. Defaults to
    *  'acceptEdits'. Chosen from the composer's mode pill. */
   permissionMode?: PermissionMode;
+  /** The workspace an identity-linked Anthropic key acts in, sent as the
+   *  anthropic-workspace-id header. Blank for a workspace-scoped key. */
+  anthropicWorkspaceId?: string;
   /** Models the user pinned (swipe-left) from the Cloud Providers or Local LLMs
    *  sheets. They surface under My Stack on the root model sheet for one-tap
    *  selection, and swipe there to unpin. Only concrete models pin. */
@@ -675,8 +678,9 @@ interface AppState {
   addDeviceModel(id: string, name: string): Promise<void>;
   setCloudKey(key: string): Promise<void>;
   clearCloudKey(): Promise<void>;
-  /** Connect a cloud provider by API key (Keychain), surfacing its models. */
-  connectProvider(id: string, key: string): Promise<void>;
+  /** Connect a cloud provider by API key (Keychain), surfacing its models. The
+   *  workspace id rides along for an identity-linked Anthropic key. */
+  connectProvider(id: string, key: string, workspaceId?: string): Promise<void>;
   /** Disconnect a cloud provider and forget its key. */
   disconnectProvider(id: string): Promise<void>;
 
@@ -1001,7 +1005,7 @@ export const useApp = create<AppState>((set, get) => {
       case 'cloud': {
         const key = await secretGet(ANTHROPIC_KEY_KEY);
         if (!key) throw new Error('Add your Claude API key under Connections first.');
-        return new CloudClaudeDriver(key, conv.source.model, seed);
+        return new CloudClaudeDriver(key, conv.source.model, seed, settings.anthropicWorkspaceId);
       }
       case 'stack': {
         const s = get();
@@ -3645,12 +3649,18 @@ export const useApp = create<AppState>((set, get) => {
       set({ cloudKeyPresent: false });
     },
 
-    async connectProvider(id, key) {
+    async connectProvider(id, key, workspaceId) {
       await secretSet(providerSecretKey(id), key.trim());
       set((s) => ({
         connectedProviders: { ...s.connectedProviders, [id]: true },
         cloudKeyPresent: id === 'anthropic' ? true : s.cloudKeyPresent,
       }));
+      if (id === 'anthropic') {
+        await get().saveSettings({ anthropicWorkspaceId: workspaceId?.trim() || undefined });
+        // On the desktop the engine holds its own copy of the key (its
+        // credential store), so a connection here reaches the coding agent too.
+        void bridge()?.setAnthropicKey(key.trim(), workspaceId?.trim() || undefined);
+      }
       logEvent('provider_connected', { provider: id });
     },
 
@@ -3660,6 +3670,10 @@ export const useApp = create<AppState>((set, get) => {
         connectedProviders: { ...s.connectedProviders, [id]: false },
         cloudKeyPresent: id === 'anthropic' ? false : s.cloudKeyPresent,
       }));
+      if (id === 'anthropic') {
+        await get().saveSettings({ anthropicWorkspaceId: undefined });
+        void bridge()?.disconnect('anthropic');
+      }
       logEvent('provider_disconnected', { provider: id });
     },
 

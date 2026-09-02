@@ -7,11 +7,36 @@
 import { deleteCredential, getCredential, setCredential, type StoreBackend } from './store.js';
 
 const KEY_NAME = 'anthropic-api-key';
+const WORKSPACE_NAME = 'anthropic-workspace-id';
 
 /** Resolution order: credential store, then the standard env var. */
 export function getAnthropicKey(): string | undefined {
   return getCredential(KEY_NAME) ?? process.env.ANTHROPIC_API_KEY ?? undefined;
 }
+
+/** The workspace an identity-linked key acts in (sent as the
+ *  anthropic-workspace-id header). Optional for a workspace-scoped key. */
+export function getAnthropicWorkspace(): string | undefined {
+  return getCredential(WORKSPACE_NAME) ?? process.env.ANTHROPIC_WORKSPACE_ID ?? undefined;
+}
+
+/** Headers for a request on the connected key, with the workspace when set. */
+export function anthropicAuthHeaders(key: string, workspaceId?: string): Record<string, string> {
+  const ws = (workspaceId ?? getAnthropicWorkspace())?.trim();
+  return {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+    ...(ws ? { 'anthropic-workspace-id': ws } : {}),
+  };
+}
+
+/** True when the API says this key needs a workspace id to act. */
+export function needsWorkspaceId(errorText: string): boolean {
+  return /anthropic-workspace-id/i.test(errorText);
+}
+
+export const WORKSPACE_HINT =
+  'This key is linked to your identity, so the API needs the id of the workspace it acts in. Find it in the Anthropic Console under Settings, Workspaces (it starts with wrkspc_), and add it next to the key.';
 
 export function isClaudeConnected(): boolean {
   return Boolean(getAnthropicKey());
@@ -21,14 +46,18 @@ export interface LoginResult {
   ok: boolean;
   detail: string;
   backend?: StoreBackend;
+  /** The key is identity-linked and the API wants a workspace id with it. */
+  needsWorkspace?: boolean;
 }
 
 /** Validate the key against the API, then store it locally. */
 export async function loginWithApiKey(
   key: string,
   baseUrl = 'https://api.anthropic.com',
+  workspaceId?: string,
 ): Promise<LoginResult> {
   const trimmed = key.trim();
+  const ws = workspaceId?.trim();
   if (!/^sk-ant-/.test(trimmed)) {
     return {
       ok: false,
@@ -38,9 +67,12 @@ export async function loginWithApiKey(
   }
   try {
     const res = await fetch(`${baseUrl}/v1/models?limit=1`, {
-      headers: { 'x-api-key': trimmed, 'anthropic-version': '2023-06-01' },
+      headers: anthropicAuthHeaders(trimmed, ws),
       signal: AbortSignal.timeout(8000),
     });
+    if (res.status === 400 && needsWorkspaceId(await res.clone().text())) {
+      return { ok: false, detail: WORKSPACE_HINT, needsWorkspace: true };
+    }
     if (res.status === 401) {
       return {
         ok: false,
@@ -60,11 +92,14 @@ export async function loginWithApiKey(
     };
   }
   const backend = setCredential(KEY_NAME, trimmed);
+  if (ws) setCredential(WORKSPACE_NAME, ws);
+  else deleteCredential(WORKSPACE_NAME);
   return { ok: true, detail: 'Claude is connected.', backend };
 }
 
 export function logoutClaude(): void {
   deleteCredential(KEY_NAME);
+  deleteCredential(WORKSPACE_NAME);
 }
 
 /**

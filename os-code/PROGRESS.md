@@ -3,6 +3,34 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, identity-linked Claude keys work)
+
+Founder connected Claude on the phone and the first turn failed with the raw
+API error: an identity-linked key (a key tied to a person, not a workspace)
+now requires the `anthropic-workspace-id` header. Built the fix on every
+Claude path:
+
+- **The header.** `anthropicHeaders(key, workspaceId)` in the app
+  (`lib/providers.ts`) and `anthropicAuthHeaders` in the engine
+  (`auth/claude.ts`) add it when a workspace is set. The phone's cloud chat
+  and the stack driver pass it as an SDK default header; the engine's
+  provider sends it on every request; `ANTHROPIC_WORKSPACE_ID` is the env
+  fallback there.
+- **Where it is entered.** Cloud Connections: the Anthropic card gains a
+  "My key is linked to my identity" link that reveals a Workspace id field
+  (`wrkspc_...`), and the key check detects the API's 400 for a missing
+  workspace and opens the field itself with a plain hint. Stored in
+  `settings.anthropicWorkspaceId`; the key stays in the Keychain. On the
+  desktop, connecting Claude in the app now also hands the key and workspace
+  to the engine (`bridge.setAnthropicKey(key, workspaceId)`), so the coding
+  agent gets it too; `osc login` asks for the workspace when the API wants
+  one.
+- **The message.** Both drivers and the engine turn that 400 into "This key
+  is linked to your identity, so Claude needs the id of the workspace it
+  acts in..." with where to find it, instead of the JSON.
+- **Not device-verified**; the founder's next attempt with the workspace id
+  is the proof.
+
 ## Current state (2026-09-02, the composer row is quiet type)
 
 Founder, from a screenshot: the buttons in the chat box look weird, not

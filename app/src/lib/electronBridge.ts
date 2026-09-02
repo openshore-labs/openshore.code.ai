@@ -140,7 +140,12 @@ export interface OscodeBridge {
   disableSpecialist(role: string): Promise<{ ok: boolean; detail: string }>;
 
   // Connections (keys stay in the engine's credential store on this machine).
-  setAnthropicKey(key: string): Promise<{ ok: boolean; detail: string }>;
+  /** Connect Claude to the engine on this machine. An identity-linked key
+   *  needs the workspace it acts in; the result says so when it is missing. */
+  setAnthropicKey(
+    key: string,
+    workspaceId?: string,
+  ): Promise<{ ok: boolean; detail: string; needsWorkspace?: boolean }>;
   setOpenAIKey(key: string): Promise<{ ok: boolean; detail: string }>;
   setGithubToken(token: string): Promise<{ ok: boolean; detail: string }>;
   disconnect(connector: 'anthropic' | 'openai' | 'github'): Promise<void>;

@@ -4,7 +4,7 @@
 // Keychain, scoped to the provider, and are spent only with your approval.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
-import { PROVIDERS, validateProviderKey } from '../lib/providers.js';
+import { PROVIDERS, WORKSPACE_HINT, validateProviderKey } from '../lib/providers.js';
 import { BackBar } from '../components/BackBar.js';
 import { openInAppBrowser } from '../lib/platform.js';
 
@@ -19,6 +19,9 @@ export function ConnectionsScreen() {
   } = useApp();
   const [editing, setEditing] = useState<string | undefined>();
   const [value, setValue] = useState('');
+  const [workspace, setWorkspace] = useState('');
+  // Shown for Anthropic once the API asks for it, or on request.
+  const [askWorkspace, setAskWorkspace] = useState(false);
   const [checking, setChecking] = useState(false);
 
   const save = async (id: string, name: string) => {
@@ -30,7 +33,7 @@ export function ConnectionsScreen() {
     setChecking(true);
     let check: Awaited<ReturnType<typeof validateProviderKey>> = 'unverifiable';
     try {
-      check = await validateProviderKey(id, key);
+      check = await validateProviderKey(id, key, workspace);
     } finally {
       setChecking(false);
     }
@@ -38,9 +41,20 @@ export function ConnectionsScreen() {
       showToast(`That ${name} key was rejected. Check it and try again.`);
       return;
     }
+    if (check === 'needs-workspace') {
+      setAskWorkspace(true);
+      showToast(
+        workspace.trim()
+          ? 'Claude did not accept that workspace id. Check it in the Console.'
+          : 'This key needs its workspace id. Add it below.',
+      );
+      return;
+    }
     setEditing(undefined);
     setValue('');
-    await connectProvider(id, key);
+    setAskWorkspace(false);
+    await connectProvider(id, key, id === 'anthropic' ? workspace : undefined);
+    setWorkspace('');
     showToast(
       check === 'valid'
         ? `${name} connected. Its models are on your bench.`
@@ -95,6 +109,8 @@ export function ConnectionsScreen() {
                     onClick={() => {
                       setEditing(p.id);
                       setValue('');
+                      setWorkspace('');
+                      setAskWorkspace(false);
                     }}
                   >
                     Connect
@@ -121,6 +137,25 @@ export function ConnectionsScreen() {
                       onKeyDown={(e) => e.key === 'Enter' && void save(p.id, p.name)}
                     />
                   </div>
+                  {p.id === 'anthropic' && askWorkspace ? (
+                    <>
+                      <div className="field">
+                        <label>Workspace id</label>
+                        <input
+                          autoFocus
+                          placeholder="wrkspc_..."
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          value={workspace}
+                          onChange={(e) => setWorkspace(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && void save(p.id, p.name)}
+                        />
+                      </div>
+                      <p className="hint" style={{ marginBottom: 10 }}>
+                        {WORKSPACE_HINT}
+                      </p>
+                    </>
+                  ) : null}
                   <button
                     className="btn primary"
                     style={{ width: '100%' }}
@@ -129,6 +164,16 @@ export function ConnectionsScreen() {
                   >
                     {checking ? 'Checking...' : 'Save'}
                   </button>
+                  {p.id === 'anthropic' && !askWorkspace ? (
+                    <button
+                      type="button"
+                      className="linklike"
+                      style={{ marginTop: 8 }}
+                      onClick={() => setAskWorkspace(true)}
+                    >
+                      My key is linked to my identity (add a workspace id)
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>

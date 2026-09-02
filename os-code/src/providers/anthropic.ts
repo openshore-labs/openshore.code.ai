@@ -16,8 +16,7 @@ import type {
 } from './types.js';
 import { ProviderError } from './types.js';
 import type { AnthropicEndpoint } from '../config/schema.js';
-
-const API_VERSION = '2023-06-01';
+import { anthropicAuthHeaders, needsWorkspaceId, WORKSPACE_HINT } from '../auth/claude.js';
 
 export class AnthropicProvider implements Provider {
   readonly kind = 'cloud' as const;
@@ -68,8 +67,7 @@ export class AnthropicProvider implements Provider {
   private headers(): Record<string, string> {
     return {
       'content-type': 'application/json',
-      'x-api-key': this.requireKey(),
-      'anthropic-version': API_VERSION,
+      ...anthropicAuthHeaders(this.requireKey()),
     };
   }
 
@@ -249,6 +247,7 @@ export class AnthropicProvider implements Provider {
 }
 
 function anthropicErrorHint(status: number, text: string): string {
+  if (status === 400 && needsWorkspaceId(text)) return WORKSPACE_HINT;
   if (status === 401) return 'The Anthropic API key was rejected. Run osc login to replace it.';
   if (status === 429)
     return 'The Anthropic API is rate limiting this key right now. Give it a moment, or check your plan limits at console.anthropic.com.';
