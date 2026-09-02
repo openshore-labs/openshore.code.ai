@@ -31,7 +31,7 @@ import {
   revokeCredential,
 } from 'os-code/dist/src/core/security/credentials.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
-import type { DriverEvent, StackHealth, StackHealthRange } from 'os-code/protocol';
+import type { DriverEvent, PermissionMode, StackHealth, StackHealthRange } from 'os-code/protocol';
 
 // One paired device as the renderer sees it. `id` is the credential's token
 // hash, which is also the handle the revoke store matches on (revokeCredential
@@ -164,12 +164,17 @@ export class EngineHost {
   private readTerminal = (sessionId: string, lines: number, termId?: string): string | undefined =>
     this.terminals.readForSession(sessionId, lines, termId);
 
-  async createSession(cwd?: string): Promise<{ id: string; cwd: string; warnings: string[] }> {
+  async createSession(
+    cwd?: string,
+    opts: { instructions?: string; permissionMode?: PermissionMode } = {},
+  ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
     const { driver, warnings } = bootstrapSession({
       cwd: workDir,
       profile: 'local-interactive',
       terminalReader: this.readTerminal,
+      instructions: opts.instructions,
+      permissionMode: opts.permissionMode,
     });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
@@ -222,9 +227,33 @@ export class EngineHost {
   answerApproval(
     sessionId: string,
     approvalId: string,
-    answer: { approve: boolean; alwaysThisSession?: boolean },
+    answer: { approve: boolean; alwaysThisSession?: boolean; alwaysInProject?: boolean },
   ): void {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
+  }
+
+  // ---- the person's controls over a session: mode, instructions, compaction,
+  // file search for @ mentions. Thin pass-throughs to the driver.
+
+  setMode(sessionId: string, mode: PermissionMode): void {
+    this.drivers.get(sessionId)?.setMode(mode);
+  }
+
+  setInstructions(sessionId: string, text: string | undefined): void {
+    this.drivers.get(sessionId)?.setInstructions(text);
+  }
+
+  async compact(
+    sessionId: string,
+    focus?: string,
+  ): Promise<{ before: number; after: number } | { error: string }> {
+    const driver = this.drivers.get(sessionId);
+    if (!driver) return { error: 'That session is not open.' };
+    return driver.compact(focus);
+  }
+
+  listFiles(sessionId: string, query: string): string[] {
+    return this.drivers.get(sessionId)?.listFiles(query) ?? [];
   }
 
   // ---------------------------------------------------- chat-to-terminal lane

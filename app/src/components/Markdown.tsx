@@ -3,7 +3,9 @@
 // code blocks carry a Copy control, and a Run control when the chat is
 // desktop-backed and the block looks like a shell command, so a suggested
 // command goes to the connected terminal with one tap (the chat-to-terminal
-// bridge) instead of a copy into a separate SSH app.
+// bridge) instead of a copy into a separate SSH app. A ```diff fence renders
+// as a real diff, and a fence still open mid-stream renders as code rather
+// than flashing as prose until its closing line arrives.
 import { isValidElement, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,6 +13,7 @@ import rehypeHighlight from 'rehype-highlight';
 import { useApp } from '../state/store.js';
 import { hapticTick } from '../lib/haptics.js';
 import { copyText } from '../lib/clipboard.js';
+import { DiffBlock } from './ToolCard.js';
 
 function extractText(node: ReactNode): string {
   if (typeof node === 'string') return node;
@@ -81,20 +84,36 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           </button>
         </span>
       </div>
-      <pre>{children}</pre>
+      {lang === 'diff' || lang === 'patch' ? <DiffBlock text={code} /> : <pre>{children}</pre>}
     </div>
   );
 }
 
-export function Markdown({ text }: { text: string }) {
+/** While streaming, an odd number of fences means one is still open: close it
+ *  so the half-written block renders as code instead of flashing as prose. */
+export function closeOpenFence(text: string, streaming: boolean): string {
+  if (!streaming) return text;
+  const fences = (text.match(/^```/gm) ?? []).length;
+  return fences % 2 === 1 ? `${text}\n\`\`\`` : text;
+}
+
+export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
-        components={{ pre: ({ children }) => <CodeBlock>{children}</CodeBlock> }}
+        components={{
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          // Links leave the app rather than navigating the WebView away from it.
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noreferrer noopener">
+              {children}
+            </a>
+          ),
+        }}
       >
-        {text}
+        {closeOpenFence(text, streaming)}
       </ReactMarkdown>
     </div>
   );

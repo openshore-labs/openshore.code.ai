@@ -8,8 +8,13 @@ export type {
   ApprovalAnswer,
   ApprovalRequest,
   DriverEvent,
+  PermissionMode,
   StopReason,
+  TodoItem,
 } from './core/agent/types.js';
+export { PERMISSION_MODES } from './core/agent/types.js';
+import type { PermissionMode } from './core/agent/types.js';
+export { INIT_PROMPT } from './core/agent/initPrompt.js';
 
 export {
   CatalogSchema,
@@ -45,6 +50,8 @@ export interface DaemonSessionInfo {
   title?: string;
   busy?: boolean;
   updatedAt?: string;
+  /** The permission mode in force on a live session. */
+  mode?: PermissionMode;
 }
 
 export interface DaemonWorkspace {

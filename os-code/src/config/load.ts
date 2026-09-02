@@ -133,6 +133,42 @@ function writeFileAtomic(path: string, data: string): void {
   renameSync(tmp, path);
 }
 
+/**
+ * Append an allow rule to the workspace's os-code.config.json ("don't ask
+ * again for this in this project"). Rules are evaluated first match wins, so
+ * the new rule goes on the end. Same guards as the global save: a corrupt
+ * file is preserved and refused, the write is atomic, and the merged result
+ * must validate. Returns the path written.
+ */
+export function addProjectPermissionRule(
+  cwd: string,
+  rule: { tool: string; pathGlob?: string; decision?: 'allow' | 'ask' | 'deny' },
+): string {
+  const path = projectConfigPath(cwd);
+  let current: Record<string, unknown> = {};
+  if (existsSync(path)) {
+    const { value, error } = readJson(path);
+    if (error) throw new Error(`Refusing to save: ${error}`);
+    if (isPlainObject(value)) current = value;
+  }
+  const permissions = isPlainObject(current.permissions) ? { ...current.permissions } : {};
+  const rules = Array.isArray(permissions.rules) ? [...permissions.rules] : [];
+  const entry: Record<string, unknown> = { tool: rule.tool, decision: rule.decision ?? 'allow' };
+  if (rule.pathGlob) entry.pathGlob = rule.pathGlob;
+  const duplicate = rules.some(
+    (r) =>
+      isPlainObject(r) &&
+      r.tool === entry.tool &&
+      r.decision === entry.decision &&
+      (r.pathGlob ?? undefined) === (entry.pathGlob ?? undefined),
+  );
+  if (!duplicate) rules.push(entry);
+  const next = { ...current, permissions: { ...permissions, rules } };
+  ConfigSchema.parse(deepMerge(defaultConfig(), next));
+  writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
+  return path;
+}
+
 /** Parse defaults only, used where config must never throw (doctor itself). */
 export function defaultConfig(): OscConfig {
   return ConfigSchema.parse({});

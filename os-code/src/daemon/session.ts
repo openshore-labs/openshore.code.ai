@@ -22,6 +22,10 @@ import { redactSecrets } from '../core/security/redaction.js';
 import { isSealed, loadOrCreateDataKey, openString, sealString } from '../core/security/atRest.js';
 import { runCommand as spawnCommand, type CommandRun } from '../core/exec/commandRunner.js';
 import { capContent } from '../core/tools/index.js';
+import { walkFiles } from '../core/tools/walk.js';
+import { relative } from 'node:path';
+import { simpleGit } from 'simple-git';
+import type { PermissionMode } from '../core/agent/types.js';
 
 // DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
 // remote driver can share the exact protocol type; re-exported here so
@@ -108,6 +112,9 @@ export class LocalDriver implements SessionDriver {
   // outcomes without a screenshot).
   private commands = new Map<string, CommandRun>();
   private pendingTerminalContext: string[] = [];
+  // Set once the first completed exchange has been titled, so the cheap title
+  // call runs once per session, never per turn.
+  private titled = false;
 
   constructor(
     readonly cwd: string,
@@ -265,10 +272,14 @@ export class LocalDriver implements SessionDriver {
         const infoPath = join(this.dir(), 'info.json');
         const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
         info.updatedAt = new Date().toISOString();
-        if (event.type === 'task-start') {
-          // The title is the user's own words; it seals like the journal. An
-          // existing (already sealed) title passes through untouched.
+        if (event.type === 'task-start' && !this.titled) {
+          // The title is the user's own words until a generated one lands; it
+          // seals like the journal.
           info.title = sealTitle(event.input.slice(0, 60));
+        }
+        if (event.type === 'title') {
+          this.titled = true;
+          info.title = sealTitle(event.title);
         }
         writeFileSync(infoPath, JSON.stringify(info, null, 2));
       } catch {}
@@ -306,8 +317,11 @@ export class LocalDriver implements SessionDriver {
     if (!next) return;
     this.running = true;
     const preamble = this.drainTerminalContext();
+    let completed = false;
     try {
+      await this.emitRepoInfo();
       await this.agent.run(next.text, next.images, preamble);
+      completed = this.lastTaskCompleted();
     } catch (err) {
       this.emit({
         type: 'task-done',
@@ -316,8 +330,85 @@ export class LocalDriver implements SessionDriver {
       });
     } finally {
       this.running = false;
+      // The bookend: the branch may have moved and files may now be dirty.
+      void this.emitRepoInfo();
+      // One generated title per session, after the first completed exchange.
+      if (completed && !this.titled && this.queue.length === 0) {
+        this.titled = true;
+        void this.agent.generateTitle().then((title) => {
+          if (title) this.emit({ type: 'title', title });
+        });
+      }
       if (this.queue.length) void this.pump();
     }
+  }
+
+  private lastTaskCompleted(): boolean {
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const e = this.events[i]!.event;
+      if (e.type === 'task-done') return e.reason === 'complete';
+    }
+    return false;
+  }
+
+  /** Where this session works and the branch it is on, for the chat's chip.
+   *  Best effort: a non-repo cwd reports only the cwd. */
+  async emitRepoInfo(): Promise<void> {
+    try {
+      const git = simpleGit(this.cwd);
+      if (!(await git.checkIsRepo())) {
+        this.emit({ type: 'repo-info', cwd: this.cwd });
+        return;
+      }
+      const status = await git.status();
+      this.emit({
+        type: 'repo-info',
+        cwd: this.cwd,
+        branch: status.current ?? undefined,
+        dirty: !status.isClean(),
+      });
+    } catch {
+      this.emit({ type: 'repo-info', cwd: this.cwd });
+    }
+  }
+
+  // ---- the person's controls over the agent (mode, instructions, compact) ---
+
+  setMode(mode: PermissionMode): void {
+    this.agent?.setMode(mode);
+  }
+
+  get mode(): PermissionMode {
+    return this.agent?.permissionMode ?? 'default';
+  }
+
+  setInstructions(text: string | undefined): void {
+    this.agent?.setInstructions(text);
+  }
+
+  /** Manual compaction (/compact). Refused mid-task; the loop compacts itself. */
+  async compact(focus?: string): Promise<{ before: number; after: number } | { error: string }> {
+    if (!this.agent) return { error: 'No agent on this session.' };
+    if (this.running) return { error: 'Wait for the current step to finish, then compact.' };
+    return this.agent.compactNow(focus);
+  }
+
+  /**
+   * Workspace files for the composer's @ mentions: paths under the workspace
+   * root ranked by a case-insensitive subsequence match on the query, best
+   * first. Metadata only (paths), capped, never contents.
+   */
+  listFiles(query: string, limit = 25): string[] {
+    const q = query.trim().toLowerCase();
+    const scored: Array<{ path: string; score: number }> = [];
+    for (const abs of walkFiles(this.cwd, 20_000)) {
+      const rel = relative(this.cwd, abs).split('\\').join('/');
+      const score = q ? fuzzyScore(rel.toLowerCase(), q) : rel.length;
+      if (score === Infinity) continue;
+      scored.push({ path: rel, score });
+    }
+    scored.sort((a, b) => a.score - b.score || a.path.localeCompare(b.path));
+    return scored.slice(0, limit).map((s) => s.path);
   }
 
   // ---- user-initiated command lane (chat-to-terminal bridge) --------------
@@ -442,6 +533,24 @@ export class LocalDriver implements SessionDriver {
   pendingApprovalIds(): string[] {
     return [...this.pendingApprovals.keys()];
   }
+}
+
+/** Lower is better: a subsequence match scored by span and start, Infinity
+ *  when the query is not a subsequence of the path. Basename hits win. */
+function fuzzyScore(path: string, q: string): number {
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  if (base.includes(q)) return base.indexOf(q) + (path.length - base.length) * 0.01;
+  if (path.includes(q)) return 100 + path.indexOf(q);
+  let i = 0;
+  let first = -1;
+  for (let j = 0; j < path.length && i < q.length; j++) {
+    if (path[j] === q[i]) {
+      if (first === -1) first = j;
+      i += 1;
+    }
+  }
+  if (i < q.length) return Infinity;
+  return 1000 + first + path.length;
 }
 
 /**

@@ -1,6 +1,7 @@
-// The permission-mode picker, the same three Claude Code shows: Auto, Accept
-// edits, Plan. Opened from the composer's mode pill. Governs how the coding
-// agent's tool approvals are handled; inert for plain chat.
+// The permission-mode picker, the same four Claude Code shows: Default, Accept
+// edits, Plan, Bypass. Opened from the composer's mode pill. Governs how the
+// coding agent's tool approvals are handled, live for the running session
+// too; inert for plain chat.
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import {
@@ -24,7 +25,7 @@ function ModeIcon({ mode }: { mode: PermissionMode }) {
     strokeLinejoin: 'round' as const,
     'aria-hidden': true,
   };
-  if (mode === 'auto') {
+  if (mode === 'bypassPermissions') {
     return (
       <svg {...common}>
         <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
@@ -39,16 +40,25 @@ function ModeIcon({ mode }: { mode: PermissionMode }) {
       </svg>
     );
   }
+  if (mode === 'plan') {
+    return (
+      <svg {...common}>
+        <path d="M6 3h9l3 3v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+        <path d="M8.5 9h7M8.5 13h7M8.5 17h4" />
+      </svg>
+    );
+  }
+  // default: a shield, the mode that asks before it acts
   return (
     <svg {...common}>
-      <path d="M6 3h9l3 3v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
-      <path d="M8.5 9h7M8.5 13h7M8.5 17h4" />
+      <path d="M12 3 5 6v6c0 4.2 3 7.6 7 9 4-1.4 7-4.8 7-9V6l-7-3Z" />
+      <path d="m9.5 12 1.8 1.8L15 10" />
     </svg>
   );
 }
 
 export function ModeSheet({ onClose }: { onClose: () => void }) {
-  const { settings, saveSettings } = useApp();
+  const { settings, setPermissionMode } = useApp();
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
   const { closing, dismiss } = useSheetExit(onClose);
 
@@ -70,7 +80,7 @@ export function ModeSheet({ onClose }: { onClose: () => void }) {
               key={m}
               className={`mode-row press-fb press-fb--row${m === mode ? ' active' : ''}`}
               onClick={() => {
-                void saveSettings({ permissionMode: m });
+                void setPermissionMode(m);
                 dismiss();
               }}
             >

@@ -1,14 +1,24 @@
 // The composer, five controls in the rhythm of the Claude Code chat bar: an
 // add button (attach photos or files), the model pill (opens the model sheet),
-// the effort pill (opens the same sheet, effort pinned at its top), a mic for
-// voice-to-text, and one round button that is send or stop. Attachments ride
-// along to vision-capable models; the mic uses the platform's speech engine
-// where it exists.
-import { useEffect, useRef, useState } from 'react';
+// the mode pill (opens the mode sheet), a mic for voice-to-text, and one round
+// button that is send or stop. Attachments ride along to vision-capable
+// models; the mic uses the platform's speech engine where it exists.
+//
+// The keyboard grammar is Claude Code's: Enter sends, Shift+Enter breaks a
+// line, Esc stops a run or clears the field, Up recalls earlier messages,
+// Shift+Tab cycles the permission mode, "/" opens the command menu, "@" offers
+// repo files, "#" saves a line to the project's instructions, and a message
+// typed mid-run queues for the moment the agent is free. A long paste folds
+// into a chip so the field stays readable.
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { sourceLabel, type ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { hapticTick } from '../lib/haptics.js';
-import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
+import {
+  DEFAULT_PERMISSION_MODE,
+  nextPermissionMode,
+  permissionModeLabel,
+} from '../lib/permissionMode.js';
 import { fileToAttachment, type Attachment } from '../lib/attachments.js';
 import { useDictation } from '../hooks/useDictation.js';
 
@@ -34,16 +44,61 @@ function MicIcon() {
   );
 }
 
+export type SlashCommand =
+  'help' | 'clear' | 'compact' | 'model' | 'cost' | 'mode' | 'init' | 'rename';
+
+export const SLASH_COMMANDS: Array<{
+  name: SlashCommand;
+  hint: string;
+  /** Takes text after the command name. */
+  arg?: string;
+  /** Only meaningful on an engine session (a desktop repo). */
+  agentOnly?: boolean;
+}> = [
+  { name: 'help', hint: 'What the composer can do' },
+  { name: 'clear', hint: 'Start a fresh chat' },
+  { name: 'compact', hint: 'Fold the history to save context', arg: 'focus', agentOnly: true },
+  { name: 'model', hint: 'Switch the model' },
+  { name: 'cost', hint: 'Spend and tokens so far' },
+  { name: 'mode', hint: 'Change the permission mode' },
+  { name: 'init', hint: 'Write an OSCODE.md for this repo', agentOnly: true },
+  { name: 'rename', hint: 'Name this chat', arg: 'name' },
+];
+
+/** A paste long enough to fold into a chip rather than fill the field. */
+const PASTE_FOLD_CHARS = 1500;
+const PASTE_FOLD_LINES = 25;
+
+interface PastedChunk {
+  id: string;
+  text: string;
+  lines: number;
+}
+
+let chunkSeq = 0;
+
+/** The @ token under the caret, if the person is typing one. */
+function mentionAt(value: string, caret: number): { start: number; query: string } | null {
+  const before = value.slice(0, caret);
+  const m = /(^|\s)@([^\s@]*)$/.exec(before);
+  if (!m) return null;
+  return { start: before.length - m[2]!.length - 1, query: m[2]! };
+}
+
 export function Composer({
   busy,
   source,
   visionSupported,
   placeholder,
   autoFocus,
+  focusSignal,
+  agent,
+  history,
   onSend,
   onStop,
   onOpenModelSheet,
   onOpenModeSheet,
+  onCommand,
 }: {
   busy: boolean;
   source?: ConversationSource;
@@ -55,15 +110,27 @@ export function Composer({
    *  Used to open the empty chat screen with the keyboard already up, the way
    *  the Claude app does. */
   autoFocus?: boolean;
+  /** Bump to pull focus into the field (a "Change something" on a plan). */
+  focusSignal?: number;
+  /** An engine session is open: @ files, /compact, /init are live. */
+  agent?: boolean;
+  /** Earlier messages in this chat, oldest first, for Up-arrow recall. */
+  history?: string[];
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
   onOpenModelSheet: () => void;
   onOpenModeSheet: () => void;
+  /** A slash command, with whatever followed it. */
+  onCommand?: (command: SlashCommand, arg: string) => void;
 }) {
   const { settings, showToast } = useApp();
   const runCommand = useApp((s) => s.runCommand);
+  const listFiles = useApp((s) => s.listFiles);
+  const addMemory = useApp((s) => s.addMemory);
+  const setPermissionMode = useApp((s) => s.setPermissionMode);
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [pasted, setPasted] = useState<PastedChunk[]>([]);
   // Terminal mode: on a desktop-backed chat, the composer can send its text to
   // the connected machine as a command instead of a prompt (the "type ls from
   // the couch" path of the chat-to-terminal bridge).
@@ -72,6 +139,47 @@ export function Composer({
   const terminal = canRunCommands && termMode;
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  // The command menu: open while the field is exactly "/" plus a word.
+  const slashMatch = /^\/(\w*)$/.exec(value);
+  const slashItems = slashMatch
+    ? SLASH_COMMANDS.filter(
+        (c) => c.name.startsWith(slashMatch[1]!.toLowerCase()) && (agent || !c.agentOnly),
+      )
+    : [];
+  const [slashIdx, setSlashIdx] = useState(0);
+  const slashWord = slashMatch?.[1];
+  useEffect(() => setSlashIdx(0), [slashWord]);
+
+  // The @ file popover: the token under the caret, ranked by the engine.
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [files, setFiles] = useState<string[]>([]);
+  const [fileIdx, setFileIdx] = useState(0);
+  const mentionQuery = mention?.query;
+  const mentionStart = mention?.start;
+  useEffect(() => {
+    if (mentionQuery === undefined || !agent) {
+      setFiles([]);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      void listFiles(mentionQuery).then((rows) => {
+        if (!live) return;
+        setFiles(rows.slice(0, 8));
+        setFileIdx(0);
+      });
+    }, 120);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [mentionQuery, mentionStart, agent, listFiles]);
+
+  // Up-arrow recall through this chat's earlier messages.
+  const [histIdx, setHistIdx] = useState<number | null>(null);
+  const draftRef = useRef('');
 
   // Open the empty chat screen with the field focused so the keyboard comes up
   // right away (Claude does the same). Fires when autoFocus flips to true, so a
@@ -79,6 +187,9 @@ export function Composer({
   useEffect(() => {
     if (autoFocus) areaRef.current?.focus();
   }, [autoFocus]);
+  useEffect(() => {
+    if (focusSignal) areaRef.current?.focus();
+  }, [focusSignal]);
 
   // Voice-to-text. On start we remember the text already typed and append the
   // live transcript after it, so dictation adds to the field instead of wiping
@@ -89,6 +200,35 @@ export function Composer({
     setValue(joined);
   });
 
+  const resetField = () => {
+    setValue('');
+    setHistIdx(null);
+    setMention(null);
+    if (areaRef.current) areaRef.current.style.height = 'auto';
+  };
+
+  const runSlash = (name: SlashCommand, arg: string) => {
+    hapticTick();
+    resetField();
+    onCommand?.(name, arg.trim());
+  };
+
+  const insertFile = (path: string) => {
+    if (!mention) return;
+    const caret = areaRef.current?.selectionStart ?? value.length;
+    const next = `${value.slice(0, mention.start)}@${path} ${value.slice(caret)}`;
+    setValue(next);
+    setMention(null);
+    hapticTick();
+    requestAnimationFrame(() => {
+      const el = areaRef.current;
+      if (!el) return;
+      const pos = mention.start + path.length + 2;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
   const submit = () => {
     const text = value.trim();
     // Terminal mode: run the text as a command on the connected machine, not a
@@ -97,8 +237,28 @@ export function Composer({
       if (!text) return;
       runCommand(text);
       hapticTick();
-      setValue('');
-      if (areaRef.current) areaRef.current.style.height = 'auto';
+      resetField();
+      return;
+    }
+    // A slash command, with or without an argument.
+    const slash = /^\/(\w+)(?:\s+([\s\S]*))?$/.exec(text);
+    if (slash && !pasted.length && !attachments.length) {
+      const cmd = SLASH_COMMANDS.find((c) => c.name === slash[1]!.toLowerCase());
+      if (cmd && (agent || !cmd.agentOnly)) {
+        runSlash(cmd.name, slash[2] ?? '');
+        return;
+      }
+      if (cmd) {
+        showToast('That command needs a desktop repo session.');
+        return;
+      }
+    }
+    // The # shortcut: a standing instruction for the project, not a message.
+    const memory = /^#\s*([\s\S]+)$/.exec(text);
+    if (memory && !pasted.length && !attachments.length) {
+      hapticTick();
+      resetField();
+      void addMemory(memory[1]!);
       return;
     }
     // Send-time guard (belt and suspenders to the + gate): never forward images
@@ -108,11 +268,20 @@ export function Composer({
     if (!visionSupported && outgoing.length < attachments.length) {
       showToast('This model reads text only. Switch to Claude to send images.');
     }
-    if ((!text && outgoing.length === 0) || busy) return;
-    onSend(text, outgoing);
-    setValue('');
+    const body = pasted.length
+      ? [text, ...pasted.map((p) => p.text)].filter(Boolean).join('\n\n')
+      : text;
+    if (!body && outgoing.length === 0) return;
+    // Mid-run with an image: the turn needs to be live. Text alone queues.
+    if (busy && outgoing.length) {
+      showToast('Images send once the current task finishes.');
+      return;
+    }
+    onSend(body, outgoing);
+    if (busy) hapticTick();
+    resetField();
     setAttachments([]);
-    if (areaRef.current) areaRef.current.style.height = 'auto';
+    setPasted([]);
   };
 
   const addTap = () => {
@@ -123,15 +292,69 @@ export function Composer({
     fileRef.current?.click();
   };
 
+  const addFiles = async (list: File[]) => {
+    if (!list.length) return;
+    const images = list.filter((f) => f.type.startsWith('image/'));
+    const texts = list.filter((f) => !f.type.startsWith('image/'));
+    if (images.length) {
+      if (!visionSupported) {
+        showToast('This model reads text only. Switch to Claude to send images.');
+      } else {
+        try {
+          const next = await Promise.all(images.map(fileToAttachment));
+          setAttachments((prev) => [...prev, ...next]);
+        } catch {
+          showToast('Could not read that file.');
+        }
+      }
+    }
+    // A dropped text file folds in as pasted text, named after the file.
+    for (const f of texts) {
+      if (f.size > 512_000) {
+        showToast(`${f.name} is too large to paste. Mention it by path instead.`);
+        continue;
+      }
+      try {
+        const text = await f.text();
+        const lines = text.split('\n').length;
+        setPasted((prev) => [
+          ...prev,
+          { id: `p${chunkSeq++}`, text: `${f.name}:\n\`\`\`\n${text}\n\`\`\``, lines },
+        ]);
+      } catch {
+        showToast('Could not read that file.');
+      }
+    }
+  };
+
   const onFiles = async (files: FileList | null) => {
     if (!files || !files.length) return;
-    try {
-      const next = await Promise.all(Array.from(files).map(fileToAttachment));
-      setAttachments((prev) => [...prev, ...next]);
-    } catch {
-      showToast('Could not read that file.');
-    }
+    await addFiles(Array.from(files));
     if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items ?? []);
+    const fileItems = items.filter((i) => i.kind === 'file');
+    if (fileItems.length) {
+      e.preventDefault();
+      const list = fileItems.map((i) => i.getAsFile()).filter((f): f is File => Boolean(f));
+      void addFiles(list);
+      return;
+    }
+    const text = e.clipboardData.getData('text/plain');
+    const lines = text.split('\n').length;
+    if (text.length > PASTE_FOLD_CHARS || lines > PASTE_FOLD_LINES) {
+      e.preventDefault();
+      hapticTick();
+      setPasted((prev) => [...prev, { id: `p${chunkSeq++}`, text, lines }]);
+    }
+  };
+
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    void addFiles(Array.from(e.dataTransfer.files ?? []));
   };
 
   const micTap = () => {
@@ -146,10 +369,160 @@ export function Composer({
   const modelLabel = source ? sourceLabel(source) : 'My Stack';
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    // Command menu navigation.
+    if (slashItems.length && !terminal) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIdx((i) => (i + 1) % slashItems.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIdx((i) => (i - 1 + slashItems.length) % slashItems.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        const cmd = slashItems[slashIdx] ?? slashItems[0]!;
+        if (cmd.arg) {
+          setValue(`/${cmd.name} `);
+          return;
+        }
+        runSlash(cmd.name, '');
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        resetField();
+        return;
+      }
+    }
+    // File mention navigation.
+    if (mention && files.length) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFileIdx((i) => (i + 1) % files.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFileIdx((i) => (i - 1 + files.length) % files.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        insertFile(files[fileIdx] ?? files[0]!);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMention(null);
+        return;
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (busy && !value) {
+        e.preventDefault();
+        hapticTick();
+        onStop();
+        return;
+      }
+      if (value) {
+        e.preventDefault();
+        resetField();
+      }
+      return;
+    }
+    if (e.key === 'Tab' && e.shiftKey && !terminal) {
+      e.preventDefault();
+      const next = nextPermissionMode(mode);
+      hapticTick();
+      void setPermissionMode(next);
+      showToast(`Mode: ${permissionModeLabel(next)}`);
+      return;
+    }
+    // History recall: Up from the top line, Down back toward the draft.
+    const hist = history ?? [];
+    if (hist.length && e.key === 'ArrowUp' && el.selectionStart === 0 && !value.includes('\n')) {
+      e.preventDefault();
+      const idx = histIdx === null ? hist.length - 1 : Math.max(0, histIdx - 1);
+      if (histIdx === null) draftRef.current = value;
+      setHistIdx(idx);
+      setValue(hist[idx]!);
+      return;
+    }
+    if (histIdx !== null && e.key === 'ArrowDown' && el.selectionStart === value.length) {
+      e.preventDefault();
+      const idx = histIdx + 1;
+      if (idx >= hist.length) {
+        setHistIdx(null);
+        setValue(draftRef.current);
+      } else {
+        setHistIdx(idx);
+        setValue(hist[idx]!);
+      }
+    }
+  };
+
+  const showSend = terminal || !busy || value.trim().length > 0;
+
   return (
-    <div className="composer-wrap">
+    <div
+      className={`composer-wrap${dragOver ? ' drag-over' : ''}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+    >
+      {slashItems.length && !terminal ? (
+        <div className="composer-menu" role="listbox" aria-label="Commands">
+          {slashItems.map((c, i) => (
+            <button
+              key={c.name}
+              type="button"
+              role="option"
+              aria-selected={i === slashIdx}
+              className={`composer-menu-row press-fb press-fb--row${i === slashIdx ? ' active' : ''}`}
+              onMouseEnter={() => setSlashIdx(i)}
+              onClick={() => (c.arg ? setValue(`/${c.name} `) : runSlash(c.name, ''))}
+            >
+              <span className="composer-menu-name">
+                /{c.name}
+                {c.arg ? <span className="composer-menu-arg"> {c.arg}</span> : null}
+              </span>
+              <span className="composer-menu-hint">{c.hint}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {mention && files.length ? (
+        <div className="composer-menu" role="listbox" aria-label="Files">
+          {files.map((f, i) => (
+            <button
+              key={f}
+              type="button"
+              role="option"
+              aria-selected={i === fileIdx}
+              className={`composer-menu-row press-fb press-fb--row${i === fileIdx ? ' active' : ''}`}
+              onMouseEnter={() => setFileIdx(i)}
+              onClick={() => insertFile(f)}
+            >
+              <span className="composer-menu-name mono">{f}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="composer">
-        {attachments.length ? (
+        {attachments.length || pasted.length ? (
           <div className="composer-chips">
             {attachments.map((a) => (
               <span key={a.id} className="composer-chip">
@@ -170,6 +543,23 @@ export function Composer({
                 </button>
               </span>
             ))}
+            {pasted.map((p, i) => (
+              <span key={p.id} className="composer-chip">
+                <span className="composer-chip-file" aria-hidden="true">
+                  {'📋'}
+                </span>
+                <span className="composer-chip-name">
+                  Pasted text #{i + 1} · {p.lines} lines
+                </span>
+                <button
+                  className="composer-chip-x press-fb"
+                  aria-label={`Remove pasted text ${i + 1}`}
+                  onClick={() => setPasted((prev) => prev.filter((x) => x.id !== p.id))}
+                >
+                  {'×'}
+                </button>
+              </span>
+            ))}
           </div>
         ) : null}
 
@@ -178,19 +568,25 @@ export function Composer({
           rows={1}
           value={value}
           placeholder={
-            terminal ? 'Run a command on your desktop' : (placeholder ?? 'Chat with OpenShore')
+            terminal
+              ? 'Run a command on your desktop'
+              : busy
+                ? 'Type to queue the next message'
+                : (placeholder ?? 'Chat with OpenShore')
           }
           onChange={(e) => {
             setValue(e.target.value);
+            setHistIdx(null);
+            setMention(agent ? mentionAt(e.target.value, e.target.selectionStart) : null);
             e.target.style.height = 'auto';
             e.target.style.height = `${Math.min(e.target.scrollHeight, window.innerHeight * 0.4)}px`;
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
+          onSelect={(e) => {
+            const el = e.currentTarget;
+            setMention(agent ? mentionAt(el.value, el.selectionStart) : null);
           }}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
         />
 
         <div className="composer-row">
@@ -214,9 +610,9 @@ export function Composer({
             {modelLabel}
           </button>
           <button
-            className="composer-pill composer-pill-mode press-fb"
+            className={`composer-pill composer-pill-mode mode-${mode} press-fb`}
             onClick={onOpenModeSheet}
-            aria-label={`Mode: ${permissionModeLabel(mode)}`}
+            aria-label={`Mode: ${permissionModeLabel(mode)}. Shift and Tab cycles.`}
           >
             <span className="pill-code" aria-hidden="true">
               {'</>'}
@@ -248,16 +644,20 @@ export function Composer({
             <MicIcon />
           </button>
 
-          {busy && !terminal ? (
+          {!showSend ? (
             <button className="send-btn stop press-fb" onClick={onStop} aria-label="Stop">
               {'■'}
             </button>
           ) : (
             <button
-              className={`send-btn press-fb${terminal ? ' terminal' : ''}`}
+              className={`send-btn press-fb${terminal ? ' terminal' : ''}${busy && !terminal ? ' queue' : ''}`}
               onClick={submit}
-              disabled={terminal ? !value.trim() : !value.trim() && attachments.length === 0}
-              aria-label={terminal ? 'Run command' : 'Send'}
+              disabled={
+                terminal
+                  ? !value.trim()
+                  : !value.trim() && attachments.length === 0 && pasted.length === 0
+              }
+              aria-label={terminal ? 'Run command' : busy ? 'Queue message' : 'Send'}
             >
               {terminal ? '$' : '↑'}
             </button>

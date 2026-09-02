@@ -2,7 +2,7 @@
 // LocalDriver + AgentSession. The run command, the daemon, and the eval
 // harness all build sessions through here so wiring never drifts.
 import type { OscConfig } from '../../config/schema.js';
-import { loadConfig } from '../../config/load.js';
+import { addProjectPermissionRule, loadConfig } from '../../config/load.js';
 import { ProviderRegistry } from '../../providers/registry.js';
 import { getAnthropicKey } from '../../auth/claude.js';
 import { resolveStack } from '../../router/stack.js';
@@ -16,6 +16,8 @@ import { profileFor, type SecurityProfileName } from '../security/profiles.js';
 import { UsageTracker } from '../../auth/usage.js';
 import { LocalDriver } from '../../daemon/session.js';
 import { buildCodeMap } from '../../context/codeMap.js';
+import { readRepoInstructions } from './instructions.js';
+import type { PermissionMode } from './types.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -33,6 +35,10 @@ export interface BootstrapOptions {
    * undefined, so the readTerminal tool degrades to "no terminal here".
    */
   terminalReader?: (sessionId: string, lines: number, termId?: string) => string | undefined;
+  /** The person's standing instructions for the project this chat belongs to. */
+  instructions?: string;
+  /** The permission mode to start in (default: ask for writes and shell). */
+  permissionMode?: PermissionMode;
 }
 
 export interface BootstrapResult {
@@ -78,6 +84,13 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     log.warn('code map failed', { err: String(err) });
   }
 
+  // Standing instructions the repo carries (OSCODE.md, CLAUDE.md, AGENTS.md),
+  // the way Claude Code reads CLAUDE.md. Missing is fine; unreadable is a warn.
+  const repoInstructions = readRepoInstructions(options.cwd);
+  if (repoInstructions) {
+    log.info('repo instructions loaded', { file: repoInstructions.file });
+  }
+
   const driver = new LocalDriver(options.cwd, { id: options.sessionId, persist: options.persist });
 
   // Wire the readTerminal accessor to this driver's id, if the daemon provided
@@ -100,6 +113,18 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     approver: driver.approver,
     onEvent: (event) => driver.emit(event),
     codeMap,
+    repoInstructions,
+    instructions: options.instructions,
+    permissionMode: options.permissionMode,
+    persistRule: (rule) => {
+      try {
+        addProjectPermissionRule(options.cwd, rule);
+        return true;
+      } catch (err) {
+        log.warn('could not persist permission rule', { err: String(err) });
+        return false;
+      }
+    },
   });
   driver.attachAgent(agent);
 

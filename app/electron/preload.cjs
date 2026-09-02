@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('oscode', {
   listSessions: invoke('osc:listSessions'),
   send: invoke('osc:send'),
   abort: invoke('osc:abort'),
+  setMode: invoke('osc:setMode'),
+  setInstructions: invoke('osc:setInstructions'),
+  compact: invoke('osc:compact'),
+  listFiles: invoke('osc:listFiles'),
   answerApproval: invoke('osc:answerApproval'),
   onEvent: listen('osc:event'),
 

@@ -2,7 +2,7 @@
 // engine over IPC, the desktop daemon over SSE from the phone, a model running
 // on the phone itself, cloud Claude, and the demo. They all emit the engine's
 // DriverEvent protocol, so the chat UI has exactly one rendering path.
-import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
+import type { ApprovalAnswer, DriverEvent, PermissionMode } from 'os-code/protocol';
 import type { Attachment } from '../lib/attachments.js';
 
 export type DriverEventSink = (event: DriverEvent, seq: number) => void;
@@ -19,6 +19,18 @@ export interface ChatDriver {
   subscribe(sink: DriverEventSink): () => void;
   /** Release sockets, native handles, timers. */
   dispose(): void;
+  /**
+   * The person's controls over a live engine session (Claude Code parity;
+   * engine-backed drivers only). setMode switches the permission mode for the
+   * rest of the session; setInstructions replaces the project's standing
+   * instructions; compact folds the history now (an optional focus keeps what
+   * matters); listFiles ranks repo paths for an @ mention. Chat brains omit
+   * them, so the composer hides the affordances there.
+   */
+  setMode?(mode: PermissionMode): void;
+  setInstructions?(text?: string): void;
+  compact?(focus?: string): Promise<{ before: number; after: number } | { error: string }>;
+  listFiles?(query: string): Promise<string[]>;
   /**
    * The chat-to-terminal bridge (desktop-backed drivers only). Run a command
    * the user asked for on the connected machine; output streams back as
