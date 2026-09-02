@@ -249,3 +249,14 @@ execution contract. Newest at the bottom.
   standard" in the chat. The one duplicate in the source list (Postel's law
   twice) was resolved to the aesthetic-usability effect, the standard
   twentieth law.
+
+- **Prefab stacks are catalog presets, and presets are auto-derived (2026-09-02).**
+  My Stack shows the catalog's presets as one-tap downloadable prefab stacks;
+  they ride the live catalog feed (24h TTL) and the scheduled rebuild, so they
+  refresh with no intervention. The builder now DERIVES presets from the current
+  model set and eval scores (scripts/build-catalog/presets.ts) instead of
+  hand-authoring, so prefab stacks reassess as models change; the regression
+  gate validates the result and it falls back to the seed's presets if
+  derivation is empty. The remaining piece for brand-new models to auto-appear
+  in the browse list is live discovery of new GGUF models; install-by-name
+  covers getting any new model now.

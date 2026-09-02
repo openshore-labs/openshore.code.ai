@@ -9,6 +9,9 @@ import { daemonStack } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import { StackManager } from '../components/StackManager.js';
 import { STARTER_MODEL } from '../lib/starterModel.js';
+import { loadAppCatalog } from '../lib/catalog.js';
+import { presetMemberIds, presetSpecialists, presetTotalGB } from '../lib/presets.js';
+import type { Catalog } from 'os-code/protocol';
 
 const ROLES: Array<{ role: string; plain: string }> = [
   { role: 'coding', plain: 'great at code' },
@@ -40,6 +43,62 @@ export function StackScreen() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Prefab stacks: the catalog's presets, which arrive on the live feed and are
+  // rebuilt on a schedule, so they refresh and reassess themselves as models
+  // change. One tap here fills the whole stack without a trip to the Marketplace.
+  const [catalog, setCatalog] = useState<Catalog | undefined>();
+  const [prefabBusy, setPrefabBusy] = useState<string | undefined>();
+  const [prefabLine, setPrefabLine] = useState<string | undefined>();
+  useEffect(() => {
+    void loadAppCatalog(settings.daemon).then(({ catalog: c }) => setCatalog(c));
+  }, [settings.daemon]);
+
+  const installPrefab = async (presetId: string) => {
+    const b = bridge();
+    if (!b || !catalog || prefabBusy) return;
+    const preset = catalog.presets.find((p) => p.id === presetId);
+    if (!preset) return;
+    const byId = new Map(catalog.models.map((m) => [m.id, m]));
+    const ids = presetMemberIds(preset);
+    if (ids.some((id) => !byId.has(id))) {
+      showToast('This stack names a model the catalog does not have yet.');
+      return;
+    }
+    setPrefabBusy(presetId);
+    const off = b.onInstallProgress((p) => {
+      if (!ids.includes(p.modelId)) return;
+      setPrefabLine(p.percent != null ? `${p.line} ${Math.round(p.percent)}%` : p.line);
+    });
+    try {
+      for (const id of ids) {
+        const r = await b.installModel(id);
+        if (!r.ok) {
+          showToast(r.detail);
+          return;
+        }
+      }
+      const orch = byId.get(preset.stack.orchestrator)!;
+      const set = await b.setOrchestrator(orch.source.ref);
+      if (!set.ok) {
+        showToast(set.detail);
+        return;
+      }
+      for (const [role, id] of presetSpecialists(preset)) {
+        const m = byId.get(id);
+        if (m) await b.enableSpecialist(role, m.source.ref);
+      }
+      showToast(`${preset.name} is your stack. Ready to chat and build.`);
+      await refresh();
+      await useApp.getState().refreshDesktopStatus();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not install the stack.');
+    } finally {
+      off();
+      setPrefabBusy(undefined);
+      setPrefabLine(undefined);
+    }
+  };
 
   // One tap from "no model" to a working stack: pull the curated starter
   // through the engine (progress lines come back over the install channel),
@@ -109,6 +168,43 @@ export function StackScreen() {
           One model is the quarterback: it plans, reasons, and decides which model gets each play.
           Specialists are optional; anything missing, the quarterback covers itself.
         </p>
+
+        {canEdit && catalog && catalog.presets.length ? (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <h3>Start with a prefab stack</h3>
+            <p className="hint" style={{ marginTop: 4 }}>
+              One tap fills your whole stack. These refresh on their own as new models land, so
+              they stay current without you touching the Marketplace.
+            </p>
+            {catalog.presets.map((preset) => {
+              const total = presetTotalGB(preset, catalog);
+              const busy = prefabBusy === preset.id;
+              return (
+                <div key={preset.id} style={{ marginTop: 10 }}>
+                  <div className="card-row">
+                    <div className="grow">
+                      <strong>{preset.name}</strong>
+                      <div className="sub">{preset.tagline}</div>
+                    </div>
+                    <span className="pill local">
+                      {total !== undefined ? `${total} GB` : 'size unknown'}
+                    </span>
+                  </div>
+                  <button
+                    className="btn ghost press-fb"
+                    style={{ width: '100%', marginTop: 6 }}
+                    disabled={Boolean(prefabBusy)}
+                    onClick={() => void installPrefab(preset.id)}
+                  >
+                    {busy
+                      ? (prefabLine ?? 'Installing...')
+                      : `Download ${preset.name}${preset.minVramGB ? ` · needs ${preset.minVramGB} GB VRAM` : ''}`}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div className="card">
           <div className="card-row">
