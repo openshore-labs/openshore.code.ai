@@ -2,7 +2,7 @@
 // {ok:false} (not throw out of the CLI flow), and a stream that ends without a
 // terminal status:"success" line must NOT report a false success.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installModel } from '../src/market/install.js';
+import { installModel, installOllamaRef } from '../src/market/install.js';
 import type { CatalogModel } from '../src/market/schema.js';
 
 const model = {
@@ -77,5 +77,17 @@ describe('installModel over the Ollama API', () => {
     );
     const res = await installModel(model, () => {});
     expect(res.ok).toBe(true);
+  });
+
+  it('installOllamaRef pulls an arbitrary ref through the same success gate', async () => {
+    stubFetch(fakeResponse(['{"status":"success"}\n']));
+    const res = await installOllamaRef('qwen3-coder:30b', () => {});
+    expect(res.ok).toBe(true);
+  });
+
+  it('installOllamaRef refuses an empty name instead of pulling nothing', async () => {
+    const res = await installOllamaRef('   ', () => {});
+    expect(res.ok).toBe(false);
+    expect(res.detail).toMatch(/model name/i);
   });
 });

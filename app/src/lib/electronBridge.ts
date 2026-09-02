@@ -118,6 +118,9 @@ export interface OscodeBridge {
   stackHealth(range?: StackHealthRange): Promise<StackHealth>;
   installModel(modelId: string): Promise<{ ok: boolean; detail: string }>;
   onInstallProgress(cb: (payload: InstallProgressPayload) => void): () => void;
+  /** Pull any Ollama model by its raw ref (progress arrives keyed by the ref on
+   *  onInstallProgress), so the marketplace is not limited to catalog entries. */
+  installOllamaRef(ref: string): Promise<{ ok: boolean; detail: string }>;
   setOrchestrator(model: string): Promise<{ ok: boolean; detail: string }>;
   enableSpecialist(role: string, model: string): Promise<{ ok: boolean; detail: string }>;
   disableSpecialist(role: string): Promise<{ ok: boolean; detail: string }>;

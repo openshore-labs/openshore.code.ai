@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('oscode', {
   catalog: invoke('osc:catalog'),
   stackHealth: invoke('osc:stackHealth'),
   installModel: invoke('osc:installModel'),
+  installOllamaRef: invoke('osc:installOllamaRef'),
   onInstallProgress: listen('osc:install-progress'),
   setOrchestrator: invoke('osc:setOrchestrator'),
   enableSpecialist: invoke('osc:enableSpecialist'),
