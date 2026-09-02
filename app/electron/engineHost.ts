@@ -476,15 +476,15 @@ export class EngineHost {
 
   // ------------------------------------------------------------- connections
 
-  async setAnthropicKey(key: string) {
-    const result = await loginWithApiKey(key);
+  async setAnthropicKey(key: string, workspaceId?: string) {
+    const result = await loginWithApiKey(key, undefined, workspaceId);
     if (result.ok) {
       const { config } = loadConfig();
       if (!Object.values(config.providers).some((p) => p.kind === 'anthropic')) {
         saveGlobalConfig({ providers: { anthropic: { kind: 'anthropic' } } });
       }
     }
-    return { ok: result.ok, detail: result.detail };
+    return { ok: result.ok, detail: result.detail, needsWorkspace: result.needsWorkspace };
   }
 
   async setOpenAIKey(key: string) {

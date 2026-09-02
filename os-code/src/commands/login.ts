@@ -45,7 +45,12 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
     warnLine('Nothing entered, nothing changed.');
     return;
   }
-  const result = await loginWithApiKey(key);
+  let result = await loginWithApiKey(key);
+  if (!result.ok && result.needsWorkspace) {
+    out(t.text(result.detail));
+    const workspace = await askSecret('Workspace id (wrkspc_...):');
+    if (workspace) result = await loginWithApiKey(key, undefined, workspace);
+  }
   if (!result.ok) {
     warnLine(result.detail);
     process.exitCode = 1;

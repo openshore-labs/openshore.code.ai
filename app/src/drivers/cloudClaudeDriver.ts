@@ -10,6 +10,7 @@ import { effortDirective } from '../lib/effort.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { SWITCH_TO_LOCAL } from '../lib/usageFallback.js';
+import { WORKSPACE_HINT, needsWorkspaceId } from '../lib/providers.js';
 import type { SeedTurn } from '../state/types.js';
 
 // The model catalog (ids, labels, context) lives in one leaf module so the
@@ -50,8 +51,16 @@ export class CloudClaudeDriver implements ChatDriver {
     apiKey: string,
     private readonly model: string = DEFAULT_CLAUDE_MODEL,
     seed?: SeedTurn[],
+    /** The workspace an identity-linked key acts in (anthropic-workspace-id). */
+    workspaceId?: string,
   ) {
-    this.client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, fetch: streamingFetch });
+    const ws = workspaceId?.trim();
+    this.client = new Anthropic({
+      apiKey,
+      dangerouslyAllowBrowser: true,
+      fetch: streamingFetch,
+      ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
+    });
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
@@ -175,6 +184,9 @@ function isOutOfUsage(err: unknown): boolean {
 function describeError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) {
     return 'Claude rejected the API key. Update it under Connections.';
+  }
+  if (err instanceof Anthropic.BadRequestError && needsWorkspaceId(err.message)) {
+    return WORKSPACE_HINT;
   }
   if (isOutOfUsage(err)) {
     return `No more Claude usage on your account right now. ${SWITCH_TO_LOCAL}`;

@@ -16,7 +16,7 @@ import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { uxStandardPrompt } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
-import { platform, secretGet } from '../lib/platform.js';
+import { platform, secretGet, storeGetJson } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
@@ -399,10 +399,14 @@ export class StackDriver implements ChatDriver {
   }
 
   private async runAnthropic(key: string, model: string, system: string): Promise<void> {
+    const ws = (
+      await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
+    )?.anthropicWorkspaceId?.trim();
     const client = new Anthropic({
       apiKey: key,
       dangerouslyAllowBrowser: true,
       fetch: streamingFetch,
+      ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
     });
     const stream = client.messages.stream(
       {

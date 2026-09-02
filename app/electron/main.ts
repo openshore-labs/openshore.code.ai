@@ -471,7 +471,9 @@ ipcMain.handle('osc:enableSpecialist', (_e, role: string, model: string) =>
 );
 ipcMain.handle('osc:disableSpecialist', (_e, role: string) => host.disableSpecialist(role));
 
-ipcMain.handle('osc:setAnthropicKey', (_e, key: string) => host.setAnthropicKey(key));
+ipcMain.handle('osc:setAnthropicKey', (_e, key: string, workspaceId?: string) =>
+  host.setAnthropicKey(key, workspaceId),
+);
 ipcMain.handle('osc:setOpenAIKey', (_e, key: string) => host.setOpenAIKey(key));
 ipcMain.handle('osc:setGithubToken', (_e, token: string) => host.setGithubToken(token));
 ipcMain.handle('osc:disconnect', (_e, connector: 'anthropic' | 'openai' | 'github') =>
