@@ -98,11 +98,10 @@ const NAME_DENYLIST = [
   'speech',
 ];
 
-/** Publishers whose new drops are worth carrying sight unseen: the model
- *  labs themselves and the quantizers the community pulls from. The NEWEST
- *  axis is limited to these (a brand-new repo has no numbers yet, so the name
- *  behind it is the only signal); the TRENDING axis is open to everyone but
- *  orders these first. Lowercase. */
+/** Publishers whose uploads the storefront carries sight unseen: the model
+ *  labs themselves and the quantizers the community pulls from. Both axes are
+ *  limited to these; every other publisher is logged as skipped so the list
+ *  grows on evidence. Lowercase. */
 export const TRUSTED_PUBLISHERS = new Set([
   'bartowski',
   'unsloth',
@@ -159,14 +158,16 @@ export async function discoverModels(
   const reserved = options.reserved ?? new Set<string>();
   const skipped: DiscoverResult['skipped'] = [];
 
-  // Two axes. Trending is open to everyone with real pulls; newest is limited
-  // to trusted publishers (a day-old repo has no numbers, only a name). Shelf
-  // order: trusted trending, trusted new drops, then everyone else trending,
-  // so the cap fills with the models the founder actually wants first.
+  // Two axes, both limited to trusted publishers: the second live crop showed
+  // that open trending is mostly community merges riding a lab's name, and
+  // a storefront that says "new" should mean a lab or a known quantizer
+  // shipped it. Trending additionally needs real pulls. Shelf order: trusted
+  // trending first (what people actually run this week), then trusted new
+  // drops. Every unlisted publisher is logged, so the list can grow on
+  // evidence: promote a publisher by adding it to TRUSTED_PUBLISHERS.
   const seen = new Set<string>();
-  const trustedTrending: DiscoveredRepo[] = [];
-  const otherTrending: DiscoveredRepo[] = [];
-  const trustedNew: DiscoveredRepo[] = [];
+  const trending: DiscoveredRepo[] = [];
+  const newest: DiscoveredRepo[] = [];
   for (const axis of ['trendingScore', 'createdAt'] as const) {
     let repos: DiscoveredRepo[] = [];
     try {
@@ -177,18 +178,16 @@ export async function discoverModels(
     for (const r of repos) {
       if (!r?.id || seen.has(r.id)) continue;
       seen.add(r.id);
-      const trusted = isTrusted(r.id);
-      if (axis === 'createdAt') {
-        if (trusted) trustedNew.push(r);
-        else skipped.push({ repo: r.id, reason: 'new repo from an unlisted publisher' });
-      } else if ((r.downloads ?? 0) < MIN_TRENDING_DOWNLOADS) {
+      if (!isTrusted(r.id)) {
+        skipped.push({ repo: r.id, reason: 'unlisted publisher (see TRUSTED_PUBLISHERS)' });
+      } else if (axis === 'trendingScore' && (r.downloads ?? 0) < MIN_TRENDING_DOWNLOADS) {
         skipped.push({ repo: r.id, reason: `under ${MIN_TRENDING_DOWNLOADS} downloads` });
       } else {
-        (trusted ? trustedTrending : otherTrending).push(r);
+        (axis === 'trendingScore' ? trending : newest).push(r);
       }
     }
   }
-  const listed = [...trustedTrending, ...trustedNew, ...otherTrending];
+  const listed = [...trending, ...newest];
 
   const previousByRepo = new Map<string, CatalogModel>();
   for (const m of options.previous ?? []) {
@@ -246,6 +245,7 @@ export async function discoverModels(
   for (const m of candidates) {
     const repoId = m.discovery!.repo;
     const reason =
+      (isTrusted(repoId) ? undefined : 'unlisted publisher (see TRUSTED_PUBLISHERS)') ??
       cheapReject({ id: repoId }) ??
       (m.sizeGB < MIN_GB ? `too small to be a model (${m.sizeGB} GB)` : undefined) ??
       (bases.has(baseKey(repoId))
@@ -419,7 +419,7 @@ export function isTrusted(repoId: string): boolean {
 export function baseKey(repoId: string): string {
   const name = (repoId.split('/')[1] ?? repoId).toLowerCase();
   return name
-    .replace(/[-_.]?gguf$/i, '')
+    .replace(/[-_.]?gguf(?=[-_.]|$)/gi, '')
     .replace(/[-_.](i1|imatrix|instruct|it|chat)$/g, '')
     .replace(/[-_.](i1|imatrix)(?=[-_.]|$)/g, '')
     .replace(/[-_.]q\d[a-z0-9_]*$/i, '')

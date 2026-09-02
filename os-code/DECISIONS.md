@@ -277,3 +277,9 @@ execution contract. Newest at the bottom.
   imatrix twins collapse), 0.3 GB floor, and the denylist covers guardrail
   removals under every spelling seen plus speech. Names, not ratings, so no
   star is ever invented; a wrong call costs a mis-shelving, not a lie.
+- **Discovery is trusted publishers only, both axes.** The second live crop
+  under the open trending axis was community merges and renames riding a
+  lab's name. A storefront that says "new" should mean a lab or a known
+  quantizer shipped it, so both axes are limited to `TRUSTED_PUBLISHERS`, and
+  every unlisted publisher is logged as skipped so the list grows on
+  evidence rather than by default.
