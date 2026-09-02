@@ -22,7 +22,11 @@ export function useAuthDeepLink(): void {
       try {
         const u = new URL(url);
         if (u.protocol !== 'oscode:') return undefined;
-        const host = (u.hostname || u.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
+        const host = (
+          u.hostname ||
+          u.pathname.replace(/^\/+/, '').split('/')[0] ||
+          ''
+        ).toLowerCase();
         if (host === 'checkout-success') return 'checkout';
         if (host === 'auth-callback') return 'auth';
         return undefined;

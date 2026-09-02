@@ -25,7 +25,6 @@ export interface SetupGuide {
   done: string;
 }
 
-
 export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
   'connect-cloud-key': {
     id: 'connect-cloud-key',

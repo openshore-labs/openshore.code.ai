@@ -8,16 +8,16 @@ import type { Catalog, CatalogModel, CatalogPreset } from 'os-code/protocol';
 
 /** Catalog ids a preset installs, orchestrator first, then its specialists. */
 export function presetMemberIds(preset: CatalogPreset): string[] {
-  const specialists = Object.values(preset.stack.specialists ?? {}).filter(
-    (v): v is string => Boolean(v),
+  const specialists = Object.values(preset.stack.specialists ?? {}).filter((v): v is string =>
+    Boolean(v),
   );
   return [preset.stack.orchestrator, ...specialists];
 }
 
 /** Specialist role -> catalog id for a preset, for enableSpecialist. */
 export function presetSpecialists(preset: CatalogPreset): Array<[string, string]> {
-  return Object.entries(preset.stack.specialists ?? {}).filter(
-    (e): e is [string, string] => Boolean(e[1]),
+  return Object.entries(preset.stack.specialists ?? {}).filter((e): e is [string, string] =>
+    Boolean(e[1]),
   );
 }
 

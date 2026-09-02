@@ -1552,9 +1552,7 @@ export const useApp = create<AppState>((set, get) => {
           (id === HARBOR_MINI_MODEL_ID && Boolean(st.harborMiniReady)) ||
           (id === HARBOR_MODEL_ID && Boolean(st.harborReady)),
         cloudReady: (provider) =>
-          provider === 'anthropic'
-            ? s.cloudKeyPresent
-            : Boolean(s.connectedProviders[provider]),
+          provider === 'anthropic' ? s.cloudKeyPresent : Boolean(s.connectedProviders[provider]),
       };
       switch (source.kind) {
         case 'stack':
@@ -2805,7 +2803,12 @@ export const useApp = create<AppState>((set, get) => {
         source = { kind: 'cloud', provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL };
       else if (platform() === 'ios') {
         const ok = s.settings.harborMiniReady || (await get().ensureHarborMini());
-        if (ok) source = { kind: 'device', modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME };
+        if (ok)
+          source = {
+            kind: 'device',
+            modelId: HARBOR_MINI_MODEL_ID,
+            modelName: HARBOR_MINI_MODEL_NAME,
+          };
       }
       if (!source) {
         get().showToast('Set up a model first (Your stack), then the guide can chat with you.');

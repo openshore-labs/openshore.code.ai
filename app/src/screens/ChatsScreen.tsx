@@ -8,6 +8,7 @@ import { useApp } from '../state/store.js';
 import { sourceLabel } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
 import { SwipeRow } from '../components/SwipeRow.js';
+import { Sheet } from '../components/Sheet.js';
 
 export function ChatsScreen() {
   const {
@@ -103,9 +104,9 @@ export function ChatsScreen() {
         )}
       </div>
 
-      {confirmConv ? (
-        <div className="confirm-scrim" onClick={() => setConfirmId(undefined)}>
-          <div className="confirm-card" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(confirmConv)} onClose={() => setConfirmId(undefined)} variant="confirm">
+        {confirmConv ? (
+          <>
             <h3>Delete this chat?</h3>
             <p>{confirmConv.title}. This cannot be undone.</p>
             <div className="confirm-row">
@@ -123,9 +124,9 @@ export function ChatsScreen() {
                 Delete
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
     </div>
   );
 }

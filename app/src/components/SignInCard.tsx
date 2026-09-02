@@ -221,11 +221,7 @@ export function SignInCard() {
             className="linklike"
             disabled={busy}
             onClick={() =>
-              void run(
-                false,
-                () => sendPasswordReset(addr),
-                'Check your email for a reset link.',
-              )
+              void run(false, () => sendPasswordReset(addr), 'Check your email for a reset link.')
             }
           >
             Forgot your password?

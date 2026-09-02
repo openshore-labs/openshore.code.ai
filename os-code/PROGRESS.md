@@ -3,6 +3,33 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, the Uki motion standard applies across OpenShore)
+
+Founder: apply the transition standards set for the Uki app across all of
+OpenShore so it feels premium as you navigate. The tokens and two guard tests
+already existed here; what was missing was adoption and exits.
+- **One vocabulary, enforced.** 109 declarations in `app/src/theme.css`
+  moved from raw `ease` / ad-hoc seconds / inline `cubic-bezier()` to the
+  `--dur-*` and `--ease-*` tokens. `polish-standards.test.ts` now fails CI on
+  any raw easing keyword, raw `cubic-bezier()`, or sub-second raw duration in
+  a transition or animation (loops and delays of a second or more are
+  allowed), on any layout-property transition (one documented exemption: the
+  composer's keyboard inset), and on any JSX scrim without a `closing`
+  binding.
+- **Everything that animates in now animates out.** New
+  `components/Sheet.tsx` owns its presence (`hooks/useExitPresence.ts`): the
+  fifteen inline sheets and confirms across StackManager, Stack, Projects,
+  Vault, Marketplace, Crew, and Chats were converted to it, so a parent can
+  drive a sheet from plain state and it still plays its exit. InfoSheet and
+  SourcePicker adopted `useSheetExit`. The drawer (the main navigation) and
+  the toast ride `useExitPresence` with new `slide-out`, `fade-out`,
+  `toast-out`, and `confirm-out` keyframes.
+- **Asymmetric press everywhere.** `.btn`, `.icon-btn`, and `.card-disclosure`
+  press on `--press-in` and release on `--press-out`; the hamburger carries
+  `press-fb` and a haptic tick, since it is the main navigation.
+- **Documented as a standing rule** in `CLAUDE.md` (seven rules, mirrored
+  from Uki) and `docs/interaction-model.md`.
+
 ## Current state (2026-09-02, the side panel is the main navigation)
 
 Founder, from the phone: the left panel is the main navigation, so it should

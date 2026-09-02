@@ -66,6 +66,95 @@ describe('polish standards', () => {
     expect(offenders, offenders.join('\n  ')).toEqual([]);
   });
 
+  // The stylesheet's motion declarations, comments stripped, as
+  // `{ prop, value, context }` where context is the few lines above (so a
+  // stated exemption in a comment can be read).
+  function motionDeclarations(): Array<{ prop: string; value: string; context: string }> {
+    const out: Array<{ prop: string; value: string; context: string }> = [];
+    const lines = THEME.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i]!.match(
+        /^\s*(transition|animation)(-duration|-delay|-timing-function|-property)?\s*:\s*(.*)$/,
+      );
+      if (!m) continue;
+      let value = m[3]!;
+      let j = i;
+      while (!value.includes(';') && j + 1 < lines.length) {
+        j += 1;
+        value += ' ' + lines[j]!.trim();
+      }
+      value = value
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/;.*$/, '')
+        .trim();
+      const context = lines.slice(Math.max(0, i - 5), i).join('\n');
+      out.push({ prop: `${m[1]}${m[2] ?? ''}`, value, context });
+      i = j;
+    }
+    return out;
+  }
+
+  it('references the motion tokens, never a raw easing keyword or cubic-bezier()', () => {
+    // One vocabulary. The token declarations in :root are the only place a
+    // literal curve may appear; `ease` (the browser default) is never chosen
+    // on purpose. Infinite loops keep `linear` and `steps()`.
+    const offenders: string[] = [];
+    for (const { value } of motionDeclarations()) {
+      if (/(?<![-\w])(ease(?:-in|-out|-in-out)?|cubic-bezier\()/.test(value))
+        offenders.push(value.slice(0, 90));
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('references the duration tokens for anything under a second', () => {
+    // Ad-hoc milliseconds are how one screen drifts snappier than the rest.
+    // The tokens cover 120 to 420 ms; loops and long delays (a second or more)
+    // sit outside that range and stay literal by design.
+    const offenders: string[] = [];
+    for (const { prop, value } of motionDeclarations()) {
+      if (/\binfinite\b/.test(value)) continue;
+      if (/!important/.test(value)) continue; // the reduced-motion reset
+      for (const m of value.matchAll(/(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g)) {
+        const ms = m[2] === 's' ? Number(m[1]) * 1000 : Number(m[1]);
+        if (ms > 0 && ms < 1000) offenders.push(`${prop}: ${value.slice(0, 90)}`);
+      }
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('never transitions a layout property (transform, opacity, scale only)', () => {
+    // Width, height, inset, margin, padding, and max-height reflow on every
+    // frame and jank on the phone. A stated exemption in the comment above the
+    // declaration (the word "exemption") is the only way past this.
+    const offenders: string[] = [];
+    for (const { prop, value, context } of motionDeclarations()) {
+      if (!prop.startsWith('transition')) continue;
+      if (/exemption/i.test(context)) continue;
+      const hit = value.match(
+        /(?<![-\w])(width|height|top|left|right|bottom|inset|margin(?:-\w+)?|padding(?:-\w+)?|max-height|min-height)(?![-\w])/,
+      );
+      if (hit) offenders.push(`${hit[1]} in: ${value.slice(0, 90)}`);
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('gives every scrim an exit: no JSX scrim without a closing binding', () => {
+    // Everything that animates in animates out. A scrim rendered with a bare
+    // literal class can only snap-unmount. Use components/Sheet.tsx, or
+    // useSheetExit / useExitPresence and bind the `closing` class.
+    const offenders: string[] = [];
+    for (const file of sourceFiles()) {
+      if (!file.endsWith('.tsx')) continue;
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (/className="(sheet|confirm|drawer)-scrim"/.test(line))
+            offenders.push(`${relative(SRC, file)}:${i + 1}`);
+        });
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
   it('routes haptics through @capacitor/haptics, never navigator.vibrate', () => {
     const src = readFileSync(join(SRC, 'lib', 'haptics.ts'), 'utf8');
     expect(src.includes('@capacitor/haptics')).toBe(true);

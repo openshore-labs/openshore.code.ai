@@ -1,6 +1,6 @@
 // The shell: persistent sidebar on wide screens, drawer on the phone, one
 // active room. The chat is home; everything else is a short visit.
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { useApp } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
@@ -26,11 +26,19 @@ import { TerminalScreen } from './screens/TerminalScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
 import { useCompact } from './hooks/useCompact.js';
+import { useExitPresence } from './hooks/useExitPresence.js';
 
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();
   const theme = useApp((s) => s.settings.theme);
   const compact = useCompact();
+  // The drawer and the toast stay mounted through their exits (motion standard:
+  // everything that animates in animates out). The toast keeps its last text so
+  // the fade-out does not empty the pill mid-flight.
+  const drawer = useExitPresence(compact && drawerOpen);
+  const toastPresence = useExitPresence(Boolean(toast));
+  const lastToast = useRef(toast);
+  if (toast) lastToast.current = toast;
   useAuthDeepLink();
   useSheetFocusTrap();
 
@@ -139,9 +147,13 @@ export function App() {
     return (
       <div className="shell">
         <OnboardingScreen />
-        {toast ? (
-          <div className="toast" role="status" aria-live="polite">
-            {toast}
+        {toastPresence.mounted ? (
+          <div
+            className={`toast${toastPresence.closing ? ' closing' : ''}`}
+            role="status"
+            aria-live="polite"
+          >
+            {toast ?? lastToast.current}
           </div>
         ) : null}
       </div>
@@ -190,11 +202,15 @@ export function App() {
       <div className="shell-main room-swap" key={view}>
         {room}
       </div>
-      {compact && drawerOpen ? <Sidebar drawer /> : null}
+      {compact && drawer.mounted ? <Sidebar drawer closing={drawer.closing} /> : null}
       <Paywall />
-      {toast ? (
-        <div className="toast" role="status" aria-live="polite">
-          {toast}
+      {toastPresence.mounted ? (
+        <div
+          className={`toast${toastPresence.closing ? ' closing' : ''}`}
+          role="status"
+          aria-live="polite"
+        >
+          {toast ?? lastToast.current}
         </div>
       ) : null}
     </div>

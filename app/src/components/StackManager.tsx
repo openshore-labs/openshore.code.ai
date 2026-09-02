@@ -21,6 +21,7 @@ import {
   type Placement,
   type StackModelRef,
 } from '../lib/stack.js';
+import { Sheet } from './Sheet.js';
 
 /** The host of a BYOM base URL, for a compact bench sub-line. Falls back to
  *  the raw string if it does not parse. */
@@ -344,9 +345,9 @@ export function StackManager() {
       </div>
 
       {/* Ellipses menu for an active specialist. */}
-      {menuKey ? (
-        <div className="sheet-scrim" onClick={() => setMenuKey(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(menuKey)} onClose={() => setMenuKey(undefined)}>
+        {menuKey ? (
+          <>
             <h2>Options</h2>
             <div className="sheet-actions">
               <button
@@ -374,14 +375,14 @@ export function StackManager() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
       {/* Reasoning LLM picker. */}
-      {pickReasoning ? (
-        <div className="sheet-scrim" onClick={() => setPickReasoning(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(pickReasoning)} onClose={() => setPickReasoning(false)}>
+        {pickReasoning ? (
+          <>
             <h2>Who runs the show?</h2>
             <p className="sheet-sub">
               The Reasoning LLM plans and routes. It can be any model you have.
@@ -408,14 +409,14 @@ export function StackManager() {
                 </p>
               ) : null}
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
       {/* Bring-your-own-model connect sheet. */}
-      {byomOpen ? (
-        <div className="sheet-scrim" onClick={() => setByomOpen(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(byomOpen)} onClose={() => setByomOpen(false)}>
+        {byomOpen ? (
+          <>
             <h2>Bring your own model</h2>
             <p className="sheet-sub">
               Point OpenShore at any OpenAI-compatible endpoint you control: a self-hosted server, a
@@ -482,14 +483,14 @@ export function StackManager() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
       {/* Options for a benched BYOM model. */}
-      {byomMenuId ? (
-        <div className="sheet-scrim" onClick={() => setByomMenuId(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(byomMenuId)} onClose={() => setByomMenuId(undefined)}>
+        {byomMenuId ? (
+          <>
             <h2>Options</h2>
             <div className="sheet-actions">
               <button
@@ -517,14 +518,14 @@ export function StackManager() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
       {/* Placement config sheet. */}
-      {config ? (
-        <div className="sheet-scrim" onClick={() => setConfig(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(config)} onClose={() => setConfig(undefined)}>
+        {config ? (
+          <>
             <h2>Place {refName(config.ref)}</h2>
             <p className="sheet-sub">Pick the category the Reasoning LLM calls it for.</p>
 
@@ -596,9 +597,9 @@ export function StackManager() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
     </div>
   );
 }

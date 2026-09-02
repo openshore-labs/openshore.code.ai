@@ -6,6 +6,7 @@ import { useApp } from '../state/store.js';
 import { useCompact } from '../hooks/useCompact.js';
 import { ProfileStatus } from './ProfileStatus.js';
 import { MenuIcon } from './MenuIcon.js';
+import { hapticTick } from '../lib/haptics.js';
 
 export function BackBar({ title }: { title: string }) {
   const { setDrawer } = useApp();
@@ -13,7 +14,14 @@ export function BackBar({ title }: { title: string }) {
   return (
     <header className="topbar">
       {compact ? (
-        <button className="icon-btn menu-btn" onClick={() => setDrawer(true)} aria-label="Menu">
+        <button
+          className="icon-btn menu-btn press-fb"
+          onClick={() => {
+            hapticTick();
+            setDrawer(true);
+          }}
+          aria-label="Menu"
+        >
           <MenuIcon />
         </button>
       ) : null}

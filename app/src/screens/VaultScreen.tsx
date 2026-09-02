@@ -23,6 +23,7 @@ import {
   type StorageProviderId,
 } from '../lib/gitos/index.js';
 import { exportVaultToFiles } from '../lib/vaultExport.js';
+import { Sheet } from '../components/Sheet.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -430,15 +431,15 @@ export function VaultScreen() {
           ) : null}
         </div>
 
-        {menuOpen ? (
-          <div
-            className="sheet-scrim"
-            onClick={() => {
-              setMenuOpen(false);
-              setConfirmDelete(false);
-            }}
-          >
-            <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <Sheet
+          open={menuOpen}
+          onClose={() => {
+            setMenuOpen(false);
+            setConfirmDelete(false);
+          }}
+        >
+          {menuOpen ? (
+            <>
               <h2>Options</h2>
               <div className="sheet-actions">
                 <button
@@ -472,9 +473,9 @@ export function VaultScreen() {
                   Cancel
                 </button>
               </div>
-            </div>
-          </div>
-        ) : null}
+            </>
+          ) : null}
+        </Sheet>
       </div>
     );
   }
@@ -613,9 +614,9 @@ export function VaultScreen() {
         )}
       </div>
 
-      {newOpen ? (
-        <div className="sheet-scrim" onClick={() => setNewOpen(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(newOpen)} onClose={() => setNewOpen(false)}>
+        {newOpen ? (
+          <>
             <h2>New note</h2>
             <p className="sheet-sub">
               {folder ? `In ${folder}. ` : ''}A slash makes folders: ideas/first note.
@@ -637,13 +638,13 @@ export function VaultScreen() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
-      {storageOpen ? (
-        <div className="sheet-scrim" onClick={() => setStorageOpen(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(storageOpen)} onClose={() => setStorageOpen(false)}>
+        {storageOpen ? (
+          <>
             <h2>Where your vault lives</h2>
             <p className="sheet-sub">
               Your notes are files, and you choose the storage that holds them. Point Obsidian at
@@ -759,9 +760,9 @@ export function VaultScreen() {
                 Export as plain files
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
     </div>
   );
 }

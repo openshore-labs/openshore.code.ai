@@ -9,6 +9,7 @@ import { BackBar } from '../components/BackBar.js';
 import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
 import type { CrewActivityLevel, CrewAgent } from '../state/types.js';
 import { ADVISOR_TEAM } from '../lib/crewPresets.js';
+import { Sheet } from '../components/Sheet.js';
 
 const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   {
@@ -165,9 +166,9 @@ export function CrewScreen() {
       </div>
 
       {/* Editor sheet: identity, persona, call rule, activity level, projects. */}
-      {draft ? (
-        <div className="sheet-scrim" onClick={() => setDraft(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(draft)} onClose={() => setDraft(undefined)}>
+        {draft ? (
+          <>
             <h2>{draft.id ? 'Edit crew member' : 'New crew member'}</h2>
 
             <div className="field">
@@ -239,13 +240,13 @@ export function CrewScreen() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
 
-      {confirmDelete ? (
-        <div className="sheet-scrim" onClick={() => setConfirmDelete(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(confirmDelete)} onClose={() => setConfirmDelete(undefined)}>
+        {confirmDelete ? (
+          <>
             <h2>Remove this crew member?</h2>
             <p className="sheet-sub">This cannot be undone.</p>
             <div className="sheet-actions">
@@ -264,9 +265,9 @@ export function CrewScreen() {
                 Keep
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
     </div>
   );
 }

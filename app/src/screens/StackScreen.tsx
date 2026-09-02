@@ -12,6 +12,7 @@ import { STARTER_MODEL } from '../lib/starterModel.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { presetMemberIds, presetSpecialists, presetTotalGB } from '../lib/presets.js';
 import type { Catalog } from 'os-code/protocol';
+import { Sheet } from '../components/Sheet.js';
 
 const ROLES: Array<{ role: string; plain: string }> = [
   { role: 'coding', plain: 'great at code' },
@@ -173,8 +174,8 @@ export function StackScreen() {
           <div className="card" style={{ marginBottom: 12 }}>
             <h3>Start with a prefab stack</h3>
             <p className="hint" style={{ marginTop: 4 }}>
-              One tap fills your whole stack. These refresh on their own as new models land, so
-              they stay current without you touching the Marketplace.
+              One tap fills your whole stack. These refresh on their own as new models land, so they
+              stay current without you touching the Marketplace.
             </p>
             {catalog.presets.map((preset) => {
               const total = presetTotalGB(preset, catalog);
@@ -286,9 +287,9 @@ export function StackScreen() {
         ) : null}
       </div>
 
-      {pickFor && status ? (
-        <div className="sheet-scrim" onClick={() => setPickFor(undefined)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <Sheet open={Boolean(pickFor && status)} onClose={() => setPickFor(undefined)}>
+        {pickFor && status ? (
+          <>
             <h2>{pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}</h2>
             <p className="sheet-sub">
               Installed on this machine via Ollama. Get more in the marketplace.
@@ -304,7 +305,9 @@ export function StackScreen() {
                 <>
                   <p className="hint">
                     No local models yet.{' '}
-                    {status.ollama.up ? 'Get the starter below, or browse the marketplace.' : status.ollama.detail}{' '}
+                    {status.ollama.up
+                      ? 'Get the starter below, or browse the marketplace.'
+                      : status.ollama.detail}{' '}
                     <button
                       className="linklike"
                       onClick={() =>
@@ -330,9 +333,9 @@ export function StackScreen() {
                 </>
               )}
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Sheet>
     </div>
   );
 }
