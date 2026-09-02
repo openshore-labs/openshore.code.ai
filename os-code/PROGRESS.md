@@ -29,6 +29,17 @@ already existed here; what was missing was adoption and exits.
   `press-fb` and a haptic tick, since it is the main navigation.
 - **Documented as a standing rule** in `CLAUDE.md` (seven rules, mirrored
   from Uki) and `docs/interaction-model.md`.
+- **All three polish tiers, built.** Tier 1: rooms dissolve instead of
+  hard-swapping; `useRoomGhost` clones the outgoing room's DOM into an inert
+  overlay that fades and lifts away (`room-out`, --dur-3) under the incoming
+  fade, a snapshot rather than a second mount so no effects re-run and a
+  streaming transcript is never duplicated. Tier 2: the drawer is a physical
+  object; `useDrawerGesture` gives a left-edge swipe that pulls it in 1:1,
+  a leftward drag that pushes it back, release on velocity (a fast flick
+  under the distance threshold commits) with asymptotic rubber-banding past
+  rest, scrim opacity tied to progress, and haptics at the arm and the drop.
+  Tier 3: loop durations are tokens too (`--loop-1..3`, pinned by
+  `motion-tokens.test.ts`), so the vocabulary is now complete.
 
 ## Current state (2026-09-02, the side panel is the main navigation)
 
