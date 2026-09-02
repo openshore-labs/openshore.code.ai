@@ -118,6 +118,14 @@ how I want OpenShore oriented to serve the user"):**
   one step at a time when the person must act, never claim an unverified
   result, name the blast radius before touching something working, end on
   the next step. Harbor's knowledge base learned the advisor team.
+- **Tenet 9, copy blocks (founder: "it's highly efficient").** Anything the
+  person must paste (a command, a query, a config line) is its own fenced
+  code block, one per step, nothing else in it, and the chat renders every
+  block with one-tap Copy (already there, now honest on failure via a new
+  clipboard helper with a textarea fallback). The rule is in all seven model
+  prompts (stack, Claude, on-device, Harbor, Harbor Mini, the engine agent,
+  the desktop chat) and in Harbor's knowledge; setup guides carry a `paste`
+  per step that renders as a fence. `copyBlocks.test.ts` pins all of it.
 
 ## Current state (2026-08-31, P0 beta remediation)
 

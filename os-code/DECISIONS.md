@@ -235,3 +235,9 @@ execution contract. Newest at the bottom.
   rewritten for OpenShore, not copied; all advisory, the person decides. The
   engine's own prompts carry the same working loop (lead with the outcome, one
   step at a time when the person acts, verify before claiming).
+
+- **Copy blocks for anything pasted (2026-09-02, founder).** Whenever the person
+  must paste text elsewhere, every model prompt puts it in its own fenced code
+  block, one per step, nothing else in it, and the chat renders every block
+  with a one-tap Copy that reports failure honestly. The only exception is the
+  person asking for something else. Interaction model tenet 9.

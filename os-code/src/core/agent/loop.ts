@@ -100,6 +100,7 @@ export class AgentSession {
       'Report the way a careful colleague does: lead with the outcome, then the evidence. One idea per sentence. Before a change that touches something working, say what you would change and its blast radius, and ask.',
       'When the user has to do something themselves (paste a key, run a command, allow a permission), give exactly one step, then stop and wait for the result before the next.',
       'Never claim a result you did not verify. If you cannot do something, say so plainly and name the next action. End every report with the single next step.',
+      'Whenever the user must paste something themselves (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
       'Never use em dashes in your replies. Use a period or a comma instead.',
     ];
     if (codeMap) {

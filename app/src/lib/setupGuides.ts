@@ -18,11 +18,13 @@ export interface SetupGuide {
   title: string;
   /** What the person is trying to do, in their words. */
   goal: string;
-  /** Ordered steps, one action each. */
-  steps: string[];
+  /** Ordered steps, one action each. A step that needs something pasted (a
+   *  command, a query) carries it as `paste`, rendered as a copy block. */
+  steps: Array<string | { text: string; paste: string }>;
   /** A closing line: how they know it worked. */
   done: string;
 }
+
 
 export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
   'connect-cloud-key': {
@@ -54,8 +56,14 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
     title: 'Install Ollama',
     goal: 'Run local models on my computer.',
     steps: [
-      'On your computer, open ollama.com and download Ollama for your system (Linux: one install command; macOS and Windows: an installer).',
-      'Run it once so it starts its service. On Linux, the installer starts it for you; you can check with the command: ollama list',
+      {
+        text: 'On your computer, install Ollama. On Linux, paste this in a terminal (macOS and Windows use the installer from ollama.com):',
+        paste: 'curl -fsSL https://ollama.com/install.sh | sh',
+      },
+      {
+        text: 'Check that it is running. Paste this and you should see a (possibly empty) list, not an error:',
+        paste: 'ollama list',
+      },
       'Back in OpenShore on that computer, open Your stack. It now sees Ollama and offers the starter model, or open the Marketplace to pick a bundle.',
     ],
     done: 'Your stack shows a model with a green local pill, and the empty chat answers.',
@@ -111,7 +119,15 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
 /** The seeded first message of a guide chat: goal, plan, then step one, so the
  *  person can act immediately and ask anything between steps. */
 export function guideOpening(g: SetupGuide): string {
-  const plan = g.steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
+  // Anything to paste is its own fenced block, one per step, nothing else in
+  // it, so the chat renders it with a one-tap Copy.
+  const plan = g.steps
+    .map((s, i) =>
+      typeof s === 'string'
+        ? `${i + 1}. ${s}`
+        : `${i + 1}. ${s.text}\n\n\`\`\`\n${s.paste}\n\`\`\``,
+    )
+    .join('\n');
   return [
     `Let's get this done: ${g.goal}`,
     '',

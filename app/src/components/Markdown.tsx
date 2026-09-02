@@ -10,6 +10,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useApp } from '../state/store.js';
 import { hapticTick } from '../lib/haptics.js';
+import { copyText } from '../lib/clipboard.js';
 
 function extractText(node: ReactNode): string {
   if (typeof node === 'string') return node;
@@ -41,20 +42,21 @@ function looksRunnable(code: string, lang: string): boolean {
 function CodeBlock({ children }: { children?: ReactNode }) {
   const runCommand = useApp((s) => s.runCommand);
   const canRun = useApp((s) => s.canRunCommands());
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
 
   const code = extractText(children).replace(/\n$/, '');
   const lang = langFrom(children);
   const runnable = canRun && looksRunnable(code, lang);
 
+  // Copy is the whole point of a block the person has to paste elsewhere, so
+  // it says what happened either way: the async clipboard first, a textarea
+  // fallback for a WebView that lacks it, and an honest "Copy failed" rather
+  // than a silent nothing.
   const copy = async (): Promise<void> => {
-    try {
-      await navigator.clipboard?.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      // Best effort: a WebView without clipboard access simply does nothing.
-    }
+    hapticTick();
+    const ok = await copyText(code);
+    setCopied(ok ? 'done' : 'failed');
+    setTimeout(() => setCopied('idle'), 1400);
   };
 
   return (
@@ -75,7 +77,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
             </button>
           ) : null}
           <button type="button" className="md-code-copy press-fb" onClick={copy}>
-            {copied ? 'Copied' : 'Copy'}
+            {copied === 'done' ? 'Copied' : copied === 'failed' ? 'Copy failed' : 'Copy'}
           </button>
         </span>
       </div>

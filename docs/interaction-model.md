@@ -36,6 +36,12 @@ screen or flow that does not fit it is not done.
 8. **Keep it moving.** When the person is away or busy, the agent continues with
    the parts that do not need them, records what it did and what is waiting on
    them, and stops only for what is genuinely theirs to decide.
+9. **Anything to paste is a copy block.** A terminal command, a SQL statement,
+   a config line, a key name: whenever the person has to put text somewhere
+   else, it arrives as its own fenced code block, one per step, nothing else in
+   the block, and the chat renders it with a one-tap Copy. Never a command
+   inline in a sentence to be retyped. The only exception is the person asking
+   for something else. (Founder, 2026-09-02: "it's highly efficient.")
 
 ## Where this already shows up in the app
 
