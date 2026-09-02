@@ -98,7 +98,31 @@ const NAME_DENYLIST = [
   '-tts',
   'whisper',
   'speech',
+  'parakeet',
+  'canary',
+  'sortformer',
+  'codec',
+  // Not chat-capable: rerankers, safety classifiers, translation-only models.
+  'rerank',
+  'guardian',
+  'hy-mt',
 ];
+
+/** Publishers who quantize other people's models. Their upload is trusted as
+ *  a faithful conversion, not as a model choice, so a quantizer upload must
+ *  also name a known lab family; a lab's own upload needs no such check. */
+const QUANTIZERS = new Set([
+  'bartowski',
+  'unsloth',
+  'lmstudio-community',
+  'ggml-org',
+  'quantfactory',
+  'maziyarpanahi',
+]);
+
+/** Model families from the labs, matched against a quantizer upload's name. */
+const LAB_FAMILY =
+  /qwen|qwq|llama|gemma|mistral|ministral|magistral|devstral|codestral|pixtral|phi-?\d|deepseek|glm|granite|olmo|molmo|smol|kimi|minimax|hunyuan|\bhy-|nemotron|gpt-oss|command|falcon|internlm|exaone|seed-|ernie|mimo|lfm|afm-|trinity|nomic|jina|bge|gte-|e5-|moondream|llava|dots|yi-|starcoder|codegemma/i;
 
 /** Publishers whose uploads the storefront carries sight unseen: the model
  *  labs themselves and the quantizers the community pulls from. Both axes are
@@ -321,6 +345,10 @@ function cheapReject(repo: DiscoveredRepo): string | undefined {
   for (const word of NAME_DENYLIST) {
     if (lower.includes(word)) return `name contains "${word}"`;
   }
+  const [org, name = ''] = lower.split('/');
+  if (QUANTIZERS.has(org!) && !LAB_FAMILY.test(name)) {
+    return 'quantizer upload of a model family the storefront does not know';
+  }
   return undefined;
 }
 
@@ -462,13 +490,18 @@ export function isTrusted(repoId: string): boolean {
  *  "mradermacher/X-i1-GGUF" and "unsloth/X-GGUF" all collapse to "x". */
 export function baseKey(repoId: string): string {
   const name = (repoId.split('/')[1] ?? repoId).toLowerCase();
-  return name
-    .replace(/[-_.]?gguf(?=[-_.]|$)/gi, '')
-    .replace(/[-_.](i1|imatrix|instruct|it|chat)$/g, '')
-    .replace(/[-_.](i1|imatrix)(?=[-_.]|$)/g, '')
-    .replace(/[-_.]q\d[a-z0-9_]*$/i, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+  return (
+    name
+      .replace(/[-_.]?gguf(?=[-_.]|$)/gi, '')
+      .replace(/[-_.](i1|imatrix|instruct|it|chat)$/g, '')
+      .replace(/[-_.](i1|imatrix)(?=[-_.]|$)/g, '')
+      .replace(/[-_.]q\d[a-z0-9_]*$/i, '')
+      // A trailing four-digit date stamp (Magistral-Small-2506, -2507, -2509)
+      // marks a version of the same model; the newest sighting keeps the slot.
+      .replace(/[-_.]\d{4}$/, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  );
 }
 
 function displayName(repoId: string): string {

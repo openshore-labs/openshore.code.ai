@@ -101,20 +101,20 @@ describe('discoverModels', () => {
   it('skips gated, private, unlicensed, denylisted, sharded, and unreadable repos', async () => {
     const trending = [
       repo('meta-llama/Llama-4-GGUF', { gated: 'auto' }),
-      repo('unsloth/secret-GGUF', { private: true }),
-      repo('unsloth/NoLicense-GGUF'),
-      repo('unsloth/Bad-Uncensored-GGUF'),
-      repo('unsloth/Sharded-GGUF'),
-      repo('unsloth/Vanished-GGUF'),
-      repo('unsloth/OtherLicense-GGUF'),
+      repo('mistralai/secret-GGUF', { private: true }),
+      repo('mistralai/NoLicense-GGUF'),
+      repo('mistralai/Bad-Uncensored-GGUF'),
+      repo('mistralai/Sharded-GGUF'),
+      repo('mistralai/Vanished-GGUF'),
+      repo('mistralai/OtherLicense-GGUF'),
     ];
     const c = client(trending, [], {
-      'unsloth/NoLicense-GGUF': detail('unsloth/NoLicense-GGUF', { cardData: {} }),
-      'unsloth/Sharded-GGUF': detail('unsloth/Sharded-GGUF', {
+      'mistralai/NoLicense-GGUF': detail('mistralai/NoLicense-GGUF', { cardData: {} }),
+      'mistralai/Sharded-GGUF': detail('mistralai/Sharded-GGUF', {
         siblings: [{ rfilename: 'x-Q4_K_M-00001-of-00002.gguf', size: 2e9 }],
       }),
-      'unsloth/Vanished-GGUF': undefined,
-      'unsloth/OtherLicense-GGUF': detail('unsloth/OtherLicense-GGUF', {
+      'mistralai/Vanished-GGUF': undefined,
+      'mistralai/OtherLicense-GGUF': detail('mistralai/OtherLicense-GGUF', {
         cardData: { license: 'other' },
       }),
     });
@@ -123,78 +123,87 @@ describe('discoverModels', () => {
     expect(skipped.map((s) => s.repo)).toEqual(trending.map((r) => r.id));
     // Cheap rejections never cost a detail read.
     expect(c.detailCalls).not.toContain('meta-llama/Llama-4-GGUF');
-    expect(c.detailCalls).not.toContain('unsloth/Bad-Uncensored-GGUF');
+    expect(c.detailCalls).not.toContain('mistralai/Bad-Uncensored-GGUF');
   });
 
   it('unions trending and newest, seed wins a collision, and the cap holds', async () => {
-    const trending = [repo('unsloth/One-GGUF'), repo('unsloth/Two-GGUF')];
-    const newest = [repo('unsloth/Two-GGUF'), repo('unsloth/Three-GGUF')];
+    const trending = [repo('mistralai/One-GGUF'), repo('mistralai/Two-GGUF')];
+    const newest = [repo('mistralai/Two-GGUF'), repo('mistralai/Three-GGUF')];
     const details = Object.fromEntries(
-      ['unsloth/One-GGUF', 'unsloth/Two-GGUF', 'unsloth/Three-GGUF'].map((id) => [id, detail(id)]),
+      ['mistralai/One-GGUF', 'mistralai/Two-GGUF', 'mistralai/Three-GGUF'].map((id) => [
+        id,
+        detail(id),
+      ]),
     );
     const c = client(trending, newest, details);
     const { models, skipped } = await discoverModels(c, {
       today: '2026-09-02',
-      reserved: new Set(['hf-unsloth-one']),
+      reserved: new Set(['hf-mistralai-one']),
       cap: 2,
     });
-    expect(skipped.some((s) => s.repo === 'unsloth/One-GGUF' && /seed/.test(s.reason))).toBe(true);
+    expect(skipped.some((s) => s.repo === 'mistralai/One-GGUF' && /seed/.test(s.reason))).toBe(
+      true,
+    );
     // One is reserved by the seed; trending Two leads, new drop Three fills the cap.
-    expect(models.map((m) => m.id)).toEqual(['hf-unsloth-two', 'hf-unsloth-three']);
+    expect(models.map((m) => m.id)).toEqual(['hf-mistralai-two', 'hf-mistralai-three']);
   });
 
   it('both axes are trusted publishers only; trending also needs real downloads', async () => {
     const trending = [
-      repo('unsloth/Quiet-GGUF', { downloads: 3 }),
+      repo('mistralai/Quiet-GGUF', { downloads: 3 }),
       repo('nobody/Open-GGUF', { downloads: 50000 }),
-      repo('unsloth/Loud-GGUF'),
+      repo('mistralai/Loud-GGUF'),
     ];
-    const newest = [repo('nobody/Fresh-GGUF'), repo('bartowski/Fresh2-GGUF')];
+    const newest = [repo('nobody/Fresh-GGUF'), repo('bartowski/Qwen-Fresh2-GGUF')];
     const details = Object.fromEntries(
-      ['unsloth/Loud-GGUF', 'bartowski/Fresh2-GGUF'].map((id) => [id, detail(id)]),
+      ['mistralai/Loud-GGUF', 'bartowski/Qwen-Fresh2-GGUF'].map((id) => [id, detail(id)]),
     );
     const c = client(trending, newest, details);
     const { models, skipped } = await discoverModels(c, { today: '2026-09-02' });
     // Trusted trending leads, trusted new drops follow.
-    expect(models.map((m) => m.id)).toEqual(['hf-unsloth-loud', 'hf-bartowski-fresh2']);
+    expect(models.map((m) => m.id)).toEqual(['hf-mistralai-loud', 'hf-bartowski-qwen-fresh2']);
     expect(skipped.map((s) => s.repo)).toEqual([
-      'unsloth/Quiet-GGUF',
+      'mistralai/Quiet-GGUF',
       'nobody/Open-GGUF',
       'nobody/Fresh-GGUF',
     ]);
     expect(skipped[1]!.reason).toMatch(/unlisted publisher/);
     // Unlisted publishers never cost a detail read.
-    expect(c.detailCalls).toEqual(['unsloth/Loud-GGUF', 'bartowski/Fresh2-GGUF']);
+    expect(c.detailCalls).toEqual(['mistralai/Loud-GGUF', 'bartowski/Qwen-Fresh2-GGUF']);
   });
 
   it('reads each trusted publisher page, round-robin, after the global axes', async () => {
     const byAuthor = {
-      bartowski: [repo('bartowski/B1-GGUF'), repo('bartowski/B2-GGUF'), repo('bartowski/B3-GGUF')],
-      unsloth: [repo('unsloth/U1-GGUF'), repo('unsloth/U2-GGUF')],
+      bartowski: [
+        repo('bartowski/Qwen-B1-GGUF'),
+        repo('bartowski/Qwen-B2-GGUF'),
+        repo('bartowski/Qwen-B3-GGUF'),
+      ],
+      unsloth: [repo('mistralai/U1-GGUF'), repo('mistralai/U2-GGUF')],
       nobody: [repo('nobody/N1-GGUF')],
     };
     const ids = [...byAuthor.bartowski, ...byAuthor.unsloth].map((r) => r.id);
     const details = Object.fromEntries(ids.map((id) => [id, detail(id)]));
     const c = client(
-      [repo('unsloth/Trend-GGUF')],
+      [repo('mistralai/Trend-GGUF')],
       [],
-      { ...details, 'unsloth/Trend-GGUF': detail('unsloth/Trend-GGUF') },
+      { ...details, 'mistralai/Trend-GGUF': detail('mistralai/Trend-GGUF') },
       byAuthor,
     );
     const { models } = await discoverModels(c, { today: '2026-09-02', cap: 4 });
     // Trending leads; then publishers interleave so one cannot eat the cap.
     expect(models.map((m) => m.discovery?.repo)).toEqual([
-      'unsloth/Trend-GGUF',
-      'bartowski/B1-GGUF',
-      'unsloth/U1-GGUF',
-      'bartowski/B2-GGUF',
+      'mistralai/Trend-GGUF',
+      'bartowski/Qwen-B1-GGUF',
+      'mistralai/U1-GGUF',
+      'bartowski/Qwen-B2-GGUF',
     ]);
     // The page of an unlisted publisher is never even requested.
     expect(c.detailCalls).not.toContain('nobody/N1-GGUF');
   });
 
   it('stops reading metadata once the per-build budget is spent', async () => {
-    const many = Array.from({ length: 200 }, (_, i) => repo(`unsloth/M${i}-GGUF`));
+    const many = Array.from({ length: 200 }, (_, i) => repo(`mistralai/M${i}-GGUF`));
     const details = Object.fromEntries(
       many.map((r) => [r.id, detail(r.id, { cardData: { license: 'other' } })]),
     );
@@ -209,7 +218,7 @@ describe('discoverModels', () => {
     const trending = [
       repo('bartowski/Qwen3-8B-GGUF'),
       repo('quantfactory/Qwen3-8B-i1-GGUF'),
-      repo('unsloth/Qwen3-8B-GGUF'),
+      repo('mistralai/Qwen3-8B-GGUF'),
       repo('quantfactory/Qwen3-8B-GGUF'),
     ];
     const details = Object.fromEntries(trending.map((r) => [r.id, detail(r.id)]));
@@ -223,14 +232,14 @@ describe('discoverModels', () => {
 
   it('rejects guardrail-removal spellings, speech models, and toy files', async () => {
     const trending = [
-      repo('unsloth/Qwen3-8B-OBLITERATED-GGUF'),
-      repo('unsloth/Llama-Unleashed-GGUF'),
-      repo('unsloth/Model-heretic-GGUF'),
-      repo('unsloth/mongolian-stt-asr-GGUF'),
-      repo('unsloth/Toy-GGUF'),
+      repo('mistralai/Qwen3-8B-OBLITERATED-GGUF'),
+      repo('mistralai/Llama-Unleashed-GGUF'),
+      repo('mistralai/Model-heretic-GGUF'),
+      repo('mistralai/mongolian-stt-asr-GGUF'),
+      repo('mistralai/Toy-GGUF'),
     ];
     const details = {
-      'unsloth/Toy-GGUF': detail('unsloth/Toy-GGUF', {
+      'mistralai/Toy-GGUF': detail('mistralai/Toy-GGUF', {
         siblings: [{ rfilename: 'toy-Q4_K_M.gguf', size: 1e8 }],
       }),
     };
@@ -243,20 +252,20 @@ describe('discoverModels', () => {
   });
 
   it('re-applies the bar to carried entries, so a tightened bar cleans the shelf', async () => {
-    const keep = await one('unsloth/Keep-GGUF');
+    const keep = await one('mistralai/Keep-GGUF');
     const previous: CatalogModel[] = [
-      { ...keep, discovery: disc('unsloth/Keep-GGUF', '2026-08-01') },
+      { ...keep, discovery: disc('mistralai/Keep-GGUF', '2026-08-01') },
       // Shelved under yesterday's bar; today's denylist rejects it.
       {
         ...keep,
-        id: 'hf-unsloth-old-obliterated',
-        discovery: disc('unsloth/Old-OBLITERATED-GGUF', '2026-08-02'),
+        id: 'hf-mistralai-old-obliterated',
+        discovery: disc('mistralai/Old-OBLITERATED-GGUF', '2026-08-02'),
       },
       // An imatrix twin of Keep, from another quantizer.
       {
         ...keep,
-        id: 'hf-quantfactory-keep-i1',
-        discovery: disc('quantfactory/Keep-i1-GGUF', '2026-08-03'),
+        id: 'hf-ibm-granite-keep-i1',
+        discovery: disc('ibm-granite/Keep-i1-GGUF', '2026-08-03'),
       },
     ];
     const { models, skipped } = await discoverModels(client([], [], {}), {
@@ -265,7 +274,7 @@ describe('discoverModels', () => {
     });
     // Carried entries are considered newest sighting first, so the i1 twin
     // (seen 08-03) holds the "keep" slot and the 08-01 original is its duplicate.
-    expect(models.map((m) => m.discovery?.repo)).toEqual(['quantfactory/Keep-i1-GGUF']);
+    expect(models.map((m) => m.discovery?.repo)).toEqual(['ibm-granite/Keep-i1-GGUF']);
     expect(skipped.map((s) => s.reason)).toEqual([
       'carried entry dropped: name contains "obliterated"',
       'carried entry dropped: duplicate of an earlier upload (keep)',
@@ -273,17 +282,17 @@ describe('discoverModels', () => {
   });
 
   it('carries forward previous discoveries with their first-seen date', async () => {
-    const c = client([repo('unsloth/Fresh-GGUF')], [], {
-      'unsloth/Fresh-GGUF': detail('unsloth/Fresh-GGUF'),
+    const c = client([repo('mistralai/Fresh-GGUF')], [], {
+      'mistralai/Fresh-GGUF': detail('mistralai/Fresh-GGUF'),
     });
     const first = await discoverModels(
-      client([repo('unsloth/Old-GGUF')], [], {
-        'unsloth/Old-GGUF': detail('unsloth/Old-GGUF'),
+      client([repo('mistralai/Old-GGUF')], [], {
+        'mistralai/Old-GGUF': detail('mistralai/Old-GGUF'),
       }),
       { today: '2026-08-01' },
     );
     const { models } = await discoverModels(c, { today: '2026-09-02', previous: first.models });
-    expect(models.map((m) => m.id)).toEqual(['hf-unsloth-fresh', 'hf-unsloth-old']);
+    expect(models.map((m) => m.id)).toEqual(['hf-mistralai-fresh', 'hf-mistralai-old']);
     expect(models[1]!.discovery?.foundAt).toBe('2026-08-01');
     expect(models[0]!.discovery?.foundAt).toBe('2026-09-02');
     // Ranks are re-laid in shelf order.
@@ -291,14 +300,14 @@ describe('discoverModels', () => {
   });
 
   it('gives a small model a phone download straight from huggingface.co', async () => {
-    const c = client([repo('unsloth/Tiny-GGUF')], [], {
-      'unsloth/Tiny-GGUF': detail('unsloth/Tiny-GGUF', {
+    const c = client([repo('mistralai/Tiny-GGUF')], [], {
+      'mistralai/Tiny-GGUF': detail('mistralai/Tiny-GGUF', {
         siblings: [{ rfilename: 'tiny-q4_k_m.gguf', size: 1.1e9 }],
       }),
     });
     const { models } = await discoverModels(c, { today: '2026-09-02' });
     expect(models[0]!.onDevice).toEqual({
-      url: 'https://huggingface.co/unsloth/Tiny-GGUF/resolve/main/tiny-q4_k_m.gguf',
+      url: 'https://huggingface.co/mistralai/Tiny-GGUF/resolve/main/tiny-q4_k_m.gguf',
       sizeGB: 1.1,
       minRamGB: 4,
     });
@@ -330,27 +339,29 @@ describe('discovery helpers', () => {
   });
 
   it('classify reads the name and tags', () => {
-    expect(classify('unsloth/Qwen3-Coder-30B-GGUF', [], 18)).toEqual(['coding']);
-    expect(classify('unsloth/nomic-embed-v2-GGUF', [], 0.3)).toEqual(['embedding']);
-    expect(classify('unsloth/Gemma-3-4b-it-GGUF', ['image-text-to-text'], 2.5)).toContain('vision');
-    expect(classify('unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF', [], 5)).toEqual([
+    expect(classify('mistralai/Qwen3-Coder-30B-GGUF', [], 18)).toEqual(['coding']);
+    expect(classify('mistralai/nomic-embed-v2-GGUF', [], 0.3)).toEqual(['embedding']);
+    expect(classify('mistralai/Gemma-3-4b-it-GGUF', ['image-text-to-text'], 2.5)).toContain(
+      'vision',
+    );
+    expect(classify('mistralai/DeepSeek-R1-0528-Qwen3-8B-GGUF', [], 5)).toEqual([
       'reasoning',
       'analysis',
     ]);
-    expect(classify('unsloth/SmolLM3-3B-GGUF', [], 1.9)).toEqual(['reasoning', 'fast']);
+    expect(classify('mistralai/SmolLM3-3B-GGUF', [], 1.9)).toEqual(['reasoning', 'fast']);
   });
 
   it('baseKey collapses quantizer and imatrix variants', () => {
     expect(baseKey('bartowski/Qwen3-8B-GGUF')).toBe('qwen3-8b');
     expect(baseKey('quantfactory/Qwen3-8B-i1-GGUF')).toBe('qwen3-8b');
-    expect(baseKey('unsloth/Qwen3-8B-GGUF')).toBe('qwen3-8b');
-    expect(baseKey('unsloth/Spark-X2.5-4B-Q8_0-GGUF')).toBe('spark-x2-5-4b');
-    expect(baseKey('unsloth/Other-9B-GGUF')).not.toBe(baseKey('unsloth/Other-27B-GGUF'));
+    expect(baseKey('mistralai/Qwen3-8B-GGUF')).toBe('qwen3-8b');
+    expect(baseKey('mistralai/Spark-X2.5-4B-Q8_0-GGUF')).toBe('spark-x2-5-4b');
+    expect(baseKey('mistralai/Other-9B-GGUF')).not.toBe(baseKey('mistralai/Other-27B-GGUF'));
   });
 
   it('slugId is stable and prefixed', () => {
     expect(slugId('bartowski/Qwen3-8B-GGUF')).toBe('hf-bartowski-qwen3-8b');
-    expect(slugId('unsloth/gemma-3-4b-it-GGUF')).toBe('hf-unsloth-gemma-3-4b-it');
+    expect(slugId('mistralai/gemma-3-4b-it-GGUF')).toBe('hf-mistralai-gemma-3-4b-it');
   });
 });
 
@@ -375,8 +386,8 @@ describe('discovered models through the build', () => {
   };
 
   it('enrich keeps a discovered model as unrated, and presets never name it', async () => {
-    const c = client([repo('unsloth/Coder-GGUF')], [], {
-      'unsloth/Coder-GGUF': detail('unsloth/Coder-GGUF'),
+    const c = client([repo('mistralai/Coder-GGUF')], [], {
+      'mistralai/Coder-GGUF': detail('mistralai/Coder-GGUF'),
     });
     const { models: found } = await discoverModels(c, { today: '2026-09-02' });
     const seed = { version: 1, updated: '2026-09-02', models: [seedModel, ...found], presets: [] };

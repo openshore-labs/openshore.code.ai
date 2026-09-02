@@ -289,3 +289,9 @@ execution contract. Newest at the bottom.
   labs' and quantizers' latest uploads are now read per publisher
   (`author=` listing, round-robin so bartowski cannot fill the cap alone),
   after the two global axes. Cap 40, at most 160 metadata reads per build.
+- **A quantizer's upload is trusted as a conversion, not as a model choice.**
+  The fourth crop shelved forty lab models but also bartowski's and unsloth's
+  conversions of community models (darkps_ice, Muse-Glimmer). A quantizer
+  upload must now also name a known lab family; a lab's own upload needs no
+  such check. Speech, reranker, guardrail-classifier, and translation-only
+  uploads joined the denylist, and dated versions collapse to the newest.

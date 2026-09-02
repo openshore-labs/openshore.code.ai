@@ -38,7 +38,11 @@ bar into entries, no seed edit needed:
   the list grows on evidence), plus a third axis that actually fills the
   shelf: each trusted publisher's own latest uploads, read round-robin (the
   global listings held six trusted repos in eighty). Cap 40, metadata reads
-  bounded per build. Trending needs 100+ downloads, carried entries
+  bounded per build. A quantizer's upload must also name a known lab family
+  (bartowski and unsloth convert community models too); speech, reranker,
+  guardrail-classifier, and translation-only uploads are denylisted; dated
+  versions of one model (Magistral-Small-2506/2507/2509) collapse to the
+  newest. The fourth live crop shelved 40 lab models. Trending needs 100+ downloads, carried entries
   re-clear today's bar, one entry per underlying model (`baseKey` collapses
   quantizer and imatrix twins), 0.3 GB floor, denylist covers every
   guardrail-removal spelling seen plus speech.
