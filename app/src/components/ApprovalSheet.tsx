@@ -103,15 +103,17 @@ export function ApprovalSheet({
             {isSpend ? 'Approve this spend' : 'Approve once'}
             <kbd className="approval-key">y</kbd>
           </button>
+          {/* Ordered by how often each is the right answer: once, then the
+              standing project rule, then the session-only allow. */}
+          {projectAllowable ? (
+            <button className="btn ghost press-fb" onClick={() => answer(true, true, true)}>
+              Always allow this in the project
+            </button>
+          ) : null}
           {!isSpend ? (
             <button className="btn ghost press-fb" onClick={() => answer(true, true)}>
               Approve for this session
               <kbd className="approval-key">a</kbd>
-            </button>
-          ) : null}
-          {projectAllowable ? (
-            <button className="btn ghost press-fb" onClick={() => answer(true, true, true)}>
-              Always allow this in the project
             </button>
           ) : null}
           {total > 1 ? (
@@ -119,7 +121,7 @@ export function ApprovalSheet({
               Approve all {total}
             </button>
           ) : null}
-          <button className="btn quiet press-fb" onClick={() => answer(false)}>
+          <button className="btn quiet approval-skip press-fb" onClick={() => answer(false)}>
             No, skip it
             <kbd className="approval-key">n</kbd>
           </button>

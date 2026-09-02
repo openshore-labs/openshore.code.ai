@@ -3759,6 +3759,9 @@ async function persistConversations(state: Pick<AppState, 'order' | 'conversatio
       ...conv,
       // Desktop threads live in the engine journal; store metadata only.
       thread: conv.source.kind === 'desktop' ? emptyThread() : trimThread(conv.thread),
+      ...(conv.source.kind === 'desktop' && conv.thread.items.length
+        ? { lastItemCount: conv.thread.items.length }
+        : {}),
     };
   }
   await storeSetJson(CONVERSATIONS_KEY, { order: savedOrder, conversations });

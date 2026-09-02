@@ -10,7 +10,15 @@
 // repo files, "#" saves a line to the project's instructions, and a message
 // typed mid-run queues for the moment the agent is free. A long paste folds
 // into a chip so the field stays readable.
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import { sourceLabel, type ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -83,6 +91,60 @@ function mentionAt(value: string, caret: number): { start: number; query: string
   const m = /(^|\s)@([^\s@]*)$/.exec(before);
   if (!m) return null;
   return { start: before.length - m[2]!.length - 1, query: m[2]! };
+}
+
+/** One list for the command menu and the file popover: a highlight that
+ *  slides between rows on transform (never a repaint of each row), rows that
+ *  snap into view as the keyboard moves the selection. */
+function ComposerMenu({
+  label,
+  items,
+  active,
+  onHover,
+  mono,
+}: {
+  label: string;
+  items: Array<{ key: string; name: ReactNode; hint?: string; onPick: () => void }>;
+  active: number;
+  onHover: (i: number) => void;
+  mono?: boolean;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [glide, setGlide] = useState<{ y: number; h: number } | null>(null);
+  // Measure the active row and glide the highlight to it. Height is set
+  // directly (rows can wrap); only the travel is animated.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const row = list?.querySelectorAll<HTMLElement>('.composer-menu-row')[active];
+    if (!list || !row) return;
+    setGlide({ y: row.offsetTop, h: row.offsetHeight });
+    row.scrollIntoView({ block: 'nearest' });
+  }, [active, items.length]);
+  return (
+    <div className="composer-menu" role="listbox" aria-label={label} ref={listRef}>
+      {glide ? (
+        <span
+          className="composer-menu-glide"
+          aria-hidden="true"
+          style={{ transform: `translateY(${glide.y}px)`, height: glide.h }}
+        />
+      ) : null}
+      {items.map((it, i) => (
+        <button
+          key={it.key}
+          type="button"
+          role="option"
+          aria-selected={i === active}
+          className={`composer-menu-row press-fb press-fb--row${i === active ? ' active' : ''}`}
+          onMouseEnter={() => onHover(i)}
+          onClick={it.onPick}
+        >
+          <span className={`composer-menu-name${mono ? ' mono' : ''}`}>{it.name}</span>
+          {it.hint ? <span className="composer-menu-hint">{it.hint}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function Composer({
@@ -484,42 +546,31 @@ export function Composer({
       onDrop={onDrop}
     >
       {slashItems.length && !terminal ? (
-        <div className="composer-menu" role="listbox" aria-label="Commands">
-          {slashItems.map((c, i) => (
-            <button
-              key={c.name}
-              type="button"
-              role="option"
-              aria-selected={i === slashIdx}
-              className={`composer-menu-row press-fb press-fb--row${i === slashIdx ? ' active' : ''}`}
-              onMouseEnter={() => setSlashIdx(i)}
-              onClick={() => (c.arg ? setValue(`/${c.name} `) : runSlash(c.name, ''))}
-            >
-              <span className="composer-menu-name">
+        <ComposerMenu
+          label="Commands"
+          active={slashIdx}
+          onHover={setSlashIdx}
+          items={slashItems.map((c) => ({
+            key: c.name,
+            name: (
+              <>
                 /{c.name}
                 {c.arg ? <span className="composer-menu-arg"> {c.arg}</span> : null}
-              </span>
-              <span className="composer-menu-hint">{c.hint}</span>
-            </button>
-          ))}
-        </div>
+              </>
+            ),
+            hint: c.hint,
+            onPick: () => (c.arg ? setValue(`/${c.name} `) : runSlash(c.name, '')),
+          }))}
+        />
       ) : null}
       {mention && files.length ? (
-        <div className="composer-menu" role="listbox" aria-label="Files">
-          {files.map((f, i) => (
-            <button
-              key={f}
-              type="button"
-              role="option"
-              aria-selected={i === fileIdx}
-              className={`composer-menu-row press-fb press-fb--row${i === fileIdx ? ' active' : ''}`}
-              onMouseEnter={() => setFileIdx(i)}
-              onClick={() => insertFile(f)}
-            >
-              <span className="composer-menu-name mono">{f}</span>
-            </button>
-          ))}
-        </div>
+        <ComposerMenu
+          label="Files"
+          active={fileIdx}
+          onHover={setFileIdx}
+          mono
+          items={files.map((f) => ({ key: f, name: f, onPick: () => insertFile(f) }))}
+        />
       ) : null}
       <div className="composer">
         {attachments.length || pasted.length ? (

@@ -30,16 +30,28 @@ function basename(p: string): string {
 }
 
 /** The transcript's shape while a reopened desktop chat replays its journal:
- *  three soft bars in the rhythm of a user turn and an answer, so the screen
- *  never flashes the empty-state greeting on the way to a full history. */
-function ResumeSkeleton() {
+ *  soft bars in the rhythm of the last known transcript (user turn, answer,
+ *  tool), sized from the item count saved at the last persist, so the shape
+ *  matches what is about to land and the screen never flashes the
+ *  empty-state greeting on the way to a full history. */
+function ResumeSkeleton({ count }: { count?: number }) {
+  // Every four items is roughly one exchange; between one and four of them.
+  const groups = Math.max(1, Math.min(4, Math.ceil((count ?? 4) / 4)));
   return (
     <div className="thread" aria-busy="true" aria-label="Loading the conversation">
       <div className="thread-inner">
-        <div className="skel skel-user" />
-        <div className="skel skel-line" />
-        <div className="skel skel-line short" />
-        <div className="skel skel-tool" />
+        {Array.from({ length: groups }, (_, g) => (
+          <div
+            key={g}
+            className="skel-group"
+            style={{ animationDelay: `calc(${g} * var(--dur-2))` }}
+          >
+            <div className="skel skel-user" style={{ width: `${34 + ((g * 17) % 30)}%` }} />
+            <div className="skel skel-line" />
+            <div className="skel skel-line short" />
+            {g % 2 === 0 ? <div className="skel skel-tool" /> : null}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -445,7 +457,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             }}
           />
         ) : resuming ? (
-          <ResumeSkeleton />
+          <ResumeSkeleton count={conv?.lastItemCount} />
         ) : (
           <div className="greeting">
             <BrandMark size={40} />

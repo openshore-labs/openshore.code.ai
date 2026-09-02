@@ -168,6 +168,10 @@ export interface Conversation {
   /** True once the person named this chat themselves, so the engine's
    *  generated title never overwrites a deliberate name. */
   renamed?: boolean;
+  /** How many transcript items a desktop chat had at its last persist. The
+   *  transcript itself lives in the engine journal; this shapes the resume
+   *  skeleton so it matches what is about to replay. */
+  lastItemCount?: number;
   /** True once any turn in this chat carried an image. The transcript stores
    *  only text, so a mid-chat model switch cannot carry images forward; this
    *  lets the switch disclose that earlier images are dropped from context. */
