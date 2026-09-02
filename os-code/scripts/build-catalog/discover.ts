@@ -75,17 +75,63 @@ export interface DiscoverResult {
  *  these, or the repo is skipped. */
 const QUANT_PREFERENCE = ['Q4_K_M', 'Q4_K_S', 'Q5_K_M', 'Q8_0', 'Q6_K', 'Q4_0'];
 
-/** Repos the storefront does not carry, whatever their numbers. */
+/** Repos the storefront does not carry, whatever their numbers: guardrail
+ *  removals and their many spellings, adult content, and modalities the
+ *  stack cannot run (speech in or out). Learned from the first live crop. */
 const NAME_DENYLIST = [
   'uncensored',
   'abliterated',
+  'obliterated',
+  'unleashed',
+  'heretic',
+  'jailbreak',
   'nsfw',
   'roleplay',
   'erotic',
   'lewd',
   'waifu',
   'hentai',
+  '-stt',
+  '-asr',
+  '-tts',
+  'whisper',
+  'speech',
 ];
+
+/** Publishers whose new drops are worth carrying sight unseen: the model
+ *  labs themselves and the quantizers the community pulls from. The NEWEST
+ *  axis is limited to these (a brand-new repo has no numbers yet, so the name
+ *  behind it is the only signal); the TRENDING axis is open to everyone but
+ *  orders these first. Lowercase. */
+export const TRUSTED_PUBLISHERS = new Set([
+  'bartowski',
+  'unsloth',
+  'lmstudio-community',
+  'ggml-org',
+  'qwen',
+  'google',
+  'mistralai',
+  'deepseek-ai',
+  'moonshotai',
+  'microsoft',
+  'ibm-granite',
+  'nvidia',
+  'huggingfacetb',
+  'allenai',
+  'meta-llama',
+  'zai-org',
+  'openai',
+  'nomic-ai',
+  'jinaai',
+  'quantfactory',
+  'maziyarpanahi',
+]);
+
+/** A trending repo must have real pulls behind it; below this it is noise
+ *  riding a name. The newest axis is exempt (nothing is downloaded yet). */
+const MIN_TRENDING_DOWNLOADS = 100;
+/** Below this a GGUF is a toy or a test upload, not a model. */
+const MIN_GB = 0.3;
 
 /** HF license tags that map to an allow-list id under a different spelling.
  *  Everything else goes through `resolveLicense` by tag (case-insensitive), so
@@ -113,10 +159,14 @@ export async function discoverModels(
   const reserved = options.reserved ?? new Set<string>();
   const skipped: DiscoverResult['skipped'] = [];
 
-  // Two axes, trending first, newest second; union in that order so what the
-  // community is actually pulling this week leads and brand-new drops follow.
+  // Two axes. Trending is open to everyone with real pulls; newest is limited
+  // to trusted publishers (a day-old repo has no numbers, only a name). Shelf
+  // order: trusted trending, trusted new drops, then everyone else trending,
+  // so the cap fills with the models the founder actually wants first.
   const seen = new Set<string>();
-  const listed: DiscoveredRepo[] = [];
+  const trustedTrending: DiscoveredRepo[] = [];
+  const otherTrending: DiscoveredRepo[] = [];
+  const trustedNew: DiscoveredRepo[] = [];
   for (const axis of ['trendingScore', 'createdAt'] as const) {
     let repos: DiscoveredRepo[] = [];
     try {
@@ -127,21 +177,38 @@ export async function discoverModels(
     for (const r of repos) {
       if (!r?.id || seen.has(r.id)) continue;
       seen.add(r.id);
-      listed.push(r);
+      const trusted = isTrusted(r.id);
+      if (axis === 'createdAt') {
+        if (trusted) trustedNew.push(r);
+        else skipped.push({ repo: r.id, reason: 'new repo from an unlisted publisher' });
+      } else if ((r.downloads ?? 0) < MIN_TRENDING_DOWNLOADS) {
+        skipped.push({ repo: r.id, reason: `under ${MIN_TRENDING_DOWNLOADS} downloads` });
+      } else {
+        (trusted ? trustedTrending : otherTrending).push(r);
+      }
     }
   }
+  const listed = [...trustedTrending, ...trustedNew, ...otherTrending];
 
   const previousByRepo = new Map<string, CatalogModel>();
   for (const m of options.previous ?? []) {
     if (m.discovery) previousByRepo.set(m.discovery.repo, m);
   }
 
+  // One entry per underlying model: the same weights show up from several
+  // quantizers and as imatrix ("i1") twins. First in shelf order wins.
+  const bases = new Set<string>();
   const fresh: CatalogModel[] = [];
   for (const repo of listed) {
     if (fresh.length >= cap) break;
     const cheap = cheapReject(repo);
     if (cheap) {
       skipped.push({ repo: repo.id, reason: cheap });
+      continue;
+    }
+    const base = baseKey(repo.id);
+    if (bases.has(base)) {
+      skipped.push({ repo: repo.id, reason: `duplicate of an earlier upload (${base})` });
       continue;
     }
     const detail = await client.detail(repo.id);
@@ -161,6 +228,7 @@ export async function discoverModels(
       skipped.push({ repo: repo.id, reason: 'id already in the editorial seed' });
       continue;
     }
+    bases.add(base);
     fresh.push(built.model);
   }
 
@@ -213,7 +281,7 @@ export function entryFrom(
   if (!file) return { skip: 'no single-file GGUF at a supported quantization' };
   if (!file.size) return { skip: 'file size unknown' };
   const sizeGB = Math.round((file.size / 1e9) * 10) / 10;
-  if (sizeGB <= 0) return { skip: 'file size unknown' };
+  if (sizeGB < MIN_GB) return { skip: `too small to be a model (${sizeGB} GB)` };
   if (sizeGB > DESKTOP_MAX_GB) return { skip: `too big for a desktop (${sizeGB} GB)` };
 
   const categories = classify(repo.id, [...(repo.tags ?? []), ...(detail.tags ?? [])], sizeGB);
@@ -316,7 +384,28 @@ export function classify(repoId: string, tags: string[], sizeGB: number): Capabi
  *  "hf-bartowski-qwen3-8b". Prefixed so it never collides with a seed id. */
 export function slugId(repoId: string): string {
   const stripped = repoId.replace(/[-_.]?gguf$/i, '');
-  return `hf-${stripped.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+  return `hf-${stripped
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')}`;
+}
+
+export function isTrusted(repoId: string): boolean {
+  return TRUSTED_PUBLISHERS.has((repoId.split('/')[0] ?? '').toLowerCase());
+}
+
+/** The underlying model behind an upload: the name without the org, the GGUF
+ *  suffix, imatrix markers, and quant suffixes, so "bartowski/X-GGUF",
+ *  "mradermacher/X-i1-GGUF" and "unsloth/X-GGUF" all collapse to "x". */
+export function baseKey(repoId: string): string {
+  const name = (repoId.split('/')[1] ?? repoId).toLowerCase();
+  return name
+    .replace(/[-_.]?gguf$/i, '')
+    .replace(/[-_.](i1|imatrix|instruct|it|chat)$/g, '')
+    .replace(/[-_.](i1|imatrix)(?=[-_.]|$)/g, '')
+    .replace(/[-_.]q\d[a-z0-9_]*$/i, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function displayName(repoId: string): string {

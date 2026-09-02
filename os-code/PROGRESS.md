@@ -30,6 +30,18 @@ bar into entries, no seed edit needed:
 - **Pull path is what already ships:** `ollama pull hf.co/<repo>:<QUANT>`
   (small ones also get a phone download straight from huggingface.co, which
   the gate's host check still enforces).
+- **Quality bar, tightened from the first live crop.** The first live run
+  published 25 discoveries but shelved abliterated and merge variants, a
+  speech model, four uploads of the same weights, and a 0.1 GB file. Now: the
+  newest axis is `TRUSTED_PUBLISHERS` only, trending needs 100+ downloads and
+  shelves trusted first, one entry per underlying model (`baseKey` collapses
+  quantizer and imatrix twins), 0.3 GB floor, denylist covers every
+  guardrail-removal spelling seen plus speech.
+- **Publish step fixed.** The last three catalog runs (two scheduled) failed
+  at the push: the marketing repo's default branch is a feature branch, so the
+  shallow clone landed the catalog there. The clone is now `--branch main`
+  and the retry rebases onto FETCH_HEAD. Founder: set that repo's default
+  branch back to main.
 - **Cadence is now daily** (`catalog.yml` cron `17 8 * * *`); the no-op stamp
   guard keeps an unchanged day from committing.
 `test/catalog.builder.discover.test.ts` (12 tests, fixtures only). Gates
