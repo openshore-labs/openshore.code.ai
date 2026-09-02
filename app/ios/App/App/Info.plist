@@ -55,6 +55,8 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenShore connects to the OpenShore daemon running on your own desktop over your local network or Tailscale.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>OpenShore uses the camera only to scan the pairing QR code shown on your computer, so you never have to type the address and token by hand.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>OpenShore uses the microphone to turn your speech into text when you tap the mic in the composer.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

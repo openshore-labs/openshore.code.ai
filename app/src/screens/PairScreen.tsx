@@ -8,6 +8,8 @@ import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonHealth } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
+import { QrScanner } from '../components/QrScanner.js';
+import { parsePairingQr } from '../lib/qrDecode.js';
 
 // Clean white glyphs for the Tailscale download rows, drawn on a solid teal
 // tile (iOS-app-icon feel). One per platform.
@@ -233,33 +235,47 @@ function PhonePair() {
   const [token, setToken] = useState(settings.daemon?.token ?? '');
   const [testing, setTesting] = useState(false);
   const [state, setState] = useState<string | undefined>();
+  const [scanning, setScanning] = useState(false);
 
   const tryPasteJson = (text: string) => {
-    try {
-      const parsed = JSON.parse(text) as { u?: string; t?: string };
-      if (parsed.u && parsed.t) {
-        setAddress(parsed.u);
-        setToken(parsed.t);
-        return true;
-      }
-    } catch {}
-    return false;
+    const pair = parsePairingQr(text);
+    if (!pair) return false;
+    setAddress(pair.address);
+    setToken(pair.token);
+    return true;
   };
 
-  const connect = async () => {
-    const baseUrl = address.trim().replace(/\/$/, '');
-    if (!/^https?:\/\//.test(baseUrl) || !token.trim()) {
+  // Connect with the fields as they stand, or with values handed in directly
+  // (a fresh QR scan, before React has re-rendered the inputs).
+  const connect = async (override?: { address: string; token: string }) => {
+    const rawAddress = override?.address ?? address;
+    const rawToken = override?.token ?? token;
+    const baseUrl = rawAddress.trim().replace(/\/$/, '');
+    if (!/^https?:\/\//.test(baseUrl) || !rawToken.trim()) {
       setState('Enter the address and token shown on the desktop pairing screen.');
       return;
     }
     setTesting(true);
-    const health = await daemonHealth({ baseUrl, token: token.trim() });
+    const health = await daemonHealth({ baseUrl, token: rawToken.trim() });
     setTesting(false);
     setState(health.detail);
     if (health.ok) {
-      await saveSettings({ daemon: { baseUrl, token: token.trim() } });
+      await saveSettings({ daemon: { baseUrl, token: rawToken.trim() } });
       showToast('Connected. Pick your computer in the model menu to chat or code.');
     }
+  };
+
+  // A scanned QR fills both fields and connects in one motion; a QR that is
+  // not a pairing code is reported, never half-applied.
+  const onScanned = (text: string) => {
+    const pair = parsePairingQr(text);
+    if (!pair) {
+      setState('That QR is not an OpenShore pairing code. Try the one on the desktop screen.');
+      return;
+    }
+    setAddress(pair.address);
+    setToken(pair.token);
+    void connect(pair);
   };
 
   return (
@@ -301,6 +317,17 @@ function PhonePair() {
         </div>
 
         <div className="card">
+          <button
+            className="btn primary press-fb"
+            style={{ width: '100%', marginBottom: 12 }}
+            disabled={testing}
+            onClick={() => setScanning(true)}
+          >
+            Scan the QR on your computer
+          </button>
+          <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
+            Or type the address and token it shows.
+          </p>
           <div className="field">
             <label>Desktop address</label>
             <input
@@ -333,6 +360,7 @@ function PhonePair() {
           >
             {testing ? 'Checking...' : 'Connect'}
           </button>
+          {scanning ? <QrScanner onDecode={onScanned} onClose={() => setScanning(false)} /> : null}
           {state ? (
             <p className="hint" style={{ marginTop: 10 }}>
               {state}
