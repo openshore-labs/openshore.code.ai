@@ -57,6 +57,17 @@ an App Store call to action (marketing repo, tracked in the action items). This
 supersedes the earlier "Apple IAP on iOS and Stripe on web/desktop" framing for
 Personal specifically. On `main`.
 
+**Follow-up (2026-08-31): all Personal pay gates OFF for the beta.** Founder
+call: run the beta with no paywall. The coding agent and the Marketplace are
+free for everyone right now. Implemented as one reversible switch,
+`PAY_GATES_ENABLED = false` in `store.ts`, which short-circuits
+`personalUnlockedNow()` to true, so every gate (coding-source `newConversation`,
+`setView('marketplace')`, the sidebar lock pill, the paywall triggers) is off
+from one place. Flip it back to `true` to re-enable the $20 Personal gate; no
+other change needed, and the Apple purchase/link/entitlement plumbing stays
+built and ready underneath. Commercial team-seat billing
+(`growthGatedByBilling`) is a separate gate and is unchanged. On `main`.
+
 ## Current state (2026-08-27, greeting)
 
 **Long-press language reveal added to the greeting line.** A second, quieter

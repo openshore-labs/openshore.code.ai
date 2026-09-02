@@ -200,3 +200,9 @@ execution contract. Newest at the bottom.
   refreshes the shared entitlement row to unlock. Stripe stays only for
   commercial team plans (Apple forbids seat-based SaaS in-app). Code:
   buyPersonal/Paywall no longer offer web Stripe checkout for Personal.
+
+- **All Personal pay gates OFF for the beta (2026-08-31, founder).** Run the
+  beta with no paywall: coding agent and Marketplace free for everyone. One
+  reversible switch, PAY_GATES_ENABLED=false in store.ts, short-circuits
+  personalUnlockedNow() to true so every gate is off from one place. Flip to
+  true to re-enable; Apple purchase/entitlement plumbing stays built underneath.
