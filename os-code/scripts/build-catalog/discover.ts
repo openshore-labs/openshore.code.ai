@@ -457,7 +457,11 @@ export function classify(repoId: string, tags: string[], sizeGB: number): Capabi
   const text = `${repoId} ${tags.join(' ')}`.toLowerCase();
   const out: CapabilityCategory[] = [];
   if (/embed|bge|e5-|gte-|minilm/.test(text)) return ['embedding'];
-  if (/coder|codestral|starcoder|codegemma|deepseek-coder|-code-|codellama/.test(text)) {
+  if (
+    /coder|codestral|devstral|starcoder|codegemma|deepseek-coder|-code-|codellama|granite-code|code-instruct/.test(
+      text,
+    )
+  ) {
     out.push('coding');
   }
   if (/llava|vision|-vl-|-vl\b|minicpm-v|moondream|pixtral|image-text-to-text/.test(text)) {
