@@ -193,6 +193,34 @@ export interface OscodeBridge {
   // auth callback, Stripe checkout return). The renderer subscribes and routes
   // each URL. Returns an unsubscribe function.
   onDeepLink(cb: (url: string) => void): () => void;
+
+  // A contained third-party site inside the window (Codemagic in Launch).
+  // The renderer names the site and places it by bounds in CSS pixels of the
+  // window; the main process owns the URL fence and the cookie partition.
+  embeddedOpen(name: 'codemagic', bounds: EmbeddedBounds): Promise<boolean>;
+  embeddedBounds(bounds: EmbeddedBounds): Promise<void>;
+  embeddedVisible(visible: boolean): Promise<void>;
+  embeddedBack(): Promise<void>;
+  embeddedReload(): Promise<void>;
+  embeddedHome(): Promise<void>;
+  embeddedSignOut(): Promise<void>;
+  embeddedClose(): Promise<void>;
+  onEmbeddedState(cb: (state: EmbeddedState) => void): () => void;
+}
+
+export interface EmbeddedBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface EmbeddedState {
+  site: string;
+  url: string;
+  title: string;
+  loading: boolean;
+  canGoBack: boolean;
 }
 
 export function bridge(): OscodeBridge | undefined {

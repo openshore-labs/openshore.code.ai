@@ -23,6 +23,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server } from 'node:http';
 import { isIP } from 'node:net';
 import { EngineHost } from './engineHost.js';
+import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -291,6 +292,26 @@ const host = new EngineHost(
   (payload) => win?.webContents.send('osc:install-progress', payload),
   (payload) => win?.webContents.send('osc:terminal-data', payload),
 );
+
+// A contained third-party site (Codemagic today) hosted inside the window,
+// fenced to its own hosts. The renderer names the site; it never picks a URL.
+const embedded = new EmbeddedWeb(
+  () => win,
+  (state) => win?.webContents.send('osc:embedded-state', state),
+);
+
+ipcMain.handle('osc:embeddedOpen', (_e, name: string, bounds: EmbeddedBounds) =>
+  embedded.open(String(name), bounds),
+);
+ipcMain.handle('osc:embeddedBounds', (_e, bounds: EmbeddedBounds) => embedded.setBounds(bounds));
+ipcMain.handle('osc:embeddedVisible', (_e, visible: boolean) =>
+  embedded.setVisible(Boolean(visible)),
+);
+ipcMain.handle('osc:embeddedBack', () => embedded.back());
+ipcMain.handle('osc:embeddedReload', () => embedded.reload());
+ipcMain.handle('osc:embeddedHome', () => embedded.home());
+ipcMain.handle('osc:embeddedSignOut', () => embedded.signOut());
+ipcMain.handle('osc:embeddedClose', () => embedded.close());
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -596,6 +617,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.on('window-all-closed', () => {
+  embedded.close();
   closeGdriveServer();
   host.disposeAll();
   app.quit();

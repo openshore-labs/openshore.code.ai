@@ -335,3 +335,8 @@ execution contract. Newest at the bottom.
 - **The # shortcut writes to the project's instructions, not a hidden file.**
   Projects already carry standing instructions that ride into every session
   in them; that is the memory, and it is visible in the Projects room.
+- **A contained third-party site is a native view named by the renderer,
+  never a URL it chooses.** `EMBEDDED_SITES` in `electron/embeddedWeb.ts` is
+  the whole allow list, with sign-in providers held to their sign-in paths,
+  so the view can never become a browser. Desktop only; iOS would need a
+  WKWebView plugin with the same fence, and Google OAuth would still refuse.
