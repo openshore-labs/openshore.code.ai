@@ -1,6 +1,6 @@
 // The shell: persistent sidebar on wide screens, drawer on the phone, one
 // active room. The chat is home; everything else is a short visit.
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { useApp } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
@@ -25,16 +25,7 @@ import { PairScreen } from './screens/PairScreen.js';
 import { TerminalScreen } from './screens/TerminalScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
-
-function useCompact(): boolean {
-  const [compact, setCompact] = useState(() => window.innerWidth < 900);
-  useEffect(() => {
-    const onResize = () => setCompact(window.innerWidth < 900);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-  return compact;
-}
+import { useCompact } from './hooks/useCompact.js';
 
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();

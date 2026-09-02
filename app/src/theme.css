@@ -458,6 +458,14 @@ textarea {
   padding-bottom: calc(8px + var(--safe-bottom));
 }
 
+/* The day-one group sits directly under the wordmark: no rule above it, and no
+   safe-area padding below (that belongs to the bottom group). */
+.sidebar-nav--primary {
+  border-top: 0;
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
+
 /* The "More rooms" divider between the primary nav and the Explore group. Quiet
    by design: it reads as depth beneath the day-one rooms, never a heading that
    competes with them. */
