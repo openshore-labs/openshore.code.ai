@@ -10,6 +10,7 @@ import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { isDesktop } from '../lib/platform.js';
+import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import type { DaemonStackInfo } from 'os-code/protocol';
 import { CLAUDE_MODELS, claudeModelLabel } from '../lib/claudeModels.js';
@@ -115,6 +116,29 @@ export function ModelSheet({
   const boxModel =
     boxStack && boxStack !== 'error' ? (boxStack.orchestrator?.model ?? undefined) : undefined;
 
+  // The desktop app's own engine: the model this machine runs (Ollama or a
+  // cloud key set up in the Stack). This is the default brain on desktop, so
+  // it gets the top row, with an honest "set one up" state routing to the
+  // Stack when nothing is configured yet.
+  const [desktopStatus, setDesktopStatus] = useState<DesktopStatus | 'error' | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (!isDesktop() || !bridge()) return;
+    let live = true;
+    bridge()!
+      .status()
+      .then((s) => live && setDesktopStatus(s))
+      .catch(() => live && setDesktopStatus('error'));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const engineModel =
+    desktopStatus && desktopStatus !== 'error'
+      ? desktopStatus.stack.orchestrator?.model
+      : undefined;
+
   const hasStack = Boolean(settings.stack);
   const claudeReady = cloudKeyPresent || isDesktop();
   const otherProviders = PROVIDERS.filter((p) => p.id !== 'anthropic' && connectedProviders[p.id]);
@@ -153,6 +177,29 @@ export function ModelSheet({
         {stage === 'root' ? (
           <>
             <Header title="Select model" />
+            {isDesktop() ? (
+              <div className="ms-group">
+                {desktopStatus === undefined ? (
+                  <Row main="This computer" sub="Checking your engine..." onClick={() => {}} />
+                ) : engineModel ? (
+                  <Row
+                    main="This computer"
+                    sub={`${engineModel}, running on this machine`}
+                    highlight
+                    onClick={() => onPick({ kind: 'desktop' })}
+                  />
+                ) : (
+                  <div className="ms-row ms-row-disabled">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">This computer</span>
+                      <button className="ms-sublink press-fb" onClick={() => goto('stack')}>
+                        No model set up yet. Build your stack
+                      </button>
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : null}
             {!isDesktop() ? (
               <div className="ms-group">
                 {!daemon ? (

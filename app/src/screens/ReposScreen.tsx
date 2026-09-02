@@ -32,7 +32,22 @@ export function ReposScreen() {
     exportBuffer,
     newConversation,
     showToast,
+    sourceReady,
+    setView,
   } = useApp();
+
+  // Open a coding session for a folder, but only if this computer's engine has
+  // a model to run it with; otherwise send the person to set one up rather than
+  // opening a chat that cannot answer. Returns whether a session was opened.
+  const openRepo = async (cwd: string, repoName: string): Promise<boolean> => {
+    if (!sourceReady({ kind: 'desktop' })) {
+      showToast('Pick a model for this computer first, then open the repo.');
+      setView('stack');
+      return false;
+    }
+    await newConversation({ kind: 'desktop', cwd, repoName });
+    return true;
+  };
   const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
   const [url, setUrl] = useState('');
   const [cloning, setCloning] = useState(false);
@@ -78,7 +93,7 @@ export function ReposScreen() {
       showToast(`${result.name} is ready.`);
       setUrl('');
       await refresh();
-      await newConversation({ kind: 'desktop', cwd: result.cwd, repoName: result.name });
+      await openRepo(result.cwd, result.name);
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err));
     } finally {
@@ -361,7 +376,7 @@ export function ReposScreen() {
                       const cwd = await bridge()!.pickFolder();
                       if (!cwd) return;
                       const name = cwd.split('/').pop() ?? cwd;
-                      await newConversation({ kind: 'desktop', cwd, repoName: name });
+                      await openRepo(cwd, name);
                     }}
                   >
                     Browse
@@ -384,9 +399,7 @@ export function ReposScreen() {
                       <button
                         className="btn ghost"
                         style={{ padding: '8px 14px' }}
-                        onClick={() =>
-                          void newConversation({ kind: 'desktop', cwd: ws.cwd, repoName: ws.name })
-                        }
+                        onClick={() => void openRepo(ws.cwd, ws.name)}
                       >
                         Chat
                       </button>

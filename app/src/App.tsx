@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { useApp } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
+import { useSheetFocusTrap } from './hooks/useSheetFocusTrap.js';
 import { hapticTick } from './lib/haptics.js';
 import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
@@ -40,6 +41,7 @@ export function App() {
   const theme = useApp((s) => s.settings.theme);
   const compact = useCompact();
   useAuthDeepLink();
+  useSheetFocusTrap();
 
   useEffect(() => {
     void init();

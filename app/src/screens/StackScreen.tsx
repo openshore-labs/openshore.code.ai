@@ -50,6 +50,9 @@ export function StackScreen() {
     showToast(result.detail);
     setPickFor(undefined);
     await refresh();
+    // The first-answer gate reads the store's copy of the engine status; keep
+    // it current so a chat opens the moment a model is chosen.
+    await useApp.getState().refreshDesktopStatus();
   };
 
   const stack = status?.stack;
