@@ -171,7 +171,31 @@ function NavIcon({ name }: { name: NavIconName }) {
   );
 }
 
-export function Sidebar({ drawer, closing }: { drawer?: boolean; closing?: boolean }) {
+export function Sidebar({
+  drawer,
+  closing,
+  dragX = null,
+  dragging = false,
+  viaGesture = false,
+  progress = null,
+  dragProps,
+}: {
+  drawer?: boolean;
+  closing?: boolean;
+  /** Inline translateX while the drawer follows the finger or settles. */
+  dragX?: number | null;
+  dragging?: boolean;
+  /** Opened by the edge swipe: skip the CSS entrance (the finger already did it). */
+  viaGesture?: boolean;
+  /** 0..1 for the scrim while dragging; null lets CSS own it. */
+  progress?: number | null;
+  dragProps?: {
+    onPointerDown: (e: React.PointerEvent) => void;
+    onPointerMove: (e: React.PointerEvent) => void;
+    onPointerUp: (e: React.PointerEvent) => void;
+    onPointerCancel: (e: React.PointerEvent) => void;
+  };
+}) {
   const { view, setView, setDrawer, settings, personalUnlockedNow } = useApp();
   const { configured: authConfigured, signedIn } = useAuth();
   // Free is chat only. The Marketplace needs Personal, so a locked pill signals
@@ -197,7 +221,11 @@ export function Sidebar({ drawer, closing }: { drawer?: boolean; closing?: boole
   };
 
   const body = (
-    <aside className={`sidebar${drawer ? ' drawer' : ''}${closing ? ' closing' : ''}`}>
+    <aside
+      className={`sidebar${drawer ? ' drawer' : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
+      style={dragX !== null ? { transform: `translateX(${dragX}px)` } : undefined}
+      {...(drawer ? dragProps : {})}
+    >
       <div className="sidebar-head">
         <span className="brand-lockup">
           <BrandMark size={26} />
@@ -268,7 +296,8 @@ export function Sidebar({ drawer, closing }: { drawer?: boolean; closing?: boole
   return (
     <>
       <div
-        className={`drawer-scrim${closing ? ' closing' : ''}`}
+        className={`drawer-scrim${closing ? ' closing' : ''}${dragging || progress !== null ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
+        style={progress !== null ? { opacity: progress } : undefined}
         onClick={() => setDrawer(false)}
       />
       {body}

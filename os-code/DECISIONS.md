@@ -309,3 +309,8 @@ execution contract. Newest at the bottom.
   each parent's state. The guard bans raw easing and sub-second raw durations
   in motion declarations; loops and delays of a second or more stay raw by
   design (the tokens do not reach that range).
+- **Room dissolve is a DOM snapshot, not a second React mount.** Keeping the
+  outgoing screen mounted for its exit would re-run its effects (catalog
+  fetches, vault loads) and could duplicate a streaming transcript. A cloned,
+  inert overlay costs nothing and fades for 220ms. Skipped under reduced
+  motion.

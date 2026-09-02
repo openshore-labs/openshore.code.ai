@@ -27,6 +27,13 @@ import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
 import { useCompact } from './hooks/useCompact.js';
 import { useExitPresence } from './hooks/useExitPresence.js';
+import { useRoomGhost } from './hooks/useRoomGhost.js';
+import { useDrawerGesture } from './hooks/useDrawerGesture.js';
+
+/** The drawer's rendered width (see .sidebar.drawer in theme.css). */
+function drawerWidth(): number {
+  return Math.min(310, window.innerWidth * 0.84);
+}
 
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();
@@ -39,6 +46,18 @@ export function App() {
   const toastPresence = useExitPresence(Boolean(toast));
   const lastToast = useRef(toast);
   if (toast) lastToast.current = toast;
+  // The outgoing room dissolves under the incoming one (a DOM snapshot, not a
+  // second mount), and the drawer follows the finger from the screen's edge.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+  useRoomGhost(mainRef, ghostRef);
+  const setDrawer = useApp((s) => s.setDrawer);
+  const gesture = useDrawerGesture({
+    enabled: compact && view !== 'onboarding',
+    open: drawerOpen,
+    setOpen: setDrawer,
+    width: drawerWidth(),
+  });
   useAuthDeepLink();
   useSheetFocusTrap();
 
@@ -199,10 +218,24 @@ export function App() {
       {/* Keyed on the view so switching rooms replays a soft fade-in instead of
           a hard cut. Same view (e.g. opening another chat) keeps the key, so a
           live transcript is never remounted mid-stream. */}
-      <div className="shell-main room-swap" key={view}>
+      <div className="shell-main room-swap" key={view} ref={mainRef}>
         {room}
       </div>
-      {compact && drawer.mounted ? <Sidebar drawer closing={drawer.closing} /> : null}
+      <div className="room-ghost-host" ref={ghostRef} aria-hidden="true" />
+      {compact && !drawerOpen && !gesture.peek ? (
+        <div className="edge-swipe-zone" {...gesture.edgeProps} aria-hidden="true" />
+      ) : null}
+      {compact && (drawer.mounted || gesture.peek) ? (
+        <Sidebar
+          drawer
+          closing={drawer.closing && !gesture.peek}
+          dragX={gesture.dragX}
+          dragging={gesture.dragging}
+          viaGesture={gesture.viaGesture}
+          progress={gesture.progress}
+          dragProps={gesture.drawerProps}
+        />
+      ) : null}
       <Paywall />
       {toastPresence.mounted ? (
         <div
