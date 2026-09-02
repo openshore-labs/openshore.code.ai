@@ -33,7 +33,13 @@ export const EMBEDDED_SITES: Record<string, EmbeddedSite> = {
       // The sign-in providers Codemagic offers, held to their sign-in pages.
       // Google refuses to finish OAuth in an embedded view; it is listed so
       // the person sees Google's own notice rather than a blank denial.
-      { host: 'github.com', paths: ['/login', '/sessions', '/session'] },
+      // GitHub is the likely route: sign-in and two-factor, the Codemagic
+      // GitHub App install page a repo connection lands on, and an org's
+      // SAML prompt. Still never a way to browse GitHub itself.
+      {
+        host: 'github.com',
+        paths: ['/login', '/sessions', '/session', '/apps/', '/settings/installations', '/orgs/'],
+      },
       { host: 'gitlab.com', paths: ['/oauth', '/users/sign_in', '/-/'] },
       { host: 'bitbucket.org', paths: ['/site/oauth2', '/account'] },
       { host: 'id.atlassian.com' },
