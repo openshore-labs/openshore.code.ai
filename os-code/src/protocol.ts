@@ -21,6 +21,10 @@ export {
 } from './market/schema.js';
 
 export { CAPABILITIES, SPECIALIST_ROLES, ROLE_CATEGORY, plainLabel } from './router/roles.js';
+// The UX standard every coding model builds to by default (app-side chat
+// specialists share it with the engine's agent).
+export { UX_LAWS, HOUSE_STANDARD, uxStandardPrompt } from './core/agent/uxStandard.js';
+export type { UxLaw } from './core/agent/uxStandard.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // Stack Health: pure payload types only. The aggregator that fills them in

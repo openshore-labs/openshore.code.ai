@@ -204,6 +204,14 @@ export const VaultSchema = z.object({
 // The whole config
 // ---------------------------------------------------------------------------
 
+// Premium UX out of the box (founder, 2026-09-02): the twenty laws of UX plus
+// the house bar ride into the coding agent's system prompt by default. A
+// project turns it off here, or adds its own rules in `notes`.
+const UxSchema = z.object({
+  standard: z.enum(['premium', 'off']).default('premium'),
+  notes: z.string().optional(),
+});
+
 export const ConfigSchema = z.object({
   providers: z
     .record(z.string(), ProviderEndpointSchema)
@@ -221,6 +229,7 @@ export const ConfigSchema = z.object({
   license: LicenseSchema.prefault({}),
   ui: UiSchema.prefault({}),
   vault: VaultSchema.prefault({}),
+  ux: UxSchema.prefault({}),
 });
 
 export type OscConfig = z.infer<typeof ConfigSchema>;
