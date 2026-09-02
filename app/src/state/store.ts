@@ -280,6 +280,15 @@ function vaultProviderId(settings: AppSettings): StorageProviderId {
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
 
+// Beta switch: all Personal pay gates are OFF. While this is false, the coding
+// agent, the Marketplace, and everything else Personal normally gates are free
+// for every signed-in (or signed-out) user, and the paywall never opens. The
+// whole gate is routed through personalUnlockedNow(), so this one flag covers
+// every call site. Flip to true to re-enable the $20 Personal gate; nothing else
+// needs to change. (Commercial team-seat billing is a separate gate,
+// growthGatedByBilling, and is not affected by this.)
+const PAY_GATES_ENABLED = false;
+
 // Throttle for the foreground entitlement re-check, so returning to the app many
 // times in a row never hammers the entitlement read.
 let lastEntitlementForegroundAt = 0;
@@ -1474,6 +1483,8 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     personalUnlockedNow() {
+      // Beta: gates off, everyone is treated as unlocked (see PAY_GATES_ENABLED).
+      if (!PAY_GATES_ENABLED) return true;
       return personalUnlocked(get().userEntitlement, get().entitlement);
     },
 

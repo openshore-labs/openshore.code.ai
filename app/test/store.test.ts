@@ -223,22 +223,17 @@ describe('entitlement gate (billing A1)', () => {
     expect(personalUnlocked(undefined, undefined)).toBe(false);
   });
 
-  it('free is chat only: coding + marketplace gate to the paywall', async () => {
+  it('beta: pay gates are off, coding + marketplace are free for everyone', () => {
+    // PAY_GATES_ENABLED is false for the beta, so with no entitlement at all the
+    // user is still treated as unlocked and nothing routes to the paywall.
     useApp.setState({ userEntitlement: undefined, entitlement: undefined, paywall: undefined });
-    expect(useApp.getState().personalUnlockedNow()).toBe(false);
+    expect(useApp.getState().personalUnlockedNow()).toBe(true);
 
-    // Marketplace navigation is intercepted; the view does not change.
+    // Marketplace navigation is NOT intercepted, and no paywall opens.
     useApp.setState({ view: 'chat' });
     useApp.getState().setView('marketplace');
-    expect(useApp.getState().view).toBe('chat');
-    expect(useApp.getState().paywall).toBe('marketplace');
-
-    // A coding source (desktop) opens the paywall and creates no conversation.
-    useApp.setState({ paywall: undefined });
-    const before = Object.keys(useApp.getState().conversations).length;
-    await useApp.getState().newConversation({ kind: 'desktop', cwd: '/x', repoName: 'x' });
-    expect(useApp.getState().paywall).toBe('coding');
-    expect(Object.keys(useApp.getState().conversations).length).toBe(before);
+    expect(useApp.getState().view).toBe('marketplace');
+    expect(useApp.getState().paywall).toBeUndefined();
   });
 
   it('an active Personal entitlement unlocks coding + marketplace', async () => {
