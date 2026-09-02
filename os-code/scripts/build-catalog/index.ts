@@ -15,6 +15,7 @@ import { CatalogSchema } from '../../src/market/schema.js';
 import { enrichCatalog } from './enrich.js';
 import { regressionGate, validateCatalog } from './gate.js';
 import { gatherMetadata, HuggingFaceSource } from './sources.js';
+import { derivePresets } from './presets.js';
 import type { BuildInputs, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -97,6 +98,14 @@ async function main(): Promise<void> {
   for (const drop of drops) {
     console.log(`dropped ${drop.id}: ${drop.reason}`);
   }
+
+  // Prefab stacks reassess themselves from the current model set: derive them
+  // from whatever models survived enrichment and the current eval scores, so
+  // they stay current with no hand-authoring. Fall back to the seed's presets
+  // only if derivation yields nothing (an empty or unexpected model set).
+  const derived = derivePresets(catalog.models, evals);
+  if (derived.length) catalog.presets = derived;
+
   console.log(`kept ${catalog.models.length} models, ${catalog.presets.length} presets`);
 
   // Validate against the schema, then run the regression gate. A breach fails

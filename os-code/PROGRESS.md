@@ -138,6 +138,37 @@ how I want OpenShore oriented to serve the user"):**
   on by default, off in config, notes ride along. Standing rule added to
   `CLAUDE.md`; Harbor knows it.
 
+## Current state (2026-09-02, prefab stacks in My Stack + self-refresh)
+
+Founder: the marketplace should stay current from live sources with no manual
+intervention, and My Stack should offer downloadable prefab stacks that
+constantly reassess as models change. Most of the plumbing already existed and
+is now surfaced and closed out:
+- **Already there:** the catalog is fetched from a live feed with a 24h cache
+  and stale/bundled fallback (`market/catalog.ts`), and the build-catalog CI
+  already runs on a schedule (`catalog.yml` cron, twice weekly) plus on push,
+  re-fetching HF metadata and re-ranking. So the marketplace already refreshes
+  itself.
+- **Prefab stacks in My Stack (new).** StackScreen reads the catalog's presets
+  and shows them as one-tap "Download this stack" cards (total size, VRAM
+  hint), so a person fills their whole stack without opening the Marketplace.
+  Because presets ride the live feed, they refresh on their own.
+  `app/src/lib/presets.ts` (pure helpers) + `app/test/presets.test.ts`.
+- **Presets reassess themselves (new).** The builder now DERIVES presets from
+  the current model set and eval scores (`build-catalog/presets.ts`): a pocket
+  stack for the phone, a starter, a coding stack with embedding + fast
+  specialists, and a performance stack led by the highest-scoring coder. So the
+  prefab stacks track what is available with no hand-authoring; the regression
+  gate validates, and it falls back to the seed's presets if derivation is
+  empty. `test/catalog.builder.presets.test.ts`.
+- **Still open (offered):** live discovery of newly-released GGUF models so the
+  browse list itself grows without editing the seed. Held for the same
+  dead-button reason as before (auto-classifying a new model's size and role
+  needs care); install-by-name covers getting any new model today, and the
+  scheduled rebuild keeps ranking fresh.
+Gates green: os-code build, typecheck, lint, 312 tests; app typecheck, lint,
+296 tests.
+
 ## Current state (2026-09-02, marketplace is open-ended + Kimi)
 
 Founder: "why aren't there any Kimi models, can we expand past Hugging Face to
