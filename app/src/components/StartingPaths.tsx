@@ -8,8 +8,17 @@ import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
 import { HARBOR_APPROX_LABEL, HARBOR_MODEL_ID } from '../lib/harbor.js';
 import { HARBOR_MINI_APPROX_LABEL, HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
+import { SettingsRow } from './SettingsRow.js';
 
-export function StartingPaths({ context }: { context: 'onboarding' | 'settings' }) {
+export function StartingPaths({
+  context,
+  variant = 'cards',
+}: {
+  context: 'onboarding' | 'settings';
+  /** `cards` is the onboarding wall; `rows` is the settings ledger's list,
+   *  the same paths as one-line rows. One source, two renderings. */
+  variant?: 'cards' | 'rows';
+}) {
   const {
     setView,
     saveSettings,
@@ -185,6 +194,127 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
       )}
     </div>
   );
+
+  if (variant === 'rows') {
+    const guideRow = (
+      id: string,
+      name: string,
+      size: string,
+      ready: boolean | undefined,
+      dl: typeof harborDownload,
+      begin: () => void,
+      cancel: () => void,
+    ) => {
+      if (ready) {
+        return (
+          <SettingsRow
+            label={`Chat with ${name}`}
+            sub="Ready on this device"
+            value="Open"
+            onClick={() => void getGuideAndGo(id)}
+          />
+        );
+      }
+      if (dl?.failed) {
+        return (
+          <SettingsRow
+            label={`Get ${name}`}
+            sub={`${dl.label} Check your connection.`}
+            value="Retry"
+            onClick={() => void getGuideAndGo(id)}
+          />
+        );
+      }
+      if (dl) {
+        return (
+          <SettingsRow
+            label={`Getting ${name}`}
+            sub={
+              <span className="settings-progress">
+                <span className="progress-track">
+                  <span
+                    className={`progress-fill${dl.indeterminate ? ' indeterminate' : ''}`}
+                    style={
+                      dl.indeterminate ? undefined : { transform: `scaleX(${dl.percent / 100})` }
+                    }
+                  />
+                </span>
+                {dl.label}
+              </span>
+            }
+            value="Cancel"
+            onClick={cancel}
+          />
+        );
+      }
+      return (
+        <SettingsRow
+          label={`Get ${name}`}
+          sub="A guide that runs on this device"
+          value={size}
+          onClick={begin}
+        />
+      );
+    };
+    return (
+      <>
+        {!isDesktop()
+          ? guideRow(
+              HARBOR_MODEL_ID,
+              'Harbor',
+              HARBOR_APPROX_LABEL,
+              settings.harborReady,
+              harborDownload,
+              beginHarborWithIntro,
+              cancelHarbor,
+            )
+          : null}
+        {!isDesktop()
+          ? guideRow(
+              HARBOR_MINI_MODEL_ID,
+              'Harbor Mini',
+              HARBOR_MINI_APPROX_LABEL,
+              settings.harborMiniReady,
+              harborMiniDownload,
+              beginHarborMiniWithIntro,
+              cancelHarborMini,
+            )
+          : null}
+        {isDesktop() ? (
+          <>
+            <SettingsRow
+              label="Build your stack"
+              sub="A model on this machine, through Ollama"
+              onClick={() => void go('stack')}
+            />
+            <SettingsRow
+              label="Open a repository"
+              sub="Read, edit, and commit with your approval"
+              onClick={() => void go('repos')}
+            />
+          </>
+        ) : (
+          <>
+            <SettingsRow
+              label="Connect your computer"
+              sub="Your model, from anywhere, over Tailscale"
+              onClick={() => void go('pair')}
+            />
+            <SettingsRow
+              label="Browse pocket models"
+              sub="A bigger model that runs on this iPhone"
+              onClick={() => void go('marketplace')}
+            />
+          </>
+        )}
+        <SettingsRow
+          label="Connect your own key"
+          sub="Claude, OpenAI, or Gemini, at your provider's price"
+          onClick={() => void go('connections')}
+        />
+      </>
+    );
+  }
 
   return (
     <>

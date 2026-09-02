@@ -6190,3 +6190,139 @@ textarea {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Settings, the ledger (Creative Studio, 2026-09-02): serif group heads over
+   inset cards, one row per thing, value on the right, everything deeper in a
+   sheet. Type carries the hierarchy; no icons. Groups arrive staggered.
+   --------------------------------------------------------------------------- */
+.settings-group {
+  margin-top: 22px;
+  animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--dur-1) / 3);
+}
+.settings-group:first-of-type {
+  margin-top: 4px;
+}
+.settings-group-head {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin: 0 0 8px 4px;
+}
+.settings-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  overflow: hidden;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  transition: background var(--dur-1) var(--ease-accel);
+}
+.settings-row + .settings-row {
+  border-top: 1px solid var(--border);
+  /* The hairline is inset from the left so rows read as one ledger. */
+  border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
+}
+button.settings-row:active {
+  background: var(--surface);
+}
+.settings-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-row-label {
+  font-size: 15px;
+  font-weight: 500;
+}
+.settings-row-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-row-value {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.settings-row.danger .settings-row-label {
+  color: var(--danger);
+}
+.settings-row .segmented {
+  flex-shrink: 0;
+}
+.settings-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-progress .progress-track {
+  width: 96px;
+  margin: 0;
+}
+.settings-sheet-head {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 500;
+  margin: 16px 0 6px;
+}
+.settings-foot {
+  text-align: center;
+  margin-top: 28px;
+  line-height: 1.6;
+}
+.settings .lead {
+  text-wrap: pretty;
+}
+
+/* The switch: a track that tints, a knob that slides on transform. */
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background var(--dur-3) var(--ease-standard);
+}
+.switch.on {
+  background: var(--local);
+}
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.18);
+  transition: transform var(--dur-4) var(--ease-standard);
+}
+.switch.on .switch-knob {
+  transform: translateX(18px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-group {
+    animation: none;
+  }
+}

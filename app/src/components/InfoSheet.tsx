@@ -9,7 +9,17 @@ import { hapticTick } from '../lib/haptics.js';
 
 const DISMISS_THRESHOLD = 90;
 
-export function InfoSheet({ title, children }: { title: string; children: ReactNode }) {
+export function InfoSheet({
+  title,
+  children,
+  renderTrigger,
+}: {
+  title: string;
+  children: ReactNode;
+  /** Replace the default disclosure card with your own opener (a settings
+   *  row, say). Receives the open function. */
+  renderTrigger?: (open: () => void) => ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -54,14 +64,18 @@ export function InfoSheet({ title, children }: { title: string; children: ReactN
 
   return (
     <>
-      <button
-        type="button"
-        className="card card-disclosure press-fb press-fb--row"
-        onClick={() => setOpen(true)}
-      >
-        <h3>{title}</h3>
-        <span className="disclosure-chevron" aria-hidden="true" />
-      </button>
+      {renderTrigger ? (
+        renderTrigger(() => setOpen(true))
+      ) : (
+        <button
+          type="button"
+          className="card card-disclosure press-fb press-fb--row"
+          onClick={() => setOpen(true)}
+        >
+          <h3>{title}</h3>
+          <span className="disclosure-chevron" aria-hidden="true" />
+        </button>
+      )}
       {open ? (
         <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
           <div

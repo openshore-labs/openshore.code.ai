@@ -340,3 +340,9 @@ execution contract. Newest at the bottom.
   the whole allow list, with sign-in providers held to their sign-in paths,
   so the view can never become a browser. Desktop only; iOS would need a
   WKWebView plugin with the same fence, and Google OAuth would still refuse.
+- **Settings rows carry no icons.** Type carries the hierarchy (serif group
+  heads, label, value); a glyph set would be a third visual language next to
+  the serif and the mono. Creative Studio's call, founder-directed build.
+- **The starting paths render two ways from one component.** Cards in
+  onboarding, rows in the Settings sheet (`variant="rows"`), so the copy and
+  the download states never drift.
