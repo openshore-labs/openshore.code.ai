@@ -57,8 +57,14 @@ Pipeline, in order:
    read each repo's metadata (file list with sizes, license tag, gated flag),
    and turn the ones that clear the honesty bar into entries that join the seed
    before enrichment. The bar: public, not gated, a license on the allow-list, a
-   single-file GGUF at a supported quant (Q4_K_M preferred), under 40 GB, no
-   denylisted name. An entry is labelled `discovery: {source, repo, foundAt}`,
+   single-file GGUF at a supported quant (Q4_K_M preferred), 0.3 to 40 GB, no
+   denylisted name (guardrail removals under any spelling, adult content,
+   speech models). The newest axis is limited to `TRUSTED_PUBLISHERS` (the
+   labs and the quantizers the community pulls from), since a day-old repo has
+   no numbers yet; the trending axis is open but needs 100+ downloads and
+   shelves trusted publishers first. One entry per underlying model: the same
+   weights from several quantizers, and imatrix "i1" twins, collapse to the
+   first in shelf order (`baseKey`). An entry is labelled `discovery: {source, repo, foundAt}`,
    is never `orchestratorCapable`, carries no ratings, ranks after every seed
    model, and pulls via `ollama pull hf.co/<repo>:<QUANT>` (small ones also get
    a phone download straight from huggingface.co). The seed wins an id

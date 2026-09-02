@@ -5,6 +5,7 @@
 // discoveries carry forward; and enrich keeps them as unrated.
 import { describe, expect, it } from 'vitest';
 import {
+  baseKey,
   classify,
   discoverModels,
   pickGguf,
@@ -112,25 +113,80 @@ describe('discoverModels', () => {
 
   it('unions trending and newest, seed wins a collision, and the cap holds', async () => {
     const trending = [repo('a/One-GGUF'), repo('a/Two-GGUF')];
-    const newest = [repo('a/Two-GGUF'), repo('a/Three-GGUF')];
+    const newest = [repo('a/Two-GGUF'), repo('unsloth/Three-GGUF')];
     const details = Object.fromEntries(
-      ['a/One-GGUF', 'a/Two-GGUF', 'a/Three-GGUF'].map((id) => [id, detail(id)]),
+      ['a/One-GGUF', 'a/Two-GGUF', 'unsloth/Three-GGUF'].map((id) => [id, detail(id)]),
     );
     const c = client(trending, newest, details);
     const { models, skipped } = await discoverModels(c, {
       today: '2026-09-02',
       reserved: new Set(['hf-a-one']),
-      cap: 1,
+      cap: 2,
     });
     expect(skipped.some((s) => s.repo === 'a/One-GGUF' && /seed/.test(s.reason))).toBe(true);
-    expect(models.map((m) => m.id)).toEqual(['hf-a-two']);
+    // Trusted new drops shelve ahead of untrusted trending, so the unsloth
+    // drop leads; a/One is reserved by the seed; a/Two fills the cap.
+    expect(models.map((m) => m.id)).toEqual(['hf-unsloth-three', 'hf-a-two']);
+  });
+
+  it('newest axis is trusted publishers only; trending needs real downloads', async () => {
+    const trending = [repo('a/Quiet-GGUF', { downloads: 3 }), repo('a/Loud-GGUF')];
+    const newest = [repo('nobody/Fresh-GGUF'), repo('bartowski/Fresh2-GGUF')];
+    const details = Object.fromEntries(
+      ['a/Loud-GGUF', 'bartowski/Fresh2-GGUF'].map((id) => [id, detail(id)]),
+    );
+    const c = client(trending, newest, details);
+    const { models, skipped } = await discoverModels(c, { today: '2026-09-02' });
+    expect(models.map((m) => m.id)).toEqual(['hf-bartowski-fresh2', 'hf-a-loud']);
+    expect(skipped.map((s) => s.repo)).toEqual(['a/Quiet-GGUF', 'nobody/Fresh-GGUF']);
+    expect(c.detailCalls).toEqual(['bartowski/Fresh2-GGUF', 'a/Loud-GGUF']);
+  });
+
+  it('keeps one entry per underlying model across quantizers and imatrix twins', async () => {
+    const trending = [
+      repo('bartowski/Qwen3-8B-GGUF'),
+      repo('mradermacher/Qwen3-8B-i1-GGUF'),
+      repo('unsloth/Qwen3-8B-GGUF'),
+      repo('mradermacher/Qwen3-8B-GGUF'),
+    ];
+    const details = Object.fromEntries(trending.map((r) => [r.id, detail(r.id)]));
+    const { models, skipped } = await discoverModels(client(trending, [], details), {
+      today: '2026-09-02',
+    });
+    expect(models.map((m) => m.id)).toEqual(['hf-bartowski-qwen3-8b']);
+    expect(skipped).toHaveLength(3);
+    expect(skipped.every((s) => /duplicate/.test(s.reason))).toBe(true);
+  });
+
+  it('rejects guardrail-removal spellings, speech models, and toy files', async () => {
+    const trending = [
+      repo('a/Qwen3-8B-OBLITERATED-GGUF'),
+      repo('a/Llama-Unleashed-GGUF'),
+      repo('a/Model-heretic-GGUF'),
+      repo('a/mongolian-stt-asr-GGUF'),
+      repo('a/Toy-GGUF'),
+    ];
+    const details = {
+      'a/Toy-GGUF': detail('a/Toy-GGUF', {
+        siblings: [{ rfilename: 'toy-Q4_K_M.gguf', size: 1e8 }],
+      }),
+    };
+    const { models, skipped } = await discoverModels(client(trending, [], details), {
+      today: '2026-09-02',
+    });
+    expect(models).toEqual([]);
+    expect(skipped.map((s) => s.repo)).toEqual(trending.map((r) => r.id));
+    expect(skipped[4]!.reason).toMatch(/too small/);
   });
 
   it('carries forward previous discoveries with their first-seen date', async () => {
     const c = client([repo('a/Fresh-GGUF')], [], { 'a/Fresh-GGUF': detail('a/Fresh-GGUF') });
-    const first = await discoverModels(client([repo('a/Old-GGUF')], [], {
-      'a/Old-GGUF': detail('a/Old-GGUF'),
-    }), { today: '2026-08-01' });
+    const first = await discoverModels(
+      client([repo('a/Old-GGUF')], [], {
+        'a/Old-GGUF': detail('a/Old-GGUF'),
+      }),
+      { today: '2026-08-01' },
+    );
     const { models } = await discoverModels(c, { today: '2026-09-02', previous: first.models });
     expect(models.map((m) => m.id)).toEqual(['hf-a-fresh', 'hf-a-old']);
     expect(models[1]!.discovery?.foundAt).toBe('2026-08-01');
@@ -186,6 +242,14 @@ describe('discovery helpers', () => {
     expect(classify('a/SmolLM3-3B-GGUF', [], 1.9)).toEqual(['reasoning', 'fast']);
   });
 
+  it('baseKey collapses quantizer and imatrix variants', () => {
+    expect(baseKey('bartowski/Qwen3-8B-GGUF')).toBe('qwen3-8b');
+    expect(baseKey('mradermacher/Qwen3-8B-i1-GGUF')).toBe('qwen3-8b');
+    expect(baseKey('unsloth/Qwen3-8B-GGUF')).toBe('qwen3-8b');
+    expect(baseKey('a/Spark-X2.5-4B-Q8_0-GGUF')).toBe('spark-x2-5-4b');
+    expect(baseKey('a/Other-9B-GGUF')).not.toBe(baseKey('a/Other-27B-GGUF'));
+  });
+
   it('slugId is stable and prefixed', () => {
     expect(slugId('bartowski/Qwen3-8B-GGUF')).toBe('hf-bartowski-qwen3-8b');
     expect(slugId('unsloth/gemma-3-4b-it-GGUF')).toBe('hf-unsloth-gemma-3-4b-it');
@@ -199,7 +263,11 @@ describe('discovered models through the build', () => {
     tagline: 'x',
     categories: ['coding', 'reasoning'],
     orchestratorCapable: true,
-    source: { kind: 'ollama', ref: 'qwen2.5-coder:7b', pullCommand: 'ollama pull qwen2.5-coder:7b' },
+    source: {
+      kind: 'ollama',
+      ref: 'qwen2.5-coder:7b',
+      pullCommand: 'ollama pull qwen2.5-coder:7b',
+    },
     sizeGB: 4.7,
     quantization: 'Q4_K_M',
     contextTokens: 32768,

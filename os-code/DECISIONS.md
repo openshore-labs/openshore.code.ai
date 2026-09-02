@@ -268,3 +268,12 @@ execution contract. Newest at the bottom.
   from Hugging Face, license fail-closed via the same allow-list, gated and
   denylisted repos out, one single-file GGUF at a known quant, cap 25 with
   carry-forward so the shelf never collapses. The cron went daily.
+- **Discovery quality bar, tightened after the first live crop.** The first
+  live run shelved abliterated and merge variants, a speech model, four
+  uploads of the same weights, and a 0.1 GB file. Rather than hand-curate,
+  the bar moved: the newest axis is trusted publishers only (labs plus the
+  quantizers the community pulls from), trending needs 100+ downloads and
+  shelves trusted first, one entry per underlying model (quantizer and
+  imatrix twins collapse), 0.3 GB floor, and the denylist covers guardrail
+  removals under every spelling seen plus speech. Names, not ratings, so no
+  star is ever invented; a wrong call costs a mis-shelving, not a lie.
