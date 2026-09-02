@@ -1581,77 +1581,103 @@ textarea {
 }
 
 .send-btn.stop {
-  background: var(--surface-hover);
-  color: var(--ink);
-  border: 1px solid var(--border-strong);
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
 }
 
-/* Five-control composer row: add, model pill, effort pill, spacer, mic, send.
-   The rhythm of the Claude Code chat bar. */
+/* The composer row, in the Claude app's rhythm: add, the model, the mode,
+   spacer, mic, send. Everything but send is quiet type on the field itself,
+   no strokes, no fills at rest; a soft fill answers the press. One filled
+   control on the row, so the eye knows where the action is. */
 .composer-add {
   width: 32px;
   height: 32px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 20px;
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 1;
   color: var(--ink-soft);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: transparent;
   flex-shrink: 0;
+  transition: background var(--dur-1) var(--ease-accel);
 }
-.composer-add:hover {
-  background: var(--surface-hover);
+.composer-add:hover,
+.composer-add:active {
+  background: var(--surface);
 }
 .composer-add.muted {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .composer-pill {
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 42%;
-  transition: background var(--dur-1) var(--ease-standard);
-}
-.composer-pill:hover {
-  background: var(--surface-hover);
-}
-.composer-pill-term {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 500;
+  color: var(--ink-soft);
+  background: transparent;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 44%;
+  transition: background var(--dur-1) var(--ease-accel);
+}
+.composer-pill:hover,
+.composer-pill:active {
+  background: var(--surface);
+}
+.composer-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-pill-chevron {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.6;
+}
+.composer-pill-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--local);
+}
+.composer-pill-mode {
+  flex-shrink: 0;
+  max-width: none;
+}
+.composer-pill-mode.mode-plan .composer-pill-dot {
+  background: var(--cloud);
+}
+.composer-pill-mode.mode-bypassPermissions .composer-pill-dot {
+  background: var(--warn, #b7791f);
+}
+.composer-pill-mode.mode-default .composer-pill-dot {
+  background: var(--border-strong);
+}
+.composer-pill-glyph {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--local);
 }
 .composer-pill-term.active {
   background: var(--local-soft);
-  border-color: var(--local);
   color: var(--local);
 }
 .send-btn.terminal {
   background: var(--local);
   font-family: var(--font-mono);
-}
-.composer-pill-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--ink-soft);
-  font-weight: 500;
-  flex-shrink: 0;
-  max-width: none;
-}
-.pill-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  color: var(--local);
-  letter-spacing: -0.06em;
 }
 
 .composer-row-spacer {
@@ -1664,17 +1690,20 @@ textarea {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  background: transparent;
   flex-shrink: 0;
+  transition:
+    background var(--dur-1) var(--ease-accel),
+    color var(--dur-2) var(--ease-standard);
 }
-.composer-mic:hover {
-  background: var(--surface-hover);
+.composer-mic:hover,
+.composer-mic:active {
+  background: var(--surface);
 }
 .composer-mic.listening {
   background: var(--local-soft);
-  border-color: var(--local);
+  color: var(--local);
 }
 
 /* Attachment chips above the field. */
@@ -5840,15 +5869,8 @@ textarea {
   white-space: nowrap;
 }
 .send-btn.queue {
-  background: var(--surface);
+  background: var(--surface-hover);
   color: var(--ink);
-  border: 1px dashed var(--border-strong);
-}
-.composer-pill-mode.mode-plan {
-  color: var(--cloud);
-}
-.composer-pill-mode.mode-bypassPermissions {
-  color: var(--warn, #b7791f);
 }
 .mode-row-icon.mode-bypassPermissions {
   color: var(--warn, #b7791f);

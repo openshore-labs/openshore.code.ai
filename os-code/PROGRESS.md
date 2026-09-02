@@ -3,6 +3,18 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, the composer row is quiet type)
+
+Founder, from a screenshot: the buttons in the chat box look weird, not
+premium. Four stroked chips at four widths, a `</>` glyph, a truncated
+"Claude · Fa..." label. Now, in the Claude app's rhythm: everything but send
+is quiet type on the field itself, no strokes or fills at rest, a soft fill
+on press. The add and mic are bare glyphs; the model pill is a short name
+("Claude", the repo name, "Harbor") with a small chevron; the mode pill is a
+colored dot plus the mode name (teal accept-edits, blue plan, amber bypass,
+grey default); Stop is a filled ink circle; Queue a soft fill. One filled
+control on the row, so the eye knows where the action is.
+
 ## Current state (2026-09-02, Settings is a ledger)
 
 Founder, from a screen recording: make Settings delightful, with the
