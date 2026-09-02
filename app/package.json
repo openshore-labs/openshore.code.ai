@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "lint": "eslint src electron --ext .ts,.tsx --max-warnings 0",
     "test": "vitest run",
+    "postinstall": "electron-rebuild -f -w node-pty -m ../os-code || echo 'electron-rebuild skipped: node-pty stays built for system Node; the desktop terminal needs it rebuilt for Electron, run pnpm --filter oscode-app rebuild:native'",
+    "rebuild:native": "electron-rebuild -f -w node-pty -m ../os-code",
     "desktop": "vite build && tsc -p electron/tsconfig.json && electron .",
     "package:linux": "vite build && tsc -p electron/tsconfig.json && electron-builder --linux",
     "package:mac": "vite build && tsc -p electron/tsconfig.json && electron-builder --mac",
@@ -45,6 +47,7 @@
   "devDependencies": {
     "@capacitor/cli": "8.5.0",
     "@capacitor/ios": "8.5.0",
+    "@electron/rebuild": "4.2.0",
     "@types/node": "20.19.43",
     "@types/qrcode": "1.5.6",
     "@types/react": "^18.3.31",

@@ -116,9 +116,16 @@ Verify: a build reaches TestFlight and installs on your device.
 Why: today only internal testers you add manually can receive a build.
 
 ### C4. [VERIFY] First desktop run + closed-beta artifacts
-- On your Pop!_OS machine: `cd ~/openshore.code.ai && pnpm install`, then
-  `pnpm --filter os-code build`, then from `app/`: `pnpm run desktop` to
-  confirm the app launches against real Ollama.
+- On your Pop!_OS machine: `cd ~/openshore.code.ai && pnpm install`. This now
+  builds Electron and node-pty automatically (the allowlist in the root
+  package.json) and rebuilds node-pty for Electron's ABI in the app's
+  postinstall; if that last step prints "electron-rebuild skipped", run
+  `pnpm --filter oscode-app rebuild:native` once (it needs python3, make, g++).
+- Then `pnpm desktop` from the repo root (builds the engine, then launches
+  the app). The Electron shell itself is proven to boot headless in the
+  sandbox; what you verify is the real path: Your stack picks an Ollama model
+  (or a Claude key under Cloud Connections), Repositories opens a folder,
+  and the agent reads, edits with an approval diff, runs, and commits.
 - To produce a beta installer: `pnpm run package:linux` (also `package:mac` /
   `package:win` on those OSes). These are unsigned for closed beta, so first
   launch shows a Gatekeeper/SmartScreen warning; testers use right-click Open

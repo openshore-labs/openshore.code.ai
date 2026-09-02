@@ -10,5 +10,13 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "desktop": "pnpm --filter os-code build && pnpm --filter oscode-app desktop"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "node-pty"
+    ]
   }
 }

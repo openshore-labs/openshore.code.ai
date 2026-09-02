@@ -3,6 +3,54 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, the desktop coding path works)
+
+**Founder ask: "every feature fully functioning so I can start coding on
+OpenShore."** This pass made the desktop (Pop!_OS) path real and proved it as
+far as a headless session can, all on `main`:
+
+- **`pnpm install` now actually builds the natives.** pnpm 10 skips every
+  dependency build script unless allowlisted, so a fresh clone had NO Electron
+  binary and NO node-pty, and `pnpm desktop` would have died on first run.
+  Root `package.json` now carries `pnpm.onlyBuiltDependencies` (electron,
+  node-pty, esbuild, electron-winstaller). The app's `postinstall` runs
+  `electron-rebuild` for node-pty so the desktop terminal loads inside
+  Electron's ABI (`rebuild:native` re-runs it). Note the inherent split: a
+  node-pty built for Electron serves the desktop app and its in-app daemon;
+  the `osc` CLI (system Node) then reports its terminal as not installed,
+  honestly, via TerminalUnavailable.
+- **The real Electron shell boots headless** (`OSC_SMOKE=1` under xvfb: `page
+  loaded; window.oscode is object`) on today's full build, with the Electron
+  zip side-loaded into `@electron/get`'s cache (the sandbox proxy cut Node's
+  fetch; curl through the proxy worked, checksum verified). electronjs.org
+  (Electron headers) is blocked by org policy here, so the Electron-ABI
+  node-pty rebuild could not be verified in this sandbox; it runs on the
+  founder's machine at install.
+- **First-run wall removed.** A fresh desktop with no model configured used to
+  throw the engine's CLI wording ("run osc init") when a folder was opened, and
+  still created a dead chat. Now: the store caches the engine status
+  (`desktopStatus`, refreshed on init and after Stack changes); `sourceReady`
+  on Electron means "an orchestrator is configured"; Repositories routes to
+  Your stack with a plain toast when none is; the desktop error text is
+  app-appropriate. The desktop empty chat now defaults to the engine on this
+  machine (`{kind:'desktop'}`), and the model sheet has a top "This computer"
+  row (engine model, or "No model set up yet. Build your stack").
+- **Hermetic engine-host test** (`app/test/engineHost.test.ts`, temp
+  OSC_HOME, no Electron): fresh install reports unconfigured and refuses a
+  session; with a model configured a session opens for a folder; with Ollama
+  unreachable a message ends in an honest task-done error, never a hang or a
+  fabricated answer. The daemon test now injects a no-pty TerminalManager
+  (additive `terminals` option on startDaemon) so the 503 path is reproducible
+  on machines that DO have node-pty built.
+- **Polish and hardening from the P0 list:** a global sheet focus trap
+  (`useSheetFocusTrap`, wired in App, guarded by test); "Keep this chat" in
+  the header of a quick chat once it has three user turns; deep links matched
+  by exact scheme+host (no substring routing); auth callbacks bound to the
+  email the app sent the link to and refused when the token yields no user
+  (the CSRF binding a custom oscode:// scheme cannot get from a browser
+  origin); pure-web `?checkout=success` reconciles entitlement on boot.
+Gates green: app typecheck/lint, app 275 tests (46 files), os-code 302 tests.
+
 ## Current state (2026-08-31, P0 beta remediation)
 
 **Full P0 beta audit + first four remediation phases landed on the feature

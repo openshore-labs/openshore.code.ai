@@ -152,7 +152,7 @@ import {
   type StoredFileMeta,
 } from '../lib/gitos/index.js';
 import { normalizeNotePath } from '../lib/vault.js';
-import { bridge } from '../lib/electronBridge.js';
+import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   isDesktop,
@@ -292,6 +292,12 @@ const PAY_GATES_ENABLED = false;
 // Throttle for the foreground entitlement re-check, so returning to the app many
 // times in a row never hammers the entitlement read.
 let lastEntitlementForegroundAt = 0;
+
+// The email the app most recently sent an auth link to (magic link, reset,
+// confirmation). completeAuthCallback only accepts a callback for that account,
+// which is the CSRF/state binding a custom oscode:// scheme cannot get from a
+// browser origin. Cleared once a callback is accepted.
+let pendingAuthEmail: string | undefined;
 const unsubscribers = new Map<string, () => void>();
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
@@ -333,6 +339,11 @@ interface AppState {
   /** True after a password-reset link signs the user in, so the UI prompts them
    *  to set a new password before doing anything else. Cleared once they do. */
   passwordRecovery?: boolean;
+  /** The desktop app's own engine status (Electron only): whether a model is
+   *  configured on this machine, which the first-answer gate reads so a chat is
+   *  never opened against an engine that cannot start. Refreshed on init and
+   *  after the Stack changes. */
+  desktopStatus?: DesktopStatus;
   /** The org's billing entitlement (Stripe webhook is the writer), when known. */
   entitlement?: Entitlement;
   /** The signed-in individual's Personal entitlement (Stripe or Apple IAP is the
@@ -392,6 +403,8 @@ interface AppState {
    *  The empty-state composer checks this before starting a chat, so a first
    *  message is never sent into a brain that cannot answer. */
   sourceReady(source: ConversationSource): boolean;
+  /** Re-read the desktop engine's status (Electron only; no-op elsewhere). */
+  refreshDesktopStatus(): Promise<void>;
   /** Buy Personal: Apple In-App Purchase on iOS, Stripe web checkout elsewhere.
    *  Resolves once the purchase flow has been handed off (IAP sheet shown, or
    *  the browser opened); entitlement lands via refreshEntitlement. */
@@ -408,6 +421,9 @@ interface AppState {
   /** Open a fresh, empty chat (the source picker decides who answers). A
    *  project is auto-created on first save, so this never dead-ends. */
   startNewChat(): void;
+  /** Promote the active quick (throwaway) chat to a saved one, in the active
+   *  project, so a conversation that grew worth keeping is not lost on exit. */
+  keepQuickChat(): Promise<void>;
   /** A throwaway chat with the stack for a quick lookup. Not saved. */
   quickChat(): Promise<string>;
   /** Send text once the active conversation's driver has attached. */
@@ -842,7 +858,19 @@ export const useApp = create<AppState>((set, get) => {
           let sessionId = conv.source.sessionId;
           let journal: Array<{ seq: number; event: DriverEvent }> | undefined;
           if (!sessionId) {
-            const created = await bridge()!.createSession(conv.source.cwd);
+            let created: { id: string };
+            try {
+              created = await bridge()!.createSession(conv.source.cwd);
+            } catch (err) {
+              // The engine's own wording is a CLI instruction ("run osc init").
+              // In the app the fix is a screen away, so say that instead.
+              const msg = err instanceof Error ? err.message : String(err);
+              throw new Error(
+                /orchestrator/i.test(msg)
+                  ? 'No model is set up on this computer yet. Open Your stack and pick one.'
+                  : msg,
+              );
+            }
             sessionId = created.id;
             conv.source.sessionId = sessionId;
           } else {
@@ -1403,10 +1431,22 @@ export const useApp = create<AppState>((set, get) => {
           if (stored) {
             await reconcileOrg(stored);
             await get().refreshOrgRole();
-            void get().refreshEntitlement();
+            // A pure-web buyer returns from checkout on this origin with
+            // ?checkout=success (no deep link to fire); reconcile the
+            // entitlement right away instead of waiting for a refocus.
+            if (platform() === 'web' && /[?&]checkout=success/.test(href)) {
+              await get().onCheckoutReturn();
+              window.history.replaceState(null, document.title, window.location.pathname);
+            } else {
+              void get().refreshEntitlement();
+            }
           }
         })();
       }
+
+      // Desktop: learn whether this machine's engine has a model yet, so the
+      // first-answer gate can route to the Stack instead of a dead session.
+      void get().refreshDesktopStatus();
 
       // Watch the connection so the profile status is always live.
       void get().refreshConnectivity();
@@ -1514,9 +1554,24 @@ export const useApp = create<AppState>((set, get) => {
           return signals.cloudReady(source.provider);
         case 'desktop':
         case 'desktop-chat':
-          return isDesktop() || Boolean(st.daemon);
+          // The desktop app's engine refuses to start a session until a model
+          // (orchestrator) is configured, so "ready" here means that, not just
+          // "we are on a desktop". A phone is ready when a computer is paired.
+          if (isDesktop()) return Boolean(s.desktopStatus?.stack.configured);
+          return Boolean(st.daemon);
         case 'mock':
           return true;
+      }
+    },
+
+    async refreshDesktopStatus() {
+      const b = isDesktop() ? bridge() : undefined;
+      if (!b) return;
+      try {
+        set({ desktopStatus: await b.status() });
+      } catch {
+        // Engine unreachable: keep whatever we last knew (undefined reads as
+        // not ready, which is the safe answer).
       }
     },
 
@@ -1718,6 +1773,27 @@ export const useApp = create<AppState>((set, get) => {
       // Any lingering quick chat goes; the greeting + source picker take over.
       pruneEphemeral();
       set({ activeId: undefined, view: 'chat', drawerOpen: false });
+    },
+
+    async keepQuickChat() {
+      const { activeId, conversations, settings } = get();
+      const conv = activeId ? conversations[activeId] : undefined;
+      if (!conv || !conv.ephemeral) return;
+      // Saved chats live in a project; make the default one if none exists.
+      let projectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
+      if (!projectId) projectId = await get().createProject('My work');
+      set((s) => {
+        const c = s.conversations[conv.id];
+        if (!c) return s;
+        return {
+          conversations: {
+            ...s.conversations,
+            [conv.id]: { ...c, ephemeral: false, projectId, updatedAt: new Date().toISOString() },
+          },
+        };
+      });
+      void persistConversations(get());
+      get().showToast('Saved. This chat now lives in your project.');
     },
 
     async quickChat() {
@@ -1968,19 +2044,28 @@ export const useApp = create<AppState>((set, get) => {
         await onSignedIn(session);
         return { needsConfirmation: false };
       }
+      // The confirmation link will come back as a callback; bind it to this
+      // address so only this account can complete it.
+      pendingAuthEmail = email.trim().toLowerCase();
       return { needsConfirmation: true };
     },
 
     async sendMagicLink(email) {
       await signInWithOtp(email.trim(), authRedirectTo());
+      // Remember who we sent the link to, so the callback only signs in that
+      // person (see completeAuthCallback). A custom-scheme link has no
+      // browser-enforced origin, so this binding is the CSRF guard.
+      pendingAuthEmail = email.trim().toLowerCase();
     },
 
     async sendPasswordReset(email) {
       await supabaseSendPasswordReset(email.trim(), authRedirectTo());
+      pendingAuthEmail = email.trim().toLowerCase();
     },
 
     async resendConfirmation(email) {
       await supabaseResendConfirmation(email.trim(), authRedirectTo());
+      pendingAuthEmail = email.trim().toLowerCase();
     },
 
     async updateMyPassword(password) {
@@ -2001,9 +2086,23 @@ export const useApp = create<AppState>((set, get) => {
       // so the UI prompts for a new password instead of dropping them in as if
       // nothing else is needed.
       const recovery = authCallbackType(url) === 'recovery';
-      // Fill the user id/email the callback URL does not carry.
+      // Fill the user id/email the callback URL does not carry. The token is
+      // validated server-side here: a forged or expired token yields no user
+      // and the callback is refused, never a half-signed-in session.
       const user = await getUser(parsed.accessToken);
-      const session: Session = { ...parsed, user: user ?? parsed.user };
+      if (!user) {
+        get().showToast('That sign-in link is not valid anymore. Request a new one.');
+        return false;
+      }
+      // Bind the callback to the email this app asked for. Anything on the
+      // machine can open an oscode:// link, so a link for a different account
+      // (login CSRF) is refused rather than silently switching accounts.
+      if (pendingAuthEmail && user.email && user.email.toLowerCase() !== pendingAuthEmail) {
+        get().showToast('That link is for a different account. Request a new one from here.');
+        return false;
+      }
+      pendingAuthEmail = undefined;
+      const session: Session = { ...parsed, user };
       await onSignedIn(session);
       if (recovery) set({ passwordRecovery: true });
       return true;

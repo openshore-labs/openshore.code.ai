@@ -206,3 +206,14 @@ execution contract. Newest at the bottom.
   reversible switch, PAY_GATES_ENABLED=false in store.ts, short-circuits
   personalUnlockedNow() to true so every gate is off from one place. Flip to
   true to re-enable; Apple purchase/entitlement plumbing stays built underneath.
+
+- **Desktop chat defaults to the engine on this machine (2026-09-02).** On the
+  Electron app the empty composer targets `{kind:'desktop'}` (the engine's
+  configured model) rather than the phone-style stack; "ready" on desktop means
+  an orchestrator is configured (store `desktopStatus`), so a chat is never
+  opened against an engine that cannot start.
+- **Natives build at install (2026-09-02).** Root `pnpm.onlyBuiltDependencies`
+  allowlists electron, node-pty, esbuild, electron-winstaller; the app's
+  postinstall rebuilds node-pty for Electron's ABI. The Electron build wins the
+  single build dir on purpose (desktop app + in-app daemon); the system-Node
+  `osc` CLI reports its terminal unavailable rather than crash.

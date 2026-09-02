@@ -16,13 +16,29 @@ export function useAuthDeepLink(): void {
     let cancelled = false;
     const removers: Array<() => void> = [];
 
+    // Exact scheme + host matching, never a substring check, so a crafted link
+    // cannot smuggle one route's name inside another's URL.
+    const routeOf = (url: string): 'checkout' | 'auth' | undefined => {
+      try {
+        const u = new URL(url);
+        if (u.protocol !== 'oscode:') return undefined;
+        const host = (u.hostname || u.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
+        if (host === 'checkout-success') return 'checkout';
+        if (host === 'auth-callback') return 'auth';
+        return undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
     const route = async (url: string | undefined | null) => {
       if (!url) return;
-      if (url.includes('checkout-success')) {
+      const kind = routeOf(url);
+      if (kind === 'checkout') {
         await onCheckoutReturn();
         return;
       }
-      if (url.includes('auth-callback')) {
+      if (kind === 'auth') {
         try {
           const ok = await completeAuthCallback(url);
           if (ok) showToast('Signed in.');

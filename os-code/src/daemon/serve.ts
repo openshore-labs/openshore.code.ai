@@ -64,6 +64,10 @@ export interface DaemonOptions {
   config: OscConfig;
   bind: 'loopback' | 'tailscale';
   port: number;
+  /** The PTY host to use. Defaults to a real TerminalManager (node-pty). Tests
+   *  pass one with an injected spawn so "node-pty not installed" and fake
+   *  terminals are reproducible on any machine, built natives or not. */
+  terminals?: TerminalManager;
 }
 
 export interface RunningDaemon {
@@ -104,7 +108,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   // phone connections; their raw bytes never enter a session journal. Its
   // readForSession backs the agent's readTerminal tool, wired into every
   // bootstrapped session below.
-  const terminals = new TerminalManager();
+  const terminals = options.terminals ?? new TerminalManager();
   const terminalReader = (sessionId: string, lines: number, termId?: string): string | undefined =>
     terminals.readForSession(sessionId, lines, termId);
 

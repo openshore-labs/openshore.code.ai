@@ -16,6 +16,7 @@ import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
 import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { hapticTick } from '../lib/haptics.js';
+import { isDesktop } from '../lib/platform.js';
 import type { Attachment } from '../lib/attachments.js';
 
 // True once the boot splash has lifted off the screen. The composer waits for
@@ -115,15 +116,20 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     setView,
     sourceReady,
     showToast,
+    keepQuickChat,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
   // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
   // 'local' from the out-of-usage "Switch to a local model" tap.
   const [sheetStage, setSheetStage] = useState<'root' | 'local'>('root');
   const [modeSheetOpen, setModeSheetOpen] = useState(false);
-  // The brain a new chat will use, chosen from the composer. Defaults to the
-  // stack, which is what "My Stack" selects.
-  const [selectedSource, setSelectedSource] = useState<ConversationSource>({ kind: 'stack' });
+  // The brain a new chat will use, chosen from the composer. On the desktop app
+  // it defaults to the engine on this machine (the model the founder set up
+  // through Ollama or a cloud key), so a first message just works; the phone
+  // defaults to the stack, which is what "My Stack" selects.
+  const [selectedSource, setSelectedSource] = useState<ConversationSource>(() =>
+    isDesktop() ? { kind: 'desktop' } : { kind: 'stack' },
+  );
   // A first message typed before any brain can answer (no model downloaded, no
   // computer paired, no cloud key) is held here while the model sheet opens as a
   // chooser, then sent the instant a working brain is picked. This is what keeps
@@ -243,6 +249,17 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               {thread?.model
                 ? `${thread.model.name} · ${thread.model.kind}${thread.contextPercent ? ` · ctx ${thread.contextPercent}%` : ''}`
                 : sourceLabel(conv.source)}
+              {/* A quick chat is thrown away on exit. Once it has grown into a
+                  real conversation, offer to keep it, right where the loss
+                  would otherwise be discovered too late. */}
+              {conv.ephemeral && (thread?.items.filter((i) => i.kind === 'user').length ?? 0) >= 3 ? (
+                <>
+                  {' · not saved · '}
+                  <button className="linklike" onClick={() => void keepQuickChat()}>
+                    Keep this chat
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         ) : (

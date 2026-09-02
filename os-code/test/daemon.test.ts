@@ -9,6 +9,18 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, type RunningDaemon } from '../src/daemon/serve.js';
+import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js';
+
+// The test daemon runs with node-pty simulated ABSENT, whether or not the
+// native module is built on this machine, so the 503 path is reproducible
+// everywhere (it used to pass only because the sandbox had no native build).
+function noPtyTerminals(): TerminalManager {
+  return new TerminalManager({
+    spawn: async () => {
+      throw new TerminalUnavailable();
+    },
+  });
+}
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
 
@@ -21,7 +33,12 @@ async function startOnFreePort(): Promise<RunningDaemon> {
   for (let attempt = 0; attempt < 30; attempt++) {
     const port = 40000 + Math.floor(Math.random() * 20000);
     try {
-      return await startDaemon({ config: defaultConfig(), bind: 'loopback', port });
+      return await startDaemon({
+        config: defaultConfig(),
+        bind: 'loopback',
+        port,
+        terminals: noPtyTerminals(),
+      });
     } catch (err) {
       if (String(err).includes('EADDRINUSE')) continue;
       throw err;
@@ -308,8 +325,9 @@ describe('interactive terminal (Phase 2 PTY bridge)', () => {
   });
 
   it('answers 503 (not a crash) when node-pty is not installed', async () => {
-    // node-pty is an optional native module and is absent in this environment,
-    // so ensure() throws TerminalUnavailable and the route returns a clean 503.
+    // node-pty is an optional native module; the test daemon injects a spawn
+    // that reports it absent (see noPtyTerminals), so ensure() throws
+    // TerminalUnavailable and the route returns a clean 503 on every machine.
     // The daemon must keep serving after it.
     const created = await createSessionAs(adminToken, home);
     const { id } = (await created.json()) as { id: string };
