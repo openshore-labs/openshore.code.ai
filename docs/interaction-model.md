@@ -42,6 +42,13 @@ screen or flow that does not fit it is not done.
    the block, and the chat renders it with a one-tap Copy. Never a command
    inline in a sentence to be retyped. The only exception is the person asking
    for something else. (Founder, 2026-09-02: "it's highly efficient.")
+10. **Premium UX out of the box.** Everything a coding model builds through
+    OpenShore is built to the twenty laws of UX and the house bar (calm motion,
+    every state designed, honest copy, accessible) without being asked. The
+    standard is on by default and rerouted only on purpose: a project turns it
+    off or adds its own rules in config, or the person says to skip it.
+    `os-code/src/core/agent/uxStandard.ts` is the text; the coding agent's
+    system prompt carries it. (Founder, 2026-09-02.)
 
 ## Where this already shows up in the app
 

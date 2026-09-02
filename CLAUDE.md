@@ -28,6 +28,18 @@ follow-up is Vault's ORGANIZATION tier (a real multi-writer backend), tracked
 as its own item in `os-code/PROGRESS.md`. The original build prompts are kept
 in that file as historical reference only.
 
+## Premium UX out of the box (standing rule, founder 2026-09-02)
+
+OpenShore is a machine that builds usable software, so everything a coding
+model builds through it is premium by default: the twenty laws of UX plus the
+house motion and honesty bar, written as build instructions in
+`os-code/src/core/agent/uxStandard.ts` and injected into the coding agent's
+system prompt. It is ON unless rerouted: a project sets `ux.standard: "off"`
+(or adds its own rules in `ux.notes`) in `os-code.config.json`, or the person
+says "skip the UX standard" in the chat. The same standard is the bar for this
+repo's own screens (see `docs/interaction-model.md`). `test/uxStandard.test.ts`
+proves it reaches the model and that the off switch works.
+
 ## Em dash policy is TOTAL here (standing rule)
 
 No em dash anywhere in tracked source, comments included, encoded spellings

@@ -241,3 +241,11 @@ execution contract. Newest at the bottom.
   block, one per step, nothing else in it, and the chat renders every block
   with a one-tap Copy that reports failure honestly. The only exception is the
   person asking for something else. Interaction model tenet 9.
+
+- **Premium UX out of the box (2026-09-02, founder).** The twenty laws of UX
+  plus the house bar are injected into the coding agent's system prompt as
+  build instructions (uxStandard.ts), on by default. Rerouting is deliberate:
+  `ux.standard: "off"` or `ux.notes` in os-code.config.json, or "skip the UX
+  standard" in the chat. The one duplicate in the source list (Postel's law
+  twice) was resolved to the aesthetic-usability effect, the standard
+  twentieth law.

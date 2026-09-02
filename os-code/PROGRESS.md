@@ -126,6 +126,17 @@ how I want OpenShore oriented to serve the user"):**
   prompts (stack, Claude, on-device, Harbor, Harbor Mini, the engine agent,
   the desktop chat) and in Harbor's knowledge; setup guides carry a `paste`
   per step that renders as a fence. `copyBlocks.test.ts` pins all of it.
+- **Tenet 10, premium UX out of the box (founder: "everything that's
+  created is premium unless rerouted").** The twenty laws of UX plus the
+  house bar (calm motion, every state designed, honest copy, accessible)
+  are written as build instructions in `uxStandard.ts` and injected into the
+  coding agent's system prompt by default. Reroute on purpose only: a
+  project sets `ux.standard: "off"` or adds `ux.notes` in
+  `os-code.config.json`, or the person says "skip the UX standard".
+  Exported through `os-code/protocol` so the app's coding specialist shares
+  it. `uxStandard.test.ts` reads the system message a real session sent:
+  on by default, off in config, notes ride along. Standing rule added to
+  `CLAUDE.md`; Harbor knows it.
 
 ## Current state (2026-08-31, P0 beta remediation)
 

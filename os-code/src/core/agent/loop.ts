@@ -11,6 +11,7 @@ import { ProviderError } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
 import type { Router } from '../../router/router.js';
 import type { ToolContext, ToolRegistry } from '../tools/index.js';
+import { uxStandardPrompt } from './uxStandard.js';
 import {
   extractTextCalls,
   repairPrompt,
@@ -103,6 +104,11 @@ export class AgentSession {
       'Whenever the user must paste something themselves (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
       'Never use em dashes in your replies. Use a period or a comma instead.',
     ];
+    // Premium UX out of the box: everything with a screen is built to the
+    // twenty laws plus the house bar unless a project turns it off in config
+    // or the user says to skip it (uxStandard.ts).
+    const ux = this.deps.config.ux;
+    if (ux?.standard !== 'off') parts.push(uxStandardPrompt(ux?.notes));
     if (codeMap) {
       parts.push(`Repository map (files and symbols):\n${codeMap}`);
     }

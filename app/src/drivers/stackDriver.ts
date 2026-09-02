@@ -14,6 +14,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
+import { uxStandardPrompt } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import { platform, secretGet } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
@@ -185,6 +186,13 @@ export class StackDriver implements ChatDriver {
     if (placement?.persona && placement.persona.trim()) {
       parts.push(`Persona for this specialist: ${placement.persona.trim()}`);
     }
+    // Premium UX out of the box for whatever writes code in this chat: the
+    // coding specialist, and a cloud or BYOM reasoning anchor. On-device
+    // pocket models skip it to protect their small context (the engine's
+    // agent on the desktop always carries it).
+    const buildsCode =
+      placement?.category === 'coding' || (!placement && ref.kind !== 'device');
+    if (buildsCode) parts.push(uxStandardPrompt());
     return parts.join('\n\n');
   }
 
