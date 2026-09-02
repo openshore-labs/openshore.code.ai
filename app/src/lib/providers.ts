@@ -63,6 +63,24 @@ export const PROVIDERS: ProviderInfo[] = [
       { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image', good: 'image-gen' },
     ],
   },
+  {
+    // Moonshot's Kimi models. Kimi K2 is a cloud-scale MoE that does not run
+    // locally, so it lives here as a bring-your-own-key cloud provider, the
+    // same way OpenAI and Gemini do, not as a local download. Moonshot's API
+    // is OpenAI-compatible, so key validation and the stack router treat it
+    // like any other openai-compatible provider. Model ids follow Moonshot's
+    // current API; verify against their console before a release.
+    id: 'moonshot',
+    name: 'Kimi (Moonshot)',
+    keyHint: 'sk-...',
+    openaiBaseUrl: 'https://api.moonshot.ai/v1',
+    apiKeyUrl: 'https://platform.moonshot.ai/console/api-keys',
+    models: [
+      { id: 'kimi-k2-0711-preview', label: 'Kimi K2', good: 'reasoning' },
+      { id: 'kimi-latest', label: 'Kimi (latest)', good: 'reasoning' },
+      { id: 'moonshot-v1-128k', label: 'Kimi 128k context', good: 'analysis' },
+    ],
+  },
 ];
 
 export function providerInfo(id: string): ProviderInfo | undefined {

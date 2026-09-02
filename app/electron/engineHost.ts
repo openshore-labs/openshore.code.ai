@@ -19,7 +19,7 @@ import { loginWithPat, logoutGithub, isGithubConnected } from 'os-code/dist/src/
 import { getCredential, setCredential, deleteCredential } from 'os-code/dist/src/auth/store.js';
 import { detectHardware, budgetFor } from 'os-code/dist/src/router/resourceBudget.js';
 import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
-import { installModel } from 'os-code/dist/src/market/install.js';
+import { installModel, installOllamaRef } from 'os-code/dist/src/market/install.js';
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
 import { clone } from 'os-code/dist/src/git/index.js';
@@ -389,6 +389,25 @@ export class EngineHost {
       (p) =>
         this.forwardInstall({
           modelId,
+          line: p.line,
+          percent: p.percent,
+          completed: p.completed,
+          total: p.total,
+        }),
+      { baseUrl },
+    );
+  }
+
+  // Pull any Ollama model by name, not just a catalog entry, so every model on
+  // the Ollama library is installable without a catalog update. Progress is
+  // forwarded keyed by the ref itself.
+  async installOllamaRef(ref: string): Promise<{ ok: boolean; detail: string }> {
+    const baseUrl = firstLocalBaseUrl();
+    return installOllamaRef(
+      ref,
+      (p) =>
+        this.forwardInstall({
+          modelId: ref,
           line: p.line,
           percent: p.percent,
           completed: p.completed,

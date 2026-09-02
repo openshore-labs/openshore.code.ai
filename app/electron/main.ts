@@ -429,6 +429,7 @@ ipcMain.handle('osc:stackHealth', (_e, range?: string) =>
   host.stackHealth(range as Parameters<typeof host.stackHealth>[0]),
 );
 ipcMain.handle('osc:installModel', (_e, modelId: string) => host.installModel(modelId));
+ipcMain.handle('osc:installOllamaRef', (_e, ref: string) => host.installOllamaRef(ref));
 ipcMain.handle('osc:setOrchestrator', (_e, model: string) => host.setOrchestrator(model));
 ipcMain.handle('osc:enableSpecialist', (_e, role: string, model: string) =>
   host.enableSpecialist(role, model),

@@ -138,6 +138,36 @@ how I want OpenShore oriented to serve the user"):**
   on by default, off in config, notes ride along. Standing rule added to
   `CLAUDE.md`; Harbor knows it.
 
+## Current state (2026-09-02, marketplace is open-ended + Kimi)
+
+Founder: "why aren't there any Kimi models, can we expand past Hugging Face to
+have all SOTA new models." Two things were true and one was a misread:
+- The marketplace was never Hugging-Face-only. Desktop models come from Ollama
+  (`ollama pull`), phone models from HF GGUF; HF is used only to fetch
+  popularity metadata (`build-catalog/sources.ts`). The catalog itself is a
+  hand-curated editorial seed (`catalog.sample.json`) frozen in the Qwen2.5
+  era, which is the real reason newer models are absent.
+- Fixes landed on `main`:
+  - **Install by name (the durable answer to "all SOTA").** New engine seam
+    `installOllamaRef(ref)` (install.ts) plus a bridge method and a desktop
+    Marketplace card: type any Ollama library name (qwen3-coder:30b,
+    gemma3:12b, ...) and pull it, so the newest models are installable the day
+    they land, no catalog update needed. A bad name returns Ollama's own error,
+    never a fabricated success. Pinned in install.test.ts.
+  - **Kimi as a cloud provider.** Kimi K2 is a ~1T-param MoE that does not run
+    locally, so Moonshot is added as an OpenAI-compatible BYOK provider
+    (providers.ts) alongside Claude/OpenAI/Gemini; key validation and the stack
+    router treat it like the others. moonshotProvider.test.ts pins it. Model
+    ids follow Moonshot's current API and want a console verify before release.
+- Still open (offered, not done): a refresh of the browsable curated seed with
+  current local SOTA (Qwen3, DeepSeek latest, GLM, Devstral, Gemma 3, Llama
+  3.3). Held back deliberately: the seed is also the app's offline fallback, so
+  an unverified ref or size there is a dead button. The right path is editing
+  `catalog.sample.json` then running `build:catalog` (needs network) so refs
+  resolve and real sizes and popularity are filled; "Install by name" covers
+  the gap meanwhile.
+Gates green: os-code build, typecheck, lint; app typecheck, lint.
+
 ## Current state (2026-08-31, P0 beta remediation)
 
 **Full P0 beta audit + first four remediation phases landed on the feature

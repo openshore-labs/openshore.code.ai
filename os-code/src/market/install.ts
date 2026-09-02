@@ -48,10 +48,26 @@ export async function installModel(
       detail: `This model comes from Hugging Face. Fetch it with:\n  ${model.source.pullCommand}\nthen point your stack at wherever your server loads it.`,
     };
   }
+  return installOllamaRef(model.source.ref, onProgress, options);
+}
+
+/** Pull ANY Ollama model by its raw ref (e.g. "qwen3-coder:30b", "gemma3:12b"),
+ *  not just a catalog entry, so the marketplace is never limited to the models
+ *  we happened to enumerate: whatever is on the Ollama library, the user can
+ *  install and place. Same structured pull, same honest failure text as a
+ *  catalog install. The ref is trusted as an Ollama model name; a bad name
+ *  comes back as Ollama's own "model not found" error, never a fabricated ok. */
+export async function installOllamaRef(
+  ref: string,
+  onProgress: (progress: InstallProgress) => void,
+  options: InstallOptions = {},
+): Promise<{ ok: boolean; detail: string }> {
+  const clean = ref.trim();
+  if (!clean) return { ok: false, detail: 'Enter an Ollama model name, for example qwen3:8b.' };
   const baseUrl = (options.baseUrl ?? 'http://localhost:11434').replace(/\/$/, '');
-  const viaApi = await pullViaApi(model.source.ref, baseUrl, onProgress);
+  const viaApi = await pullViaApi(clean, baseUrl, onProgress);
   if (viaApi) return viaApi;
-  return pullViaCli(model.source.ref, onProgress);
+  return pullViaCli(clean, onProgress);
 }
 
 /** Structured pull over /api/pull. Returns null if the API is unreachable. */
