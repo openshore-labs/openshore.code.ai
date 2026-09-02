@@ -126,6 +126,14 @@ Why: today only internal testers you add manually can receive a build.
   sandbox; what you verify is the real path: Your stack picks an Ollama model
   (or a Claude key under Cloud Connections), Repositories opens a folder,
   and the agent reads, edits with an approval diff, runs, and commits.
+- **Launching over SSH (from the phone):** an SSH shell has no display, so
+  Electron exits with "Missing X server or $DISPLAY". On this machine the
+  live X display is `:1` (the socket is `/tmp/.X11-unix/X1`), so launch
+  with the display and Xauthority named explicitly; the window opens on the
+  Pop!_OS monitor, not in the phone terminal:
+  `cd ~/openshore.code.ai/app && DISPLAY=:1 XAUTHORITY=/home/openshore/.Xauthority npx electron .`
+  `pnpm desktop` now prints this hint itself when no display is set. (Status
+  2026-09-02: launched with no error; the screen is not yet confirmed.)
 - To produce a beta installer: `pnpm run package:linux` (also `package:mac` /
   `package:win` on those OSes). These are unsigned for closed beta, so first
   launch shows a Gatekeeper/SmartScreen warning; testers use right-click Open

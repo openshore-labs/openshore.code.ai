@@ -8,6 +8,7 @@ import { isDesktop } from '../lib/platform.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import { StackManager } from '../components/StackManager.js';
+import { STARTER_MODEL } from '../lib/starterModel.js';
 
 const ROLES: Array<{ role: string; plain: string }> = [
   { role: 'coding', plain: 'great at code' },
@@ -39,6 +40,40 @@ export function StackScreen() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // One tap from "no model" to a working stack: pull the curated starter
+  // through the engine (progress lines come back over the install channel),
+  // then make it the orchestrator. The gate's copy of the engine status is
+  // refreshed at the end so a chat opens right away.
+  const [starter, setStarter] = useState<{ line: string } | undefined>();
+  const getStarter = async () => {
+    const b = bridge();
+    if (!b || starter) return;
+    setStarter({ line: `Getting ${STARTER_MODEL.name} (${STARTER_MODEL.sizeGB} GB)...` });
+    const off = b.onInstallProgress((p) => {
+      if (p.modelId !== STARTER_MODEL.catalogId) return;
+      setStarter({
+        line: p.percent != null ? `${p.line} ${Math.round(p.percent)}%` : p.line,
+      });
+    });
+    try {
+      const pulled = await b.installModel(STARTER_MODEL.catalogId);
+      if (!pulled.ok) {
+        showToast(pulled.detail);
+        return;
+      }
+      const set = await b.setOrchestrator(STARTER_MODEL.ollamaRef);
+      showToast(set.ok ? `${STARTER_MODEL.name} is your model. Ready to chat.` : set.detail);
+      setPickFor(undefined);
+      await refresh();
+      await useApp.getState().refreshDesktopStatus();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not get the starter model.');
+    } finally {
+      off();
+      setStarter(undefined);
+    }
+  };
 
   const choose = async (model: string) => {
     const b = bridge();
@@ -170,10 +205,23 @@ export function StackScreen() {
                   </button>
                 ))
               ) : (
-                <p className="hint">
-                  No local models yet.{' '}
-                  {status.ollama.up ? 'Grab one from the marketplace.' : status.ollama.detail}
-                </p>
+                <>
+                  <p className="hint">
+                    No local models yet.{' '}
+                    {status.ollama.up ? 'Get the starter below, or browse the marketplace.' : status.ollama.detail}
+                  </p>
+                  {status.ollama.up && pickFor === 'orchestrator' ? (
+                    <button
+                      className="btn primary press-fb"
+                      disabled={Boolean(starter)}
+                      onClick={() => void getStarter()}
+                    >
+                      {starter
+                        ? starter.line
+                        : `Get the starter model (${STARTER_MODEL.name}, ${STARTER_MODEL.sizeGB} GB)`}
+                    </button>
+                  ) : null}
+                </>
               )}
             </div>
           </div>

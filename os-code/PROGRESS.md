@@ -51,6 +51,26 @@ far as a headless session can, all on `main`:
   origin); pure-web `?checkout=success` reconciles entitlement on boot.
 Gates green: app typecheck/lint, app 275 tests (46 files), os-code 302 tests.
 
+**Same day, second batch (founder: "keep it moving"):**
+- **QR pairing on the phone, no native plugin.** `QrScanner` uses
+  getUserMedia plus jsQR on a canvas (pure web, so nothing new to compile for
+  the iOS build), decodes the desktop's `{u, t}` payload, fills both fields,
+  and connects in one motion; a foreign QR is reported, never half-applied.
+  `NSCameraUsageDescription` added to Info.plist. The decode path is proven
+  in Node: `qrDecode.test.ts` encodes the real payload with `qrcode`,
+  rasterizes it like a camera frame, and decodes it back. Camera behavior on
+  a real iPhone is still a TestFlight verify.
+- **One-tap starter model on desktop** (CFO ruling): with no local models,
+  the Stack's "Who runs the show?" sheet offers "Get the starter model (Qwen
+  2.5 Coder 7B, 4.7 GB)", which pulls it through the engine with progress and
+  makes it the orchestrator. `starterModel.test.ts` pins the id and Ollama
+  ref against `os-code/catalog.sample.json` so a catalog rename cannot orphan
+  the button.
+- **Display preflight.** `pnpm desktop` now prints what is wrong and the exact
+  `DISPLAY=:N XAUTHORITY=...` launch line when run from a shell with no
+  display (the founder hit this over SSH; the live display was `:1`).
+Gates green: app typecheck/lint, app 279 tests (48 files).
+
 ## Current state (2026-08-31, P0 beta remediation)
 
 **Full P0 beta audit + first four remediation phases landed on the feature
