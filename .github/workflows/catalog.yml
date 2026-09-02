@@ -117,7 +117,10 @@ jobs:
         if: ${{ env.MARKETING_DEPLOY_TOKEN != '' }}
         run: |
           set -euo pipefail
-          git clone --depth 1 \
+          # --branch main: the clone must start from main itself, whatever the
+          # repo's default branch happens to be (a run landed the catalog on a
+          # feature branch and then could not push it to main).
+          git clone --depth 1 --branch main --single-branch \
             "https://x-access-token:${MARKETING_DEPLOY_TOKEN}@github.com/openshore-labs/OpenShore.ai-marketing-site.git" \
             marketing
           install -D os-code/build/catalog.json marketing/src/static/os-code/catalog.json
@@ -145,8 +148,10 @@ jobs:
               exit 1
             fi
             echo "Push rejected (main advanced); fetching and rebasing (attempt ${n})."
+            # A shallow single-branch clone has no refs/remotes/origin/main to
+            # rebase onto; FETCH_HEAD is what the fetch just brought in.
             git fetch --depth=50 origin main
-            git rebase origin/main
+            git rebase FETCH_HEAD
             n=$((n + 1))
           done
 
