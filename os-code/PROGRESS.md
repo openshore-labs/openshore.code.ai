@@ -98,6 +98,27 @@ way I work with Claude Code"):**
   moving), and the checklist every new surface is held to.
 Gates green: app typecheck/lint, app 285 tests (50 files).
 
+**Fourth batch (founder: "CLAUDE.md, PROGRESS.md, and my advisor team are
+how I want OpenShore oriented to serve the user"):**
+- **The advisor team ships as a Crew preset.** My Crew gains "Add the advisor
+  team": eight named perspectives written to OpenShore from the canonical
+  charters (CTO reviews every build; CMO, CFO, and Creative Studio
+  auto-engage; CX, Chief of Staff, Board, and Corporate Strategist by
+  request), each advisory, the person decides. Adds only missing members, so
+  the tap is safe to repeat. `app/src/lib/crewPresets.ts`, pinned by test
+  for shape and org structure.
+- **The interaction model is grounded in its sources.**
+  `docs/interaction-model.md` now maps every tenet to the standing rule it
+  came from (one command at a time, the sign-off gate, foundations
+  additive, the communication format, no em dashes, PROGRESS as source of
+  truth, advisory and the founder decides, the motion and polish bar).
+- **The engine's own agent now speaks the same way.** The coding agent's
+  system prompt (`loop.ts`) and the phone-to-desktop chat prompt
+  (`serve.ts`) gained the working loop additively: lead with the outcome,
+  one step at a time when the person must act, never claim an unverified
+  result, name the blast radius before touching something working, end on
+  the next step. Harbor's knowledge base learned the advisor team.
+
 ## Current state (2026-08-31, P0 beta remediation)
 
 **Full P0 beta audit + first four remediation phases landed on the feature

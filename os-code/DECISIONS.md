@@ -228,3 +228,10 @@ execution contract. Newest at the bottom.
 - **Guide steps are written, not generated (2026-09-02).** A guide chat opens
   with a seeded plan so it is correct even on Harbor Mini; the model's job is
   questions between steps, never inventing the procedure.
+
+- **The advisor org is a Crew preset (2026-09-02, founder).** The founder's
+  advisory team (canonical in uki-audio/.claude/agents) ships inside OpenShore
+  as eight named crew members with the org's real activity levels. Personas are
+  rewritten for OpenShore, not copied; all advisory, the person decides. The
+  engine's own prompts carry the same working loop (lead with the outcome, one
+  step at a time when the person acts, verify before claiming).

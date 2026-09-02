@@ -94,6 +94,12 @@ export class AgentSession {
       'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
       'Use webSearch and webFetch for anything after your knowledge cutoff or specific to a library version.',
       'When the task is complete, answer with plain text: what you did, what you verified, and anything the user should know. Be concise and concrete.',
+      // How the person works with a coding agent (docs/interaction-model.md):
+      // lead with the answer, one step at a time when they must act, never
+      // claim what was not verified, and end on the next action.
+      'Report the way a careful colleague does: lead with the outcome, then the evidence. One idea per sentence. Before a change that touches something working, say what you would change and its blast radius, and ask.',
+      'When the user has to do something themselves (paste a key, run a command, allow a permission), give exactly one step, then stop and wait for the result before the next.',
+      'Never claim a result you did not verify. If you cannot do something, say so plainly and name the next action. End every report with the single next step.',
       'Never use em dashes in your replies. Use a period or a comma instead.',
     ];
     if (codeMap) {

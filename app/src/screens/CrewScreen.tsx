@@ -8,6 +8,7 @@ import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
 import type { CrewActivityLevel, CrewAgent } from '../state/types.js';
+import { ADVISOR_TEAM } from '../lib/crewPresets.js';
 
 const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   {
@@ -72,6 +73,27 @@ export function CrewScreen() {
     showToast(draft.id ? 'Crew member updated.' : `${name} joined your crew.`);
   };
 
+  // The founder's advisory org, as a crew: eight named perspectives the
+  // Reasoning LLM can bring in. Adds only the ones not already here, so the
+  // tap is safe to repeat and never duplicates a member someone customized.
+  const missingAdvisors = ADVISOR_TEAM.filter((p) => !crew.some((a) => a.name === p.name));
+  const addAdvisorTeam = async () => {
+    for (const p of missingAdvisors) {
+      await createCrewAgent({
+        name: p.name,
+        persona: p.persona,
+        whenCalled: p.whenCalled,
+        activityLevel: p.activityLevel,
+        projectIds: [],
+      });
+    }
+    showToast(
+      missingAdvisors.length
+        ? `${missingAdvisors.length} advisors joined your crew. The CTO reviews every build.`
+        : 'Your advisor team is already here.',
+    );
+  };
+
   return (
     <div className="screen">
       <BackBar title="My Crew" />
@@ -89,6 +111,20 @@ export function CrewScreen() {
         >
           + New crew member
         </button>
+        {missingAdvisors.length ? (
+          <button
+            className="btn ghost press-fb"
+            style={{ width: '100%', marginTop: 8 }}
+            onClick={() => void addAdvisorTeam()}
+          >
+            Add the advisor team ({missingAdvisors.length})
+          </button>
+        ) : null}
+        <p className="hint" style={{ marginTop: 8 }}>
+          The advisor team is a CTO who reviews every build, a CMO, CFO, and Creative Studio that
+          step in when a decision needs them, and a CX lead, Chief of Staff, Board, and Strategist
+          who answer when asked. All advisory. You decide.
+        </p>
 
         {crew.length === 0 ? (
           <p className="hint" style={{ marginTop: 14 }}>
