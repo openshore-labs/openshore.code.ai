@@ -52,6 +52,19 @@ Pipeline, in order:
    not answer contributes nothing; popularity and timestamps degrade to omitted.
    Set `CATALOG_OFFLINE=1` to skip the network entirely (used by local runs and
    tests). NEVER weights.
+2b. Live discovery (`discover.ts`, on by default when online; `CATALOG_DISCOVER=0`
+   turns it off): ask Hugging Face for the trending and the newest GGUF repos,
+   read each repo's metadata (file list with sizes, license tag, gated flag),
+   and turn the ones that clear the honesty bar into entries that join the seed
+   before enrichment. The bar: public, not gated, a license on the allow-list, a
+   single-file GGUF at a supported quant (Q4_K_M preferred), under 40 GB, no
+   denylisted name. An entry is labelled `discovery: {source, repo, foundAt}`,
+   is never `orchestratorCapable`, carries no ratings, ranks after every seed
+   model, and pulls via `ollama pull hf.co/<repo>:<QUANT>` (small ones also get
+   a phone download straight from huggingface.co). The seed wins an id
+   collision. Last time's discoveries carry forward and age out only when
+   newer ones push them past the cap (25), so a quiet source day never empties
+   the shelf or trips the count gate. Presets never name a discovered model.
 3. Enrich each seed model (`enrich.ts`): license from the allow-list, ratings
    from benchmarks, `osCodeFit` from the eval, popularity and timestamps from
    metadata, the editorial overlay merged in.

@@ -3,6 +3,39 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, the catalog is living and breathing)
+
+Founder: "build that, would love it to be living and breathing." The browse
+list now grows on its own. Every catalog build asks Hugging Face for the
+trending and the newest GGUF repos and turns the ones that clear an honesty
+bar into entries, no seed edit needed:
+- **`scripts/build-catalog/discover.ts`.** Two listing axes (trendingScore,
+  createdAt) unioned, then one metadata read per repo (file list with sizes,
+  license tag, gated flag; never weights). Bar: public, not gated, license on
+  the allow-list, a single-file GGUF at a supported quant (Q4_K_M first),
+  under 40 GB, no denylisted name (uncensored, nsfw, roleplay...). Category is
+  a heuristic from name + tags (coder, vision, embed, r1/think, size for fast).
+- **Honest by construction.** A discovered entry carries `discovery: {source,
+  repo, foundAt}` (new optional schema field), is never `orchestratorCapable`,
+  has no ratings (the card shows a "New · unrated" pill and the existing
+  not-rated row), ranks after every seed model, and publishes a conservative
+  8192 context floor with a note saying so. Enrich keeps a discovered model
+  as unrated instead of applying the eval/star bar, and drops it if it ever
+  claims orchestrator. Presets never name a discovered model.
+- **Never collapses.** The seed wins an id collision; last time's discoveries
+  carry forward (with their first-seen date) and age out only when newer ones
+  push them past the cap (25), so a quiet HF day never empties the shelf or
+  trips the 25 percent count gate. Any discovery failure degrades to "seed
+  only." `CATALOG_DISCOVER=0` turns it off; `CATALOG_OFFLINE=1` still skips it.
+- **Pull path is what already ships:** `ollama pull hf.co/<repo>:<QUANT>`
+  (small ones also get a phone download straight from huggingface.co, which
+  the gate's host check still enforces).
+- **Cadence is now daily** (`catalog.yml` cron `17 8 * * *`); the no-op stamp
+  guard keeps an unchanged day from committing.
+`test/catalog.builder.discover.test.ts` (12 tests, fixtures only). Gates
+green: os-code build, typecheck, lint, 323 tests; app typecheck, lint, 296
+tests; offline `build:catalog` still writes 27 models, 4 presets.
+
 ## Current state (2026-09-02, the desktop coding path works)
 
 **Founder ask: "every feature fully functioning so I can start coding on
@@ -161,11 +194,7 @@ is now surfaced and closed out:
   prefab stacks track what is available with no hand-authoring; the regression
   gate validates, and it falls back to the seed's presets if derivation is
   empty. `test/catalog.builder.presets.test.ts`.
-- **Still open (offered):** live discovery of newly-released GGUF models so the
-  browse list itself grows without editing the seed. Held for the same
-  dead-button reason as before (auto-classifying a new model's size and role
-  needs care); install-by-name covers getting any new model today, and the
-  scheduled rebuild keeps ranking fresh.
+- **Live discovery:** BUILT in the next entry up (`discover.ts`).
 Gates green: os-code build, typecheck, lint, 312 tests; app typecheck, lint,
 296 tests.
 

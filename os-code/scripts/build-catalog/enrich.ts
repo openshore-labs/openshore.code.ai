@@ -177,10 +177,16 @@ function buildModel(
 
   // Gate 3, quality: orchestrators clear on the eval bar, specialists on a
   // strong capability star. Either way the star is computed, never invented.
+  // A discovered model (live discovery, discover.ts) is the exception: it has
+  // no eval and no benchmarks by definition, so it clears no bar. It is kept
+  // AS unrated, labelled `discovery`, never orchestrator-capable, so absence
+  // shows as absence; the bar still governs every curated model.
   const maxCapStar = capStars.reduce((m, s) => Math.max(m, s.stars), 0);
-  const clearsQuality = base.orchestratorCapable
-    ? hasEval && osCodeFitFromEval(evalAvg) >= MIN_ORCHESTRATOR_FIT
-    : maxCapStar >= MIN_SPECIALIST_STAR;
+  const clearsQuality = base.discovery
+    ? !base.orchestratorCapable
+    : base.orchestratorCapable
+      ? hasEval && osCodeFitFromEval(evalAvg) >= MIN_ORCHESTRATOR_FIT
+      : maxCapStar >= MIN_SPECIALIST_STAR;
   if (!clearsQuality) {
     return {
       drop: base.orchestratorCapable

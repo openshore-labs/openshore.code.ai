@@ -717,6 +717,11 @@ export function MarketplaceScreen() {
             </span>
           ) : null}
           <span className={`pill ${pill.cls}`}>{pill.text}</span>
+          {model.discovery ? (
+            <span className="pill" title={`Found ${model.discovery.foundAt} on Hugging Face`}>
+              New · unrated
+            </span>
+          ) : null}
           {model.onDevice ? (
             <span className="ondevice-tag">
               <i className="teal-dot" /> On device
