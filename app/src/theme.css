@@ -5345,3 +5345,667 @@ textarea {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Claude Code parity in the transcript: the working row, folded reasoning,
+   the task list, the plan card, the changed-files record, richer tool cards,
+   the new-messages pill, and queued turns. Motion rides the house tokens.
+   --------------------------------------------------------------------------- */
+
+.working-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+  animation: msg-in var(--dur-3) var(--ease-standard);
+}
+.working-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.working-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--local);
+  opacity: 0.35;
+  animation: working-dot var(--loop-2) var(--ease-loop) infinite;
+}
+.working-dots i:nth-child(2) {
+  animation-delay: var(--dur-2);
+}
+.working-dots i:nth-child(3) {
+  animation-delay: calc(var(--dur-2) * 2);
+}
+@keyframes working-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+.working-note {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.working-elapsed {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.msg-model {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  margin-bottom: 4px;
+}
+
+.thinking {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 10px;
+  animation: msg-in var(--dur-3) var(--ease-standard);
+}
+.thinking-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 2px 0;
+}
+.thinking-glyph {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.thinking-glyph.live {
+  background: var(--local);
+  animation: pulse-dot var(--loop-2) var(--ease-loop) infinite;
+}
+.thinking-chevron {
+  margin-left: auto;
+  font-size: 11px;
+}
+.thinking-body {
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  padding: 6px 0 4px;
+}
+
+.todo-card {
+  margin: 0 12px 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: msg-in var(--dur-3) var(--ease-standard);
+}
+.todo-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  text-align: left;
+}
+.todo-title {
+  font-weight: 600;
+}
+.todo-progress {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.todo-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.todo-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  background: var(--local);
+  transition: transform var(--dur-5) var(--ease-standard);
+}
+.todo-card.done .todo-bar i {
+  background: var(--ok);
+}
+.todo-chevron {
+  color: var(--muted);
+  font-size: 11px;
+}
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--border);
+}
+.todo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13.5px;
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.todo-mark {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.todo-row.completed .todo-mark {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.todo-row.in_progress .todo-mark {
+  border-color: var(--local);
+}
+.todo-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--local);
+  animation: pulse-dot var(--loop-2) var(--ease-loop) infinite;
+}
+.todo-row.completed .todo-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.todo-row.in_progress .todo-text {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.plan-card {
+  border: 1px solid var(--local);
+  background: var(--bg-raised);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  animation: msg-in var(--dur-4) var(--ease-arrive);
+}
+.plan-card.approved {
+  border-color: var(--ok);
+}
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.plan-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--local);
+  background: var(--local-soft);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+.plan-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.plan-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.plan-actions .btn {
+  flex: 1;
+}
+
+.changed-card {
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: msg-in var(--dur-3) var(--ease-standard);
+}
+.changed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.changed-stats,
+.changed-row-stats,
+.tool-stats {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.changed-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.changed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 12px;
+  text-align: left;
+  font-size: 13px;
+}
+.changed-path {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-card-flash {
+  box-shadow: 0 0 0 2px var(--local);
+  transition: box-shadow var(--dur-6) var(--ease-standard);
+}
+
+.tool-state.running {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tool-elapsed {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tool-card-detail.diff {
+  padding-left: 0;
+  padding-right: 0;
+}
+.diff-line {
+  display: flex;
+}
+.diff-gutter {
+  flex-shrink: 0;
+  width: 44px;
+  padding-right: 10px;
+  text-align: right;
+  color: var(--muted);
+  opacity: 0.6;
+  user-select: none;
+}
+.diff-text {
+  flex: 1;
+  padding-right: 12px;
+}
+.diff-line.diff-add {
+  background: rgba(47, 143, 78, 0.08);
+}
+.diff-line.diff-del {
+  background: rgba(192, 57, 43, 0.08);
+}
+.output-fold {
+  display: block;
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--link);
+  font-family: var(--font);
+  font-size: 12.5px;
+}
+
+.scroll-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.22);
+  animation: pill-in var(--dur-2) var(--ease-arrive);
+  z-index: 4;
+}
+@keyframes pill-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+.thread {
+  position: relative;
+}
+
+.msg-user.queued {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.msg-queued-tag {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.msg-stopped-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.msg-stopped-action.ghost {
+  background: transparent;
+  color: var(--local);
+  border: 1px solid var(--local);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .working-dots i,
+  .thinking-glyph.live,
+  .todo-pulse {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Claude Code parity around the transcript: the command and file menus, the
+   pasted-text chip, the queue send, the approval stack, the repo chip and
+   context bar in the top bar, the offline banner, the resume skeleton, and
+   the grouped Chats room. Motion rides the house tokens.
+   --------------------------------------------------------------------------- */
+
+.composer-wrap {
+  position: relative;
+}
+.composer-wrap.drag-over .composer {
+  border-color: var(--local);
+  box-shadow: 0 0 0 3px var(--local-soft);
+}
+.composer-menu {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% - 6px);
+  max-width: 760px;
+  margin: 0 auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.18);
+  overflow: hidden;
+  z-index: 6;
+  animation: menu-in var(--dur-2) var(--ease-arrive) backwards;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.composer-menu-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 14px;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+.composer-menu-row.active {
+  background: var(--surface);
+}
+.composer-menu-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.composer-menu-name.mono {
+  white-space: normal;
+  word-break: break-all;
+}
+.composer-menu-arg {
+  color: var(--muted);
+}
+.composer-menu-hint {
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.send-btn.queue {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px dashed var(--border-strong);
+}
+.composer-pill-mode.mode-plan {
+  color: var(--cloud);
+}
+.composer-pill-mode.mode-bypassPermissions {
+  color: var(--warn, #b7791f);
+}
+.mode-row-icon.mode-bypassPermissions {
+  color: var(--warn, #b7791f);
+}
+.mode-row-icon.mode-plan {
+  color: var(--cloud);
+}
+.mode-row-icon.mode-default {
+  color: var(--ink-soft);
+}
+
+/* The approval stack. */
+.approval-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.approval-count {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.approval-key {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid currentColor;
+  opacity: 0.5;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+@media (pointer: coarse) {
+  .approval-key {
+    display: none;
+  }
+}
+.approval-sheet .btn {
+  display: flex;
+  align-items: center;
+}
+.approval-mode {
+  display: block;
+  margin: 12px auto 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* The top bar's chips. */
+.topbar-name {
+  font: inherit;
+  color: inherit;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  display: block;
+}
+.topbar-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.repo-chip {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.repo-dirty {
+  color: var(--warn, #b7791f);
+  font-size: 9px;
+}
+.ctx-bar {
+  display: inline-block;
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.ctx-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  background: var(--local);
+  transition: transform var(--dur-5) var(--ease-standard);
+}
+.ctx-bar.warm i {
+  background: var(--warn, #b7791f);
+}
+.ctx-bar.hot i {
+  background: var(--danger, #c0392b);
+}
+
+.offline-banner {
+  padding: 7px 16px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  animation: fade-in var(--dur-3) var(--ease-standard);
+}
+
+/* The resume skeleton. */
+.skel {
+  border-radius: 10px;
+  background: var(--surface);
+  animation: skel-breathe var(--loop-3) var(--ease-loop) infinite;
+}
+.skel-user {
+  align-self: flex-end;
+  width: 46%;
+  height: 40px;
+  border-bottom-right-radius: 6px;
+}
+.skel-line {
+  width: 88%;
+  height: 14px;
+}
+.skel-line.short {
+  width: 62%;
+}
+.skel-tool {
+  width: 100%;
+  height: 38px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+@keyframes skel-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The grouped Chats room. */
+.chats-search {
+  margin-top: 12px;
+}
+.chat-section {
+  margin-top: 16px;
+}
+.chat-section-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 6px 4px;
+}
+.chat-row-btn {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+.chat-row-live {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--local);
+  animation: pulse-dot var(--loop-2) var(--ease-loop) infinite;
+  vertical-align: middle;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skel,
+  .chat-row-live {
+    animation: none;
+  }
+}

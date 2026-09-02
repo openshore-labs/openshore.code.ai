@@ -61,7 +61,9 @@ describe('transcript reducer', () => {
       { type: 'task-done', reason: 'complete' },
     ]);
     const tool = state.items.find((i) => i.kind === 'tool');
-    expect(tool?.kind === 'tool' && tool.summary).toBe('PASS suite one');
+    // The card names the step the way Claude Code does (the command itself),
+    // never the first line of whatever it printed.
+    expect(tool?.kind === 'tool' && tool.summary).toBe('$ npm test');
     // The full output survives so the phone can actually read it, tagged as
     // plain output so the diff colorizer never touches the '- 12 assertions'.
     expect(tool?.kind === 'tool' && tool.detail).toBe(
@@ -189,5 +191,111 @@ describe('transcript reducer', () => {
       { event: { type: 'text-delta', text: 'hi' }, seq: 9 },
     ]);
     expect(state.lastSeq).toBe(9);
+  });
+
+  // ---- Claude Code parity ----
+
+  it('names each step the way Claude Code does and counts an edit', () => {
+    const state = feed([
+      { type: 'task-start', input: 'fix it' },
+      {
+        type: 'tool-start',
+        call: { id: 'r', name: 'readFile', args: { path: 'src/a.ts', startLine: 1, endLine: 40 } },
+      },
+      {
+        type: 'tool-end',
+        call: { id: 'r', name: 'readFile', args: { path: 'src/a.ts', startLine: 1, endLine: 40 } },
+        result: { ok: true, content: 'src/a.ts (lines 1-40 of 120)\n...' },
+        durationMs: 10,
+      },
+      { type: 'tool-start', call: { id: 'e', name: 'editFile', args: { path: 'src/a.ts' } } },
+      {
+        type: 'tool-end',
+        call: { id: 'e', name: 'editFile', args: { path: 'src/a.ts' } },
+        result: {
+          ok: true,
+          content: 'Edited src/a.ts (+3 -1)',
+          diffText: '--- a\n+++ b\n@@ -1,2 +1,4 @@\n-x\n+y\n+z\n+w\n',
+        },
+        durationMs: 20,
+      },
+      { type: 'task-done', reason: 'complete' },
+    ]);
+    const [, read, edit, changed] = state.items;
+    expect(read?.kind === 'tool' && read.summary).toBe('Read src/a.ts (lines 1-40 of 120)');
+    expect(edit?.kind === 'tool' && edit.summary).toBe('Edit src/a.ts (+3 -1)');
+    expect(edit?.kind === 'tool' && edit.stats).toEqual({ added: 3, removed: 1 });
+    // The task's changed files fold into one card at the end.
+    expect(changed?.kind).toBe('changed');
+    expect(changed?.kind === 'changed' && changed.files).toEqual([
+      { path: 'src/a.ts', added: 3, removed: 1, toolItemId: 'tool_e' },
+    ]);
+    expect(state.changedFiles).toEqual([]);
+  });
+
+  it('folds reasoning into a thinking block and closes it when text starts', () => {
+    const state = feed([
+      { type: 'task-start', input: 'why' },
+      { type: 'thinking-delta', text: 'Let me ' },
+      { type: 'thinking-delta', text: 'check.' },
+      { type: 'text-delta', text: 'Because.' },
+      { type: 'task-done', reason: 'complete' },
+    ]);
+    const kinds = state.items.map((i) => i.kind);
+    expect(kinds).toEqual(['user', 'thinking', 'assistant']);
+    const think = state.items[1];
+    expect(think?.kind === 'thinking' && think.text).toBe('Let me check.');
+    expect(think?.kind === 'thinking' && think.streaming).toBe(false);
+    expect(think?.kind === 'thinking' && typeof think.endedAt).toBe('number');
+  });
+
+  it('carries the task list, the mode, the repo, and the title', () => {
+    const state = feed([
+      { type: 'task-start', input: 'plan it' },
+      { type: 'repo-info', cwd: '/w/app', branch: 'main', dirty: true },
+      { type: 'mode', mode: 'plan' },
+      {
+        type: 'todos',
+        items: [
+          { content: 'Read the code', status: 'completed' },
+          { content: 'Write the fix', status: 'in_progress' },
+        ],
+      },
+      { type: 'title', title: 'Fix the login bug' },
+    ]);
+    expect(state.repo).toEqual({ cwd: '/w/app', branch: 'main', dirty: true });
+    expect(state.mode).toBe('plan');
+    expect(state.todos.map((t) => t.status)).toEqual(['completed', 'in_progress']);
+    expect(titleFrom(state)).toBe('Fix the login bug');
+  });
+
+  it('turns the final text of a plan turn into the plan card, not a duplicate', () => {
+    const state = feed([
+      { type: 'task-start', input: 'plan it' },
+      { type: 'text-delta', text: '1. Do this\n2. Then that' },
+      { type: 'text-final', text: '1. Do this\n2. Then that' },
+      { type: 'plan-proposed', text: '1. Do this\n2. Then that' },
+      { type: 'task-done', reason: 'complete' },
+    ]);
+    const kinds = state.items.map((i) => i.kind);
+    expect(kinds).toEqual(['user', 'plan']);
+    const plan = state.items[1];
+    expect(plan?.kind === 'plan' && plan.status).toBe('proposed');
+  });
+
+  it('tracks the working state for the busy row', () => {
+    let state = feed([{ type: 'task-start', input: 'go' }]);
+    expect(state.busy).toBe(true);
+    expect(typeof state.busySince).toBe('number');
+    expect(state.stepNote).toBe('Thinking');
+    state = reduceEvent(state, {
+      type: 'tool-start',
+      call: { id: 'g', name: 'grep', args: { pattern: 'foo', glob: 'src/**' } },
+    });
+    expect(state.stepNote).toBe('Search /foo/ in src/**');
+    state = reduceEvent(state, { type: 'task-done', reason: 'complete' });
+    expect(state.busy).toBe(false);
+    expect(state.busySince).toBeUndefined();
+    expect(state.stepNote).toBeUndefined();
   });
 });

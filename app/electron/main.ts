@@ -379,7 +379,21 @@ function deepLinkFromArgv(argv: string[]): string | undefined {
 // ------------------------------------------------------------------ IPC map
 // Keep in lockstep with src/lib/electronBridge.ts and electron/preload.cjs.
 
-ipcMain.handle('osc:createSession', (_e, cwd?: string) => host.createSession(cwd));
+ipcMain.handle('osc:createSession', (_e, cwd?: string, opts?: Record<string, unknown>) =>
+  host.createSession(cwd, opts as { instructions?: string; permissionMode?: never } | undefined),
+);
+ipcMain.handle('osc:setMode', (_e, sessionId: string, mode: string) =>
+  host.setMode(sessionId, mode as never),
+);
+ipcMain.handle('osc:setInstructions', (_e, sessionId: string, text?: string) =>
+  host.setInstructions(sessionId, text),
+);
+ipcMain.handle('osc:compact', (_e, sessionId: string, focus?: string) =>
+  host.compact(sessionId, focus),
+);
+ipcMain.handle('osc:listFiles', (_e, sessionId: string, query: string) =>
+  host.listFiles(sessionId, query),
+);
 ipcMain.handle('osc:resumeSession', (_e, id: string) => host.resumeSession(id));
 ipcMain.handle('osc:listSessions', () => host.listStoredSessions());
 ipcMain.handle('osc:send', (_e, sessionId: string, text: string) => host.send(sessionId, text));

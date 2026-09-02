@@ -5,6 +5,7 @@ import type {
   ApprovalAnswer,
   Catalog,
   DriverEvent,
+  PermissionMode,
   StackHealth,
   StackHealthRange,
 } from 'os-code/protocol';
@@ -67,7 +68,20 @@ export interface OscodeBridge {
   platform: 'electron';
 
   // Sessions (conversations backed by the engine).
-  createSession(cwd?: string): Promise<{ id: string; cwd: string; warnings: string[] }>;
+  createSession(
+    cwd?: string,
+    opts?: { instructions?: string; permissionMode?: PermissionMode },
+  ): Promise<{ id: string; cwd: string; warnings: string[] }>;
+  /** The person's controls over a live session (Claude Code parity): the
+   *  permission mode, the project's standing instructions, manual compaction,
+   *  and a ranked file search for @ mentions. */
+  setMode(sessionId: string, mode: PermissionMode): Promise<void>;
+  setInstructions(sessionId: string, text?: string): Promise<void>;
+  compact(
+    sessionId: string,
+    focus?: string,
+  ): Promise<{ before: number; after: number } | { error: string }>;
+  listFiles(sessionId: string, query: string): Promise<string[]>;
   /** Resume a session and return its journal so the renderer can replay it AFTER
    *  subscribing (IPC is not buffered, so a pushed replay would be lost). */
   resumeSession(

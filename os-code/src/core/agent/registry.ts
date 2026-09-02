@@ -17,6 +17,7 @@ import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
 import { analyzeImageTool, delegateTool, searchRepoTool } from '../tools/specialist.js';
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../tools/vault.js';
+import { todoWriteTool } from '../tools/todoWrite.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Router } from '../../router/router.js';
@@ -39,6 +40,9 @@ export function buildToolRegistry(options: {
   // accessor is wired only in the daemon bootstrap; elsewhere the tool degrades
   // to "no terminal here", so registering it unconditionally is safe.
   registry.register(readTerminalTool);
+  // The agent's live task list (Claude Code's checklist). Read-risk: it
+  // touches nothing but the transcript.
+  registry.register(todoWriteTool);
   registry.register(gitStatusTool);
   registry.register(gitDiffTool);
   registry.register(gitCommitTool);

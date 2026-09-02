@@ -1,6 +1,6 @@
 // App-level models. Every conversation, whatever powers it, renders through
 // the same ThreadState so the UI has exactly one chat implementation.
-import type { ApprovalRequest } from 'os-code/protocol';
+import type { ApprovalRequest, PermissionMode } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
@@ -9,14 +9,40 @@ import { claudeModelLabel } from '../lib/claudeModels.js';
 
 export type ThreadItem =
   | { kind: 'user'; id: string; text: string }
-  | { kind: 'assistant'; id: string; text: string; streaming: boolean }
+  | {
+      kind: 'assistant';
+      id: string;
+      text: string;
+      streaming: boolean;
+      /** The model that wrote this bubble, so a specialist's answer is named. */
+      model?: string;
+    }
+  // The model's reasoning, collapsed to "Thought for Ns" and expandable.
+  | {
+      kind: 'thinking';
+      id: string;
+      text: string;
+      streaming: boolean;
+      startedAt: number;
+      endedAt?: number;
+    }
+  // Plan mode's proposal, with the buttons that approve it or ask for changes.
+  | { kind: 'plan'; id: string; text: string; status: 'proposed' | 'approved' | 'revising' }
+  // The end-of-turn record of what changed, one row per file.
+  | { kind: 'changed'; id: string; files: ChangedFile[] }
   | {
       kind: 'tool';
       id: string;
       name: string;
       summary: string;
       state: 'running' | 'ok' | 'fail' | 'denied';
+      /** When the tool started, for the live elapsed counter. */
+      startedAt?: number;
       durationMs?: number;
+      /** The path this tool touched, when it has one (tap to open). */
+      path?: string;
+      /** Additions and deletions for an edit, once known. */
+      stats?: { added: number; removed: number };
       detail?: string;
       // How to render `detail` when expanded: a unified diff (edit tools) gets
       // the +/- colorizing, plain command output is shown verbatim in a mono
@@ -47,15 +73,52 @@ export interface CitationItem {
   url: string;
 }
 
+export interface ChangedFile {
+  path: string;
+  added: number;
+  removed: number;
+  /** The tool card that holds the diff, for a tap-through. */
+  toolItemId?: string;
+}
+
+export interface TodoRow {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+export interface RepoInfo {
+  cwd: string;
+  branch?: string;
+  dirty?: boolean;
+}
+
 export interface ThreadState {
   items: ThreadItem[];
   citations: CitationItem[];
   busy: boolean;
+  /** When the current task started, for the working indicator's counter. */
+  busySince?: number;
+  /** What the agent is doing right now ("Thinking", "readFile src/x.ts"). */
+  stepNote?: string;
   /** Active model shown in the top bar, updated by turn-start events. */
   model?: { name: string; kind: 'local' | 'cloud' };
   contextPercent: number;
   dollars: number;
+  /** Tokens for the latest turn, shown in the turn footer. */
+  lastTurn?: { promptTokens: number; completionTokens: number };
   pendingApprovals: ApprovalRequest[];
+  /** The agent's live task list (todoWrite), replaced whole each update. */
+  todos: TodoRow[];
+  /** Messages typed while the agent was working, sent in order when it is free. */
+  queued: string[];
+  /** Files touched so far this task, folded into a card at task-done. */
+  changedFiles: ChangedFile[];
+  /** Where the session works and its branch, from repo-info events. */
+  repo?: RepoInfo;
+  /** The permission mode the engine reports for this session. */
+  mode?: PermissionMode;
+  /** A title the engine generated after the first exchange. */
+  title?: string;
   /** Highest daemon sequence number seen, for SSE resume. */
   lastSeq: number;
 }
@@ -68,6 +131,9 @@ export function emptyThread(): ThreadState {
     contextPercent: 0,
     dollars: 0,
     pendingApprovals: [],
+    todos: [],
+    queued: [],
+    changedFiles: [],
     lastSeq: 0,
   };
 }
@@ -99,6 +165,9 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   thread: ThreadState;
+  /** True once the person named this chat themselves, so the engine's
+   *  generated title never overwrites a deliberate name. */
+  renamed?: boolean;
   /** True once any turn in this chat carried an image. The transcript stores
    *  only text, so a mid-chat model switch cannot carry images forward; this
    *  lets the switch disclose that earlier images are dropped from context. */

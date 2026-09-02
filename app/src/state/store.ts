@@ -105,8 +105,10 @@ import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
 import {
   DEFAULT_PERMISSION_MODE,
   autoApproves,
+  normalizePermissionMode,
   type PermissionMode,
 } from '../lib/permissionMode.js';
+import { hapticSuccess } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
@@ -387,6 +389,9 @@ interface AppState {
   /** When set, the Personal upgrade sheet is showing, and which locked surface
    *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
   paywall?: PaywallReason;
+  /** A desktop chat whose journal is still being replayed after reopen, so
+   *  the screen shows a skeleton instead of the empty-state greeting. */
+  resumingId?: string;
 
   init(): Promise<void>;
   setView(view: ViewName): void;
@@ -615,9 +620,44 @@ interface AppState {
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
+  /** Send to the active chat. While the agent is busy the message queues and
+   *  goes out the moment the current task ends, the way Claude Code takes a
+   *  message typed mid-run. */
   send(text: string, attachments?: Attachment[]): void;
+  /** Drop a queued message before it goes out. */
+  unqueue(index: number): void;
   abort(): void;
-  answerApproval(approvalId: string, approve: boolean, always?: boolean): void;
+  answerApproval(
+    approvalId: string,
+    approve: boolean,
+    always?: boolean,
+    opts?: { inProject?: boolean },
+  ): void;
+  /** Answer every pending approval at once (Approve all). */
+  answerAllApprovals(approve: boolean): void;
+  /** Resend the last user message after a stopped turn. */
+  retryLast(): void;
+  /** Plan mode: accept the proposal. Flips the session to accept-edits and
+   *  tells the agent to proceed. */
+  approvePlan(): void;
+  /** Plan mode: keep the plan in view and hand the person the composer. */
+  revisePlan(): void;
+  /** Set the permission mode for new sessions and the live one. */
+  setPermissionMode(mode: PermissionMode): Promise<void>;
+  /** Name a chat by hand; the generated title never overwrites it after. */
+  renameConversation(id: string, title: string): Promise<void>;
+  /** Fold the active session's history now (the /compact command). */
+  compactActive(focus?: string): Promise<void>;
+  /** The # shortcut: append a line to the project's standing instructions and
+   *  push it to the live session. */
+  addMemory(text: string): Promise<void>;
+  /** Ranked repo paths for an @ mention in the composer; empty for chat brains. */
+  listFiles(query: string): Promise<string[]>;
+  /** Whether the active chat is an engine session with the person's controls. */
+  activeIsAgent(): boolean;
+  /** Open a session that lives on the paired desktop but has no chat here yet
+   *  (started from the desktop app, or from another phone). */
+  openDesktopSession(info: { id: string; cwd: string; title?: string }): Promise<void>;
   /** Chat-to-terminal bridge: run a command on the connected desktop (only a
    *  desktop-backed conversation has a terminal). Output streams into the
    *  transcript as a command card. */
@@ -803,7 +843,11 @@ export const useApp = create<AppState>((set, get) => {
         const conv = state.conversations[conversationId];
         if (!conv) return state;
         const thread = reduceEvent(conv.thread, event, seq);
-        const title = conv.title === 'New chat' ? (titleFrom(thread) ?? conv.title) : conv.title;
+        // The first user line names a new chat; the engine's generated title
+        // then replaces that placeholder, unless the person named it by hand.
+        let title = conv.title;
+        if (event.type === 'title' && !conv.renamed) title = event.title;
+        else if (conv.title === 'New chat') title = titleFrom(thread) ?? conv.title;
         const next: Conversation = {
           ...conv,
           thread,
@@ -812,14 +856,35 @@ export const useApp = create<AppState>((set, get) => {
         };
         return { conversations: { ...state.conversations, [conversationId]: next } };
       });
-      // Permission mode: auto-answer tool approvals the current mode covers
-      // (Accept edits approves file edits, Auto approves all tools). Cloud spend
-      // always asks. This is the coding-agent surface; chat brains raise no
-      // approvals, so the mode is inert there.
-      if (event.type === 'approval-request') {
+      // Permission mode on the CLIENT-side brains (the stack runs its tools in
+      // the app): auto-answer the approvals the mode covers. Engine sessions
+      // decide inside the loop (it never asks for what the mode allows), so a
+      // question that reaches here from one is a real one and always shows.
+      if (event.type === 'approval-request' && driver.kind !== 'desktop') {
         const mode = get().settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
         if (autoApproves(mode, event.request.toolName, event.request.kind)) {
           drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
+        }
+      }
+      // The task ended: a message typed mid-run goes out now, in order. A
+      // completed task also gets the success tap Claude Code's bell stands for.
+      if (event.type === 'task-done') {
+        if (event.reason === 'complete') hapticSuccess();
+        const conv = get().conversations[conversationId];
+        const queued = conv?.thread.queued ?? [];
+        if (conv && queued.length) {
+          const [head, ...rest] = queued;
+          set((state) => {
+            const c = state.conversations[conversationId];
+            if (!c) return state;
+            return {
+              conversations: {
+                ...state.conversations,
+                [conversationId]: { ...c, thread: { ...c.thread, queued: rest } },
+              },
+            };
+          });
+          drivers.get(conversationId)?.send(head!);
         }
       }
       // Persist snapshots for phone-local conversations. P2-12: snapshot at both
@@ -868,13 +933,23 @@ export const useApp = create<AppState>((set, get) => {
     const { settings } = get();
     switch (conv.source.kind) {
       case 'desktop': {
+        // The project's standing instructions ride into the session's system
+        // prompt (with any OSCODE.md the engine reads itself), and the composer's
+        // mode is the session's starting mode, both the way Claude Code starts.
+        const project = conv.projectId
+          ? settings.projects?.find((p) => p.id === conv.projectId)
+          : undefined;
+        const sessionOpts = {
+          instructions: project?.instructions?.trim() || undefined,
+          permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
+        };
         if (isDesktop() && bridge()) {
           let sessionId = conv.source.sessionId;
           let journal: Array<{ seq: number; event: DriverEvent }> | undefined;
           if (!sessionId) {
             let created: { id: string };
             try {
-              created = await bridge()!.createSession(conv.source.cwd);
+              created = await bridge()!.createSession(conv.source.cwd, sessionOpts);
             } catch (err) {
               // The engine's own wording is a CLI instruction ("run osc init").
               // In the app the fix is a screen away, so say that instead.
@@ -900,7 +975,7 @@ export const useApp = create<AppState>((set, get) => {
         }
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
-          sessionId = await daemonCreateSession(settings.daemon, conv.source.cwd);
+          sessionId = await daemonCreateSession(settings.daemon, conv.source.cwd, sessionOpts);
           conv.source.sessionId = sessionId;
         }
         // Opening a desktop session is the walk-away-able moment: the run
@@ -1316,6 +1391,16 @@ export const useApp = create<AppState>((set, get) => {
             settings.stack = { ...settings.stack!, reasoning: promote };
             settingsDirty = true;
           }
+        }
+      }
+
+      // The permission modes now match Claude Code's four; a stored value from
+      // the earlier three-mode picker ('auto') maps to bypass.
+      if (settings.permissionMode !== undefined) {
+        const normalized = normalizePermissionMode(settings.permissionMode);
+        if (normalized !== settings.permissionMode) {
+          settings.permissionMode = normalized;
+          settingsDirty = true;
         }
       }
 
@@ -3197,6 +3282,7 @@ export const useApp = create<AppState>((set, get) => {
         // conversation the user is looking at in full.
         if (conv.source.kind === 'desktop') {
           set((s) => ({
+            resumingId: id,
             conversations: {
               ...s.conversations,
               [id]: { ...s.conversations[id]!, thread: emptyThread() },
@@ -3204,7 +3290,10 @@ export const useApp = create<AppState>((set, get) => {
           }));
           void buildDriver(conv)
             .then((driver) => attachDriver(id, driver))
-            .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)));
+            .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)))
+            .finally(() => {
+              if (get().resumingId === id) set({ resumingId: undefined });
+            });
         } else {
           const seed = seedFromTranscript(conv.thread.items);
           void buildDriver(conv, seed)
@@ -3239,6 +3328,23 @@ export const useApp = create<AppState>((set, get) => {
         get().showToast('This chat is not connected yet. Give it a second, or reopen it.');
         return;
       }
+      // Mid-run: hold the message and send it when the task ends (attachDriver
+      // flushes on task-done). Attachments do not queue; they need a live turn.
+      const conv = get().conversations[activeId];
+      if (conv?.thread.busy && !(attachments && attachments.length)) {
+        if (!text.trim()) return;
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c) return s;
+          return {
+            conversations: {
+              ...s.conversations,
+              [activeId]: { ...c, thread: { ...c.thread, queued: [...c.thread.queued, text] } },
+            },
+          };
+        });
+        return;
+      }
       // Remember that this chat carried an image, so a later model switch can
       // disclose that earlier images do not cross over (the transcript is text).
       if (attachments?.some((a) => a.mime.startsWith('image/'))) {
@@ -3253,15 +3359,215 @@ export const useApp = create<AppState>((set, get) => {
       driver.send(text, attachments);
     },
 
+    unqueue(index) {
+      const { activeId } = get();
+      if (!activeId) return;
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const queued = c.thread.queued.filter((_, i) => i !== index);
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: { ...c, thread: { ...c.thread, queued } },
+          },
+        };
+      });
+    },
+
     abort() {
       const { activeId } = get();
       if (activeId) drivers.get(activeId)?.abort();
     },
 
-    answerApproval(approvalId, approve, always) {
+    answerApproval(approvalId, approve, always, opts) {
       const { activeId } = get();
       if (!activeId) return;
-      drivers.get(activeId)?.answerApproval(approvalId, { approve, alwaysThisSession: always });
+      drivers.get(activeId)?.answerApproval(approvalId, {
+        approve,
+        alwaysThisSession: always,
+        ...(opts?.inProject ? { alwaysInProject: true } : {}),
+      });
+    },
+
+    answerAllApprovals(approve) {
+      const { activeId } = get();
+      if (!activeId) return;
+      const conv = get().conversations[activeId];
+      const driver = drivers.get(activeId);
+      if (!conv || !driver) return;
+      for (const req of conv.thread.pendingApprovals) {
+        driver.answerApproval(req.id, { approve });
+      }
+    },
+
+    retryLast() {
+      const { activeId } = get();
+      if (!activeId) return;
+      const conv = get().conversations[activeId];
+      if (!conv || conv.thread.busy) return;
+      const last = [...conv.thread.items].reverse().find((i) => i.kind === 'user');
+      if (!last || last.kind !== 'user') return;
+      get().send(last.text);
+    },
+
+    approvePlan() {
+      const { activeId } = get();
+      if (!activeId) return;
+      const conv = get().conversations[activeId];
+      if (!conv) return;
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const items = c.thread.items.map((i) =>
+          i.kind === 'plan' && i.status === 'proposed' ? { ...i, status: 'approved' as const } : i,
+        );
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: { ...c, thread: { ...c.thread, items } },
+          },
+        };
+      });
+      // Out of plan mode and into accept-edits, then the go-ahead, the same
+      // hand-off Claude Code makes when a plan is accepted.
+      void get().setPermissionMode('acceptEdits');
+      get().send('The plan is approved. Proceed with it.');
+    },
+
+    revisePlan() {
+      const { activeId } = get();
+      if (!activeId) return;
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const items = c.thread.items.map((i) =>
+          i.kind === 'plan' && i.status === 'proposed' ? { ...i, status: 'revising' as const } : i,
+        );
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: { ...c, thread: { ...c.thread, items } },
+          },
+        };
+      });
+    },
+
+    async setPermissionMode(mode) {
+      await get().saveSettings({ permissionMode: mode });
+      const { activeId } = get();
+      if (activeId) drivers.get(activeId)?.setMode?.(mode);
+    },
+
+    async renameConversation(id, title) {
+      const clean = title.trim().slice(0, 80);
+      if (!clean) return;
+      set((s) => {
+        const c = s.conversations[id];
+        if (!c) return s;
+        return {
+          conversations: {
+            ...s.conversations,
+            [id]: { ...c, title: clean, renamed: true, updatedAt: new Date().toISOString() },
+          },
+        };
+      });
+      await persistConversations(get());
+    },
+
+    async compactActive(focus) {
+      const { activeId } = get();
+      const driver = activeId ? drivers.get(activeId) : undefined;
+      if (!activeId || !driver?.compact) {
+        get().showToast('Compaction is for a desktop repo session.');
+        return;
+      }
+      const conv = get().conversations[activeId];
+      if (conv?.thread.busy) {
+        get().showToast('Let the current task finish, then compact.');
+        return;
+      }
+      get().showToast('Compacting the conversation.');
+      const result = await driver.compact(focus);
+      const text =
+        'error' in result
+          ? result.error
+          : `Compacted the history: ${result.before.toLocaleString()} to ${result.after.toLocaleString()} tokens.`;
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const note: ThreadItem = { kind: 'note', id: newId(), text };
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: { ...c, thread: { ...c.thread, items: [...c.thread.items, note] } },
+          },
+        };
+      });
+    },
+
+    async addMemory(text) {
+      const line = text.trim();
+      if (!line) return;
+      const { activeId } = get();
+      const conv = activeId ? get().conversations[activeId] : undefined;
+      const projectId = conv?.projectId ?? get().settings.activeProjectId;
+      const project = get().settings.projects?.find((p) => p.id === projectId);
+      if (!project) {
+        get().showToast('Open a chat in a project to save an instruction to it.');
+        return;
+      }
+      const instructions = project.instructions?.trim()
+        ? `${project.instructions.trimEnd()}\n- ${line}`
+        : `- ${line}`;
+      await get().updateProject(project.id, { instructions });
+      if (activeId) drivers.get(activeId)?.setInstructions?.(instructions);
+      set((s) => {
+        if (!activeId) return s;
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const note: ThreadItem = {
+          kind: 'note',
+          id: newId(),
+          text: `Saved to ${project.name}'s instructions: ${line}`,
+        };
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: { ...c, thread: { ...c.thread, items: [...c.thread.items, note] } },
+          },
+        };
+      });
+    },
+
+    async listFiles(query) {
+      const { activeId } = get();
+      const driver = activeId ? drivers.get(activeId) : undefined;
+      if (!driver?.listFiles) return [];
+      return driver.listFiles(query);
+    },
+
+    activeIsAgent() {
+      const { activeId } = get();
+      const driver = activeId ? drivers.get(activeId) : undefined;
+      return typeof driver?.setMode === 'function';
+    },
+
+    async openDesktopSession(info) {
+      // Already have a chat for it: just open that one.
+      const existing = get().order.find((id) => {
+        const c = get().conversations[id];
+        return c?.source.kind === 'desktop' && c.source.sessionId === info.id;
+      });
+      if (existing) {
+        get().openConversation(existing);
+        return;
+      }
+      const repoName = info.cwd.split(/[\\/]/).filter(Boolean).pop();
+      await get().newConversation(
+        { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName },
+        { title: info.title && !/^Session /.test(info.title) ? info.title : undefined },
+      );
     },
 
     runCommand(command) {

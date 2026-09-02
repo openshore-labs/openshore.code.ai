@@ -3,11 +3,91 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, chat and projects work the way Claude Code works)
+
+Founder: "make sure that the way chat and projects work is exactly like
+Claude Code in how it builds and works with the user... top notch premium
+feel for coding... do all the little things," then "Do all of the polish." An
+audit against Claude Code produced a 34-item gap list; all of it is built.
+
+**Engine (`os-code`).**
+
+- **Four permission modes, enforced in the loop.** `PermissionMode` is
+  `default | acceptEdits | plan | bypassPermissions`. `loop.ts` consults the
+  mode before it asks (accept-edits lets `editFile`/`writeFile` flow, bypass
+  runs everything but cloud spend and the always-ask tools); plan mode
+  filters the tool specs to read and network, denies any mutating call with a
+  plain reason, carries a PLAN MODE block in the system prompt, and emits
+  `plan-proposed` with the turn's final text. `setMode` emits a `mode` event
+  so every client sees the switch.
+- **Task list.** New `todoWrite` tool (read risk); the loop mirrors it as a
+  `todos` event after every tool-end and the system prompt tells the model
+  when to use it.
+- **Standing instructions.** `instructions.ts` reads OSCODE.md, CLAUDE.md, or
+  AGENTS.md from the repo (24k cap) into the system prompt; the daemon and
+  the Electron host take `instructions` and `permissionMode` at session
+  create, and `POST /sessions/:id/{mode,instructions,compact}` plus
+  `GET /sessions/:id/files?q=` give the person live controls. `INIT_PROMPT`
+  (exported via protocol) backs `/init`.
+- **Approval rules that persist.** `ApprovalAnswer.alwaysInProject` writes an
+  allow rule scoped to the path's directory (or the command's first word) into
+  the project's `os-code.config.json` (`addProjectPermissionRule`).
+- **Resilience and identity.** Transient provider failures (429, 503,
+  overloaded, ECONNRESET...) retry twice with backoff before a stop;
+  `compactNow(focus)` folds the history on demand; `generateTitle()` names
+  the session after the first exchange and the daemon seals it (`title`
+  event); `emitRepoInfo()` reports cwd, branch, and dirty state (`repo-info`)
+  before and after each run. `test/agentModes.test.ts` covers the modes, the
+  events, and the retry.
+
+**App (`app`).**
+
+- **Transcript feel.** A working row ("Thinking", "Search /foo/ in src/\*\*",
+  elapsed) fills the gap before the first token; reasoning folds to "Thought
+  for 12s"; tool cards name the step the way Claude Code does ("Read src/x.ts
+  (lines 1-40 of 120)", "Edit src/x.ts (+3 -1)", "$ npm test") with a live
+  counter, a +N -M pill, a diff with a line gutter, and long output folded to
+  head and tail; the task list pins above the composer; a plan card carries
+  "Start building" (accept-edits, then the go-ahead) and "Change something";
+  a changed-files card closes each task; a stopped turn offers Retry; a
+  "New message" pill offers the way back down; the model chip names a
+  specialist's answer. Markdown renders diff fences with the gutter and
+  closes an open fence while streaming.
+- **Composer.** Queue while busy (flushed on task-done, dashed bubbles in the
+  thread), Esc stops or clears, Up recalls earlier messages, Shift+Tab cycles
+  the mode, `/` opens the command menu (`/help /clear /compact /model /cost
+/mode /init /rename`), `@` offers repo files ranked by the engine, `#` saves
+  a line to the project's instructions and pushes it to the live session, a
+  long paste folds into a chip, files and images drop onto the field.
+- **Approvals, modes, top bar, chats.** The approval sheet counts the stack
+  ("1 of 3"), offers Approve all, Always allow in this project (path-bearing
+  tools on an engine session), y / a / n keys, and a mode footer. The mode
+  sheet shows the four modes and switches the live session. The top bar
+  carries a repo chip (folder · branch ● dirty), spend, and a context bar
+  that warms at 75% and reddens at 90%; the title is tappable to rename; an
+  offline banner appears when the device loses the network. The Chats room
+  groups by Today / Yesterday / This week / Earlier, searches by title, names
+  a chat on long press, marks a working chat with a pulse, and lists sessions
+  running on the paired desktop that have no chat here yet. A reopened
+  desktop chat shows a skeleton while its journal replays.
+- **Wiring.** `ChatDriver` gains optional `setMode`, `setInstructions`,
+  `compact`, `listFiles`; both engine drivers implement them (IPC and the
+  daemon routes). Sessions are created with the project's instructions and
+  the composer's mode. The engine's `title` replaces the first-line
+  placeholder unless the person renamed the chat (`Conversation.renamed`). A
+  stored `'auto'` mode maps to bypass on load. A completed task taps the
+  success haptic.
+- **Not device-verified.** Everything here is built in a web session and
+  gated (typecheck, lint, 307 app tests, 338 engine tests, both builds). The
+  first real run on the desktop app and a TestFlight build is the proof; a
+  new Codemagic build is needed to see it on the phone.
+
 ## Current state (2026-09-02, the Uki motion standard applies across OpenShore)
 
 Founder: apply the transition standards set for the Uki app across all of
 OpenShore so it feels premium as you navigate. The tokens and two guard tests
 already existed here; what was missing was adoption and exits.
+
 - **One vocabulary, enforced.** 109 declarations in `app/src/theme.css`
   moved from raw `ease` / ad-hoc seconds / inline `cubic-bezier()` to the
   `--dur-*` and `--ease-*` tokens. `polish-standards.test.ts` now fails CI on
@@ -45,6 +125,7 @@ already existed here; what was missing was adoption and exits.
 
 Founder, from the phone: the left panel is the main navigation, so it should
 read as one. Changes, all in the app:
+
 - **Sidebar regrouped.** The project card, "+ New chat", and "Quick chat" are
   gone from the panel (both live in the Chats room already; the project
   switcher is the Projects room). The day-one rooms sit at the top under the
@@ -64,6 +145,7 @@ Founder: "build that, would love it to be living and breathing." The browse
 list now grows on its own. Every catalog build asks Hugging Face for the
 trending and the newest GGUF repos and turns the ones that clear an honesty
 bar into entries, no seed edit needed:
+
 - **`scripts/build-catalog/discover.ts`.** Two listing axes (trendingScore,
   createdAt) unioned, then one metadata read per repo (file list with sizes,
   license tag, gated flag; never weights). Bar: public, not gated, license on
@@ -71,7 +153,7 @@ bar into entries, no seed edit needed:
   under 40 GB, no denylisted name (uncensored, nsfw, roleplay...). Category is
   a heuristic from name + tags (coder, vision, embed, r1/think, size for fast).
 - **Honest by construction.** A discovered entry carries `discovery: {source,
-  repo, foundAt}` (new optional schema field), is never `orchestratorCapable`,
+repo, foundAt}` (new optional schema field), is never `orchestratorCapable`,
   has no ratings (the card shows a "New · unrated" pill and the existing
   not-rated row), ranks after every seed model, and publishes a conservative
   8192 context floor with a note saying so. Enrich keeps a discovered model
@@ -108,14 +190,14 @@ bar into entries, no seed edit needed:
   branch back to main.
 - **Cadence is now daily** (`catalog.yml` cron `17 8 * * *`); the no-op stamp
   guard keeps an unchanged day from committing.
-`test/catalog.builder.discover.test.ts` (12 tests, fixtures only). Gates
-green: os-code build, typecheck, lint, 323 tests; app typecheck, lint, 296
-tests; offline `build:catalog` still writes 27 models, 4 presets.
+  `test/catalog.builder.discover.test.ts` (12 tests, fixtures only). Gates
+  green: os-code build, typecheck, lint, 323 tests; app typecheck, lint, 296
+  tests; offline `build:catalog` still writes 27 models, 4 presets.
 
 ## Current state (2026-09-02, the desktop coding path works)
 
 **Founder ask: "every feature fully functioning so I can start coding on
-OpenShore."** This pass made the desktop (Pop!_OS) path real and proved it as
+OpenShore."** This pass made the desktop (Pop!\_OS) path real and proved it as
 far as a headless session can, all on `main`:
 
 - **`pnpm install` now actually builds the natives.** pnpm 10 skips every
@@ -129,7 +211,7 @@ far as a headless session can, all on `main`:
   the `osc` CLI (system Node) then reports its terminal as not installed,
   honestly, via TerminalUnavailable.
 - **The real Electron shell boots headless** (`OSC_SMOKE=1` under xvfb: `page
-  loaded; window.oscode is object`) on today's full build, with the Electron
+loaded; window.oscode is object`) on today's full build, with the Electron
   zip side-loaded into `@electron/get`'s cache (the sandbox proxy cut Node's
   fetch; curl through the proxy worked, checksum verified). electronjs.org
   (Electron headers) is blocked by org policy here, so the Electron-ABI
@@ -158,9 +240,10 @@ far as a headless session can, all on `main`:
   email the app sent the link to and refused when the token yields no user
   (the CSRF binding a custom oscode:// scheme cannot get from a browser
   origin); pure-web `?checkout=success` reconciles entitlement on boot.
-Gates green: app typecheck/lint, app 275 tests (46 files), os-code 302 tests.
+  Gates green: app typecheck/lint, app 275 tests (46 files), os-code 302 tests.
 
 **Same day, second batch (founder: "keep it moving"):**
+
 - **QR pairing on the phone, no native plugin.** `QrScanner` uses
   getUserMedia plus jsQR on a canvas (pure web, so nothing new to compile for
   the iOS build), decodes the desktop's `{u, t}` payload, fills both fields,
@@ -178,10 +261,11 @@ Gates green: app typecheck/lint, app 275 tests (46 files), os-code 302 tests.
 - **Display preflight.** `pnpm desktop` now prints what is wrong and the exact
   `DISPLAY=:N XAUTHORITY=...` launch line when run from a shell with no
   display (the founder hit this over SSH; the live display was `:1`).
-Gates green: app typecheck/lint, app 279 tests (48 files).
+  Gates green: app typecheck/lint, app 279 tests (48 files).
 
 **Third batch (founder: bundles, guided setup, "make the whole app work the
 way I work with Claude Code"):**
+
 - **Stack bundles in the Marketplace.** Five one-tap profiles, each showing
   its total download summed from the live catalog: Pocket (iPhone, on-device),
   Starter, Coding, Creative, Performance (desktop via Ollama; Starter, Coding,
@@ -205,10 +289,11 @@ way I work with Claude Code"):**
   forks as pickers, one step at a time when the person acts, every change
   shown before it lands, verify then report plainly, honest states, keep it
   moving), and the checklist every new surface is held to.
-Gates green: app typecheck/lint, app 285 tests (50 files).
+  Gates green: app typecheck/lint, app 285 tests (50 files).
 
 **Fourth batch (founder: "CLAUDE.md, PROGRESS.md, and my advisor team are
 how I want OpenShore oriented to serve the user"):**
+
 - **The advisor team ships as a Crew preset.** My Crew gains "Add the advisor
   team": eight named perspectives written to OpenShore from the canonical
   charters (CTO reviews every build; CMO, CFO, and Creative Studio
@@ -253,6 +338,7 @@ Founder: the marketplace should stay current from live sources with no manual
 intervention, and My Stack should offer downloadable prefab stacks that
 constantly reassess as models change. Most of the plumbing already existed and
 is now surfaced and closed out:
+
 - **Already there:** the catalog is fetched from a live feed with a 24h cache
   and stale/bundled fallback (`market/catalog.ts`), and the build-catalog CI
   already runs on a schedule (`catalog.yml` cron, twice weekly) plus on push,
@@ -271,13 +357,14 @@ is now surfaced and closed out:
   gate validates, and it falls back to the seed's presets if derivation is
   empty. `test/catalog.builder.presets.test.ts`.
 - **Live discovery:** BUILT in the next entry up (`discover.ts`).
-Gates green: os-code build, typecheck, lint, 312 tests; app typecheck, lint,
-296 tests.
+  Gates green: os-code build, typecheck, lint, 312 tests; app typecheck, lint,
+  296 tests.
 
 ## Current state (2026-09-02, marketplace is open-ended + Kimi)
 
 Founder: "why aren't there any Kimi models, can we expand past Hugging Face to
 have all SOTA new models." Two things were true and one was a misread:
+
 - The marketplace was never Hugging-Face-only. Desktop models come from Ollama
   (`ollama pull`), phone models from HF GGUF; HF is used only to fetch
   popularity metadata (`build-catalog/sources.ts`). The catalog itself is a
@@ -302,7 +389,7 @@ have all SOTA new models." Two things were true and one was a misread:
   `catalog.sample.json` then running `build:catalog` (needs network) so refs
   resolve and real sizes and popularity are filled; "Install by name" covers
   the gap meanwhile.
-Gates green: os-code build, typecheck, lint; app typecheck, lint.
+  Gates green: os-code build, typecheck, lint; app typecheck, lint.
 
 ## Current state (2026-08-31, P0 beta remediation)
 
@@ -403,6 +490,7 @@ off-screen and the greeting overlapping the composer). The real cause was
 never in the web layer: WKWebView itself was performing a genuine native
 scroll to keep the focused composer above the keyboard, which no
 `visualViewport`-based trick can fully out-guess.
+
 - Installed `@capacitor/keyboard` and set `resize: 'none'` in
   `capacitor.config.ts`, which stops WKWebView from resizing or scrolling the
   page at all when the keyboard shows. With nothing left to drag it, the
@@ -415,13 +503,13 @@ scroll to keep the focused composer above the keyboard, which no
   `visualViewport`, which no longer shrinks under `resize: none`. Both now
   read the real keyboard height directly from the plugin's
   `keyboardWillShow`/`keyboardWillHide` events instead.
-Gates green: 41 files / 258 tests, typecheck, lint --max-warnings 0, Prettier,
-vite build, `npx cap sync ios` (confirms the plugin registers and
-`resize: 'none'` lands in the native config). Pushed straight to `main`
-(fast-forward, commit `c0d5a9f`). **Founder-confirmed on device: the greeting
-holds its spot through both keyboard states.** This closes out the saga; the
-greeting's positioning is locked in and should not be revisited without a new
-founder ask.
+  Gates green: 41 files / 258 tests, typecheck, lint --max-warnings 0, Prettier,
+  vite build, `npx cap sync ios` (confirms the plugin registers and
+  `resize: 'none'` lands in the native config). Pushed straight to `main`
+  (fast-forward, commit `c0d5a9f`). **Founder-confirmed on device: the greeting
+  holds its spot through both keyboard states.** This closes out the saga; the
+  greeting's positioning is locked in and should not be revisited without a new
+  founder ask.
 
 **Follow-on polish, same day:** the composer's padding-bottom jump when
 `kb-open` toggled had no transition, so it snapped to its final position the
@@ -449,6 +537,7 @@ green (same suite), compiled output checked for the rule, pushed straight to
 **Empty-state greeting reworked, composer moved back to the bottom, plus a
 polish pass.** Two founder-requested changes to the chat splash, then a polish
 follow-on, all on main.
+
 - **Composer back at the bottom.** The earlier keyboard-steady work pinned the
   greeting out of flow (position: fixed on pointer: coarse) so the keyboard
   could not drag it, which left the composer with nothing to push it down and it
@@ -475,12 +564,12 @@ follow-on, all on main.
   incoming word appears instantly, but the exiting layer stays on the global
   reset rather than animation:none so its animationend still fires and layers
   never pile up.
-Gates green: app 41 files / 247 tests (em-dash, motion-tokens, and
-polish-standards fill-mode guards included), typecheck (app + electron), lint
---max-warnings 0, Prettier clean. Straight to main (fast-forward, commits
-`fbffc50` then `a6b44aa`), which fires deploy.yml. Not device-verified (no iOS
-here); founder to confirm the bottom composer, tap-to-rotate, and the swap
-crossfade on device.
+  Gates green: app 41 files / 247 tests (em-dash, motion-tokens, and
+  polish-standards fill-mode guards included), typecheck (app + electron), lint
+  --max-warnings 0, Prettier clean. Straight to main (fast-forward, commits
+  `fbffc50` then `a6b44aa`), which fires deploy.yml. Not device-verified (no iOS
+  here); founder to confirm the bottom composer, tap-to-rotate, and the swap
+  crossfade on device.
 
 ## Current state (2026-08-26, later)
 
@@ -489,6 +578,7 @@ Founder call: rather than build phone-side BYOM streaming (R-16, which makes
 the phone run the loop and fights iOS suspension), deliver the same vision the
 durable way, on the already-built desktop-daemon path where the box runs the
 loop and the phone is the remote control. Two pieces landed:
+
 - The model sheet now shows a "My computer" group on the phone: it reads the
   paired box's stack (daemonStack / the /stack endpoint) and, picking it,
   starts a box-run session over the daemon (RemoteDriver), so the model runs on
@@ -504,9 +594,9 @@ loop and the phone is the remote control. Two pieces landed:
   the PairScreen lead matches. Daemon tests added for the box-run path (the
   /stack report and a no-cwd box-run session). R-16 stays the narrow escape
   hatch for bare hosted endpoints with no daemon, still deferred.
-Gates (on the merged tree, after rebasing onto the parallel review-remediation
-pass already on main): os-code 34 files / 276 tests, app 39 files / 226 tests,
-lint/typecheck clean, vite build passes.
+  Gates (on the merged tree, after rebasing onto the parallel review-remediation
+  pass already on main): os-code 34 files / 276 tests, app 39 files / 226 tests,
+  lint/typecheck clean, vite build passes.
 
 ## Current state (2026-08-26)
 
@@ -621,7 +711,9 @@ Layer status:
       `REPO_OUTBOX_ENABLED` on (its own scoped feature, per CTO FD-1). Also
       PAR-3: platform-remote (GitHub/GitLab) home repos have no push path yet.
 - [ ] **Claude Code parity roadmap (Part 5a)**, remaining after the
-      pair-your-box work landed: MCP-stdio on the engine; checkpoints/rewind;
+      2026-09-02 parity build (modes, plan mode, todos, instructions, slash
+      and @ and #, queue, approvals stack, repo chip, chats grouping all
+      DONE): MCP-stdio on the engine; checkpoints/rewind;
       replace the stack regex classifier with a Harbor Mini classification call;
       vision beyond Claude; a phone-side read-only tool slice for the pure-chat
       case. (Making desktop pairing the celebrated first-run path, and routing a
@@ -650,22 +742,17 @@ Layer status:
       unlocks the coding agent + Marketplace for one person, via Apple IAP on iOS
       and Stripe on web/desktop; commercial teams unchanged. All four phases are
       built, CTO-reviewed (money-path + Apple crypto), gated, and pushed to main.
-      **Founder config before deploy (one at a time):**
-      1. Stripe: create a $20/yr **Personal** price; set `STRIPE_PRICE_PERSONAL`
-         as a function secret.
-      2. `supabase db push` (applies 0006, 0007, 0008) then
-         `supabase functions deploy stripe-checkout stripe-webhook stripe-portal
-         link-apple-purchase apple-notifications`.
-      3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
-         in App Store Connect; add `oscode-iap` to app/package.json is done, but
-         confirm `cap sync ios` links it; enable the In-App Purchase capability.
-      4. Apple secrets: paste the real Apple Root CA DER base64 into
-         `_shared/apple.ts` (egress here blocked www.apple.com) OR set
-         `APPLE_ROOT_CA_G3_DER_BASE64`; set `APPLE_BUNDLE_ID`, `APPLE_APP_APPLE_ID`.
-         Register the `apple-notifications` URL as the App Store Server
-         Notifications V2 endpoint. Set `APPLE_ALLOW_SANDBOX=1` ONLY during Apple
-         review, clear it after.
-      5. Sandbox-validate the Apple purchase/restore + notification loop on device.
+      **Founder config before deploy (one at a time):** 1. Stripe: create a $20/yr **Personal** price; set `STRIPE_PRICE_PERSONAL`
+      as a function secret. 2. `supabase db push` (applies 0006, 0007, 0008) then
+      `supabase functions deploy stripe-checkout stripe-webhook stripe-portal
+       link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
+      in App Store Connect; add `oscode-iap` to app/package.json is done, but
+      confirm `cap sync ios` links it; enable the In-App Purchase capability. 4. Apple secrets: paste the real Apple Root CA DER base64 into
+      `_shared/apple.ts` (egress here blocked www.apple.com) OR set
+      `APPLE_ROOT_CA_G3_DER_BASE64`; set `APPLE_BUNDLE_ID`, `APPLE_APP_APPLE_ID`.
+      Register the `apple-notifications` URL as the App Store Server
+      Notifications V2 endpoint. Set `APPLE_ALLOW_SANDBOX=1` ONLY during Apple
+      review, clear it after. 5. Sandbox-validate the Apple purchase/restore + notification loop on device.
       **Deferred (CTO F4/F5, low):** apple-notifications rollback-delete
       escalation; pre-link refund/revoke handling via App Store Server API lookup.
       **Public pricing page: LIVE (2026-08-21).** Open-Shore-LLC-Homepage
@@ -1299,7 +1386,7 @@ Layer status:
   phone-to-desktop over the daemon; this wires the same TerminalManager into
   the Electron desktop app, so a desktop-backed chat opens a real local PTY
   over IPC (not only remotely). EngineHost holds a TerminalManager and forwards
-  output on a new channel; six osc:terminal* IPC handlers + preload/bridge
+  output on a new channel; six osc:terminal\* IPC handlers + preload/bridge
   methods + onTerminalData; ElectronDriver implements the ChatDriver terminal
   methods (the output listener registers before subscribing so ring replay is
   never missed, and tears down on abort). A terminalReader is also passed into
@@ -1384,7 +1471,7 @@ Layer status:
     / Supabase are untouched (safe failure mode). Also: `/outbox/apply|verify`
     now admin/workspace-gated (a member token could push to any repo, security
     must-fix); the tailscale-bound daemon also listens on loopback so `osc
-    attach` reaches it; a daemon restart seeds the agent's history from the
+attach` reaches it; a daemon restart seeds the agent's history from the
     journal (no more amnesia) and clears zombie approvals; the reconnect loop
     stops on 401/persistent-404 with actionable copy instead of retrying forever;
     phone POSTs get a 10s timeout.
@@ -1455,7 +1542,7 @@ Layer status:
   no change (it renders the roster generically). Green: app typecheck (app +
   electron tsconfig), lint --max-warnings 0, 176 tests (adds deviceFolder.test
   with a no-bridge-throws case), vite build, em-dash. Not runnable in the web
-  session (no Electron), so founder verifies on Pop!_OS. Known gap: no fs-watch,
+  session (no Electron), so founder verifies on Pop!\_OS. Known gap: no fs-watch,
   so an external write (the agent's) shows on the next Vault refresh, not live.
 
 - **2026-08-25: Agent vault writes, with an always-ask approval (daemon side).**
@@ -1629,7 +1716,7 @@ Layer status:
   wait for a clean TestFlight. New `oscode-speech` Capacitor plugin, third local
   SPM plugin, mirroring oscode-iap: `SFSpeechRecognizer` +
   `SFSpeechAudioBufferRecognitionRequest` with `requiresOnDeviceRecognition =
-  true`, driven by an `AVAudioEngine` input tap. Crucially it is JS-registered
+true`, driven by an `AVAudioEngine` input tap. Crucially it is JS-registered
   (`registerPlugin('OscodeSpeech')`), NOT imported in AppDelegate, so it needs
   no manual `project.pbxproj` linking, the exact trap that cost four fixes on
   oscode-llama; `cap sync` lists it in `CapApp-SPM/Package.swift` (verified: both
@@ -1643,7 +1730,7 @@ Layer status:
   so the mic hides instead of falling back to a server. `useDictation` now picks
   the backend: native on iOS, Web Speech on desktop/web, mic hidden where
   neither exists. Green: app typecheck, lint, 140 tests, vite build, and `cap
-  sync ios` clean. NOT device-verified (no macOS/Xcode here); the native side
+sync ios` clean. NOT device-verified (no macOS/Xcode here); the native side
   compiles for the first time on the next Codemagic archive, so expect a
   possible round of fixes like the earlier iOS work, and the on-device
   transcription itself is only provable on a real TestFlight install.
@@ -1739,7 +1826,7 @@ Layer status:
   takes a module name, so `import OscodeLlama` in AppDelegate.swift could never
   resolve. The error was byte-identical across builds because the import line
   never changed and no module named `OscodeLlama` exists. Fixed to `import
-  OscodeLlamaPlugin`. The earlier package-link commit (6fc341d) was still
+OscodeLlamaPlugin`. The earlier package-link commit (6fc341d) was still
   necessary and correct: it links the `OscodeLlama` product to the App target,
   which is what makes the `OscodeLlamaPlugin` module available to import; the
   wrong import name was masking whether that link worked. Both classes
@@ -1789,7 +1876,7 @@ Layer status:
   index.html title, iOS CFBundleDisplayName), the topbar and greeting wordmark,
   the guide system prompts ("You are OpenShore..."), and all in-app copy.
   Technical identifiers are deliberately left as-is (appId ai.openshore.oscode,
-  the oscode-* packages, the os-code workspace package, the osc CLI) so bundle
+  the oscode-\* packages, the os-code workspace package, the osc CLI) so bundle
   IDs, IAP, and builds do not break. Green: app typecheck, lint, 116 tests, and
   vite build all pass. Landed on branch
   claude/splash-screen-openshare-rename-sd0580 for merge to main. Follow-up:
@@ -1802,7 +1889,7 @@ Layer status:
   journals every step for replay, so the run continues while the phone is closed;
   the missing piece was telling the user when it finishes or blocks on an
   approval. Built content-free push across three layers. Supabase: migration 0009
-  (push_devices, push_grants, push_sends), a new _shared/apns.ts ES256 provider
+  (push*devices, push_grants, push_sends), a new \_shared/apns.ts ES256 provider
   signer with token caching, and push-register / push-grant / push-send. The
   daemon (src/daemon/push.ts) watches each session's live events and fires a
   push on approval-request (always) or an idle task-done (queue empty), unless a
@@ -1818,7 +1905,7 @@ Layer status:
   of scope; the standing off-device principle is in DECISIONS.md. Gates green
   (os-code 29 files / 227 tests incl. a new push.test.ts, app 20 / 116, vite
   build, both em-dash guards).
-  **Server side is now LIVE (2026-08-25):** the founder set the APNS_* secrets,
+  **Server side is now LIVE (2026-08-25):** the founder set the APNS*\* secrets,
   ran `supabase db push` (0009 applied), and deployed push-register /
   push-grant / push-send. Still needed before the phone can register: confirm
   Push Notifications is enabled on the ai.openshore.oscode App ID (Apple

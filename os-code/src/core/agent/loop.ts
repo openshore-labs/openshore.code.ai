@@ -27,7 +27,16 @@ import { redactSecrets } from '../security/redaction.js';
 import { compactHistory } from '../../context/compaction.js';
 import { estimateMessages } from '../../context/compaction.js';
 import { UsageTracker } from '../../auth/usage.js';
-import type { AgentEvent, ApprovalAnswer, ApprovalRequest, Approver, EventSink } from './types.js';
+import type {
+  AgentEvent,
+  ApprovalAnswer,
+  ApprovalRequest,
+  Approver,
+  EventSink,
+  PermissionMode,
+  TodoItem,
+} from './types.js';
+import { instructionsPrompt, type RepoInstructions } from './instructions.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('agent');
@@ -45,7 +54,24 @@ export interface AgentDeps {
   onEvent: EventSink;
   /** Optional repo code map injected into the system prompt. */
   codeMap?: string;
+  /** Standing instructions read from the repo (OSCODE.md, CLAUDE.md, AGENTS.md). */
+  repoInstructions?: RepoInstructions;
+  /** The person's standing instructions for this project (the app's Projects). */
+  instructions?: string;
+  /** The permission mode to start in. Defaults to asking for writes and shell. */
+  permissionMode?: PermissionMode;
+  /** Persist an allow rule for this tool in the workspace ("don't ask again
+   *  for this in this project"). Returns false when nothing could be written. */
+  persistRule?: (rule: { tool: string; pathGlob?: string }) => boolean;
 }
+
+/** Tools a plan may use: nothing that changes the workspace or runs a shell. */
+const PLAN_SAFE_RISKS = new Set(['read', 'network']);
+
+/** Transient provider failures worth a bounded retry. */
+const TRANSIENT =
+  /\b(429|503|overloaded|rate.?limit|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed)\b/i;
+const RETRY_DELAYS_MS = [2000, 6000];
 
 interface ActiveModel {
   provider: Provider;
@@ -61,6 +87,10 @@ export class AgentSession {
   private cloudApprovedForSession = false;
   private cloudApprovedForTask = false;
   private abortController?: AbortController;
+  private mode: PermissionMode;
+  private instructions?: string;
+  private todos: TodoItem[] = [];
+  private transientRetries = 0;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -69,14 +99,80 @@ export class AgentSession {
       model: orchestrator.ref.model,
       adapter: adapterFor(orchestrator.ref.model),
     };
+    this.mode = deps.permissionMode ?? 'default';
+    this.instructions = deps.instructions;
   }
 
   get activeModel(): { model: string; kind: 'local' | 'cloud' } {
     return { model: this.active.model, kind: this.active.provider.kind };
   }
 
+  get permissionMode(): PermissionMode {
+    return this.mode;
+  }
+
+  /** Change the permission mode between (or during) tasks. Announced as an
+   *  event so every attached client shows the truth. */
+  setMode(mode: PermissionMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.emit({ type: 'mode', mode });
+  }
+
+  /** Replace the person's standing instructions for this project. */
+  setInstructions(text: string | undefined): void {
+    this.instructions = text?.trim() ? text : undefined;
+  }
+
+  get taskList(): TodoItem[] {
+    return this.todos;
+  }
+
   abort(): void {
     this.abortController?.abort();
+  }
+
+  /**
+   * Manual compaction (/compact): summarize the older turns now, whatever the
+   * window, and say what was folded. Idle only; the loop compacts on its own
+   * mid-task.
+   */
+  async compactNow(focus?: string): Promise<{ before: number; after: number }> {
+    const before = this.history.length;
+    const budget = Math.max(1, Math.floor(estimateMessages(this.history) * 0.5));
+    const result = await compactHistory(this.history, budget, (text) =>
+      this.summarize(focus ? `${text}\n\nWhen summarizing, keep everything about: ${focus}` : text),
+    );
+    if (result.compacted) this.history = result.messages;
+    const after = this.history.length;
+    this.emit({
+      type: 'status',
+      message: result.compacted
+        ? `Compacted the conversation: ${before} messages folded into ${after}.`
+        : 'Nothing to compact yet.',
+    });
+    return { before, after };
+  }
+
+  /** A short title for the conversation, from its first exchange. */
+  async generateTitle(): Promise<string | undefined> {
+    const user = this.history.find((m) => m.role === 'user');
+    const assistant = this.history.find((m) => m.role === 'assistant');
+    const userText = typeof user?.content === 'string' ? user.content : '';
+    const reply = typeof assistant?.content === 'string' ? assistant.content : '';
+    if (!userText.trim()) return undefined;
+    try {
+      const raw = await this.summarize(
+        `Write a title for this conversation: three to six words, plain, specific, no quotes, no trailing period, no em dashes. Answer with the title only.\n\nPerson: ${userText.slice(0, 600)}\n\nAssistant: ${reply.slice(0, 600)}`,
+      );
+      const title = raw
+        .split('\n')[0]!
+        .replace(/^["'\s]+|["'\s.]+$/g, '')
+        .slice(0, 60);
+      return title || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private emit(event: AgentEvent): void {
@@ -103,7 +199,20 @@ export class AgentSession {
       'Never claim a result you did not verify. If you cannot do something, say so plainly and name the next action. End every report with the single next step.',
       'Whenever the user must paste something themselves (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
       'Never use em dashes in your replies. Use a period or a comma instead.',
+      'For any task with three or more steps, call todoWrite first with the whole plan, mark one item in_progress as you start it, and completed the moment it lands. Keep the list current; the person watches it.',
+      'When you correct something the person told you twice, or learn a durable fact about how they work, propose one line for their standing instructions rather than silently adapting.',
     ];
+    if (this.mode === 'plan') {
+      parts.push(
+        [
+          'PLAN MODE. You may only read: readFile, grep, glob, gitStatus, gitDiff, searchRepo, webSearch, webFetch, todoWrite. Every editing, writing, and shell tool is unavailable until the person approves your plan.',
+          'Investigate as much as you need, then answer with a plan: a short numbered list of the concrete changes you would make, each naming the files it touches, plus what you would verify and any risk. End with one question only if a decision is genuinely theirs.',
+          'Do not start building. The person will say when.',
+        ].join(' '),
+      );
+    }
+    const standing = instructionsPrompt(this.deps.repoInstructions, this.instructions);
+    if (standing) parts.push(standing);
     // Premium UX out of the box: everything with a screen is built to the
     // twenty laws plus the house bar unless a project turns it off in config
     // or the user says to skip it (uxStandard.ts).
@@ -130,6 +239,7 @@ export class AgentSession {
     const { config, guardrails } = this.deps;
     guardrails.startTask();
     this.cloudApprovedForTask = false;
+    this.transientRetries = 0;
     this.abortController = new AbortController();
     // The visible task-start is the user's own words. A context preamble (the
     // results of commands the user ran between turns) rides into the model's
@@ -220,7 +330,7 @@ export class AgentSession {
           {
             model: this.active.model,
             messages: this.history,
-            tools: toolMode === 'native' ? this.deps.tools.specs() : undefined,
+            tools: toolMode === 'native' ? this.toolSpecs() : undefined,
             temperature: this.active.adapter.temperature(),
             maxTokens: 8192,
             stop: this.active.adapter.stopTokens().length
@@ -344,10 +454,13 @@ export class AgentSession {
       }
 
       if (!calls.length) {
-        // A plain text answer: the task is done.
+        // A plain text answer: the task is done. In plan mode the answer IS the
+        // plan, so it is also raised as a proposal the person can approve.
         const finalText = displayText.trim();
         this.history.push({ role: 'assistant', content: streamedText });
         this.emit({ type: 'text-final', text: finalText });
+        if (this.mode === 'plan' && finalText)
+          this.emit({ type: 'plan-proposed', text: finalText });
         this.emit({ type: 'task-done', reason: 'complete' });
         return;
       }
@@ -424,13 +537,35 @@ export class AgentSession {
     }
 
     const path = tool.pathOf?.(call.args);
-    const decision = permissions.decide({
+    let decision = permissions.decide({
       toolName: call.name,
       risk: tool.risk,
       path,
       cwd: toolContext.cwd,
       alwaysAsk: tool.alwaysAsk,
     });
+
+    // The permission mode sits on top of the policy, the way Claude Code's
+    // does. Plan mode never mutates. Bypass and acceptEdits turn an "ask" into
+    // an allow for their class, but never for cloud spend and never for an
+    // always-ask tool (those two stay loud in every mode).
+    if (this.mode === 'plan' && !PLAN_SAFE_RISKS.has(tool.risk)) {
+      const reason = 'Plan mode: read only until the plan is approved.';
+      this.emit({ type: 'tool-denied', call, reason });
+      this.pushObservation(
+        call,
+        'Not run: plan mode is read only. Finish investigating and answer with the plan; the person approves it before anything is changed.',
+        toolMode,
+      );
+      return 'failed';
+    }
+    if (decision.decision === 'ask' && !tool.alwaysAsk && tool.risk !== 'cloud-spend') {
+      if (this.mode === 'bypassPermissions') {
+        decision = { decision: 'allow', reason: 'bypass permissions mode' };
+      } else if (this.mode === 'acceptEdits' && tool.risk === 'write') {
+        decision = { decision: 'allow', reason: 'accept edits mode' };
+      }
+    }
 
     if (decision.decision === 'deny') {
       const reason = `${call.name} is denied by your permission policy (${decision.reason}).`;
@@ -478,6 +613,17 @@ export class AgentSession {
           });
         }
       }
+      if (answer.alwaysInProject && answer.approve && !tool.alwaysAsk) {
+        const pathGlob = path ? `${dirnameOf(path)}/**` : undefined;
+        const saved = this.deps.persistRule?.({ tool: call.name, pathGlob }) ?? false;
+        this.emit({
+          type: 'note',
+          message: saved
+            ? `${call.name} is allowed from now on${pathGlob ? ` under ${dirnameOf(path!) || '.'}` : ''} in this project. Change it in os-code.config.json.`
+            : `Could not save that rule for this project; ${call.name} will ask again.`,
+        });
+        if (saved) permissions.allowForSession(call.name);
+      }
       if (!answer.approve) {
         this.emit({ type: 'tool-denied', call, reason: 'You declined this step.' });
         this.pushObservation(
@@ -502,6 +648,11 @@ export class AgentSession {
     }
     const durationMs = Date.now() - startedAt;
     this.emit({ type: 'tool-end', call, result, durationMs });
+    // The task list rides its own event so every client renders it live.
+    if (call.name === 'todoWrite' && result.ok && Array.isArray(call.args.items)) {
+      this.todos = call.args.items as TodoItem[];
+      this.emit({ type: 'todos', items: this.todos });
+    }
     if (result.citations?.length) this.emit({ type: 'citations', citations: result.citations });
     this.pushObservation(call, redactSecrets(result.content), toolMode);
     return result.ok ? 'ok' : 'failed';
@@ -628,7 +779,38 @@ export class AgentSession {
     return answer.approve;
   }
 
+  /** The tool specs the model may see this turn: everything, or in plan mode
+   *  only the read-side tools. */
+  private toolSpecs() {
+    const specs = this.deps.tools.specs();
+    if (this.mode !== 'plan') return specs;
+    return specs.filter((spec) => {
+      const tool = this.deps.tools.get(spec.name);
+      return tool ? PLAN_SAFE_RISKS.has(tool.risk) : false;
+    });
+  }
+
   private async handleProviderFailure(err: unknown, turn: number): Promise<'retry' | 'fail'> {
+    // A rate limit or an overloaded upstream is worth a short, bounded wait:
+    // two retries with a growing pause, announced, then an honest failure.
+    const message = err instanceof Error ? err.message : String(err);
+    if (TRANSIENT.test(message) && this.transientRetries < RETRY_DELAYS_MS.length) {
+      const delay = RETRY_DELAYS_MS[this.transientRetries]!;
+      this.transientRetries += 1;
+      this.emit({
+        type: 'status',
+        message: `The model's server is busy (${message.slice(0, 80)}). Retrying in ${Math.round(delay / 1000)}s.`,
+      });
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, delay);
+        this.abortController?.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      if (this.abortController?.signal.aborted) return 'fail';
+      return 'retry';
+    }
     if (err instanceof ProviderError && err.message.startsWith('TOOLS_UNSUPPORTED')) {
       // The backend told us native tools are off the table; the capability
       // cache now knows, so the next turn uses the text bridge.
@@ -661,4 +843,10 @@ export class AgentSession {
     }
     return out.trim();
   }
+}
+
+/** The directory part of a workspace-relative path, '' at the root. */
+function dirnameOf(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i === -1 ? '' : path.slice(0, i);
 }

@@ -314,3 +314,24 @@ execution contract. Newest at the bottom.
   fetches, vault loads) and could duplicate a streaming transcript. A cloned,
   inert overlay costs nothing and fades for 220ms. Skipped under reduced
   motion.
+- **Claude Code parity, engine first, one event protocol.** The permission
+  modes are Claude Code's four and the ENGINE enforces them (`loop.ts` consults
+  the mode before it asks; plan mode filters the tool specs to read and
+  network and denies a mutating call outright), so the app's old client-side
+  auto-approval now applies only to brains that run their tools in the app
+  (the stack). A stored `'auto'` maps to `bypassPermissions`. Everything new
+  the transcript shows (todos, plan-proposed, mode, repo-info, title) is a
+  `DriverEvent`, so the desktop and the phone render it from the same reducer
+  and the journal replays it.
+- **A message typed mid-run queues in the app, not the engine.** The queue is
+  thread state flushed on task-done, so the engine's one-task-at-a-time
+  contract stands and a queued message survives a reopen of the screen but
+  never a lost session. Attachments do not queue (they need a live turn).
+- **Approving a plan is two calls, in order.** Accept-edits first (so the
+  agent can act), then the go-ahead message. The plan bubble becomes the plan
+  card rather than rendering the same words twice.
+- **The engine's generated title replaces the first-line placeholder, never a
+  name the person typed.** `Conversation.renamed` guards it.
+- **The # shortcut writes to the project's instructions, not a hidden file.**
+  Projects already carry standing instructions that ride into every session
+  in them; that is the memory, and it is visible in the Projects room.

@@ -20,11 +20,37 @@ export interface ApprovalAnswer {
   approve: boolean;
   /** Ask again next time, or allow this tool for the rest of the session. */
   alwaysThisSession?: boolean;
+  /** Persist an allow rule for this tool, scoped to the path's directory (or
+   *  the command's first word), in the project's os-code.config.json. The
+   *  Claude Code "don't ask again for this in this project". */
+  alwaysInProject?: boolean;
 }
 
 export type Approver = (request: ApprovalRequest) => Promise<ApprovalAnswer>;
 
 export type StopReason = 'complete' | 'guardrail' | 'aborted' | 'declined' | 'error';
+
+/**
+ * The permission mode, the same four Claude Code offers. `default` asks for
+ * writes and shell; `acceptEdits` lets file edits flow and still asks for
+ * shell; `plan` forbids every mutating tool and has the model propose a plan
+ * first; `bypassPermissions` runs everything except cloud spend and the
+ * always-ask tools without a prompt.
+ */
+export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+
+export const PERMISSION_MODES: readonly PermissionMode[] = [
+  'default',
+  'acceptEdits',
+  'plan',
+  'bypassPermissions',
+] as const;
+
+/** One row of the agent's task list, mirrored to the UI as a checklist. */
+export interface TodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
 
 export type AgentEvent =
   | { type: 'task-start'; input: string }
@@ -46,7 +72,18 @@ export type AgentEvent =
       contextPercent: number;
     }
   | { type: 'model-switch'; model: string; providerKind: 'local' | 'cloud'; reason: string }
-  | { type: 'task-done'; reason: StopReason; message?: string };
+  | { type: 'task-done'; reason: StopReason; message?: string }
+  // The agent's task list, replaced whole each time it calls todoWrite.
+  | { type: 'todos'; items: TodoItem[] }
+  // Plan mode: the model's proposed plan, awaiting the person's go-ahead.
+  | { type: 'plan-proposed'; text: string }
+  // The permission mode in force, so a reattaching client shows the truth.
+  | { type: 'mode'; mode: PermissionMode }
+  // Where the session works and the branch it is on; refreshed at the
+  // bookends of each task so the chat can show it and mark uncommitted work.
+  | { type: 'repo-info'; cwd: string; branch?: string; dirty?: boolean }
+  // A short generated title after the first completed exchange.
+  | { type: 'title'; title: string };
 
 export type EventSink = (event: AgentEvent) => void;
 

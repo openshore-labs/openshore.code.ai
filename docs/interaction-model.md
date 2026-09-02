@@ -106,6 +106,40 @@ tokens, not raw curves; press-fb on every tappable; an exit before every
 unmount; transform and opacity, never layout; native haptics; reduced motion
 honored; gestures that track the finger.
 
+## Working with the coding agent: the Claude Code contract
+
+The chat with a desktop repo is built to work the way Claude Code works, so
+someone who knows one knows the other:
+
+- **Four permission modes, enforced by the engine.** Default asks before every
+  edit and command; Accept edits lets file edits flow and asks for shell; Plan
+  is read-only and ends in a plan card with "Start building" and "Change
+  something"; Bypass runs everything except cloud spend. Shift+Tab cycles,
+  the mode pill and `/mode` open the sheet, and the mode changes the live
+  session, not just the next one.
+- **The transcript names every step.** "Read src/x.ts (lines 1-40 of 120)",
+  "Edit src/x.ts (+3 -1)", "$ npm test", with a live elapsed counter while a
+  tool runs, a diff with a line gutter, long output folded to head and tail,
+  reasoning folded to "Thought for 12s", a task list pinned above the composer
+  while a job runs, and a changed-files card at the end of the task.
+- **The composer's grammar.** Enter sends, Shift+Enter breaks a line, Esc stops
+  a run or clears the field, Up recalls earlier messages, `/` opens the
+  command menu (`/help /clear /compact /model /cost /mode /init /rename`),
+  `@` offers repo files ranked by the engine, `#` saves a line to the
+  project's standing instructions, a long paste folds into a chip, files and
+  images drop onto the field, and a message typed mid-run queues for the
+  moment the agent is free.
+- **Approvals stack honestly.** "1 of 3", Approve all, Approve for this session,
+  Always allow in this project (an engine-scoped rule), and y / a / n on a
+  keyboard. Cloud spend always asks, in amber.
+- **The session knows where it is.** The top bar carries the repo, the branch
+  and a dirty dot, the model, the spend so far, and a context bar that warms
+  at 75% and reddens at 90%. A reopened desktop chat shows a skeleton while
+  its journal replays, never the empty-state greeting.
+- **Standing instructions ride in.** A project's instructions and any
+  OSCODE.md, CLAUDE.md, or AGENTS.md in the repo reach the system prompt, and
+  `/init` asks the agent to write one.
+
 ## What to hold new work to
 
 Before a screen ships, answer: What is the goal in the person's words? Where is

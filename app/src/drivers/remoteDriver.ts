@@ -2,7 +2,12 @@
 // tailnet. Every event is journaled on the desktop and replayable from any
 // sequence number, so a subway tunnel costs nothing; this driver reconnects
 // with backoff and resumes from the last sequence it saw.
-import type { ApprovalAnswer, DaemonSessionInfo, DriverEvent } from 'os-code/protocol';
+import type {
+  ApprovalAnswer,
+  DaemonSessionInfo,
+  DriverEvent,
+  PermissionMode,
+} from 'os-code/protocol';
 import type { ChatDriver, DriverEventSink, TerminalOpen } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 
@@ -94,11 +99,19 @@ export async function daemonHealth(target: DaemonTarget): Promise<{ ok: boolean;
   }
 }
 
-export async function daemonCreateSession(target: DaemonTarget, cwd?: string): Promise<string> {
+export async function daemonCreateSession(
+  target: DaemonTarget,
+  cwd?: string,
+  opts: { instructions?: string; permissionMode?: PermissionMode } = {},
+): Promise<string> {
   const res = await fetch(`${target.baseUrl}/sessions`, {
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
-    body: JSON.stringify(cwd ? { cwd } : {}),
+    body: JSON.stringify({
+      ...(cwd ? { cwd } : {}),
+      ...(opts.instructions ? { instructions: opts.instructions } : {}),
+      ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
+    }),
     signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
@@ -372,6 +385,53 @@ export class RemoteDriver implements ChatDriver {
       body: JSON.stringify(answer),
       signal: AbortSignal.timeout(10_000),
     }).catch(() => {});
+  }
+
+  // ---- the person's session controls ----
+  private post(path: string, body: unknown): Promise<Response> {
+    return fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/${path}`, {
+      method: 'POST',
+      headers: { ...headers(this.target), 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+  }
+
+  setMode(mode: PermissionMode): void {
+    void this.post('mode', { mode }).catch(() => {});
+  }
+
+  setInstructions(text?: string): void {
+    void this.post('instructions', { text }).catch(() => {});
+  }
+
+  async compact(focus?: string): Promise<{ before: number; after: number } | { error: string }> {
+    try {
+      const res = await fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/compact`, {
+        method: 'POST',
+        headers: { ...headers(this.target), 'content-type': 'application/json' },
+        body: JSON.stringify(focus ? { focus } : {}),
+        // Compaction is a model turn of its own; give it real time.
+        signal: AbortSignal.timeout(120_000),
+      });
+      return (await res.json()) as { before: number; after: number } | { error: string };
+    } catch {
+      return { error: 'Could not reach the desktop to compact.' };
+    }
+  }
+
+  async listFiles(query: string): Promise<string[]> {
+    try {
+      const res = await fetch(
+        `${this.target.baseUrl}/sessions/${this.sessionId}/files?q=${encodeURIComponent(query)}`,
+        { headers: headers(this.target), signal: AbortSignal.timeout(10_000) },
+      );
+      if (!res.ok) return [];
+      const body = (await res.json()) as { files?: string[] };
+      return body.files ?? [];
+    } catch {
+      return [];
+    }
   }
 
   // ---- chat-to-terminal bridge ----

@@ -22,6 +22,7 @@ import {
 import { oscHome, loadConfig } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
+import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { LocalDriver, listSessions, sealSessionsAtRest } from './session.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
@@ -518,6 +519,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     if (req.method === 'POST' && url.pathname === '/sessions') {
       const body = await readJson(req);
       const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : process.cwd();
+      const instructions = typeof body.instructions === 'string' ? body.instructions : undefined;
+      const permissionMode = isPermissionMode(body.permissionMode)
+        ? body.permissionMode
+        : undefined;
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
         sendJson(res, 403, {
           error:
@@ -530,6 +535,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           cwd,
           profile: 'remote-attached',
           terminalReader,
+          instructions,
+          permissionMode,
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);
@@ -594,6 +601,38 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       if (req.method === 'POST' && parts[2] === 'abort') {
         driver.abort();
         sendJson(res, 200, { aborted: true });
+        return;
+      }
+      // ---- the person's controls: mode, instructions, compaction, files ----
+      if (req.method === 'POST' && parts[2] === 'mode') {
+        const body = await readJson(req);
+        if (!isPermissionMode(body.mode)) {
+          sendJson(res, 400, {
+            error: 'Send {"mode": "default" | "acceptEdits" | "plan" | "bypassPermissions"}.',
+          });
+          return;
+        }
+        driver.setMode(body.mode);
+        sendJson(res, 200, { mode: driver.mode });
+        return;
+      }
+      if (req.method === 'POST' && parts[2] === 'instructions') {
+        const body = await readJson(req);
+        driver.setInstructions(typeof body.text === 'string' ? body.text : undefined);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === 'POST' && parts[2] === 'compact') {
+        const body = await readJson(req);
+        const result = await driver.compact(
+          typeof body.focus === 'string' ? body.focus : undefined,
+        );
+        sendJson(res, 'error' in result ? 409 : 200, result);
+        return;
+      }
+      if (req.method === 'GET' && parts[2] === 'files') {
+        const q = url.searchParams.get('q') ?? '';
+        sendJson(res, 200, { files: driver.listFiles(q) });
         return;
       }
       // ---- user-initiated command lane (chat-to-terminal bridge) ----
@@ -795,6 +834,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         driver.answerApproval(parts[3], {
           approve: body.approve,
           alwaysThisSession: Boolean(body.alwaysThisSession),
+          alwaysInProject: Boolean(body.alwaysInProject),
         });
         sendJson(res, 200, { resolved: true });
         return;
@@ -963,4 +1003,8 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
     throw new BadJson('The request body must be a JSON object.');
   }
   return parsed as Record<string, unknown>;
+}
+
+function isPermissionMode(v: unknown): v is PermissionMode {
+  return typeof v === 'string' && (PERMISSION_MODES as readonly string[]).includes(v);
 }

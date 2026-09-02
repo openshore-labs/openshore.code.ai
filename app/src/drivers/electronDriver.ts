@@ -1,6 +1,6 @@
 // Desktop driver: the engine lives in Electron's main process; events arrive
 // over IPC already in DriverEvent shape, so this is a thin adapter.
-import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
+import type { ApprovalAnswer, DriverEvent, PermissionMode } from 'os-code/protocol';
 import { requireBridge } from '../lib/electronBridge.js';
 import type { ChatDriver, DriverEventSink, TerminalOpen } from './types.js';
 
@@ -50,6 +50,23 @@ export class ElectronDriver implements ChatDriver {
 
   answerApproval(approvalId: string, answer: ApprovalAnswer): void {
     void requireBridge().answerApproval(this.sessionId, approvalId, answer);
+  }
+
+  // ---- the person's session controls ----
+  setMode(mode: PermissionMode): void {
+    void requireBridge().setMode(this.sessionId, mode);
+  }
+
+  setInstructions(text?: string): void {
+    void requireBridge().setInstructions(this.sessionId, text);
+  }
+
+  compact(focus?: string): Promise<{ before: number; after: number } | { error: string }> {
+    return requireBridge().compact(this.sessionId, focus);
+  }
+
+  listFiles(query: string): Promise<string[]> {
+    return requireBridge().listFiles(this.sessionId, query);
   }
 
   // ---- chat-to-terminal bridge ----

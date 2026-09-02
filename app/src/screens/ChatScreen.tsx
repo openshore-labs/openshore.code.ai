@@ -4,20 +4,46 @@
 // header that names the chat.
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
+import { INIT_PROMPT } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
-import { Composer } from '../components/Composer.js';
+import { Composer, SLASH_COMMANDS, type SlashCommand } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
 import { ModelSheet } from '../components/ModelSheet.js';
 import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
+import { TodoCard } from '../components/TodoCard.js';
+import { Sheet } from '../components/Sheet.js';
 import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { hapticTick } from '../lib/haptics.js';
 import { isDesktop } from '../lib/platform.js';
+import { DEFAULT_PERMISSION_MODE } from '../lib/permissionMode.js';
+import { useOnline } from '../hooks/useOnline.js';
 import type { Attachment } from '../lib/attachments.js';
+
+/** The last path segment, for the repo chip. */
+function basename(p: string): string {
+  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+}
+
+/** The transcript's shape while a reopened desktop chat replays its journal:
+ *  three soft bars in the rhythm of a user turn and an answer, so the screen
+ *  never flashes the empty-state greeting on the way to a full history. */
+function ResumeSkeleton() {
+  return (
+    <div className="thread" aria-busy="true" aria-label="Loading the conversation">
+      <div className="thread-inner">
+        <div className="skel skel-user" />
+        <div className="skel skel-line" />
+        <div className="skel skel-line short" />
+        <div className="skel skel-tool" />
+      </div>
+    </div>
+  );
+}
 
 // True once the boot splash has lifted off the screen. The composer waits for
 // this before it focuses, so the keyboard pulls up gracefully as the greeting is
@@ -110,6 +136,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     send,
     abort,
     answerApproval,
+    answerAllApprovals,
     newConversation,
     switchModel,
     setDrawer,
@@ -117,12 +144,26 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     sourceReady,
     showToast,
     keepQuickChat,
+    retryLast,
+    approvePlan,
+    revisePlan,
+    startNewChat,
+    compactActive,
+    renameConversation,
+    activeIsAgent,
+    resumingId,
+    settings,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
   // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
   // 'local' from the out-of-usage "Switch to a local model" tap.
   const [sheetStage, setSheetStage] = useState<'root' | 'local'>('root');
   const [modeSheetOpen, setModeSheetOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  // Bumped to pull focus into the composer (a plan's "Change something").
+  const [focusSignal, setFocusSignal] = useState(0);
+  const online = useOnline();
   // The brain a new chat will use, chosen from the composer. On the desktop app
   // it defaults to the engine on this machine (the model the founder set up
   // through Ollama or a cloud key), so a first message just works; the phone
@@ -145,6 +186,71 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
   const approval = thread?.pendingApprovals[0];
+  const agent = Boolean(conv && conv.source.kind === 'desktop' && activeIsAgent());
+  const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
+  const resuming = Boolean(conv && resumingId === conv.id && thread && thread.items.length === 0);
+  const history = thread
+    ? thread.items.filter((i) => i.kind === 'user').map((i) => (i.kind === 'user' ? i.text : ''))
+    : [];
+
+  const openRename = () => {
+    if (!conv) return;
+    setRenameDraft(conv.title === 'New chat' ? '' : conv.title);
+    setRenameOpen(true);
+  };
+
+  const onCommand = (command: SlashCommand, arg: string) => {
+    switch (command) {
+      case 'help':
+        showToast(
+          SLASH_COMMANDS.filter((c) => agent || !c.agentOnly)
+            .map((c) => `/${c.name}`)
+            .join('  ') + '.  @ mentions a file, # saves an instruction, Esc stops.',
+        );
+        return;
+      case 'clear':
+        startNewChat();
+        return;
+      case 'compact':
+        void compactActive(arg || undefined);
+        return;
+      case 'model':
+        setSheetStage('root');
+        setSheetOpen(true);
+        return;
+      case 'cost': {
+        if (!thread) {
+          showToast('Nothing spent yet.');
+          return;
+        }
+        const turn = thread.lastTurn
+          ? ` Last turn: ${thread.lastTurn.promptTokens.toLocaleString()} in, ${thread.lastTurn.completionTokens.toLocaleString()} out.`
+          : '';
+        showToast(
+          `$${thread.dollars.toFixed(2)} this chat. Context ${thread.contextPercent}% full.${turn}`,
+        );
+        return;
+      }
+      case 'mode':
+        setModeSheetOpen(true);
+        return;
+      case 'init':
+        if (!conv) {
+          showToast('Open a desktop repo first.');
+          return;
+        }
+        send(INIT_PROMPT);
+        return;
+      case 'rename':
+        if (!conv) {
+          showToast('Open a chat to name it.');
+          return;
+        }
+        if (arg) void renameConversation(conv.id, arg);
+        else openRename();
+        return;
+    }
+  };
 
   // The splash greeting. A fresh time-and-day-aware landing line lands first;
   // tapping the line rotates on through the world languages, in an order freshly
@@ -251,11 +357,39 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         ) : null}
         {conv ? (
           <div className="topbar-title">
-            {conv.title}
+            <button
+              type="button"
+              className="topbar-name press-fb"
+              onClick={openRename}
+              title="Rename this chat"
+            >
+              {conv.title}
+            </button>
             <div className="topbar-sub">
+              {thread?.repo ? (
+                <span className="repo-chip" title={thread.repo.cwd}>
+                  {basename(thread.repo.cwd)}
+                  {thread.repo.branch ? ` · ${thread.repo.branch}` : ''}
+                  {thread.repo.dirty ? (
+                    <span className="repo-dirty" aria-label="uncommitted changes">
+                      {'●'}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
               {thread?.model
-                ? `${thread.model.name} · ${thread.model.kind}${thread.contextPercent ? ` · ctx ${thread.contextPercent}%` : ''}`
+                ? `${thread.model.name} · ${thread.model.kind}`
                 : sourceLabel(conv.source)}
+              {thread && thread.dollars > 0 ? ` · $${thread.dollars.toFixed(2)}` : ''}
+              {thread && thread.contextPercent > 0 ? (
+                <span
+                  className={`ctx-bar${thread.contextPercent >= 75 ? ' warm' : ''}${thread.contextPercent >= 90 ? ' hot' : ''}`}
+                  title={`Context ${thread.contextPercent}% full`}
+                  aria-label={`Context ${thread.contextPercent} percent full`}
+                >
+                  <i style={{ transform: `scaleX(${Math.min(1, thread.contextPercent / 100)})` }} />
+                </span>
+              ) : null}
               {/* A quick chat is thrown away on exit. Once it has grown into a
                   real conversation, offer to keep it, right where the loss
                   would otherwise be discovered too late. */}
@@ -289,6 +423,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <ProfileStatus />
       </header>
 
+      {!online ? (
+        <div className="offline-banner" role="status">
+          Offline. Local models still answer; the desktop and cloud wait for a connection.
+        </div>
+      ) : null}
+
       <div className="chat-body">
         {conv && thread && thread.items.length > 0 ? (
           <MessageList
@@ -297,7 +437,15 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               setSheetStage('local');
               setSheetOpen(true);
             }}
+            onRetry={retryLast}
+            onApprovePlan={approvePlan}
+            onRevisePlan={() => {
+              revisePlan();
+              setFocusSignal((n) => n + 1);
+            }}
           />
+        ) : resuming ? (
+          <ResumeSkeleton />
         ) : (
           <div className="greeting">
             <BrandMark size={40} />
@@ -362,11 +510,19 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           </div>
         )}
 
+        {thread && thread.todos.length > 0 && thread.items.length > 0 ? (
+          <TodoCard todos={thread.todos} />
+        ) : null}
+
         <Composer
           busy={Boolean(thread?.busy)}
           source={composerSource}
           visionSupported={sourceSupportsVision(composerSource)}
           autoFocus={isEmpty && booted}
+          focusSignal={focusSignal}
+          agent={agent}
+          history={history}
+          onCommand={onCommand}
           onOpenModelSheet={() => {
             setSheetStage('root');
             setSheetOpen(true);
@@ -393,12 +549,52 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         />
       </div>
 
-      {approval ? (
+      {approval && thread ? (
         <ApprovalSheet
           request={approval}
-          onAnswer={(approve, always) => answerApproval(approval.id, approve, always)}
+          index={0}
+          total={thread.pendingApprovals.length}
+          agent={agent}
+          mode={mode}
+          onAnswer={(approve, always, inProject) =>
+            answerApproval(approval.id, approve, always, { inProject })
+          }
+          onAnswerAll={answerAllApprovals}
+          onOpenMode={() => setModeSheetOpen(true)}
         />
       ) : null}
+
+      <Sheet open={renameOpen} onClose={() => setRenameOpen(false)} variant="confirm">
+        <h3>Name this chat</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (conv && renameDraft.trim()) {
+              hapticTick();
+              void renameConversation(conv.id, renameDraft);
+            }
+            setRenameOpen(false);
+          }}
+        >
+          <div className="field">
+            <input
+              autoFocus
+              value={renameDraft}
+              maxLength={80}
+              placeholder="A short name"
+              onChange={(e) => setRenameDraft(e.target.value)}
+            />
+          </div>
+          <div className="confirm-row">
+            <button type="button" className="btn ghost" onClick={() => setRenameOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn primary" disabled={!renameDraft.trim()}>
+              Save
+            </button>
+          </div>
+        </form>
+      </Sheet>
 
       {sheetOpen ? (
         <ModelSheet
