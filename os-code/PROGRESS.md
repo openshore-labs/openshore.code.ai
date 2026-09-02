@@ -42,7 +42,7 @@ bar into entries, no seed edit needed:
   (bartowski and unsloth convert community models too); speech, reranker,
   guardrail-classifier, and translation-only uploads are denylisted; dated
   versions of one model (Magistral-Small-2506/2507/2509) collapse to the
-  newest. The fourth live crop shelved 40 lab models. Trending needs 100+ downloads, carried entries
+  newest. The fifth live crop (run 18) shelved 37 lab models, clean. Trending needs 100+ downloads, carried entries
   re-clear today's bar, one entry per underlying model (`baseKey` collapses
   quantizer and imatrix twins), 0.3 GB floor, denylist covers every
   guardrail-removal spelling seen plus speech.
