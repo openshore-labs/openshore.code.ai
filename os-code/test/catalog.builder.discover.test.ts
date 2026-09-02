@@ -51,6 +51,19 @@ function client(
   };
 }
 
+/** One discovered model built through the real path, for previous-catalog fixtures. */
+async function one(id: string): Promise<CatalogModel> {
+  const { models } = await discoverModels(client([repo(id)], [], { [id]: detail(id) }), {
+    today: '2026-09-02',
+  });
+  return models[0]!;
+}
+const disc = (repo: string, foundAt: string) => ({
+  source: 'huggingface' as const,
+  repo,
+  foundAt,
+});
+
 describe('discoverModels', () => {
   it('turns a public, licensed, single-file GGUF repo into a labelled entry', async () => {
     const c = client([repo('bartowski/Qwen3-8B-GGUF')], [], {
@@ -177,6 +190,36 @@ describe('discoverModels', () => {
     expect(models).toEqual([]);
     expect(skipped.map((s) => s.repo)).toEqual(trending.map((r) => r.id));
     expect(skipped[4]!.reason).toMatch(/too small/);
+  });
+
+  it('re-applies the bar to carried entries, so a tightened bar cleans the shelf', async () => {
+    const keep = await one('a/Keep-GGUF');
+    const previous: CatalogModel[] = [
+      { ...keep, discovery: disc('a/Keep-GGUF', '2026-08-01') },
+      // Shelved under yesterday's bar; today's denylist rejects it.
+      {
+        ...keep,
+        id: 'hf-a-old-obliterated',
+        discovery: disc('a/Old-OBLITERATED-GGUF', '2026-08-02'),
+      },
+      // An imatrix twin of Keep, from another quantizer.
+      {
+        ...keep,
+        id: 'hf-mradermacher-keep-i1',
+        discovery: disc('mradermacher/Keep-i1-GGUF', '2026-08-03'),
+      },
+    ];
+    const { models, skipped } = await discoverModels(client([], [], {}), {
+      today: '2026-09-02',
+      previous,
+    });
+    // Carried entries are considered newest sighting first, so the i1 twin
+    // (seen 08-03) holds the "keep" slot and the 08-01 original is its duplicate.
+    expect(models.map((m) => m.discovery?.repo)).toEqual(['mradermacher/Keep-i1-GGUF']);
+    expect(skipped.map((s) => s.reason)).toEqual([
+      'carried entry dropped: name contains "obliterated"',
+      'carried entry dropped: duplicate of an earlier upload (keep)',
+    ]);
   });
 
   it('carries forward previous discoveries with their first-seen date', async () => {

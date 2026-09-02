@@ -235,10 +235,29 @@ export async function discoverModels(
   // Carry forward last time's discoveries that did not reappear, newest
   // sighting first, until the cap. A model ages out only when pushed off by
   // newer ones, so the shelf reassesses without ever collapsing.
+  // A carried model must still clear today's bar (the denylist, the size
+  // floor, one per underlying model), so tightening the bar cleans the shelf
+  // on the next build instead of preserving yesterday's mistakes.
   const have = new Set(fresh.map((m) => m.id));
-  const carried = [...previousByRepo.values()]
+  const carried: CatalogModel[] = [];
+  const candidates = [...previousByRepo.values()]
     .filter((m) => !have.has(m.id) && !reserved.has(m.id))
     .sort((a, b) => (b.discovery?.foundAt ?? '').localeCompare(a.discovery?.foundAt ?? ''));
+  for (const m of candidates) {
+    const repoId = m.discovery!.repo;
+    const reason =
+      cheapReject({ id: repoId }) ??
+      (m.sizeGB < MIN_GB ? `too small to be a model (${m.sizeGB} GB)` : undefined) ??
+      (bases.has(baseKey(repoId))
+        ? `duplicate of an earlier upload (${baseKey(repoId)})`
+        : undefined);
+    if (reason) {
+      skipped.push({ repo: repoId, reason: `carried entry dropped: ${reason}` });
+      continue;
+    }
+    bases.add(baseKey(repoId));
+    carried.push(m);
+  }
   const models = [...fresh, ...carried].slice(0, cap);
 
   // Ranks after every seed model, in shelf order, so the default sort keeps
