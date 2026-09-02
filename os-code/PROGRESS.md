@@ -3,6 +3,38 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, Settings is a ledger)
+
+Founder, from a screen recording: make Settings delightful, with the
+Creative Studio partnering. The Studio diagnosed a flat pile of unlike cards
+(no grouping, three button dialects, the onboarding paths pasted in as five
+tall cards, the version string in the lead slot, a destructive Clear with no
+confirm) and offered three directions: Tidy, The Ledger, The Manifest. Built
+the recommended one, **The Ledger**, the iOS grouped-settings shape on paper.
+
+- **Structure.** Serif group heads over inset cards, one row per thing, the
+  current value on the right, a chevron when a row opens a sheet. Groups in
+  order: Account (only when sign-in is configured) · This device
+  (Appearance with the segmented control inline, Help improve the test build
+  on a real switch, an Activity log row that appears when it is on) · Harbor
+  (Web search, value DuckDuckGo or the chosen provider) · Privacy, plainly
+  (one row, "Where your data lives", value Sealed or On this device, opening
+  the draggable InfoSheet with the live seal on top and the three honest
+  sections) · Go further (Add to your setup, a sheet of the starting paths as
+  rows) · Clear conversations, in danger ink, now behind a confirm.
+- **Pieces.** `components/SettingsRow.tsx` (SettingsGroup, SettingsRow),
+  `components/Switch.tsx` (role switch, knob on transform, haptic tick),
+  `InfoSheet` gains `renderTrigger`, `StartingPaths` gains `variant="rows"`
+  (onboarding keeps the cards; one source, two renderings). The lead is now a
+  sentence in the house voice; version and platform moved to the footer.
+  Groups arrive staggered on the tokens; every sheet exits.
+- **Not chosen, on the record.** Tidy (label the pile) was too little; The
+  Manifest (settings as a readable letter with inline tappable values) was
+  the boldest, and UI/UX Eng would not sign its tap targets today.
+- **Not device-verified.** The recording also shows the phone still on the
+  pre-panel-rearrangement build, so the next TestFlight build carries the
+  panel, the parity work, and this.
+
 ## Current state (2026-09-02, Codemagic runs inside Launch, contained)
 
 Founder: host codemagic.io as a contained entity inside the Launch section,
@@ -801,7 +833,7 @@ Layer status:
       **Founder config before deploy (one at a time):** 1. Stripe: create a $20/yr **Personal** price; set `STRIPE_PRICE_PERSONAL`
       as a function secret. 2. `supabase db push` (applies 0006, 0007, 0008) then
       `supabase functions deploy stripe-checkout stripe-webhook stripe-portal
- link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
+link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
       in App Store Connect; add `oscode-iap` to app/package.json is done, but
       confirm `cap sync ios` links it; enable the In-App Purchase capability. 4. Apple secrets: paste the real Apple Root CA DER base64 into
       `_shared/apple.ts` (egress here blocked www.apple.com) OR set

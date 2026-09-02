@@ -1,15 +1,23 @@
-// Settings: the honest page. What this app is, where your data lives, and a
-// couple of careful switches. No telemetry to toggle because there is none.
+// Settings: the honest page, written as a ledger. Five short groups under
+// serif heads, one row per thing, the current value on the right, and
+// everything deeper in a sheet. What this app keeps, where it lives, and a
+// few careful switches. No telemetry to toggle because there is none. Built
+// with the Creative Studio (2026-09-02, "The Ledger" direction).
 import { useEffect, useState } from 'react';
 import { isOrgAdmin, useApp } from '../state/store.js';
+import { useAuth } from '../hooks/useAuth.js';
 import { platform } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
+import { hapticTick } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { StartingPaths } from '../components/StartingPaths.js';
 import { InfoSheet } from '../components/InfoSheet.js';
+import { Sheet } from '../components/Sheet.js';
+import { Switch } from '../components/Switch.js';
+import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import type { SearchBackend } from '../lib/webSearch.js';
 import type { StackHealthSealFact } from 'os-code/protocol';
 
@@ -29,13 +37,10 @@ function howToFor(fact: StackHealthSealFact): string | undefined {
   return undefined;
 }
 
-// The live seal, measured by the engine (never asserted): the same three
-// check-rows Stack Health shows, here where someone goes looking for the
-// privacy story. Desktop only; the phone's own data is sealed by the app and
-// the desktop's journals answer for themselves on the desktop.
-function LiveSeal() {
+/** The live seal facts, measured by the engine (never asserted). Desktop
+ *  only; the phone's own data is sealed by the app. */
+function useSeal(): StackHealthSealFact[] | undefined {
   const [facts, setFacts] = useState<StackHealthSealFact[] | undefined>();
-  const [openHow, setOpenHow] = useState<string | undefined>();
   useEffect(() => {
     const b = bridge();
     if (!b) return;
@@ -47,14 +52,22 @@ function LiveSeal() {
       live = false;
     };
   }, []);
-  if (!facts) return null;
+  return facts;
+}
+
+function LiveSeal({ facts }: { facts: StackHealthSealFact[] }) {
+  const [openHow, setOpenHow] = useState<string | undefined>();
   return (
     <>
       <ul className="sh-seal-facts" style={{ marginTop: 12 }}>
         {facts.map((f, i) => {
           const how = howToFor(f);
           return (
-            <li className="sh-seal-fact-row" style={{ animationDelay: `${i * 60}ms` }} key={f.key}>
+            <li
+              className="sh-seal-fact-row"
+              style={{ animationDelay: `calc(${i} * var(--dur-1) / 2)` }}
+              key={f.key}
+            >
               <div className={`sh-seal-fact sh-${f.state}`}>
                 <span className="sh-seal-dot" aria-hidden="true" />
                 {f.label}
@@ -96,6 +109,19 @@ function keyStoreLabel(): string {
   }
 }
 
+function platformLabel(): string {
+  switch (platform()) {
+    case 'ios':
+      return 'iPhone';
+    case 'electron':
+      return 'desktop';
+    default:
+      return 'web';
+  }
+}
+
+type SheetName = 'account' | 'log' | 'search' | 'paths' | 'clear';
+
 export function SettingsScreen() {
   const {
     order,
@@ -108,18 +134,22 @@ export function SettingsScreen() {
     setSearchBackend,
     clearSearchBackend,
   } = useApp();
+  const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
   const account = settings.account;
   const org = account?.org;
-  const [editingSearch, setEditingSearch] = useState(false);
+  const [sheet, setSheet] = useState<SheetName | undefined>();
   const [searchChoice, setSearchChoice] = useState<'brave' | 'tavily'>('brave');
   const [searchKeyValue, setSearchKeyValue] = useState('');
   const activeSearchBackend: SearchBackend =
     searchKeyConfigured && settings.searchBackend ? settings.searchBackend : 'duckduckgo';
+  const facts = useSeal();
+  const sealed = facts ? facts.every((f) => f.state === 'good') : false;
+  const close = () => setSheet(undefined);
 
   const saveSearch = async () => {
     const key = searchKeyValue.trim();
-    setEditingSearch(false);
+    close();
     setSearchKeyValue('');
     if (!key) return;
     await setSearchBackend(searchChoice, key);
@@ -136,252 +166,288 @@ export function SettingsScreen() {
     }
   };
 
+  const accountLabel = signedIn
+    ? account?.type === 'commercial'
+      ? (org?.name ?? 'Company account')
+      : 'Personal account'
+    : 'Sign in';
+  const accountValue = signedIn
+    ? account?.type === 'commercial' && org
+      ? tierById(org.tierId).name
+      : 'Free'
+    : 'Optional';
+
+  let group = 0;
+
   return (
     <div className="screen">
       <BackBar title="Settings" />
-      <div className="screen-inner">
+      <div className="screen-inner settings">
         <h1>Settings</h1>
-        <p className="lead">OpenShore 0.1.0 · running as {platform()}</p>
+        <p className="lead">Yours where it matters. Here is what this app keeps, and where.</p>
 
-        <InfoSheet title="Privacy, plainly">
-          Local models run on your hardware and nothing leaves it. Cloud models run on your own keys
-          and only with your approval. Web search leaves your machine when the agent uses it. No
-          telemetry, no analytics, no phone-home, ever.
-        </InfoSheet>
-
-        <SignInCard />
-
-        <div className="card">
-          <div className="card-row">
-            <h3 style={{ marginBottom: 0 }}>Appearance</h3>
-          </div>
-          <p className="hint" style={{ marginTop: 2 }}>
-            Follow your system, or pin light or dark. This stays on this device.
-          </p>
-          <div
-            className="segmented"
-            role="tablist"
-            aria-label="Appearance"
-            style={{ marginTop: 10 }}
-          >
-            {(['system', 'light', 'dark'] as const).map((t) => {
-              const active = (settings.theme ?? 'system') === t;
-              return (
-                <button
-                  key={t}
-                  role="tab"
-                  aria-selected={active}
-                  className={`seg press-fb${active ? ' active' : ''}`}
-                  onClick={() => void saveSettings({ theme: t })}
-                >
-                  {t === 'system' ? 'System' : t === 'light' ? 'Light' : 'Dark'}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {account ? (
-          <div className="card">
-            <div className="card-row">
-              <div className="grow">
-                <h3>
-                  {account.type === 'commercial'
-                    ? (org?.name ?? 'Company account')
-                    : 'Personal account'}
-                </h3>
-                <div className="sub">
-                  {account.type === 'commercial' && org
-                    ? `${tierById(org.tierId).name} plan · ${priceLabel(tierById(org.tierId))} · ${org.members.length} ${org.members.length === 1 ? 'person' : 'people'}`
-                    : 'Free. For your own work.'}
-                </div>
-              </div>
-              {account.type === 'commercial' && isOrgAdmin(account) ? (
-                <button
-                  className="btn ghost"
-                  style={{ padding: '8px 14px' }}
-                  onClick={() => setView('admin')}
-                >
-                  Manage
-                </button>
-              ) : null}
-            </div>
-          </div>
+        {configured ? (
+          <SettingsGroup title="Account" index={group++}>
+            <SettingsRow
+              label={accountLabel}
+              sub={signedIn ? email : 'Personal use needs no account'}
+              value={accountValue}
+              onClick={() => setSheet('account')}
+            />
+          </SettingsGroup>
         ) : null}
 
-        <InfoSheet title="Encrypted on this device">
-          Your chats, projects, crew, settings, and session journals are sealed at rest with
-          AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
-          {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API keys
-          are held the same way. When you send a turn to a cloud provider, that one provider sees
-          that one request on your own account. We do not, and there is nothing in between.
-          <LiveSeal />
-        </InfoSheet>
-
-        <InfoSheet title="Local models, honestly">
-          Harbor and Harbor Mini, and any model you run on this device, are AI. They can be
-          confidently wrong, and OpenShore does not filter what a local model says. Neither is a
-          coder. For real work, connect a bigger model. What you type to a local model stays on this
-          device. Harbor is Qwen3-1.7B and Harbor Mini is Qwen2.5-0.5B-Instruct, both used under the
-          Apache License 2.0.
-        </InfoSheet>
-
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <h3>Web search</h3>
-              <div className="sub">
-                Harbor searches the web when it needs to.{' '}
-                {SEARCH_BACKEND_LABEL[activeSearchBackend]}
-                {activeSearchBackend === 'duckduckgo' ? ', no key needed.' : ', on your own key.'}
+        <SettingsGroup title="This device" index={group++}>
+          <SettingsRow
+            label="Appearance"
+            sub="Stays on this device"
+            trailing={
+              <div className="segmented" role="tablist" aria-label="Appearance">
+                {(['system', 'light', 'dark'] as const).map((t) => {
+                  const active = (settings.theme ?? 'system') === t;
+                  return (
+                    <button
+                      key={t}
+                      role="tab"
+                      aria-selected={active}
+                      className={`seg press-fb${active ? ' active' : ''}`}
+                      onClick={() => {
+                        hapticTick();
+                        void saveSettings({ theme: t });
+                      }}
+                    >
+                      {t === 'system' ? 'System' : t === 'light' ? 'Light' : 'Dark'}
+                    </button>
+                  );
+                })}
               </div>
-            </div>
-            {searchKeyConfigured ? (
-              <button
-                className="btn ghost"
-                style={{ padding: '8px 14px' }}
-                onClick={() => {
-                  void clearSearchBackend();
-                  showToast('Back to DuckDuckGo.');
+            }
+          />
+          <SettingsRow
+            label="Help improve the test build"
+            sub="A plain activity log, kept here. Off by default."
+            trailing={
+              <Switch
+                checked={insightsOn}
+                label="Help improve the test build"
+                onChange={(next) => {
+                  void saveSettings({ insightsOptIn: next });
+                  showToast(
+                    next ? 'Activity log on. It stays on this device.' : 'Activity log off.',
+                  );
                 }}
-              >
-                Reset
-              </button>
-            ) : (
-              <button
-                className="btn ghost"
-                style={{ padding: '8px 14px' }}
-                onClick={() => {
-                  setEditingSearch(true);
-                  setSearchKeyValue('');
-                }}
-              >
-                Bring your own key
-              </button>
-            )}
-          </div>
-          {editingSearch ? (
-            <div style={{ marginTop: 12 }}>
-              <div
-                className="suggestion-row"
-                style={{ justifyContent: 'flex-start', marginTop: 0 }}
-              >
-                <button
-                  type="button"
-                  className={`suggestion${searchChoice === 'brave' ? ' suggestion-preferred' : ''}`}
-                  onClick={() => setSearchChoice('brave')}
-                >
-                  Brave Search
-                </button>
-                <button
-                  type="button"
-                  className={`suggestion${searchChoice === 'tavily' ? ' suggestion-preferred' : ''}`}
-                  onClick={() => setSearchChoice('tavily')}
-                >
-                  Tavily
-                </button>
-              </div>
-              <div className="field" style={{ marginTop: 10 }}>
-                <input
-                  autoFocus
-                  type="password"
-                  placeholder={`${SEARCH_BACKEND_LABEL[searchChoice]} API key`}
-                  value={searchKeyValue}
-                  onChange={(e) => setSearchKeyValue(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void saveSearch()}
-                />
-              </div>
-              <button
-                className="btn primary"
-                style={{ width: '100%', marginTop: 8 }}
-                onClick={() => void saveSearch()}
-              >
-                Save
-              </button>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <h3>Help improve the test build</h3>
-              <div className="sub">
-                Records a plain activity log on this device, so we can see where setup goes smoothly
-                or gets stuck. It stays here. Nothing is ever sent unless you copy it and hand it
-                back yourself. Off by default.
-              </div>
-            </div>
-            <button
-              className={`btn ${insightsOn ? 'primary' : 'ghost'}`}
-              style={{ padding: '8px 14px' }}
-              onClick={() => {
-                const next = !insightsOn;
-                void saveSettings({ insightsOptIn: next });
-                showToast(next ? 'Activity log on. It stays on this device.' : 'Activity log off.');
-              }}
-            >
-              {insightsOn ? 'On' : 'Off'}
-            </button>
-          </div>
+              />
+            }
+          />
           {insightsOn ? (
-            <div className="card-row" style={{ marginTop: 12 }}>
-              <div className="grow">
-                <div className="hint">{insightsCount()} events recorded on this device.</div>
-              </div>
-              <button
-                className="btn ghost"
-                style={{ padding: '8px 14px' }}
-                onClick={() => void copyLog()}
-              >
-                Copy log
-              </button>
-              <button
-                className="btn quiet"
-                style={{ padding: '8px 14px' }}
-                onClick={() => {
-                  void clearInsights();
-                  showToast('Activity log cleared.');
-                }}
-              >
-                Clear
-              </button>
-            </div>
+            <SettingsRow
+              label="Activity log"
+              value={`${insightsCount()} events`}
+              onClick={() => setSheet('log')}
+            />
           ) : null}
-        </div>
+        </SettingsGroup>
 
-        <div style={{ marginTop: 22, marginBottom: 6 }}>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 18 }}>
-            Add to your setup
-          </h3>
-          <p className="sub">The starting paths, any time.</p>
-        </div>
-        <StartingPaths context="settings" />
+        <SettingsGroup title="Harbor" index={group++}>
+          <SettingsRow
+            label="Web search"
+            sub="When Harbor needs the web"
+            value={SEARCH_BACKEND_LABEL[activeSearchBackend]}
+            onClick={() => {
+              setSearchKeyValue('');
+              setSheet('search');
+            }}
+          />
+        </SettingsGroup>
 
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <h3>Clear conversations</h3>
-              <div className="sub">
-                Removes every chat from this device. Desktop sessions keep their journals on the
-                desktop.
-              </div>
-            </div>
+        <SettingsGroup title="Privacy, plainly" index={group++}>
+          <InfoSheet
+            title="Where your data lives"
+            renderTrigger={(open) => (
+              <SettingsRow
+                label="Where your data lives"
+                sub="Sealed at rest, on your own keys, nothing in between"
+                value={facts ? (sealed ? 'Sealed' : 'On this device') : 'On this device'}
+                onClick={open}
+              />
+            )}
+          >
+            {facts ? <LiveSeal facts={facts} /> : null}
+            <h3 className="settings-sheet-head">Encrypted on this device</h3>
+            <p>
+              Your chats, projects, crew, settings, and session journals are sealed at rest with
+              AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
+              {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API
+              keys are held the same way. When you send a turn to a cloud provider, that one
+              provider sees that one request on your own account. We do not, and there is nothing in
+              between.
+            </p>
+            <h3 className="settings-sheet-head">Privacy, plainly</h3>
+            <p>
+              Local models run on your hardware and nothing leaves it. Cloud models run on your own
+              keys and only with your approval. Web search leaves your machine when the agent uses
+              it. No telemetry, no analytics, no phone-home, ever.
+            </p>
+            <h3 className="settings-sheet-head">Local models, honestly</h3>
+            <p>
+              Harbor and Harbor Mini, and any model you run on this device, are AI. They can be
+              confidently wrong, and OpenShore does not filter what a local model says. Neither is a
+              coder. For real work, connect a bigger model. What you type to a local model stays on
+              this device. Harbor is Qwen3-1.7B and Harbor Mini is Qwen2.5-0.5B-Instruct, both used
+              under the Apache License 2.0.
+            </p>
+          </InfoSheet>
+        </SettingsGroup>
+
+        <SettingsGroup title="Go further" index={group++}>
+          <SettingsRow
+            label="Add to your setup"
+            sub="The starting paths, any time"
+            onClick={() => setSheet('paths')}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup index={group++}>
+          <SettingsRow
+            label="Clear conversations"
+            sub="Removes every chat from this device"
+            danger
+            onClick={() => setSheet('clear')}
+          />
+        </SettingsGroup>
+
+        <p className="hint settings-foot">
+          OpenShore 0.1.0 · {platformLabel()}
+          <br />
+          Familiar where it should be, yours where it matters.
+        </p>
+      </div>
+
+      <Sheet open={sheet === 'account'} onClose={close}>
+        <h2>{signedIn ? 'Your account' : 'Sign in'}</h2>
+        {signedIn && account?.type === 'commercial' && org ? (
+          <p className="sheet-sub">
+            {tierById(org.tierId).name} plan · {priceLabel(tierById(org.tierId))} ·{' '}
+            {org.members.length} {org.members.length === 1 ? 'person' : 'people'}
+          </p>
+        ) : null}
+        <SignInCard />
+        {signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
+          <button
+            className="btn ghost"
+            style={{ width: '100%' }}
+            onClick={() => {
+              close();
+              setView('admin');
+            }}
+          >
+            Manage the company account
+          </button>
+        ) : null}
+      </Sheet>
+
+      <Sheet open={sheet === 'log'} onClose={close}>
+        <h2>Activity log</h2>
+        <p className="sheet-sub">
+          A plain record of where setup goes smoothly or gets stuck, kept on this device. Nothing is
+          ever sent unless you copy it and hand it back yourself.
+        </p>
+        <p className="hint">{insightsCount()} events recorded on this device.</p>
+        <div className="sheet-actions">
+          <button className="btn primary press-fb" onClick={() => void copyLog()}>
+            Copy log
+          </button>
+          <button
+            className="btn quiet press-fb"
+            onClick={() => {
+              void clearInsights();
+              showToast('Activity log cleared.');
+              close();
+            }}
+          >
+            Clear the log
+          </button>
+        </div>
+      </Sheet>
+
+      <Sheet open={sheet === 'search'} onClose={close}>
+        <h2>Web search</h2>
+        <p className="sheet-sub">
+          Harbor searches the web when it needs to. DuckDuckGo needs no key. Bring your own Brave
+          Search or Tavily key to search on your own account.
+        </p>
+        <div className="segmented" role="tablist" aria-label="Search provider">
+          {(['brave', 'tavily'] as const).map((c) => (
             <button
-              className="btn ghost"
-              style={{ padding: '8px 14px' }}
+              key={c}
+              role="tab"
+              aria-selected={searchChoice === c}
+              className={`seg press-fb${searchChoice === c ? ' active' : ''}`}
+              onClick={() => setSearchChoice(c)}
+            >
+              {SEARCH_BACKEND_LABEL[c]}
+            </button>
+          ))}
+        </div>
+        <div className="field" style={{ marginTop: 12 }}>
+          <input
+            type="password"
+            placeholder={`${SEARCH_BACKEND_LABEL[searchChoice]} API key`}
+            value={searchKeyValue}
+            onChange={(e) => setSearchKeyValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void saveSearch()}
+          />
+        </div>
+        <div className="sheet-actions">
+          <button
+            className="btn primary press-fb"
+            disabled={!searchKeyValue.trim()}
+            onClick={() => void saveSearch()}
+          >
+            Save key
+          </button>
+          {searchKeyConfigured ? (
+            <button
+              className="btn quiet press-fb"
               onClick={() => {
-                for (const id of [...order]) deleteConversation(id);
-                showToast('Conversations cleared.');
+                void clearSearchBackend();
+                showToast('Back to DuckDuckGo.');
+                close();
               }}
             >
-              Clear
+              Back to DuckDuckGo
             </button>
-          </div>
+          ) : null}
         </div>
+      </Sheet>
 
-        <p className="hint">OpenShore. Familiar where it should be, yours where it matters.</p>
-      </div>
+      <Sheet open={sheet === 'paths'} onClose={close}>
+        <h2>Add to your setup</h2>
+        <p className="sheet-sub">The starting paths, any time.</p>
+        <div className="settings-card">
+          <StartingPaths context="settings" variant="rows" />
+        </div>
+      </Sheet>
+
+      <Sheet open={sheet === 'clear'} onClose={close} variant="confirm">
+        <h3>Clear every conversation on this {platformLabel()}?</h3>
+        <p>Desktop journals stay on the desktop. This cannot be undone.</p>
+        <div className="confirm-row">
+          <button className="btn ghost" onClick={close}>
+            Keep them
+          </button>
+          <button
+            className="btn danger"
+            onClick={() => {
+              for (const id of [...order]) deleteConversation(id);
+              close();
+              showToast('Conversations cleared.');
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }
