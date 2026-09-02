@@ -71,11 +71,15 @@ Why: without a real root cert, a real iOS buyer is charged and stays locked.
   and (optionally) sign in on desktop and use "I bought it" to confirm the
   entitlement unlocks that computer too.
 
-### A6. [CONFIG] Update the public pricing page (marketing repo)
-- The `Open-Shore-LLC-Homepage` pricing page still has a Stripe "Get Personal"
-  buy button. With Personal now Apple-only, change that to a "Download on the
-  App Store / buy Personal in the app" call to action. Commercial tiers keep
-  their Stripe buttons. (Separate repo; say the word and I will do it.)
+### A6. [DONE 2026-09-02, then purge] Public pricing page updated
+- The live page is `OpenShore.ai-marketing-site` (the old homepage subpage was
+  retired). On `main` now, per the CMO: headline "Free to chat. Free to build,
+  for now.", Personal shows Free with an early-access CTA and no Stripe
+  button, a beta note explains that everything is free in the app and that
+  Personal returns at $20 a year on the App Store, and a team note says seats
+  buy shared admin, not access. Commercial tiers keep Stripe.
+- **[CONFIG] Purge the Cloudflare cache** for openshore.ai after the Pages
+  build finishes, or the old copy keeps serving from the edge.
 
 ---
 
