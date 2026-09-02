@@ -22,6 +22,7 @@ import { hapticTick } from '../lib/haptics.js';
 import { isDesktop } from '../lib/platform.js';
 import { DEFAULT_PERMISSION_MODE } from '../lib/permissionMode.js';
 import { useOnline } from '../hooks/useOnline.js';
+import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { Attachment } from '../lib/attachments.js';
 
 /** The last path segment, for the repo chip. */
@@ -165,6 +166,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     activeIsAgent,
     resumingId,
     settings,
+    unqueue,
+    addNote,
   } = useApp();
   const [sheetOpen, setSheetOpen] = useState(false);
   // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
@@ -176,6 +179,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // Bumped to pull focus into the composer (a plan's "Change something").
   const [focusSignal, setFocusSignal] = useState(0);
   const online = useOnline();
+  const { mounted: offlineMounted, closing: offlineClosing } = useExitPresence(!online);
   // The brain a new chat will use, chosen from the composer. On the desktop app
   // it defaults to the engine on this machine (the model the founder set up
   // through Ollama or a cloud key), so a first message just works; the phone
@@ -213,13 +217,15 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   const onCommand = (command: SlashCommand, arg: string) => {
     switch (command) {
-      case 'help':
-        showToast(
-          SLASH_COMMANDS.filter((c) => agent || !c.agentOnly)
-            .map((c) => `/${c.name}`)
-            .join('  ') + '.  @ mentions a file, # saves an instruction, Esc stops.',
-        );
+      case 'help': {
+        const cmds = SLASH_COMMANDS.filter((c) => agent || !c.agentOnly)
+          .map((c) => `/${c.name}${c.arg ? ` <${c.arg}>` : ''}: ${c.hint.toLowerCase()}`)
+          .join('\n');
+        const text = `${cmds}\n@ mentions a repo file. # saves a line to the project's instructions. Esc stops a run or clears the field. Up recalls an earlier message. Shift+Tab cycles the permission mode. A message typed while the agent works is queued.`;
+        if (conv) addNote(text);
+        else showToast('Open a chat, then /help lists what the composer can do.');
         return;
+      }
       case 'clear':
         startNewChat();
         return;
@@ -435,8 +441,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <ProfileStatus />
       </header>
 
-      {!online ? (
-        <div className="offline-banner" role="status">
+      {offlineMounted ? (
+        <div className={`offline-banner${offlineClosing ? ' closing' : ''}`} role="status">
           Offline. Local models still answer; the desktop and cloud wait for a connection.
         </div>
       ) : null}
@@ -450,6 +456,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               setSheetOpen(true);
             }}
             onRetry={retryLast}
+            onUnqueue={unqueue}
             onApprovePlan={approvePlan}
             onRevisePlan={() => {
               revisePlan();

@@ -655,6 +655,8 @@ interface AppState {
   listFiles(query: string): Promise<string[]>;
   /** Whether the active chat is an engine session with the person's controls. */
   activeIsAgent(): boolean;
+  /** Add a quiet note row to the active transcript (help text, local status). */
+  addNote(text: string): void;
   /** Open a session that lives on the paired desktop but has no chat here yet
    *  (started from the desktop app, or from another phone). */
   openDesktopSession(info: { id: string; cwd: string; title?: string }): Promise<void>;
@@ -3545,6 +3547,22 @@ export const useApp = create<AppState>((set, get) => {
       const driver = activeId ? drivers.get(activeId) : undefined;
       if (!driver?.listFiles) return [];
       return driver.listFiles(query);
+    },
+
+    addNote(text) {
+      const { activeId } = get();
+      if (!activeId) return;
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const note: ThreadItem = { kind: 'note', id: newId(), text };
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: { ...c, thread: { ...c.thread, items: [...c.thread.items, note] } },
+          },
+        };
+      });
     },
 
     activeIsAgent() {

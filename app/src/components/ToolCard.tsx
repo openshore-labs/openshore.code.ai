@@ -116,6 +116,14 @@ function Elapsed({ since }: { since?: number }) {
 
 export function ToolCard({ item }: { item: ToolItem }) {
   const [open, setOpen] = useState(false);
+  // Mount the detail on first open and keep it, so the reveal can play both
+  // ways on grid rows (never a height transition).
+  const [everOpen, setEverOpen] = useState(false);
+  const toggle = () => {
+    if (!item.detail) return;
+    setEverOpen(true);
+    setOpen((o) => !o);
+  };
   const stateGlyph =
     item.state === 'running' ? (
       <span className="tool-state running">
@@ -169,7 +177,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
     <div className="tool-card" id={`tool-${item.id}`}>
       <button
         className="tool-card-head press-fb press-fb--row"
-        onClick={() => item.detail && setOpen((o) => !o)}
+        onClick={toggle}
         aria-expanded={open}
       >
         <span className="tool-summary">{item.summary}</span>
@@ -184,12 +192,16 @@ export function ToolCard({ item }: { item: ToolItem }) {
         ) : null}
         {stateGlyph}
       </button>
-      {open && item.detail ? (
-        item.detailKind === 'output' ? (
-          <OutputBlock text={item.detail} />
-        ) : (
-          <DiffBlock text={item.detail} />
-        )
+      {everOpen && item.detail ? (
+        <div className={`reveal${open ? ' open' : ''}`}>
+          <div className="reveal-inner">
+            {item.detailKind === 'output' ? (
+              <OutputBlock text={item.detail} />
+            ) : (
+              <DiffBlock text={item.detail} />
+            )}
+          </div>
+        </div>
       ) : null}
     </div>
   );

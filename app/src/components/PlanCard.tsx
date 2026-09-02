@@ -31,30 +31,32 @@ export function PlanCard({
       <div className="plan-body">
         <Markdown text={text} />
       </div>
-      {status === 'proposed' ? (
-        <div className="plan-actions">
-          <button
-            type="button"
-            className="btn primary press-fb"
-            onClick={() => {
-              hapticApproval();
-              onApprove();
-            }}
-          >
-            Start building
-          </button>
-          <button
-            type="button"
-            className="btn ghost press-fb"
-            onClick={() => {
-              hapticTick();
-              onRevise();
-            }}
-          >
-            Change something
-          </button>
+      <div className={`reveal${status === 'proposed' ? ' open' : ''}`}>
+        <div className="reveal-inner">
+          <div className="plan-actions">
+            <button
+              type="button"
+              className="btn primary press-fb"
+              onClick={() => {
+                hapticApproval();
+                onApprove();
+              }}
+            >
+              Start building
+            </button>
+            <button
+              type="button"
+              className="btn ghost press-fb"
+              onClick={() => {
+                hapticTick();
+                onRevise();
+              }}
+            >
+              Change something
+            </button>
+          </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

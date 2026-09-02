@@ -86,6 +86,20 @@ audit against Claude Code produced a 34-item gap list; all of it is built.
   whose highlight glides between rows on transform, scroll-snapped; the
   context bar's warm and hot colors settle on `--dur-5`. The resume skeleton
   takes its shape from `Conversation.lastItemCount`, saved at persist.
+- **Polish, round two (founder: "keep polishing until it is not worth it").**
+  Every new surface now leaves the way it arrived: the new-message pill, the
+  command and file menus, and the offline banner play exits on
+  `useExitPresence`; tool detail and the plan card's buttons open and close on
+  a shared grid-row `.reveal` (never a height transition). A stack of
+  approvals no longer bounces the sheet closed and open per question: the
+  sheet stays up and the body swaps, keyed on the request. Queued bubbles
+  are tappable to remove. A hold on a Chats row names the chat (the gesture
+  lives in `SwipeRow` as `onLongPress`, with the tap suppressed, since
+  WKWebView never raises contextmenu for a hold). `/help` writes its list
+  into the transcript as a note. The mode sheet carries the Shift+Tab hint
+  on a pointer device. Stopped here: what remains (a working-row crossfade
+  into the first token, a dirty-dot animation) would read as fidget rather
+  than calm.
 - **Not device-verified.** Everything here is built in a web session and
   gated (typecheck, lint, 307 app tests, 338 engine tests, both builds). The
   first real run on the desktop app and a TestFlight build is the proof; a
@@ -754,7 +768,7 @@ Layer status:
       **Founder config before deploy (one at a time):** 1. Stripe: create a $20/yr **Personal** price; set `STRIPE_PRICE_PERSONAL`
       as a function secret. 2. `supabase db push` (applies 0006, 0007, 0008) then
       `supabase functions deploy stripe-checkout stripe-webhook stripe-portal
-     link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
+   link-apple-purchase apple-notifications`. 3. Apple: create the auto-renewable sub `ai.openshore.oscode.personal.yearly`
       in App Store Connect; add `oscode-iap` to app/package.json is done, but
       confirm `cap sync ios` links it; enable the In-App Purchase capability. 4. Apple secrets: paste the real Apple Root CA DER base64 into
       `_shared/apple.ts` (egress here blocked www.apple.com) OR set

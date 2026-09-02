@@ -99,6 +99,7 @@ export function ModeSheet({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+        <p className="mode-hint">Shift+Tab cycles modes from the composer.</p>
       </div>
     </div>
   );

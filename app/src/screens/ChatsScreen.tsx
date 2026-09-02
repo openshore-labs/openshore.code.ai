@@ -98,6 +98,16 @@ export function ChatsScreen() {
   const confirmConv = confirmId ? conversations[confirmId] : undefined;
   const renameConv = renameId ? conversations[renameId] : undefined;
 
+  // A hold on a row names the chat (SwipeRow raises it; a right-click on the
+  // desktop does the same).
+  const beginRename = (id: string) => {
+    const conv = conversations[id];
+    if (!conv) return;
+    hapticTick();
+    setRenameDraft(conv.title === 'New chat' ? '' : conv.title);
+    setRenameId(id);
+  };
+
   let stagger = 0;
 
   return (
@@ -164,14 +174,13 @@ export function ChatsScreen() {
                       style={style}
                       onTap={() => openConversation(id)}
                       onToggle={() => setConfirmId(id)}
+                      onLongPress={() => beginRename(id)}
                     >
                       <div
                         className={`chat-row${id === activeId && view === 'chat' ? ' active' : ''}`}
                         onContextMenu={(e) => {
                           e.preventDefault();
-                          hapticTick();
-                          setRenameDraft(conv.title === 'New chat' ? '' : conv.title);
-                          setRenameId(id);
+                          beginRename(id);
                         }}
                       >
                         <span className="chat-row-title">
