@@ -95,9 +95,13 @@ jobs:
           # told apart from EVERY other failure (a 5xx, an HTML error page,
           # DNS/connection death), which must FAIL the job rather than build
           # ungated against a missing or partial baseline.
+          # The query string busts Cloudflare's edge cache, which otherwise
+          # hands back the catalog from before the previous publish, so the
+          # baseline (and discovery's carry-forward) would lag a run behind.
           code="$(curl --fail --retry 3 --retry-delay 2 -sSL \
+            -H 'Cache-Control: no-cache' \
             -o "$tmp" -w '%{http_code}' \
-            https://openshore.ai/os-code/catalog.json)" && rc=0 || rc=$?
+            "https://openshore.ai/os-code/catalog.json?baseline=$(date +%s)")" && rc=0 || rc=$?
           if [ "${rc:-0}" -eq 0 ]; then
             mv "$tmp" os-code/build/catalog.json
             echo 'Seeded the regression baseline from the live catalog.'

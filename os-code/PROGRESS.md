@@ -33,8 +33,10 @@ bar into entries, no seed edit needed:
 - **Quality bar, tightened from the first live crop.** The first live run
   published 25 discoveries but shelved abliterated and merge variants, a
   speech model, four uploads of the same weights, and a 0.1 GB file. Now: the
-  newest axis is `TRUSTED_PUBLISHERS` only, trending needs 100+ downloads and
-  shelves trusted first, one entry per underlying model (`baseKey` collapses
+  shelf is `TRUSTED_PUBLISHERS` only on both axes (the second crop under open
+  trending was merges riding a lab's name; unlisted publishers are logged so
+  the list grows on evidence), trending needs 100+ downloads, carried entries
+  re-clear today's bar, one entry per underlying model (`baseKey` collapses
   quantizer and imatrix twins), 0.3 GB floor, denylist covers every
   guardrail-removal spelling seen plus speech.
 - **Publish step fixed.** The last three catalog runs (two scheduled) failed
