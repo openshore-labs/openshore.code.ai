@@ -283,3 +283,9 @@ execution contract. Newest at the bottom.
   quantizer shipped it, so both axes are limited to `TRUSTED_PUBLISHERS`, and
   every unlisted publisher is logged as skipped so the list grows on
   evidence rather than by default.
+- **Discovery reads trusted publishers' own pages.** The third live crop
+  found six trusted repos in eighty global GGUF listings, and those were
+  sharded or "other"-licensed, so the shelf came out at one model. The
+  labs' and quantizers' latest uploads are now read per publisher
+  (`author=` listing, round-robin so bartowski cannot fill the cap alone),
+  after the two global axes. Cap 40, at most 160 metadata reads per build.
