@@ -340,6 +340,8 @@ describe('discovery helpers', () => {
 
   it('classify reads the name and tags', () => {
     expect(classify('mistralai/Qwen3-Coder-30B-GGUF', [], 18)).toEqual(['coding']);
+    expect(classify('mistralai/Devstral-Small-2507_gguf', [], 14)).toEqual(['coding']);
+    expect(classify('ibm-granite/granite-34b-code-instruct-8k-GGUF', [], 21)).toEqual(['coding']);
     expect(classify('mistralai/nomic-embed-v2-GGUF', [], 0.3)).toEqual(['embedding']);
     expect(classify('mistralai/Gemma-3-4b-it-GGUF', ['image-text-to-text'], 2.5)).toContain(
       'vision',
