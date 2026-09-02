@@ -295,3 +295,10 @@ execution contract. Newest at the bottom.
   upload must now also name a known lab family; a lab's own upload needs no
   such check. Speech, reranker, guardrail-classifier, and translation-only
   uploads joined the denylist, and dated versions collapse to the newest.
+- **The side panel is the main navigation.** Founder call from the phone.
+  The panel carries rooms only: day-one rooms at the top (Chats, Projects,
+  Repositories, Your stack, Vault), second-session rooms at the bottom with
+  Settings last. New chat, quick chat, and the project switcher already live
+  in the Chats and Projects rooms, so removing them from the panel loses
+  nothing. A room's top bar opens the panel (hamburger) instead of jumping
+  back to chat, because the panel is where the next destination is chosen.

@@ -3,6 +3,23 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, the side panel is the main navigation)
+
+Founder, from the phone: the left panel is the main navigation, so it should
+read as one. Changes, all in the app:
+- **Sidebar regrouped.** The project card, "+ New chat", and "Quick chat" are
+  gone from the panel (both live in the Chats room already; the project
+  switcher is the Projects room). The day-one rooms sit at the top under the
+  wordmark: Chats, Projects, Repositories, Your stack, Vault. The
+  second-session rooms stay at the bottom under "More rooms", with Settings
+  moved to the very end. `sidebar-nav--primary` drops the top rule and
+  safe-area padding for the upper group.
+- **Rooms open the panel, not chat.** The room top bar's left control is now
+  the hamburger (opens the drawer) instead of a back-to-chat arrow, on the
+  phone; on desktop the persistent sidebar is already beside it, so the left
+  slot is empty. The duplicate menu button on the right is gone.
+  `useCompact` moved to `hooks/useCompact.ts` so BackBar and App share it.
+
 ## Current state (2026-09-02, the catalog is living and breathing)
 
 Founder: "build that, would love it to be living and breathing." The browse

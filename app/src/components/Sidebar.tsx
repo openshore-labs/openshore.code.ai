@@ -1,10 +1,9 @@
-// The sidebar: the project bucket at the top-left, a new chat inside it, a
-// throwaway quick chat, and the app's few rooms (chat history lives in the
-// Chats room). Persistent on desktop, a slide-over drawer on the phone.
-import { useRef, useState } from 'react';
+// The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
+// rooms at the top, the second-session rooms at the bottom, nothing else. New
+// chat, quick chat, and the project switcher live in the Chats and Projects
+// rooms. Persistent on desktop, a slide-over drawer on the phone.
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { useDismissable } from '../lib/useDismissable.js';
 import { BrandMark } from './BrandMark.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
@@ -16,26 +15,27 @@ import { BrandMark } from './BrandMark.js';
 type NavIconName = Exclude<ViewName, 'chat' | 'onboarding' | 'terminal'>;
 
 // The nav is split so a first-week user is not met with a dozen destinations
-// at once (CMO ruling). PRIMARY is the day-one set: chat, its project bucket,
-// the coding surface (Repositories), where a model is attached (Your stack), and
-// Settings. Everything else is real but second-session, grouped under an honest
-// "More rooms" so it reads as depth, not clutter.
+// at once (CMO ruling). PRIMARY is the day-one set, pinned to the top: chat,
+// its project bucket, the coding surface (Repositories), where a model is
+// attached (Your stack), and the Vault. Everything else is real but
+// second-session, grouped at the bottom under an honest "More rooms" so it
+// reads as depth, not clutter, with Settings as the last item.
 const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'chats', label: 'Chats' },
   { view: 'projects', label: 'Projects' },
   { view: 'repos', label: 'Repositories' },
   { view: 'stack', label: 'Your stack' },
-  { view: 'settings', label: 'Settings' },
+  { view: 'vault', label: 'Vault' },
 ];
 
 const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'crew', label: 'My Crew' },
   { view: 'marketplace', label: 'Marketplace' },
   { view: 'stackhealth', label: 'Stack Health' },
-  { view: 'vault', label: 'Vault' },
   { view: 'launch', label: 'Launch' },
   { view: 'connections', label: 'Cloud Connections' },
   { view: 'pair', label: 'Desktop + phone' },
+  { view: 'settings', label: 'Settings' },
 ];
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
@@ -172,27 +172,29 @@ function NavIcon({ name }: { name: NavIconName }) {
 }
 
 export function Sidebar({ drawer }: { drawer?: boolean }) {
-  const {
-    view,
-    setView,
-    setDrawer,
-    settings,
-    setActiveProject,
-    quickChat,
-    startNewChat,
-    personalUnlockedNow,
-  } = useApp();
+  const { view, setView, setDrawer, settings, personalUnlockedNow } = useApp();
   const { configured: authConfigured, signedIn } = useAuth();
   // Free is chat only. The Marketplace needs Personal, so a locked pill signals
   // it before the tap (tapping still opens the upgrade sheet via setView).
   const unlocked = personalUnlockedNow();
   const LOCKED_VIEWS = new Set<NavIconName>(['marketplace']);
-  const [switcherOpen, setSwitcherOpen] = useState(false);
-  const switcherRef = useRef<HTMLDivElement>(null);
-  useDismissable(switcherRef, switcherOpen, () => setSwitcherOpen(false));
 
-  const projects = settings.projects ?? [];
-  const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
+  const item = ({ view: v, label }: { view: NavIconName; label: string }) => {
+    const locked = !unlocked && LOCKED_VIEWS.has(v);
+    return (
+      <button
+        key={v}
+        className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}`}
+        onClick={() => setView(v)}
+      >
+        <span className="glyph">
+          <NavIcon name={v} />
+        </span>
+        {label}
+        {locked ? <span className="nav-lock-pill">Personal</span> : null}
+      </button>
+    );
+  };
 
   const body = (
     <aside className={`sidebar${drawer ? ' drawer' : ''}`}>
@@ -205,76 +207,22 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
         </span>
       </div>
 
-      {/* The project bucket. Everything saved lives inside the active one. */}
-      <div className="project-switch" ref={switcherRef}>
-        <button
-          className="project-switch-btn"
-          onClick={() => setSwitcherOpen((v) => !v)}
-          aria-expanded={switcherOpen}
-        >
-          <span className="project-switch-label">
-            <span className="project-switch-kicker">Project</span>
-            <span className="project-switch-name">
-              {activeProject ? activeProject.name : 'No project yet'}
+      {/* The day-one rooms, pinned to the top where the hand lands first. */}
+      <nav className="sidebar-nav sidebar-nav--primary">
+        {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
+          <button
+            className={`nav-item press-fb press-fb--row${view === 'admin' ? ' active' : ''}`}
+            onClick={() => setView('admin')}
+          >
+            <span className="glyph">
+              <NavIcon name="admin" />
             </span>
-          </span>
-          <span className={`project-switch-caret${switcherOpen ? ' open' : ''}`} aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </span>
-        </button>
-        {switcherOpen ? (
-          <div className="project-menu">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                className={`project-menu-item${p.id === activeProject?.id ? ' active' : ''}`}
-                onClick={() => {
-                  setActiveProject(p.id);
-                  setSwitcherOpen(false);
-                }}
-              >
-                {p.name}
-              </button>
-            ))}
-            <button
-              className="project-menu-item manage"
-              onClick={() => {
-                setSwitcherOpen(false);
-                setView('projects');
-                useApp.setState({ drawerOpen: false });
-              }}
-            >
-              {projects.length ? 'Manage projects' : 'Create your first project'}
-            </button>
-          </div>
+            Admin
+          </button>
         ) : null}
-      </div>
+        {PRIMARY_NAV.map(item)}
+      </nav>
 
-      <button className="new-chat-btn" onClick={startNewChat}>
-        + New chat
-      </button>
-      <button
-        className="quick-chat-btn"
-        onClick={() => {
-          void quickChat();
-        }}
-      >
-        Quick chat <span className="quick-chat-note">not saved</span>
-      </button>
-
-      {/* The conversation history lives in the Chats room now, reached from the
-          nav below, rather than stacked down the side of every screen. */}
       <div className="sidebar-spacer" />
 
       {authConfigured && !signedIn ? (
@@ -308,38 +256,10 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
         </button>
       ) : null}
 
+      {/* The second-session rooms stay at the bottom, Settings last. */}
       <nav className="sidebar-nav">
-        {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
-          <button
-            className={`nav-item press-fb press-fb--row${view === 'admin' ? ' active' : ''}`}
-            onClick={() => setView('admin')}
-          >
-            <span className="glyph">
-              <NavIcon name="admin" />
-            </span>
-            Admin
-          </button>
-        ) : null}
-        {[...PRIMARY_NAV, ...EXPLORE_NAV].map((item, i) => {
-          const locked = !unlocked && LOCKED_VIEWS.has(item.view);
-          return (
-            <div key={item.view} style={{ display: 'contents' }}>
-              {i === PRIMARY_NAV.length ? (
-                <div className="nav-section-label">More rooms</div>
-              ) : null}
-              <button
-                className={`nav-item press-fb press-fb--row${view === item.view ? ' active' : ''}`}
-                onClick={() => setView(item.view)}
-              >
-                <span className="glyph">
-                  <NavIcon name={item.view} />
-                </span>
-                {item.label}
-                {locked ? <span className="nav-lock-pill">Personal</span> : null}
-              </button>
-            </div>
-          );
-        })}
+        <div className="nav-section-label">More rooms</div>
+        {EXPLORE_NAV.map(item)}
       </nav>
     </aside>
   );
