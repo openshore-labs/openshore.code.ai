@@ -16,8 +16,11 @@ export function derivePresets(
     score(b) - score(a) || a.sizeGB - b.sizeGB;
   const smallestFirst = (a: CatalogModel, b: CatalogModel) => a.sizeGB - b.sizeGB;
 
-  const desktop = models.filter((m) => m.source.kind === 'ollama' && !m.onDevice);
-  const phone = models.filter((m) => Boolean(m.onDevice));
+  // Discovered models are unrated by definition, so a prefab stack never names
+  // one: presets are built from the curated roster only.
+  const curated = models.filter((m) => !m.discovery);
+  const desktop = curated.filter((m) => m.source.kind === 'ollama' && !m.onDevice);
+  const phone = curated.filter((m) => Boolean(m.onDevice));
   const coders = desktop.filter((m) => m.categories.includes('coding')).sort(bySizeThenScore);
   const bestCoderUnder = (maxGB: number) => coders.find((m) => m.sizeGB <= maxGB);
   const embedding = desktop.find((m) => m.categories.includes('embedding'));

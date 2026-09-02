@@ -22,12 +22,12 @@
 name: Publish model catalog
 
 on:
-  # Weekly refresh so popularity and recency stay current. Off the top of the
-  # hour to avoid the scheduler stampede.
+  # Daily refresh so popularity, recency, and live discovery (new GGUF repos
+  # joining the browse list on their own) stay current. Off the top of the hour
+  # to avoid the scheduler stampede. The no-op stamp guard means an unchanged
+  # run does not commit, so a quiet day is close to free.
   schedule:
-    # Twice weekly (Mon + Thu) for fresher popularity. The no-op stamp guard
-    # means an unchanged run does not commit, so the extra run is close to free.
-    - cron: '17 8 * * 1,4'
+    - cron: '17 8 * * *'
   # Rebuild whenever the curation inputs, the builder, or the schema change.
   push:
     branches: [main]

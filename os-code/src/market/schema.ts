@@ -88,6 +88,22 @@ export const CatalogModelSchema = z.object({
     })
     .optional(),
 
+  /**
+   * Set when the builder found this model on its own (live discovery of newly
+   * released GGUF repos), rather than from the editorial seed. Discovered
+   * models carry no ratings and no eval, so the UI labels them new and
+   * unrated instead of rated. OPTIONAL: older catalogs and clients omit it.
+   */
+  discovery: z
+    .object({
+      source: z.enum(['huggingface']),
+      /** The source repo id the entry was built from, e.g. "org/name-GGUF". */
+      repo: z.string(),
+      /** The day the builder first saw it (YYYY-MM-DD), carried forward. */
+      foundAt: z.string(),
+    })
+    .optional(),
+
   // ---- Builder-computed fields (all OPTIONAL for backward compatibility) ----
   // Old clients strip these; the bundled sample (which has none) still
   // validates. Populated only by the server-side catalog builder.

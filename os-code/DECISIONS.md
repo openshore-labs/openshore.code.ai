@@ -260,3 +260,11 @@ execution contract. Newest at the bottom.
   derivation is empty. The remaining piece for brand-new models to auto-appear
   in the browse list is live discovery of new GGUF models; install-by-name
   covers getting any new model now.
+- **Live discovery keeps found models unrated rather than scoring them.** A
+  discovered GGUF repo has no eval and no benchmarks, so the storefront
+  quality bar cannot honestly apply. Rather than invent a star or a fit, the
+  entry is labelled `discovery`, never orchestrator-capable, unrated, ranked
+  after the seed, and skipped by the preset deriver. Trending plus newest
+  from Hugging Face, license fail-closed via the same allow-list, gated and
+  denylisted repos out, one single-file GGUF at a known quant, cap 25 with
+  carry-forward so the shelf never collapses. The cron went daily.

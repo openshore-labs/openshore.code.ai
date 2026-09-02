@@ -1,0 +1,369 @@
+// Live discovery: the catalog grows on its own. Every build asks Hugging Face
+// which GGUF repos are trending and which landed most recently, reads each
+// repo's METADATA (file list, sizes, license tag, gated flag; never weights),
+// and turns the ones that clear the honesty bar into catalog entries. A
+// discovered entry is clearly labelled (`discovery` set, no ratings, no eval,
+// not orchestrator-capable) so the storefront never presents a machine-found
+// model as a curated or rated one. The editorial seed always wins on an id
+// collision, and the founder's curation and overlay still apply on top.
+//
+// Pure where it can be: `discoverModels` takes a `DiscoveryClient` so the
+// tests drive it with fixtures; `HuggingFaceDiscovery` is the one live client.
+import type { CatalogModel } from '../../src/market/schema.js';
+import type { CapabilityCategory } from '../../src/router/roles.js';
+import { resolveLicense } from './licenses.table.js';
+
+/** One repo from a Hugging Face listing call. */
+export interface DiscoveredRepo {
+  id: string;
+  downloads?: number;
+  likes?: number;
+  createdAt?: string;
+  tags?: string[];
+  gated?: boolean | string;
+  private?: boolean;
+}
+
+/** One file inside a repo, from the detail call with sizes. */
+export interface RepoFile {
+  rfilename: string;
+  size?: number;
+}
+
+export interface RepoDetail {
+  id: string;
+  siblings?: RepoFile[];
+  tags?: string[];
+  cardData?: { license?: string | string[] };
+  gated?: boolean | string;
+  private?: boolean;
+  lastModified?: string;
+  createdAt?: string;
+  downloads?: number;
+  likes?: number;
+}
+
+/** The two metadata reads discovery needs. Fixtures in tests, HF in CI. */
+export interface DiscoveryClient {
+  /** GGUF repos, best first, for one sort axis. */
+  list(sort: 'trendingScore' | 'createdAt', limit: number): Promise<DiscoveredRepo[]>;
+  /** One repo with its file list and sizes. Undefined when it cannot be read. */
+  detail(repoId: string): Promise<RepoDetail | undefined>;
+}
+
+export interface DiscoverOptions {
+  /** How many discovered models the catalog carries at most. */
+  cap?: number;
+  /** How many repos to read per listing axis. */
+  perAxis?: number;
+  /** Today, YYYY-MM-DD, for `foundAt` on a first sighting. */
+  today: string;
+  /** The previously published catalog's discovered models, carried forward so
+   *  a quiet source day never empties the shelf (and never trips the count gate). */
+  previous?: CatalogModel[];
+  /** Ids already in the seed; the seed always wins a collision. */
+  reserved?: Set<string>;
+}
+
+export interface DiscoverResult {
+  models: CatalogModel[];
+  /** Why a listed repo did not become an entry, for the build log. */
+  skipped: Array<{ repo: string; reason: string }>;
+}
+
+/** Quantizations we will pull, best first. One single-file GGUF at one of
+ *  these, or the repo is skipped. */
+const QUANT_PREFERENCE = ['Q4_K_M', 'Q4_K_S', 'Q5_K_M', 'Q8_0', 'Q6_K', 'Q4_0'];
+
+/** Repos the storefront does not carry, whatever their numbers. */
+const NAME_DENYLIST = [
+  'uncensored',
+  'abliterated',
+  'nsfw',
+  'roleplay',
+  'erotic',
+  'lewd',
+  'waifu',
+  'hentai',
+];
+
+/** HF license tags that map to an allow-list id under a different spelling.
+ *  Everything else goes through `resolveLicense` by tag (case-insensitive), so
+ *  apache-2.0, mit, bsd-3-clause, gemma, cc-by-4.0 resolve on their own. */
+const LICENSE_ALIASES: Record<string, string> = {
+  'llama3.1': 'Llama-3.1-Community',
+  'llama3.2': 'Llama-3.2-Community',
+  llama3: 'Llama-3.1-Community',
+};
+
+/** Phones carry a discovered model only under this size. */
+const PHONE_MAX_GB = 2.5;
+/** Anything bigger than this will not fit a normal desktop; skip it. */
+const DESKTOP_MAX_GB = 40;
+
+export const DEFAULT_CAP = 25;
+export const DEFAULT_PER_AXIS = 40;
+
+export async function discoverModels(
+  client: DiscoveryClient,
+  options: DiscoverOptions,
+): Promise<DiscoverResult> {
+  const cap = options.cap ?? DEFAULT_CAP;
+  const perAxis = options.perAxis ?? DEFAULT_PER_AXIS;
+  const reserved = options.reserved ?? new Set<string>();
+  const skipped: DiscoverResult['skipped'] = [];
+
+  // Two axes, trending first, newest second; union in that order so what the
+  // community is actually pulling this week leads and brand-new drops follow.
+  const seen = new Set<string>();
+  const listed: DiscoveredRepo[] = [];
+  for (const axis of ['trendingScore', 'createdAt'] as const) {
+    let repos: DiscoveredRepo[] = [];
+    try {
+      repos = await client.list(axis, perAxis);
+    } catch (err) {
+      console.warn(`discovery: ${axis} listing failed: ${String(err)}`);
+    }
+    for (const r of repos) {
+      if (!r?.id || seen.has(r.id)) continue;
+      seen.add(r.id);
+      listed.push(r);
+    }
+  }
+
+  const previousByRepo = new Map<string, CatalogModel>();
+  for (const m of options.previous ?? []) {
+    if (m.discovery) previousByRepo.set(m.discovery.repo, m);
+  }
+
+  const fresh: CatalogModel[] = [];
+  for (const repo of listed) {
+    if (fresh.length >= cap) break;
+    const cheap = cheapReject(repo);
+    if (cheap) {
+      skipped.push({ repo: repo.id, reason: cheap });
+      continue;
+    }
+    const detail = await client.detail(repo.id);
+    if (!detail) {
+      skipped.push({ repo: repo.id, reason: 'detail unreadable' });
+      continue;
+    }
+    const built = entryFrom(repo, detail, {
+      today: options.today,
+      previous: previousByRepo.get(repo.id),
+    });
+    if ('skip' in built) {
+      skipped.push({ repo: repo.id, reason: built.skip });
+      continue;
+    }
+    if (reserved.has(built.model.id)) {
+      skipped.push({ repo: repo.id, reason: 'id already in the editorial seed' });
+      continue;
+    }
+    fresh.push(built.model);
+  }
+
+  // Carry forward last time's discoveries that did not reappear, newest
+  // sighting first, until the cap. A model ages out only when pushed off by
+  // newer ones, so the shelf reassesses without ever collapsing.
+  const have = new Set(fresh.map((m) => m.id));
+  const carried = [...previousByRepo.values()]
+    .filter((m) => !have.has(m.id) && !reserved.has(m.id))
+    .sort((a, b) => (b.discovery?.foundAt ?? '').localeCompare(a.discovery?.foundAt ?? ''));
+  const models = [...fresh, ...carried].slice(0, cap);
+
+  // Ranks after every seed model, in shelf order, so the default sort keeps
+  // the curated roster first and the discoveries as the long tail.
+  return {
+    models: models.map((m, i) => ({ ...m, curation: { ...m.curation, rank: 1000 + i } })),
+    skipped,
+  };
+}
+
+/** Rejections that need no detail read. */
+function cheapReject(repo: DiscoveredRepo): string | undefined {
+  if (repo.private) return 'private';
+  if (repo.gated) return 'gated (needs a license click)';
+  const lower = repo.id.toLowerCase();
+  if (!lower.includes('/')) return 'no org';
+  for (const word of NAME_DENYLIST) {
+    if (lower.includes(word)) return `name contains "${word}"`;
+  }
+  return undefined;
+}
+
+type EntryOutcome = { model: CatalogModel } | { skip: string };
+
+/** Build one catalog entry from a repo's metadata, or say why not. */
+export function entryFrom(
+  repo: DiscoveredRepo,
+  detail: RepoDetail,
+  ctx: { today: string; previous?: CatalogModel },
+): EntryOutcome {
+  if (detail.private) return { skip: 'private' };
+  if (detail.gated) return { skip: 'gated (needs a license click)' };
+
+  const licenseTag = licenseTagOf(repo, detail);
+  if (!licenseTag) return { skip: 'no license tag' };
+  const licenseRow = resolveLicense(LICENSE_ALIASES[licenseTag] ?? licenseTag);
+  if (!licenseRow) return { skip: `license "${licenseTag}" is not on the allow-list` };
+
+  const file = pickGguf(detail.siblings ?? []);
+  if (!file) return { skip: 'no single-file GGUF at a supported quantization' };
+  if (!file.size) return { skip: 'file size unknown' };
+  const sizeGB = Math.round((file.size / 1e9) * 10) / 10;
+  if (sizeGB <= 0) return { skip: 'file size unknown' };
+  if (sizeGB > DESKTOP_MAX_GB) return { skip: `too big for a desktop (${sizeGB} GB)` };
+
+  const categories = classify(repo.id, [...(repo.tags ?? []), ...(detail.tags ?? [])], sizeGB);
+  const id = slugId(repo.id);
+  const name = displayName(repo.id);
+  const quantization = file.quant;
+
+  const model: CatalogModel = {
+    id,
+    name,
+    tagline: 'New on Hugging Face. Trending, not yet rated by OpenShore.',
+    categories,
+    // Never an orchestrator until the eval harness has seen it. Use it as a
+    // specialist, or run it through install-by-name knowingly.
+    orchestratorCapable: false,
+    source: {
+      kind: 'ollama',
+      ref: `hf.co/${repo.id}:${quantization}`,
+      pullCommand: `ollama pull hf.co/${repo.id}:${quantization}`,
+      popularityRef: repo.id,
+    },
+    sizeGB,
+    quantization,
+    // The context window is not readable from the listing, so publish a
+    // conservative floor rather than a guess. The note says so.
+    contextTokens: 8192,
+    license: { id: licenseRow.id, name: licenseRow.name, url: licenseRow.url },
+    curation: {
+      rank: 1000,
+      note: 'Found by live discovery. Unrated; context window shown as a conservative floor.',
+    },
+    blessed: false,
+    discovery: {
+      source: 'huggingface',
+      repo: repo.id,
+      foundAt: ctx.previous?.discovery?.foundAt ?? ctx.today,
+    },
+    ...(sizeGB <= PHONE_MAX_GB
+      ? {
+          onDevice: {
+            url: `https://huggingface.co/${repo.id}/resolve/main/${file.rfilename}`,
+            sizeGB,
+            minRamGB: Math.max(3, Math.ceil(sizeGB * 2 + 1)),
+          },
+        }
+      : {}),
+  };
+  return { model };
+}
+
+function licenseTagOf(repo: DiscoveredRepo, detail: RepoDetail): string | undefined {
+  const card = detail.cardData?.license;
+  const fromCard = Array.isArray(card) ? card[0] : card;
+  if (fromCard && typeof fromCard === 'string') return fromCard.trim().toLowerCase();
+  for (const tag of [...(detail.tags ?? []), ...(repo.tags ?? [])]) {
+    if (tag.startsWith('license:')) return tag.slice('license:'.length).trim().toLowerCase();
+  }
+  return undefined;
+}
+
+/** The best single-file GGUF by quant preference. Sharded files
+ *  ("-00001-of-00003.gguf") and multimodal projectors ("mmproj") are skipped. */
+export function pickGguf(files: RepoFile[]): (RepoFile & { quant: string }) | undefined {
+  for (const quant of QUANT_PREFERENCE) {
+    const re = new RegExp(`[-_.]${quant}\\.gguf$`, 'i');
+    const hit = files.find(
+      (f) =>
+        re.test(f.rfilename) &&
+        !/-\d{5}-of-\d{5}\.gguf$/i.test(f.rfilename) &&
+        !/mmproj/i.test(f.rfilename) &&
+        !f.rfilename.includes('/'),
+    );
+    if (hit) return { ...hit, quant };
+  }
+  return undefined;
+}
+
+/** A heuristic capability read from the name and tags. Categories are what the
+ *  router and the presets key on, so a wrong guess costs a mis-shelving, never
+ *  a fabricated star. */
+export function classify(repoId: string, tags: string[], sizeGB: number): CapabilityCategory[] {
+  const text = `${repoId} ${tags.join(' ')}`.toLowerCase();
+  const out: CapabilityCategory[] = [];
+  if (/embed|bge|e5-|gte-|minilm/.test(text)) return ['embedding'];
+  if (/coder|codestral|starcoder|codegemma|deepseek-coder|-code-|codellama/.test(text)) {
+    out.push('coding');
+  }
+  if (/llava|vision|-vl-|-vl\b|minicpm-v|moondream|pixtral|image-text-to-text/.test(text)) {
+    out.push('vision');
+  }
+  if (/r1|reasoning|think|qwq|-o1|deepthink/.test(text)) out.push('analysis');
+  if (sizeGB <= 2) out.push('fast');
+  if (!out.length || (!out.includes('coding') && !out.includes('vision'))) {
+    out.unshift('reasoning');
+  }
+  return [...new Set(out)];
+}
+
+/** A stable id from the repo: "bartowski/Qwen3-8B-GGUF" becomes
+ *  "hf-bartowski-qwen3-8b". Prefixed so it never collides with a seed id. */
+export function slugId(repoId: string): string {
+  const stripped = repoId.replace(/[-_.]?gguf$/i, '');
+  return `hf-${stripped.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+}
+
+function displayName(repoId: string): string {
+  const base = repoId.split('/')[1] ?? repoId;
+  return base
+    .replace(/[-_.]?gguf$/i, '')
+    .replace(/[-_]+/g, ' ')
+    .trim();
+}
+
+/** The live client. Metadata only, public repos only; HF_TOKEN lifts the
+ *  anonymous rate limit when present. Every failure degrades to "nothing
+ *  found" so discovery can never fail the build. */
+export class HuggingFaceDiscovery implements DiscoveryClient {
+  constructor(private readonly base = 'https://huggingface.co') {}
+
+  private headers(): Record<string, string> {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    const token = process.env.HF_TOKEN?.trim();
+    if (token) headers.authorization = `Bearer ${token}`;
+    return headers;
+  }
+
+  async list(sort: 'trendingScore' | 'createdAt', limit: number): Promise<DiscoveredRepo[]> {
+    const url =
+      `${this.base}/api/models?filter=gguf&sort=${sort}&direction=-1&limit=${limit}` +
+      `&expand[]=gated&expand[]=private&expand[]=tags&expand[]=downloads&expand[]=likes&expand[]=createdAt`;
+    try {
+      const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return [];
+      const body = (await res.json()) as unknown;
+      return Array.isArray(body) ? (body as DiscoveredRepo[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async detail(repoId: string): Promise<RepoDetail | undefined> {
+    const path = repoId.split('/').map(encodeURIComponent).join('/');
+    // blobs=true adds file sizes to the sibling list; still metadata only.
+    const url = `${this.base}/api/models/${path}?blobs=true`;
+    try {
+      const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return undefined;
+      return (await res.json()) as RepoDetail;
+    } catch {
+      return undefined;
+    }
+  }
+}

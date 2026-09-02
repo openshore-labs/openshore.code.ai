@@ -16,6 +16,7 @@ import { enrichCatalog } from './enrich.js';
 import { regressionGate, validateCatalog } from './gate.js';
 import { gatherMetadata, HuggingFaceSource } from './sources.js';
 import { derivePresets } from './presets.js';
+import { discoverModels, HuggingFaceDiscovery } from './discover.js';
 import type { BuildInputs, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -91,7 +92,38 @@ async function main(): Promise<void> {
     }
   }
 
-  const inputs: BuildInputs = { seed, metadata, benchmarks, evals, overlay, previous };
+  // Live discovery: newly released and trending GGUF repos join the seed as
+  // clearly labelled, unrated entries, so the browse list grows without a
+  // hand edit. On by default when online; CATALOG_DISCOVER=0 turns it off. The
+  // seed wins every id collision, and last time's discoveries carry forward so
+  // a quiet source day never empties the shelf.
+  let seedModels = seedCatalog.models;
+  if (online && process.env.CATALOG_DISCOVER !== '0') {
+    let previousModels: typeof seedModels = [];
+    const parsedPrevious = CatalogSchema.safeParse(previous);
+    if (parsedPrevious.success) previousModels = parsedPrevious.data.models;
+    try {
+      const found = await discoverModels(new HuggingFaceDiscovery(), {
+        today: new Date().toISOString().slice(0, 10),
+        previous: previousModels,
+        reserved: new Set(seedModels.map((m) => m.id)),
+      });
+      for (const s of found.skipped) console.log(`discovery skipped ${s.repo}: ${s.reason}`);
+      console.log(`discovery added ${found.models.length} models`);
+      seedModels = [...seedModels, ...found.models];
+    } catch (err) {
+      console.warn(`Discovery failed, building from the seed only: ${String(err)}`);
+    }
+  }
+
+  const inputs: BuildInputs = {
+    seed: { ...seedCatalog, models: seedModels },
+    metadata,
+    benchmarks,
+    evals,
+    overlay,
+    previous,
+  };
 
   const { catalog, drops } = enrichCatalog(inputs);
 
