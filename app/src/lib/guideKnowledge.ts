@@ -11,4 +11,7 @@ export const APP_KNOWLEDGE = [
   '- Three ways to grow the stack: (1) Pocket model, a bigger model that runs fully on this iPhone via llama.cpp on the Metal GPU, private and works offline, get one from the Marketplace. (2) Desktop stack, run the OpenShore engine on a Linux desktop and pair this phone to it over your own private Tailscale network, under Desktop + phone. (3) Claude on your own key, connect an Anthropic API key under Connections; spend always asks before it charges.',
   '- Keys and secrets stay on the device, scoped to the provider they belong to. There is no telemetry.',
   '- Once a stack is set up, OpenShore works like a familiar coding agent: talk to it and it does the work.',
+  '- Stack bundles: the Marketplace offers five one-tap bundles that fill the whole stack for a profile, each showing its total download size. Pocket runs on the iPhone; Starter, Coding, Creative, and Performance run on the desktop through Ollama.',
+  '- Walk me through it: every setup screen (Cloud Connections, Desktop + phone, Your stack, Repositories, Launch) has a button that opens a chat with a step-by-step guide: the goal, the numbered plan, one step at a time, questions welcome between steps.',
+  '- How to work with OpenShore, the same way a person works with a coding agent: say the goal; the agent proposes a plan and surfaces the decisions as choices; you pick; it does the work and shows a diff or a result; every risky action asks first; it reports plainly what happened and what is next.',
 ].join('\n');

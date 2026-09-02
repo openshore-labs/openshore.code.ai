@@ -9,7 +9,14 @@ import { BackBar } from '../components/BackBar.js';
 import { openInAppBrowser } from '../lib/platform.js';
 
 export function ConnectionsScreen() {
-  const { connectedProviders, connectProvider, disconnectProvider, showToast, setView } = useApp();
+  const {
+    connectedProviders,
+    connectProvider,
+    disconnectProvider,
+    showToast,
+    setView,
+    startGuideChat,
+  } = useApp();
   const [editing, setEditing] = useState<string | undefined>();
   const [value, setValue] = useState('');
   const [checking, setChecking] = useState(false);
@@ -50,6 +57,13 @@ export function ConnectionsScreen() {
           Add a provider on your own key. Its models land on your Bench, ready to place. Keys stay
           on this device, and nothing cloud runs without your say.
         </p>
+        <button
+          className="btn ghost press-fb"
+          style={{ width: '100%', marginBottom: 12 }}
+          onClick={() => void startGuideChat('connect-cloud-key')}
+        >
+          Walk me through it
+        </button>
 
         {PROVIDERS.map((p) => {
           const on = Boolean(connectedProviders[p.id]);

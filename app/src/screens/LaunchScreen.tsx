@@ -178,7 +178,13 @@ export function LaunchScreen() {
               </button>
               <p className="hint" style={{ marginTop: 8 }}>
                 A Codemagic token can trigger and read builds across your account. It stays on this
-                device and is never put in a log or sent anywhere but Codemagic.
+                device and is never put in a log or sent anywhere but Codemagic.{' '}
+                <button
+                  className="linklike"
+                  onClick={() => void useApp.getState().startGuideChat('connect-codemagic')}
+                >
+                  Walk me through it
+                </button>
               </p>
             </div>
           ) : null}

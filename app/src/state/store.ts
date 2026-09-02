@@ -139,6 +139,7 @@ import {
   type StackModelRef,
 } from '../lib/stack.js';
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
+import { SETUP_GUIDES, guideOpening, type SetupGuideId } from '../lib/setupGuides.js';
 import {
   providerFor,
   probeReady,
@@ -412,7 +413,20 @@ interface AppState {
   /** Restore a prior Apple purchase (iOS only; required by Apple 3.1.1). */
   restorePurchases(): Promise<void>;
 
-  newConversation(source: ConversationSource, opts?: { ephemeral?: boolean }): Promise<string>;
+  newConversation(
+    source: ConversationSource,
+    opts?: {
+      ephemeral?: boolean;
+      /** Pre-written turns the chat opens with (a guide's plan). They render
+       *  immediately and seed the model's history, so it knows what was said. */
+      seedItems?: ThreadItem[];
+      title?: string;
+    },
+  ): Promise<string>;
+  /** Open a chat with a setup guide: the goal, the plan, and step one, seeded
+   *  and ready, on whatever brain can answer here (this computer's engine, a
+   *  cloud key, or Harbor Mini on the phone). The Walk me through it button. */
+  startGuideChat(guideId: SetupGuideId): Promise<void>;
   /** Switch the model of the OPEN conversation, Claude-style: keep the thread,
    *  reseed the new brain with the transcript, and let the next turn run on it.
    *  Falls back to a fresh chat when there is nothing to carry or the target is
@@ -1668,15 +1682,16 @@ export const useApp = create<AppState>((set, get) => {
       const s0 = get().settings;
       let projectId = ephemeral ? undefined : (s0.activeProjectId ?? s0.projects?.[0]?.id);
       if (!ephemeral && !projectId) projectId = await get().createProject('My work');
+      const seedItems = opts?.seedItems ?? [];
       const conv: Conversation = {
         id,
-        title: 'New chat',
+        title: opts?.title ?? 'New chat',
         source,
         projectId,
         ephemeral,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        thread: emptyThread(),
+        thread: { ...emptyThread(), items: seedItems },
       };
       set((s) => ({
         conversations: { ...s.conversations, [id]: conv },
@@ -1688,7 +1703,10 @@ export const useApp = create<AppState>((set, get) => {
       // Any earlier quick chat is now off-screen; do not let it linger.
       pruneEphemeral(id);
       try {
-        const driver = await buildDriver(conv);
+        const driver = await buildDriver(
+          conv,
+          seedItems.length ? seedFromTranscript(seedItems) : undefined,
+        );
         attachDriver(id, driver);
       } catch (err) {
         get().showToast(err instanceof Error ? err.message : String(err));
@@ -2773,6 +2791,35 @@ export const useApp = create<AppState>((set, get) => {
       // Leave onboarded alone so a mid-setup relaunch still lands on setup.
       set({ libraryIntro: false, view: 'onboarding' });
       void get().saveSettings({ libraryIntroSeen: true });
+    },
+
+    async startGuideChat(guideId) {
+      const guide = SETUP_GUIDES[guideId];
+      const s = get();
+      // Whatever brain can answer here, best first: this computer's engine on
+      // desktop, a connected Claude key anywhere, else Harbor Mini on the phone
+      // (downloaded on the spot if needed). Never a brain that cannot answer.
+      let source: ConversationSource | undefined;
+      if (isDesktop() && s.sourceReady({ kind: 'desktop' })) source = { kind: 'desktop' };
+      else if (s.cloudKeyPresent)
+        source = { kind: 'cloud', provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL };
+      else if (platform() === 'ios') {
+        const ok = s.settings.harborMiniReady || (await get().ensureHarborMini());
+        if (ok) source = { kind: 'device', modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME };
+      }
+      if (!source) {
+        get().showToast('Set up a model first (Your stack), then the guide can chat with you.');
+        get().setView('stack');
+        return;
+      }
+      logEvent('guide_chat', { guide: guideId });
+      const opening: ThreadItem = {
+        kind: 'assistant',
+        id: `${newId()}-guide`,
+        text: guideOpening(guide),
+        streaming: false,
+      };
+      await get().newConversation(source, { seedItems: [opening], title: guide.title });
     },
 
     async startGuide(modelId = HARBOR_MODEL_ID) {

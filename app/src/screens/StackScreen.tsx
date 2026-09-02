@@ -208,7 +208,17 @@ export function StackScreen() {
                 <>
                   <p className="hint">
                     No local models yet.{' '}
-                    {status.ollama.up ? 'Get the starter below, or browse the marketplace.' : status.ollama.detail}
+                    {status.ollama.up ? 'Get the starter below, or browse the marketplace.' : status.ollama.detail}{' '}
+                    <button
+                      className="linklike"
+                      onClick={() =>
+                        void useApp
+                          .getState()
+                          .startGuideChat(status.ollama.up ? 'pick-a-model' : 'install-ollama')
+                      }
+                    >
+                      Walk me through it
+                    </button>
                   </p>
                   {status.ollama.up && pickFor === 'orchestrator' ? (
                     <button
