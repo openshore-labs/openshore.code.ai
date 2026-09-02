@@ -49,6 +49,40 @@ screen or flow that does not fit it is not done.
 - **Approvals and diffs** in the coding agent (tenet 5), and the readiness
   chooser, the honest device fallback, and the display preflight (tenet 7).
 
+## Where the tenets come from
+
+The founder named the sources on 2026-09-02: the standing rules in `CLAUDE.md`
+(both Uki repos and this one), `PROGRESS.md`, and the advisor org in
+`.claude/agents`. Each tenet above is one of those rules, turned toward the
+person using the app:
+
+- **One command at a time** (the top rule): a person is handed exactly one
+  step, then the app waits and confirms. Tenet 4.
+- **The sign-off gate**: findings and proposals are presented as a short
+  summary with the decision points, and nothing is built until the person
+  says yes. Tenets 2 and 3.
+- **Foundations are load-bearing, build additively**: the agent adds on top of
+  what works and never rewrites a working thing without an explicit yes; a
+  change that would alter a foundation is surfaced with its blast radius
+  first. Tenet 5.
+- **Communication format**: the fewest words that say exactly what is needed,
+  lead with the answer or recommendation, terse bullets by default, a
+  headline sandwich only when a deep dive is asked for. Tenet 6.
+- **No em dashes** in anything a person reads; honest, plain copy; money copy
+  is one guarantee per sentence. Tenets 6 and 7.
+- **PROGRESS.md as the source of truth and to-do capture**: what happened,
+  what is waiting on whom, and no suggestion silently evaporates. Tenet 8.
+- **Advisory, and the founder decides; disagree and commit**: every advisor
+  presses its case with evidence, then gets behind the call. This is why the
+  advisor team ships as a Crew preset (`app/src/lib/crewPresets.ts`): named
+  perspectives the Reasoning LLM brings in, in their voice, and the person
+  decides. The CTO reviews every build; the CMO, CFO, and Creative Studio
+  step in on their own when a decision needs them; the rest speak when asked.
+- **Motion and polish are a standard**: calm, premium, smooth and slow feels
+  premium, everything that animates in animates out, honest empty and error
+  states, always the most premium-feeling option when choosing. Tenet 7, and
+  the bar every screen is held to.
+
 ## What to hold new work to
 
 Before a screen ships, answer: What is the goal in the person's words? Where is
