@@ -4,6 +4,7 @@
 // working row fills the gap between a send and the first token, and a "new
 // messages" pill offers the way back when the person has scrolled up.
 import { useEffect, useRef, useState } from 'react';
+import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -54,6 +55,7 @@ export function MessageList({
   onRetry,
   onApprovePlan,
   onRevisePlan,
+  onUnqueue,
 }: {
   thread: ThreadState;
   /** Open the Local LLMs sheet, offered when a turn stopped for no account usage. */
@@ -62,6 +64,8 @@ export function MessageList({
   onRetry?: () => void;
   onApprovePlan?: () => void;
   onRevisePlan?: () => void;
+  /** Drop a queued message (tap on its bubble). */
+  onUnqueue?: (index: number) => void;
 }) {
   const threadRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -124,6 +128,11 @@ export function MessageList({
   const showWorking = thread.busy && !streamingNow && thread.pendingApprovals.length === 0;
 
   let lastModel: string | undefined;
+
+  // The pill plays an exit; its last count is held while it fades.
+  const { mounted: pillMounted, closing: pillClosing } = useExitPresence(unseen > 0, 240);
+  const lastUnseen = useRef(0);
+  if (unseen > 0) lastUnseen.current = unseen;
 
   return (
     <div className="thread" ref={threadRef}>
@@ -219,10 +228,19 @@ export function MessageList({
           }
         })}
         {thread.queued.map((text, i) => (
-          <div key={`q${i}`} className="msg-user queued" aria-label="Queued message">
+          <button
+            key={`q${i}`}
+            type="button"
+            className="msg-user queued press-fb"
+            aria-label="Queued message. Tap to remove it."
+            onClick={() => {
+              hapticTick();
+              onUnqueue?.(i);
+            }}
+          >
             {text}
-            <span className="msg-queued-tag">queued</span>
-          </div>
+            <span className="msg-queued-tag">queued · tap to remove</span>
+          </button>
         ))}
         {showWorking ? <WorkingRow since={thread.busySince} note={thread.stepNote} /> : null}
         {!thread.busy && thread.citations.length > 0 ? (
@@ -236,9 +254,13 @@ export function MessageList({
           </div>
         ) : null}
       </div>
-      {unseen > 0 ? (
-        <button type="button" className="scroll-pill press-fb" onClick={jumpToBottom}>
-          {unseen === 1 ? 'New message' : `${unseen} new`} {'↓'}
+      {pillMounted ? (
+        <button
+          type="button"
+          className={`scroll-pill press-fb${pillClosing ? ' closing' : ''}`}
+          onClick={jumpToBottom}
+        >
+          {lastUnseen.current === 1 ? 'New message' : `${lastUnseen.current} new`} {'↓'}
         </button>
       ) : null}
     </div>

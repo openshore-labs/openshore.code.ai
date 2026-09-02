@@ -6050,3 +6050,64 @@ textarea {
     animation: none;
   }
 }
+
+/* Round two of the parity polish: exits for the pill, the menus, and the
+   offline banner; a grid-row reveal shared by tool detail and plan actions;
+   the approval body swap; the queued bubble as a tappable; the mode hint. */
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-5) var(--ease-standard);
+}
+.reveal.open {
+  grid-template-rows: 1fr;
+}
+.reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.scroll-pill.closing {
+  animation: pill-out var(--dur-3) var(--ease-accel) forwards;
+}
+@keyframes pill-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+}
+.composer-menu.closing {
+  animation: menu-out var(--dur-3) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+@keyframes menu-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.offline-banner.closing {
+  animation: fade-out var(--dur-4) var(--ease-standard) forwards;
+}
+.approval-body {
+  animation: msg-in var(--dur-3) var(--ease-arrive) backwards;
+}
+.msg-user.queued {
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.msg-note {
+  white-space: pre-wrap;
+}
+.mode-hint {
+  margin: 12px 4px 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+@media (pointer: coarse) {
+  .mode-hint {
+    display: none;
+  }
+}

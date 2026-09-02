@@ -29,6 +29,7 @@ import {
 } from '../lib/permissionMode.js';
 import { fileToAttachment, type Attachment } from '../lib/attachments.js';
 import { useDictation } from '../hooks/useDictation.js';
+import { useExitPresence } from '../hooks/useExitPresence.js';
 
 // The iOS keyboard dictation microphone, the same outline Claude uses.
 function MicIcon() {
@@ -96,19 +97,25 @@ function mentionAt(value: string, caret: number): { start: number; query: string
 /** One list for the command menu and the file popover: a highlight that
  *  slides between rows on transform (never a repaint of each row), rows that
  *  snap into view as the keyboard moves the selection. */
+interface MenuModel {
+  label: string;
+  items: Array<{ key: string; name: ReactNode; hint?: string; onPick: () => void }>;
+  active: number;
+  onHover: (i: number) => void;
+  mono?: boolean;
+}
+
+/** The menu's exit: --dur-3 plus a hair. */
+const MENU_EXIT_MS = 240;
+
 function ComposerMenu({
   label,
   items,
   active,
   onHover,
   mono,
-}: {
-  label: string;
-  items: Array<{ key: string; name: ReactNode; hint?: string; onPick: () => void }>;
-  active: number;
-  onHover: (i: number) => void;
-  mono?: boolean;
-}) {
+  closing,
+}: MenuModel & { closing: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [glide, setGlide] = useState<{ y: number; h: number } | null>(null);
   // Measure the active row and glide the highlight to it. Height is set
@@ -121,7 +128,12 @@ function ComposerMenu({
     row.scrollIntoView({ block: 'nearest' });
   }, [active, items.length]);
   return (
-    <div className="composer-menu" role="listbox" aria-label={label} ref={listRef}>
+    <div
+      className={`composer-menu${closing ? ' closing' : ''}`}
+      role="listbox"
+      aria-label={label}
+      ref={listRef}
+    >
       {glide ? (
         <span
           className="composer-menu-glide"
@@ -533,6 +545,43 @@ export function Composer({
     }
   };
 
+  // The one menu that is open right now (commands or files), modeled once so
+  // it can play an exit: the last model is held while it closes.
+  const menu: MenuModel | null =
+    slashItems.length && !terminal
+      ? {
+          label: 'Commands',
+          active: slashIdx,
+          onHover: setSlashIdx,
+          items: slashItems.map((c) => ({
+            key: c.name,
+            name: (
+              <>
+                /{c.name}
+                {c.arg ? <span className="composer-menu-arg"> {c.arg}</span> : null}
+              </>
+            ),
+            hint: c.hint,
+            onPick: () => (c.arg ? setValue(`/${c.name} `) : runSlash(c.name, '')),
+          })),
+        }
+      : mention && files.length
+        ? {
+            label: 'Files',
+            active: fileIdx,
+            onHover: setFileIdx,
+            mono: true,
+            items: files.map((f) => ({ key: f, name: f, onPick: () => insertFile(f) })),
+          }
+        : null;
+  const lastMenu = useRef<MenuModel | null>(null);
+  if (menu) lastMenu.current = menu;
+  const { mounted: menuMounted, closing: menuClosing } = useExitPresence(
+    Boolean(menu),
+    MENU_EXIT_MS,
+  );
+  const shownMenu = menu ?? lastMenu.current;
+
   const showSend = terminal || !busy || value.trim().length > 0;
 
   return (
@@ -545,31 +594,14 @@ export function Composer({
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
     >
-      {slashItems.length && !terminal ? (
+      {menuMounted && shownMenu ? (
         <ComposerMenu
-          label="Commands"
-          active={slashIdx}
-          onHover={setSlashIdx}
-          items={slashItems.map((c) => ({
-            key: c.name,
-            name: (
-              <>
-                /{c.name}
-                {c.arg ? <span className="composer-menu-arg"> {c.arg}</span> : null}
-              </>
-            ),
-            hint: c.hint,
-            onPick: () => (c.arg ? setValue(`/${c.name} `) : runSlash(c.name, '')),
-          }))}
-        />
-      ) : null}
-      {mention && files.length ? (
-        <ComposerMenu
-          label="Files"
-          active={fileIdx}
-          onHover={setFileIdx}
-          mono
-          items={files.map((f) => ({ key: f, name: f, onPick: () => insertFile(f) }))}
+          label={shownMenu.label}
+          active={shownMenu.active}
+          onHover={shownMenu.onHover}
+          mono={shownMenu.mono}
+          items={shownMenu.items}
+          closing={menuClosing}
         />
       ) : null}
       <div className="composer">

@@ -39,7 +39,14 @@ export function ApprovalSheet({
   // Play the exit before the answer propagates, so the sheet never snap-closes.
   const pending = useRef<() => void>(() => {});
   const { closing, dismiss } = useSheetExit(() => pending.current());
+  // With more questions behind this one the sheet stays up and the content
+  // swaps (keyed on the request), instead of bouncing closed and open.
+  const more = index + 1 < total;
   const answer = (approve: boolean, always?: boolean, inProject?: boolean) => {
+    if (more) {
+      onAnswer(approve, always, inProject);
+      return;
+    }
     pending.current = () => onAnswer(approve, always, inProject);
     dismiss();
   };
@@ -77,60 +84,62 @@ export function ApprovalSheet({
         className={`sheet approval-sheet${closing ? ' closing' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="approval-head">
-          <span className={`approval-badge ${isSpend ? 'spend' : 'tool'}`}>
-            {isSpend ? 'Cloud spend' : `Approve ${request.toolName}`}
-          </span>
-          {total > 1 ? (
-            <span className="approval-count">
-              {index + 1} of {total}
+        <div key={request.id} className="approval-body">
+          <div className="approval-head">
+            <span className={`approval-badge ${isSpend ? 'spend' : 'tool'}`}>
+              {isSpend ? 'Cloud spend' : `Approve ${request.toolName}`}
             </span>
+            {total > 1 ? (
+              <span className="approval-count">
+                {index + 1} of {total}
+              </span>
+            ) : null}
+          </div>
+          <h2>{request.summary}</h2>
+          {request.detail ? (
+            request.detail.includes('\n') ? (
+              <DiffBlock text={request.detail} />
+            ) : (
+              <p className="sheet-sub">{request.detail}</p>
+            )
           ) : null}
-        </div>
-        <h2>{request.summary}</h2>
-        {request.detail ? (
-          request.detail.includes('\n') ? (
-            <DiffBlock text={request.detail} />
-          ) : (
-            <p className="sheet-sub">{request.detail}</p>
-          )
-        ) : null}
-        <div className="sheet-actions">
-          <button
-            className={`btn press-fb ${isSpend ? 'cloud' : 'primary'}`}
-            onClick={() => answer(true)}
-          >
-            {isSpend ? 'Approve this spend' : 'Approve once'}
-            <kbd className="approval-key">y</kbd>
-          </button>
-          {/* Ordered by how often each is the right answer: once, then the
+          <div className="sheet-actions">
+            <button
+              className={`btn press-fb ${isSpend ? 'cloud' : 'primary'}`}
+              onClick={() => answer(true)}
+            >
+              {isSpend ? 'Approve this spend' : 'Approve once'}
+              <kbd className="approval-key">y</kbd>
+            </button>
+            {/* Ordered by how often each is the right answer: once, then the
               standing project rule, then the session-only allow. */}
-          {projectAllowable ? (
-            <button className="btn ghost press-fb" onClick={() => answer(true, true, true)}>
-              Always allow this in the project
+            {projectAllowable ? (
+              <button className="btn ghost press-fb" onClick={() => answer(true, true, true)}>
+                Always allow this in the project
+              </button>
+            ) : null}
+            {!isSpend ? (
+              <button className="btn ghost press-fb" onClick={() => answer(true, true)}>
+                Approve for this session
+                <kbd className="approval-key">a</kbd>
+              </button>
+            ) : null}
+            {total > 1 ? (
+              <button className="btn ghost press-fb" onClick={() => answerAll(true)}>
+                Approve all {total}
+              </button>
+            ) : null}
+            <button className="btn quiet approval-skip press-fb" onClick={() => answer(false)}>
+              No, skip it
+              <kbd className="approval-key">n</kbd>
+            </button>
+          </div>
+          {agent ? (
+            <button type="button" className="approval-mode press-fb" onClick={onOpenMode}>
+              Mode: {permissionModeLabel(mode)}. Change
             </button>
           ) : null}
-          {!isSpend ? (
-            <button className="btn ghost press-fb" onClick={() => answer(true, true)}>
-              Approve for this session
-              <kbd className="approval-key">a</kbd>
-            </button>
-          ) : null}
-          {total > 1 ? (
-            <button className="btn ghost press-fb" onClick={() => answerAll(true)}>
-              Approve all {total}
-            </button>
-          ) : null}
-          <button className="btn quiet approval-skip press-fb" onClick={() => answer(false)}>
-            No, skip it
-            <kbd className="approval-key">n</kbd>
-          </button>
         </div>
-        {agent ? (
-          <button type="button" className="approval-mode press-fb" onClick={onOpenMode}>
-            Mode: {permissionModeLabel(mode)}. Change
-          </button>
-        ) : null}
       </div>
     </div>
   );
