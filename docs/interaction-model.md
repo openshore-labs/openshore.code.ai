@@ -96,6 +96,26 @@ person using the app:
   states, always the most premium-feeling option when choosing. Tenet 7, and
   the bar every screen is held to.
 
+## Navigation: every step in has a step back
+
+The side panel is the main navigation; a room opened from it is a root and
+its top bar shows the menu. Everything reached from inside a room shows a
+back chevron to where it started, the iOS grammar, at two depths:
+
+- **Room to room** (Settings to Admin, the store to Cloud Connections): the
+  store keeps a `viewTrail`; `setView` pushes, `goBack` pops, and `BackBar`
+  shows the chevron with the previous room's name on the desktop.
+- **A page inside a room** (a model's product page in the Marketplace, a note
+  in the Vault, the embedded site in Launch): the room hands `BackBar` an
+  in-room `back` (`{ to, onBack }`), which wins over the trail because the
+  nearest step back is the one the eye expects. The title becomes the page's
+  name where it has one.
+- **Sheets** dismiss rather than go back: the round close button in a
+  `mode-head` (RepoPicker's shape), or a Cancel / Done that necessarily
+  closes it. The scrim tap and Escape are shortcuts, never the only way out.
+
+`app/test/wayBack.test.ts` pins the rooms that carry an inner page.
+
 ## Motion: the same bar as Uki
 
 Every screen, sheet, drawer, toast, and button in this app moves on one

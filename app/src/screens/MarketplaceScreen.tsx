@@ -1729,10 +1729,19 @@ export function MarketplaceScreen() {
     </div>
   );
 
+  // A product page is a page inside the room, so the top bar shows its name
+  // and a chevron back to the Marketplace (the same hop as "All models"),
+  // not the menu. Founder, 2026-09-03, from the Kimi page.
+  const page = focusedHosted
+    ? { title: focusedHosted.name, back: { to: 'Marketplace', onBack: closeHosted } }
+    : focusedModel
+      ? { title: focusedModel.name, back: { to: 'Marketplace', onBack: closeModel } }
+      : undefined;
+
   return (
     <>
       <div className="screen" ref={screenRef}>
-        <BackBar title="Marketplace" />
+        <BackBar title={page?.title ?? 'Marketplace'} back={page?.back} />
         <div className="screen-inner">
           <h1>Models, in plain language</h1>
           <p className="lead">Curated for what they are actually good at. {note ?? ''}</p>
