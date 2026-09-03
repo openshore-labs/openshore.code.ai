@@ -58,14 +58,37 @@ describe('the way back', () => {
     );
   });
 
-  it('the top bar cross-fades its title and slides the left control in', () => {
+  it('the top bar cross-fades its title with a direction, and slides the left control in', () => {
     const bar = src('components', 'BackBar.tsx');
     const theme = src('theme.css');
-    expect(bar).toMatch(/<div className="topbar-title" key=\{title\}>/);
+    expect(bar).toMatch(
+      /<div className="topbar-title" key=\{title\} data-depth=\{way \? 'page' : 'root'\}>/,
+    );
+    // A page arrives from the right (deeper); a return to a root from the left.
     expect(theme).toMatch(
-      /\.topbar-title \{[^}]*animation: title-in var\(--dur-4\) var\(--ease-glide\) backwards/,
+      /\.topbar-title \{[^}]*animation: title-in-deeper var\(--dur-4\) var\(--ease-glide\) backwards/,
+    );
+    expect(theme).toMatch(
+      /\.topbar-title\[data-depth='root'\] \{\s*animation-name: title-in-back;/,
     );
     expect(theme).toMatch(/\.topbar \.back-btn,\s*\.topbar \.menu-btn \{\s*animation: leftslot-in/);
+  });
+
+  it('the scrim dims in step with a downward drag, and the grabber hides on a fine pointer', () => {
+    const sheet = src('components', 'Sheet.tsx');
+    const theme = src('theme.css');
+    expect(sheet).toMatch(/opacity: Math\.max\(0, 1 - dragY \/ cardH\.current\)/);
+    expect(theme).toMatch(/\.sheet-scrim\.dragging \{\s*animation: none;\s*transition: none;/);
+    expect(theme).toMatch(
+      /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.sheet-grabber \{\s*display: none;/,
+    );
+  });
+
+  it('InfoSheet is folded onto the shared Sheet (no duplicated gesture left)', () => {
+    const info = src('components', 'InfoSheet.tsx');
+    expect(info).toMatch(/<Sheet open=\{open\} onClose=\{close\}>/);
+    expect(info).not.toMatch(/onPointerDown/);
+    expect(info).not.toMatch(/useSheetExit/);
   });
 
   it('sheets that had only the scrim tap as a way out carry the house header with a close', () => {

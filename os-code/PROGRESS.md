@@ -28,6 +28,36 @@ menu in the top bar.
 Open: an audit of every sheet for a visible dismiss control is in progress;
 any sheet whose only way out is the scrim tap gets the round close button.
 
+## Current state (2026-09-03, the drag dims the room, the title carries direction)
+
+Founder: "Do all the polish," the pass on the sheet-and-back bundle.
+
+- **The scrim dims with the drag.** `Sheet.tsx` captures the card's height at
+  grab start and sets the scrim's opacity inline in step with the pull, so the
+  room comes back as the sheet leaves rather than staying dark until it is
+  gone. `.sheet-scrim.dragging` kills the transition so it tracks the finger.
+- **The title cross-fade carries direction.** A page opening inside a room
+  (`data-depth="page"`) slides its title in from the right, going deeper; a
+  return to a root arrives from the left (`title-in-deeper` / `title-in-back`).
+- **The grabber is hidden on a fine pointer.** On desktop nobody flicks a
+  sheet, and the close button and scrim are the way out, so the handle is
+  hidden under `(hover: hover) and (pointer: fine)`; the drag stays for touch.
+- **InfoSheet is folded onto the shared Sheet.** It kept its own copy of the
+  grabber gesture and `useSheetExit`; now it is a trigger plus `<Sheet>` body,
+  so it inherits drag-to-dismiss, the velocity release, and the scrim dim with
+  every other sheet. ProfileStatus stays on its own markup, the one sheet that
+  must portal past the top bar's backdrop-filter; its `.info-sheet` rules now
+  serve only it.
+- `wayBack.test.ts` pins all four. Gates green: app typecheck, lint, tests.
+
+Held for sign-off, not built: an interactive left-edge swipe to go back from a
+page (a product page, a note). The left edge is the drawer's open gesture, and
+a page's back closure lives in the screen's local state, not the store, so
+routing the edge to it needs App-level arbitration between "open drawer" and
+"go back" and lifting that state up. That alters the edge gesture, which has
+wedged the app before (2026-09-03 fix), so it wants an explicit yes and a
+design call first.
+
 ## Current state (2026-09-03, every sheet drags to dismiss; the top bar cross-fades)
 
 Founder: "Do all of the Polish," the pass on the way-back bundle.

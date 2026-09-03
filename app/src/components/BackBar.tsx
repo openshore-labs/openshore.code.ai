@@ -82,8 +82,9 @@ export function BackBar({
         </button>
       ) : null}
       {/* Keyed so a new title (a page opening inside the room) remounts and
-          plays its cross-fade (theme.css title-in). */}
-      <div className="topbar-title" key={title}>
+          plays its cross-fade; data-depth gives it a direction (a page arrives
+          from the right, a return to a root from the left). */}
+      <div className="topbar-title" key={title} data-depth={way ? 'page' : 'root'}>
         {title}
       </div>
       {action}

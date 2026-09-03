@@ -756,17 +756,32 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   /* Keyed by its text (BackBar), so a page opening inside a room cross-fades
-     the title in rather than swapping it. */
-  animation: title-in var(--dur-4) var(--ease-glide) backwards;
+     the title in rather than swapping it. Direction carries depth: a page
+     (data-depth="page") arrives from the right, going deeper; a return to a
+     root arrives from the left. */
+  animation: title-in-deeper var(--dur-4) var(--ease-glide) backwards;
 }
-@keyframes title-in {
+.topbar-title[data-depth='root'] {
+  animation-name: title-in-back;
+}
+@keyframes title-in-deeper {
   from {
     opacity: 0;
-    transform: translateY(3px);
+    transform: translateX(10px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
+  }
+}
+@keyframes title-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 /* The left slot's control arrives from the edge it points at: the chevron
@@ -2701,6 +2716,14 @@ textarea {
   transition: opacity var(--dur-7) var(--ease-glide);
 }
 
+/* While the sheet is dragged down, the scrim's opacity is set inline in step
+   with the drag (Sheet.tsx), so the room comes back as the sheet leaves; no
+   transition here or it would lag the finger. */
+.sheet-scrim.dragging {
+  animation: none;
+  transition: none;
+}
+
 /* Dismissal: the scrim fades as the sheet slides back down (useSheetExit and
    Sheet.tsx hold the unmount for the door clock, lib/motion.ts sheetExitMs). */
 .sheet-scrim.closing {
@@ -2795,9 +2818,11 @@ textarea {
   }
 }
 
-/* Drag-to-dismiss: the sheet tracks the finger 1:1 while dragging (no
-   transition), then either springs back to rest or, past the threshold,
-   the component closes it. See InfoSheet.tsx. */
+/* Drag-to-dismiss for the one sheet that portals its own markup instead of
+   using the shared Sheet (ProfileStatus, whose fixed scrim must escape the top
+   bar's backdrop-filter containing block): tracks the finger 1:1 while
+   dragging, springs back on a short release, plays its exit past the
+   threshold. Every other sheet gets this from components/Sheet.tsx. */
 .info-sheet {
   transition: transform var(--dur-5) var(--ease-spring);
   touch-action: none;
@@ -2832,6 +2857,15 @@ textarea {
   margin: -6px 0 0;
   cursor: grab;
   touch-action: none;
+}
+/* The grabber is a drag affordance for a finger. On a fine pointer (desktop)
+   nobody flicks a sheet, and the close button plus the scrim are the way out,
+   so the handle just adds clutter. Hidden there; the pointer handlers stay
+   bound harmlessly on the now-zero-height row. */
+@media (hover: hover) and (pointer: fine) {
+  .sheet-grabber {
+    display: none;
+  }
 }
 
 .sheet-grabber-bar {
