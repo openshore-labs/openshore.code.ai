@@ -609,31 +609,6 @@ export function MarketplaceScreen() {
     return () => io.disconnect();
   }, [visible.length, focusedId, focusedHostedId]);
 
-  // Fetch community summaries for the models on screen: the list window, plus a
-  // focused model. One batched call, so community-guided browsing costs a single
-  // request per view rather than one per row. Degrades to nothing off a
-  // configured build or when the read fails.
-  useEffect(() => {
-    if (!reviewsAvailable() || !catalog) return;
-    const ids = focusedId ? [focusedId] : visible.slice(0, renderLimit).map((m) => m.id);
-    if (ids.length === 0) return;
-    const missing = ids.filter((id) => !reviewSummaries.has(id));
-    if (missing.length === 0) return;
-    let cancelled = false;
-    void fetchSummaries(missing, authSession).then((map) => {
-      if (cancelled || map.size === 0) return;
-      setReviewSummaries((prev) => {
-        const next = new Map(prev);
-        for (const [k, v] of map) next.set(k, v);
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, focusedId, visible, renderLimit, authSession]);
-
   const compareModels = useMemo(
     () =>
       compareIds
@@ -668,6 +643,44 @@ export function MarketplaceScreen() {
     () => (catalog ? buildShelves(catalog.models, memoryGB) : []),
     [catalog, memoryGB],
   );
+
+  // The catalog model ids currently on screen: the store front (featured plus
+  // every shelf) when browsing, the list window when searching or filtering, or
+  // the one focused model. This is what the community summaries are fetched for,
+  // so hero, shelves, and rows all show a crowd star from a single batched call.
+  const onScreenModelIds = useMemo(() => {
+    if (focusedId) return [focusedId];
+    if (browsing) {
+      const ids = new Set<string>();
+      for (const m of featured) ids.add(m.id);
+      for (const shelf of shelves) for (const m of shelf.models) ids.add(m.id);
+      return [...ids];
+    }
+    return visible.slice(0, renderLimit).map((m) => m.id);
+  }, [focusedId, browsing, featured, shelves, visible, renderLimit]);
+
+  // Fetch community summaries for whatever is on screen, in ONE batched call, so
+  // community-guided browsing costs a single request per view rather than one
+  // per row (the CTO's per-browse-egress guard). Degrades to nothing off a
+  // configured build or when the read fails.
+  useEffect(() => {
+    if (!reviewsAvailable() || onScreenModelIds.length === 0) return;
+    const missing = onScreenModelIds.filter((id) => !reviewSummaries.has(id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void fetchSummaries(missing, authSession).then((map) => {
+      if (cancelled || map.size === 0) return;
+      setReviewSummaries((prev) => {
+        const next = new Map(prev);
+        for (const [k, v] of map) next.set(k, v);
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onScreenModelIds, authSession]);
 
   if (!catalog) {
     // A skeleton store front instead of a bare line: two hero placeholders and
@@ -1568,6 +1581,15 @@ export function MarketplaceScreen() {
     return communityScore(summary, model.ratings?.osCodeFit);
   };
 
+  // A compact community star for a browse surface (hero, shelf row, list row),
+  // shown only once a model has reports so a cold catalog is not a wall of empty
+  // lines. Null off a configured build or before any review lands.
+  const communityChip = (model: CatalogModel) => {
+    if (!reviewsAvailable()) return null;
+    const s = reviewScoreFor(model);
+    return s.count > 0 ? <CommunityStars score={s} size={12} /> : null;
+  };
+
   // This device, for the review hardware prefill and the "machines like yours"
   // read. The reviewer confirms and edits it; nothing is auto-collected.
   const deviceRamGB = capacity?.ramBytes ? Math.round(capacity.ramBytes / 1e9) : undefined;
@@ -1901,6 +1923,7 @@ export function MarketplaceScreen() {
           <div className="hero-foot-meta">
             <span className={`pill ${pill.cls}`}>{pill.text}</span>
             <span className="hero-size">{model.sizeGB} GB</span>
+            {communityChip(model)}
           </div>
           <span className="hero-get-wrap">{getControl(model)}</span>
         </div>
@@ -1940,6 +1963,10 @@ export function MarketplaceScreen() {
             {primaryCap ? <CapIcon cap={primaryCap} size={12} /> : null}
             {meta}
           </div>
+          {(() => {
+            const chip = communityChip(model);
+            return chip ? <div className="store-row-community">{chip}</div> : null;
+          })()}
         </div>
         <span className="store-row-get">{getControl(model)}</span>
       </div>

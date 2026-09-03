@@ -4463,6 +4463,46 @@ textarea {
 .market-community {
   margin-top: 8px;
 }
+.store-row-community {
+  margin-top: 4px;
+}
+
+/* Review moderation queue rows in the Admin screen. */
+.mod-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mod-row {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.mod-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mod-status {
+  font-size: 11.5px;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+.mod-body {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+.mod-meta {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.mod-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
 
 .reviews {
   margin-top: 14px;

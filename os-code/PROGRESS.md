@@ -1701,19 +1701,23 @@ Layer status:
 ## What remains (known follow-ups, none blocking)
 
 - [ ] **Community reviews: founder config + follow-ups.** Before reviews light
-      up: run `supabase db push` (applies 0011_model_reviews) and ship a build
-      with VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY set; without both, the store
-      shows benchmark stars only (graceful). Deferred, non-blocking: (1) a
-      moderation queue surface in AdminScreen (today the auto-hide trigger plus
-      the Supabase dashboard cover Apple 1.2; a first-party queue is nicer);
-      (2) community stars on the store-front hero/shelves, which want the CTO's
-      sidecar approach (fold a review-aggregate snapshot into the daily catalog
-      build) rather than a per-view call; (3) the sybil reality of "any signed-in
-      user may review": one-per-user, report/block, auto-hide, and the count-gated
-      average blunt it, but account creation is free, so add account-age
-      weighting or an installed-signal gate if astroturfing appears; (4) a
-      `first_successful_run` event to measure whether the community layer lifts
-      activation (CX's open question).
+      up: run `supabase db push` (applies 0011_model_reviews AND
+      0012_review_moderation) and ship a build with VITE_SUPABASE_URL /
+      VITE_SUPABASE_ANON_KEY set; without both, the store shows benchmark stars
+      only (graceful). To moderate, seed yourself:
+      `insert into review_moderators (user_id) values ('<your-auth-uuid>');`
+      then the queue appears under Admin. DONE since the first cut: community
+      stars now show on the store-front hero and shelves too (one batched RPC
+      per view, not per row), and the AdminScreen moderation queue (hide /
+      restore, guarded by review_moderators). Still deferred, non-blocking:
+      (1) the CTO's sidecar (fold a review-aggregate snapshot into the daily
+      catalog build) if browse volume ever makes the per-view batched call too
+      chatty, the scale path past today's one-call-per-view; (2) the sybil
+      reality of "any signed-in user may review": one-per-user, report/block,
+      auto-hide, and the count-gated average blunt it, but accounts are free, so
+      add account-age weighting or an installed-signal gate if astroturfing
+      appears; (3) a `first_successful_run` event to measure whether the
+      community layer lifts activation (CX's open question).
 - [ ] **Large-model iCloud home, TestFlight validation + the CTO caveat.** The
       "download to iCloud" path (ModelStore places the GGUF in the app's iCloud
       Drive container, ensureLocal materializes it before a load) is unverifiable

@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { BackBar } from '../components/BackBar.js';
+import { ReviewModeration } from '../components/ReviewModeration.js';
 
 export function AdminScreen() {
   const {
@@ -37,6 +38,9 @@ export function AdminScreen() {
           <p className="lead">
             This is a personal account. Admin controls are for company accounts.
           </p>
+          {/* A review moderator may be a personal account; the panel shows for
+              them and renders nothing for everyone else. */}
+          <ReviewModeration />
         </div>
       </div>
     );
@@ -243,6 +247,8 @@ export function AdminScreen() {
           Roles here are enforced in the app for now. When accounts move to the cloud, the server
           enforces who is an admin and who can change the stack, so this cannot be worked around.
         </p>
+
+        <ReviewModeration />
       </div>
     </div>
   );
