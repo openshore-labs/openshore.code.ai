@@ -7,6 +7,7 @@
 // and the drop (the commit itself).
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { hapticTick } from '../lib/haptics.js';
+import { EXIT_MS } from './useExitPresence.js';
 
 /** A flick faster than this (px per ms) commits regardless of distance. */
 const COMMIT_VELOCITY = 0.35;
@@ -98,7 +99,7 @@ export function useDrawerGesture({
     settleTimer.current = null;
   };
 
-  const settle = useCallback((to: number, then?: () => void) => {
+  const settle = useCallback((to: number, then?: () => void, ms: number = SETTLE_MS) => {
     setDragging(false);
     setDragX(to);
     clearSettle();
@@ -106,7 +107,7 @@ export function useDrawerGesture({
       settleTimer.current = null;
       setDragX(null);
       then?.();
-    }, SETTLE_MS);
+    }, ms);
   }, []);
 
   // ---- from closed: the edge zone
@@ -216,9 +217,12 @@ export function useDrawerGesture({
       const commit = v < -COMMIT_VELOCITY || (-dx > width * COMMIT_FRACTION && v < COMMIT_VELOCITY);
       if (commit) {
         hapticTick();
-        setDragging(false);
-        setDragX(null);
         setOpen(false);
+        // Hold the finger's position through the exit: the panel's closing
+        // keyframe starts from it (--drawer-x, see Sidebar), so the door keeps
+        // sliding out from where the hand left it rather than jumping back to
+        // open first. Cleared once the exit has unmounted.
+        settle(rubber(Math.max(-width, dx)), undefined, EXIT_MS);
       } else {
         settle(0);
       }
@@ -232,7 +236,9 @@ export function useDrawerGesture({
     dragX,
     dragging,
     peek,
-    viaGesture: viaGesture && (open || peek),
+    // Stays on through a drag-to-close (dragX is held for the exit), so the
+    // CSS entrance cannot replay in the render before the closing class lands.
+    viaGesture: viaGesture && (open || peek || dragX !== null),
     progress,
     edgeProps: {
       onPointerDown: edgeDown,

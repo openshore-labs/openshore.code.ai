@@ -567,7 +567,7 @@ textarea {
   z-index: 41;
   width: min(310px, 84vw);
   box-shadow: 24px 0 60px rgba(var(--shadow-rgb), 0.18);
-  animation: slide-in var(--dur-3) var(--ease-standard);
+  animation: drawer-in var(--dur-5) var(--ease-standard);
   /* After a drag releases, the panel springs to rest on this. */
   transition: transform var(--dur-4) var(--ease-spring);
   touch-action: pan-y;
@@ -589,34 +589,49 @@ textarea {
 }
 
 /* The drawer plays its exit before unmounting (App.tsx holds it for the
-   animation's full length): the scrim fades, the panel slides back under the
-   edge on the accelerate curve, the way a sheet leaves. */
+   animation's full length). The panel is a sliding door: solid the whole way,
+   it glides off the left edge on the standard curve while only the scrim
+   fades. Never a transparent object (founder, 2026-09-03: "not as a
+   transparent object, just like a sliding door being moved out of the way").
+   After a drag-to-close the door keeps going from where the finger left it:
+   Sidebar sets --drawer-x and --drawer-scrim from the gesture, and the
+   keyframes start there (0 and 1 when the close came from a tap). */
 .drawer-scrim.closing {
-  animation: fade-out var(--dur-4) var(--ease-standard) forwards;
+  animation: drawer-scrim-out var(--dur-5) var(--ease-standard) forwards;
 }
 .sidebar.drawer.closing {
-  animation: slide-out var(--dur-4) var(--ease-accel) forwards;
+  animation: drawer-out var(--dur-5) var(--ease-standard) forwards;
 }
 @keyframes fade-out {
   to {
     opacity: 0;
   }
 }
-@keyframes slide-out {
+@keyframes drawer-scrim-out {
+  from {
+    opacity: var(--drawer-scrim, 1);
+  }
   to {
-    transform: translateX(-24px);
     opacity: 0;
   }
 }
-
-@keyframes slide-in {
+/* The resting-hidden position clears the panel's own shadow (24px offset plus
+   60px blur), so nothing of the door shows once it has left. */
+@keyframes drawer-out {
   from {
-    transform: translateX(-24px);
-    opacity: 0.4;
+    transform: translateX(var(--drawer-x, 0px));
+  }
+  to {
+    transform: translateX(calc(-100% - 90px));
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(calc(-100% - 90px));
   }
   to {
     transform: translateX(0);
-    opacity: 1;
   }
 }
 
