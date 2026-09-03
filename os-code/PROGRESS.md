@@ -3,6 +3,15 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, the room top bar is pinned)
+
+Founder: freeze the top header row (menu, room name, connection status)
+throughout the app so it never leaves the screen. Every room places its top
+bar as the first child of the scrolling `.screen`, so one rule pins them
+all: `.screen > .topbar { position: sticky; top: 0 }`. The bar already had a
+blurred, translucent ground and a z-index, so content scrolls under it
+cleanly. Chat's bar sits outside its scroller and was already fixed.
+
 ## Current state (2026-09-02, sub-rooms have a way back)
 
 Founder, from the phone: a room reached from inside another room (Settings,
