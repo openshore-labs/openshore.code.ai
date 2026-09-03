@@ -85,6 +85,14 @@ included, to TestFlight. Built end to end.
   the iCloud copy uses your iCloud storage and loads when you are online; the
   fit lines are `isPhone`-gated so mock capacity never renders on web or
   desktop. CTO verdict was safe to ship; the open native caveat is below.
+- **Connected cloud storage in the meter (founder follow-up).** The capacity
+  sheet now carries a "Connected cloud storage" section with a row per cloud.
+  iOS gives apps no way to read iCloud's own free space, so the iCloud row
+  shows what your models occupy there plus a plain note about the missing
+  number, never a fabricated free-of-total. Google Drive does report a real
+  quota (about.get, `gdriveStorageQuota` in `gitos/gdrive.ts`), so its row is a
+  true free-of-total bar when Drive is connected, or a used-only line for an
+  uncapped Workspace account. `gdriveQuota.test.ts` pins the parsing.
 - Gates green: `pnpm -r lint`, `-r typecheck`, `-r test` (os-code 338, app
   414), app vite build. Not device-verified (no iOS here); first TestFlight run
   is the proof, exactly like the earlier native plugins.

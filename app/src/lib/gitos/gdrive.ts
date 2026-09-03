@@ -109,6 +109,46 @@ function driveFetch(path: string, init?: RequestInit): Promise<Response> {
   return authedFetch(`${API}${path}`, init);
 }
 
+/** A connected cloud's storage, in bytes. `unlimited` is set for an account
+ *  with no cap (a Workspace pooled quota), where a free/total bar has no
+ *  meaning and only the used figure is honest. */
+export interface CloudQuota {
+  freeBytes: number;
+  totalBytes: number;
+  usedBytes: number;
+  unlimited: boolean;
+}
+
+/** Google Drive's real quota, read from about.get. Unlike iCloud, Drive
+ *  reports free of total, so this is an honest availability number for the
+ *  capacity meter. Returns undefined when Drive is not connected or the read
+ *  fails, so the caller shows nothing rather than a guess. */
+export async function gdriveStorageQuota(): Promise<CloudQuota | undefined> {
+  try {
+    const res = await authedFetch(`${API}/about?fields=storageQuota`);
+    const json = (await res.json()) as {
+      storageQuota?: { limit?: string; usage?: string };
+    };
+    const q = json.storageQuota;
+    if (!q) return undefined;
+    const usedBytes = Number(q.usage ?? 0);
+    // A Drive account with no cap omits `limit` entirely. Report it as
+    // unlimited rather than inventing a total.
+    if (q.limit == null) {
+      return { freeBytes: 0, totalBytes: 0, usedBytes, unlimited: true };
+    }
+    const totalBytes = Number(q.limit);
+    return {
+      freeBytes: Math.max(0, totalBytes - usedBytes),
+      totalBytes,
+      usedBytes,
+      unlimited: false,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 function escapeQ(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
