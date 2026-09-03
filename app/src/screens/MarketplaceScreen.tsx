@@ -907,7 +907,7 @@ export function MarketplaceScreen() {
 
         <div className="card-foot">
           <button
-            className="disclosure"
+            className="disclosure press-fb"
             onClick={() => setDetailOpen(detail ? undefined : model.id)}
             aria-expanded={detail}
           >
@@ -1860,7 +1860,7 @@ export function MarketplaceScreen() {
                     key={s.key}
                     role="tab"
                     aria-selected={sort === s.key}
-                    className={`seg${sort === s.key ? ' active' : ''}`}
+                    className={`seg press-fb${sort === s.key ? ' active' : ''}`}
                     onClick={() => setSort(s.key)}
                   >
                     {s.label}
@@ -1880,7 +1880,7 @@ export function MarketplaceScreen() {
                       {visible.length + hostedMatches.length === 1 ? '' : 's'}
                     </span>
                     {isPhone() ? (
-                      <button className="filter-open" onClick={() => setShowFilters(true)}>
+                      <button className="filter-open press-fb" onClick={() => setShowFilters(true)}>
                         Filters{activeFacetCount(facets) ? ` (${activeFacetCount(facets)})` : ''}
                       </button>
                     ) : null}

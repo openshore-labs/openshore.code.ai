@@ -3,6 +3,24 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, every store tappable answers the finger)
+
+Round five, and the last one worth the squeeze. Three controls in the store
+had no press feedback: the sort tabs, the "Details and license" disclosure,
+and the phone's Filters button. All three now carry `press-fb`. The sort tab
+declares its own transition shorthand (background, color), which would have
+swallowed press-fb's scale release, so `.seg.press-fb` restates the shorthand
+with `scale var(--press-out)` alongside; the guard pins that. Gates green:
+app typecheck, lint, 342 tests.
+
+Checked and left alone, on purpose: remembering search and filter facets
+across a room round trip (the open product page and the scroll offset already
+come back, and a typed query is a cheaper thing to re-enter than a wrong one
+to notice); an entrance stagger on the hosted rows in the list (they sit in
+their own section above staggered cards, and a second cadence would read as
+two lists); and a press state on the compare checkbox (a native control, and
+a scale on the label would fight the checkbox's own feedback).
+
 ## Current state (2026-09-03, the store front dissolves into the list)
 
 Founder: "keep doing the polish until the juice isn't worth the squeeze."

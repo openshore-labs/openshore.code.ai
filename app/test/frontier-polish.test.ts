@@ -76,6 +76,17 @@ describe('the tile hop (view transitions)', () => {
   });
 });
 
+describe('every store tappable answers the finger', () => {
+  it('the sort tabs, the details disclosure, and the filter button carry press-fb', () => {
+    expect(MARKET).toMatch(/className=\{`seg press-fb/);
+    expect(MARKET).toMatch(/className="disclosure press-fb"/);
+    expect(MARKET).toMatch(/className="filter-open press-fb"/);
+    // The sort tab's own transition shorthand must carry the scale release,
+    // or the spring-out is lost to the later, more specific rule.
+    expect(THEME).toMatch(/\.seg\.press-fb \{[^}]*scale var\(--press-out\)/);
+  });
+});
+
 describe('the connected pop', () => {
   it('is a spring keyframe with backwards fill, never both', () => {
     const rule = /\.pill-pop \{([^}]*)\}/.exec(THEME)?.[1] ?? '';
