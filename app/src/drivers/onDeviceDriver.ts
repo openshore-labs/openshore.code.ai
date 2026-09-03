@@ -102,6 +102,19 @@ export class OnDeviceDriver implements ChatDriver {
     });
     try {
       if (!this.loaded) {
+        // A model kept in iCloud may be evicted (placeholder only). Pull its
+        // bytes down first; a device-stored model is a no-op. If it cannot be
+        // fetched (offline with an evicted model), fail with a real message
+        // rather than a load error that reads as corruption.
+        const local = await Llama.ensureLocal({ id: this.modelId }).catch(() => ({ ready: true }));
+        if (!local.ready) {
+          this.emitter.emit({
+            type: 'task-done',
+            reason: 'error',
+            message: `${this.modelName} lives in your iCloud and is not on this device yet. Connect to the internet so it can download, then try again.`,
+          });
+          return;
+        }
         this.emitter.emit({
           type: 'status',
           message: `Warming up ${this.modelName} on this device.`,

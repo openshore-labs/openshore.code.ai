@@ -208,6 +208,11 @@ export interface AppSettings {
   claudeModel: string;
   /** Downloaded on-device models: catalog id -> friendly name. */
   deviceModels: Record<string, string>;
+  /** Models downloaded to iCloud Drive instead of this device: catalog id ->
+   *  friendly name. Their bytes live in the app's iCloud container and are
+   *  pulled back on demand when online, so a model too big for the phone still
+   *  has a home. Kept separate from deviceModels so the UI can say where it is. */
+  cloudModels?: Record<string, string>;
   /** Bring-your-own-model connections: OpenAI-compatible endpoints the user
    *  controls. Metadata only; each connection's API key lives in the secret
    *  store under byomSecretKey(id). */
@@ -714,6 +719,8 @@ interface AppState {
   /** Record a freshly downloaded on-device model, reading fresh state so two
    *  concurrent downloads never clobber each other's deviceModels entry. */
   addDeviceModel(id: string, name: string): Promise<void>;
+  /** Record a model downloaded to iCloud Drive rather than this device. */
+  addCloudModel(id: string, name: string): Promise<void>;
   setCloudKey(key: string): Promise<void>;
   clearCloudKey(): Promise<void>;
   /** Connect a cloud provider by API key (Keychain), surfacing its models. The
@@ -1441,12 +1448,28 @@ export const useApp = create<AppState>((set, get) => {
         try {
           const { models } = await Llama.listModels();
           const present = new Set(models.map((m) => m.id));
+          // A model in iCloud is still "present" (listModels reports it, evicted
+          // or not), so partition by where its bytes live to keep each map true.
+          const cloudPresent = new Set(
+            models.filter((m) => m.location === 'icloud').map((m) => m.id),
+          );
           let changed = false;
           const kept = Object.fromEntries(
-            Object.entries(settings.deviceModels).filter(([id]) => present.has(id)),
+            Object.entries(settings.deviceModels).filter(
+              ([id]) => present.has(id) && !cloudPresent.has(id),
+            ),
           );
           if (Object.keys(kept).length !== Object.keys(settings.deviceModels).length) {
             settings.deviceModels = kept;
+            changed = true;
+          }
+          const keptCloud = Object.fromEntries(
+            Object.entries(settings.cloudModels ?? {}).filter(([id]) => cloudPresent.has(id)),
+          );
+          if (
+            Object.keys(keptCloud).length !== Object.keys(settings.cloudModels ?? {}).length
+          ) {
+            settings.cloudModels = keptCloud;
             changed = true;
           }
           const harborMiniHere = present.has(HARBOR_MINI_MODEL_ID);
@@ -1769,6 +1792,9 @@ export const useApp = create<AppState>((set, get) => {
         onDeviceHost: platform() === 'ios',
         deviceModelReady: (id) =>
           Boolean(st.deviceModels[id]) ||
+          // A model kept in iCloud counts as ready: the load path pulls its
+          // bytes down first (ensureLocal) when you are online.
+          Boolean(st.cloudModels?.[id]) ||
           (id === HARBOR_MINI_MODEL_ID && Boolean(st.harborMiniReady)) ||
           (id === HARBOR_MODEL_ID && Boolean(st.harborReady)),
         cloudReady: (provider) =>
@@ -3776,7 +3802,20 @@ export const useApp = create<AppState>((set, get) => {
       // G2: read the CURRENT deviceModels, never a stale render snapshot, so two
       // downloads finishing close together each keep their "on device" entry.
       const deviceModels = { ...get().settings.deviceModels, [id]: name };
-      await get().saveSettings({ deviceModels });
+      // A model can only be in one place: adopting it locally clears any stale
+      // iCloud record from a previous download to the other target.
+      const cloudModels = { ...(get().settings.cloudModels ?? {}) };
+      delete cloudModels[id];
+      await get().saveSettings({ deviceModels, cloudModels });
+    },
+
+    async addCloudModel(id, name) {
+      // Mirror of addDeviceModel for the iCloud target: read fresh state, and
+      // keep the id out of the device map so it never shows as both places.
+      const cloudModels = { ...(get().settings.cloudModels ?? {}), [id]: name };
+      const deviceModels = { ...get().settings.deviceModels };
+      delete deviceModels[id];
+      await get().saveSettings({ cloudModels, deviceModels });
     },
 
     async setCloudKey(key) {
