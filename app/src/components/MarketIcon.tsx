@@ -62,16 +62,27 @@ export function ModelTile({
   onDevice = false,
   cloud = false,
   size = 52,
+  transitionName,
 }: {
   name: string;
   onDevice?: boolean;
   cloud?: boolean;
   size?: number;
+  /** A view-transition-name for one hop, so this tile is the shared element
+   *  a product page's tile flies from (or back to). Set on exactly one tile
+   *  at a time: a duplicate name makes the platform skip the transition. */
+  transitionName?: string;
 }) {
+  const style: Record<string, string | number> = {
+    width: size,
+    height: size,
+    fontSize: Math.round(size * 0.36),
+  };
+  if (transitionName) style.viewTransitionName = transitionName;
   return (
     <div
       className={`model-tile${onDevice ? ' on-device' : ''}${cloud ? ' cloud' : ''}`}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+      style={style}
       aria-hidden="true"
     >
       {modelMonogram(name)}

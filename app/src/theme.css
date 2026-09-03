@@ -4949,6 +4949,77 @@ textarea {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
 }
+/* The same per-capability light shifts as the teal heroes, in amber, so the
+   cloud cards read as one family with the rest of the row. */
+.hero-card.cloud[data-cap='coding'] {
+  background:
+    radial-gradient(130% 120% at 12% 0%, rgba(240, 168, 80, 0.5), transparent 58%),
+    linear-gradient(160deg, #6b430f, #2e1f0a);
+}
+.hero-card.cloud[data-cap='writing'] {
+  background:
+    radial-gradient(150% 120% at 50% -10%, rgba(240, 168, 80, 0.45), transparent 60%),
+    linear-gradient(135deg, #6b430f, #2e1f0a);
+}
+.hero-card.cloud[data-cap='analysis'] {
+  background:
+    radial-gradient(140% 130% at 90% 10%, rgba(240, 168, 80, 0.45), transparent 62%),
+    linear-gradient(150deg, #6b430f, #2e1f0a);
+}
+.hero-card.cloud[data-cap='fast'] {
+  background:
+    radial-gradient(120% 120% at 30% 100%, rgba(240, 168, 80, 0.45), transparent 58%),
+    linear-gradient(170deg, #6b430f, #2e1f0a);
+}
+
+/* The tile hops. A hosted hero or row and its product page share one tile,
+   so the page arrives by that tile flying into place rather than the list
+   hard-cutting to a card (View Transitions where the platform has them;
+   a plain swap elsewhere). The page tile carries the shared name in CSS; the
+   origin tile is handed the same name for the one hop. Root takes the house
+   standard curve at a short beat; the tile itself takes the slow lane. */
+.hosted-page .model-tile {
+  view-transition-name: hosted-tile;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-3);
+  animation-timing-function: var(--ease-standard);
+}
+::view-transition-group(hosted-tile) {
+  animation-duration: var(--dur-5);
+  animation-timing-function: var(--ease-arrive);
+}
+::view-transition-old(hosted-tile),
+::view-transition-new(hosted-tile) {
+  animation-duration: var(--dur-5);
+  animation-timing-function: var(--ease-arrive);
+  mix-blend-mode: normal;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* The connected moment: a provider's rows just flipped from Connect to
+   "on bench". The pill pops in on the release spring, once, then rests. */
+.pill-pop {
+  display: inline-block;
+  animation: pill-pop var(--dur-4) var(--ease-spring) backwards;
+}
+@keyframes pill-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
 .hosted-group .store-row:last-child {
   border-bottom: none;
 }
