@@ -3,6 +3,67 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the wait has a shore)
+
+Founder, from a screen recording of the chat: "make the OpenShore shapes move
+like waves with some sort of thinking words like Claude does while it's
+preparing a response and a more graceful typing of the response," and ask the
+Creative Studio what would make it more delightful. The recording showed
+three bouncing dots beside a fixed "Thinking 3s", then the whole reply popping
+in at once. All three asks landed, shaped by the Studio's brief.
+
+- **The mark rolls as surf.** The working row's dots are gone; in their place
+  is `components/WaveMark.tsx`, the brand mark's own geometry (the horizon
+  line held still, the shore wave `q4.5-3.3 9 0t9 0` drawn two wavelengths
+  wide inside a clip) carried one wavelength to the right per 2.6 s loop on
+  transform only. The loop seam is invisible because the travel is exactly
+  one wavelength. Under reduced motion the still frame is simply the mark.
+  The Studio's call: nothing new is introduced, the mark-as-loader is the
+  most premium read, and the horizon takes muted ink because cream on cream
+  would vanish.
+- **The word turns over, honestly.** `lib/thinkingWords.ts` holds the house
+  lexicon: plain "Thinking" always first, then a calm coastal set
+  (Considering, Weighing it, Reading the tide, Between sets, ...) every
+  3.6 s without repeats, and after fifteen seconds an honest long-wait set
+  (Still thinking, Taking its time, Waiting on the model). No word claims
+  work the model is not doing; the Studio cut Composing, Drafting, Searching,
+  and the borrowed Pondering and Musing. Only a plain "Thinking" note
+  rotates; "Writing", tool summaries, and "Waiting for your approval" hold
+  verbatim. The swap is a small rise (the old word rises out, the new one
+  rises in beneath it, `--dur-6 --ease-arrive`), the counter arrives at two
+  seconds with the same rise, and the rotating text is hidden from the screen
+  reader behind a static "Thinking".
+- **The reply types, and finishes its tail.** `lib/streamSmoothing.ts` now
+  reveals at a calm fixed pace (4 characters per 24 ms tick, about 165 a
+  second) and only speeds up past a bounded lag (a fiftieth of the backlog
+  per tick, so a long code answer trails by about a second, never ten). The
+  real burst in the recording was `useSmoothedReveal` snapping the rest in
+  the instant streaming ended; it now keeps ticking until the last character
+  lands, and the caret stays through that tail and fades out (`--dur-4`)
+  rather than unmounting. The caret breathes on `--ease-loop` instead of a
+  hard `steps(1)` blink. The terminal's smoother keeps its brisker cadence;
+  see DECISIONS.
+- **The seam.** The working row eases out (`useExitPresence`, fade and a 3 px
+  rise) instead of vanishing, and when the reply is what ended it, the slot
+  gives up its height and the thread gap so the row plays its exit on the
+  reply's first line: the wave and the word dissolve into the text on the
+  same spot and nothing below jumps when the row unmounts. The exit holds
+  the word the row was saying (the first token flips the note to "Writing" in
+  the same reduce, so MessageList freezes it on the synchronous signal). A
+  pinned thread
+  now follows the revealed text, not only the incoming deltas.
+- `test/workingRow.test.ts` pins the lexicon rules and the draw, the mark's
+  verbatim motif and one-wavelength loop, the reduced-motion rest, the row's
+  exit binding, the seam, and the caret's settle. `streamSmoothing.test.ts`
+  pins the pace and the lag bound. Gates green: app typecheck, lint, 355
+  tests. Verified in a headless phone viewport on the scripted tour.
+
+**Studio extras left for the founder's call** (ranked by the Studio, none
+built): the "Thought for Ns" fold taking the counter's final value so the
+numbers agree; a shared-element move where the wave translates into the
+bubble's top-left and dissolves (about 30 LOC, medium risk); no sound (Brand
+Exec veto: a quiet tool in a quiet room).
+
 ## Current state (2026-09-03, every store tappable answers the finger)
 
 Round five, and the last one worth the squeeze. Three controls in the store

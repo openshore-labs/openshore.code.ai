@@ -954,12 +954,14 @@ textarea {
 }
 
 .thread-inner {
+  /* The one copy of the gap; the working row's seam exit cancels it. */
+  --thread-gap: 18px;
   max-width: 760px;
   margin: 0 auto;
   padding: 18px 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--thread-gap);
 }
 
 .msg-user {
@@ -1024,6 +1026,9 @@ textarea {
   border-radius: 999px;
 }
 
+/* The caret breathes rather than blinks (a hard steps() blink was the one
+   snappy thing left in the transcript), stays while the tail of a reply is
+   still typing, and fades once the last character lands. */
 .cursor-caret {
   display: inline-block;
   width: 7px;
@@ -1032,11 +1037,19 @@ textarea {
   background: var(--local);
   border-radius: 2px;
   margin-left: 2px;
-  animation: caret-blink var(--loop-2) steps(1) infinite;
+  animation: caret-breathe var(--loop-2) var(--ease-loop) infinite;
+}
+.cursor-caret.closing {
+  animation: caret-out var(--dur-4) var(--ease-standard) forwards;
 }
 
-@keyframes caret-blink {
+@keyframes caret-breathe {
   50% {
+    opacity: 0.35;
+  }
+}
+@keyframes caret-out {
+  to {
     opacity: 0;
   }
 }
@@ -5562,35 +5575,64 @@ textarea {
   font-size: 13.5px;
   animation: msg-in var(--dur-3) var(--ease-standard);
 }
-.working-dots {
-  display: inline-flex;
-  gap: 4px;
+/* Everything that animates in animates out: the row fades and rises 3px when
+   the reply starts (or the turn ends). */
+.working-row.closing {
+  animation: working-out var(--dur-4) var(--ease-standard) forwards;
+  pointer-events: none;
 }
-.working-dots i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--local);
-  opacity: 0.35;
-  animation: working-dot var(--loop-2) var(--ease-loop) infinite;
-}
-.working-dots i:nth-child(2) {
-  animation-delay: var(--dur-2);
-}
-.working-dots i:nth-child(3) {
-  animation-delay: calc(var(--dur-2) * 2);
-}
-@keyframes working-dot {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: translateY(0);
-  }
-  40% {
-    opacity: 1;
-    transform: translateY(-2px);
+@keyframes working-out {
+  to {
+    opacity: 0;
+    transform: translateY(-3px);
   }
 }
+/* The seam: while the exit plays over an arriving reply, the slot gives up its
+   height and the thread gap, and the row sits on the reply's first line, so
+   the wave and the word dissolve into the text on the same spot and nothing
+   below it jumps when the row unmounts. */
+.working-slot {
+  position: relative;
+}
+.working-slot.seam {
+  height: 0;
+  margin-top: calc(-1 * var(--thread-gap));
+}
+.working-slot.seam .working-row {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+}
+
+/* The OpenShore mark as surf (components/WaveMark.tsx): the horizon holds
+   still, the shore wave rolls one wavelength (18 units) per loop, left to
+   right, on transform only. The loop is slower than the house loops on
+   purpose; surf at 1400ms reads as a spinner. Under reduced motion the still
+   frame is simply the mark. */
+.wave-mark {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+.wave-mark-horizon {
+  stroke: var(--muted);
+  opacity: 0.55;
+}
+.wave-mark-surf {
+  stroke: var(--local);
+  opacity: 0.85;
+  animation: surf 2600ms linear infinite;
+  will-change: transform;
+}
+@keyframes surf {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(18px);
+  }
+}
+
 .working-note {
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -5598,10 +5640,47 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The word turns over: the outgoing word rises out as the incoming one rises
+   in beneath it, both on the same grid cell. The block padding (cancelled by
+   the margin) keeps the 3px travel clear of the note's overflow clip. */
+.working-word {
+  display: inline-grid;
+  padding-block: 3px;
+  margin-block: -3px;
+  vertical-align: top;
+}
+.working-word > span {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+.working-word-in {
+  animation: word-rise var(--dur-6) var(--ease-arrive) backwards;
+}
+.working-word-out {
+  animation: word-leave var(--dur-6) var(--ease-arrive) forwards;
+}
+@keyframes word-rise {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes word-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
 .working-elapsed {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
   opacity: 0.8;
+  /* Arrives at two seconds with the same rise as a word, never a pop. */
+  animation: word-rise var(--dur-6) var(--ease-arrive) backwards;
 }
 
 .msg-model {
@@ -5944,7 +6023,7 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .working-dots i,
+  .wave-mark-surf,
   .thinking-glyph.live,
   .todo-pulse {
     animation: none;
