@@ -25,6 +25,8 @@ import {
 } from '../lib/hosted.js';
 import { Llama, type DeviceCapacity, type StorageTarget } from '../lib/llamaPlugin.js';
 import { isIcloudAvailable } from '../lib/gitos/icloud.js';
+import { gdriveStorageQuota, type CloudQuota } from '../lib/gitos/gdrive.js';
+import { isGdriveConnected } from '../lib/gitos/gdriveAuth.js';
 import {
   availableTargets,
   defaultTarget,
@@ -196,6 +198,10 @@ export function MarketplaceScreen() {
   // Whether iCloud Drive is signed in on this device, so a large model can be
   // downloaded there instead of the phone. Probed once at mount.
   const [icloudReady, setIcloudReady] = useState(false);
+  // A connected Google Drive's real quota, for the capacity meter. Undefined
+  // when Drive is not connected or the quota read failed. Unlike iCloud, Drive
+  // reports free of total, so this is an honest availability number.
+  const [driveQuota, setDriveQuota] = useState<CloudQuota | undefined>();
   // A per-model override of where a download should land, when the user picks a
   // target on the product page. Absent means "use the sensible default."
   const [targetChoice, setTargetChoice] = useState<Record<string, StorageTarget>>({});
@@ -237,6 +243,14 @@ export function MarketplaceScreen() {
     void isIcloudAvailable()
       .then((ok) => {
         if (!cancelled) setIcloudReady(ok);
+      })
+      .catch(() => {});
+    // Google Drive reports a real quota, so include it when connected. The read
+    // is best-effort: a failure leaves the Drive row hidden, never a guess.
+    void isGdriveConnected()
+      .then((connected) => (connected ? gdriveStorageQuota() : undefined))
+      .then((quota) => {
+        if (!cancelled) setDriveQuota(quota);
       })
       .catch(() => {});
     return () => {
@@ -1434,6 +1448,18 @@ export function MarketplaceScreen() {
     return sum;
   };
 
+  // The footprint of the models kept in iCloud, summed from the live catalog.
+  // iOS gives apps no way to read iCloud's own free space, so this usage figure
+  // is the honest thing the meter can show for iCloud.
+  const cloudModelsBytes = (): number => {
+    let sum = 0;
+    for (const id of Object.keys(settings.cloudModels ?? {})) {
+      const m = catalog?.models.find((mm) => mm.id === id);
+      if (m) sum += gbToBytes(m.onDevice?.sizeGB ?? m.sizeGB);
+    }
+    return sum;
+  };
+
   // The used fraction and low-space flag for a device, clamped for the bar.
   const usedFractionOf = (c: DeviceCapacity) =>
     Math.min(1, Math.max(0, (c.totalBytes - c.freeBytes) / c.totalBytes));
@@ -1460,7 +1486,9 @@ export function MarketplaceScreen() {
             />
           </span>
           <span className="cap-chip-text">{formatBytes(capacity.freeBytes)} free</span>
-          {icloudReady ? <span className="cap-chip-dot" title="iCloud ready" /> : null}
+          {icloudReady || driveQuota ? (
+            <span className="cap-chip-dot" title="Cloud storage connected" />
+          ) : null}
         </button>
       </div>
     );
@@ -1492,6 +1520,60 @@ export function MarketplaceScreen() {
             ? 'A model too big for the phone can download to your iCloud and load when you are online.'
             : 'Sign in to iCloud on this iPhone to keep large models in the cloud instead.'}
         </p>
+
+        {(icloudReady || driveQuota) && (
+          <div className="cap-clouds">
+            <div className="cap-clouds-title">Connected cloud storage</div>
+
+            {icloudReady ? (
+              <div className="cap-cloud-row">
+                <div className="cap-cloud-head">
+                  <span className="cap-cloud-name">iCloud Drive</span>
+                  <span className="cap-cloud-used">
+                    {cloudModelsBytes() > 0
+                      ? `${formatBytes(cloudModelsBytes())} in models`
+                      : 'connected'}
+                  </span>
+                </div>
+                <p className="cap-cloud-note">
+                  iCloud does not report its free space to apps, so only what your models use here
+                  is shown.
+                </p>
+              </div>
+            ) : null}
+
+            {driveQuota ? (
+              <div className="cap-cloud-row">
+                <div className="cap-cloud-head">
+                  <span className="cap-cloud-name">Google Drive</span>
+                  <span className="cap-cloud-used">
+                    {driveQuota.unlimited
+                      ? `${formatBytes(driveQuota.usedBytes)} used`
+                      : `${formatBytes(driveQuota.freeBytes)} free of ${formatBytes(driveQuota.totalBytes)}`}
+                  </span>
+                </div>
+                {!driveQuota.unlimited && driveQuota.totalBytes > 0 ? (
+                  <div
+                    className="cap-track"
+                    role="img"
+                    aria-label={`${formatBytes(driveQuota.freeBytes)} free on Google Drive`}
+                  >
+                    <div
+                      className={`cap-fill${driveQuota.freeBytes < gbToBytes(1) ? ' low' : ''}`}
+                      style={{
+                        transform: `scaleX(${Math.min(1, Math.max(0, driveQuota.usedBytes / driveQuota.totalBytes))})`,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <p className="cap-cloud-note">
+                    This Drive account reports no storage limit, so only what is used is shown.
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
       </>
     );
   };

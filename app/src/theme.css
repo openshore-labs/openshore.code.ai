@@ -4299,6 +4299,50 @@ textarea {
   background: var(--wave);
 }
 
+/* Connected cloud storage in the capacity sheet: one row per cloud. Drive
+   reports a real free-of-total bar; iCloud can only show what our models use,
+   so its row carries an honest note instead of a bar. */
+.cap-clouds {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cap-clouds-title {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cap-cloud-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cap-cloud-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cap-cloud-used {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.cap-cloud-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* Download options on a model's product page: where the bytes land, the fit,
    and the machine that runs it full speed. Never a locked control. */
 .dl-options {
