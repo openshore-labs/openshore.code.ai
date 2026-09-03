@@ -1,15 +1,16 @@
-// The repo dropdown in the chat header, where the model name used to be: a
-// multi-select of the repositories connected to the account, the way Claude
-// Code's repo picker works. The paired computer's workspaces and the GitHub
-// account's repositories, searchable, any number checked. The summary shows
-// the first name and a count; a live desktop session's branch rides along.
-// Advisory copy at the foot says plainly where the agent works.
-import { useRef, useState } from 'react';
-import { useDismissable } from '../lib/useDismissable.js';
-import { useExitPresence } from '../hooks/useExitPresence.js';
+// The repo picker in the chat header, where the model name used to be: a
+// quiet pill that opens a repositories sheet in the Claude app's shape
+// (founder's reference, 2026-09-03): a title with the count, a "Selected"
+// card of what is checked, a "Repositories" card of the rest, owner over
+// name with a check on the right, and search pinned at the foot. The paired
+// computer's workspaces and the GitHub account's repositories, any number
+// checked. A foot line says plainly where the agent works.
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Sheet } from './Sheet.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { hapticTick } from '../lib/haptics.js';
-import { summarizeRepos, toggleRepo, type RepoOption } from '../lib/chatRepos.js';
+import { repoLabel, summarizeRepos, toggleRepo, type RepoOption } from '../lib/chatRepos.js';
 
 function RepoGlyph() {
   return (
@@ -33,6 +34,49 @@ function RepoGlyph() {
   );
 }
 
+function SearchGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5L20 20" />
+    </svg>
+  );
+}
+
+function CheckGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+/** A row's second line: the owner for GitHub, where it lives for a clone. */
+function subtitle(r: RepoOption): string {
+  return r.kind === 'github' ? (r.detail ?? 'GitHub') : 'On your computer';
+}
+
 export function RepoPicker({
   selected,
   onChange,
@@ -50,51 +94,141 @@ export function RepoPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  useDismissable(ref, open, () => setOpen(false));
-  const panel = useExitPresence(open, 200);
   const repos = useConnectedRepos(open);
 
+  const all = [...repos.workspaces, ...repos.github];
+  const known = new Map(all.map((r) => [r.id, r]));
+  // A selected id no source lists any more (a clone gone, a token removed)
+  // stays visible in Selected so it can be unchecked.
+  const selectedRows: RepoOption[] = selected.map(
+    (id) =>
+      known.get(id) ?? {
+        id,
+        kind: id.startsWith('github:') ? 'github' : 'workspace',
+        name: repoLabel(id),
+        detail: id.startsWith('github:') ? id.slice(7).split('/')[0] : id,
+      },
+  );
   const q = query.trim().toLowerCase();
   const match = (r: RepoOption) =>
     !q || r.name.toLowerCase().includes(q) || (r.detail ?? '').toLowerCase().includes(q);
-  const workspaces = repos.workspaces.filter(match);
-  const github = repos.github.filter(match);
-  // A selected id that no source lists any more (a clone gone, a token
-  // removed) stays visible so it can be unchecked.
-  const known = new Set([...repos.workspaces, ...repos.github].map((r) => r.id));
-  const orphans = selected.filter((id) => !known.has(id));
+  const shownSelected = selectedRows.filter(match);
+  const shownRest = all.filter((r) => !selected.includes(r.id)).filter(match);
   const nothingConnected = !repos.hasComputer && !repos.hasGithub;
 
+  const close = () => setOpen(false);
   const toggle = (id: string) => {
     hapticTick();
     onChange(toggleRepo(selected, id));
   };
 
-  const row = (r: RepoOption) => (
-    <label key={r.id} className="multiselect-row repo-row">
-      <input type="checkbox" checked={selected.includes(r.id)} onChange={() => toggle(r.id)} />
-      <span className="repo-row-text">
-        <span className="repo-row-name">
+  const row = (r: RepoOption, checked: boolean) => (
+    <button
+      key={r.id}
+      type="button"
+      className="ms-row repo-sheet-row press-fb press-fb--row"
+      role="checkbox"
+      aria-checked={checked}
+      onClick={() => toggle(r.id)}
+    >
+      <span className="ms-row-text">
+        <span className="ms-row-sub">{subtitle(r)}</span>
+        <span className="ms-row-main">
           {r.name}
           {r.private ? <span className="repo-row-lock">private</span> : null}
         </span>
-        {r.detail ? <span className="repo-row-detail">{r.detail}</span> : null}
       </span>
-    </label>
+      {checked ? (
+        <span className="repo-check">
+          <CheckGlyph />
+        </span>
+      ) : null}
+    </button>
+  );
+
+  // The pill lives in the top bar, whose backdrop-filter would make it the
+  // containing block for a fixed scrim; the sheet is portaled to the body so
+  // it covers the viewport like every other sheet.
+  const sheet = (
+    <Sheet open={open} onClose={close} className="repo-sheet">
+      <div className="mode-head">
+        <button className="mode-close press-fb" aria-label="Close" onClick={close}>
+          {'×'}
+        </button>
+        <h2>Repositories{selected.length ? ` (${selected.length})` : ''}</h2>
+      </div>
+      <div className="repo-sheet-body">
+        {nothingConnected && selected.length === 0 ? (
+          <div className="ms-empty repo-sheet-empty">
+            <p>No repositories connected yet.</p>
+            <button
+              type="button"
+              className="btn primary press-fb"
+              onClick={() => {
+                close();
+                onOpenRepos();
+              }}
+            >
+              Connect a repository
+            </button>
+          </div>
+        ) : (
+          <>
+            {shownSelected.length ? (
+              <>
+                <div className="ms-heading">Selected</div>
+                <div className="ms-group">{shownSelected.map((r) => row(r, true))}</div>
+              </>
+            ) : null}
+            <div className="ms-heading">Repositories</div>
+            <div className="ms-group">
+              {shownRest.length ? (
+                shownRest.map((r) => row(r, false))
+              ) : (
+                <p className="hint repo-sheet-hint">
+                  {repos.loading
+                    ? 'Loading your repositories.'
+                    : repos.error
+                      ? repos.error
+                      : q
+                        ? 'No match.'
+                        : all.length
+                          ? 'Everything is selected.'
+                          : 'No repositories on this account yet.'}
+                </p>
+              )}
+            </div>
+            <p className="hint repo-sheet-foot">
+              The agent works in the first repo on your computer. Every repo here is context for the
+              chat.
+            </p>
+          </>
+        )}
+      </div>
+      <label className="repo-sheet-search">
+        <SearchGlyph />
+        <input
+          type="search"
+          placeholder="Search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search repositories"
+        />
+      </label>
+    </Sheet>
   );
 
   return (
-    <div className="repo-picker" ref={ref}>
+    <>
       <button
         type="button"
         className="repo-picker-btn press-fb"
         onClick={() => {
           hapticTick();
-          setOpen((v) => !v);
+          setOpen(true);
         }}
         aria-expanded={open}
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         aria-label="Repositories in this chat"
       >
         <RepoGlyph />
@@ -109,72 +243,7 @@ export function RepoPicker({
           {'▾'}
         </span>
       </button>
-      {panel.mounted ? (
-        <div className={`repo-panel${panel.closing ? ' closing' : ''}`} role="listbox">
-          {nothingConnected ? (
-            <div className="repo-panel-empty">
-              <p>No repositories connected yet.</p>
-              <button
-                type="button"
-                className="btn primary press-fb"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenRepos();
-                }}
-              >
-                Connect a repository
-              </button>
-            </div>
-          ) : (
-            <>
-              <input
-                className="multiselect-search"
-                placeholder="Search repositories"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <div className="multiselect-list repo-list">
-                {workspaces.length ? (
-                  <>
-                    <div className="repo-group">On your computer</div>
-                    {workspaces.map(row)}
-                  </>
-                ) : null}
-                {repos.hasGithub ? (
-                  <>
-                    <div className="repo-group">GitHub</div>
-                    {github.length ? (
-                      github.map(row)
-                    ) : (
-                      <p className="hint repo-hint">
-                        {repos.loading
-                          ? 'Loading your repositories.'
-                          : repos.error
-                            ? repos.error
-                            : q
-                              ? 'No match.'
-                              : 'No repositories on this token.'}
-                      </p>
-                    )}
-                  </>
-                ) : null}
-                {orphans.length ? (
-                  <>
-                    <div className="repo-group">Selected earlier</div>
-                    {orphans.map((id) =>
-                      row({ id, kind: 'workspace', name: id.split('/').pop() || id, detail: id }),
-                    )}
-                  </>
-                ) : null}
-              </div>
-              <p className="hint repo-foot">
-                The agent works in the first repo on your computer. Every repo here is context for
-                the chat.
-              </p>
-            </>
-          )}
-        </div>
-      ) : null}
-    </div>
+      {createPortal(sheet, document.body)}
+    </>
   );
 }

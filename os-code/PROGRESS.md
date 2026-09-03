@@ -21,10 +21,14 @@ also in projects."
 - **The picker (`components/RepoPicker.tsx`).** A quiet pill in the header's
   subtitle line where "model · kind" was (the model still lives in the
   composer pill): a branch glyph, the first repo's name and a count, a live
-  desktop session's branch and dirty dot. Tapped, a panel drops under the
-  header: search, "On your computer", "GitHub", any number checked, and a
-  foot that says plainly where the agent works. Nothing connected yet opens
-  on one button to the Repositories room. The empty-state top bar carries
+  desktop session's branch and dirty dot. Tapped, a repositories sheet rises
+  in the Claude app's shape (the founder's reference screenshot): a title
+  with the count, a Selected card of what is checked, a Repositories card of
+  the rest, owner over name with a check on the right, search pinned at the
+  foot, and a foot line that says plainly where the agent works. The sheet
+  is portaled to the body: the top bar's backdrop-filter would otherwise be
+  the containing block for its fixed scrim. Nothing connected yet opens on
+  one button to the Repositories room. The empty-state top bar carries
   the same picker so repos are chosen before the first message, seeded from
   the active project; the first send carries them onto the new chat.
 - **Per chat, seeded by the project.** `Conversation.repoIds` is new; a chat
