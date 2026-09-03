@@ -28,6 +28,29 @@ menu in the top bar.
 Open: an audit of every sheet for a visible dismiss control is in progress;
 any sheet whose only way out is the scrim tap gets the round close button.
 
+## Current state (2026-09-03, every sheet drags to dismiss; the top bar cross-fades)
+
+Founder: "Do all of the Polish," the pass on the way-back bundle.
+
+- **Every bottom sheet drags to dismiss.** `components/Sheet.tsx` grows the
+  grabber and the gesture the two info sheets already had, done to the
+  drawer's standard: the sheet sits exactly under the finger, rubber-bands
+  past the top with asymptotic damping, releases on distance or a downward
+  flick (velocity read over the last 80ms), and a lost pointer capture is a
+  release too. A committed drag keeps its inline position until `closing`
+  lands, so the exit transition continues from where the hand left it; a
+  short release springs back on `--ease-spring` over `--dur-5` (`.settling`)
+  rather than the door's glide. Haptics mark the lift and the drop. The
+  confirm variant stays a card.
+- **The top bar cross-fades.** The title is keyed by its text, so a page
+  opening inside a room (a model's name, a note's name) fades and rises in
+  rather than swapping; the chevron slides in from the left edge it points
+  at, and the menu fades back when the page closes. `title-in` and
+  `leftslot-in`, both on the glide over `--dur-4`, backwards fill.
+- **An open note titles the bar with its own name**, the way Notes does; the
+  chevron still says Vault.
+- `wayBack.test.ts` pins all three. Gates green: app typecheck, lint, tests.
+
 ## Current state (2026-09-03, every step in has a step back, and all the polish)
 
 Founder, from the Kimi product page in the store: "Need a back button when you

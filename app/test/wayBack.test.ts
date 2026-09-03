@@ -37,9 +37,35 @@ describe('the way back', () => {
   it('an open note goes back to the Vault, saving first', () => {
     const vault = src('screens', 'VaultScreen.tsx');
     expect(vault).toMatch(/const backToNotes = \(\) => \{\s*flushSave\(\);/);
+    // The bar carries the note's own name, the way Notes does; the chevron
+    // says where it returns to.
     expect(vault).toMatch(
-      /<BackBar title="Vault" back=\{\{ to: 'Vault', onBack: backToNotes \}\} \/>/,
+      /<BackBar title=\{title\} back=\{\{ to: 'Vault', onBack: backToNotes \}\} \/>/,
     );
+  });
+
+  it('every bottom sheet drags to dismiss, tracks the finger, and releases on velocity', () => {
+    const sheet = src('components', 'Sheet.tsx');
+    const theme = src('theme.css');
+    expect(sheet).toMatch(/className="sheet-grabber"/);
+    expect(sheet).toMatch(/onLostPointerCapture=\{onGrabEnd\}/);
+    expect(sheet).toMatch(/y > DISMISS_THRESHOLD \|\| v > COMMIT_VELOCITY/);
+    expect(sheet).toMatch(/hapticTick\(\); \/\/ the lift/);
+    expect(sheet).toMatch(/hapticTick\(\); \/\/ the drop/);
+    expect(theme).toMatch(/\.sheet\.dragging \{\s*transition: none;/);
+    expect(theme).toMatch(
+      /\.sheet\.settling \{\s*transition: transform var\(--dur-5\) var\(--ease-spring\);/,
+    );
+  });
+
+  it('the top bar cross-fades its title and slides the left control in', () => {
+    const bar = src('components', 'BackBar.tsx');
+    const theme = src('theme.css');
+    expect(bar).toMatch(/<div className="topbar-title" key=\{title\}>/);
+    expect(theme).toMatch(
+      /\.topbar-title \{[^}]*animation: title-in var\(--dur-4\) var\(--ease-glide\) backwards/,
+    );
+    expect(theme).toMatch(/\.topbar \.back-btn,\s*\.topbar \.menu-btn \{\s*animation: leftslot-in/);
   });
 
   it('sheets that had only the scrim tap as a way out carry the house header with a close', () => {
