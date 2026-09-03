@@ -15,8 +15,21 @@ const MARKET = readFileSync(join(SRC, 'screens/MarketplaceScreen.tsx'), 'utf8');
 const STORE = readFileSync(join(SRC, 'state/store.ts'), 'utf8');
 
 describe('the tile hop (view transitions)', () => {
-  it('names the product page tile as the shared element', () => {
-    expect(THEME).toMatch(/\.hosted-page \.model-tile \{[^}]*view-transition-name: hosted-tile/);
+  it('names the product page tile as the shared element, hosted and catalog alike', () => {
+    expect(THEME).toMatch(/\.product-page \.model-tile \{[^}]*view-transition-name: hosted-tile/);
+    // Both product pages carry the class, and every tile origin (hero, row,
+    // preset member) hands the page its tile.
+    expect(MARKET).toMatch(/hosted-page product-page/);
+    expect(MARKET).toMatch(/focused \? ' product-page' : ''/);
+    for (const where of ['hero', 'row', 'preset']) {
+      expect(MARKET, `${where} origin`).toMatch(new RegExp(`e\\.currentTarget, '${where}'`));
+    }
+  });
+
+  it('shows real pull progress through Ollama on the hosted page', () => {
+    const fn = /const pullHostedViaOllama[\s\S]*?\n  \};/.exec(MARKET)?.[0] ?? '';
+    expect(fn).toMatch(/onInstallProgress/);
+    expect(fn).toMatch(/finally \{\s*off\(\);/);
   });
 
   it('times the hop on the motion tokens, tile on the slow arrive lane', () => {

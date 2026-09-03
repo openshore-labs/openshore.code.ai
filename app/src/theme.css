@@ -4972,13 +4972,14 @@ textarea {
     linear-gradient(170deg, #6b430f, #2e1f0a);
 }
 
-/* The tile hops. A hosted hero or row and its product page share one tile,
-   so the page arrives by that tile flying into place rather than the list
-   hard-cutting to a card (View Transitions where the platform has them;
-   a plain swap elsewhere). The page tile carries the shared name in CSS; the
-   origin tile is handed the same name for the one hop. Root takes the house
-   standard curve at a short beat; the tile itself takes the slow lane. */
-.hosted-page .model-tile {
+/* The tile hops. A hero, row, or preset member and its product page (hosted
+   or catalog) share one tile, so the page arrives by that tile flying into
+   place rather than the list hard-cutting to a card (View Transitions where
+   the platform has them; a plain swap elsewhere). The page tile carries the
+   shared name in CSS; the origin tile is handed the same name for the one
+   hop. Root takes the house standard curve at a short beat; the tile itself
+   takes the slow lane. */
+.product-page .model-tile {
   view-transition-name: hosted-tile;
 }
 ::view-transition-old(root),
@@ -5023,7 +5024,7 @@ textarea {
 .hosted-group .store-row:last-child {
   border-bottom: none;
 }
-.hosted-page .card-row .model-tile {
+.product-page .card-row .model-tile {
   margin-right: 2px;
 }
 .hosted-page .detail-panel {
