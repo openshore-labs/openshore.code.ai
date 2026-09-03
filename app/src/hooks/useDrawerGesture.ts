@@ -35,6 +35,9 @@ export interface DrawerGesture {
   /** The spring's duration for the settle in flight (--drawer-settle); null
    *  while the finger holds the panel or at rest. */
   settleMs: number | null;
+  /** The exit animation's duration after a drag-to-close (--drawer-exit),
+   *  from the release velocity; null otherwise (the CSS default applies). */
+  exitMs: number | null;
   /** True while the finger is down and moving the panel. */
   dragging: boolean;
   /** The panel is mounted only because a from-closed drag is in progress. */
@@ -72,6 +75,7 @@ export function useDrawerGesture({
 }): DrawerGesture {
   const [dragX, setDragX] = useState<number | null>(null);
   const [settleMs, setSettleMs] = useState<number | null>(null);
+  const [exitMs, setExitMs] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [peek, setPeek] = useState(false);
   const [viaGesture, setViaGesture] = useState(false);
@@ -247,11 +251,22 @@ export function useDrawerGesture({
       if (commit) {
         hapticTick();
         setOpen(false);
+        // The door leaves at the speed the hand gave it: the time to cover
+        // what is still on screen at the release velocity, clamped to the
+        // token range (a flick finishes in --dur-3, a slow release glides
+        // over --dur-5). Sidebar hands it to the keyframes as --drawer-exit.
+        const x = rubber(Math.max(-width, dx));
+        const remaining = Math.max(0, width + x);
+        const [short, long] = settleRange();
+        const speed = Math.abs(v);
+        setExitMs(
+          speed > 0 ? Math.round(Math.min(long, Math.max(short, remaining / speed))) : long,
+        );
         // Hold the finger's position through the exit: the panel's closing
         // keyframe starts from it (--drawer-x, see Sidebar), so the door keeps
         // sliding out from where the hand left it rather than jumping back to
         // open first. Cleared once the exit has unmounted.
-        settle(rubber(Math.max(-width, dx)), undefined, EXIT_MS);
+        settle(x, () => setExitMs(null), EXIT_MS);
       } else {
         settle(0);
       }
@@ -264,6 +279,7 @@ export function useDrawerGesture({
   return {
     dragX,
     settleMs,
+    exitMs,
     dragging,
     peek,
     // Stays on through a drag-to-close (dragX is held for the exit), so the

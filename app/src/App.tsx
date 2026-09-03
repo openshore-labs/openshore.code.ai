@@ -235,6 +235,7 @@ export function App() {
           closing={drawer.closing && !gesture.peek}
           dragX={gesture.dragX}
           settleMs={gesture.settleMs}
+          exitMs={gesture.exitMs}
           dragging={gesture.dragging}
           viaGesture={gesture.viaGesture}
           progress={gesture.progress}

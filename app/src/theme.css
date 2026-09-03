@@ -575,7 +575,6 @@ textarea {
   inset: 0 auto 0 0;
   z-index: 41;
   width: var(--drawer-width);
-  box-shadow: 24px 0 60px rgba(var(--shadow-rgb), 0.18);
   animation: drawer-in var(--dur-5) var(--ease-standard);
   /* After a drag releases, the panel springs to rest on this. The gesture
      hook sets --drawer-settle from the distance left to travel (between
@@ -583,12 +582,25 @@ textarea {
   transition: transform var(--drawer-settle, var(--dur-4)) var(--ease-spring);
   touch-action: pan-y;
 }
+/* The panel's shadow lives on a pseudo-element so it can fade with the scrim
+   (opacity only, never a box-shadow transition) while the panel itself stays
+   solid: a door casts less shadow as the room's light comes back. */
+.sidebar.drawer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  box-shadow: 24px 0 60px rgba(var(--shadow-rgb), 0.18);
+  animation: fade-in var(--dur-5) var(--ease-standard);
+}
 /* While the finger holds it, the panel is exactly where the finger is. */
 .sidebar.drawer.dragging {
   transition: none;
 }
 /* Opened by the edge swipe: the finger already played the entrance. */
-.sidebar.drawer.via-gesture {
+.sidebar.drawer.via-gesture,
+.sidebar.drawer.via-gesture::after {
   animation: none;
 }
 .drawer-scrim.dragging {
@@ -606,12 +618,18 @@ textarea {
    transparent object, just like a sliding door being moved out of the way").
    After a drag-to-close the door keeps going from where the finger left it:
    Sidebar sets --drawer-x and --drawer-scrim from the gesture, and the
-   keyframes start there (0 and 1 when the close came from a tap). */
+   keyframes start there (0 and 1 when the close came from a tap). The
+   gesture also sets --drawer-exit from the release velocity (a flick
+   finishes in --dur-3, a slow release in --dur-5); a tap-close takes the
+   default. The shadow fades on the same clock. */
 .drawer-scrim.closing {
-  animation: drawer-scrim-out var(--dur-5) var(--ease-standard) forwards;
+  animation: drawer-scrim-out var(--drawer-exit, var(--dur-5)) var(--ease-standard) forwards;
 }
 .sidebar.drawer.closing {
-  animation: drawer-out var(--dur-5) var(--ease-standard) forwards;
+  animation: drawer-out var(--drawer-exit, var(--dur-5)) var(--ease-standard) forwards;
+}
+.sidebar.drawer.closing::after {
+  animation: fade-out var(--drawer-exit, var(--dur-5)) var(--ease-standard) forwards;
 }
 @keyframes fade-out {
   to {

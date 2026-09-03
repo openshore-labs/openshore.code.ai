@@ -3,6 +3,25 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the door leaves at the speed the hand gave it)
+
+Founder: "do all the polish," the second round, the two items captured
+from the first assessment:
+
+- **Velocity-aware drag-to-close.** On a committed drag the gesture hook
+  takes the distance still on screen over the release speed, clamps it to
+  `--dur-3`..`--dur-5` (read from the stylesheet), and hands it to panel and
+  scrim as `--drawer-exit`; every closing keyframe runs on
+  `var(--drawer-exit, var(--dur-5))`, so a tap-close keeps the unhurried
+  default and a flick finishes brisk. The exit hold in App stays at
+  `EXIT_MS`; a shorter animation just rests hidden a little longer.
+- **The shadow fades with the scrim.** The panel's box-shadow moved to a
+  `.sidebar.drawer::after` pseudo-element (absolute, inset 0, z-index -1,
+  pointer-events none), which fades in with the entrance and out on the
+  exit clock, opacity only. The panel itself stays solid the whole way, so
+  the sliding-door read is untouched. `test/motion.test.ts` pins the seam
+  and that the panel carries no shadow of its own.
+
 ## Current state (2026-09-03, drawer polish, all three tiers)
 
 Founder: "do all the polish." Three changes around the drawer gesture:
@@ -984,11 +1003,6 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Drawer polish left on the table (2026-09-03, captured, not declined):**
-      a velocity-aware drag-to-close exit (a fast flick finishes in `--dur-3`,
-      a slow release in `--dur-5`, via the same `--drawer-settle` seam); and
-      fading the panel's shadow with the scrim during the exit, which needs a
-      pseudo-element so it stays within the transform/opacity rule.
 - [ ] **BYOM on-device streaming (R-16), still deferred:** true streaming and
       cancel for BYOM/OpenAI-compatible endpoints on iOS and Electron
       (buffer-then-dump today). Needs an Electron IPC streaming channel and an
