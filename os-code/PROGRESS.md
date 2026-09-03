@@ -3,6 +3,30 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the whole store hops)
+
+Founder: "do all the polish," round three, the two items left from the
+frontier assessment.
+
+- **The tile hop is store-wide.** A catalog hero, shelf row, or preset
+  member now flies its tile into the model's product page the same way a
+  hosted one does, and "All models" flies it home. The focused catalog card
+  gains a `ModelTile` in its head (it had none), and `.product-page` is the
+  one class both product pages share for the CSS-side shared name; hosted
+  keeps `.hosted-page` for its own layout. `openModel` takes the origin and
+  where it was tapped (`hero`, `row`, `preset`) and rides the same `hop` as
+  the hosted page; `closeModel` mirrors `closeHosted`. `renderCard` grew a
+  `focused` flag, so the list's `visible.map` now passes the index
+  explicitly rather than the array.
+- **Real progress on the Ollama pull.** "Pull through Ollama instead" on the
+  hosted page subscribes to the bridge's install progress for its ref, so the
+  bar and the percent are the same ones a catalog row shows, and the listener
+  comes off in `finally`. The page's bar reads `indeterminate` and `percent`
+  instead of always shimmering.
+- `frontier-polish.test.ts` pins the shared class on both pages, all three
+  tile origins, and the progress subscription with its teardown. Gates
+  green: app typecheck, lint, 339 tests.
+
 ## Current state (2026-09-03, frontier shelf polish, all three tiers)
 
 Founder: "do all the polish," the six items from the frontier-shelf

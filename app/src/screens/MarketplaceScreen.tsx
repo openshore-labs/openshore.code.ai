@@ -118,7 +118,7 @@ const CAP_ORDER = Object.keys(CAPABILITIES) as CapabilityCategory[];
 let hostedPageMemory: string | undefined;
 
 /** Where a hosted tile was tapped, so the way back flies to the same tile. */
-type TileHome = { id: string; where: 'hero' | 'row' };
+type TileHome = { id: string; where: 'hero' | 'row' | 'preset' };
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
@@ -752,7 +752,9 @@ export function MarketplaceScreen() {
     setFacets((f) => ({ ...f, [key]: value }));
   };
 
-  const renderCard = (model: CatalogModel, index: number) => {
+  // `focused`: the card is the model's own product page, so it carries the
+  // tile the hero or row flew in on (and the shared name for the way back).
+  const renderCard = (model: CatalogModel, index: number, focused = false) => {
     const dl = downloads[model.id];
     const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
     const owned = isOwned(model);
@@ -770,11 +772,14 @@ export function MarketplaceScreen() {
 
     return (
       <div
-        className={`card market-card${model.onDevice ? ' edge-local' : ''}`}
+        className={`card market-card${model.onDevice ? ' edge-local' : ''}${focused ? ' product-page' : ''}`}
         key={model.id}
         style={stagger}
       >
         <div className="card-row">
+          {focused ? (
+            <ModelTile name={model.name} onDevice={Boolean(model.onDevice)} size={56} />
+          ) : null}
           <div className="grow">
             <h3>{model.name}</h3>
             <div className="sub">{model.tagline}</div>
@@ -957,12 +962,33 @@ export function MarketplaceScreen() {
     if (screenRef.current) screenRef.current.scrollTop = 0;
   };
 
-  const openModel = (model: CatalogModel) => {
-    setFacets(EMPTY_FACETS);
-    setFocusedHostedId(undefined);
-    setFocusedId(model.id);
-    setDetailOpen(model.id);
+  // Open one model as its own product page. From a hero, row, or preset
+  // member (anything with a tile) the tile hops into the page; the way back
+  // flies it home. Defined below with the hosted hop, which it shares.
+  const openModel = (
+    model: CatalogModel,
+    origin: Element | null = null,
+    where?: TileHome['where'],
+  ) => {
+    if (where) setTileHome({ id: model.id, where });
+    hop(() => {
+      setFacets(EMPTY_FACETS);
+      setFocusedHostedId(undefined);
+      setFocusedId(model.id);
+      setDetailOpen(model.id);
+    }, origin);
     scrollToTop();
+  };
+
+  const closeModel = () => {
+    hop(
+      () => {
+        setFocusedId(undefined);
+        setDetailOpen(undefined);
+      },
+      screenRef.current?.querySelector('.product-page') ?? null,
+      () => setTileHome(undefined),
+    );
   };
 
   // ---- hosted (cloud) models: the frontier shelf ---------------------------
@@ -1010,15 +1036,15 @@ export function MarketplaceScreen() {
   const closeHosted = () => {
     hop(
       () => setFocusedHostedId(undefined),
-      screenRef.current?.querySelector('.hosted-page') ?? null,
+      screenRef.current?.querySelector('.product-page') ?? null,
       () => setTileHome(undefined),
     );
   };
 
   /** The shared-element name for a browse tile, only on the one the open page
    *  flew from (a duplicate name would make the platform skip the hop). */
-  const tileName = (m: HostedModel, where: TileHome['where']) =>
-    tileHome && tileHome.id === m.id && tileHome.where === where ? 'hosted-tile' : undefined;
+  const tileName = (id: string, where: TileHome['where']) =>
+    tileHome && tileHome.id === id && tileHome.where === where ? 'hosted-tile' : undefined;
 
   const hostedConnected = (m: HostedModel) => Boolean(connectedProviders[m.providerId]);
 
@@ -1067,7 +1093,7 @@ export function MarketplaceScreen() {
       <div className="hero-title">{m.name}</div>
       <div className="hero-tagline">{m.tagline}</div>
       <div className="hero-foot">
-        <ModelTile name={m.name} cloud size={48} transitionName={tileName(m, 'hero')} />
+        <ModelTile name={m.name} cloud size={48} transitionName={tileName(m.id, 'hero')} />
         <div className="hero-foot-meta">
           <span className="pill cloud">On your key</span>
           <span className="hero-size">
@@ -1095,7 +1121,7 @@ export function MarketplaceScreen() {
           }
         }}
       >
-        <ModelTile name={m.name} cloud size={52} transitionName={tileName(m, 'row')} />
+        <ModelTile name={m.name} cloud size={52} transitionName={tileName(m.id, 'row')} />
         <div className="store-row-body">
           <div className="store-row-name">{m.name}</div>
           <div className="store-row-sub">{m.tagline}</div>
@@ -1144,6 +1170,22 @@ export function MarketplaceScreen() {
       ...d,
       [m.id]: { percent: 0, label: `Pulling ${ref} through Ollama`, indeterminate: true },
     }));
+    // Ollama reports bytes as it pulls, so the page shows the real bar and
+    // percent the catalog rows get, not an endless shimmer.
+    const off = b.onInstallProgress((p) => {
+      if (p.modelId !== ref) return;
+      setDownloads((d) => ({
+        ...d,
+        [m.id]: {
+          percent: p.percent ?? 0,
+          label:
+            p.total && p.completed !== undefined
+              ? `${Math.round(p.percent ?? 0)}% · ${gb(p.completed)} of ${gb(p.total)}`
+              : p.line,
+          indeterminate: p.percent === undefined,
+        },
+      }));
+    });
     try {
       const r = await b.installOllamaRef(ref);
       clearDownload(m.id);
@@ -1162,6 +1204,8 @@ export function MarketplaceScreen() {
           failed: true,
         },
       }));
+    } finally {
+      off();
     }
   };
 
@@ -1171,7 +1215,7 @@ export function MarketplaceScreen() {
     const ollamaHere = Boolean(m.ollamaCloudRef) && !isPhone();
     const viaOllamaDone = m.ollamaCloudRef ? installedRefs.has(m.ollamaCloudRef) : false;
     return (
-      <div className="card market-card hosted-page" key={m.id}>
+      <div className="card market-card hosted-page product-page" key={m.id}>
         <div className="card-row">
           <ModelTile name={m.name} cloud size={56} />
           <div className="grow">
@@ -1227,7 +1271,10 @@ export function MarketplaceScreen() {
         ) : dl ? (
           <>
             <div className="progress-track">
-              <div className="progress-fill indeterminate" />
+              <div
+                className={`progress-fill${dl.indeterminate ? ' indeterminate' : ''}`}
+                style={dl.indeterminate ? undefined : { transform: `scaleX(${dl.percent / 100})` }}
+              />
             </div>
             <div className="hint" style={{ marginTop: 6 }}>
               {dl.label}
@@ -1313,11 +1360,11 @@ export function MarketplaceScreen() {
         tabIndex={0}
         data-cap={model.categories[0] ?? 'reasoning'}
         style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
-        onClick={() => openModel(model)}
+        onClick={(e) => openModel(model, e.currentTarget, 'hero')}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            openModel(model);
+            openModel(model, e.currentTarget, 'hero');
           }
         }}
         aria-label={`${model.name}. ${model.tagline}`}
@@ -1326,7 +1373,12 @@ export function MarketplaceScreen() {
         <div className="hero-title">{model.name}</div>
         <div className="hero-tagline">{model.tagline}</div>
         <div className="hero-foot">
-          <ModelTile name={model.name} onDevice={Boolean(model.onDevice)} size={48} />
+          <ModelTile
+            name={model.name}
+            onDevice={Boolean(model.onDevice)}
+            size={48}
+            transitionName={tileName(model.id, 'hero')}
+          />
           <div className="hero-foot-meta">
             <span className={`pill ${pill.cls}`}>{pill.text}</span>
             <span className="hero-size">{model.sizeGB} GB</span>
@@ -1348,15 +1400,20 @@ export function MarketplaceScreen() {
         key={model.id}
         role="button"
         tabIndex={0}
-        onClick={() => openModel(model)}
+        onClick={(e) => openModel(model, e.currentTarget, 'row')}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            openModel(model);
+            openModel(model, e.currentTarget, 'row');
           }
         }}
       >
-        <ModelTile name={model.name} onDevice={Boolean(model.onDevice)} size={52} />
+        <ModelTile
+          name={model.name}
+          onDevice={Boolean(model.onDevice)}
+          size={52}
+          transitionName={tileName(model.id, 'row')}
+        />
         <div className="store-row-body">
           <div className="store-row-name">{model.name}</div>
           <div className="store-row-sub">{model.tagline}</div>
@@ -1459,10 +1516,15 @@ export function MarketplaceScreen() {
                   <button
                     key={m.id}
                     className="preset-member press-fb"
-                    onClick={() => openModel(m)}
+                    onClick={(e) => openModel(m, e.currentTarget, 'preset')}
                     aria-label={`${m.name} in ${preset.name}`}
                   >
-                    <ModelTile name={m.name} onDevice={Boolean(m.onDevice)} size={34} />
+                    <ModelTile
+                      name={m.name}
+                      onDevice={Boolean(m.onDevice)}
+                      size={34}
+                      transitionName={tileName(m.id, 'preset')}
+                    />
                     <span className="preset-member-name">{m.name}</span>
                   </button>
                 ))}
@@ -1763,16 +1825,10 @@ export function MarketplaceScreen() {
             </div>
           ) : focusedModel ? (
             <div className="focused-view">
-              <button
-                className="btn quiet market-back"
-                onClick={() => {
-                  setFocusedId(undefined);
-                  setDetailOpen(undefined);
-                }}
-              >
+              <button className="btn quiet market-back" onClick={closeModel}>
                 All models
               </button>
-              <div className="market-list">{renderCard(focusedModel, 0)}</div>
+              <div className="market-list">{renderCard(focusedModel, 0, true)}</div>
             </div>
           ) : (
             <>
@@ -1829,7 +1885,7 @@ export function MarketplaceScreen() {
 
                   <div className="market-list" key={sort}>
                     {visible.length ? (
-                      visible.map(renderCard)
+                      visible.map((m, i) => renderCard(m, i))
                     ) : hostedMatches.length ? null : (
                       <div className="market-empty">
                         <p className="hint">No models match these filters yet.</p>
