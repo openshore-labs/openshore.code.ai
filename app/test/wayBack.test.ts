@@ -44,12 +44,14 @@ describe('the way back', () => {
     );
   });
 
-  it('every bottom sheet drags to dismiss, tracks the finger, and releases on velocity', () => {
+  it('every draggable sheet drags to dismiss, tracks the finger, and releases on velocity', () => {
     const sheet = src('components', 'Sheet.tsx');
     const theme = src('theme.css');
     expect(sheet).toMatch(/className="sheet-grabber"/);
     expect(sheet).toMatch(/onLostPointerCapture=\{onGrabEnd\}/);
-    expect(sheet).toMatch(/y > DISMISS_THRESHOLD \|\| v > COMMIT_VELOCITY/);
+    // Dismissal reads in dismiss-positive `travel` space, so one path serves a
+    // bottom sheet dragged down and a top sheet dragged up.
+    expect(sheet).toMatch(/travel > DISMISS_THRESHOLD \|\| v > COMMIT_VELOCITY/);
     expect(sheet).toMatch(/hapticTick\(\); \/\/ the lift/);
     expect(sheet).toMatch(/hapticTick\(\); \/\/ the drop/);
     expect(theme).toMatch(/\.sheet\.dragging \{\s*transition: none;/);
@@ -74,10 +76,10 @@ describe('the way back', () => {
     expect(theme).toMatch(/\.topbar \.back-btn,\s*\.topbar \.menu-btn \{\s*animation: leftslot-in/);
   });
 
-  it('the scrim dims in step with a downward drag, and the grabber hides on a fine pointer', () => {
+  it('the scrim dims in step with a dismissing drag, and the grabber hides on a fine pointer', () => {
     const sheet = src('components', 'Sheet.tsx');
     const theme = src('theme.css');
-    expect(sheet).toMatch(/opacity: Math\.max\(0, 1 - dragY \/ cardH\.current\)/);
+    expect(sheet).toMatch(/opacity: Math\.max\(0, 1 - travel \/ cardH\.current\)/);
     expect(theme).toMatch(/\.sheet-scrim\.dragging \{\s*animation: none;\s*transition: none;/);
     expect(theme).toMatch(
       /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.sheet-grabber \{\s*display: none;/,

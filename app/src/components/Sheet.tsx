@@ -39,10 +39,15 @@ export function Sheet({
   open: boolean;
   onClose: () => void;
   children: ReactNode;
-  /** `sheet` rises from the bottom; `confirm` pops in the center. */
-  variant?: 'sheet' | 'confirm';
+  /** `sheet` rises from the bottom; `confirm` pops in the center; `top` lowers
+   *  from the top edge (and drags up to dismiss). */
+  variant?: 'sheet' | 'confirm' | 'top';
   className?: string;
 }) {
+  // Which way a dismissing drag travels: down for a bottom sheet, up for a top
+  // sheet. The math below runs in dismiss-positive "travel" space so one code
+  // path serves both; `dir` maps travel back to a screen-space translate.
+  const dir = variant === 'top' ? -1 : 1;
   // Held for the door clock the sheet slides on, so the glide's tail is never
   // clipped by the unmount.
   const { mounted, closing } = useExitPresence(open, sheetExitMs());
@@ -81,9 +86,11 @@ export function Sheet({
     [],
   );
 
-  // Past the top, the sheet gives a little and no more.
-  const rubber = (y: number): number =>
-    y >= 0 ? y : -OVERSHOOT_MAX * (1 - Math.exp(y / (OVERSHOOT_MAX * 3)));
+  // Pulled the wrong way (past its rest edge), the sheet gives a little and no
+  // more. Runs in travel space, so the same asymptotic damping serves both a
+  // bottom sheet pulled up and a top sheet pulled down.
+  const rubber = (travel: number): number =>
+    travel >= 0 ? travel : -OVERSHOOT_MAX * (1 - Math.exp(travel / (OVERSHOOT_MAX * 3)));
 
   const velocity = (): number => {
     const s = samples.current;
@@ -111,10 +118,12 @@ export function Sheet({
   };
   const onGrabMove = (e: ReactPointerEvent) => {
     if (pointerId.current !== e.pointerId) return;
-    const raw = e.clientY - startY.current;
-    const y = rubber(raw);
+    // Travel is dismiss-positive (down for a bottom sheet, up for a top one);
+    // rubber-band the wrong-way pull, then map back to a screen-space translate.
+    const travel = dir * (e.clientY - startY.current);
+    const y = dir * rubber(travel);
     dragYRef.current = y;
-    samples.current.push({ t: performance.now(), y: raw });
+    samples.current.push({ t: performance.now(), y: rubber(travel) });
     if (samples.current.length > 12) samples.current.shift();
     setDragY(y);
   };
@@ -124,9 +133,9 @@ export function Sheet({
     if (pointerId.current === null) return;
     pointerId.current = null;
     setDragging(false);
-    const y = dragYRef.current;
+    const travel = dir * dragYRef.current; // dismiss-positive distance moved
     const v = velocity();
-    if (y > 0 && (y > DISMISS_THRESHOLD || v > COMMIT_VELOCITY)) {
+    if (travel > 0 && (travel > DISMISS_THRESHOLD || v > COMMIT_VELOCITY)) {
       hapticTick(); // the drop
       // The inline transform stays until `closing` lands, so the exit
       // transition continues from where the hand left the sheet.
@@ -146,15 +155,31 @@ export function Sheet({
   };
 
   if (!mounted) return null;
-  const scrim = variant === 'confirm' ? 'confirm-scrim' : 'sheet-scrim';
-  const card = variant === 'confirm' ? 'confirm-card' : 'sheet';
-  const draggable = variant === 'sheet';
-  // While a downward drag is in flight, the scrim tracks it 1:1 (no transition)
-  // and lightens toward clear as the sheet nears fully gone.
+  const scrim =
+    variant === 'confirm' ? 'confirm-scrim' : `sheet-scrim${variant === 'top' ? ' top' : ''}`;
+  const card = variant === 'confirm' ? 'confirm-card' : `sheet${variant === 'top' ? ' top' : ''}`;
+  const draggable = variant === 'sheet' || variant === 'top';
+  // While a dismissing drag is in flight, the scrim tracks it 1:1 (no
+  // transition) and lightens toward clear as the sheet nears fully gone.
+  // `travel` is the dismiss-positive distance, so this reads the same for a
+  // bottom sheet pulled down and a top sheet pulled up.
+  const travel = dir * dragY;
   const dragScrim =
-    dragging && dragY > 0 && cardH.current
-      ? { opacity: Math.max(0, 1 - dragY / cardH.current) }
+    dragging && travel > 0 && cardH.current
+      ? { opacity: Math.max(0, 1 - travel / cardH.current) }
       : undefined;
+  const grabber = draggable ? (
+    <div
+      className="sheet-grabber"
+      onPointerDown={onGrabStart}
+      onPointerMove={onGrabMove}
+      onPointerUp={onGrabEnd}
+      onPointerCancel={onGrabEnd}
+      onLostPointerCapture={onGrabEnd}
+    >
+      <span className="sheet-grabber-bar" aria-hidden="true" />
+    </div>
+  ) : null;
   return (
     <div
       className={`${scrim}${closing ? ' closing' : ''}${dragScrim ? ' dragging' : ''}`}
@@ -167,19 +192,11 @@ export function Sheet({
         style={!closing && dragY !== 0 ? { transform: `translateY(${dragY}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
-        {draggable ? (
-          <div
-            className="sheet-grabber"
-            onPointerDown={onGrabStart}
-            onPointerMove={onGrabMove}
-            onPointerUp={onGrabEnd}
-            onPointerCancel={onGrabEnd}
-            onLostPointerCapture={onGrabEnd}
-          >
-            <span className="sheet-grabber-bar" aria-hidden="true" />
-          </div>
-        ) : null}
+        {/* A top sheet's handle sits under its content, at the edge it drags
+            toward; a bottom sheet's rides above, the edge it rises from. */}
+        {variant === 'top' ? null : grabber}
         {open ? children : last.current}
+        {variant === 'top' ? grabber : null}
       </div>
     </div>
   );

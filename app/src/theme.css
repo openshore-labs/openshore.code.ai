@@ -888,13 +888,25 @@ textarea {
   gap: 12px;
 }
 
-.stack-add-btn {
+/* The BYOM control: a labelled pill, with a small info glyph hanging off its
+   top-right corner (outside the pill, its own tap target) that opens the
+   explainer sheet. */
+.stack-add {
+  position: relative;
   flex-shrink: 0;
-  width: 38px;
+}
+
+.stack-add-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
+  padding: 0 15px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   background: var(--local-soft);
   color: var(--local);
   border: 1px solid var(--local);
@@ -903,12 +915,46 @@ textarea {
     transform var(--press-out);
 }
 
-.stack-add-btn:hover {
+.stack-add-pill:hover {
   background: rgba(47, 90, 102, 0.18);
 }
 
-.stack-add-btn:active {
-  transform: scale(0.92);
+.stack-add-pill:active {
+  transform: scale(0.94);
+  transition: transform var(--press-in);
+}
+
+.stack-add-plus {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+  margin-top: -1px;
+}
+
+.stack-byom-info {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  background: var(--bg-raised);
+  color: var(--local);
+  border: 1px solid var(--local);
+  box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.16);
+  transition: transform var(--press-out);
+}
+
+.stack-byom-info:active {
+  transform: scale(0.88);
+  transition: transform var(--press-in);
 }
 
 /* ----------------------------------------------------------------- vault */
@@ -2815,6 +2861,47 @@ textarea {
   to {
     transform: translateY(0) scale(1);
     opacity: 1;
+  }
+}
+
+/* A top sheet: the same door, hinged at the top edge instead of the bottom. It
+   lowers from above solid on the glide over the door clock, its bottom corners
+   rounded, and drags up to dismiss (Sheet.tsx, variant `top`). The wider
+   specificity here (two or three classes) is deliberate, so it overrides the
+   bottom sheet's rise and its faded wide-screen exit for both phone and
+   desktop. */
+.sheet-scrim.top {
+  align-items: flex-start;
+}
+@media (min-width: 720px) {
+  .sheet-scrim.top {
+    align-items: flex-start;
+  }
+}
+.sheet.top {
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  padding: calc(18px + var(--safe-top)) 18px 18px;
+  box-shadow:
+    0 1px 2px rgba(var(--shadow-rgb), 0.05),
+    0 12px 40px rgba(var(--shadow-rgb), 0.14);
+  animation-name: sheet-down;
+  transition: transform var(--dur-7) var(--ease-glide);
+}
+.sheet.top.closing {
+  transform: translateY(-110%);
+  opacity: 1;
+}
+/* The handle sits under the content, at the bottom edge the sheet drags toward. */
+.sheet.top .sheet-grabber {
+  padding: 14px 0 2px;
+  margin: 0 0 -6px;
+}
+@keyframes sheet-down {
+  from {
+    transform: translateY(calc(-100% - 40px));
+  }
+  to {
+    transform: translateY(0);
   }
 }
 

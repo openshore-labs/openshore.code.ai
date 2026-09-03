@@ -54,21 +54,25 @@ export function StackManager() {
 
   const deviceRefs: StackModelRef[] = [
     ...(settings.harborReady ? [harborRef()] : []),
-    ...Object.entries(settings.deviceModels).map(([modelId, modelName]): StackModelRef => ({
-      kind: 'device',
-      modelId,
-      modelName,
-    })),
+    ...Object.entries(settings.deviceModels).map(
+      ([modelId, modelName]): StackModelRef => ({
+        kind: 'device',
+        modelId,
+        modelName,
+      }),
+    ),
   ];
   const byomRefs: StackModelRef[] = (settings.byomModels ?? []).map(byomRef);
   const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
     (p) =>
-      p.models.map((m): StackModelRef => ({
-        kind: 'cloud',
-        provider: p.id,
-        model: m.id,
-        label: m.label,
-      })),
+      p.models.map(
+        (m): StackModelRef => ({
+          kind: 'cloud',
+          provider: p.id,
+          model: m.id,
+          label: m.label,
+        }),
+      ),
   );
   const available: StackModelRef[] = [...deviceRefs, ...byomRefs, ...cloudRefs];
   const activeKeys = new Set(stack.active.map((m) => refKey(m.ref)));
@@ -95,6 +99,7 @@ export function StackManager() {
   // Bring-your-own-model connect form, and the id of the benched BYOM whose
   // options sheet is open.
   const [byomOpen, setByomOpen] = useState(false);
+  const [byomInfoOpen, setByomInfoOpen] = useState(false);
   const [byomForm, setByomForm] = useState({ label: '', baseUrl: '', model: '', apiKey: '' });
   const [byomMenuId, setByomMenuId] = useState<string | undefined>();
   const byomFormValid =
@@ -138,25 +143,27 @@ export function StackManager() {
         <div className="stack-head">
           <h1>{admin ? 'Your stack' : 'The stack'}</h1>
           {admin ? (
-            <button
-              className="stack-add-btn"
-              aria-label="Bring your own model"
-              title="Bring your own model"
-              onClick={() => setByomOpen(true)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                aria-hidden="true"
+            <div className="stack-add">
+              <button
+                className="stack-add-pill press-fb"
+                aria-label="Bring your own model"
+                title="Bring your own model"
+                onClick={() => setByomOpen(true)}
               >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
+                BYOM
+                <span className="stack-add-plus" aria-hidden="true">
+                  +
+                </span>
+              </button>
+              <button
+                className="stack-byom-info"
+                aria-label="What is bring your own model?"
+                title="What is bring your own model?"
+                onClick={() => setByomInfoOpen(true)}
+              >
+                i
+              </button>
+            </div>
           ) : null}
         </div>
         <p className="lead">
@@ -411,6 +418,47 @@ export function StackManager() {
             </div>
           </>
         ) : null}
+      </Sheet>
+
+      {/* What "bring your own model" means: lowers from the top, off the info
+          glyph on the BYOM pill. */}
+      <Sheet open={byomInfoOpen} onClose={() => setByomInfoOpen(false)} variant="top">
+        <h2>Bring your own model</h2>
+        <p className="sheet-sub">
+          BYOM points OpenShore at a model you run and control, instead of only the ones we host.
+        </p>
+        <ul className="paywall-benefits">
+          <li>
+            Any OpenAI-compatible endpoint works: a model on your own server, a fine-tune behind
+            your gateway, or another provider's API.
+          </li>
+          <li>
+            It lands on your bench like any other model. Place it into a category and the Reasoning
+            LLM starts routing the right tasks to it.
+          </li>
+          <li>
+            Your endpoint and key stay yours. The key is held in this device's secure store, scoped
+            to that one connection, and never synced.
+          </li>
+          <li>
+            Nothing you send it passes through us. The call goes straight from your device to the
+            endpoint you named.
+          </li>
+        </ul>
+        <div className="sheet-actions">
+          <button
+            className="btn primary"
+            onClick={() => {
+              setByomInfoOpen(false);
+              setByomOpen(true);
+            }}
+          >
+            Connect a model
+          </button>
+          <button className="btn quiet" onClick={() => setByomInfoOpen(false)}>
+            Got it
+          </button>
+        </div>
       </Sheet>
 
       {/* Bring-your-own-model connect sheet. */}
