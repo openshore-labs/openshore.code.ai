@@ -2,11 +2,9 @@
 // their context together, carries standing instructions into every chat, and
 // can share repositories with other projects. Create one to start saving
 // chats; switch the active one from here or the sidebar.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useApp } from '../state/store.js';
-import { bridge } from '../lib/electronBridge.js';
-import { isDesktop } from '../lib/platform.js';
-import { daemonWorkspaces } from '../drivers/remoteDriver.js';
+import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { BackBar } from '../components/BackBar.js';
 import type { Project } from '../state/types.js';
 import { Sheet } from '../components/Sheet.js';
@@ -28,18 +26,11 @@ export function ProjectsScreen() {
   const [newName, setNewName] = useState('');
   const [editing, setEditing] = useState<Project | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<string | undefined>();
-  const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        if (isDesktop() && bridge()) setWorkspaces(await bridge()!.recentWorkspaces());
-        else if (settings.daemon) setWorkspaces(await daemonWorkspaces(settings.daemon));
-      } catch {
-        setWorkspaces([]);
-      }
-    })();
-  }, [settings.daemon]);
+  // The same repositories the chat header's picker offers: the computer's
+  // workspaces and the connected GitHub account's repos. Loaded while the
+  // edit sheet is open.
+  const repos = useConnectedRepos(Boolean(editing));
+  const repoOptions = [...repos.workspaces, ...repos.github];
 
   const create = async () => {
     const name = newName.trim();
@@ -175,14 +166,14 @@ export function ProjectsScreen() {
               />
             </div>
 
-            {workspaces.length ? (
+            {repoOptions.length ? (
               <div className="field">
                 <label>Repositories (shareable across projects)</label>
                 <div className="check-list">
-                  {workspaces.map((ws) => {
-                    const on = editing.repoIds.includes(ws.cwd);
+                  {repoOptions.map((r) => {
+                    const on = editing.repoIds.includes(r.id);
                     return (
-                      <label key={ws.cwd} className="multiselect-row">
+                      <label key={r.id} className="multiselect-row">
                         <input
                           type="checkbox"
                           checked={on}
@@ -190,19 +181,28 @@ export function ProjectsScreen() {
                             setEditing({
                               ...editing,
                               repoIds: on
-                                ? editing.repoIds.filter((x) => x !== ws.cwd)
-                                : [...editing.repoIds, ws.cwd],
+                                ? editing.repoIds.filter((x) => x !== r.id)
+                                : [...editing.repoIds, r.id],
                             })
                           }
                         />
-                        <span>{ws.name}</span>
+                        <span>
+                          {r.name}
+                          {r.kind === 'github' && r.detail ? (
+                            <span className="hint"> · {r.detail} on GitHub</span>
+                          ) : null}
+                        </span>
                       </label>
                     );
                   })}
                 </div>
               </div>
             ) : (
-              <p className="hint">Connect your desktop to attach repositories to this project.</p>
+              <p className="hint">
+                {repos.loading
+                  ? 'Loading your repositories.'
+                  : 'Connect your computer or GitHub (Repositories) to attach repositories to this project.'}
+              </p>
             )}
 
             <div className="sheet-actions">

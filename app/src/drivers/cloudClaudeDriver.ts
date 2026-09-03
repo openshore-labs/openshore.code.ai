@@ -53,6 +53,8 @@ export class CloudClaudeDriver implements ChatDriver {
     seed?: SeedTurn[],
     /** The workspace an identity-linked key acts in (anthropic-workspace-id). */
     workspaceId?: string,
+    /** Extra system context for this chat (the repositories it works with). */
+    private readonly extraSystem?: string,
   ) {
     const ws = workspaceId?.trim();
     this.client = new Anthropic({
@@ -102,7 +104,7 @@ export class CloudClaudeDriver implements ChatDriver {
       const stream = this.client.messages.stream({
         model: this.model,
         max_tokens: 16000,
-        system: [SYSTEM_PROMPT, effortDirective()].join('\n'),
+        system: [SYSTEM_PROMPT, effortDirective(), this.extraSystem].filter(Boolean).join('\n'),
         messages: this.history,
       });
       this.activeStream = stream;

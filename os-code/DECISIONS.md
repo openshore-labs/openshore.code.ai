@@ -371,3 +371,10 @@ execution contract. Newest at the bottom.
   `capture`, photos via `accept`, any file) rather than `@capacitor/camera`,
   so no native permission strings or plugin wiring ride on a polish fix;
   a native picker can replace them later behind the same `AttachSource`.
+- **A chat's repositories are a per-chat list seeded by the project, and
+  the selection is honest about one cwd.** Claude Code's picker makes every
+  repo available to the session; this engine works in one directory, so the
+  first selected workspace is where the agent works and the rest ride in as
+  named context. Ids stay strings a project already used (a workspace path)
+  plus `github:owner/name`, so no migration; GitHub is listed on the stored
+  token from the app, and a native clone stays the existing desktop flow.

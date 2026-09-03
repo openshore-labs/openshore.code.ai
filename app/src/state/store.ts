@@ -40,6 +40,7 @@ import {
   type OutboxItem,
   type RepoState,
 } from '../lib/repos.js';
+import { firstWorkspace, repoContextLine } from '../lib/chatRepos.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
@@ -451,8 +452,12 @@ interface AppState {
        *  immediately and seed the model's history, so it knows what was said. */
       seedItems?: ThreadItem[];
       title?: string;
+      /** The repositories the chat starts with; the project's when omitted. */
+      repoIds?: string[];
     },
   ): Promise<string>;
+  /** Replace the repositories a chat works with (the header picker). */
+  setConversationRepos(id: string, repoIds: string[]): Promise<void>;
   /** Open a chat with a setup guide: the goal, the plan, and step one, seeded
    *  and ready, on whatever brain can answer here (this computer's engine, a
    *  cloud key, or Harbor Mini on the phone). The Walk me through it button. */
@@ -962,17 +967,23 @@ export const useApp = create<AppState>((set, get) => {
         const project = conv.projectId
           ? settings.projects?.find((p) => p.id === conv.projectId)
           : undefined;
+        // The chat's repositories ride in as context, and the first workspace
+        // among them is where the session works when the source names no cwd.
+        const repoLine = repoContextLine(conv.repoIds ?? []);
+        const instructions =
+          [project?.instructions?.trim(), repoLine].filter(Boolean).join('\n\n') || undefined;
         const sessionOpts = {
-          instructions: project?.instructions?.trim() || undefined,
+          instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
         };
+        const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         if (isDesktop() && bridge()) {
           let sessionId = conv.source.sessionId;
           let journal: Array<{ seq: number; event: DriverEvent }> | undefined;
           if (!sessionId) {
             let created: { id: string };
             try {
-              created = await bridge()!.createSession(conv.source.cwd, sessionOpts);
+              created = await bridge()!.createSession(cwd, sessionOpts);
             } catch (err) {
               // The engine's own wording is a CLI instruction ("run osc init").
               // In the app the fix is a screen away, so say that instead.
@@ -998,7 +1009,7 @@ export const useApp = create<AppState>((set, get) => {
         }
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
-          sessionId = await daemonCreateSession(settings.daemon, conv.source.cwd, sessionOpts);
+          sessionId = await daemonCreateSession(settings.daemon, cwd, sessionOpts);
           conv.source.sessionId = sessionId;
         }
         // Opening a desktop session is the walk-away-able moment: the run
@@ -1022,7 +1033,13 @@ export const useApp = create<AppState>((set, get) => {
       case 'cloud': {
         const key = await secretGet(ANTHROPIC_KEY_KEY);
         if (!key) throw new Error('Add your Claude API key under Connections first.');
-        return new CloudClaudeDriver(key, conv.source.model, seed, settings.anthropicWorkspaceId);
+        return new CloudClaudeDriver(
+          key,
+          conv.source.model,
+          seed,
+          settings.anthropicWorkspaceId,
+          repoContextLine(conv.repoIds ?? []),
+        );
       }
       case 'stack': {
         const s = get();
@@ -1044,7 +1061,10 @@ export const useApp = create<AppState>((set, get) => {
           profile,
           {
             projectName: project?.name,
-            projectInstructions: project?.instructions,
+            projectInstructions:
+              [project?.instructions?.trim(), repoContextLine(conv.repoIds ?? [])]
+                .filter(Boolean)
+                .join('\n\n') || undefined,
             crew,
           },
           seed,
@@ -1811,11 +1831,15 @@ export const useApp = create<AppState>((set, get) => {
       let projectId = s0.activeProjectId ?? s0.projects?.[0]?.id;
       if (!projectId) projectId = await get().createProject('My work');
       const seedItems = opts?.seedItems ?? [];
+      // The chat's repositories: what the caller picked, else the project's.
+      const project = get().settings.projects?.find((p) => p.id === projectId);
+      const repoIds = opts?.repoIds ?? project?.repoIds ?? [];
       const conv: Conversation = {
         id,
         title: opts?.title ?? 'New chat',
         source,
         projectId,
+        repoIds,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         thread: { ...emptyThread(), items: seedItems },
@@ -3469,6 +3493,20 @@ export const useApp = create<AppState>((set, get) => {
       await get().saveSettings({ permissionMode: mode });
       const { activeId } = get();
       if (activeId) drivers.get(activeId)?.setMode?.(mode);
+    },
+
+    async setConversationRepos(id, repoIds) {
+      set((s) => {
+        const c = s.conversations[id];
+        if (!c) return s;
+        return {
+          conversations: {
+            ...s.conversations,
+            [id]: { ...c, repoIds, updatedAt: new Date().toISOString() },
+          },
+        };
+      });
+      await persistConversations(get());
     },
 
     async renameConversation(id, title) {

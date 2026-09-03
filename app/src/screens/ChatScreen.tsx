@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
-import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
+import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
 import { Composer, SLASH_COMMANDS, type SlashCommand } from '../components/Composer.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
@@ -14,6 +14,7 @@ import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
+import { RepoPicker } from '../components/RepoPicker.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { Sheet } from '../components/Sheet.js';
 import { buildRotation, type Greeting } from '../lib/greeting.js';
@@ -23,11 +24,6 @@ import { DEFAULT_PERMISSION_MODE } from '../lib/permissionMode.js';
 import { useOnline } from '../hooks/useOnline.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { Attachment } from '../lib/attachments.js';
-
-/** The last path segment, for the repo chip. */
-function basename(p: string): string {
-  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-}
 
 /** The transcript's shape while a reopened desktop chat replays its journal:
  *  soft bars in the rhythm of the last known transcript (user turn, answer,
@@ -127,7 +123,22 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     settings,
     unqueue,
     addNote,
+    setConversationRepos,
   } = useApp();
+  // The repositories a new chat will start with, picked in the header before
+  // the first message (the Claude Code way): the active project's, until the
+  // person changes them here. A live chat keeps its own list on the
+  // conversation instead.
+  const activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  const activeProject = settings.projects?.find((p) => p.id === activeProjectId);
+  const [pendingRepoIds, setPendingRepoIds] = useState<string[]>(
+    () => activeProject?.repoIds ?? [],
+  );
+  useEffect(() => {
+    setPendingRepoIds(activeProject?.repoIds ?? []);
+    // Only a project change reseeds; edits in the picker stand otherwise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjectId]);
   const [sheetOpen, setSheetOpen] = useState(false);
   // Which sub-sheet the model sheet opens on: 'root' from the composer pill,
   // 'local' from the out-of-usage "Switch to a local model" tap.
@@ -310,7 +321,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     text?: string,
     attachments?: Attachment[],
   ) => {
-    const id = await newConversation(source);
+    const id = await newConversation(source, { repoIds: pendingRepoIds });
     if (text || (attachments && attachments.length)) {
       useApp.getState().sendWhenAttached(id, text ?? '', attachments);
     }
@@ -342,20 +353,16 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               {conv.title}
             </button>
             <div className="topbar-sub">
-              {thread?.repo ? (
-                <span className="repo-chip" title={thread.repo.cwd}>
-                  {basename(thread.repo.cwd)}
-                  {thread.repo.branch ? ` · ${thread.repo.branch}` : ''}
-                  {thread.repo.dirty ? (
-                    <span className="repo-dirty" aria-label="uncommitted changes">
-                      {'●'}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-              {thread?.model
-                ? `${thread.model.name} · ${thread.model.kind}`
-                : sourceLabel(conv.source)}
+              {/* The repo picker sits where the model name used to be (the
+                  model still lives in the composer pill). A live session's
+                  branch and dirty dot ride on the summary. */}
+              <RepoPicker
+                selected={conv.repoIds ?? []}
+                onChange={(ids) => void setConversationRepos(conv.id, ids)}
+                branch={thread?.repo?.branch}
+                dirty={thread?.repo?.dirty}
+                onOpenRepos={() => setView('repos')}
+              />
               {thread && thread.dollars > 0 ? ` · $${thread.dollars.toFixed(2)}` : ''}
               {thread && thread.contextPercent > 0 ? (
                 <span
@@ -369,7 +376,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             </div>
           </div>
         ) : (
-          <div className="topbar-spacer" />
+          <div className="topbar-spacer topbar-spacer-repos">
+            <RepoPicker
+              selected={pendingRepoIds}
+              onChange={setPendingRepoIds}
+              onOpenRepos={() => setView('repos')}
+            />
+          </div>
         )}
         {/* Terminal entry, desktop-backed chats only: a real PTY on the desktop,
             reached over the daemon from the phone and over IPC in the desktop
