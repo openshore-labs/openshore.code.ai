@@ -4,6 +4,7 @@
 // inside another room (a settings path, Manage, the terminal) shows a back
 // chevron to the room it came from, the iOS grammar. On the desktop the
 // sidebar is already beside the room, so a root's left slot stays empty.
+import type { ReactNode } from 'react';
 import { useApp, type ViewName } from '../state/store.js';
 import { useCompact } from '../hooks/useCompact.js';
 import { ProfileStatus } from './ProfileStatus.js';
@@ -29,7 +30,7 @@ const ROOM_NAMES: Record<ViewName, string> = {
   onboarding: 'Setup',
 };
 
-export function BackBar({ title }: { title: string }) {
+export function BackBar({ title, action }: { title: string; action?: ReactNode }) {
   const { setDrawer, goBack, viewTrail } = useApp();
   const compact = useCompact();
   const from = viewTrail[viewTrail.length - 1];
@@ -61,6 +62,7 @@ export function BackBar({ title }: { title: string }) {
         </button>
       ) : null}
       <div className="topbar-title">{title}</div>
+      {action}
       <ProfileStatus />
     </header>
   );

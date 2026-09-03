@@ -6382,3 +6382,141 @@ button.settings-row:active {
   font-size: 14px;
   font-weight: 500;
 }
+
+/* ---------------------------------------------------------------------------
+   The Chats room in the Claude app's shape (Creative Studio, 2026-09-02): a
+   search pill, then one flat list of chats sorted by recency, hairline
+   separators inset to the text edge, no cards, no captions. The compose
+   icon in the nav bar and a plain first row are the two ways to a new chat.
+   --------------------------------------------------------------------------- */
+.screen-inner.chats {
+  padding-top: 8px;
+}
+.chat-search {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 0 8px;
+  background: linear-gradient(var(--bg) 78%, transparent);
+}
+.chat-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.chat-search input::placeholder {
+  color: var(--muted);
+}
+.chat-list {
+  margin: 0 -16px;
+}
+.chat-list .swipe-row,
+.chat-list .chat-swipe {
+  border-bottom: none;
+  animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
+  animation-delay: var(--stagger, 0ms);
+}
+.chat-list .swipe-fore {
+  background: var(--bg);
+}
+.chat-list .chat-row {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 16px;
+  text-align: left;
+  font: inherit;
+  position: relative;
+  transition: background var(--dur-1) var(--ease-accel);
+}
+.chat-list .chat-row::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border);
+}
+.chat-list .chat-row:active {
+  background: var(--surface);
+}
+.chat-list .chat-row.active {
+  box-shadow: inset 3px 0 0 var(--local);
+}
+.chat-list .chat-row-title {
+  font-size: 16px;
+  color: var(--ink);
+}
+.chat-list .chat-row-sub {
+  font-size: 13px;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-row-new .chat-row-title {
+  color: var(--local);
+  font-weight: 500;
+}
+.chat-new-plus {
+  display: inline-block;
+  width: 18px;
+  font-size: 18px;
+  line-height: 1;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.chat-row-remote {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--wave);
+  vertical-align: middle;
+}
+.chat-row.leaving {
+  animation: chat-row-out var(--dur-4) var(--ease-accel) forwards;
+}
+@keyframes chat-row-out {
+  to {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+.chat-empty {
+  padding: 40px 0 8px;
+  text-align: center;
+}
+.chat-empty h2 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+.chat-empty p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+.chat-quick {
+  text-align: right;
+  font-size: 13px;
+  margin: 14px 0 0;
+}
+.chat-quick .linklike {
+  color: var(--ink-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-list .swipe-row,
+  .chat-list .chat-swipe,
+  .chat-row.leaving {
+    animation: none;
+  }
+}
