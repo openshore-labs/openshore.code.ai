@@ -1,12 +1,11 @@
-// The Chats room: one place that lists every saved chat in the active project,
-// the way the Claude app keeps its chat history behind a "Chats" button instead
-// of stacking it down the side of every screen. Chats group by when they were
-// last touched (today, yesterday, this week, earlier), a search field narrows
-// them by title, a tap reopens one, a swipe deletes it (with a confirm, since
-// it cannot be undone), and a long press names it. Sessions running on the
-// paired desktop that have no chat here yet are listed too, so a job started
-// at the desk can be picked up from the couch.
-import { useEffect, useState, type CSSProperties } from 'react';
+// The Chats room, in the shape of the Claude app's history: a plain nav
+// title with a compose icon, a search pill, then one flat list of chats
+// sorted by recency, each a one-line title over a quiet "2h ago · Claude".
+// No cards, no date captions; the timestamp carries recency. Tap to open,
+// swipe to delete (with a confirm, since it cannot be undone), hold to name.
+// Sessions running on the paired desktop with no chat here yet sit in the
+// same list, marked, so a job started at the desk is picked up from the couch.
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { DaemonSessionInfo } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { sourceLabel, type Conversation } from '../state/types.js';
@@ -16,19 +15,69 @@ import { Sheet } from '../components/Sheet.js';
 import { daemonListSessions } from '../drivers/remoteDriver.js';
 import { hapticTick } from '../lib/haptics.js';
 
-type Bucket = 'Today' | 'Yesterday' | 'This week' | 'Earlier';
-
-function bucketFor(iso: string, now = new Date()): Bucket {
-  const d = new Date(iso);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const t = d.getTime();
-  if (t >= startOfToday) return 'Today';
+/** "just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". */
+export function relativeTime(iso: string, now = Date.now()): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = new Date(t);
+  const today = new Date(now);
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   if (t >= startOfToday - 86_400_000) return 'Yesterday';
-  if (t >= startOfToday - 6 * 86_400_000) return 'This week';
-  return 'Earlier';
+  if (t >= startOfToday - 6 * 86_400_000)
+    return d.toLocaleDateString(undefined, { weekday: 'short' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-const BUCKETS: Bucket[] = ['Today', 'Yesterday', 'This week', 'Earlier'];
+/** The quiet source half of the secondary line. */
+function sourceShort(conv: Conversation): string {
+  const s = conv.source;
+  switch (s.kind) {
+    case 'cloud':
+      return 'Claude';
+    case 'desktop':
+      return s.repoName ?? 'Desktop';
+    case 'device':
+      return sourceLabel(s).split(' · ')[0] ?? 'On device';
+    case 'stack':
+      return 'Your stack';
+    case 'desktop-chat':
+      return 'Desktop';
+    case 'mock':
+      return 'Demo';
+  }
+}
+
+function ComposeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+/** How long a deleted row takes to leave before it unmounts. */
+const ROW_OUT_MS = 300;
+
+type Row =
+  | { kind: 'chat'; id: string; at: number; conv: Conversation }
+  | { kind: 'desktop'; id: string; at: number; session: DaemonSessionInfo };
 
 export function ChatsScreen() {
   const {
@@ -49,27 +98,37 @@ export function ChatsScreen() {
   const [renameId, setRenameId] = useState<string | undefined>();
   const [renameDraft, setRenameDraft] = useState('');
   const [query, setQuery] = useState('');
+  const [leavingId, setLeavingId] = useState<string | undefined>();
   const [desktopSessions, setDesktopSessions] = useState<DaemonSessionInfo[]>([]);
+  const leaveTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
+    },
+    [],
+  );
 
   const projects = settings.projects ?? [];
   const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
 
   // The saved chats in the active project. A live quick chat is transient, so it
-  // shows only while it is the one open, matching the old sidebar rule.
+  // shows only while it is the one open.
   const q = query.trim().toLowerCase();
-  const shown = order.filter((id) => {
-    const conv = conversations[id];
-    if (!conv) return false;
-    if (q && !conv.title.toLowerCase().includes(q)) return false;
-    if (conv.ephemeral) return id === activeId;
-    if (activeProject) return conv.projectId === activeProject.id;
-    return !conv.projectId;
-  });
-  const grouped = new Map<Bucket, string[]>();
-  for (const id of shown) {
-    const b = bucketFor(conversations[id]!.updatedAt);
-    grouped.set(b, [...(grouped.get(b) ?? []), id]);
-  }
+  const chats: Row[] = order
+    .filter((id) => {
+      const conv = conversations[id];
+      if (!conv) return false;
+      if (q && !conv.title.toLowerCase().includes(q)) return false;
+      if (conv.ephemeral) return id === activeId;
+      if (activeProject) return conv.projectId === activeProject.id;
+      return !conv.projectId;
+    })
+    .map((id) => ({
+      kind: 'chat' as const,
+      id,
+      at: new Date(conversations[id]!.updatedAt).getTime(),
+      conv: conversations[id]!,
+    }));
 
   // Sessions on the paired desktop with no chat here. Best effort: a desktop
   // that is asleep just yields an empty list.
@@ -95,11 +154,23 @@ export function ChatsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daemon?.baseUrl, order.length]);
 
+  const desktopRows: Row[] = desktopSessions
+    .filter((s) => {
+      const name = s.title && !/^Session /.test(s.title) ? s.title : s.cwd;
+      return !q || name.toLowerCase().includes(q);
+    })
+    .map((s) => ({
+      kind: 'desktop' as const,
+      id: `d:${s.id}`,
+      at: s.updatedAt ? new Date(s.updatedAt).getTime() : 0,
+      session: s,
+    }));
+
+  const rows = [...chats, ...desktopRows].sort((a, b) => b.at - a.at);
+
   const confirmConv = confirmId ? conversations[confirmId] : undefined;
   const renameConv = renameId ? conversations[renameId] : undefined;
 
-  // A hold on a row names the chat (SwipeRow raises it; a right-click on the
-  // desktop does the same).
   const beginRename = (id: string) => {
     const conv = conversations[id];
     if (!conv) return;
@@ -108,131 +179,157 @@ export function ChatsScreen() {
     setRenameId(id);
   };
 
-  let stagger = 0;
+  // The row leaves before it unmounts, then the chat is gone.
+  const removeChat = (id: string) => {
+    setConfirmId(undefined);
+    setLeavingId(id);
+    leaveTimer.current = window.setTimeout(() => {
+      leaveTimer.current = null;
+      deleteConversation(id);
+      setLeavingId(undefined);
+      showToast('Chat deleted.');
+    }, ROW_OUT_MS);
+  };
+
+  const compose = (
+    <button
+      type="button"
+      className="icon-btn press-fb"
+      aria-label="New chat"
+      title="New chat"
+      onClick={() => {
+        hapticTick();
+        startNewChat();
+      }}
+    >
+      <ComposeIcon />
+    </button>
+  );
 
   return (
     <div className="screen">
-      <BackBar title="Chats" />
-      <div className="screen-inner">
-        <h1>Chats</h1>
-        <p className="lead">
-          {activeProject
-            ? `Every chat in ${activeProject.name}. Start a new one, or pick up where you left off.`
-            : 'Your chats live here. Start a new one any time.'}
-        </p>
+      <BackBar title="Chats" action={compose} />
+      <div className="screen-inner chats">
+        <div className="chat-search">
+          <input
+            type="search"
+            value={query}
+            placeholder="Search"
+            aria-label="Search chats"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
 
-        <div className="chats-actions">
-          <button className="btn primary" style={{ flex: 1 }} onClick={startNewChat}>
-            + New chat
-          </button>
+        <div className="chat-list">
           <button
-            className="btn ghost"
+            type="button"
+            className="chat-row chat-row-new press-fb press-fb--row"
+            onClick={() => {
+              hapticTick();
+              startNewChat();
+            }}
+          >
+            <span className="chat-row-title">
+              <span className="chat-new-plus" aria-hidden="true">
+                +
+              </span>
+              New chat
+            </span>
+          </button>
+
+          {rows.map((row, i) => {
+            const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
+            if (row.kind === 'desktop') {
+              const s = row.session;
+              const name =
+                s.title && !/^Session /.test(s.title)
+                  ? s.title
+                  : (s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd);
+              return (
+                <div key={row.id} className="swipe-row chat-swipe" style={style}>
+                  <button
+                    type="button"
+                    className="chat-row press-fb press-fb--row"
+                    onClick={() => {
+                      hapticTick();
+                      void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title }).catch(
+                        (err: unknown) =>
+                          showToast(err instanceof Error ? err.message : String(err)),
+                      );
+                    }}
+                  >
+                    <span className="chat-row-title">
+                      <span className="chat-row-remote" aria-hidden="true" />
+                      {name}
+                    </span>
+                    <span className="chat-row-sub">
+                      {s.updatedAt ? `${relativeTime(s.updatedAt)} · ` : ''}Running on desktop
+                      {s.busy ? ' · working' : ''}
+                    </span>
+                  </button>
+                </div>
+              );
+            }
+            const conv = row.conv;
+            return (
+              <SwipeRow
+                key={row.id}
+                variant="danger"
+                label="Delete"
+                style={style}
+                onTap={() => openConversation(row.id)}
+                onToggle={() => setConfirmId(row.id)}
+                onLongPress={() => beginRename(row.id)}
+              >
+                <div
+                  className={`chat-row${row.id === activeId && view === 'chat' ? ' active' : ''}${row.id === leavingId ? ' leaving' : ''}`}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    beginRename(row.id);
+                  }}
+                >
+                  <span className="chat-row-title">
+                    {conv.ephemeral ? <span className="ephemeral-dot" aria-hidden="true" /> : null}
+                    {conv.thread.busy ? (
+                      <span className="chat-row-live" aria-label="working" />
+                    ) : null}
+                    {conv.title}
+                  </span>
+                  <span className="chat-row-sub">
+                    {conv.ephemeral
+                      ? 'Quick chat · not saved'
+                      : `${relativeTime(conv.updatedAt)} · ${sourceShort(conv)}`}
+                  </span>
+                </div>
+              </SwipeRow>
+            );
+          })}
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="chat-empty">
+            <h2>{q ? 'No chat called that.' : 'Nothing here yet.'}</h2>
+            {!q ? (
+              <p>
+                {activeProject
+                  ? `Start a chat and it stays with ${activeProject.name}.`
+                  : 'Create a project to start saving your chats.'}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <p className="chat-quick">
+          <button
+            type="button"
+            className="linklike"
             onClick={() => {
               void quickChat();
             }}
           >
-            Quick chat
+            Quick chat, not saved
           </button>
-        </div>
-
-        {order.length > 6 ? (
-          <div className="field chats-search">
-            <input
-              type="search"
-              value={query}
-              placeholder="Search chats"
-              aria-label="Search chats"
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        ) : null}
-
-        {shown.length === 0 ? (
-          <p className="hint" style={{ marginTop: 14 }}>
-            {q
-              ? 'No chat by that name.'
-              : activeProject
-                ? 'No chats here yet. Start one and it stays with this project.'
-                : 'Create a project to start saving your chats.'}
-          </p>
-        ) : (
-          BUCKETS.filter((b) => grouped.has(b)).map((bucket) => (
-            <section key={bucket} className="chat-section">
-              <h2 className="chat-section-title">{bucket}</h2>
-              <div className="chat-group">
-                {grouped.get(bucket)!.map((id) => {
-                  const conv = conversations[id]!;
-                  // Cap the stagger so a long history never keeps the eye waiting.
-                  const style = {
-                    '--stagger': `${Math.min(stagger++, 8) * 22}ms`,
-                  } as CSSProperties;
-                  return (
-                    <SwipeRow
-                      key={id}
-                      variant="danger"
-                      label="Delete"
-                      style={style}
-                      onTap={() => openConversation(id)}
-                      onToggle={() => setConfirmId(id)}
-                      onLongPress={() => beginRename(id)}
-                    >
-                      <div
-                        className={`chat-row${id === activeId && view === 'chat' ? ' active' : ''}`}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          beginRename(id);
-                        }}
-                      >
-                        <span className="chat-row-title">
-                          {conv.ephemeral ? (
-                            <span className="ephemeral-dot" aria-hidden="true" />
-                          ) : null}
-                          {conv.thread.busy ? (
-                            <span className="chat-row-live" aria-label="working" />
-                          ) : null}
-                          {conv.title}
-                        </span>
-                        <span className="chat-row-sub">
-                          {conv.ephemeral ? 'Quick chat · not saved' : sourceLabel(conv.source)}
-                        </span>
-                      </div>
-                    </SwipeRow>
-                  );
-                })}
-              </div>
-            </section>
-          ))
-        )}
-
-        {desktopSessions.length ? (
-          <section className="chat-section">
-            <h2 className="chat-section-title">On your desktop</h2>
-            <p className="hint">Sessions running there that are not in this app yet.</p>
-            <div className="chat-group">
-              {desktopSessions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className="chat-row chat-row-btn press-fb press-fb--row"
-                  onClick={() => {
-                    hapticTick();
-                    void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title }).catch(
-                      (err: unknown) => showToast(err instanceof Error ? err.message : String(err)),
-                    );
-                  }}
-                >
-                  <span className="chat-row-title">
-                    {s.busy ? <span className="chat-row-live" aria-label="working" /> : null}
-                    {s.title && !/^Session /.test(s.title)
-                      ? s.title
-                      : (s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd)}
-                  </span>
-                  <span className="chat-row-sub">{s.cwd}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
+        </p>
       </div>
 
       <Sheet open={Boolean(confirmConv)} onClose={() => setConfirmId(undefined)} variant="confirm">
@@ -244,14 +341,7 @@ export function ChatsScreen() {
               <button className="btn ghost" onClick={() => setConfirmId(undefined)}>
                 Cancel
               </button>
-              <button
-                className="btn danger"
-                onClick={() => {
-                  deleteConversation(confirmId!);
-                  setConfirmId(undefined);
-                  showToast('Chat deleted.');
-                }}
-              >
+              <button className="btn danger" onClick={() => removeChat(confirmId!)}>
                 Delete
               </button>
             </div>

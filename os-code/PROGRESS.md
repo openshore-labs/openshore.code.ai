@@ -3,6 +3,30 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, the Chats room is the Claude shape)
+
+Founder, from the phone: the Chats room "looks a little off"; partner with
+the Creative Studio and make it near identical to the Claude app. The
+Studio's diagnosis: the room announced itself three times (nav title, serif
+h1, lead), two big buttons and a boxed search pushed the list below the
+fold, and beige cards with TODAY / THIS WEEK captions chopped a short list
+into boxes. Built their spec:
+
+- **Nav bar** keeps the menu, "Chats", and the status pill, and gains a
+  compose icon (`BackBar` has an additive `action` slot now). A plain "New
+  chat" first row is the second path to the same verb. Quick chat is a text
+  link at the foot, "Quick chat, not saved".
+- **A search pill** first in content, always present, sticky under the bar.
+- **One flat list** sorted by recency, no cards, no captions: 56px rows,
+  16px title, 13px `2h ago · Claude` (the source survives as the quiet half;
+  never colorized), hairline separators inset to the text edge, the active
+  row's 3px teal bar. `relativeTime()` (tested) does the recency job the
+  date buckets used to do. Desktop sessions with no chat here sit in the
+  same list with a wave dot and "Running on desktop".
+- **Motion.** Rows enter on the house stagger; a deleted row leaves
+  (`chat-row-out`) before it unmounts; swipe to delete and hold to rename
+  are unchanged. Empty state is a serif "Nothing here yet." with one line.
+
 ## Current state (2026-09-02, the room top bar is pinned)
 
 Founder: freeze the top header row (menu, room name, connection status)
