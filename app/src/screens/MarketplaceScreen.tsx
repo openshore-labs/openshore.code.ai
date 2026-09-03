@@ -199,6 +199,9 @@ export function MarketplaceScreen() {
   // A per-model override of where a download should land, when the user picks a
   // target on the product page. Absent means "use the sensible default."
   const [targetChoice, setTargetChoice] = useState<Record<string, StorageTarget>>({});
+  // The storage readout is ambient (a chip); its full detail opens in a sheet,
+  // so status is one tap away without a card sitting over the store front.
+  const [storageSheetOpen, setStorageSheetOpen] = useState(false);
 
   useEffect(() => {
     // Snap the machine tier to detected hardware on the desktop, so fit badges
@@ -406,7 +409,7 @@ export function MarketplaceScreen() {
       logEvent('model_downloaded', { id: model.id, target });
       showToast(
         toCloud
-          ? `${model.name} is in your iCloud. Place it in your stack. It loads when you are online.`
+          ? `${model.name} is in your iCloud. Place it in your stack. Loads when you are online.`
           : `${model.name} is on your bench. Place it in your stack.`,
       );
       clearDownload(model.id);
@@ -1431,51 +1434,78 @@ export function MarketplaceScreen() {
     return sum;
   };
 
-  // The storage capacity monitor: this device's free space as a bar, what the
-  // downloaded models are spending, and whether iCloud is a home for the big
-  // ones. Phone only, and only once the native read has returned. This is a
-  // status readout, never a gate on what may be downloaded.
-  const renderStorageMonitor = () => {
+  // The used fraction and low-space flag for a device, clamped for the bar.
+  const usedFractionOf = (c: DeviceCapacity) =>
+    Math.min(1, Math.max(0, (c.totalBytes - c.freeBytes) / c.totalBytes));
+  const isLowSpace = (c: DeviceCapacity) => c.freeBytes < gbToBytes(8);
+
+  // The ambient capacity chip: a glance at free space, right where the eye
+  // starts, that opens the full readout in a sheet. Status stays out of the
+  // way of the store front instead of a card competing with the hero rail.
+  const renderCapacityChip = () => {
     if (!isPhone() || !capacity || capacity.totalBytes <= 0) return null;
-    const { freeBytes, totalBytes } = capacity;
-    const usedFraction = Math.min(1, Math.max(0, (totalBytes - freeBytes) / totalBytes));
-    const low = freeBytes < gbToBytes(8);
-    const modelsBytes = deviceModelsBytes();
+    const used = usedFractionOf(capacity);
+    const low = isLowSpace(capacity);
     return (
-      <div className="card storage-monitor" key="storage-monitor">
-        <div className="card-row">
-          <div className="grow">
-            <h3>Storage</h3>
-            <div className="sub">
-              {formatBytes(freeBytes)} free of {formatBytes(totalBytes)} on this iPhone
-            </div>
-          </div>
-          {icloudReady ? <span className="pill cloud">iCloud ready</span> : null}
-        </div>
-        <div className="cap-track" role="img" aria-label={`${formatBytes(freeBytes)} free`}>
-          <div
-            className={`cap-fill${low ? ' low' : ''}`}
-            style={{ transform: `scaleX(${usedFraction})` }}
-          />
-        </div>
-        <p className="hint" style={{ marginTop: 8 }}>
-          {modelsBytes > 0 ? `Your models use about ${formatBytes(modelsBytes)}. ` : ''}
-          {icloudReady
-            ? 'A model too big for the phone can download to iCloud and load when you are online.'
-            : 'Sign in to iCloud on this iPhone to keep large models in the cloud instead.'}
-        </p>
+      <div className="cap-chip-row">
+        <button
+          className="cap-chip press-fb"
+          onClick={() => setStorageSheetOpen(true)}
+          aria-label={`Storage, ${formatBytes(capacity.freeBytes)} free. Open details.`}
+        >
+          <span className="cap-chip-meter" aria-hidden="true">
+            <span
+              className={`cap-chip-fill${low ? ' low' : ''}`}
+              style={{ transform: `scaleX(${used})` }}
+            />
+          </span>
+          <span className="cap-chip-text">{formatBytes(capacity.freeBytes)} free</span>
+          {icloudReady ? <span className="cap-chip-dot" title="iCloud ready" /> : null}
+        </button>
       </div>
     );
   };
 
+  // The full storage readout, opened from the chip. Same honest numbers as
+  // before, now in a sheet that animates in and out, never a persistent card.
+  const renderStorageSheetBody = () => {
+    if (!capacity || capacity.totalBytes <= 0) return null;
+    const { freeBytes, totalBytes } = capacity;
+    const used = usedFractionOf(capacity);
+    const low = isLowSpace(capacity);
+    const modelsBytes = deviceModelsBytes();
+    return (
+      <>
+        <h2>Storage</h2>
+        <div className="sheet-sub">
+          {formatBytes(freeBytes)} free of {formatBytes(totalBytes)} on this iPhone
+        </div>
+        <div className="cap-track" role="img" aria-label={`${formatBytes(freeBytes)} free`}>
+          <div
+            className={`cap-fill${low ? ' low' : ''}`}
+            style={{ transform: `scaleX(${used})` }}
+          />
+        </div>
+        <p className="hint" style={{ marginTop: 10 }}>
+          {modelsBytes > 0 ? `Your models use about ${formatBytes(modelsBytes)}. ` : ''}
+          {icloudReady
+            ? 'A model too big for the phone can download to your iCloud and load when you are online.'
+            : 'Sign in to iCloud on this iPhone to keep large models in the cloud instead.'}
+        </p>
+      </>
+    );
+  };
+
   // The download options for an on-device model: where the bytes land, whether
-  // they fit, and what machine runs it well. The load-bearing rule lives here:
-  // nothing in this block disables the download. A model too big for the phone
-  // gets iCloud as its home and a machine recommendation, never a locked button.
+  // they fit, and the machine that runs it full speed. The load-bearing rule
+  // lives here: nothing in this block disables the download. A model too big for
+  // the phone gets iCloud as its home and an aspirational machine note, never a
+  // locked button. Phone only; off a phone these numbers would be a mock.
   const renderDownloadOptions = (model: CatalogModel) => {
-    if (!model.onDevice || isOwned(model)) return null;
+    if (!model.onDevice || isOwned(model) || !isPhone()) return null;
     const neededBytes = gbToBytes(model.onDevice.sizeGB);
     const target = targetFor(model);
+    const toCloud = target === 'icloud';
     const targets = availableTargets(icloudReady);
     const fit: StorageFit | undefined = capacity
       ? storageFit(neededBytes, capacity.freeBytes)
@@ -1483,22 +1513,62 @@ export function MarketplaceScreen() {
     const freeAfter = capacity ? capacity.freeBytes - neededBytes : undefined;
     const requiredRam = estimatedRamGB(model);
     const deviceRamGB = capacity?.ramBytes ? Math.round(capacity.ramBytes / 1e9) : 0;
-    // Only recommend a machine when we actually read this device's memory and it
-    // is short. With no reading, stay silent rather than guess.
+    // Only speak to the machine when we actually read this device's memory and
+    // it is short. With no reading, stay silent rather than guess.
     const comfortable = deviceRamGB === 0 || deviceRunsComfortably(requiredRam, deviceRamGB);
     const rec = comfortable ? undefined : recommendMachine(requiredRam);
 
+    // The footprint block: the model's bytes as a fraction of the whole disk,
+    // starting at the used edge. On iCloud it lifts off (see .cap-ghost). Its
+    // width is capped at the free space so a too-big model reaches the edge
+    // rather than overflowing the track; the copy carries the honest overflow.
+    const used = capacity ? usedFractionOf(capacity) : 0;
+    const low = capacity ? isLowSpace(capacity) : false;
+    const footprint = capacity ? neededBytes / capacity.totalBytes : 0;
+    const shownFootprint = Math.min(footprint, Math.max(0, 1 - used));
+    const ghostTransform = `translateX(${used * 100}%) translateY(${toCloud ? '-8px' : '0'}) scaleX(${
+      toCloud ? 0 : shownFootprint
+    })`;
+
+    // The fit line: calm on iCloud (it need not fit), amber on the phone when it
+    // would not. Never red; a large model is a nudge to move it, not a failure.
     const storageLine =
       fit === undefined
         ? undefined
-        : fit === 'plenty'
-          ? `Fits with room to spare. About ${formatBytes(freeAfter ?? 0)} free after.`
-          : fit === 'tight'
-            ? `Fits, but it fills most of your free space. About ${formatBytes(Math.max(0, freeAfter ?? 0))} free after.`
-            : `Larger than the ${formatBytes(capacity?.freeBytes ?? 0)} free on this iPhone.`;
+        : toCloud
+          ? `Kept in your iCloud, so it does not have to fit on this iPhone.`
+          : fit === 'plenty'
+            ? `Fits with room to spare. About ${formatBytes(freeAfter ?? 0)} free after.`
+            : fit === 'tight'
+              ? `Fits, but it fills most of your free space. About ${formatBytes(Math.max(0, freeAfter ?? 0))} free after.`
+              : `Larger than the ${formatBytes(capacity?.freeBytes ?? 0)} free on this iPhone.`;
+    const storageTail =
+      !toCloud && fit === 'wont-fit'
+        ? icloudReady
+          ? ' Switch to iCloud Drive to keep it without freeing up space.'
+          : ' Sign in to iCloud to keep it in the cloud, or free up space first. You can still download it.'
+        : '';
 
     return (
       <div className="dl-options">
+        {capacity ? (
+          <div className="dl-meter">
+            <div className="cap-track" aria-hidden="true">
+              <div
+                className={`cap-fill${low ? ' low' : ''}`}
+                style={{ transform: `scaleX(${used})` }}
+              />
+              <div
+                className={`cap-ghost${toCloud ? ' lifted' : ''}`}
+                style={{ transform: ghostTransform, opacity: toCloud ? 0 : 1 }}
+              />
+            </div>
+            <div className="dl-meter-legend">
+              {formatBytes(capacity.freeBytes)} free · this model {formatBytes(neededBytes)}
+            </div>
+          </div>
+        ) : null}
+
         {targets.length > 1 ? (
           <div className="dl-target">
             <div className="dl-target-label">Where it goes</div>
@@ -1511,32 +1581,43 @@ export function MarketplaceScreen() {
                   className={`seg press-fb${target === t ? ' active' : ''}`}
                   onClick={() => setTargetChoice((c) => ({ ...c, [model.id]: t }))}
                 >
+                  {t === 'icloud' ? (
+                    <span className="seg-cloud" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M7 16a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.3A3.5 3.5 0 0 1 18 16" />
+                        <path d="M12 12v6m0 0l-2.2-2.2M12 18l2.2-2.2" />
+                      </svg>
+                    </span>
+                  ) : null}
                   {t === 'device' ? 'This iPhone' : 'iCloud Drive'}
                 </button>
               ))}
             </div>
+            <p className="dl-consequence" key={target}>
+              {toCloud
+                ? 'Kept in your iCloud. Loads when you are online, and uses your iCloud storage.'
+                : 'Lives on your phone. Works with no signal.'}
+            </p>
           </div>
         ) : null}
 
         {storageLine ? (
-          <p className={`dl-fit${fit === 'wont-fit' ? ' warn' : ''}`}>
+          <p className={`dl-fit${!toCloud && fit === 'wont-fit' ? ' warn' : ''}`} key={target}>
             {storageLine}
-            {fit === 'wont-fit'
-              ? target === 'icloud'
-                ? ' Downloading to iCloud, so it does not have to fit on the phone.'
-                : icloudReady
-                  ? ' Switch to iCloud Drive above to keep it without freeing up space.'
-                  : ' Sign in to iCloud to keep it in the cloud, or free up space first. You can still download it.'
-              : ''}
+            {storageTail}
           </p>
         ) : null}
 
         {rec ? (
-          <p className="dl-machine">
-            Needs about {requiredRam} GB of memory to run well
-            {deviceRamGB ? `, and this iPhone has about ${deviceRamGB} GB` : ''}. Recommended:{' '}
-            {rec.label}. {rec.note}
-          </p>
+          <div className="dl-machine">
+            <p className="dl-machine-lead">
+              This is a large model. It likes about {requiredRam} GB of memory to stretch out.
+            </p>
+            <p className="dl-machine-path">Keep it in your iCloud and draw from it whenever you are online.</p>
+            <p className="dl-machine-path">
+              Or pair a machine with about {rec.ramGB} GB of memory over Tailscale and run it full speed.
+            </p>
+          </div>
         ) : null}
       </div>
     );
@@ -2022,7 +2103,7 @@ export function MarketplaceScreen() {
 
           {categoryRail}
 
-          {renderStorageMonitor()}
+          {renderCapacityChip()}
 
           {browsing ? (
             <div className="store-front" key="store">
@@ -2157,6 +2238,10 @@ export function MarketplaceScreen() {
           onClose={() => setCompareOpen(false)}
         />
       ) : null}
+
+      <Sheet open={storageSheetOpen} onClose={() => setStorageSheetOpen(false)}>
+        {storageSheetOpen ? renderStorageSheetBody() : null}
+      </Sheet>
 
       <Sheet open={Boolean(showFilters)} onClose={() => setShowFilters(false)}>
         {showFilters ? (
