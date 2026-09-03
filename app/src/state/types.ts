@@ -6,7 +6,7 @@ import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
 import { isHarborMini } from '../lib/harborMini.js';
 import { claudeModelLabel } from '../lib/claudeModels.js';
-import { providerInfo, providerModelLabel } from '../lib/providers.js';
+import { providerInfo, providerModelLabel, providerModelVision } from '../lib/providers.js';
 
 export type ThreadItem =
   | { kind: 'user'; id: string; text: string }
@@ -367,6 +367,9 @@ export function seedFromTranscript(items: ThreadItem[]): SeedTurn[] {
 // model lands, or when the desktop daemon carries image blocks; keep the
 // default false.
 export function sourceSupportsVision(source?: ConversationSource): boolean {
-  if (!source) return false;
-  return source.kind === 'cloud' && source.provider === 'anthropic';
+  if (source?.kind !== 'cloud') return false;
+  // Claude's whole lineup reads images; any other provider's model does when
+  // its catalog lists the vision capability, so the attach button shows only
+  // where an image is actually understood.
+  return source.provider === 'anthropic' || providerModelVision(source.provider, source.model);
 }
