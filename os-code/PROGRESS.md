@@ -37,10 +37,14 @@ Claude path:
   and the stack driver pass it as an SDK default header; the engine's
   provider sends it on every request; `ANTHROPIC_WORKSPACE_ID` is the env
   fallback there.
-- **Where it is entered.** Cloud Connections: the Anthropic card gains a
-  "My key is linked to my identity" link that reveals a Workspace id field
-  (`wrkspc_...`), and the key check detects the API's 400 for a missing
-  workspace and opens the field itself with a plain hint. Stored in
+- **Where it is entered (founder simplified it).** Cloud Connections: the
+  Anthropic card always shows a Workspace id field (`wrkspc_...`), required,
+  preset to the id last saved on this device, with inline instructions to
+  copy the Default workspace's id from the Console (or a different one to
+  bill). No hidden link. There is no universal default id to preset: every
+  org's Default workspace has its own, so the preset is the person's own
+  last value. The key check still catches a rejected id before it claims
+  connected. Stored in
   `settings.anthropicWorkspaceId`; the key stays in the Keychain. On the
   desktop, connecting Claude in the app now also hands the key and workspace
   to the engine (`bridge.setAnthropicKey(key, workspaceId)`), so the coding
