@@ -35,7 +35,7 @@ export const REPO_CONNECTORS: RepoConnectorInfo[] = [
   {
     id: 'bitbucket',
     name: 'Bitbucket',
-    keyHint: 'an app password',
+    keyHint: 'an API token or app password',
     tokenUrl: 'https://bitbucket.org/account/settings/app-passwords/',
   },
 ];

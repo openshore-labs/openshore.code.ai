@@ -38,6 +38,7 @@ import {
   type HomeRepo,
   type OutboxFile,
   type OutboxItem,
+  type RepoPlatform,
   type RepoState,
 } from '../lib/repos.js';
 import { firstWorkspace, repoContextLine } from '../lib/chatRepos.js';
@@ -155,6 +156,10 @@ import {
   type StorageProviderId,
   type StoredFileMeta,
 } from '../lib/gitos/index.js';
+import {
+  connectRepoOAuth as runRepoOAuthConnect,
+  disconnectRepoOAuth,
+} from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath } from '../lib/vault.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
@@ -560,6 +565,8 @@ interface AppState {
   // Repositories.
   /** Connect a repo platform (GitHub, etc.) by token, stored in the Keychain. */
   connectRepoPlatform(id: string, token: string): Promise<void>;
+  /** Connect a repo platform through one-tap OAuth (the GitHub App path). */
+  connectRepoOAuth(id: RepoPlatform): Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectRepoPlatform(id: string): Promise<void>;
   /** Admin: set the home repo the whole system works through. */
   setHomeRepo(home: HomeRepo): Promise<void>;
@@ -2579,10 +2586,26 @@ export const useApp = create<AppState>((set, get) => {
     async connectRepoPlatform(id, token) {
       await secretSet(repoSecretKey(id), token.trim());
       set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: true } }));
-      logEvent('repo_platform_connected', { platform: id });
+      logEvent('repo_platform_connected', { platform: id, method: 'token' });
+    },
+
+    // One-tap OAuth (the GitHub App path and its GitLab/Bitbucket siblings).
+    // The lib runs the consent + code exchange and stores the tokens where the
+    // paste path stores a token, so the connected badge lights the same way.
+    async connectRepoOAuth(id) {
+      const res = await runRepoOAuthConnect(id);
+      if (res.ok) {
+        set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: true } }));
+        logEvent('repo_platform_connected', { platform: id, method: 'oauth' });
+      }
+      return res;
     },
 
     async disconnectRepoPlatform(id) {
+      // Clear both credential shapes: the pasted token and any OAuth tokens and
+      // their bookkeeping, so remove is total whichever way it was connected.
+      // The action id is a plain string; a non-repo id no-ops in both stores.
+      await disconnectRepoOAuth(id as RepoPlatform);
       await secretDelete(repoSecretKey(id));
       set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: false } }));
       logEvent('repo_platform_disconnected', { platform: id });

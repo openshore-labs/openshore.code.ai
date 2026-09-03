@@ -54,6 +54,12 @@ verify_jwt = false
 [functions.link-apple-purchase]
 verify_jwt = true
 
+# Repo OAuth (GitHub, GitLab, Bitbucket). The provider redirect cannot carry a
+# Supabase bearer, and /exchange requires a valid single-use provider code, so
+# no JWT. The provider client secret lives only in this function's secrets.
+[functions.repo-oauth]
+verify_jwt = false
+
 # App Store Server Notifications V2 endpoint. Apple calls it, not a signed-in
 # user, so no JWT; trust comes from the signed payload's Apple signature.
 [functions.apple-notifications]
