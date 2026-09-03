@@ -98,6 +98,7 @@ import { beatDesktopSession, registerPushForDaemon } from '../lib/push.js';
 import {
   autoProfile,
   effectiveProfile,
+  PROFILE_ORDER,
   type Connectivity,
   type ProfileId,
 } from '../lib/profiles.js';
@@ -132,13 +133,14 @@ import {
 import { SEARCH_SECRET_KEY, type SearchBackend } from '../lib/webSearch.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import {
-  emptyStack,
   refKey as stackRefKey,
   harborRef,
   refReady,
   stackReady,
+  stackForProfile,
   type ReadinessSignals,
   type AppStack,
+  type ProfileStacks,
   type Placement,
   type StackModelRef,
 } from '../lib/stack.js';
@@ -225,8 +227,14 @@ export interface AppSettings {
    *  is minted once per daemon rather than on every desktop session. Device-local
    *  bookkeeping, not synced. */
   pushRegisteredDaemons?: string[];
-  /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata. */
+  /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
+   *  Legacy single stack; kept as the migration seed and fallback. The live
+   *  configuration is `stacks`, one per connectivity status. */
   stack?: AppStack;
+  /** Per-status stacks: one stack for each connectivity profile (docked,
+   *  offshore, offline), chosen automatically from the current status. Migrated
+   *  once from the single `stack`. */
+  stacks?: ProfileStacks;
   /** Project buckets; a saved chat belongs to one. */
   projects?: Project[];
   /** The project new saved chats go into. */
@@ -728,14 +736,16 @@ interface AppState {
   }): Promise<ByomConnection>;
   /** Disconnect a BYOM endpoint: delete its key and pull it from the stack. */
   disconnectByom(id: string): Promise<void>;
-  /** Set the Reasoning LLM anchor (from the bench or a cloud model). */
-  setReasoning(ref: StackModelRef): Promise<void>;
-  /** Move a bench model into the active stack under a category placement. */
-  placeSpecialist(ref: StackModelRef, placement: Placement): Promise<void>;
+  /** Set the Reasoning LLM anchor (from the bench or a cloud model) for a
+   *  status. Defaults to the current status when `profile` is omitted. */
+  setReasoning(ref: StackModelRef, profile?: ProfileId): Promise<void>;
+  /** Move a bench model into a status's active stack under a category placement.
+   *  Defaults to the current status when `profile` is omitted. */
+  placeSpecialist(ref: StackModelRef, placement: Placement, profile?: ProfileId): Promise<void>;
   /** Move an active specialist back to the bench, keeping its metadata. */
-  benchSpecialist(key: string): Promise<void>;
+  benchSpecialist(key: string, profile?: ProfileId): Promise<void>;
   /** Edit a model's category / trigger / persona, active or benched. */
-  editPlacement(key: string, placement: Placement): Promise<void>;
+  editPlacement(key: string, placement: Placement, profile?: ProfileId): Promise<void>;
 }
 
 let convSeq = 0;
@@ -826,6 +836,30 @@ function reasoningPromotion(
   if (!currentReady) return ref;
   const currentIsGuide = id === HARBOR_MODEL_ID || id === HARBOR_MINI_MODEL_ID;
   return opts.preferred && currentIsGuide ? ref : undefined;
+}
+
+/** The status the app is in right now: the auto profile from the connection,
+ *  possibly stepped down by a manual override. The per-status stack for this
+ *  profile is the one used for new work. */
+function activeProfile(connectivity: Connectivity, override?: ProfileId): ProfileId {
+  return effectiveProfile(autoProfile(connectivity), override);
+}
+
+/** Heal a stack whose Reasoning anchor is a built-in guide not present on this
+ *  device: promote it to whichever guide IS downloaded (Harbor preferred), so
+ *  the status still answers instead of pointing at a model to download first. A
+ *  cloud, BYOM, or user-chosen device anchor is left untouched. Returns the same
+ *  reference when nothing changes, so callers can cheaply detect a no-op. */
+function healedAnchor(stack: AppStack, harborReady: boolean, harborMiniReady: boolean): AppStack {
+  const anchor = stack.reasoning;
+  if (anchor?.kind !== 'device') return stack;
+  const id = anchor.modelId;
+  const isGuide = id === HARBOR_MODEL_ID || id === HARBOR_MINI_MODEL_ID;
+  if (!isGuide) return stack;
+  const ready = id === HARBOR_MODEL_ID ? harborReady : harborMiniReady;
+  if (ready) return stack;
+  const promote = harborReady ? harborFullRef() : harborMiniReady ? harborRef() : undefined;
+  return promote ? { ...stack, reasoning: promote } : stack;
 }
 
 // Only these statuses grant paid access; every other status (past_due, unpaid,
@@ -1064,7 +1098,7 @@ export const useApp = create<AppState>((set, get) => {
               (conv.projectId != null && a.projectIds.includes(conv.projectId))),
         );
         return new StackDriver(
-          s.settings.stack ?? emptyStack(),
+          stackForProfile(s.settings.stacks, profile),
           profile,
           {
             projectName: project?.name,
@@ -1408,33 +1442,36 @@ export const useApp = create<AppState>((set, get) => {
       }
       let settingsDirty = false;
 
-      // Heal a stack whose Reasoning anchor is a built-in guide that is not
-      // actually on this device: if the other guide is downloaded, promote it so
-      // "My Stack" chat starts right away instead of failing with "download it
+      // Per-status stacks (2026-09-03): the stack was one shared config; it now
+      // has one per connectivity profile (docked, offshore, offline), chosen
+      // automatically from the current status. On the first launch after this
+      // shipped, pin the existing stack to the status the user is in right now
+      // and leave the other two at their anchor-only default (founder call: only
+      // the current status inherits the old setup). The legacy `stack` field is
+      // kept as the seed and a rollback fallback.
+      if (!settings.stacks) {
+        const current = activeProfile(get().connectivity, settings.profileOverride);
+        settings.stacks = settings.stack ? { [current]: settings.stack } : {};
+        settingsDirty = true;
+      }
+
+      // Heal each configured status's Reasoning anchor: a built-in guide that is
+      // not actually on this device is promoted to whichever guide IS downloaded,
+      // so "My Stack" chat starts right away instead of failing with "download it
       // first." This is exactly the case a fresh stack (seeded with Harbor Mini)
-      // hits when the user only downloaded Harbor. Prefer Harbor when both are
-      // present. Only a not-present guide anchor is touched; a cloud, BYOM, or
-      // user-chosen device anchor is left alone.
-      const anchor = settings.stack?.reasoning;
-      if (anchor?.kind === 'device') {
-        const anchorId = anchor.modelId;
-        const anchorIsGuide = anchorId === HARBOR_MODEL_ID || anchorId === HARBOR_MINI_MODEL_ID;
-        const anchorReady =
-          anchorId === HARBOR_MODEL_ID
-            ? Boolean(settings.harborReady)
-            : anchorId === HARBOR_MINI_MODEL_ID
-              ? Boolean(settings.harborMiniReady)
-              : true;
-        if (anchorIsGuide && !anchorReady) {
-          const promote = settings.harborReady
-            ? harborFullRef()
-            : settings.harborMiniReady
-              ? harborRef()
-              : undefined;
-          if (promote) {
-            settings.stack = { ...settings.stack!, reasoning: promote };
-            settingsDirty = true;
-          }
+      // hits when the user only downloaded Harbor. A cloud, BYOM, or user-chosen
+      // device anchor is left alone.
+      for (const p of PROFILE_ORDER) {
+        const st = settings.stacks[p];
+        if (!st) continue;
+        const healed = healedAnchor(
+          st,
+          Boolean(settings.harborReady),
+          Boolean(settings.harborMiniReady),
+        );
+        if (healed !== st) {
+          settings.stacks[p] = healed;
+          settingsDirty = true;
         }
       }
 
@@ -1715,7 +1752,10 @@ export const useApp = create<AppState>((set, get) => {
       };
       switch (source.kind) {
         case 'stack':
-          return stackReady(st.stack, signals);
+          return stackReady(
+            stackForProfile(st.stacks, activeProfile(s.connectivity, st.profileOverride)),
+            signals,
+          );
         case 'device':
           return refReady(
             { kind: 'device', modelId: source.modelId, modelName: source.modelName },
@@ -2828,12 +2868,17 @@ export const useApp = create<AppState>((set, get) => {
         // Make Harbor Mini the Reasoning anchor when the stack has none or its
         // anchor is a guide that is not on the device, so My Stack chat works
         // right away. Never demotes a ready Harbor.
-        const miniTarget = reasoningPromotion(get().settings.stack, harborRef(), {
-          harborReady: Boolean(get().settings.harborReady),
-          harborMiniReady: true,
-          preferred: false,
-        });
-        if (miniTarget) await get().setReasoning(miniTarget);
+        const miniProfile = activeProfile(get().connectivity, get().settings.profileOverride);
+        const miniTarget = reasoningPromotion(
+          stackForProfile(get().settings.stacks, miniProfile),
+          harborRef(),
+          {
+            harborReady: Boolean(get().settings.harborReady),
+            harborMiniReady: true,
+            preferred: false,
+          },
+        );
+        if (miniTarget) await get().setReasoning(miniTarget, miniProfile);
         set({ harborMiniDownload: undefined });
         return true;
       } catch (err) {
@@ -2885,12 +2930,17 @@ export const useApp = create<AppState>((set, get) => {
         // is a guide not on the device, or the anchor is Harbor Mini (Harbor is
         // the preferred pick). So My Stack chat works right away. Never
         // overrides a cloud, BYOM, or user-chosen device model.
-        const harborTarget = reasoningPromotion(get().settings.stack, harborFullRef(), {
-          harborReady: true,
-          harborMiniReady: Boolean(get().settings.harborMiniReady),
-          preferred: true,
-        });
-        if (harborTarget) await get().setReasoning(harborTarget);
+        const harborProfile = activeProfile(get().connectivity, get().settings.profileOverride);
+        const harborTarget = reasoningPromotion(
+          stackForProfile(get().settings.stacks, harborProfile),
+          harborFullRef(),
+          {
+            harborReady: true,
+            harborMiniReady: Boolean(get().settings.harborMiniReady),
+            preferred: true,
+          },
+        );
+        if (harborTarget) await get().setReasoning(harborTarget, harborProfile);
         set({ harborDownload: undefined });
         return true;
       } catch (err) {
@@ -3770,59 +3820,84 @@ export const useApp = create<AppState>((set, get) => {
       const settings = get().settings;
       const byomModels = (settings.byomModels ?? []).filter((c) => c.id !== id);
       const key = `byom:${id}`;
-      // Pull it out of the stack too: drop it from the active specialists and
-      // the saved-placement map, and if it was the Reasoning anchor fall back
-      // to the built-in guide so the anchor is never left dangling.
-      const stack = settings.stack ?? emptyStack();
-      const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
-      const saved = { ...stack.saved };
-      delete saved[key];
-      const reasoning =
-        stack.reasoning && stackRefKey(stack.reasoning) === key ? harborRef() : stack.reasoning;
-      await get().saveSettings({ byomModels, stack: { ...stack, active, saved, reasoning } });
+      // Pull it out of EVERY status's stack: a disconnected endpoint must not
+      // linger in any profile. Drop it from the active specialists and the
+      // saved-placement map, and if it was a Reasoning anchor fall back to the
+      // built-in guide so no status is left with a dangling anchor.
+      const stacks: ProfileStacks = { ...settings.stacks };
+      for (const p of PROFILE_ORDER) {
+        const st = stacks[p];
+        if (!st) continue;
+        const active = st.active.filter((m) => stackRefKey(m.ref) !== key);
+        const saved = { ...st.saved };
+        delete saved[key];
+        const reasoning =
+          st.reasoning && stackRefKey(st.reasoning) === key ? harborRef() : st.reasoning;
+        stacks[p] = { ...st, active, saved, reasoning };
+      }
+      await get().saveSettings({ byomModels, stacks });
       logEvent('byom_disconnected');
     },
 
-    async setReasoning(ref) {
-      const stack = get().settings.stack ?? emptyStack();
+    async setReasoning(ref, profile) {
+      const s = get();
+      const p = profile ?? activeProfile(s.connectivity, s.settings.profileOverride);
+      const stack = stackForProfile(s.settings.stacks, p);
       const key = stackRefKey(ref);
       // A model promoted to Reasoning leaves the active specialists.
       const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
-      await get().saveSettings({ stack: { ...stack, reasoning: ref, active } });
+      await get().saveSettings({
+        stacks: { ...s.settings.stacks, [p]: { ...stack, reasoning: ref, active } },
+      });
       logEvent('stack_reasoning_set', { kind: ref.kind });
     },
 
-    async placeSpecialist(ref, placement) {
-      const stack = get().settings.stack ?? emptyStack();
+    async placeSpecialist(ref, placement, profile) {
+      const s = get();
+      const p = profile ?? activeProfile(s.connectivity, s.settings.profileOverride);
+      const stack = stackForProfile(s.settings.stacks, p);
       const key = stackRefKey(ref);
       const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
       active.push({ ref, placement });
       const saved = { ...stack.saved };
       delete saved[key];
-      await get().saveSettings({ stack: { ...stack, active, saved } });
+      await get().saveSettings({
+        stacks: { ...s.settings.stacks, [p]: { ...stack, active, saved } },
+      });
       logEvent('stack_place', { category: placement.category });
     },
 
-    async benchSpecialist(key) {
-      const stack = get().settings.stack ?? emptyStack();
+    async benchSpecialist(key, profile) {
+      const s = get();
+      const p = profile ?? activeProfile(s.connectivity, s.settings.profileOverride);
+      const stack = stackForProfile(s.settings.stacks, p);
       const member = stack.active.find((m) => stackRefKey(m.ref) === key);
       const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);
       const saved = { ...stack.saved };
       if (member) saved[key] = member.placement; // keep placement, trigger, persona
-      await get().saveSettings({ stack: { ...stack, active, saved } });
+      await get().saveSettings({
+        stacks: { ...s.settings.stacks, [p]: { ...stack, active, saved } },
+      });
       logEvent('stack_bench');
     },
 
-    async editPlacement(key, placement) {
-      const stack = get().settings.stack ?? emptyStack();
+    async editPlacement(key, placement, profile) {
+      const s = get();
+      const p = profile ?? activeProfile(s.connectivity, s.settings.profileOverride);
+      const stack = stackForProfile(s.settings.stacks, p);
       if (stack.active.some((m) => stackRefKey(m.ref) === key)) {
         const active = stack.active.map((m) =>
           stackRefKey(m.ref) === key ? { ...m, placement } : m,
         );
-        await get().saveSettings({ stack: { ...stack, active } });
+        await get().saveSettings({
+          stacks: { ...s.settings.stacks, [p]: { ...stack, active } },
+        });
       } else {
         await get().saveSettings({
-          stack: { ...stack, saved: { ...stack.saved, [key]: placement } },
+          stacks: {
+            ...s.settings.stacks,
+            [p]: { ...stack, saved: { ...stack.saved, [key]: placement } },
+          },
         });
       }
     },
