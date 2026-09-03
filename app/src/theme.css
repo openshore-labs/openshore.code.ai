@@ -313,6 +313,17 @@ textarea {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* min-height: 0 is load-bearing, not decorative. A .shell-main is a flex
+     column whose child (.chat-body, or a terminal/onboarding pane) holds the
+     real scroll container, and the room path nests one .shell-main inside
+     another. A flex item defaults to min-height: auto, which is content-based,
+     so without this the column refuses to shrink past its content and the
+     scroller inside it never gets a bounded height to scroll within. Desktop
+     Chrome papers over it, but iOS WKWebView honors it strictly: the chat
+     transcript grew past the viewport and could not be scrolled (the reported
+     bug). This is the same fix already applied to .chat-body one level down;
+     the ancestor was missed. */
+  min-height: 0;
 }
 
 /* Everything below the header: its own flex column so the composer (touch
@@ -6219,6 +6230,17 @@ textarea {
   box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.22);
   animation: pill-in var(--dur-2) var(--ease-arrive);
   z-index: 4;
+}
+/* When the pill is only a jump affordance (scrolled up, nothing new), it drops
+   its label and reads as a round floating button, the iMessage shape. */
+.scroll-pill.bare {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
 }
 @keyframes pill-in {
   from {
