@@ -2,8 +2,11 @@
 // downloadable right here. Pocket models pull straight onto this device with a
 // live progress bar; desktop models pull through Ollama on the desktop.
 // Licenses shown before anything downloads; weights come from the source, never
-// OpenShore. Ratings are computed from benchmarks by the server-side builder,
-// never crowd-sourced, and popularity is labelled as popularity, never quality.
+// OpenShore. There are two rating axes, and the store keeps them apart on
+// purpose: "OpenShore fit" is computed from benchmarks by the server-side
+// builder and is NEVER crowd-sourced; the community score IS crowd-sourced and
+// is always shown with its count (the tell), so the two never blur. Popularity
+// is labelled as popularity, never quality.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Catalog, CatalogModel, CapabilityCategory } from 'os-code/protocol';
@@ -46,7 +49,10 @@ import { durationMs } from '../lib/motion.js';
 import { recallScroll } from '../lib/scrollMemory.js';
 import { BackBar } from '../components/BackBar.js';
 import { LibraryIntro } from '../components/LibraryIntro.js';
-import { Stars, CapabilityLane, NotRated } from '../components/Stars.js';
+import { Stars, CapabilityLane, NotRated, CommunityStars } from '../components/Stars.js';
+import { ReviewsSection } from '../components/ReviewsSection.js';
+import { fetchSummaries, reviewsAvailable } from '../lib/reviews.js';
+import { communityScore, type CommunityScore } from '../lib/reviewsMath.js';
 import { CompareSheet } from '../components/CompareSheet.js';
 import { CapIcon, ModelTile } from '../components/MarketIcon.js';
 import {
@@ -91,6 +97,11 @@ function quantGloss(q: string): string | undefined {
 }
 
 const MEMORY_TIERS = [8, 16, 24, 48];
+
+// How many list cards to add each time the bottom sentinel scrolls into view.
+// The list can run to a few hundred models now, so it renders a window and
+// grows it, rather than mounting every card at once.
+const LIST_PAGE = 24;
 
 function parseMemoryGB(summary?: string): number {
   if (!summary) return 16;
@@ -149,6 +160,7 @@ export function MarketplaceScreen() {
     connectedProviders,
     setView,
     openConnections,
+    authSession,
   } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
   // The frontier shelf: cloud-hosted models derived from the BYOK providers.
@@ -208,6 +220,17 @@ export function MarketplaceScreen() {
   // The storage readout is ambient (a chip); its full detail opens in a sheet,
   // so status is one tap away without a card sitting over the store front.
   const [storageSheetOpen, setStorageSheetOpen] = useState(false);
+  // Incremental rendering for the sortable list. The catalog now runs to a few
+  // hundred models, so the list renders a window and grows it as a sentinel
+  // scrolls into view, keeping the first paint and every scroll frame cheap.
+  const [renderLimit, setRenderLimit] = useState(LIST_PAGE);
+  const listSentinelRef = useRef<HTMLDivElement>(null);
+  // Community review counts+averages for the models currently in view, fetched
+  // in one batched call so a browse row can carry a crowd star without one
+  // request per row. Empty until reviews land; rows fall back to benchmark only.
+  const [reviewSummaries, setReviewSummaries] = useState<
+    Map<string, { count: number; average: number }>
+  >(new Map());
 
   useEffect(() => {
     // Snap the machine tier to detected hardware on the desktop, so fit badges
@@ -564,6 +587,52 @@ export function MarketplaceScreen() {
     if (sort === 'staff') models = models.filter((m) => m.recommended?.isRecommended);
     return sortModels(models, sort, memoryGB, usageByModel);
   }, [catalog, focusedId, facets, sort, memoryGB, usageByModel]);
+
+  // A new list (a different sort or filter) starts its window from the top.
+  useEffect(() => {
+    setRenderLimit(LIST_PAGE);
+  }, [sort, facets]);
+
+  // Grow the window as the sentinel nears the viewport, so a long list pages in
+  // ahead of the scroll instead of mounting hundreds of cards up front. The
+  // rootMargin gives it a head start so the next page is ready before the edge.
+  useEffect(() => {
+    const el = listSentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setRenderLimit((n) => n + LIST_PAGE);
+      },
+      { root: screenRef.current, rootMargin: '800px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible.length, focusedId, focusedHostedId]);
+
+  // Fetch community summaries for the models on screen: the list window, plus a
+  // focused model. One batched call, so community-guided browsing costs a single
+  // request per view rather than one per row. Degrades to nothing off a
+  // configured build or when the read fails.
+  useEffect(() => {
+    if (!reviewsAvailable() || !catalog) return;
+    const ids = focusedId ? [focusedId] : visible.slice(0, renderLimit).map((m) => m.id);
+    if (ids.length === 0) return;
+    const missing = ids.filter((id) => !reviewSummaries.has(id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void fetchSummaries(missing, authSession).then((map) => {
+      if (cancelled || map.size === 0) return;
+      setReviewSummaries((prev) => {
+        const next = new Map(prev);
+        for (const [k, v] of map) next.set(k, v);
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, focusedId, visible, renderLimit, authSession]);
 
   const compareModels = useMemo(
     () =>
@@ -965,12 +1034,41 @@ export function MarketplaceScreen() {
 
         {popLabel ? <div className="market-pop">{popLabel}</div> : null}
 
+        {/* The community line: a single warm star and a count, kept apart from
+            the benchmark stars above. On a browse card only when it has reports;
+            the focused page carries the full room below. */}
+        {!focused && reviewsAvailable()
+          ? (() => {
+              const cScore = reviewScoreFor(model);
+              return cScore.count > 0 ? (
+                <div className="market-community">
+                  <CommunityStars score={cScore} />
+                </div>
+              ) : null;
+            })()
+          : null}
+
         <div className="market-meta">
           {model.sizeGB} GB · {model.quantization} · {model.contextTokens.toLocaleString()} ctx
         </div>
         <div className="license-line">{licenseLabel(model)}</div>
 
         {focused ? renderDownloadOptions(model) : null}
+
+        {focused && reviewsAvailable() ? (
+          <ReviewsSection
+            model={model}
+            benchmarkStars={model.ratings?.osCodeFit}
+            session={authSession}
+            deviceRamGB={deviceRamGB}
+            hardwarePrefill={hardwarePrefill}
+            showToast={showToast}
+            onNeedSignIn={() => {
+              showToast('Sign in under Settings to write a run report.');
+              setView('settings');
+            }}
+          />
+        ) : null}
 
         {dl && dl.failed ? (
           <div className="hint" style={{ marginTop: 8, color: 'var(--danger)' }}>
@@ -1459,6 +1557,25 @@ export function MarketplaceScreen() {
     }
     return sum;
   };
+
+  // The community score for a model, from the batched summaries and the model's
+  // own benchmark fit as the prior a sparse average shrinks toward.
+  const reviewScoreFor = (model: CatalogModel): CommunityScore => {
+    const s = reviewSummaries.get(model.id);
+    const summary = s
+      ? { count: s.count, average: s.average, dist: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }
+      : undefined;
+    return communityScore(summary, model.ratings?.osCodeFit);
+  };
+
+  // This device, for the review hardware prefill and the "machines like yours"
+  // read. The reviewer confirms and edits it; nothing is auto-collected.
+  const deviceRamGB = capacity?.ramBytes ? Math.round(capacity.ramBytes / 1e9) : undefined;
+  const hardwarePrefill = isPhone()
+    ? `iPhone${deviceRamGB ? `, ~${deviceRamGB} GB` : ''}`
+    : deviceRamGB
+      ? `${deviceRamGB} GB`
+      : '';
 
   // The used fraction and low-space flag for a device, clamped for the bar.
   const usedFractionOf = (c: DeviceCapacity) =>
@@ -2294,7 +2411,12 @@ export function MarketplaceScreen() {
 
                   <div className="market-list" key={sort}>
                     {visible.length ? (
-                      visible.map((m, i) => renderCard(m, i))
+                      <>
+                        {visible.slice(0, renderLimit).map((m, i) => renderCard(m, i))}
+                        {renderLimit < visible.length ? (
+                          <div ref={listSentinelRef} className="list-sentinel" aria-hidden="true" />
+                        ) : null}
+                      </>
                     ) : hostedMatches.length ? null : (
                       <div className="market-empty">
                         <p className="hint">No models match these filters yet.</p>

@@ -226,6 +226,37 @@ export async function select<T>(table: string, accessToken: string, query: strin
   return (await res.json()) as T[];
 }
 
+/** A PostgREST select as the ANON role (no session), for public-read tables
+ *  whose RLS grants anon. When a token is present it is used, so a signed-in
+ *  reader still gets their own row-level view (e.g. their blocks applied). */
+export async function selectPublic<T>(
+  table: string,
+  query: string,
+  accessToken?: string,
+): Promise<T[]> {
+  const res = await fetch(`${base()}/rest/v1/${table}?${query}`, {
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T[];
+}
+
+/** Call a Postgres RPC as ANON (or as the signed-in user when a token is given).
+ *  For an aggregate function whose RLS-safe result is public. */
+export async function rpcPublic<T>(
+  fn: string,
+  args: Record<string, unknown> = {},
+  accessToken?: string,
+): Promise<T> {
+  const res = await fetch(`${base()}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T;
+}
+
 /** Insert one or more rows, returning the inserted representation. */
 export async function insert<T>(
   table: string,
@@ -237,6 +268,30 @@ export async function insert<T>(
     headers: { ...authHeaders(accessToken), Prefer: 'return=representation' },
     body: JSON.stringify(rows),
   });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T[];
+}
+
+/** Insert or, on a unique-constraint conflict, merge into the existing row.
+ *  `onConflict` names the conflicting columns (e.g. "user_id,model_id"), so a
+ *  second submit updates the same row rather than failing. */
+export async function upsert<T>(
+  table: string,
+  accessToken: string,
+  rows: Record<string, unknown> | Record<string, unknown>[],
+  onConflict: string,
+): Promise<T[]> {
+  const res = await fetch(
+    `${base()}/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflict)}`,
+    {
+      method: 'POST',
+      headers: {
+        ...authHeaders(accessToken),
+        Prefer: 'return=representation,resolution=merge-duplicates',
+      },
+      body: JSON.stringify(rows),
+    },
+  );
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as T[];
 }

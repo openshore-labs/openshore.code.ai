@@ -120,20 +120,36 @@ const QUANTIZERS = new Set([
   'maziyarpanahi',
 ]);
 
-/** Model families from the labs, matched against a quantizer upload's name. */
+/** Model families from the labs, matched against a quantizer upload's name. A
+ *  quantizer upload that names none of these is skipped, so widening this list
+ *  is how a curated quantizer's copy of a new lab model reaches the shelf. */
 const LAB_FAMILY =
-  /qwen|qwq|llama|gemma|mistral|ministral|magistral|devstral|codestral|pixtral|phi-?\d|deepseek|glm|granite|olmo|molmo|smol|kimi|minimax|hunyuan|\bhy-|nemotron|gpt-oss|command|falcon|internlm|exaone|seed-|ernie|mimo|lfm|afm-|trinity|nomic|jina|bge|gte-|e5-|moondream|llava|dots|yi-|starcoder|codegemma/i;
+  /qwen|qwq|llama|gemma|mistral|mixtral|ministral|magistral|devstral|codestral|pixtral|phi-?\d|deepseek|glm|granite|olmo|molmo|smol|kimi|minimax|hunyuan|\bhy-|nemotron|gpt-oss|command|falcon|internlm|intern-?vl|exaone|seed-|ernie|mimo|lfm|afm-|trinity|nomic|jina|bge|gte-|e5-|moondream|llava|dots|yi-|starcoder|codegemma|baichuan|solar|stablelm|dbrx|arctic|jamba|aya|reka|mamba|recurrentgemma|starcoder2|granite-?\d|cogito|skywork|apriel|seed-oss|ling-|ring-|marco|xgen|orca|openchat|openhermes|hermes-?\d|command-?r/i;
 
 /** Publishers whose uploads the storefront carries sight unseen: the model
  *  labs themselves and the quantizers the community pulls from. Both axes are
  *  limited to these; every other publisher is logged as skipped so the list
- *  grows on evidence. Lowercase. */
+ *  grows on evidence. Lowercase.
+ *
+ *  This is the guardrail, NOT the name denylist. The denylist catches the crop
+ *  whose NAME advertises what it is (uncensored, abliterated, nsfw); it cannot
+ *  catch a guardrail-stripped line with a clean name. Keeping the store to
+ *  known labs and curated quantizers is what actually holds that line, so this
+ *  set is grown deliberately, publisher by publisher, never opened wholesale
+ *  (CTO ruling, 2026-09-03: opening the allowlist reintroduces the junk crop). */
 export const TRUSTED_PUBLISHERS = new Set([
+  // Curated quantizers the community pulls from. A quantizer upload must also
+  // name a known lab family (cheapReject), so these cannot smuggle in a merge.
   'bartowski',
   'unsloth',
   'lmstudio-community',
   'ggml-org',
+  'quantfactory',
+  'maziyarpanahi',
+  // Model labs, carried on their own uploads. Grown from the benchlm coverage
+  // pass, 2026-09-03: the labs behind the models a "best local LLM" list ranks.
   'qwen',
+  'alibaba-nlp',
   'google',
   'mistralai',
   'deepseek-ai',
@@ -145,11 +161,10 @@ export const TRUSTED_PUBLISHERS = new Set([
   'allenai',
   'meta-llama',
   'zai-org',
+  'thudm',
   'openai',
   'nomic-ai',
   'jinaai',
-  'quantfactory',
-  'maziyarpanahi',
   'liquidai',
   'arcee-ai',
   'inclusionai',
@@ -158,6 +173,45 @@ export const TRUSTED_PUBLISHERS = new Set([
   'xiaomimimo',
   'baidu',
   'cohereforai',
+  'coherelabs',
+  '01-ai',
+  'internlm',
+  'lgai-exaone',
+  'openbmb',
+  'tiiuae',
+  'stabilityai',
+  'ai21labs',
+  'upstage',
+  'databricks',
+  'snowflake',
+  'servicenow',
+  'bigcode',
+  'nousresearch',
+  'sarvamai',
+  'apple',
+  'stepfun-ai',
+  'rakutentech',
+  'h2oai',
+  'ontocord',
+  'kwaipilot',
+  'agentica-org',
+  'open-thoughts',
+  'deepcogito',
+  'perplexity-ai',
+  'baichuan-inc',
+  'facebook',
+  'google-bert',
+  'sentence-transformers',
+  'mixedbread-ai',
+  'baai',
+  'intfloat',
+  'skywork',
+  'reka-ai',
+  'pleias',
+  'jetbrains',
+  'menlo',
+  'tencent-hunyuan',
+  'opengvlab',
 ]);
 
 /** A trending repo must have real pulls behind it; below this it is noise
@@ -177,15 +231,30 @@ const LICENSE_ALIASES: Record<string, string> = {
 
 /** Phones carry a discovered model only under this size. */
 const PHONE_MAX_GB = 2.5;
-/** Anything bigger than this will not fit a normal desktop; skip it. */
-const DESKTOP_MAX_GB = 40;
+/** The ceiling on a discovered model, raised to carry the flagship local
+ *  models a "best local LLM" list ranks (a 70B at Q4 is ~40GB, a 120B MoE
+ *  ~65GB). The store never hides one for being large: the machine
+ *  recommendation and the iCloud home carry the "you need a big box" story.
+ *  The cap only keeps out the 300GB+ frontier dumps no local box runs. */
+const DESKTOP_MAX_GB = 200;
 
-export const DEFAULT_CAP = 40;
-export const DEFAULT_PER_AXIS = 40;
+/** How many discovered models the catalog carries. Broadened (CTO-approved
+ *  ceiling) so the store reflects the fast-moving local-model landscape;
+ *  the app renders the list incrementally so a few hundred stays smooth. */
+export const DEFAULT_CAP = 250;
+export const DEFAULT_PER_AXIS = 120;
 /** Recent uploads read per trusted publisher. */
-export const PER_PUBLISHER = 12;
-/** Metadata reads per build, across every axis. */
-export const MAX_DETAIL_READS = 160;
+export const PER_PUBLISHER = 20;
+/** Metadata reads per build, across every axis. Safe at this level because the
+ *  detail reads now run through a bounded concurrency pool (DETAIL_LANES). */
+export const MAX_DETAIL_READS = 400;
+/** At most this many repo-detail requests in flight at once. Mirrors the seed
+ *  popularity pool (sources.ts MAX_IN_FLIGHT) so a large crawl stays under the
+ *  Hugging Face rate limit instead of firing hundreds of requests at once. */
+export const DETAIL_LANES = 6;
+/** How many listing pages to follow per axis, so the crawl reaches past the
+ *  first page without an unbounded walk. */
+export const MAX_LIST_PAGES = 3;
 
 export async function discoverModels(
   client: DiscoveryClient,
@@ -254,16 +323,14 @@ export async function discoverModels(
     if (m.discovery) previousByRepo.set(m.discovery.repo, m);
   }
 
-  // One entry per underlying model: the same weights show up from several
-  // quantizers and as imatrix ("i1") twins. First in shelf order wins.
-  const bases = new Set<string>();
-  const fresh: CatalogModel[] = [];
-  let detailReads = 0;
+  // Everything that needs no detail read is rejected first (private, gated, a
+  // denylisted name, a quantizer upload of an unknown family), in shelf order,
+  // up to the read budget. Detail reads then run concurrently over what remains
+  // and the entries are built back in shelf order, so parallel I/O never
+  // changes which upload wins a collision.
+  const toRead: DiscoveredRepo[] = [];
   for (const repo of listed) {
-    if (fresh.length >= cap) break;
-    // Bound the metadata reads per build; a long tail of sharded or
-    // "other"-licensed repos must not turn one build into hundreds of calls.
-    if (detailReads >= MAX_DETAIL_READS) {
+    if (toRead.length >= MAX_DETAIL_READS) {
       skipped.push({ repo: repo.id, reason: 'detail-read budget spent this build' });
       continue;
     }
@@ -272,15 +339,43 @@ export async function discoverModels(
       skipped.push({ repo: repo.id, reason: cheap });
       continue;
     }
+    toRead.push(repo);
+  }
+
+  // Bounded concurrency: at most DETAIL_LANES reads in flight, mirroring the
+  // seed popularity pool. A large crawl stays under the Hugging Face rate limit
+  // instead of firing one request per candidate at once.
+  const details = new Array<RepoDetail | undefined>(toRead.length);
+  {
+    let next = 0;
+    const lane = async (): Promise<void> => {
+      for (;;) {
+        const i = next++;
+        if (i >= toRead.length) return;
+        details[i] = await client.detail(toRead[i]!.id);
+      }
+    };
+    const lanes = Math.min(DETAIL_LANES, toRead.length);
+    await Promise.all(Array.from({ length: lanes }, () => lane()));
+  }
+
+  // One entry per underlying model: the same weights show up from several
+  // quantizers and as imatrix ("i1") twins. First in shelf order wins, and a
+  // repo whose detail could not be read does NOT reserve its base, so a sibling
+  // upload of the same model still gets its turn.
+  const bases = new Set<string>();
+  const fresh: CatalogModel[] = [];
+  for (let i = 0; i < toRead.length; i++) {
+    if (fresh.length >= cap) break;
+    const repo = toRead[i]!;
+    const detail = details[i];
+    if (!detail) {
+      skipped.push({ repo: repo.id, reason: 'detail unreadable' });
+      continue;
+    }
     const base = baseKey(repo.id);
     if (bases.has(base)) {
       skipped.push({ repo: repo.id, reason: `duplicate of an earlier upload (${base})` });
-      continue;
-    }
-    detailReads += 1;
-    const detail = await client.detail(repo.id);
-    if (!detail) {
-      skipped.push({ repo: repo.id, reason: 'detail unreadable' });
       continue;
     }
     const built = entryFrom(repo, detail, {
@@ -368,17 +463,18 @@ export function entryFrom(
   const licenseRow = resolveLicense(LICENSE_ALIASES[licenseTag] ?? licenseTag);
   if (!licenseRow) return { skip: `license "${licenseTag}" is not on the allow-list` };
 
-  const file = pickGguf(detail.siblings ?? []);
-  if (!file) return { skip: 'no single-file GGUF at a supported quantization' };
-  if (!file.size) return { skip: 'file size unknown' };
-  const sizeGB = Math.round((file.size / 1e9) * 10) / 10;
+  const weights = pickWeights(detail.siblings ?? []);
+  if (!weights)
+    return { skip: 'no single-file GGUF or complete shard set at a supported quantization' };
+  if (!weights.sizeBytes) return { skip: 'file size unknown' };
+  const sizeGB = Math.round((weights.sizeBytes / 1e9) * 10) / 10;
   if (sizeGB < MIN_GB) return { skip: `too small to be a model (${sizeGB} GB)` };
   if (sizeGB > DESKTOP_MAX_GB) return { skip: `too big for a desktop (${sizeGB} GB)` };
 
   const categories = classify(repo.id, [...(repo.tags ?? []), ...(detail.tags ?? [])], sizeGB);
   const id = slugId(repo.id);
   const name = displayName(repo.id);
-  const quantization = file.quant;
+  const quantization = weights.quant;
 
   const model: CatalogModel = {
     id,
@@ -410,10 +506,13 @@ export function entryFrom(
       repo: repo.id,
       foundAt: ctx.previous?.discovery?.foundAt ?? ctx.today,
     },
-    ...(sizeGB <= PHONE_MAX_GB
+    // A phone entry needs a single downloadable file: a sharded model is
+    // desktop-only (the Ollama hf.co ref pulls the whole set), and is also far
+    // over the phone size ceiling anyway.
+    ...(!weights.sharded && weights.rfilename && sizeGB <= PHONE_MAX_GB
       ? {
           onDevice: {
-            url: `https://huggingface.co/${repo.id}/resolve/main/${file.rfilename}`,
+            url: `https://huggingface.co/${repo.id}/resolve/main/${weights.rfilename}`,
             sizeGB,
             minRamGB: Math.max(3, Math.ceil(sizeGB * 2 + 1)),
           },
@@ -441,13 +540,76 @@ export function pickGguf(files: RepoFile[]): (RepoFile & { quant: string }) | un
     const hit = files.find(
       (f) =>
         re.test(f.rfilename) &&
-        !/-\d{5}-of-\d{5}\.gguf$/i.test(f.rfilename) &&
+        !/-\d{4,5}-of-\d{4,5}\.gguf$/i.test(f.rfilename) &&
         !/mmproj/i.test(f.rfilename) &&
         !f.rfilename.includes('/'),
     );
     if (hit) return { ...hit, quant };
   }
   return undefined;
+}
+
+/** The weights the storefront will pull: a single-file GGUF first (which a
+ *  small model can carry on a phone), else a complete multi-part shard set at a
+ *  preferred quant (desktop only, pulled whole by the Ollama hf.co ref). This
+ *  is what lets the flagship 40 to 70GB models onto the store, since their quants
+ *  ship as shard sets that pickGguf alone rejects. `rfilename` is the single
+ *  file, or the first shard, and is used only for a phone download URL. */
+export interface WeightsPick {
+  quant: string;
+  sizeBytes: number;
+  rfilename?: string;
+  sharded: boolean;
+}
+
+export function pickWeights(files: RepoFile[]): WeightsPick | undefined {
+  const single = pickGguf(files);
+  if (single?.size) {
+    return {
+      quant: single.quant,
+      sizeBytes: single.size,
+      rfilename: single.rfilename,
+      sharded: false,
+    };
+  }
+  for (const quant of QUANT_PREFERENCE) {
+    const set = shardSet(files, quant);
+    if (set) return { quant, sizeBytes: set.total, rfilename: set.first, sharded: true };
+  }
+  return undefined;
+}
+
+/** A complete shard set at one quant, summed. Undefined unless every part from
+ *  one of N is present with a known size, so a half-uploaded set never becomes
+ *  an entry with a wrong (too-small) size. */
+export function shardSet(
+  files: RepoFile[],
+  quant: string,
+): { total: number; first: string } | undefined {
+  const re = new RegExp(`[-_.]${quant}[-_.]0*(\\d+)-of-0*(\\d+)\\.gguf$`, 'i');
+  const parts = new Map<number, { size?: number; name: string }>();
+  let expected = 0;
+  for (const f of files) {
+    if (/mmproj/i.test(f.rfilename) || f.rfilename.includes('/')) continue;
+    const m = re.exec(f.rfilename);
+    if (!m) continue;
+    const idx = Number(m[1]);
+    const tot = Number(m[2]);
+    if (!expected) expected = tot;
+    if (tot !== expected) continue; // a different set at the same quant; ignore
+    parts.set(idx, { size: f.size, name: f.rfilename });
+  }
+  if (!expected || parts.size !== expected) return undefined;
+  let total = 0;
+  let first: string | undefined;
+  for (let i = 1; i <= expected; i++) {
+    const p = parts.get(i);
+    if (!p?.size) return undefined; // a missing part or an unknown size
+    total += p.size;
+    if (i === 1) first = p.name;
+  }
+  if (!first) return undefined;
+  return { total, first };
 }
 
 /** A heuristic capability read from the name and tags. Categories are what the
@@ -516,6 +678,24 @@ function displayName(repoId: string): string {
     .trim();
 }
 
+/** The `rel="next"` URL from an HTTP Link header, or undefined. Hugging Face
+ *  paginates the models listing this way. A relative URL is resolved against
+ *  the API base. Exported for the unit test. */
+export function nextLink(header: string | null, base: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(',')) {
+    const m = /<([^>]+)>\s*;\s*rel="?next"?/i.exec(part.trim());
+    if (m?.[1]) {
+      try {
+        return new URL(m[1], base).toString();
+      } catch {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
 /** The live client. Metadata only, public repos only; HF_TOKEN lifts the
  *  anonymous rate limit when present. Every failure degrades to "nothing
  *  found" so discovery can never fail the build. */
@@ -529,33 +709,48 @@ export class HuggingFaceDiscovery implements DiscoveryClient {
     return headers;
   }
 
-  async list(sort: 'trendingScore' | 'createdAt', limit: number): Promise<DiscoveredRepo[]> {
-    const url =
-      `${this.base}/api/models?filter=gguf&sort=${sort}&direction=-1&limit=${limit}` +
-      `&expand[]=gated&expand[]=private&expand[]=tags&expand[]=downloads&expand[]=likes&expand[]=createdAt`;
-    try {
-      const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
-      if (!res.ok) return [];
-      const body = (await res.json()) as unknown;
-      return Array.isArray(body) ? (body as DiscoveredRepo[]) : [];
-    } catch {
-      return [];
+  private static readonly EXPAND =
+    '&expand[]=gated&expand[]=private&expand[]=tags&expand[]=downloads&expand[]=likes&expand[]=createdAt';
+
+  /** Follow Hugging Face's `Link: rel="next"` pagination up to MAX_LIST_PAGES,
+   *  concatenating the arrays, so one listing axis reaches past the first page
+   *  without an unbounded walk. Any failure degrades to what was gathered so
+   *  far (or nothing), so discovery never fails the build. */
+  private async fetchPaged(firstUrl: string): Promise<DiscoveredRepo[]> {
+    const out: DiscoveredRepo[] = [];
+    let url: string | undefined = firstUrl;
+    for (let page = 0; url && page < MAX_LIST_PAGES; page++) {
+      let res: Response;
+      try {
+        res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
+      } catch {
+        break;
+      }
+      if (!res.ok) break;
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        break;
+      }
+      if (!Array.isArray(body) || body.length === 0) break;
+      out.push(...(body as DiscoveredRepo[]));
+      url = nextLink(res.headers.get('link'), this.base);
     }
+    return out;
+  }
+
+  async list(sort: 'trendingScore' | 'createdAt', limit: number): Promise<DiscoveredRepo[]> {
+    return this.fetchPaged(
+      `${this.base}/api/models?filter=gguf&sort=${sort}&direction=-1&limit=${limit}${HuggingFaceDiscovery.EXPAND}`,
+    );
   }
 
   async listByAuthor(author: string, limit: number): Promise<DiscoveredRepo[]> {
-    const url =
+    return this.fetchPaged(
       `${this.base}/api/models?author=${encodeURIComponent(author)}&filter=gguf` +
-      `&sort=lastModified&direction=-1&limit=${limit}` +
-      `&expand[]=gated&expand[]=private&expand[]=tags&expand[]=downloads&expand[]=likes&expand[]=createdAt`;
-    try {
-      const res = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(10000) });
-      if (!res.ok) return [];
-      const body = (await res.json()) as unknown;
-      return Array.isArray(body) ? (body as DiscoveredRepo[]) : [];
-    } catch {
-      return [];
-    }
+        `&sort=lastModified&direction=-1&limit=${limit}${HuggingFaceDiscovery.EXPAND}`,
+    );
   }
 
   async detail(repoId: string): Promise<RepoDetail | undefined> {

@@ -3,6 +3,54 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, a broader marketplace and community run reports)
+
+Founder, from a "best local LLM" list: carry essentially every available local
+model and stay current weekly, and add App-Store-style user reviews and stars so
+browsing is community-guided. Ran it past CTO, CMO, CX, and Creative Studio.
+Founder decisions: broaden coverage but stay curated (not "open everything");
+any signed-in user may review; build both together. Built end to end; the
+reviews half needs `supabase db push` (0011) and Supabase env before it lights
+up (it degrades to benchmark-only otherwise).
+
+- **Broader coverage, still curated (Ask 1).** The discovery builder
+  (`os-code/scripts/build-catalog/discover.ts`) keeps its trusted-publisher
+  guardrail (opening it would readmit clean-named guardrail-stripped models, per
+  CTO) but grows the roster to ~70 labs and curated quantizers, teaches
+  `pickWeights`/`shardSet` to accept complete multi-part GGUF shard sets (the
+  flagship 40 to 70GB quants that a single-file pick rejected), parallelizes the
+  detail reads through a bounded pool, follows Link-header pagination, and lifts
+  the caps (250 models, 200GB ceiling, 400 reads). `gate.ts` gains a
+  `CATALOG_ALLOW_LARGE_DROP` escape hatch for a deliberate prune. The app renders
+  the sortable list incrementally (an IntersectionObserver window) so a few
+  hundred models stay smooth.
+- **Two rating axes, never blurred (Ask 2, CMO/CTO).** Benchmark "OpenShore fit"
+  is unchanged and still never crowd-sourced. Community is a SEPARATE axis in a
+  new warm `--voice` token, a single star that ALWAYS carries a count (the tell),
+  so it can never be read as the measured score. The header contract and
+  CLAUDE-level honesty framing are reworded to name both truths.
+- **A review is a run report (CMO/CX).** Star plus the hardware, quant, and felt
+  tokens/sec it ran at, prefilled from the device, so the product page can say
+  "runs well on machines like yours" (a benchmark cannot). Hardware and speed are
+  shared only on submit; local usage stays device-local. Sparse averages are
+  hidden below a count floor and shrunk toward the benchmark prior (CX), so one
+  early report never stamps a score. `reviewsMath.ts` is pure and tested.
+- **Apple 1.2 UGC, all four (CTO).** `supabase/migrations/0011_model_reviews.sql`
+  carries model_reviews / review_reports / user_blocks / review_eula_acceptance
+  with RLS (anon reads visible rows, minus blocked authors; writes own only), an
+  auto-hide trigger past a report threshold, and server-side aggregate RPCs
+  (single and batched) so browse rows get a crowd star in one call without
+  shipping raw rows. The write flow gates on EULA acceptance and a first-line
+  objectionable-content filter; every review row has report and block controls.
+- **Direction C UI (Creative Studio).** Community line on browse rows and the
+  full "room" on the product page: a display-face average, a `--voice`
+  distribution, the hardware/tok-s signal, the review list, and a sheet-based
+  write flow whose distribution settles on submit. Cold start is an invitation,
+  never a zero-star.
+- Gates green: `pnpm -r lint`, `-r typecheck`, `-r test` (os-code 343, app 442),
+  app vite build. Not device-verified; the reviews backend is unexercised until
+  `supabase db push` runs and the RPCs are live.
+
 ## Current state (2026-09-03, BYOM pill, per-status stacks, cloud favorites and direct chat)
 
 Founder-driven arc off the phone Stack screen and the model picker, shipped to
@@ -1652,6 +1700,20 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Community reviews: founder config + follow-ups.** Before reviews light
+      up: run `supabase db push` (applies 0011_model_reviews) and ship a build
+      with VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY set; without both, the store
+      shows benchmark stars only (graceful). Deferred, non-blocking: (1) a
+      moderation queue surface in AdminScreen (today the auto-hide trigger plus
+      the Supabase dashboard cover Apple 1.2; a first-party queue is nicer);
+      (2) community stars on the store-front hero/shelves, which want the CTO's
+      sidecar approach (fold a review-aggregate snapshot into the daily catalog
+      build) rather than a per-view call; (3) the sybil reality of "any signed-in
+      user may review": one-per-user, report/block, auto-hide, and the count-gated
+      average blunt it, but account creation is free, so add account-age
+      weighting or an installed-signal gate if astroturfing appears; (4) a
+      `first_successful_run` event to measure whether the community layer lifts
+      activation (CX's open question).
 - [ ] **Large-model iCloud home, TestFlight validation + the CTO caveat.** The
       "download to iCloud" path (ModelStore places the GGUF in the app's iCloud
       Drive container, ensureLocal materializes it before a load) is unverifiable

@@ -143,7 +143,11 @@ async function main(): Promise<void> {
   // Validate against the schema, then run the regression gate. A breach fails
   // the job and writes nothing.
   const validated = validateCatalog(catalog);
-  const gate = regressionGate(validated, previous, { online });
+  // CATALOG_ALLOW_LARGE_DROP=1 waives the count-collapse guard for a build that
+  // deliberately prunes the roster (a denylist tightening, a cap cut). Off by
+  // default, so a real source outage still safe-fails and keeps serving.
+  const allowLargeDrop = process.env.CATALOG_ALLOW_LARGE_DROP === '1';
+  const gate = regressionGate(validated, previous, { online, allowLargeDrop });
   if (!gate.ok) {
     console.error(
       'REGRESSION GATE FAILED. Publishing nothing; the previous catalog keeps serving.',
