@@ -28,6 +28,7 @@ export function SwipeRow({
   label,
   variant = 'pin',
   style,
+  className,
 }: {
   /** Pin variant only: whether the row is currently pinned (flips the label). */
   pinned?: boolean;
@@ -42,6 +43,7 @@ export function SwipeRow({
   variant?: 'pin' | 'danger';
   /** Applied to the row root, e.g. a per-row entrance-stagger custom property. */
   style?: CSSProperties;
+  className?: string;
 }) {
   const actionLabel = label ?? (pinned ? 'Unpin' : 'Pin');
   const actionClass =
@@ -150,7 +152,7 @@ export function SwipeRow({
   };
 
   return (
-    <div className="swipe-row" style={style}>
+    <div className={`swipe-row${className ? ` ${className}` : ''}`} style={style}>
       <div className={`swipe-action${actionClass}`} aria-hidden="true">
         {actionLabel}
       </div>

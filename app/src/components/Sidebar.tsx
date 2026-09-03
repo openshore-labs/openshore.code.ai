@@ -1,7 +1,6 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
 // rooms at the top, the second-session rooms at the bottom, nothing else. New
-// chat, quick chat, and the project switcher live in the Chats and Projects
-// rooms. Persistent on desktop, a slide-over drawer on the phone.
+// chat and the project switcher live in the Chats and Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { BrandMark } from './BrandMark.js';

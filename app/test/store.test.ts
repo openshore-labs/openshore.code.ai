@@ -1,6 +1,6 @@
 // Store-level invariants that a refactor could silently break: an org never
-// loses its last admin, saved chats land in a project (quick chats do not), and
-// quick chats never reach disk. The platform storage + insights are mocked to
+// loses its last admin, and chats land in a project and reach disk. The
+// platform storage + insights are mocked to
 // an in-memory layer so the store runs in node.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -90,41 +90,25 @@ describe('org invariants', () => {
   });
 });
 
-describe('project bucketing and quick chats', () => {
+describe('project bucketing', () => {
   beforeEach(resetStore);
 
-  it('a saved chat lands in the active project; a quick chat does not', async () => {
+  it('a chat lands in the active project', async () => {
     const s = useApp.getState();
     const projectId = await s.createProject('Alpha');
     const savedId = await s.newConversation({ kind: 'mock' });
-    const quickId = await s.newConversation({ kind: 'mock' }, { ephemeral: true });
-    const convs = useApp.getState().conversations;
-    expect(convs[savedId]!.projectId).toBe(projectId);
-    expect(convs[quickId]!.projectId).toBeUndefined();
-    expect(convs[quickId]!.ephemeral).toBe(true);
+    expect(useApp.getState().conversations[savedId]!.projectId).toBe(projectId);
   });
 
-  it('quick chats are never persisted', async () => {
+  it('every chat is persisted', async () => {
     const s = useApp.getState();
     await s.createProject('Alpha');
-    await s.newConversation({ kind: 'mock' }); // saved
-    await s.newConversation({ kind: 'mock' }, { ephemeral: true }); // quick
+    await s.newConversation({ kind: 'mock' });
+    await s.newConversation({ kind: 'mock' });
     // Wait a tick for persistConversations (fire-and-forget).
     await new Promise((r) => setTimeout(r, 10));
     const persisted = JSON.parse(mem.get(CONVERSATIONS_KEY) ?? '{"order":[],"conversations":{}}');
-    const kinds = Object.values(persisted.conversations as Record<string, { ephemeral?: boolean }>);
-    expect(kinds.every((c) => !c.ephemeral)).toBe(true);
-    expect(kinds.length).toBe(1);
-  });
-
-  it('opening a saved chat prunes a lingering quick chat', async () => {
-    const s = useApp.getState();
-    await s.createProject('Alpha');
-    const savedId = await s.newConversation({ kind: 'mock' });
-    const quickId = await s.quickChat();
-    expect(useApp.getState().conversations[quickId]).toBeDefined();
-    s.openConversation(savedId);
-    expect(useApp.getState().conversations[quickId]).toBeUndefined();
+    expect(Object.keys(persisted.conversations).length).toBe(2);
   });
 });
 

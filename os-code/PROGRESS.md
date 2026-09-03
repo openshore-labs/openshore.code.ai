@@ -3,6 +3,19 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, quick chat is gone; the Chats room breathes)
+
+Founder: get rid of the quick chat feature altogether. Removed end to end:
+the `ephemeral` flag on Conversation, `quickChat`, `keepQuickChat`, and the
+prune-on-navigate logic in the store, the "not saved, keep this chat" offer
+in the chat top bar, the link in the Chats room, the dashed dot, and the
+tests. Every chat now belongs to a project and persists; a persisted row
+from the quick-chat era is dropped on load. Then the Chats polish pass the
+founder asked for ("follow their guidance and fix it"): the title a touch
+larger with tighter tracking, rows 60px with more air between title and
+subtitle, the secondary line a whisper, and a wider gap where the day
+changes instead of a caption. Calm from spacing and type, not containers.
+
 ## Current state (2026-09-02, the Chats room is the Claude shape)
 
 Founder, from the phone: the Chats room "looks a little off"; partner with

@@ -1,8 +1,9 @@
 // The Chats room, in the shape of the Claude app's history: a plain nav
 // title with a compose icon, a search pill, then one flat list of chats
 // sorted by recency, each a one-line title over a quiet "2h ago · Claude".
-// No cards, no date captions; the timestamp carries recency. Tap to open,
-// swipe to delete (with a confirm, since it cannot be undone), hold to name.
+// No cards, no date captions; the timestamp carries recency and a wider gap
+// marks where the day changes. Tap to open, swipe to delete (with a confirm,
+// since it cannot be undone), hold to name.
 // Sessions running on the paired desktop with no chat here yet sit in the
 // same list, marked, so a job started at the desk is picked up from the couch.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -87,7 +88,6 @@ export function ChatsScreen() {
     view,
     openConversation,
     startNewChat,
-    quickChat,
     deleteConversation,
     renameConversation,
     openDesktopSession,
@@ -111,15 +111,13 @@ export function ChatsScreen() {
   const projects = settings.projects ?? [];
   const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
 
-  // The saved chats in the active project. A live quick chat is transient, so it
-  // shows only while it is the one open.
+  // The chats in the active project.
   const q = query.trim().toLowerCase();
   const chats: Row[] = order
     .filter((id) => {
       const conv = conversations[id];
       if (!conv) return false;
       if (q && !conv.title.toLowerCase().includes(q)) return false;
-      if (conv.ephemeral) return id === activeId;
       if (activeProject) return conv.projectId === activeProject.id;
       return !conv.projectId;
     })
@@ -167,6 +165,9 @@ export function ChatsScreen() {
     }));
 
   const rows = [...chats, ...desktopRows].sort((a, b) => b.at - a.at);
+  // A wider gap where the day changes: the eye feels the break without a
+  // caption to read.
+  const dayOf = (t: number) => new Date(t).toDateString();
 
   const confirmConv = confirmId ? conversations[confirmId] : undefined;
   const renameConv = renameId ? conversations[renameId] : undefined;
@@ -239,6 +240,8 @@ export function ChatsScreen() {
 
           {rows.map((row, i) => {
             const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
+            const dayBreak = i > 0 && row.at > 0 && dayOf(rows[i - 1]!.at) !== dayOf(row.at);
+            const breakClass = dayBreak ? ' day-break' : '';
             if (row.kind === 'desktop') {
               const s = row.session;
               const name =
@@ -246,7 +249,7 @@ export function ChatsScreen() {
                   ? s.title
                   : (s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd);
               return (
-                <div key={row.id} className="swipe-row chat-swipe" style={style}>
+                <div key={row.id} className={`swipe-row chat-swipe${breakClass}`} style={style}>
                   <button
                     type="button"
                     className="chat-row press-fb press-fb--row"
@@ -276,6 +279,7 @@ export function ChatsScreen() {
                 key={row.id}
                 variant="danger"
                 label="Delete"
+                className={breakClass.trim() || undefined}
                 style={style}
                 onTap={() => openConversation(row.id)}
                 onToggle={() => setConfirmId(row.id)}
@@ -289,16 +293,13 @@ export function ChatsScreen() {
                   }}
                 >
                   <span className="chat-row-title">
-                    {conv.ephemeral ? <span className="ephemeral-dot" aria-hidden="true" /> : null}
                     {conv.thread.busy ? (
                       <span className="chat-row-live" aria-label="working" />
                     ) : null}
                     {conv.title}
                   </span>
                   <span className="chat-row-sub">
-                    {conv.ephemeral
-                      ? 'Quick chat · not saved'
-                      : `${relativeTime(conv.updatedAt)} · ${sourceShort(conv)}`}
+                    {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
                   </span>
                 </div>
               </SwipeRow>
@@ -318,18 +319,6 @@ export function ChatsScreen() {
             ) : null}
           </div>
         ) : null}
-
-        <p className="chat-quick">
-          <button
-            type="button"
-            className="linklike"
-            onClick={() => {
-              void quickChat();
-            }}
-          >
-            Quick chat, not saved
-          </button>
-        </p>
       </div>
 
       <Sheet open={Boolean(confirmConv)} onClose={() => setConfirmId(undefined)} variant="confirm">

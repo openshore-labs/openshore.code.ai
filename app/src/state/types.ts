@@ -156,8 +156,6 @@ export interface Conversation {
   source: ConversationSource;
   /** The project this chat belongs to, if any. */
   projectId?: string;
-  /** A throwaway quick chat: never persisted, gone when it closes. */
-  ephemeral?: boolean;
   /** Explicitly unfiled (its project was deleted), as opposed to a legacy chat
    *  that predates projects. The init orphan-migration adopts only the latter,
    *  so an intentionally unfiled chat is never re-adopted on the next launch. */

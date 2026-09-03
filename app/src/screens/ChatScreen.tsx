@@ -156,7 +156,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     setView,
     sourceReady,
     showToast,
-    keepQuickChat,
     retryLast,
     approvePlan,
     revisePlan,
@@ -407,18 +406,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 >
                   <i style={{ transform: `scaleX(${Math.min(1, thread.contextPercent / 100)})` }} />
                 </span>
-              ) : null}
-              {/* A quick chat is thrown away on exit. Once it has grown into a
-                  real conversation, offer to keep it, right where the loss
-                  would otherwise be discovered too late. */}
-              {conv.ephemeral &&
-              (thread?.items.filter((i) => i.kind === 'user').length ?? 0) >= 3 ? (
-                <>
-                  {' · not saved · '}
-                  <button className="linklike" onClick={() => void keepQuickChat()}>
-                    Keep this chat
-                  </button>
-                </>
               ) : null}
             </div>
           </div>
