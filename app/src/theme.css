@@ -4032,6 +4032,14 @@ textarea {
     background var(--dur-2) var(--ease-standard),
     color var(--dur-2) var(--ease-standard);
 }
+/* The sort tab answers the finger too. Its own transition shorthand would
+   drop press-fb's scale release, so the release rides here alongside it. */
+.seg.press-fb {
+  transition:
+    background var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
+}
 .seg.active {
   background: var(--bg-raised);
   color: var(--local);
