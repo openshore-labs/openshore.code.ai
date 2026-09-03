@@ -31,7 +31,7 @@ import { useRoomGhost } from './hooks/useRoomGhost.js';
 import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
-import { drawerWidth } from './lib/motion.js';
+import { drawerExitMs, drawerWidth } from './lib/motion.js';
 
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();
@@ -42,8 +42,10 @@ export function App() {
   useKeyboardInset();
   // The drawer and the toast stay mounted through their exits (motion standard:
   // everything that animates in animates out). The toast keeps its last text so
-  // the fade-out does not empty the pill mid-flight.
-  const drawer = useExitPresence(compact && drawerOpen);
+  // the fade-out does not empty the pill mid-flight. The drawer's hold is the
+  // door clock (--dur-7 plus a hair), longer than the generic exit, so its
+  // glide is never cut short.
+  const drawer = useExitPresence(compact && drawerOpen, drawerExitMs());
   const toastPresence = useExitPresence(Boolean(toast));
   const lastToast = useRef(toast);
   if (toast) lastToast.current = toast;

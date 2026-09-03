@@ -7,8 +7,7 @@
 // and the drop (the commit itself).
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { hapticTick } from '../lib/haptics.js';
-import { EXIT_MS } from './useExitPresence.js';
-import { durationMs } from '../lib/motion.js';
+import { drawerExitMs, durationMs } from '../lib/motion.js';
 
 /** A flick faster than this (px per ms) commits regardless of distance. */
 const COMMIT_VELOCITY = 0.35;
@@ -265,8 +264,10 @@ export function useDrawerGesture({
         // Hold the finger's position through the exit: the panel's closing
         // keyframe starts from it (--drawer-x, see Sidebar), so the door keeps
         // sliding out from where the hand left it rather than jumping back to
-        // open first. Cleared once the exit has unmounted.
-        settle(x, () => setExitMs(null), EXIT_MS);
+        // open first. Held for the drawer's full unmount hold (App keeps the
+        // panel that long): clearing it sooner would drop --drawer-x and
+        // --drawer-exit from a still-mounted panel and re-resolve its exit.
+        settle(x, () => setExitMs(null), drawerExitMs());
       } else {
         settle(0);
       }

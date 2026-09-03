@@ -392,3 +392,11 @@ execution contract. Newest at the bottom.
   named context. Ids stay strings a project already used (a workspace path)
   plus `github:owner/name`, so no migration; GitHub is listed on the stored
   token from the app, and a native clone stays the existing desktop flow.
+- **The drawer slides on its own curve and clock, `--ease-glide` over
+  `--dur-7`.** The motion family was closed on purpose, but the iOS standard
+  curve front-loads two thirds of its travel into the first fifth of the
+  clock; on a 310px door that is a 110ms pop, and the founder's recording
+  called it jumpy. The glide is a bezier fit of UIKit's critically damped
+  spring, added as a named token with the reason beside it, pinned by the
+  tokens test. A drag-to-close keeps the standard curve on its velocity
+  clock, because a moving finger's momentum wants the front-loaded start.

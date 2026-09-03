@@ -108,7 +108,7 @@ describe('polish standards', () => {
 
   it('references the duration tokens for anything under a second', () => {
     // Ad-hoc milliseconds are how one screen drifts snappier than the rest.
-    // The tokens cover 120 to 420 ms; loops and long delays (a second or more)
+    // The tokens cover 120 to 520 ms; loops and long delays (a second or more)
     // sit outside that range and stay literal by design.
     const offenders: string[] = [];
     for (const { prop, value } of motionDeclarations()) {

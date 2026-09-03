@@ -17,12 +17,17 @@ const CANON: Record<string, string> = {
   '--ease-spring': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
   '--ease-accel': 'cubic-bezier(0.4, 0, 1, 1)',
   '--ease-loop': 'cubic-bezier(0.45, 0, 0.55, 1)',
+  // The glide: a bezier fit of UIKit's critically damped spring, for a
+  // surface that crosses the screen (the drawer). Added 2026-09-03 with a
+  // stated reason in theme.css; the family is otherwise closed.
+  '--ease-glide': 'cubic-bezier(0.3, 0.1, 0.15, 1)',
   '--dur-1': '120ms',
   '--dur-2': '160ms',
   '--dur-3': '220ms',
   '--dur-4': '280ms',
   '--dur-5': '320ms',
   '--dur-6': '420ms',
+  '--dur-7': '520ms',
   '--loop-1': '800ms',
   '--loop-2': '1100ms',
   '--loop-3': '1400ms',

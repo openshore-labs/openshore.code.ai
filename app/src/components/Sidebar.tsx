@@ -234,7 +234,12 @@ export function Sidebar({
               transform: `translateX(${dragX}px)`,
               '--drawer-x': `${dragX}px`,
               ...(settleMs !== null ? { '--drawer-settle': `${settleMs}ms` } : {}),
-              ...(exitMs !== null ? { '--drawer-exit': `${exitMs}ms` } : {}),
+              // A drag-to-close leaves on the standard curve: its front-loaded
+              // velocity carries the finger's momentum, where the glide's soft
+              // start would read as a hitch.
+              ...(exitMs !== null
+                ? { '--drawer-exit': `${exitMs}ms`, '--drawer-exit-ease': 'var(--ease-standard)' }
+                : {}),
             } as CSSProperties)
           : undefined
       }
@@ -318,7 +323,9 @@ export function Sidebar({
             ? ({
                 opacity: progress,
                 '--drawer-scrim': progress,
-                ...(exitMs !== null ? { '--drawer-exit': `${exitMs}ms` } : {}),
+                ...(exitMs !== null
+                  ? { '--drawer-exit': `${exitMs}ms`, '--drawer-exit-ease': 'var(--ease-standard)' }
+                  : {}),
               } as CSSProperties)
             : undefined
         }
