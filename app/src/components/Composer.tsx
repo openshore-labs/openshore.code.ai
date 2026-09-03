@@ -279,7 +279,10 @@ export function Composer({
   // right away (Claude does the same). Fires when autoFocus flips to true, so a
   // fresh empty state re-raises it while a live transcript leaves it alone.
   useEffect(() => {
-    if (autoFocus) areaRef.current?.focus();
+    if (!autoFocus) return;
+    // A frame later, so the room has laid out before the keyboard rises.
+    const id = requestAnimationFrame(() => areaRef.current?.focus());
+    return () => cancelAnimationFrame(id);
   }, [autoFocus]);
   useEffect(() => {
     if (focusSignal) areaRef.current?.focus();

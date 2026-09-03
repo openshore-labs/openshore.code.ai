@@ -3,6 +3,19 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, New chat opens like the first launch)
+
+Founder: after tapping New chat the composer sat under the keyboard, while
+the first-launch greeting was right. Root cause: the keyboardWillShow
+listener was registered per ChatScreen mount, and asynchronously. Opening a
+new chat from the Chats room remounts ChatScreen; the composer's autofocus
+effect runs before the parent's (child effects first) and raises the
+keyboard while the listener is still registering, so the event was missed
+and `--kb-inset` never applied. Fix: `hooks/useKeyboardInset.ts`, called
+once in `App`, from boot; and the composer's autofocus waits one frame so
+the room has laid out before the keyboard rises. The first-launch path was
+never affected because it waited for the splash to lift.
+
 ## Current state (2026-09-02, quick chat is gone; the Chats room breathes)
 
 Founder: get rid of the quick chat feature altogether. Removed end to end:
