@@ -3,6 +3,29 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the store front dissolves into the list)
+
+Founder: "keep doing the polish until the juice isn't worth the squeeze."
+Round four, the three items left on the store.
+
+- **Search and filters crossfade on the boundary.** Every facet change now
+  lands in `applyFacets`, which knows whether the store is crossing between
+  the front and the list (or leaving a product page) and runs a root
+  crossfade (`fade`, on the same View Transitions seam as the hop) only
+  then, never per keystroke, since a transition per key would drag the
+  caret. The search field and the category rail carry their own
+  view-transition names (`market-search`, `market-rail`), so they hold still
+  while the shelves below dissolve. The Discover chip, the shelf heads, and
+  both Clear filters buttons route through the same helper; a guard fails
+  any `onClick` that calls `setFacets` directly.
+- **The filter sheet's count ticks.** The number in "N models match" and on
+  the "Show N models" button is a `count-tick` span keyed on the total
+  (catalog plus hosted), on the result bar's `count-pop`, so each facet tap
+  answers.
+- **The shared name is `product-tile`.** Renamed from `hosted-tile` in CSS,
+  code, and the guard now that both product pages use it.
+  Gates green: app typecheck, lint, 341 tests.
+
 ## Current state (2026-09-03, the whole store hops)
 
 Founder: "do all the polish," round three, the two items left from the

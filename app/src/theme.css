@@ -3998,6 +3998,9 @@ textarea {
 }
 
 .market-search {
+  /* Its own view-transition group: when the shelves below crossfade into the
+     list, the field (and the caret in it) holds still. */
+  view-transition-name: market-search;
   flex: 1;
   min-width: 180px;
   background: var(--bg-raised);
@@ -4534,6 +4537,8 @@ textarea {
 
 /* Category rail: horizontally scrolling capability chips, App Store style. */
 .cat-rail {
+  /* Same as the search field: the rail holds still through a crossfade. */
+  view-transition-name: market-rail;
   display: flex;
   gap: 8px;
   overflow-x: auto;
@@ -4980,19 +4985,19 @@ textarea {
    hop. Root takes the house standard curve at a short beat; the tile itself
    takes the slow lane. */
 .product-page .model-tile {
-  view-transition-name: hosted-tile;
+  view-transition-name: product-tile;
 }
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: var(--dur-3);
   animation-timing-function: var(--ease-standard);
 }
-::view-transition-group(hosted-tile) {
+::view-transition-group(product-tile) {
   animation-duration: var(--dur-5);
   animation-timing-function: var(--ease-arrive);
 }
-::view-transition-old(hosted-tile),
-::view-transition-new(hosted-tile) {
+::view-transition-old(product-tile),
+::view-transition-new(product-tile) {
   animation-duration: var(--dur-5);
   animation-timing-function: var(--ease-arrive);
   mix-blend-mode: normal;
@@ -5003,6 +5008,13 @@ textarea {
   ::view-transition-new(*) {
     animation: none !important;
   }
+}
+
+/* A count that answers each filter tap: the number in the sheet and on its
+   Show button ticks on the same pop as the result bar. */
+.count-tick {
+  display: inline-block;
+  animation: count-pop var(--dur-3) var(--ease-spring) backwards;
 }
 
 /* The connected moment: a provider's rows just flipped from Connect to

@@ -745,12 +745,38 @@ export function MarketplaceScreen() {
       (p) => p.stack.orchestrator === id || Object.values(p.stack.specialists).includes(id),
     );
 
-  const setFacet = <K extends keyof Facets>(key: K, value: Facets[K]) => {
-    // Any search or filter leaves the single-model product view.
-    setFocusedId(undefined);
-    setFocusedHostedId(undefined);
-    setFacets((f) => ({ ...f, [key]: value }));
+  // A soft crossfade for a view that changes shape with no tile to carry it:
+  // the store front giving way to the list on the first typed character or
+  // the first facet, the list handing the front back when the last one
+  // clears, and a product page dissolving into either. Only on that
+  // boundary, never per keystroke: a transition per key would drag the caret
+  // behind the finger. The search field and the category rail carry their own
+  // view-transition names, so they hold still while the shelves below fade.
+  const fade = (update: () => void) => {
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    if (!doc.startViewTransition || window.matchMedia(REDUCED_MOTION).matches) {
+      update();
+      return;
+    }
+    doc.startViewTransition(() => flushSync(update));
   };
+
+  // Every search or filter change lands here. Any of them leaves a product
+  // page; crossing between the store front and the list crossfades.
+  const applyFacets = (next: Facets) => {
+    const toFront = !next.query.trim() && activeFacetCount(next) === 0;
+    const crossing = Boolean(focusedId || focusedHostedId) || toFront !== browsing;
+    const update = () => {
+      setFocusedId(undefined);
+      setFocusedHostedId(undefined);
+      setFacets(next);
+    };
+    if (crossing) fade(update);
+    else update();
+  };
+
+  const setFacet = <K extends keyof Facets>(key: K, value: Facets[K]) =>
+    applyFacets({ ...facets, [key]: value });
 
   // `focused`: the card is the model's own product page, so it carries the
   // tile the hero or row flew in on (and the shared name for the way back).
@@ -1014,7 +1040,7 @@ export function MarketplaceScreen() {
       onDone?.();
       return;
     }
-    tile.style.setProperty('view-transition-name', 'hosted-tile');
+    tile.style.setProperty('view-transition-name', 'product-tile');
     const transition = doc.startViewTransition(() => flushSync(update));
     void transition.finished.finally(() => {
       tile.style.removeProperty('view-transition-name');
@@ -1044,7 +1070,7 @@ export function MarketplaceScreen() {
   /** The shared-element name for a browse tile, only on the one the open page
    *  flew from (a duplicate name would make the platform skip the hop). */
   const tileName = (id: string, where: TileHome['where']) =>
-    tileHome && tileHome.id === id && tileHome.where === where ? 'hosted-tile' : undefined;
+    tileHome && tileHome.id === id && tileHome.where === where ? 'product-tile' : undefined;
 
   const hostedConnected = (m: HostedModel) => Boolean(connectedProviders[m.providerId]);
 
@@ -1436,9 +1462,9 @@ export function MarketplaceScreen() {
     }
     const openShelf = () => {
       if (shelf.capability) {
-        setFacets({ ...EMPTY_FACETS, capability: shelf.capability });
+        applyFacets({ ...EMPTY_FACETS, capability: shelf.capability });
       } else {
-        setFacets({ ...EMPTY_FACETS });
+        applyFacets({ ...EMPTY_FACETS });
         setSort(shelf.sort ?? 'recommended');
       }
     };
@@ -1549,11 +1575,7 @@ export function MarketplaceScreen() {
         role="tab"
         aria-selected={browsing}
         className={`cat-chip${browsing ? ' active' : ''}`}
-        onClick={() => {
-          setFocusedId(undefined);
-          setFocusedHostedId(undefined);
-          setFacets({ ...EMPTY_FACETS });
-        }}
+        onClick={() => applyFacets({ ...EMPTY_FACETS })}
       >
         <span className="cat-chip-glyph all" aria-hidden="true">
           <svg
@@ -1699,7 +1721,7 @@ export function MarketplaceScreen() {
       {activeFacetCount(facets) > 0 ? (
         <button
           className="btn quiet"
-          onClick={() => setFacets({ ...EMPTY_FACETS, query: facets.query })}
+          onClick={() => applyFacets({ ...EMPTY_FACETS, query: facets.query })}
         >
           Clear filters
         </button>
@@ -1890,13 +1912,7 @@ export function MarketplaceScreen() {
                       <div className="market-empty">
                         <p className="hint">No models match these filters yet.</p>
                         {activeFacetCount(facets) > 0 || facets.query.trim() ? (
-                          <button
-                            className="btn quiet"
-                            onClick={() => {
-                              setFocusedId(undefined);
-                              setFacets(EMPTY_FACETS);
-                            }}
-                          >
+                          <button className="btn quiet" onClick={() => applyFacets(EMPTY_FACETS)}>
                             Clear filters
                           </button>
                         ) : null}
@@ -1934,11 +1950,20 @@ export function MarketplaceScreen() {
         {showFilters ? (
           <>
             <h2>Filters</h2>
-            <div className="sheet-sub">{visible.length} models match.</div>
+            <div className="sheet-sub">
+              <span className="count-tick" key={visible.length + hostedMatches.length}>
+                {visible.length + hostedMatches.length}
+              </span>{' '}
+              models match.
+            </div>
             {filterRail}
             <div className="sheet-actions">
               <button className="btn primary" onClick={() => setShowFilters(false)}>
-                Show {visible.length} models
+                Show{' '}
+                <span className="count-tick" key={visible.length + hostedMatches.length}>
+                  {visible.length + hostedMatches.length}
+                </span>{' '}
+                models
               </button>
             </div>
           </>
