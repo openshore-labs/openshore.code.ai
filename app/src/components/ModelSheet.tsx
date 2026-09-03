@@ -18,7 +18,7 @@ import {
   CLAUDE_MODELS_MORE,
   claudeModelLabel,
 } from '../lib/claudeModels.js';
-import { PROVIDERS } from '../lib/providers.js';
+import { PROVIDERS, providerInfo, providerModelLabel } from '../lib/providers.js';
 import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
 import { isPinned, pinKey, togglePin } from '../lib/pins.js';
 import { SwipeRow } from './SwipeRow.js';
@@ -105,13 +105,21 @@ function PinStar({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }
 
 /** A short, human name for a pinned source, shown under My Stack. */
 function pinLabel(s: ConversationSource): string {
-  if (s.kind === 'cloud') return claudeModelLabel(s.model);
+  if (s.kind === 'cloud') {
+    return s.provider === 'anthropic'
+      ? claudeModelLabel(s.model)
+      : providerModelLabel(s.provider, s.model);
+  }
   if (s.kind === 'device') return s.modelName;
   return 'Model';
 }
 
 function pinSub(s: ConversationSource): string {
-  if (s.kind === 'cloud') return 'Claude, in the cloud';
+  if (s.kind === 'cloud') {
+    const name =
+      s.provider === 'anthropic' ? 'Claude' : (providerInfo(s.provider)?.name ?? s.provider);
+    return `${name}, in the cloud`;
+  }
   if (s.kind === 'device') return 'Runs fully on this device';
   return '';
 }
@@ -126,8 +134,7 @@ export function ModelSheet({
   /** Which sub-sheet to open on. Defaults to root; the out-of-usage tap opens 'local'. */
   initialStage?: 'root' | 'effort' | 'cloud' | 'local';
 }) {
-  const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView, showToast } =
-    useApp();
+  const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView } = useApp();
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
   const { closing, dismiss } = useSheetExit(onClose);
   const effort = settings.effort ?? DEFAULT_EFFORT;
@@ -388,24 +395,33 @@ export function ModelSheet({
                     </div>
                   </>
                 ) : null}
-                {otherProviders.length ? (
-                  <>
-                    <div className="ms-heading">In your stack</div>
+                {otherProviders.map((p) => (
+                  <div key={p.id}>
+                    <div className="ms-heading">{p.name}</div>
                     <div className="ms-group">
-                      {otherProviders.map((p) => (
-                        <Row
-                          key={p.id}
-                          main={p.name}
-                          sub="Runs inside your stack"
-                          onClick={() => {
-                            goto('stack');
-                            showToast(`${p.name} models run inside your stack.`);
-                          }}
-                        />
-                      ))}
+                      {p.models.map((m) => {
+                        const src: ConversationSource = {
+                          kind: 'cloud',
+                          provider: p.id,
+                          model: m.id,
+                        };
+                        return (
+                          <SwipeRow
+                            key={m.id}
+                            pinned={isPinned(pins, src)}
+                            onTap={() => onPick(src)}
+                            onToggle={() => setPin(src)}
+                          >
+                            <div className="ms-row">
+                              <RowContent main={m.label} sub={m.tagline} />
+                              <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
+                            </div>
+                          </SwipeRow>
+                        );
+                      })}
                     </div>
-                  </>
-                ) : null}
+                  </div>
+                ))}
               </>
             )}
           </>

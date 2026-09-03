@@ -6,6 +6,7 @@ import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
 import { isHarborMini } from '../lib/harborMini.js';
 import { claudeModelLabel } from '../lib/claudeModels.js';
+import { providerInfo, providerModelLabel } from '../lib/providers.js';
 
 export type ThreadItem =
   | { kind: 'user'; id: string; text: string }
@@ -146,7 +147,7 @@ export type ConversationSource =
   // reach the session-creating path that opens the full paid agent (CTO ruling).
   | { kind: 'desktop-chat'; model?: string }
   | { kind: 'device'; modelId: string; modelName: string }
-  | { kind: 'cloud'; provider: 'anthropic'; model: string }
+  | { kind: 'cloud'; provider: string; model: string }
   | { kind: 'stack' }
   | { kind: 'mock' };
 
@@ -325,7 +326,9 @@ export function sourceLabel(source: ConversationSource): string {
       if (isHarbor(source.modelId)) return 'Harbor · built-in guide';
       return `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
     case 'cloud':
-      return `Claude · ${claudeModelLabel(source.model)}`;
+      return source.provider === 'anthropic'
+        ? `Claude · ${claudeModelLabel(source.model)}`
+        : `${providerInfo(source.provider)?.name ?? source.provider} · ${providerModelLabel(source.provider, source.model)}`;
     case 'stack':
       return 'Your stack';
     case 'mock':

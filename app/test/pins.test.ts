@@ -41,4 +41,20 @@ describe('pins', () => {
     const pins = [{ kind: 'cloud', provider: 'anthropic', model: 'claude-opus-5' } as const];
     expect(isPinned(pins, opus)).toBe(true);
   });
+
+  it('pins a model from any cloud provider, not only Claude', () => {
+    const gpt: ConversationSource = { kind: 'cloud', provider: 'openai', model: 'gpt-5' };
+    const gemini: ConversationSource = {
+      kind: 'cloud',
+      provider: 'google',
+      model: 'gemini-2.5-pro',
+    };
+    expect(pinKey(gpt)).toBe('cloud:openai:gpt-5');
+    expect(isPinnable(gemini)).toBe(true);
+    let pins = togglePin(undefined, gpt);
+    pins = togglePin(pins, gemini);
+    expect(isPinned(pins, gpt)).toBe(true);
+    expect(isPinned(pins, gemini)).toBe(true);
+    expect(isPinned(pins, opus)).toBe(false);
+  });
 });

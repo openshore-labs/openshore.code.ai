@@ -117,7 +117,7 @@ describe('the wiring', () => {
     );
     expect(store).toMatch(/createSession\(cwd, sessionOpts\)/);
     expect(store).toMatch(/daemonCreateSession\(settings\.daemon, cwd, sessionOpts\)/);
-    expect((store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length).toBe(3);
+    expect((store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length).toBe(4);
     expect(read('drivers/cloudClaudeDriver.ts')).toMatch(/this\.extraSystem\]\.filter\(Boolean\)/);
   });
 
