@@ -323,6 +323,11 @@ interface AppState {
   /** Guards init() from running twice (React StrictMode double-invokes effects). */
   initStarted: boolean;
   view: ViewName;
+  /** The rooms behind the current one, nearest last. A room opened from the
+   *  side panel is a root (the trail clears); a room reached from inside
+   *  another room (a settings path, Manage, the terminal) pushes, so its top
+   *  bar can offer a way back to where the person came from. */
+  viewTrail: ViewName[];
   drawerOpen: boolean;
   conversations: Record<string, Conversation>;
   order: string[];
@@ -397,7 +402,11 @@ interface AppState {
   resumingId?: string;
 
   init(): Promise<void>;
-  setView(view: ViewName): void;
+  /** Go to a room. From the panel pass `{ root: true }` so the trail clears;
+   *  from inside a room the current room joins the trail. */
+  setView(view: ViewName, opts?: { root?: boolean }): void;
+  /** Return to the previous room on the trail; the panel's room if none. */
+  goBack(): void;
   setDrawer(open: boolean): void;
   showToast(message: string): void;
   /** Show the Personal upgrade sheet for a locked surface. */
@@ -1266,6 +1275,7 @@ export const useApp = create<AppState>((set, get) => {
     ready: false,
     initStarted: false,
     view: 'chat',
+    viewTrail: [],
     drawerOpen: false,
     conversations: {},
     order: [],
@@ -1605,14 +1615,29 @@ export const useApp = create<AppState>((set, get) => {
       logEvent('profile_override', { profile: profile ?? 'auto' });
     },
 
-    setView(view) {
+    setView(view, opts) {
       // Free is chat only: the Marketplace needs Personal. Intercept the
       // navigation and show the upgrade sheet instead of the locked screen.
       if (view === 'marketplace' && !get().personalUnlockedNow()) {
         get().openPaywall('marketplace');
         return;
       }
-      set({ view, drawerOpen: false });
+      const { view: current, viewTrail } = get();
+      if (view === current) {
+        set({ drawerOpen: false });
+        return;
+      }
+      // A root navigation clears the trail. Chat is always a root: it is the
+      // home the panel returns to, never a sub-page of another room.
+      const trail = opts?.root || view === 'chat' ? [] : [...viewTrail, current].slice(-8);
+      set({ view, viewTrail: trail, drawerOpen: false });
+    },
+
+    goBack() {
+      const { viewTrail } = get();
+      const prev = viewTrail[viewTrail.length - 1];
+      if (!prev) return;
+      set({ view: prev, viewTrail: viewTrail.slice(0, -1), drawerOpen: false });
     },
 
     setDrawer(open) {
@@ -1879,7 +1904,7 @@ export const useApp = create<AppState>((set, get) => {
     startNewChat() {
       // Any lingering quick chat goes; the greeting + source picker take over.
       pruneEphemeral();
-      set({ activeId: undefined, view: 'chat', drawerOpen: false });
+      set({ activeId: undefined, view: 'chat', viewTrail: [], drawerOpen: false });
     },
 
     async keepQuickChat() {
@@ -2865,13 +2890,13 @@ export const useApp = create<AppState>((set, get) => {
       // Kick the download in the background, then walk the Library intro over
       // the marketplace. ensureHarborMini manages harborMiniDownload / harborMiniReady.
       void get().ensureHarborMini();
-      set({ libraryIntro: true, view: 'marketplace', drawerOpen: false });
+      set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
     beginHarborWithIntro() {
       logEvent('library_intro_open', { model: HARBOR_MODEL_ID });
       void get().ensureHarbor();
-      set({ libraryIntro: true, view: 'marketplace', drawerOpen: false });
+      set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
     endLibraryIntro() {
@@ -3276,7 +3301,7 @@ export const useApp = create<AppState>((set, get) => {
     openConversation(id) {
       const conv = get().conversations[id];
       if (!conv) return;
-      set({ activeId: id, view: 'chat', drawerOpen: false });
+      set({ activeId: id, view: 'chat', viewTrail: [], drawerOpen: false });
       // Leaving a quick chat for a saved one: drop the quick chat.
       pruneEphemeral(id);
       if (!drivers.has(id)) {

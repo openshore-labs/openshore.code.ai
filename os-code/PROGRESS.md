@@ -3,6 +3,18 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-02, sub-rooms have a way back)
+
+Founder, from the phone: a room reached from inside another room (Settings,
+Add to your setup, Connect your computer) had only the hamburger, so there
+was no way back to Settings. Now the store keeps a `viewTrail`: a room opened
+from the side panel is a root (the trail clears, the top bar shows the menu);
+a room reached from inside a room pushes, and its top bar shows a back
+chevron (with the previous room's name on the desktop) that returns there.
+Chat is always a root. `setView(view, { root: true })` is the panel's call;
+everything else pushes; `goBack()` pops. The drawer's edge swipe still opens
+the panel from anywhere.
+
 ## Current state (2026-09-02, identity-linked Claude keys work)
 
 Founder connected Claude on the phone and the first turn failed with the raw

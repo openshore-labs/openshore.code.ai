@@ -209,7 +209,7 @@ export function Sidebar({
       <button
         key={v}
         className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}`}
-        onClick={() => setView(v)}
+        onClick={() => setView(v, { root: true })}
       >
         <span className="glyph">
           <NavIcon name={v} />
@@ -240,7 +240,7 @@ export function Sidebar({
         {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
           <button
             className={`nav-item press-fb press-fb--row${view === 'admin' ? ' active' : ''}`}
-            onClick={() => setView('admin')}
+            onClick={() => setView('admin', { root: true })}
           >
             <span className="glyph">
               <NavIcon name="admin" />
@@ -258,7 +258,7 @@ export function Sidebar({
           type="button"
           className="sidebar-signin"
           onClick={() => {
-            setView('settings');
+            setView('settings', { root: true });
             setDrawer(false);
           }}
         >
