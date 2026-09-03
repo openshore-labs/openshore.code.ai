@@ -162,16 +162,32 @@ alter table public.review_reports enable row level security;
 alter table public.user_blocks enable row level security;
 alter table public.review_eula_acceptance enable row level security;
 
+-- Has the current user blocked this author? A SECURITY DEFINER helper so the
+-- read policy below can enforce blocking WITHOUT granting every reader (anon
+-- included) select on user_blocks: a plain subquery in the policy would run as
+-- the caller and fail with "permission denied for table user_blocks" for anon,
+-- breaking signed-out browsing entirely. For anon, auth.uid() is null and this
+-- returns false, so the block clause is a no-op.
+create or replace function public.author_blocked (p_author uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.user_blocks
+    where blocker_id = auth.uid() and blocked_id = p_author
+  );
+$$;
+grant execute on function public.author_blocked (uuid) to anon, authenticated;
+
 -- Anyone (anon or signed-in) reads visible reviews, EXCEPT those authored by a
--- user the reader has blocked. For anon, auth.uid() is null and the subquery is
--- empty, so the block clause is a no-op. This is the one policy that enforces
--- the Apple block requirement at read time.
+-- user the reader has blocked. This is the one policy that enforces the Apple
+-- block requirement at read time.
 drop policy if exists model_reviews_select on public.model_reviews;
 create policy model_reviews_select on public.model_reviews for select using (
-  status = 'visible'
-  and user_id not in (
-    select blocked_id from public.user_blocks where blocker_id = auth.uid()
-  )
+  status = 'visible' and not public.author_blocked (user_id)
 );
 
 -- A signed-in user writes only their own review, and can edit or delete it.
@@ -212,6 +228,17 @@ create policy review_eula_insert on public.review_eula_acceptance for insert
 drop policy if exists review_eula_select on public.review_eula_acceptance;
 create policy review_eula_select on public.review_eula_acceptance for select
   using (auth.uid() = user_id);
+
+-- Table privileges. Supabase's default privileges usually grant these to the
+-- anon/authenticated roles automatically, but make it explicit so the feature
+-- is not at the mercy of a project's default-privileges config; RLS above still
+-- governs which ROWS each role may touch. anon reads only; a signed-in user
+-- writes its own rows.
+grant select on public.model_reviews to anon, authenticated;
+grant insert, update, delete on public.model_reviews to authenticated;
+grant select, insert on public.review_reports to authenticated;
+grant select, insert, delete on public.user_blocks to authenticated;
+grant select, insert, update on public.review_eula_acceptance to authenticated;
 
 -- The summary RPC is safe for anyone to call (it returns only aggregates over
 -- visible rows). PostgREST exposes it at /rest/v1/rpc/model_review_summary.

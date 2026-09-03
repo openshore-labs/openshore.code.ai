@@ -3,8 +3,12 @@
 -- dashboard). A small operator allowlist decides who may moderate; the RPCs run
 -- SECURITY DEFINER above RLS but refuse anyone not in that allowlist.
 --
--- Seeding: the founder adds an operator by user id from the dashboard, e.g.
---   insert into public.review_moderators (user_id) values ('<auth-user-uuid>');
+-- Seeding: the founder adds an operator from the SQL editor. By email is
+-- easiest (no need to look up a uuid):
+--   insert into public.review_moderators (user_id)
+--   select id from auth.users where email = 'founder@openshore.ai'
+--   on conflict do nothing;
+-- Or by uuid: insert into public.review_moderators (user_id) values ('<uuid>');
 -- Nobody is a moderator until seeded, so this ships inert and safe.
 --
 -- Deploy ordering: apply AFTER 0011 (it references model_reviews). Additive.
@@ -81,6 +85,9 @@ begin
 end;
 $$;
 
+-- A moderator may read the allowlist to confirm their own membership; the
+-- guarded RPCs are SECURITY DEFINER so they need no further caller grants.
+grant select on public.review_moderators to authenticated;
 grant execute on function public.is_review_moderator () to authenticated;
 grant execute on function public.admin_list_reviews (int) to authenticated;
 grant execute on function public.admin_set_review_status (uuid, text) to authenticated;

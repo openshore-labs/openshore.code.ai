@@ -948,6 +948,25 @@ export const useApp = create<AppState>((set, get) => {
       if (event.type === 'task-done') {
         if (event.reason === 'complete') hapticSuccess();
         const conv = get().conversations[conversationId];
+        // Activation: the first time a model produces a working reply on this
+        // device (once per model, persisted via logOnce). CX's funnel
+        // denominator, so we can later measure whether the community layer helps
+        // a first-run user pick a model that succeeds. Nothing here is sent
+        // anywhere the rest of insights is not; it is local telemetry.
+        if (event.reason === 'complete' && conv) {
+          const s = conv.source;
+          const key =
+            s.kind === 'device'
+              ? `device:${s.modelId}`
+              : s.kind === 'cloud'
+                ? `cloud:${s.provider}:${s.model}`
+                : s.kind === 'desktop-chat'
+                  ? `desktop-chat:${s.model ?? 'unknown'}`
+                  : s.kind === 'stack' || s.kind === 'desktop'
+                    ? s.kind
+                    : undefined;
+          if (key) logOnce(`first_successful_run:${key}`, { kind: s.kind, model: key });
+        }
         const queued = conv?.thread.queued ?? [];
         if (conv && queued.length) {
           const [head, ...rest] = queued;

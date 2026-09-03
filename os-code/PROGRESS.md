@@ -1700,24 +1700,28 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Community reviews: founder config + follow-ups.** Before reviews light
-      up: run `supabase db push` (applies 0011_model_reviews AND
-      0012_review_moderation) and ship a build with VITE_SUPABASE_URL /
-      VITE_SUPABASE_ANON_KEY set; without both, the store shows benchmark stars
-      only (graceful). To moderate, seed yourself:
-      `insert into review_moderators (user_id) values ('<your-auth-uuid>');`
-      then the queue appears under Admin. DONE since the first cut: community
-      stars now show on the store-front hero and shelves too (one batched RPC
-      per view, not per row), and the AdminScreen moderation queue (hide /
-      restore, guarded by review_moderators). Still deferred, non-blocking:
-      (1) the CTO's sidecar (fold a review-aggregate snapshot into the daily
-      catalog build) if browse volume ever makes the per-view batched call too
-      chatty, the scale path past today's one-call-per-view; (2) the sybil
-      reality of "any signed-in user may review": one-per-user, report/block,
-      auto-hide, and the count-gated average blunt it, but accounts are free, so
-      add account-age weighting or an installed-signal gate if astroturfing
-      appears; (3) a `first_successful_run` event to measure whether the
-      community layer lifts activation (CX's open question).
+- [ ] **Community reviews: founder config (the only thing left to go live).**
+      The backend was VALIDATED against a real Postgres this session (0011 + 0012
+      apply clean; anon reads visible rows, per-reader block, aggregate + batched
+      RPCs, one-per-user upsert, the report auto-hide trigger at 3, and the
+      moderator guard all exercised), which caught and fixed two bugs that would
+      have 403'd in production: missing table grants, and the block subquery in
+      the read policy locking anon out of every review (now a SECURITY DEFINER
+      `author_blocked` helper). So the only steps left are yours: (1) run
+      `supabase db push` (applies 0011_model_reviews AND 0012_review_moderation);
+      (2) ship a build with VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY set
+      (without both, the store shows benchmark stars only, graceful); (3) to
+      moderate, seed yourself once from the SQL editor
+      (`insert into review_moderators (user_id) select id from auth.users where
+      email = '<you>' on conflict do nothing;`), then the queue appears under
+      Admin. `first_successful_run` (per model, via logOnce) now fires so the
+      activation funnel can be measured later. Still deferred, non-blocking and
+      NOT needed to go live: the CTO's sidecar (a review-aggregate snapshot in
+      the daily catalog build) is the scale path if per-view browse volume ever
+      makes the batched RPC chatty; and sybil hardening (account-age weighting or
+      an installed-signal gate) if astroturfing appears, since "any signed-in
+      user may review" leans on one-per-user + report/block + auto-hide + the
+      count-gated average.
 - [ ] **Large-model iCloud home, TestFlight validation + the CTO caveat.** The
       "download to iCloud" path (ModelStore places the GGUF in the app's iCloud
       Drive container, ensureLocal materializes it before a load) is unverifiable
