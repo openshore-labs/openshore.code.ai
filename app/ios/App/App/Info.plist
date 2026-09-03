@@ -92,7 +92,14 @@
 		<string>armv7</string>
 	</array>
 	<!-- Portrait only. Horizontal (landscape) rotation is intentionally not
-	     offered on iPhone or iPad, so the app never rotates sideways. -->
+	     offered on iPhone or iPad, so the app never rotates sideways. Apple
+	     requires an iPad app to declare a landscape orientation UNLESS it also
+	     declares UIRequiresFullScreen (opting out of Split View / Slide Over
+	     multitasking entirely), so that key has to travel with this decision
+	     or every TestFlight/App Store upload is rejected at validation
+	     (ITMS-90474, seen 2026-09-03) with no visible change in behavior. -->
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
