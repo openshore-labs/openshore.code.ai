@@ -76,8 +76,30 @@ workflows:
       - name: Stamp the build number
         script: |
           set -euo pipefail
+          # Codemagic's own $BUILD_NUMBER is an internal per-build counter, NOT
+          # a query against App Store Connect. It drifted out of sync with what
+          # Apple actually has on record (2026-09-03: Codemagic stamped a build
+          # at or below the 62 already live in TestFlight), which fails the
+          # publish step with ExitFailure (31), a bundle-version product error.
+          # Ask Apple directly instead: the higher of the latest TestFlight and
+          # App Store build numbers, plus one. This can never collide again,
+          # whatever Codemagic's own counter says. Falls back to Codemagic's
+          # counter only if Apple has no build on record at all (this app's
+          # very first-ever upload), so day one still works.
+          TESTFLIGHT_LATEST=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" || echo 0)
+          APP_STORE_LATEST=$(app-store-connect get-latest-app-store-build-number "$BUNDLE_ID" || echo 0)
+          LATEST="$TESTFLIGHT_LATEST"
+          if [ "$APP_STORE_LATEST" -gt "$LATEST" ]; then
+            LATEST="$APP_STORE_LATEST"
+          fi
+          if [ "$LATEST" -eq 0 ]; then
+            NEXT="$BUILD_NUMBER"
+          else
+            NEXT=$((LATEST + 1))
+          fi
+          echo "Latest build on record: TestFlight=$TESTFLIGHT_LATEST App Store=$APP_STORE_LATEST. Stamping $NEXT."
           cd app/ios/App
-          agvtool new-version -all "$BUILD_NUMBER"
+          agvtool new-version -all "$NEXT"
       - name: Set up code signing
         script: |
           set -e
