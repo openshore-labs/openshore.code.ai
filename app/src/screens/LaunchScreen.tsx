@@ -9,6 +9,8 @@ import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import type { BuildRun, LaunchTarget } from '../state/types.js';
 import { EmbeddedSite, embeddedSitesAvailable } from '../components/EmbeddedSite.js';
+import { CODEMAGIC_TOKEN_URL } from '../lib/codemagic.js';
+import { openInAppBrowser } from '../lib/platform.js';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'Queued',
@@ -189,6 +191,14 @@ export function LaunchScreen() {
           </div>
           {!codemagicConnected && showToken ? (
             <div style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="linklike"
+                style={{ marginBottom: 8 }}
+                onClick={() => openInAppBrowser(CODEMAGIC_TOKEN_URL)}
+              >
+                Get a Codemagic API token ↗
+              </button>
               <div className="field">
                 <input
                   autoFocus
