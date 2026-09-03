@@ -3,6 +3,46 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the drawer glides on its own curve and clock)
+
+Founder, with a screen recording: "I need the panel coming in and out to be a
+smooth motion. Right now it's a bit jumpy. It needs to slide with a smooth
+animation. Slow things down if needed." The recording, pulled apart at 60fps:
+the whole slide, in and out, took about four frames. Root cause is the curve,
+not a bug: both directions ran on the iOS standard curve over `--dur-5`, and
+that curve puts about two thirds of its travel into the first fifth of the
+clock. On a 310px door the visible slide was roughly 110ms of 320ms, then an
+invisible crawl of the last few percent. A pop, then nothing.
+
+- **Two new tokens, with the reason beside them.** `--ease-glide:
+  cubic-bezier(0.3, 0.1, 0.15, 1)`, a bezier fit of UIKit's critically damped
+  spring (response 0.5s): soft start, one long even slide, a settle with no
+  overshoot. `--dur-7: 520ms`, the door clock, for a surface that crosses the
+  screen. The family was closed on purpose; this is the stated-reason door,
+  and the tokens test pins both values. Recorded in `DECISIONS.md`.
+- **The door, the scrim, and the shadow share the clock.** `drawer-in`, the
+  scrim's `fade-in`, and the shadow pseudo-element's fade all run `--dur-7`
+  on `--ease-glide`, so the room dims at the rate the door covers it (before,
+  the scrim landed dark in 220ms, ahead of the door). The exit keyframes take
+  `var(--drawer-exit, var(--dur-7)) var(--drawer-exit-ease, var(--ease-glide))`:
+  a tap-close is the entrance run backwards.
+- **A drag-to-close keeps its velocity clock and the standard curve.** The
+  gesture already sets `--drawer-exit` from the release speed; Sidebar now
+  hands `--drawer-exit-ease: var(--ease-standard)` alongside it, because a
+  moving finger's momentum wants the front-loaded start and the glide's soft
+  start would read as a hitch.
+- **The unmount hold matches.** `lib/motion.ts drawerExitMs()` reads
+  `--dur-7` plus a hair (540ms fallback). App holds the drawer mounted that
+  long instead of the generic `EXIT_MS` (340ms, which would have clipped the
+  glide's tail), and the gesture hook holds the finger's position for the
+  same length, since dropping `--drawer-x` from a still-mounted panel would
+  re-resolve its exit mid-hold.
+- Verified frame by frame in headless Chromium on virtual time: the old
+  entrance is at rest by 150ms; the new one is still travelling at 300ms and
+  settles by 520ms. Gates green: app typecheck, lint, 386 tests
+  (`motion.test.ts` pins the clock on all three surfaces, the curve hand-off
+  in Sidebar, and both holds).
+
 ## Current state (2026-09-03, the sheet close button is a drawn glyph, centered)
 
 Founder, with a screenshot of the Repositories sheet: "The x on the repository

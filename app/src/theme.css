@@ -89,12 +89,21 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-accel: cubic-bezier(0.4, 0, 1, 1);
   --ease-loop: cubic-bezier(0.45, 0, 0.55, 1);
+  /* The glide, for a large surface travelling its own width (the drawer).
+     A bezier fit of UIKit's critically damped spring (response 0.5s): a soft
+     start, one long even slide, a settle with no overshoot. Stated reason for
+     a curve outside the family (founder, 2026-09-03, with a recording): the
+     standard curve front-loads two thirds of its travel into the first fifth
+     of the clock, which on a 310px door reads as a pop, not a slide. */
+  --ease-glide: cubic-bezier(0.3, 0.1, 0.15, 1);
   --dur-1: 120ms;
   --dur-2: 160ms;
   --dur-3: 220ms;
   --dur-4: 280ms;
   --dur-5: 320ms;
   --dur-6: 420ms;
+  /* The door's clock: the one duration for a surface that crosses the screen. */
+  --dur-7: 520ms;
   /* Loops (spinners, pulses, shimmers): outside the transition range on
      purpose, but still one vocabulary. */
   --loop-1: 800ms;
@@ -562,20 +571,27 @@ textarea {
   inherits: true;
   initial-value: 310px;
 }
+/* The scrim darkens on the door's own clock and curve, so the room dims at
+   the rate the door covers it rather than snapping dark ahead of it. */
 .drawer-scrim {
   position: fixed;
   inset: 0;
   background: rgba(var(--shadow-rgb), 0.4);
   z-index: 40;
-  animation: fade-in var(--dur-3) var(--ease-standard);
+  animation: fade-in var(--dur-7) var(--ease-glide);
 }
 
+/* The door slides on the glide curve over --dur-7 (founder, 2026-09-03, with
+   a recording: the drawer "jumped" in and out; on the standard curve the
+   visible travel was about 110ms of a 320ms clock). App holds the unmount
+   for the same length (lib/motion.ts drawerExitMs), so the tail is never
+   clipped. */
 .sidebar.drawer {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 41;
   width: var(--drawer-width);
-  animation: drawer-in var(--dur-5) var(--ease-standard);
+  animation: drawer-in var(--dur-7) var(--ease-glide);
   /* After a drag releases, the panel springs to rest on this. The gesture
      hook sets --drawer-settle from the distance left to travel (between
      --dur-3 and --dur-5), so a short return is brisk and a long one glides. */
@@ -592,7 +608,7 @@ textarea {
   z-index: -1;
   pointer-events: none;
   box-shadow: 24px 0 60px rgba(var(--shadow-rgb), 0.18);
-  animation: fade-in var(--dur-5) var(--ease-standard);
+  animation: fade-in var(--dur-7) var(--ease-glide);
 }
 /* While the finger holds it, the panel is exactly where the finger is. */
 .sidebar.drawer.dragging {
@@ -620,16 +636,21 @@ textarea {
    Sidebar sets --drawer-x and --drawer-scrim from the gesture, and the
    keyframes start there (0 and 1 when the close came from a tap). The
    gesture also sets --drawer-exit from the release velocity (a flick
-   finishes in --dur-3, a slow release in --dur-5); a tap-close takes the
-   default. The shadow fades on the same clock. */
+   finishes in --dur-3, a slow release in --dur-5) and --drawer-exit-ease to
+   the standard curve, whose front-loaded velocity carries a moving finger's
+   momentum; a tap-close takes the defaults, the glide over --dur-7, the same
+   motion as the entrance run backwards. The shadow fades on the same clock. */
 .drawer-scrim.closing {
-  animation: drawer-scrim-out var(--drawer-exit, var(--dur-5)) var(--ease-standard) forwards;
+  animation: drawer-scrim-out var(--drawer-exit, var(--dur-7))
+    var(--drawer-exit-ease, var(--ease-glide)) forwards;
 }
 .sidebar.drawer.closing {
-  animation: drawer-out var(--drawer-exit, var(--dur-5)) var(--ease-standard) forwards;
+  animation: drawer-out var(--drawer-exit, var(--dur-7)) var(--drawer-exit-ease, var(--ease-glide))
+    forwards;
 }
 .sidebar.drawer.closing::after {
-  animation: fade-out var(--drawer-exit, var(--dur-5)) var(--ease-standard) forwards;
+  animation: fade-out var(--drawer-exit, var(--dur-7)) var(--drawer-exit-ease, var(--ease-glide))
+    forwards;
 }
 @keyframes fade-out {
   to {

@@ -16,6 +16,15 @@ export function durationMs(token: string, fallback: number): number {
   return m[2] === 's' ? n * 1000 : n;
 }
 
+/** How long the drawer stays mounted after it is asked to close: the door's
+ *  clock (`--dur-7`) plus a hair, so the glide's decelerating tail is never
+ *  clipped by the unmount. The gesture hook holds the finger's position for
+ *  the same length, so a drag-to-close (which finishes sooner, on its own
+ *  velocity clock) never loses its keyframe start mid-hold. */
+export function drawerExitMs(): number {
+  return durationMs('--dur-7', 520) + 20;
+}
+
 /** The drawer's rendered width in px. `--drawer-width` is registered as a
  *  `<length>` (theme.css @property), so its computed value comes back already
  *  resolved to pixels for the current viewport. */
