@@ -41,8 +41,11 @@ in at once. All three asks landed, shaped by the Studio's brief.
   the instant streaming ended; it now keeps ticking until the last character
   lands, and the caret stays through that tail and fades out (`--dur-4`)
   rather than unmounting. The caret breathes on `--ease-loop` instead of a
-  hard `steps(1)` blink. The terminal's smoother keeps its brisker cadence;
-  see DECISIONS.
+  hard `steps(1)` blink, and now rides a pseudo-element on the reply's last
+  text line (`.md-caret > p:last-child::after` and its siblings, driven by a
+  `caret` prop on `Markdown`), so it sits inline at the end of the words
+  instead of hanging as its own block beneath the paragraph. The terminal's
+  smoother keeps its brisker cadence; see DECISIONS.
 - **The seam.** The working row eases out (`useExitPresence`, fade and a 3 px
   rise) instead of vanishing, and when the reply is what ended it, the slot
   gives up its height and the thread gap so the row plays its exit on the
@@ -55,7 +58,7 @@ in at once. All three asks landed, shaped by the Studio's brief.
 - `test/workingRow.test.ts` pins the lexicon rules and the draw, the mark's
   verbatim motif and one-wavelength loop, the reduced-motion rest, the row's
   exit binding, the seam, and the caret's settle. `streamSmoothing.test.ts`
-  pins the pace and the lag bound. Gates green: app typecheck, lint, 355
+  pins the pace and the lag bound; the inline caret is pinned too. Gates green: app typecheck, lint, 356
   tests. Verified in a headless phone viewport on the scripted tour.
 
 **Studio extras left for the founder's call** (ranked by the Studio, none

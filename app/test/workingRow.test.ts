@@ -111,7 +111,16 @@ describe('the seam', () => {
   it('keeps the caret while the tail settles and fades it, never a hard unmount', () => {
     expect(list).toMatch(/const live = streaming \|\| settling/);
     expect(list).toMatch(/useExitPresence\(live/);
-    expect(theme).toMatch(/\.cursor-caret\.closing \{[^}]*animation: caret-out/);
+    expect(theme).toMatch(/\.md-caret-out[\s\S]*?::after[\s\S]*?animation: caret-out/);
     expect(theme).not.toContain('steps(1)');
+  });
+
+  it('renders the caret inline at the end of the last line, not as its own block', () => {
+    // A pseudo-element on the reply's last text block, breathing while live;
+    // the old sibling <span className="cursor-caret"> hung under the paragraph.
+    expect(list).toContain('caret={caret}');
+    expect(list).not.toContain('cursor-caret');
+    expect(read('components/Markdown.tsx')).toMatch(/caret === 'on' \? ' md-caret'/);
+    expect(theme).toMatch(/\.md-caret > p:last-child::after[\s\S]*?animation: caret-breathe/);
   });
 });
