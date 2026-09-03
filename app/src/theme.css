@@ -957,6 +957,113 @@ textarea {
   transition: transform var(--press-in);
 }
 
+/* Status selector on the Stack page: the whole card is a button. A dot leads,
+   the status name is large with its byline on its own line beneath, and a caret
+   trails. Each status runs its own stack, used automatically for that status. */
+.profile-select {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--press-out);
+}
+.profile-select:active {
+  transform: scale(0.99);
+  transition: transform var(--press-in);
+}
+
+.profile-select-dot {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
+.profile-select-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.profile-select-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.profile-select-blurb {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.profile-select-caret {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  transition: transform var(--press-out);
+}
+.profile-select:active .profile-select-caret {
+  transform: translateY(1px);
+}
+
+/* The small chip marking the status the device is actually in right now. */
+.profile-now {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--local-soft);
+  color: var(--local);
+}
+
+/* Status options in the picker sheet: a dot, the name, and the byline beneath. */
+.profile-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  text-align: left;
+}
+.profile-option.selected {
+  border-color: var(--local);
+  background: var(--local-soft);
+}
+.profile-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+.profile-option-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.profile-option-blurb {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-weight: 400;
+}
+
 /* ----------------------------------------------------------------- vault */
 
 /* Wikilinks wear the brand teal: internal knowledge is local/private, so it

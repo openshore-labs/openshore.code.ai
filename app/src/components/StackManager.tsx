@@ -7,17 +7,23 @@
 import { useState } from 'react';
 import { stackAdmin, useApp } from '../state/store.js';
 import { BackBar } from './BackBar.js';
-import { PROFILES, autoProfile, effectiveProfile } from '../lib/profiles.js';
+import {
+  PROFILES,
+  PROFILE_ORDER,
+  autoProfile,
+  effectiveProfile,
+  type ProfileId,
+} from '../lib/profiles.js';
 import { PROVIDERS } from '../lib/providers.js';
 import { byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import {
   STACK_CATEGORIES,
   categoryLabel,
-  emptyStack,
   harborRef,
   placementValid,
   refKey,
   refName,
+  stackForProfile,
   type Placement,
   type StackModelRef,
 } from '../lib/stack.js';
@@ -48,31 +54,32 @@ export function StackManager() {
   } = useApp();
 
   const admin = stackAdmin(settings.account);
+  // The status the device is in right now. Its stack is the one used
+  // automatically; the app switches between the three as the status changes.
   const profile = effectiveProfile(autoProfile(connectivity), settings.profileOverride);
-  const stack = settings.stack ?? emptyStack();
+  // Which status's stack is being viewed and edited here. Opens on the current
+  // status; a picker below lets you tune the other two without being in them.
+  const [editProfile, setEditProfile] = useState<ProfileId>(profile);
+  const stack = stackForProfile(settings.stacks, editProfile);
   const reasoning = stack.reasoning ?? harborRef();
 
   const deviceRefs: StackModelRef[] = [
     ...(settings.harborReady ? [harborRef()] : []),
-    ...Object.entries(settings.deviceModels).map(
-      ([modelId, modelName]): StackModelRef => ({
-        kind: 'device',
-        modelId,
-        modelName,
-      }),
-    ),
+    ...Object.entries(settings.deviceModels).map(([modelId, modelName]): StackModelRef => ({
+      kind: 'device',
+      modelId,
+      modelName,
+    })),
   ];
   const byomRefs: StackModelRef[] = (settings.byomModels ?? []).map(byomRef);
   const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
     (p) =>
-      p.models.map(
-        (m): StackModelRef => ({
-          kind: 'cloud',
-          provider: p.id,
-          model: m.id,
-          label: m.label,
-        }),
-      ),
+      p.models.map((m): StackModelRef => ({
+        kind: 'cloud',
+        provider: p.id,
+        model: m.id,
+        label: m.label,
+      })),
   );
   const available: StackModelRef[] = [...deviceRefs, ...byomRefs, ...cloudRefs];
   const activeKeys = new Set(stack.active.map((m) => refKey(m.ref)));
@@ -93,6 +100,7 @@ export function StackManager() {
   // Placement sheet: configuring a bench model into the stack, or editing one.
   const [config, setConfig] = useState<{ ref: StackModelRef; placement: Placement } | undefined>();
   const [pickReasoning, setPickReasoning] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [menuKey, setMenuKey] = useState<string | undefined>();
   const [cloudPick, setCloudPick] = useState<Record<string, string>>({});
 
@@ -132,7 +140,7 @@ export function StackManager() {
       showToast('A custom category needs a trigger and a persona.');
       return;
     }
-    await placeSpecialist(config.ref, config.placement);
+    await placeSpecialist(config.ref, config.placement, editProfile);
     setConfig(undefined);
   };
 
@@ -172,13 +180,37 @@ export function StackManager() {
             : 'Your admin sets the shared stack for the company. It plans every task and routes it to the specialist whose category fits. You can talk with your admin about changing it.'}
         </p>
 
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="profile-dot" style={{ background: PROFILES[profile].dot }} />
-          <div className="sub" style={{ margin: 0 }}>
-            <strong style={{ color: 'var(--ink)' }}>{PROFILES[profile].label}.</strong>{' '}
-            {PROFILES[profile].blurb}
-          </div>
-        </div>
+        {/* Status selector: each status runs its own stack, used automatically
+            when the device is in it. Opens on the current status; picking
+            another shows and edits that status's stack. */}
+        <button
+          className="card profile-select press-fb"
+          onClick={() => setProfileMenuOpen(true)}
+          aria-label={`Editing the ${PROFILES[editProfile].label} stack. Tap to switch status.`}
+        >
+          <span className="profile-select-dot" style={{ background: PROFILES[editProfile].dot }} />
+          <span className="profile-select-text">
+            <span className="profile-select-title">
+              {PROFILES[editProfile].label}
+              {editProfile === profile ? <span className="profile-now">now</span> : null}
+            </span>
+            <span className="profile-select-blurb">{PROFILES[editProfile].blurb}</span>
+          </span>
+          <span className="profile-select-caret" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
+        </button>
 
         {/* Reasoning LLM anchor. Required and immovable, but replaceable. */}
         <div className="card">
@@ -372,7 +404,7 @@ export function StackManager() {
                 onClick={async () => {
                   const key = menuKey;
                   setMenuKey(undefined);
-                  await benchSpecialist(key);
+                  await benchSpecialist(key, editProfile);
                   showToast('Moved to the bench. Its settings are kept.');
                 }}
               >
@@ -381,6 +413,41 @@ export function StackManager() {
               <button className="btn quiet" onClick={() => setMenuKey(undefined)}>
                 Cancel
               </button>
+            </div>
+          </>
+        ) : null}
+      </Sheet>
+
+      {/* Status picker: choose which status's stack to view and edit. The one
+          matching the current status is marked, and is used automatically. */}
+      <Sheet open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)}>
+        {profileMenuOpen ? (
+          <>
+            <h2>Which status?</h2>
+            <p className="sheet-sub">
+              Each status runs its own stack, used automatically when you are in it. You are{' '}
+              {PROFILES[profile].label} right now.
+            </p>
+            <div className="sheet-actions">
+              {PROFILE_ORDER.map((id) => (
+                <button
+                  key={id}
+                  className={`btn ghost profile-option${id === editProfile ? ' selected' : ''}`}
+                  onClick={() => {
+                    setEditProfile(id);
+                    setProfileMenuOpen(false);
+                  }}
+                >
+                  <span className="profile-select-dot" style={{ background: PROFILES[id].dot }} />
+                  <span className="profile-option-text">
+                    <span className="profile-option-title">
+                      {PROFILES[id].label}
+                      {id === profile ? <span className="profile-now">now</span> : null}
+                    </span>
+                    <span className="profile-option-blurb">{PROFILES[id].blurb}</span>
+                  </span>
+                </button>
+              ))}
             </div>
           </>
         ) : null}
@@ -403,7 +470,7 @@ export function StackManager() {
                     className="btn ghost"
                     onClick={async () => {
                       setPickReasoning(false);
-                      await setReasoning(r);
+                      await setReasoning(r, editProfile);
                       showToast(`${refName(r)} is your Reasoning LLM.`);
                     }}
                   >

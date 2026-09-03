@@ -3,6 +3,8 @@
 // platform storage + insights are mocked to
 // an in-memory layer so the store runs in node.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { stackForProfile, type StackModelRef } from '../src/lib/stack.js';
+import { autoProfile, effectiveProfile } from '../src/lib/profiles.js';
 
 const mem = new Map<string, string>();
 const secrets = new Map<string, string>();
@@ -375,13 +377,72 @@ describe('bring your own model', () => {
       baseUrl: conn.baseUrl,
       model: conn.model,
     });
-    expect(useApp.getState().settings.stack?.reasoning?.kind).toBe('byom');
+    // The anchor lands in the current status's stack (per-status stacks).
+    const currentStack = () => {
+      const s = useApp.getState();
+      const p = effectiveProfile(autoProfile(s.connectivity), s.settings.profileOverride);
+      return stackForProfile(s.settings.stacks, p);
+    };
+    expect(currentStack().reasoning?.kind).toBe('byom');
 
     await useApp.getState().disconnectByom(conn.id);
     expect(secrets.has(`oscode.secret.byom.${conn.id}`)).toBe(false);
     expect(useApp.getState().settings.byomModels ?? []).toHaveLength(0);
     // The anchor is never left dangling: it falls back to the built-in guide.
-    expect(useApp.getState().settings.stack?.reasoning?.kind).toBe('device');
+    expect(currentStack().reasoning?.kind).toBe('device');
+  });
+});
+
+// Per-status stacks: each connectivity status (docked, offshore, offline)
+// carries its own stack, edited independently and used automatically for that
+// status. The edit actions target the named status and leave the others alone.
+describe('per-status stacks', () => {
+  beforeEach(resetStore);
+
+  const cloudRef: StackModelRef = {
+    kind: 'cloud',
+    provider: 'anthropic',
+    model: 'claude-opus-5',
+    label: 'Claude Opus 5',
+  };
+
+  it('a Reasoning anchor set for one status does not touch the others', async () => {
+    await useApp.getState().setReasoning(cloudRef, 'docked');
+    const stacks = () => useApp.getState().settings.stacks;
+    expect(stackForProfile(stacks(), 'docked').reasoning).toMatchObject({ kind: 'cloud' });
+    // Untouched statuses fall back to the anchor-only default (a device guide).
+    expect(stackForProfile(stacks(), 'offshore').reasoning?.kind).toBe('device');
+    expect(stackForProfile(stacks(), 'offline').reasoning?.kind).toBe('device');
+  });
+
+  it('a specialist placed for one status lands only in that status', async () => {
+    await useApp.getState().placeSpecialist(cloudRef, { category: 'fast' }, 'offline');
+    const stacks = () => useApp.getState().settings.stacks;
+    expect(stackForProfile(stacks(), 'offline').active).toHaveLength(1);
+    expect(stackForProfile(stacks(), 'docked').active).toHaveLength(0);
+    expect(stackForProfile(stacks(), 'offshore').active).toHaveLength(0);
+  });
+
+  it('disconnecting a BYOM endpoint pulls it from every status', async () => {
+    const conn = await useApp.getState().connectByom({
+      label: 'Shared model',
+      baseUrl: 'https://host/v1',
+      model: 'm',
+      apiKey: '',
+    });
+    const byom: StackModelRef = {
+      kind: 'byom',
+      id: conn.id,
+      label: conn.label,
+      baseUrl: conn.baseUrl,
+      model: conn.model,
+    };
+    await useApp.getState().placeSpecialist(byom, { category: 'coding' }, 'docked');
+    await useApp.getState().placeSpecialist(byom, { category: 'coding' }, 'offshore');
+    await useApp.getState().disconnectByom(conn.id);
+    const stacks = () => useApp.getState().settings.stacks;
+    expect(stackForProfile(stacks(), 'docked').active).toHaveLength(0);
+    expect(stackForProfile(stacks(), 'offshore').active).toHaveLength(0);
   });
 });
 

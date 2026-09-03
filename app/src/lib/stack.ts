@@ -8,6 +8,7 @@
 // The Reasoning LLM plans and routes each task to the specialist whose category
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
+import type { ProfileId } from './profiles.js';
 
 export type StackCategory =
   'coding' | 'writing' | 'analysis' | 'vision' | 'image-gen' | 'embedding' | 'fast' | 'custom';
@@ -94,6 +95,18 @@ export function placementValid(p: Placement): boolean {
 
 export function harborRef(): StackModelRef {
   return { kind: 'device', modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME };
+}
+
+// A stack per connectivity profile. Reach changes what your stack can use, so
+// each status (docked, offshore, offline) carries its own configuration and the
+// app switches to the matching one automatically as your status changes. The
+// map is partial: a status with no entry falls back to a fresh anchor-only
+// stack, so a profile the user has not tuned still answers.
+export type ProfileStacks = Partial<Record<ProfileId, AppStack>>;
+
+/** The stack configured for a status, or a fresh anchor-only one if none. */
+export function stackForProfile(stacks: ProfileStacks | undefined, profile: ProfileId): AppStack {
+  return stacks?.[profile] ?? emptyStack();
 }
 
 /** A fresh stack: Harbor Mini is the first Reasoning LLM (kept small so
