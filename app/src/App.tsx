@@ -226,7 +226,11 @@ export function App() {
         {room}
       </div>
       <div className="room-ghost-host" ref={ghostRef} aria-hidden="true" />
-      {compact && !drawerOpen && !gesture.peek ? (
+      {/* The zone must outlive the gesture it started: it holds the pointer
+          capture, and an element removed mid-gesture loses it, so its release
+          handler would never fire and the scrim would stay up, invisible,
+          eating every tap. Hence `|| gesture.peek`, never `&& !gesture.peek`. */}
+      {compact && (!drawerOpen || gesture.peek) ? (
         <div className="edge-swipe-zone" {...gesture.edgeProps} aria-hidden="true" />
       ) : null}
       {compact && (drawer.mounted || gesture.peek) ? (
