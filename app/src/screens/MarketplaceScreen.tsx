@@ -4,7 +4,8 @@
 // Licenses shown before anything downloads; weights come from the source, never
 // OpenShore. Ratings are computed from benchmarks by the server-side builder,
 // never crowd-sourced, and popularity is labelled as popularity, never quality.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { Catalog, CatalogModel, CapabilityCategory } from 'os-code/protocol';
 import { CAPABILITIES } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
@@ -27,6 +28,8 @@ import { bridge } from '../lib/electronBridge.js';
 import { isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { logEvent } from '../lib/insights.js';
+import { durationMs } from '../lib/motion.js';
+import { recallScroll } from '../lib/scrollMemory.js';
 import { BackBar } from '../components/BackBar.js';
 import { LibraryIntro } from '../components/LibraryIntro.js';
 import { Stars, CapabilityLane, NotRated } from '../components/Stars.js';
@@ -108,6 +111,17 @@ const FIT_PILL: Record<FitLabel, { cls: string; text: string }> = {
 
 const CAP_ORDER = Object.keys(CAPABILITIES) as CapabilityCategory[];
 
+// The hosted product page that was open when the store was left for another
+// room (Cloud Connections, the Stack), so a Connect tap comes back to the page
+// it left rather than the store front. Honored on a back navigation only; a
+// fresh open from the panel starts at the front, the way a tab does.
+let hostedPageMemory: string | undefined;
+
+/** Where a hosted tile was tapped, so the way back flies to the same tile. */
+type TileHome = { id: string; where: 'hero' | 'row' };
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+
 export function MarketplaceScreen() {
   const {
     settings,
@@ -125,7 +139,19 @@ export function MarketplaceScreen() {
   // The frontier shelf: cloud-hosted models derived from the BYOK providers.
   // Their product page is its own focus, distinct from a catalog model's.
   const hosted = useMemo(() => hostedModels(), []);
-  const [focusedHostedId, setFocusedHostedId] = useState<string | undefined>();
+  const [focusedHostedId, setFocusedHostedId] = useState<string | undefined>(() =>
+    useApp.getState().arrivedBack ? hostedPageMemory : undefined,
+  );
+  const focusedHostedRef = useRef(focusedHostedId);
+  focusedHostedRef.current = focusedHostedId;
+  // The tile the open page flew from, so the way back flies to it.
+  const [tileHome, setTileHome] = useState<TileHome | undefined>();
+  // A provider connected since the store was last on screen: its rows just
+  // flipped from Connect to "on bench", and pop once to mark the commit.
+  const [pop, setPop] = useState<string | undefined>(() => useApp.getState().justConnected);
+  // The room's scroller. The window never scrolls here (.screen does), so
+  // scroll-to-top and scroll memory address this element.
+  const screenRef = useRef<HTMLDivElement>(null);
   // Which stack bundle is installing, if any (hooks stay above every early
   // return; the bundle logic itself lives further down with the other installs).
   const [bundleBusy, setBundleBusy] = useState<string | undefined>();
@@ -172,6 +198,33 @@ export function MarketplaceScreen() {
       setNote(note);
     });
   }, [settings.daemon]);
+
+  useEffect(() => {
+    // Remember the open hosted page for the way back, whatever room comes next.
+    return () => {
+      hostedPageMemory = focusedHostedRef.current;
+    };
+  }, []);
+
+  useEffect(() => {
+    // Back from another room: land where the eye left, once the catalog has
+    // given the shelves their height (the app-level restore ran at mount,
+    // against a skeleton that may have been too short to hold the offset).
+    if (!catalog || !useApp.getState().arrivedBack) return;
+    const top = recallScroll('marketplace');
+    if (top && screenRef.current) screenRef.current.scrollTop = top;
+  }, [catalog]);
+
+  useEffect(() => {
+    // The connected moment. A haptic marks the commit, the pill pops in on
+    // the release spring, then the flag rests so nothing replays.
+    if (!pop) return;
+    hapticSuccess();
+    useApp.getState().clearJustConnected();
+    const t = setTimeout(() => setPop(undefined), durationMs('--dur-5', 600));
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // MP-F4: adopt pocket models that finished downloading while the app was
@@ -470,7 +523,7 @@ export function MarketplaceScreen() {
     // (up to several seconds on a cold cellular tailnet) reads as loading, not
     // stalled. The shimmer is killed by the global reduced-motion reset.
     return (
-      <div className="screen">
+      <div className="screen" ref={screenRef}>
         <BackBar title="Marketplace" />
         <div className="screen-inner">
           <h1>Models, in plain language</h1>
@@ -900,12 +953,16 @@ export function MarketplaceScreen() {
 
   // Open one model as its own product page: an exact focus (not a name search),
   // its full card with ratings, license, and details expanded up front.
+  const scrollToTop = () => {
+    if (screenRef.current) screenRef.current.scrollTop = 0;
+  };
+
   const openModel = (model: CatalogModel) => {
     setFacets(EMPTY_FACETS);
     setFocusedHostedId(undefined);
     setFocusedId(model.id);
     setDetailOpen(model.id);
-    window.scrollTo?.({ top: 0 });
+    scrollToTop();
   };
 
   // ---- hosted (cloud) models: the frontier shelf ---------------------------
@@ -913,19 +970,61 @@ export function MarketplaceScreen() {
   // offers Connect instead of Get. A connected provider already has its models
   // on the Bench (the Stack derives them from the same providers), so the
   // control flips to "on bench" the moment the key is saved.
-  const openHosted = (m: HostedModel) => {
-    setFacets(EMPTY_FACETS);
-    setFocusedId(undefined);
-    setDetailOpen(undefined);
-    setFocusedHostedId(m.id);
-    window.scrollTo?.({ top: 0 });
+
+  // The tile hops. A hosted hero or row and its product page share one tile,
+  // so the page arrives by that tile flying into place instead of the list
+  // hard-cutting to a card. The View Transitions API where the platform has
+  // it (iOS 18, Chromium); a plain swap elsewhere and under reduced motion.
+  // The origin tile is handed the shared name for this one hop; the page
+  // tile carries it in CSS. The DOM update is flushed inside the callback so
+  // the new snapshot is taken from the finished render.
+  const hop = (update: () => void, origin: Element | null, onDone?: () => void) => {
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { finished: Promise<void> };
+    };
+    const tile = origin?.querySelector<HTMLElement>('.model-tile') ?? null;
+    if (!doc.startViewTransition || !tile || window.matchMedia(REDUCED_MOTION).matches) {
+      update();
+      onDone?.();
+      return;
+    }
+    tile.style.setProperty('view-transition-name', 'hosted-tile');
+    const transition = doc.startViewTransition(() => flushSync(update));
+    void transition.finished.finally(() => {
+      tile.style.removeProperty('view-transition-name');
+      onDone?.();
+    });
   };
+
+  const openHosted = (m: HostedModel, origin: Element | null, where: TileHome['where']) => {
+    setTileHome({ id: m.id, where });
+    hop(() => {
+      setFacets(EMPTY_FACETS);
+      setFocusedId(undefined);
+      setDetailOpen(undefined);
+      setFocusedHostedId(m.id);
+    }, origin);
+    scrollToTop();
+  };
+
+  const closeHosted = () => {
+    hop(
+      () => setFocusedHostedId(undefined),
+      screenRef.current?.querySelector('.hosted-page') ?? null,
+      () => setTileHome(undefined),
+    );
+  };
+
+  /** The shared-element name for a browse tile, only on the one the open page
+   *  flew from (a duplicate name would make the platform skip the hop). */
+  const tileName = (m: HostedModel, where: TileHome['where']) =>
+    tileHome && tileHome.id === m.id && tileHome.where === where ? 'hosted-tile' : undefined;
 
   const hostedConnected = (m: HostedModel) => Boolean(connectedProviders[m.providerId]);
 
   const hostedControl = (m: HostedModel) =>
     hostedConnected(m) ? (
-      <span className="pill cloud">on bench</span>
+      <span className={`pill cloud${pop === m.providerId ? ' pill-pop' : ''}`}>on bench</span>
     ) : (
       <button
         className="store-get"
@@ -950,12 +1049,13 @@ export function MarketplaceScreen() {
       key={m.id}
       role="button"
       tabIndex={0}
+      data-cap={m.categories[0] ?? 'reasoning'}
       style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
-      onClick={() => openHosted(m)}
+      onClick={(e) => openHosted(m, e.currentTarget, 'hero')}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          openHosted(m);
+          openHosted(m, e.currentTarget, 'hero');
         }
       }}
       aria-label={`${m.name}. ${m.tagline}`}
@@ -967,7 +1067,7 @@ export function MarketplaceScreen() {
       <div className="hero-title">{m.name}</div>
       <div className="hero-tagline">{m.tagline}</div>
       <div className="hero-foot">
-        <ModelTile name={m.name} cloud size={48} />
+        <ModelTile name={m.name} cloud size={48} transitionName={tileName(m, 'hero')} />
         <div className="hero-foot-meta">
           <span className="pill cloud">On your key</span>
           <span className="hero-size">
@@ -987,15 +1087,15 @@ export function MarketplaceScreen() {
         key={m.id}
         role="button"
         tabIndex={0}
-        onClick={() => openHosted(m)}
+        onClick={(e) => openHosted(m, e.currentTarget, 'row')}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            openHosted(m);
+            openHosted(m, e.currentTarget, 'row');
           }
         }}
       >
-        <ModelTile name={m.name} cloud size={52} />
+        <ModelTile name={m.name} cloud size={52} transitionName={tileName(m, 'row')} />
         <div className="store-row-body">
           <div className="store-row-name">{m.name}</div>
           <div className="store-row-sub">{m.tagline}</div>
@@ -1084,7 +1184,9 @@ export function MarketplaceScreen() {
           {hostedIsNew(m) ? <span className="pill cloud">New</span> : null}
           <span className="pill cloud">Cloud, on your key</span>
           <span className="pill muted">{m.openWeights ? 'Open weights' : 'Closed weights'}</span>
-          {connected ? <span className="pill ok">connected</span> : null}
+          {connected ? (
+            <span className={`pill ok${pop === m.providerId ? ' pill-pop' : ''}`}>connected</span>
+          ) : null}
         </div>
 
         <div className="market-meta">
@@ -1545,7 +1647,7 @@ export function MarketplaceScreen() {
 
   return (
     <>
-      <div className="screen">
+      <div className="screen" ref={screenRef}>
         <BackBar title="Marketplace" />
         <div className="screen-inner">
           <h1>Models, in plain language</h1>
@@ -1654,10 +1756,7 @@ export function MarketplaceScreen() {
             </div>
           ) : focusedHosted ? (
             <div className="focused-view">
-              <button
-                className="btn quiet market-back"
-                onClick={() => setFocusedHostedId(undefined)}
-              >
+              <button className="btn quiet market-back" onClick={closeHosted}>
                 All models
               </button>
               <div className="market-list">{renderHostedPage(focusedHosted)}</div>

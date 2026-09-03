@@ -340,6 +340,13 @@ interface AppState {
   /** A provider whose Connect form Cloud Connections should open on arrival
    *  (set by a Connect tap in the Marketplace, cleared once honored). */
   connectionsFocus?: string;
+  /** The provider that was connected most recently and has not yet been
+   *  celebrated: the next room that shows its rows pops them once. */
+  justConnected?: string;
+  /** True when the current room was reached by going back along the trail,
+   *  so it may restore where the eye left (scroll, an open page). A forward
+   *  navigation starts a room fresh. */
+  arrivedBack: boolean;
   /** Whether a Codemagic API token is connected (the token lives in Keychain). */
   codemagicConnected: boolean;
   /** Which repo platforms are connected (tokens live in the Keychain). */
@@ -411,6 +418,7 @@ interface AppState {
   /** Open Cloud Connections with this provider's Connect form already open. */
   openConnections(providerId: string): void;
   clearConnectionsFocus(): void;
+  clearJustConnected(): void;
   /** Return to the previous room on the trail; the panel's room if none. */
   goBack(): void;
   setDrawer(open: boolean): void;
@@ -1274,6 +1282,7 @@ export const useApp = create<AppState>((set, get) => {
     settings: { onboarded: false, claudeModel: DEFAULT_CLAUDE_MODEL, deviceModels: {} },
     cloudKeyPresent: false,
     connectedProviders: {},
+    arrivedBack: false,
     codemagicConnected: false,
     searchKeyConfigured: false,
     vaultFiles: [],
@@ -1613,6 +1622,10 @@ export const useApp = create<AppState>((set, get) => {
       if (get().connectionsFocus) set({ connectionsFocus: undefined });
     },
 
+    clearJustConnected() {
+      if (get().justConnected) set({ justConnected: undefined });
+    },
+
     setView(view, opts) {
       // Free is chat only: the Marketplace needs Personal. Intercept the
       // navigation and show the upgrade sheet instead of the locked screen.
@@ -1628,14 +1641,19 @@ export const useApp = create<AppState>((set, get) => {
       // A root navigation clears the trail. Chat is always a root: it is the
       // home the panel returns to, never a sub-page of another room.
       const trail = opts?.root || view === 'chat' ? [] : [...viewTrail, current].slice(-8);
-      set({ view, viewTrail: trail, drawerOpen: false });
+      // A fresh connection is celebrated by the next room that shows its rows;
+      // a forward hop to anywhere else (Chat from the panel) lets it rest, so
+      // the pop never fires on a store opened days later.
+      const justConnected =
+        view === 'marketplace' || view === 'stack' ? get().justConnected : undefined;
+      set({ view, viewTrail: trail, drawerOpen: false, arrivedBack: false, justConnected });
     },
 
     goBack() {
       const { viewTrail } = get();
       const prev = viewTrail[viewTrail.length - 1];
       if (!prev) return;
-      set({ view: prev, viewTrail: viewTrail.slice(0, -1), drawerOpen: false });
+      set({ view: prev, viewTrail: viewTrail.slice(0, -1), drawerOpen: false, arrivedBack: true });
     },
 
     setDrawer(open) {
@@ -3642,6 +3660,7 @@ export const useApp = create<AppState>((set, get) => {
       set((s) => ({
         connectedProviders: { ...s.connectedProviders, [id]: true },
         cloudKeyPresent: id === 'anthropic' ? true : s.cloudKeyPresent,
+        justConnected: id,
       }));
       if (id === 'anthropic') {
         await get().saveSettings({ anthropicWorkspaceId: workspaceId?.trim() || undefined });

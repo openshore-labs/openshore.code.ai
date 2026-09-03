@@ -28,6 +28,7 @@ import { OnboardingScreen } from './screens/OnboardingScreen.js';
 import { useCompact } from './hooks/useCompact.js';
 import { useExitPresence } from './hooks/useExitPresence.js';
 import { useRoomGhost } from './hooks/useRoomGhost.js';
+import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { drawerWidth } from './lib/motion.js';
@@ -51,6 +52,7 @@ export function App() {
   const mainRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
   useRoomGhost(mainRef, ghostRef);
+  useScrollMemory(mainRef);
   const setDrawer = useApp((s) => s.setDrawer);
   const gesture = useDrawerGesture({
     enabled: compact && view !== 'onboarding',

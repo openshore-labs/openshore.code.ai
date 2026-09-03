@@ -3,6 +3,51 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, frontier shelf polish, all three tiers)
+
+Founder: "do all the polish," the six items from the frontier-shelf
+assessment. Four landed; two were re-checked and found already right.
+
+- **The tile hops (Tier 1).** A hosted hero or row and its product page
+  share one `ModelTile`, so opening the page is that tile flying into place
+  and "All models" is the same tile flying home, on the View Transitions
+  API (iOS 18, Chromium; a plain swap elsewhere and under reduced motion).
+  The page tile carries `view-transition-name: hosted-tile` in CSS; the
+  origin tile is handed the name inline for the one hop and `tileHome`
+  remembers which tile (hero or row) to fly back to, since a duplicate name
+  makes the platform skip the transition. Root rides `--dur-3` on
+  `--ease-standard`, the tile group `--dur-5` on `--ease-arrive`; reduced
+  motion kills every view-transition pseudo. `flushSync` inside the callback
+  so the new snapshot is the finished render.
+- **The connected moment (Tier 1).** `connectProvider` sets `justConnected`;
+  the next store open reads it, fires `hapticSuccess`, and the "on bench"
+  pills (and the page's connected pill) pop in on `pill-pop` (`--dur-4`,
+  `--ease-spring`, `backwards`), then the flag rests. A forward hop to any
+  room but the Marketplace or the Stack clears it, so a store opened days
+  later never pops.
+- **Amber light per capability (Tier 2).** The cloud hero now carries
+  `data-cap` and `.hero-card.cloud[data-cap=...]` shifts the amber light the
+  way the teal heroes shift theirs, so the row reads as one family.
+- **Where the eye left (Tier 3).** The window never scrolled here; `.screen`
+  is the room scroller, so the store's two `window.scrollTo` calls were
+  no-ops. Now a `screenRef` scrolls the right element, `lib/scrollMemory.ts`
+  keeps an offset per room, `hooks/useScrollMemory.ts` saves the outgoing
+  room's offset in the same synchronous store subscription the room ghost
+  uses (the old DOM is still there) and restores in a layout effect when the
+  room was reached by going back (`arrivedBack`, set by `goBack`, cleared by
+  `setView`). The Marketplace restores again once the catalog has given the
+  shelves their height, and reopens the hosted page it left, so Connect from
+  a page comes back to that page. A fresh open from the panel starts at the
+  top, the way a tab does.
+- **Checked, not needed.** The result count re-keys on one number computed
+  in the same render as the hosted matches, so it never jumped twice; and
+  the hosted page carries no inline stagger delay, so it already enters at
+  index zero. Both assessment lines were wrong and are withdrawn.
+- `test/frontier-polish.test.ts` pins the hop's tokens and reduced-motion
+  kill, the pop's spring and `backwards`, the no-`window.scrollTo` rule, and
+  the back-versus-forward arrival flags; `test/scrollMemory.test.ts` pins the
+  memory. Gates green: app typecheck, lint, 338 tests.
+
 ## Current state (2026-09-03, Kimi in the store: the frontier shelf)
 
 Founder, with a Marketplace screenshot: "I'm not seeing the new Kimi model.
