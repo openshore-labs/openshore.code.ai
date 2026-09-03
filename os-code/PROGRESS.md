@@ -28,6 +28,61 @@ menu in the top bar.
 Open: an audit of every sheet for a visible dismiss control is in progress;
 any sheet whose only way out is the scrim tap gets the round close button.
 
+## Current state (2026-09-03, every step in has a step back, and all the polish)
+
+Founder, from the Kimi product page in the store: "Need a back button when you
+enter into any of the navigations within marketplace so I can go back to
+marketplace. That's the pattern that needs to exist across the main pages,
+when you navigate within the subsequent pages/sheets need back buttons to the
+main page you started navigating from." Then: "Do all of the Polish. Push to
+main."
+
+**The way back, at every depth** (`docs/interaction-model.md`, "Navigation"):
+
+- Room to room already had the `viewTrail` chevron (2026-09-02). What was
+  missing was a page inside a room: the store's product page kept the menu in
+  its top bar. `BackBar` now takes an in-room `back` (`{ to, onBack }`) that
+  wins over the trail, because the nearest step back is the one the eye
+  expects. The Marketplace hands it on both product pages (hosted and
+  catalog), with the model's name as the title and the same tile hop as "All
+  models"; an open Vault note goes back to the tree, saving first; Launch's
+  embedded Codemagic goes back to Launch.
+- Sheets dismiss rather than go back. The audit found eight whose only visible
+  way out was the scrim tap: Settings (account, activity log, web search, add
+  to your setup), Your stack's model picker, the Vault's note options and
+  storage sheets, the source picker, the info sheet, and the connection sheet.
+  Each now opens with `components/SheetHead.tsx`, the round close over a
+  hairline (RepoPicker's shape). Sheets that end in Cancel or Done are left as
+  they are. `test/wayBack.test.ts` pins the rooms with an inner page and the
+  eight headers.
+
+**All the polish**, both assessments (the close button's and the drawer's):
+
+- Sheets are doors from the bottom edge: `sheet-up` slides the phone's sheet
+  solid from below the edge on `--ease-glide` over `--dur-7`, the exit is the
+  same transition, and the scrim dims on the same clock. A wide screen keeps
+  the centered card, which rises a short way with a fade (`sheet-rise`) on the
+  same curve and clock. `useSheetExit`, `Sheet.tsx`, and `ProfileStatus` hold
+  the unmount for `sheetExitMs()` (the door clock plus a hair) instead of a
+  340ms literal, so the tail is never clipped.
+- Room changes ride the glide over `--dur-6`.
+- The menu bars fold into a back chevron while the drawer is open
+  (`MenuIcon` takes `open`; transform and opacity per bar on the door clock),
+  seen as the door approaches and again as it leaves.
+- The door brings its contents: the wordmark and each row arrive a step apart
+  (`drawer-row-in`, delay `--dur-2` plus `--i` times the new `--stagger`
+  token, 40ms), skipped when the finger opened it. Rows are indexed inline by
+  Sidebar so the bottom group carries on counting.
+- The sheet header carries a hairline shelf; the round close collapses to the
+  tile scale on press; the Repositories empty-state card lands a beat after
+  the header; the search field's rule and glyph lift on focus.
+- The composer's attachment chips use the drawn close glyph at 12px in an
+  18px round target with a color fade, no typed character left in the app.
+- `CLAUDE.md` rule 1 names the glide and the stagger.
+
+Gates green: app typecheck, lint, 391 tests. The sheet entrance and the folded
+menu glyph were rendered at pinned times in headless Chromium.
+
 ## Current state (2026-09-03, the drawer glides on its own curve and clock)
 
 Founder, with a screen recording: "I need the panel coming in and out to be a

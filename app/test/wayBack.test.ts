@@ -42,6 +42,24 @@ describe('the way back', () => {
     );
   });
 
+  it('sheets that had only the scrim tap as a way out carry the house header with a close', () => {
+    // The audit of 2026-09-03: these eight had no Cancel, Done, or close of
+    // their own. SheetHead is the round close over a hairline (RepoPicker's
+    // shape). A sheet whose body ends in Cancel or Done is exempt.
+    const uses: Array<[string[], number]> = [
+      [['screens', 'SettingsScreen.tsx'], 4], // account, log, search, paths
+      [['screens', 'StackScreen.tsx'], 1], // pick a model for a role
+      [['screens', 'VaultScreen.tsx'], 2], // note options, where the vault lives
+      [['components', 'SourcePicker.tsx'], 1],
+      [['components', 'InfoSheet.tsx'], 1],
+      [['components', 'ProfileStatus.tsx'], 1],
+    ];
+    for (const [path, n] of uses) {
+      const count = (src(...path).match(/<SheetHead\b/g) ?? []).length;
+      expect(count, path.join('/')).toBe(n);
+    }
+  });
+
   it('the embedded site goes back to Launch', () => {
     const launch = src('screens', 'LaunchScreen.tsx');
     expect(launch).toMatch(

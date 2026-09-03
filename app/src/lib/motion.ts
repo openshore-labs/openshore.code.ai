@@ -22,6 +22,18 @@ export function durationMs(token: string, fallback: number): number {
  *  the same length, so a drag-to-close (which finishes sooner, on its own
  *  velocity clock) never loses its keyframe start mid-hold. */
 export function drawerExitMs(): number {
+  return doorExitMs();
+}
+
+/** The same hold for a sheet: it slides on the door clock too (theme.css
+ *  `.sheet`), so useSheetExit and Sheet.tsx keep it mounted this long. */
+export function sheetExitMs(): number {
+  return doorExitMs();
+}
+
+/** The door clock plus a hair, the hold for any surface that crosses the
+ *  screen on --dur-7. */
+export function doorExitMs(): number {
   return durationMs('--dur-7', 520) + 20;
 }
 

@@ -13,6 +13,7 @@ import { loadAppCatalog } from '../lib/catalog.js';
 import { presetMemberIds, presetSpecialists, presetTotalGB } from '../lib/presets.js';
 import type { Catalog } from 'os-code/protocol';
 import { Sheet } from '../components/Sheet.js';
+import { SheetHead } from '../components/SheetHead.js';
 
 const ROLES: Array<{ role: string; plain: string }> = [
   { role: 'coding', plain: 'great at code' },
@@ -297,7 +298,10 @@ export function StackScreen() {
       <Sheet open={Boolean(pickFor && status)} onClose={() => setPickFor(undefined)}>
         {pickFor && status ? (
           <>
-            <h2>{pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}</h2>
+            <SheetHead
+              title={pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}
+              onClose={() => setPickFor(undefined)}
+            />
             <p className="sheet-sub">
               Installed on this machine via Ollama. Get more in the marketplace.
             </p>

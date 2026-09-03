@@ -24,6 +24,7 @@ import {
 } from '../lib/gitos/index.js';
 import { exportVaultToFiles } from '../lib/vaultExport.js';
 import { Sheet } from '../components/Sheet.js';
+import { SheetHead } from '../components/SheetHead.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -440,7 +441,13 @@ export function VaultScreen() {
         >
           {menuOpen ? (
             <>
-              <h2>Options</h2>
+              <SheetHead
+                title="Options"
+                onClose={() => {
+                  setMenuOpen(false);
+                  setConfirmDelete(false);
+                }}
+              />
               <div className="sheet-actions">
                 <button
                   className={`btn quiet press-fb${confirmDelete ? ' danger' : ''}`}
@@ -645,7 +652,7 @@ export function VaultScreen() {
       <Sheet open={Boolean(storageOpen)} onClose={() => setStorageOpen(false)}>
         {storageOpen ? (
           <>
-            <h2>Where your vault lives</h2>
+            <SheetHead title="Where your vault lives" onClose={() => setStorageOpen(false)} />
             <p className="sheet-sub">
               Your notes are files, and you choose the storage that holds them. Point Obsidian at
               the same files and it just opens.

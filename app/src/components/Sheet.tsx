@@ -8,6 +8,7 @@
 // flag; the exit plays; then the sheet is gone.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useExitPresence } from '../hooks/useExitPresence.js';
+import { sheetExitMs } from '../lib/motion.js';
 
 export function Sheet({
   open,
@@ -23,7 +24,9 @@ export function Sheet({
   variant?: 'sheet' | 'confirm';
   className?: string;
 }) {
-  const { mounted, closing } = useExitPresence(open);
+  // Held for the door clock the sheet slides on, so the glide's tail is never
+  // clipped by the unmount.
+  const { mounted, closing } = useExitPresence(open, sheetExitMs());
   const last = useRef<ReactNode>(children);
   if (open) last.current = children;
 

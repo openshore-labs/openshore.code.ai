@@ -15,11 +15,13 @@ import {
   selectable,
 } from '../lib/profiles.js';
 import { hapticTick } from '../lib/haptics.js';
+import { sheetExitMs } from '../lib/motion.js';
+import { SheetHead } from './SheetHead.js';
 
 // Drag further than this and the release dismisses; short of it, the sheet
-// springs back. EXIT_MS matches the scrim/sheet exit transition in theme.css.
+// springs back. The unmount hold is the door clock the sheet slides on
+// (lib/motion.ts sheetExitMs), read at dismiss time.
 const DISMISS_THRESHOLD = 90;
-const EXIT_MS = 340;
 
 export function ProfileStatus() {
   const { connectivity, settings, setProfileOverride } = useApp();
@@ -61,7 +63,7 @@ export function ProfileStatus() {
     setDragging(false);
     setClosing(true);
     if (exitTimer.current !== null) clearTimeout(exitTimer.current);
-    exitTimer.current = window.setTimeout(finish, EXIT_MS);
+    exitTimer.current = window.setTimeout(finish, sheetExitMs());
   };
 
   const openSheet = () => {
@@ -132,7 +134,7 @@ export function ProfileStatus() {
                 >
                   <span className="sheet-grabber-bar" aria-hidden="true" />
                 </div>
-                <h2>Connection</h2>
+                <SheetHead title="Connection" onClose={dismiss} />
                 <p className="sheet-sub">
                   Your stack, chats, and connections are the same everywhere. What changes is reach.
                 </p>

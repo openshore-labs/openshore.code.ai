@@ -50,7 +50,7 @@ export function BackBar({
   action?: ReactNode;
   back?: InRoomBack;
 }) {
-  const { setDrawer, goBack, viewTrail } = useApp();
+  const { setDrawer, goBack, viewTrail, drawerOpen } = useApp();
   const compact = useCompact();
   const from = viewTrail[viewTrail.length - 1];
   const way = back ?? (from ? { to: ROOM_NAMES[from], onBack: goBack } : undefined);
@@ -78,7 +78,7 @@ export function BackBar({
           }}
           aria-label="Menu"
         >
-          <MenuIcon />
+          <MenuIcon open={drawerOpen} />
         </button>
       ) : null}
       <div className="topbar-title">{title}</div>

@@ -6,6 +6,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { hapticTick } from '../lib/haptics.js';
+import { SheetHead } from './SheetHead.js';
 
 const DISMISS_THRESHOLD = 90;
 
@@ -92,7 +93,7 @@ export function InfoSheet({
             >
               <span className="sheet-grabber-bar" aria-hidden="true" />
             </div>
-            <h2>{title}</h2>
+            <SheetHead title={title} onClose={dismiss} />
             <div className="sub">{children}</div>
           </div>
         </div>

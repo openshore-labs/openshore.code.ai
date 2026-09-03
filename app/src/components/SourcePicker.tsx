@@ -12,6 +12,7 @@ import { CLAUDE_MODELS } from '../drivers/cloudClaudeDriver.js';
 import { HARBOR_MODEL_ID } from '../lib/harbor.js';
 import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
+import { SheetHead } from './SheetHead.js';
 
 export function SourcePicker({
   onPick,
@@ -47,7 +48,7 @@ export function SourcePicker({
       <div className={`sheet${closing ? ' closing' : ''}`} onClick={(e) => e.stopPropagation()}>
         {stage === 'sources' ? (
           <>
-            <h2>Who answers this chat?</h2>
+            <SheetHead title="Who answers this chat?" onClose={dismiss} />
             <p className="sheet-sub">
               Local first. Cloud is deliberate, always on your own account.
             </p>
