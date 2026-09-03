@@ -49,8 +49,10 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "OscodeLlama"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "isSupported", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "deviceCapacity", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listModels", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "downloadModel", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "ensureLocal", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "activeDownloads", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelDownload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteModel", returnType: CAPPluginReturnPromise),
@@ -127,14 +129,14 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
                     "total": total
                 ])
             },
-            completion: { [weak self] id, result in
+            completion: { [weak self] id, location, result in
                 guard let self else { return }
                 self.downloadsLock.lock()
                 let call = self.pendingDownloads.removeValue(forKey: id)
                 self.downloadsLock.unlock()
                 switch result {
                 case .success(let url):
-                    call?.resolve(["path": url.path])
+                    call?.resolve(["path": url.path, "location": location])
                 case .failure(let error):
                     call?.reject("The download did not finish: \(error.localizedDescription)")
                 }
@@ -163,6 +165,28 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         #endif
     }
 
+    @objc func deviceCapacity(_ call: CAPPluginCall) {
+        // Free and total storage for this app's volume, plus physical memory for
+        // sizing a machine recommendation. importantUsage is what iOS says the
+        // app may actually use (it can exceed the raw free bytes by reclaiming
+        // purgeable space), which is the honest number for "will this fit."
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        var freeBytes: Int64 = 0
+        var totalBytes: Int64 = 0
+        if let vals = try? home.resourceValues(forKeys: [
+            .volumeAvailableCapacityForImportantUsageKey,
+            .volumeTotalCapacityKey
+        ]) {
+            freeBytes = Int64(vals.volumeAvailableCapacityForImportantUsage ?? 0)
+            totalBytes = Int64(vals.volumeTotalCapacity ?? 0)
+        }
+        call.resolve([
+            "freeBytes": freeBytes,
+            "totalBytes": totalBytes,
+            "ramBytes": Int64(ProcessInfo.processInfo.physicalMemory)
+        ])
+    }
+
     // ---------------------------------------------------------------- models
 
     @objc func listModels(_ call: CAPPluginCall) {
@@ -170,7 +194,9 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             [
                 "id": model.id,
                 "fileName": model.fileName,
-                "sizeBytes": model.sizeBytes
+                "sizeBytes": model.sizeBytes,
+                "location": model.location.rawValue,
+                "evicted": model.evicted
             ] as [String: Any]
         }
         call.resolve(["models": models])
@@ -193,11 +219,36 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("downloadModel only accepts a huggingface.co url.")
             return
         }
+        let target: ModelStore.StorageTarget =
+            call.getString("target") == "icloud" ? .icloud : .device
+        if target == .icloud, store.iCloudModelsRoot() == nil {
+            call.reject("iCloud is not available on this iPhone. Sign in to iCloud, or download to this device instead.")
+            return
+        }
         call.keepAlive = true
         downloadsLock.lock()
         pendingDownloads[id] = call
         downloadsLock.unlock()
-        store.download(id: id, from: url)
+        store.download(id: id, from: url, target: target)
+    }
+
+    @objc func ensureLocal(_ call: CAPPluginCall) {
+        guard let id = call.getString("id") else {
+            call.reject("ensureLocal needs a model id.")
+            return
+        }
+        // Materializing an evicted iCloud model can block while iCloud pulls the
+        // bytes down, so run it off the plugin queue and hold a background
+        // assertion so a fetch in progress is not suspended the instant the app
+        // leaves the foreground.
+        let activity = BackgroundActivity("oscode.ensureLocal")
+        activity.begin()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { activity.end(); return }
+            let result = self.store.ensureLocal(id: id)
+            activity.end()
+            call.resolve(["ready": result.ready, "downloading": result.downloading])
+        }
     }
 
     @objc func activeDownloads(_ call: CAPPluginCall) {
@@ -235,8 +286,11 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let contextSize = Int32(call.getInt("contextSize") ?? 4096)
-        let path = store.localURL(for: id).path
-        guard FileManager.default.fileExists(atPath: path) else {
+        // Resolve the model wherever it lives: the device copy first, then the
+        // iCloud copy. The JS load path calls ensureLocal before this, so an
+        // iCloud model's bytes are already materialized by the time we get here.
+        guard let path = store.resolvedURL(for: id)?.path,
+              FileManager.default.fileExists(atPath: path) else {
             call.resolve(["ok": false, "detail": "That model is not on this iPhone yet. Download it first."])
             return
         }
