@@ -346,3 +346,8 @@ execution contract. Newest at the bottom.
 - **The starting paths render two ways from one component.** Cards in
   onboarding, rows in the Settings sheet (`variant="rows"`), so the copy and
   the download states never drift.
+- **Quick chat is retired (founder, 2026-09-02).** One kind of chat, always
+  in a project, always persisted. A throwaway mode cost a flag on every
+  conversation, prune logic on every navigation, and a "keep this?" seam in
+  the top bar, for a case the New chat row already covers. Old ephemeral
+  rows are dropped on load rather than adopted.

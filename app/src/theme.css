@@ -3405,18 +3405,6 @@ textarea {
   will-change: transform, opacity;
 }
 
-/* Ephemeral (quick chat) affordance: a hollow, dashed dot before the title. */
-.ephemeral-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-right: 7px;
-  vertical-align: middle;
-  border: 1px dashed var(--muted);
-  background: transparent;
-}
-
 /* Multi-select rows: a gentle pressed state. */
 .multiselect-row {
   transition:
@@ -6427,8 +6415,8 @@ button.settings-row:active {
 .chat-list .chat-row {
   display: block;
   width: 100%;
-  min-height: 56px;
-  padding: 12px 16px;
+  min-height: 60px;
+  padding: 13px 16px;
   text-align: left;
   font: inherit;
   position: relative;
@@ -6450,12 +6438,13 @@ button.settings-row:active {
   box-shadow: inset 3px 0 0 var(--local);
 }
 .chat-list .chat-row-title {
-  font-size: 16px;
+  font-size: 16.5px;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 .chat-list .chat-row-sub {
-  font-size: 13px;
-  margin-top: 3px;
+  font-size: 12.5px;
+  margin-top: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6481,6 +6470,10 @@ button.settings-row:active {
   background: var(--wave);
   vertical-align: middle;
 }
+/* Where the day changes, a wider gap does the work a caption used to. */
+.chat-list .day-break {
+  margin-top: 12px;
+}
 .chat-row.leaving {
   animation: chat-row-out var(--dur-4) var(--ease-accel) forwards;
 }
@@ -6504,14 +6497,6 @@ button.settings-row:active {
   font-size: 14px;
   color: var(--muted);
   margin: 0;
-}
-.chat-quick {
-  text-align: right;
-  font-size: 13px;
-  margin: 14px 0 0;
-}
-.chat-quick .linklike {
-  color: var(--ink-soft);
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-list .swipe-row,

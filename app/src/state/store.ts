@@ -433,7 +433,6 @@ interface AppState {
   newConversation(
     source: ConversationSource,
     opts?: {
-      ephemeral?: boolean;
       /** Pre-written turns the chat opens with (a guide's plan). They render
        *  immediately and seed the model's history, so it knows what was said. */
       seedItems?: ThreadItem[];
@@ -452,11 +451,6 @@ interface AppState {
   /** Open a fresh, empty chat (the source picker decides who answers). A
    *  project is auto-created on first save, so this never dead-ends. */
   startNewChat(): void;
-  /** Promote the active quick (throwaway) chat to a saved one, in the active
-   *  project, so a conversation that grew worth keeping is not lost on exit. */
-  keepQuickChat(): Promise<void>;
-  /** A throwaway chat with the stack for a quick lookup. Not saved. */
-  quickChat(): Promise<string>;
   /** Send text once the active conversation's driver has attached. */
   sendWhenAttached(conversationId: string, text: string, attachments?: Attachment[]): void;
   /** Create a project and make it active. */
@@ -1047,14 +1041,6 @@ export const useApp = create<AppState>((set, get) => {
     }
   }
 
-  // Quick (ephemeral) chats are never persisted and must not pile up in memory.
-  // Drop every ephemeral conversation except the one we are keeping (if any).
-  function pruneEphemeral(exceptId?: string): void {
-    const { conversations, order } = get();
-    const stale = order.filter((id) => conversations[id]?.ephemeral && id !== exceptId);
-    for (const id of stale) get().deleteConversation(id);
-  }
-
   // Where a magic-link sign-in returns to. Each shell has its own origin the
   // token must land on (Uki's "auth callbacks stay on the app's own origin").
   function authRedirectTo(): string {
@@ -1328,8 +1314,8 @@ export const useApp = create<AppState>((set, get) => {
       for (const id of persisted.order) {
         const row = persisted.conversations[id];
         if (!row) continue;
-        // Ephemeral quick chats never persist; drop any that leaked in.
-        if (row.ephemeral) continue;
+        // Quick chats were retired (2026-09-02); a row from that era is dropped.
+        if ((row as { ephemeral?: boolean }).ephemeral) continue;
         conversations[id] = {
           ...row,
           // Desktop threads rebuild from the journal on open; local ones load as saved.
@@ -1432,10 +1418,7 @@ export const useApp = create<AppState>((set, get) => {
       // by deleteProject carries `unfiled`, so it is left alone here instead of
       // being silently re-adopted on the next launch.
       const orphanIds = Object.keys(conversations).filter(
-        (id) =>
-          !conversations[id]!.ephemeral &&
-          !conversations[id]!.projectId &&
-          !conversations[id]!.unfiled,
+        (id) => !conversations[id]!.projectId && !conversations[id]!.unfiled,
       );
       if (orphanIds.length) {
         let activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
@@ -1789,20 +1772,17 @@ export const useApp = create<AppState>((set, get) => {
       }
       logEvent('source_chosen', { kind: source.kind });
       const id = newId();
-      const ephemeral = opts?.ephemeral ?? false;
-      // Saved chats belong to the active project (or the first one). If none
-      // exists yet, make a default so a saved chat is never orphaned from every
-      // bucket. Quick chats stay project-less on purpose.
+      // Every chat belongs to the active project (or the first one). If none
+      // exists yet, make a default so a chat is never orphaned from every bucket.
       const s0 = get().settings;
-      let projectId = ephemeral ? undefined : (s0.activeProjectId ?? s0.projects?.[0]?.id);
-      if (!ephemeral && !projectId) projectId = await get().createProject('My work');
+      let projectId = s0.activeProjectId ?? s0.projects?.[0]?.id;
+      if (!projectId) projectId = await get().createProject('My work');
       const seedItems = opts?.seedItems ?? [];
       const conv: Conversation = {
         id,
         title: opts?.title ?? 'New chat',
         source,
         projectId,
-        ephemeral,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         thread: { ...emptyThread(), items: seedItems },
@@ -1814,8 +1794,6 @@ export const useApp = create<AppState>((set, get) => {
         view: 'chat',
         drawerOpen: false,
       }));
-      // Any earlier quick chat is now off-screen; do not let it linger.
-      pruneEphemeral(id);
       try {
         const driver = await buildDriver(
           conv,
@@ -1902,35 +1880,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     startNewChat() {
-      // Any lingering quick chat goes; the greeting + source picker take over.
-      pruneEphemeral();
       set({ activeId: undefined, view: 'chat', viewTrail: [], drawerOpen: false });
-    },
-
-    async keepQuickChat() {
-      const { activeId, conversations, settings } = get();
-      const conv = activeId ? conversations[activeId] : undefined;
-      if (!conv || !conv.ephemeral) return;
-      // Saved chats live in a project; make the default one if none exists.
-      let projectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
-      if (!projectId) projectId = await get().createProject('My work');
-      set((s) => {
-        const c = s.conversations[conv.id];
-        if (!c) return s;
-        return {
-          conversations: {
-            ...s.conversations,
-            [conv.id]: { ...c, ephemeral: false, projectId, updatedAt: new Date().toISOString() },
-          },
-        };
-      });
-      void persistConversations(get());
-      get().showToast('Saved. This chat now lives in your project.');
-    },
-
-    async quickChat() {
-      logEvent('quick_chat');
-      return get().newConversation({ kind: 'stack' }, { ephemeral: true });
     },
 
     sendWhenAttached(conversationId, text, attachments) {
@@ -3302,8 +3252,6 @@ export const useApp = create<AppState>((set, get) => {
       const conv = get().conversations[id];
       if (!conv) return;
       set({ activeId: id, view: 'chat', viewTrail: [], drawerOpen: false });
-      // Leaving a quick chat for a saved one: drop the quick chat.
-      pruneEphemeral(id);
       if (!drivers.has(id)) {
         // Reattach lazily. Desktop threads replay their journal into the UI, so
         // they reset the thread and rebuild from the daemon with no seed. Chat
@@ -3805,10 +3753,9 @@ function persistConversationsSoon(): void {
 
 async function persistConversations(state: Pick<AppState, 'order' | 'conversations'>) {
   const conversations: Record<string, Conversation> = {};
-  // Quick chats are ephemeral by design: they never touch the disk. The disk
-  // order is bounded so a very long history cannot grow storage without limit;
-  // 200 is generous headroom over the ~50 a session realistically accrues.
-  const savedOrder = state.order.filter((id) => !state.conversations[id]?.ephemeral).slice(0, 200);
+  // The disk order is bounded so a very long history cannot grow storage
+  // without limit; 200 is generous headroom over the ~50 a session accrues.
+  const savedOrder = state.order.slice(0, 200);
   for (const id of savedOrder) {
     const conv = state.conversations[id];
     if (!conv) continue;
