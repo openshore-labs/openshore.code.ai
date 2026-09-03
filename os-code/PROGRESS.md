@@ -3,6 +3,50 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, large models are never restricted: storage, iCloud home, machine hint)
+
+Founder, from the Kimi marketplace screen: "I don't want any models restricted
+from download just because they are large. There should be a storage capacity
+monitor and a recommended machine based on required RAM. The monitor looks at
+total storage remaining on the local device but also lets you download a model
+to connected cloud storage like iCloud that you can draw from when online." Then
+"get creative studio and cto involved to get this right," and "keep iCloud as
+the cloud home, made honest," "build the full premium treatment," native side
+included, to TestFlight. Built end to end.
+
+- **Size decides where the bytes land, never whether you may have them.**
+  `app/src/lib/modelStorage.ts` (pure, 19 tests): a storage-fit check with a
+  3 GB reserve, a required-RAM estimate (prefers the catalog's `minRamGB`
+  floor), a recommended-machine mapping, and a default download-target chooser.
+  No function has a "blocked" return.
+- **Storage capacity monitor, ambient (Creative Studio Direction C).** An
+  ambient capacity chip (free space, iCloud dot) opens the full readout in a
+  Sheet, so status never sits as a card over the store front. The real meter
+  lives on the model's product page, where the choice is made, with a
+  footprint block (`.cap-ghost`) that shows the model claiming space and lifts
+  off the bar when you switch to iCloud. Low space is amber (`--warn`), never
+  red: owning models is not an error.
+- **Recommended machine as an opening, not a rejection.** When the phone is
+  short on memory the page leads with the model's ambition, then two calm equal
+  paths (keep it in iCloud, or pair a machine over Tailscale). Never "Too big"
+  on the decision page.
+- **Download to iCloud, drawn from when online (native, built).** The
+  `OscodeLlama` plugin gains `deviceCapacity()` (free/total storage plus
+  physical memory), a `target` on `downloadModel` that places the GGUF in the
+  app's iCloud Drive container under Documents/Models (the same container as the
+  Vault), `ensureLocal()` that materializes an evicted iCloud model before a
+  load, and `location`/`evicted` on `listModels`. The device home stays
+  backup-excluded; the on-device and stack drivers call `ensureLocal` before
+  `Llama.load`, with a guided offline message. Store tracks `cloudModels`
+  parallel to `deviceModels`, adopted on launch and treated as run-ready.
+- **iCloud honesty (CTO):** the target consequence line and toast say plainly
+  the iCloud copy uses your iCloud storage and loads when you are online; the
+  fit lines are `isPhone`-gated so mock capacity never renders on web or
+  desktop. CTO verdict was safe to ship; the open native caveat is below.
+- Gates green: `pnpm -r lint`, `-r typecheck`, `-r test` (os-code 338, app
+  414), app vite build. Not device-verified (no iOS here); first TestFlight run
+  is the proof, exactly like the earlier native plugins.
+
 ## Current state (2026-09-03, a page inside a room has a way back in the top bar)
 
 Founder, from the Kimi K3 page in the store: "Need a back button when you
@@ -1558,6 +1602,19 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Large-model iCloud home, TestFlight validation + the CTO caveat.** The
+      "download to iCloud" path (ModelStore places the GGUF in the app's iCloud
+      Drive container, ensureLocal materializes it before a load) is unverifiable
+      in a web session, so first TestFlight download-to-iCloud, evict, and
+      draw-back-when-online is the proof. The CTO's HIGH caveat, held for the
+      native pass and the founder's "iCloud, made honest" call: multi-GB
+      re-downloadable GGUFs in an iCloud container brush against Apple's data
+      storage guidelines (regenerable content), and the free 5 GB iCloud tier
+      means most single models push the user toward paid iCloud. Mitigations in
+      place: the device home stays backup-excluded, and the UI states plainly the
+      iCloud copy uses the user's iCloud storage. Revisit whether the concrete
+      backend should stay iCloud Drive vs. an on-device eviction cache if Review
+      pushes back; the JS seam (`target: 'device'|'icloud'`) survives either way.
 - [ ] **BYOM on-device streaming (R-16), still deferred:** true streaming and
       cancel for BYOM/OpenAI-compatible endpoints on iOS and Electron
       (buffer-then-dump today). Needs an Electron IPC streaming channel and an
