@@ -186,16 +186,53 @@ export function SettingsScreen() {
         <h1>Settings</h1>
         <p className="lead">Yours where it matters. Here is what this app keeps, and where.</p>
 
-        {configured ? (
-          <SettingsGroup title="Account" index={group++}>
-            <SettingsRow
-              label={accountLabel}
-              sub={signedIn ? email : 'Personal use needs no account'}
-              value={accountValue}
-              onClick={() => setSheet('account')}
-            />
-          </SettingsGroup>
-        ) : null}
+        <SettingsGroup title="Account" index={group++}>
+          <SettingsRow
+            label={accountLabel}
+            sub={signedIn ? email : 'Personal use needs no account'}
+            value={accountValue}
+            onClick={configured ? () => setSheet('account') : undefined}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup title="Privacy" index={group++}>
+          <InfoSheet
+            title="Privacy and Conditions"
+            renderTrigger={(open) => (
+              <SettingsRow
+                label="Privacy and Conditions"
+                sub="Plainly, encrypted on this device, local models honestly"
+                value={facts ? (sealed ? 'Sealed' : 'On this device') : 'On this device'}
+                onClick={open}
+              />
+            )}
+          >
+            <h3 className="settings-sheet-head">Privacy, plainly</h3>
+            <p>
+              Local models run on your hardware and nothing leaves it. Cloud models run on your own
+              keys and only with your approval. Web search leaves your machine when the agent uses
+              it. No telemetry, no analytics, no phone-home, ever.
+            </p>
+            <h3 className="settings-sheet-head">Encrypted on this device</h3>
+            <p>
+              Your chats, projects, crew, settings, and session journals are sealed at rest with
+              AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
+              {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API
+              keys are held the same way. When you send a turn to a cloud provider, that one
+              provider sees that one request on your own account. We do not, and there is nothing in
+              between.
+            </p>
+            {facts ? <LiveSeal facts={facts} /> : null}
+            <h3 className="settings-sheet-head">Local models, honestly</h3>
+            <p>
+              Harbor and Harbor Mini, and any model you run on this device, are AI. They can be
+              confidently wrong, and OpenShore does not filter what a local model says. Neither is a
+              coder. For real work, connect a bigger model. What you type to a local model stays on
+              this device. Harbor is Qwen3-1.7B and Harbor Mini is Qwen2.5-0.5B-Instruct, both used
+              under the Apache License 2.0.
+            </p>
+          </InfoSheet>
+        </SettingsGroup>
 
         <SettingsGroup title="This device" index={group++}>
           <SettingsRow
@@ -258,45 +295,6 @@ export function SettingsScreen() {
               setSheet('search');
             }}
           />
-        </SettingsGroup>
-
-        <SettingsGroup title="Privacy, plainly" index={group++}>
-          <InfoSheet
-            title="Where your data lives"
-            renderTrigger={(open) => (
-              <SettingsRow
-                label="Where your data lives"
-                sub="Sealed at rest, on your own keys, nothing in between"
-                value={facts ? (sealed ? 'Sealed' : 'On this device') : 'On this device'}
-                onClick={open}
-              />
-            )}
-          >
-            {facts ? <LiveSeal facts={facts} /> : null}
-            <h3 className="settings-sheet-head">Encrypted on this device</h3>
-            <p>
-              Your chats, projects, crew, settings, and session journals are sealed at rest with
-              AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
-              {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API
-              keys are held the same way. When you send a turn to a cloud provider, that one
-              provider sees that one request on your own account. We do not, and there is nothing in
-              between.
-            </p>
-            <h3 className="settings-sheet-head">Privacy, plainly</h3>
-            <p>
-              Local models run on your hardware and nothing leaves it. Cloud models run on your own
-              keys and only with your approval. Web search leaves your machine when the agent uses
-              it. No telemetry, no analytics, no phone-home, ever.
-            </p>
-            <h3 className="settings-sheet-head">Local models, honestly</h3>
-            <p>
-              Harbor and Harbor Mini, and any model you run on this device, are AI. They can be
-              confidently wrong, and OpenShore does not filter what a local model says. Neither is a
-              coder. For real work, connect a bigger model. What you type to a local model stays on
-              this device. Harbor is Qwen3-1.7B and Harbor Mini is Qwen2.5-0.5B-Instruct, both used
-              under the Apache License 2.0.
-            </p>
-          </InfoSheet>
         </SettingsGroup>
 
         <SettingsGroup title="Go further" index={group++}>
