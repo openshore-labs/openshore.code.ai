@@ -6348,3 +6348,28 @@ button.settings-row:active {
     animation: none;
   }
 }
+
+/* The way back from a sub-room: a chevron (and, with room, the name of the
+   room it returns to). Sits where the menu sits on a root room. */
+.back-btn {
+  width: auto;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 10px 0 6px;
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink);
+}
+.back-chevron {
+  width: 10px;
+  height: 10px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  margin-left: 4px;
+}
+.back-label {
+  font-size: 14px;
+  font-weight: 500;
+}
