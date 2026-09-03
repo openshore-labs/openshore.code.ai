@@ -346,11 +346,9 @@ export function StackManager() {
                 Favorites you pinned in chat surface first, then the rest (for
                 Claude, split into the current lineup and older models). */}
             {cloudBench.map(({ provider, models }) => {
-              // Cloud favorites are Claude only (ConversationSource pins are
-              // anthropic), so other providers never surface a Favorites group.
+              // Favorites you pinned in chat, for any connected cloud provider.
               const isFav = (m: BenchModel) =>
-                provider.id === 'anthropic' &&
-                isPinned(pins, { kind: 'cloud', provider: 'anthropic', model: m.id });
+                isPinned(pins, { kind: 'cloud', provider: provider.id, model: m.id });
               const favs = models.filter(isFav);
               const restPrimary = models.filter(
                 (m) => !isFav(m) && !(provider.id === 'anthropic' && m.tier === 'more'),

@@ -102,8 +102,9 @@ import {
   type Connectivity,
   type ProfileId,
 } from '../lib/profiles.js';
-import { PROVIDERS, providerSecretKey } from '../lib/providers.js';
+import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
+import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
 import {
   DEFAULT_PERMISSION_MODE,
@@ -1072,14 +1073,37 @@ export const useApp = create<AppState>((set, get) => {
       case 'device':
         return new OnDeviceDriver(conv.source.modelId, conv.source.modelName, seed);
       case 'cloud': {
-        const key = await secretGet(ANTHROPIC_KEY_KEY);
-        if (!key) throw new Error('Add your Claude API key under Connections first.');
-        return new CloudClaudeDriver(
+        // Claude runs on the Anthropic SDK; every other connected provider runs
+        // on the shared OpenAI-compatible chat driver, so a user can chat with
+        // any model their provider offers, not only Claude. Held in a const so
+        // the narrowing survives the awaits below.
+        const source = conv.source;
+        if (source.provider === 'anthropic') {
+          const key = await secretGet(ANTHROPIC_KEY_KEY);
+          if (!key) throw new Error('Add your Claude API key under Connections first.');
+          return new CloudClaudeDriver(
+            key,
+            source.model,
+            seed,
+            settings.anthropicWorkspaceId,
+            repoContextLine(conv.repoIds ?? []),
+          );
+        }
+        const info = providerInfo(source.provider);
+        if (!info?.openaiBaseUrl) {
+          throw new Error(`No endpoint configured for ${source.provider}.`);
+        }
+        const key = await secretGet(providerSecretKey(source.provider));
+        if (!key) throw new Error(`Connect ${info.name} under Cloud Connections first.`);
+        const contextWindow = info.models.find((m) => m.id === source.model)?.contextTokens;
+        return new CloudOpenAiDriver(
+          info.openaiBaseUrl,
           key,
-          conv.source.model,
+          source.model,
+          info.name,
           seed,
-          settings.anthropicWorkspaceId,
           repoContextLine(conv.repoIds ?? []),
+          contextWindow,
         );
       }
       case 'stack': {

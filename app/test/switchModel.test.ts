@@ -155,7 +155,9 @@ describe('mid-chat model switch', () => {
       activeId: 'c1',
     });
     // No Claude key stored, so buildDriver('cloud') throws before attaching.
-    await useApp.getState().switchModel({ kind: 'cloud', model: 'claude-x' });
+    await useApp
+      .getState()
+      .switchModel({ kind: 'cloud', provider: 'anthropic', model: 'claude-x' });
     expect(useApp.getState().conversations.c1!.source.kind).toBe('device');
   });
 
@@ -166,7 +168,9 @@ describe('mid-chat model switch', () => {
       order: ['c1'],
       activeId: 'c1',
     });
-    await useApp.getState().switchModel({ kind: 'cloud', model: 'claude-x' });
+    await useApp
+      .getState()
+      .switchModel({ kind: 'cloud', provider: 'anthropic', model: 'claude-x' });
     const conv = useApp.getState().conversations.c1!;
     expect(conv.source.kind).toBe('cloud');
     // The new cloud driver was seeded with the prior turn.

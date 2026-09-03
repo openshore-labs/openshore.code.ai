@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "lint": "eslint src electron --ext .ts,.tsx --max-warnings 0",
     "test": "vitest run",
+    "verify:models": "tsx scripts/verify-cloud-models.ts",
     "postinstall": "electron-rebuild -f -w node-pty -m ../os-code || echo 'electron-rebuild skipped: node-pty stays built for system Node; the desktop terminal needs it rebuilt for Electron, run pnpm --filter oscode-app rebuild:native'",
     "rebuild:native": "electron-rebuild -f -w node-pty -m ../os-code",
     "desktop": "vite build && tsc -p electron/tsconfig.json && node scripts/desktop-preflight.mjs && electron .",
@@ -62,6 +63,7 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-react-hooks": "4.6.2",
     "prettier": "3.9.6",
+    "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite": "8.2.1",
     "vitest": "4.1.10"
