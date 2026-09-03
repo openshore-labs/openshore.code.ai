@@ -13,7 +13,11 @@ import { isDesktop } from '../lib/platform.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import type { DaemonStackInfo } from 'os-code/protocol';
-import { CLAUDE_MODELS, claudeModelLabel } from '../lib/claudeModels.js';
+import {
+  CLAUDE_MODELS_PRIMARY,
+  CLAUDE_MODELS_MORE,
+  claudeModelLabel,
+} from '../lib/claudeModels.js';
 import { PROVIDERS } from '../lib/providers.js';
 import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
 import { isPinned, pinKey, togglePin } from '../lib/pins.js';
@@ -69,6 +73,36 @@ function Row({
   );
 }
 
+/** A visible favorite toggle on a model row. It sits alongside the row's tap
+ *  (pick) and the swipe (pin), so a favorite is one obvious tap, not a hidden
+ *  gesture. Pointer-down and click are stopped so the star never also fires the
+ *  row's pick or starts a swipe. */
+function PinStar({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`ms-pin${pinned ? ' on' : ''}`}
+      aria-label={pinned ? 'Unpin from favorites' : 'Pin as a favorite'}
+      aria-pressed={pinned}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path
+          d="M12 3.6l2.35 4.77 5.26.76-3.8 3.71.9 5.24L12 15.9l-4.71 2.48.9-5.24-3.8-3.71 5.26-.76z"
+          fill={pinned ? 'currentColor' : 'none'}
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
 /** A short, human name for a pinned source, shown under My Stack. */
 function pinLabel(s: ConversationSource): string {
   if (s.kind === 'cloud') return claudeModelLabel(s.model);
@@ -94,7 +128,7 @@ export function ModelSheet({
 }) {
   const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView, showToast } =
     useApp();
-  const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local'>(initialStage);
+  const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
   const { closing, dismiss } = useSheetExit(onClose);
   const effort = settings.effort ?? DEFAULT_EFFORT;
 
@@ -161,7 +195,9 @@ export function ModelSheet({
       <button
         className="mode-close press-fb"
         aria-label={stage === 'root' ? 'Close' : 'Back'}
-        onClick={() => (stage === 'root' ? dismiss() : setStage('root'))}
+        onClick={() =>
+          stage === 'root' ? dismiss() : setStage(stage === 'more' ? 'cloud' : 'root')
+        }
       >
         {stage === 'root' ? <CloseGlyph /> : <BackGlyph />}
       </button>
@@ -274,6 +310,7 @@ export function ModelSheet({
                 >
                   <div className="ms-row">
                     <RowContent main={pinLabel(src)} sub={pinSub(src)} />
+                    <PinStar pinned onToggle={() => setPin(src)} />
                   </div>
                 </SwipeRow>
               ))}
@@ -327,7 +364,7 @@ export function ModelSheet({
                   <>
                     <div className="ms-heading">Claude</div>
                     <div className="ms-group">
-                      {CLAUDE_MODELS.map((m) => {
+                      {CLAUDE_MODELS_PRIMARY.map((m) => {
                         const src: ConversationSource = {
                           kind: 'cloud',
                           provider: 'anthropic',
@@ -342,10 +379,12 @@ export function ModelSheet({
                           >
                             <div className="ms-row">
                               <RowContent main={m.label} sub={m.blurb} />
+                              <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                             </div>
                           </SwipeRow>
                         );
                       })}
+                      <Row main="More models" chevron onClick={() => setStage('more')} />
                     </div>
                   </>
                 ) : null}
@@ -372,6 +411,35 @@ export function ModelSheet({
           </>
         ) : null}
 
+        {stage === 'more' ? (
+          <>
+            <Header title="More models" />
+            <div className="ms-heading">Claude</div>
+            <div className="ms-group">
+              {CLAUDE_MODELS_MORE.map((m) => {
+                const src: ConversationSource = {
+                  kind: 'cloud',
+                  provider: 'anthropic',
+                  model: m.id,
+                };
+                return (
+                  <SwipeRow
+                    key={m.id}
+                    pinned={isPinned(pins, src)}
+                    onTap={() => onPick(src)}
+                    onToggle={() => setPin(src)}
+                  >
+                    <div className="ms-row">
+                      <RowContent main={m.label} sub={m.blurb} />
+                      <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
+                    </div>
+                  </SwipeRow>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+
         {stage === 'local' ? (
           <>
             <Header title="Local LLMs" />
@@ -392,6 +460,7 @@ export function ModelSheet({
                     >
                       <div className="ms-row">
                         <RowContent main={name} sub="Runs fully on this device" />
+                        <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                       </div>
                     </SwipeRow>
                   );

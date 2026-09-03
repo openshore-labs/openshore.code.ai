@@ -14,7 +14,9 @@ import {
   effectiveProfile,
   type ProfileId,
 } from '../lib/profiles.js';
-import { PROVIDERS } from '../lib/providers.js';
+import { PROVIDERS, type ProviderInfo } from '../lib/providers.js';
+import { CLAUDE_MODELS } from '../lib/claudeModels.js';
+import { isPinned } from '../lib/pins.js';
 import { byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import {
   STACK_CATEGORIES,
@@ -28,6 +30,17 @@ import {
   type StackModelRef,
 } from '../lib/stack.js';
 import { Sheet } from './Sheet.js';
+
+/** A cloud provider's selectable models for the bench. Claude comes from the
+ *  full client lineup (claudeModels.ts, the same list and tiers the chat sheet
+ *  uses), so the bench offers every Claude model and its favorites, not the
+ *  short marketplace set; other providers keep their own model list. */
+type BenchModel = { id: string; label: string; tier?: 'primary' | 'more' };
+function providerBenchModels(p: ProviderInfo): BenchModel[] {
+  return p.id === 'anthropic'
+    ? CLAUDE_MODELS.map((m) => ({ id: m.id, label: m.label, tier: m.tier }))
+    : p.models.map((m) => ({ id: m.id, label: m.label }));
+}
 
 /** The host of a BYOM base URL, for a compact bench sub-line. Falls back to
  *  the raw string if it does not parse. */
@@ -74,7 +87,7 @@ export function StackManager() {
   const byomRefs: StackModelRef[] = (settings.byomModels ?? []).map(byomRef);
   const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
     (p) =>
-      p.models.map((m): StackModelRef => ({
+      providerBenchModels(p).map((m): StackModelRef => ({
         kind: 'cloud',
         provider: p.id,
         model: m.id,
@@ -88,10 +101,11 @@ export function StackManager() {
   // The local bench holds on-device and bring-your-own-model refs, both placed
   // the same way; connected cloud providers get their own grouped section.
   const bench = [...deviceRefs, ...byomRefs].filter((r) => !placed(r));
+  const pins = settings.pinnedModels ?? [];
   const cloudBench = PROVIDERS.filter((p) => connectedProviders[p.id])
     .map((p) => ({
       provider: p,
-      models: p.models.filter(
+      models: providerBenchModels(p).filter(
         (m) => !placed({ kind: 'cloud', provider: p.id, model: m.id, label: m.label }),
       ),
     }))
@@ -328,9 +342,23 @@ export function StackManager() {
               ))
             )}
 
-            {/* Connected cloud providers: pick a model, then place it. */}
+            {/* Connected cloud providers: pick a model, then place it.
+                Favorites you pinned in chat surface first, then the rest (for
+                Claude, split into the current lineup and older models). */}
             {cloudBench.map(({ provider, models }) => {
-              const picked = cloudPick[provider.id] ?? models[0]!.id;
+              // Cloud favorites are Claude only (ConversationSource pins are
+              // anthropic), so other providers never surface a Favorites group.
+              const isFav = (m: BenchModel) =>
+                provider.id === 'anthropic' &&
+                isPinned(pins, { kind: 'cloud', provider: 'anthropic', model: m.id });
+              const favs = models.filter(isFav);
+              const restPrimary = models.filter(
+                (m) => !isFav(m) && !(provider.id === 'anthropic' && m.tier === 'more'),
+              );
+              const restMore = models.filter(
+                (m) => !isFav(m) && provider.id === 'anthropic' && m.tier === 'more',
+              );
+              const picked = cloudPick[provider.id] ?? favs[0]?.id ?? models[0]!.id;
               const ref: StackModelRef = {
                 kind: 'cloud',
                 provider: provider.id,
@@ -360,11 +388,33 @@ export function StackManager() {
                             color: 'var(--ink)',
                           }}
                         >
-                          {models.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label}
-                            </option>
-                          ))}
+                          {favs.length ? (
+                            <optgroup label="Favorites">
+                              {favs.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {`★ ${m.label}`}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null}
+                          {restPrimary.length ? (
+                            <optgroup label={provider.id === 'anthropic' ? 'Current' : 'Models'}>
+                              {restPrimary.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null}
+                          {restMore.length ? (
+                            <optgroup label="More models">
+                              {restMore.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null}
                         </select>
                       </div>
                     </div>

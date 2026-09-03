@@ -2289,6 +2289,29 @@ textarea {
   font-size: 13.5px;
   flex-shrink: 0;
 }
+/* The favorite toggle at a model row's trailing edge: an outline star that
+   fills teal when pinned. Negative margins keep a finger-sized tap target
+   without adding row height. */
+.ms-pin {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  margin: -8px -6px -8px 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  transition:
+    color var(--dur-1) var(--ease-standard),
+    transform var(--press-out);
+}
+.ms-pin.on {
+  color: var(--local);
+}
+.ms-pin:active {
+  transform: scale(0.86);
+  transition: transform var(--press-in);
+}
 .ms-row-disabled {
   cursor: default;
 }
