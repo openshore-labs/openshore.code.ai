@@ -16,7 +16,7 @@ const STORE = readFileSync(join(SRC, 'state/store.ts'), 'utf8');
 
 describe('the tile hop (view transitions)', () => {
   it('names the product page tile as the shared element, hosted and catalog alike', () => {
-    expect(THEME).toMatch(/\.product-page \.model-tile \{[^}]*view-transition-name: hosted-tile/);
+    expect(THEME).toMatch(/\.product-page \.model-tile \{[^}]*view-transition-name: product-tile/);
     // Both product pages carry the class, and every tile origin (hero, row,
     // preset member) hands the page its tile.
     expect(MARKET).toMatch(/hosted-page product-page/);
@@ -26,6 +26,23 @@ describe('the tile hop (view transitions)', () => {
     }
   });
 
+  it('crossfades the front-to-list boundary only, with the field and rail held still', () => {
+    const apply = /const applyFacets[\s\S]*?\n  \};/.exec(MARKET)?.[0] ?? '';
+    expect(apply).toMatch(/toFront !== browsing/);
+    expect(apply).toMatch(/if \(crossing\) fade\(update\);\s*else update\(\);/);
+    expect(THEME).toMatch(/\.market-search \{[^}]*view-transition-name: market-search/);
+    expect(THEME).toMatch(/\.cat-rail \{[^}]*view-transition-name: market-rail/);
+    // No facet change bypasses the boundary logic.
+    expect(MARKET).not.toMatch(/onClick=\{\(\) => setFacets\(/);
+  });
+
+  it('ticks the filter sheet count on the result bar pop', () => {
+    expect(THEME).toMatch(
+      /\.count-tick \{[^}]*animation: count-pop var\(--dur-3\) var\(--ease-spring\) backwards/,
+    );
+    expect((MARKET.match(/className="count-tick"/g) ?? []).length).toBe(2);
+  });
+
   it('shows real pull progress through Ollama on the hosted page', () => {
     const fn = /const pullHostedViaOllama[\s\S]*?\n  \};/.exec(MARKET)?.[0] ?? '';
     expect(fn).toMatch(/onInstallProgress/);
@@ -33,7 +50,7 @@ describe('the tile hop (view transitions)', () => {
   });
 
   it('times the hop on the motion tokens, tile on the slow arrive lane', () => {
-    const group = /::view-transition-group\(hosted-tile\) \{([^}]*)\}/.exec(THEME)?.[1] ?? '';
+    const group = /::view-transition-group\(product-tile\) \{([^}]*)\}/.exec(THEME)?.[1] ?? '';
     expect(group).toContain('var(--dur-5)');
     expect(group).toContain('var(--ease-arrive)');
     const root = /::view-transition-old\(root\),\s*::view-transition-new\(root\) \{([^}]*)\}/.exec(
