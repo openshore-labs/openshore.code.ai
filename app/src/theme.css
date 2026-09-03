@@ -105,6 +105,9 @@
      as a button. */
   --press-in: var(--dur-1) var(--ease-accel);
   --press-out: 260ms var(--ease-spring);
+  /* The phone drawer's width, the one copy. Registered as a <length> below so
+     lib/motion.ts can read it back already resolved to pixels. */
+  --drawer-width: min(310px, 84vw);
   --press-scale-btn: 0.96;
   --press-scale-row: 0.985;
   --press-scale-tile: 0.94;
@@ -288,7 +291,8 @@ textarea {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 22px;
+  /* iOS's own back-swipe zone is about 30pt; 22px missed too many thumbs. */
+  width: 30px;
   z-index: 30;
   touch-action: pan-y;
 }
@@ -553,6 +557,11 @@ textarea {
 }
 
 /* Mobile drawer variant of the sidebar */
+@property --drawer-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 310px;
+}
 .drawer-scrim {
   position: fixed;
   inset: 0;
@@ -565,11 +574,13 @@ textarea {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 41;
-  width: min(310px, 84vw);
+  width: var(--drawer-width);
   box-shadow: 24px 0 60px rgba(var(--shadow-rgb), 0.18);
   animation: drawer-in var(--dur-5) var(--ease-standard);
-  /* After a drag releases, the panel springs to rest on this. */
-  transition: transform var(--dur-4) var(--ease-spring);
+  /* After a drag releases, the panel springs to rest on this. The gesture
+     hook sets --drawer-settle from the distance left to travel (between
+     --dur-3 and --dur-5), so a short return is brisk and a long one glides. */
+  transition: transform var(--drawer-settle, var(--dur-4)) var(--ease-spring);
   touch-action: pan-y;
 }
 /* While the finger holds it, the panel is exactly where the finger is. */

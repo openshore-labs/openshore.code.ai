@@ -8,6 +8,7 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { hapticTick } from '../lib/haptics.js';
 import { EXIT_MS } from './useExitPresence.js';
+import { durationMs } from '../lib/motion.js';
 
 /** A flick faster than this (px per ms) commits regardless of distance. */
 const COMMIT_VELOCITY = 0.35;
@@ -18,14 +19,22 @@ const COMMIT_FRACTION = 0.4;
 const DRAG_SLOP = 8;
 /** How far the panel may rubber-band past its rest position. */
 const OVERSHOOT_MAX = 14;
-/** Settle time after release: the spring back to rest. Matches --dur-4. */
-const SETTLE_MS = 280;
+/** Settle time after release, read from the stylesheet's tokens: a return
+ *  over the full width takes --dur-5, a nudge back takes --dur-3, anything
+ *  between scales with the distance left. The literals are only the test
+ *  runner's fallback (no document there). */
+function settleRange(): [short: number, long: number] {
+  return [durationMs('--dur-3', 220), durationMs('--dur-5', 320)];
+}
 
 type Sample = { t: number; x: number };
 
 export interface DrawerGesture {
   /** Inline translateX for the panel while dragging or settling; null at rest. */
   dragX: number | null;
+  /** The spring's duration for the settle in flight (--drawer-settle); null
+   *  while the finger holds the panel or at rest. */
+  settleMs: number | null;
   /** True while the finger is down and moving the panel. */
   dragging: boolean;
   /** The panel is mounted only because a from-closed drag is in progress. */
@@ -62,6 +71,7 @@ export function useDrawerGesture({
   width: number;
 }): DrawerGesture {
   const [dragX, setDragX] = useState<number | null>(null);
+  const [settleMs, setSettleMs] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [peek, setPeek] = useState(false);
   const [viaGesture, setViaGesture] = useState(false);
@@ -73,6 +83,12 @@ export function useDrawerGesture({
   const samples = useRef<Sample[]>([]);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mode = useRef<'open' | 'close' | null>(null);
+  /** The panel's current x, readable inside stable callbacks. */
+  const xRef = useRef<number | null>(null);
+  const place = (x: number | null) => {
+    xRef.current = x;
+    setDragX(x);
+  };
 
   const rubber = (x: number): number =>
     x <= 0 ? x : OVERSHOOT_MAX * (1 - Math.exp(-x / (OVERSHOOT_MAX * 3)));
@@ -100,16 +116,28 @@ export function useDrawerGesture({
     settleTimer.current = null;
   };
 
-  const settle = useCallback((to: number, then?: () => void, ms: number = SETTLE_MS) => {
-    setDragging(false);
-    setDragX(to);
-    clearSettle();
-    settleTimer.current = setTimeout(() => {
-      settleTimer.current = null;
-      setDragX(null);
-      then?.();
-    }, ms);
-  }, []);
+  // Springs the panel to `to` and clears the inline position once it has
+  // landed. `holdMs` pins the hold instead (a commit-close keeps the finger's
+  // position through the exit animation, which owns the motion).
+  const settle = useCallback(
+    (to: number, then?: () => void, holdMs?: number) => {
+      const from = xRef.current ?? to;
+      const fraction = Math.min(1, Math.abs(to - from) / Math.max(1, width));
+      const [short, long] = settleRange();
+      const ms = holdMs ?? Math.round(short + (long - short) * fraction);
+      setDragging(false);
+      setSettleMs(ms);
+      place(to);
+      clearSettle();
+      settleTimer.current = setTimeout(() => {
+        settleTimer.current = null;
+        place(null);
+        setSettleMs(null);
+        then?.();
+      }, ms);
+    },
+    [width],
+  );
 
   // ---- from closed: the edge zone
   const edgeDown = useCallback(
@@ -125,7 +153,7 @@ export function useDrawerGesture({
       setPeek(true);
       setViaGesture(true);
       setDragging(true);
-      setDragX(-width);
+      place(-width);
       sample(e.clientX);
     },
     [enabled, open, width],
@@ -137,7 +165,7 @@ export function useDrawerGesture({
       const dx = Math.max(0, e.clientX - startX.current);
       sample(e.clientX);
       const x = -width + dx;
-      setDragX(rubber(Math.max(-width, x)));
+      place(rubber(Math.max(-width, x)));
       const nowArmed = dx > width * COMMIT_FRACTION;
       if (nowArmed !== armed.current) {
         armed.current = nowArmed;
@@ -197,7 +225,7 @@ export function useDrawerGesture({
         e.currentTarget.setPointerCapture(e.pointerId);
         setDragging(true);
       }
-      setDragX(rubber(Math.max(-width, dx)));
+      place(rubber(Math.max(-width, dx)));
       const nowArmed = -dx > width * COMMIT_FRACTION;
       if (nowArmed !== armed.current) {
         armed.current = nowArmed;
@@ -235,6 +263,7 @@ export function useDrawerGesture({
 
   return {
     dragX,
+    settleMs,
     dragging,
     peek,
     // Stays on through a drag-to-close (dragX is held for the exit), so the

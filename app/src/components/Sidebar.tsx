@@ -176,6 +176,7 @@ export function Sidebar({
   drawer,
   closing,
   dragX = null,
+  settleMs = null,
   dragging = false,
   viaGesture = false,
   progress = null,
@@ -185,6 +186,8 @@ export function Sidebar({
   closing?: boolean;
   /** Inline translateX while the drawer follows the finger or settles. */
   dragX?: number | null;
+  /** Spring duration for a settle in flight (feeds --drawer-settle). */
+  settleMs?: number | null;
   dragging?: boolean;
   /** Opened by the edge swipe: skip the CSS entrance (the finger already did it). */
   viaGesture?: boolean;
@@ -224,7 +227,11 @@ export function Sidebar({
       // rather than jumping back to open first.
       style={
         dragX !== null
-          ? ({ transform: `translateX(${dragX}px)`, '--drawer-x': `${dragX}px` } as CSSProperties)
+          ? ({
+              transform: `translateX(${dragX}px)`,
+              '--drawer-x': `${dragX}px`,
+              ...(settleMs !== null ? { '--drawer-settle': `${settleMs}ms` } : {}),
+            } as CSSProperties)
           : undefined
       }
       {...(drawer ? dragProps : {})}
