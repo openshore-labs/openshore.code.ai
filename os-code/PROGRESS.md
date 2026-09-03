@@ -3,6 +3,49 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, Repositories connect over OAuth, the GitHub App path)
+
+Founder: the Repositories cards paste a GitHub/GitLab/Bitbucket token. "Possible
+to change these to OAuth? Just do the same path Claude uses if possible." Claude
+Code connects through a GitHub App whose secret lives on a server; that is now
+OpenShore's path too, and the server already existed (the Supabase project that
+runs the Stripe functions). Shipped for GitHub; GitLab and Bitbucket stay on the
+token path for now (founder has no GitLab account, and one provider proves the
+seam), and light up with no code change once their client ids are set.
+
+- **`supabase/functions/repo-oauth/`** holds each provider's client secret and
+  does the only secret-using work: `GET /callback` is a dumb https landing that
+  bounces the provider's single-use code into the app over `oscode://repo-oauth`
+  (GitHub rejects a custom-scheme redirect URI, so the https hop is required);
+  `POST /exchange` and `POST /refresh` trade the code or a refresh token for
+  access tokens using the secret, over TLS. `verify_jwt = false` (the provider
+  redirect carries no bearer). The app never sees a secret.
+- **`app/src/lib/gitos/repoOAuth.ts`** runs the app side: open consent (in-app
+  browser on iOS, system browser on desktop), capture the bounce on the deep-
+  link bus the app already uses (`appUrlOpen` on iOS, the Electron forward on
+  desktop, no Electron changes), verify `state`, post the code to `/exchange`,
+  store the tokens under `repoSecretKey(id)` so the connected badge and any
+  future token reader work for OAuth and pasted tokens alike, plus `.refresh`,
+  `.expiresAt`, `.mode` bookkeeping. `repoAccessToken(id)` refreshes through the
+  function near expiry.
+- **`ReposScreen`** shows one-tap "Connect <name>" when a provider is
+  configured (`VITE_*_CLIENT_ID` present), with "Use a token instead" beneath
+  it; a provider with no client id keeps only the token path. Remove clears both
+  credential shapes. Reverses the "no OAuth app id" line in `DECISIONS.md` for
+  the app; the zero-setup token path stays as the documented fallback.
+- Gates green: app typecheck, lint, 8 new tests in `repoOAuth.test.ts`
+  (secret never posted, state verified, tokens stored, refresh, remove).
+
+**Live setup (GitHub, done 2026-09-03):** a GitHub App "OpenShore Code" is
+registered under openshore-labs, set to "Any account" so any user connects
+their own repos, permissions Contents + Pull requests read/write and Metadata
+read, callback `https://lzlrlfdffwiypzreoldb.supabase.co/functions/v1/repo-oauth/callback`.
+Its `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` are set as
+`repo-oauth` function secrets in Supabase; `VITE_GITHUB_CLIENT_ID` (the public
+id) is a Codemagic build var. **Remaining to go fully live:** deploy the
+function (`supabase functions deploy repo-oauth`); the TestFlight build for the
+`VITE_GITHUB_CLIENT_ID` bake happens on this push to `main`.
+
 ## Current state (2026-09-03, the header picks repositories, not a model name)
 
 Founder: "In the header let's replace the model name with a repo drop down

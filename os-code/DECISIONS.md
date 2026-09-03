@@ -34,7 +34,21 @@ execution contract. Newest at the bottom.
   mode 600. Documented honestly as obfuscation, not a vault.
 - **GitHub device flow requires `OSC_GITHUB_CLIENT_ID`** (OS Code ships no
   OAuth app id; borrowing another app's id would be wrong); the PAT path works
-  with zero setup and is the default offered.
+  with zero setup and is the default offered. (Desktop CLI only.)
+- **The app connects repos through one-tap OAuth, the GitHub App path Claude
+  Code uses (founder, 2026-09-03).** This reverses the "OS Code ships no OAuth
+  app id" stance ABOVE for the app: OpenShore now registers its own GitHub App,
+  GitLab application, and Bitbucket consumer, and holds each client secret in
+  the `repo-oauth` edge function so the app never carries a secret (same shape
+  as Claude Code's server-held GitHub App). The provider redirect lands on the
+  function's https `/callback`, which bounces a single-use code into the app
+  over `oscode://repo-oauth`; the app posts the code to `/exchange`, which uses
+  the secret over TLS. GitHub rejects a custom-scheme redirect URI, so the https
+  landing is required, not chosen. Paste-a-token stays as the fallback on every
+  card (a fine-grained token, or a host the OAuth app does not cover), so the
+  zero-setup path above is intact. A provider whose `VITE_*_CLIENT_ID` is unset
+  simply shows only the token path. Code: `app/src/lib/gitos/repoOAuth.ts`,
+  `supabase/functions/repo-oauth/`.
 - **The hosted license-verify server and the subscription OAuth exchange are
   the only stubs,** as the brief allows: the request/response contract is
   documented in `src/license/verify.ts`, the client (activation, offline grace,

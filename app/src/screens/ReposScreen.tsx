@@ -8,6 +8,7 @@ import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, openInAppBrowser } from '../lib/platform.js';
 import { daemonCloneRepo, daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { homeRepoReady, REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.js';
+import { isRepoOAuthConfigured } from '../lib/gitos/repoOAuth.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 
@@ -26,6 +27,7 @@ export function ReposScreen() {
     settings,
     connectedRepoPlatforms,
     connectRepoPlatform,
+    connectRepoOAuth,
     disconnectRepoPlatform,
     setHomeRepo,
     syncOutbox,
@@ -110,6 +112,20 @@ export function ReposScreen() {
     showToast(`${name} connected. Its repos are reachable on your token.`);
   };
 
+  // One-tap OAuth: open the provider's consent screen, and on return the tokens
+  // are already stored. A failure comes back as a message, never a throw.
+  const [oauthBusy, setOauthBusy] = useState<string | undefined>();
+  const runOAuth = async (id: RepoPlatform, name: string) => {
+    setOauthBusy(id);
+    try {
+      const res = await connectRepoOAuth(id);
+      if (res.ok) showToast(`${name} connected.`);
+      else showToast(res.error);
+    } finally {
+      setOauthBusy(undefined);
+    }
+  };
+
   return (
     <div className="screen">
       <BackBar title="Repositories" />
@@ -141,17 +157,21 @@ export function ReposScreen() {
         ) : null}
         {REPO_CONNECTORS.map((c) => {
           const on = Boolean(connectedRepoPlatforms[c.id]);
+          const oauth = isRepoOAuthConfigured(c.id);
+          const busy = oauthBusy === c.id;
           return (
             <div className="card" key={c.id}>
               <div className="card-row">
                 <div className="grow">
                   <h3>{c.name}</h3>
-                  <div className="sub">Token looks like {c.keyHint}</div>
+                  <div className="sub">
+                    {oauth ? 'Authorize with one tap' : `Token looks like ${c.keyHint}`}
+                  </div>
                 </div>
                 {on ? <span className="pill ok">connected</span> : null}
                 {on ? (
                   <button
-                    className="btn ghost"
+                    className="btn ghost press-fb"
                     style={{ padding: '8px 14px' }}
                     onClick={async () => {
                       await disconnectRepoPlatform(c.id);
@@ -160,9 +180,20 @@ export function ReposScreen() {
                   >
                     Remove
                   </button>
+                ) : oauth ? (
+                  // The GitHub App path (and its GitLab/Bitbucket siblings): the
+                  // secret exchange runs on the server, so the person only taps.
+                  <button
+                    className="btn primary press-fb"
+                    style={{ padding: '8px 14px' }}
+                    disabled={busy}
+                    onClick={() => void runOAuth(c.id, c.name)}
+                  >
+                    {busy ? 'Connecting…' : `Connect ${c.name}`}
+                  </button>
                 ) : (
                   <button
-                    className="btn ghost"
+                    className="btn ghost press-fb"
                     style={{ padding: '8px 14px' }}
                     onClick={() => {
                       setConnecting(c.id);
@@ -173,6 +204,20 @@ export function ReposScreen() {
                   </button>
                 )}
               </div>
+              {/* One-tap providers still offer the token path, for a fine-grained
+                  token or a self-hosted host the OAuth app does not cover. */}
+              {oauth && !on && connecting !== c.id ? (
+                <button
+                  className="linklike"
+                  style={{ marginTop: 8 }}
+                  onClick={() => {
+                    setConnecting(c.id);
+                    setTokenValue('');
+                  }}
+                >
+                  Use a token instead
+                </button>
+              ) : null}
               {connecting === c.id ? (
                 <div style={{ marginTop: 12 }}>
                   {/* Same errand as a cloud key: an in-app browser sheet on the
