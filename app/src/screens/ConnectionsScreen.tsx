@@ -171,11 +171,7 @@ export function ConnectionsScreen() {
 
         <p className="hint">
           Place a connected model in{' '}
-          <button
-            className="hint"
-            style={{ display: 'inline', padding: 0, textDecoration: 'underline' }}
-            onClick={() => setView('stack')}
-          >
+          <button className="linklike" onClick={() => setView('stack')}>
             your stack
           </button>{' '}
           to make it your Reasoning LLM or a specialist. OpenShore defers to cheaper models for the
