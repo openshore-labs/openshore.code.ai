@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Sheet } from './Sheet.js';
+import { CloseGlyph } from './SheetGlyphs.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { hapticTick } from '../lib/haptics.js';
 import { repoLabel, summarizeRepos, toggleRepo, type RepoOption } from '../lib/chatRepos.js';
@@ -153,7 +154,7 @@ export function RepoPicker({
     <Sheet open={open} onClose={close} className="repo-sheet">
       <div className="mode-head">
         <button className="mode-close press-fb" aria-label="Close" onClick={close}>
-          {'×'}
+          <CloseGlyph />
         </button>
         <h2>Repositories{selected.length ? ` (${selected.length})` : ''}</h2>
       </div>

@@ -3,6 +3,32 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the sheet close button is a drawn glyph, centered)
+
+Founder, with a screenshot of the Repositories sheet: "The x on the repository
+box is off center. Make it more premium." Root cause: the round `.mode-close`
+button typed a "×" character at 22px. A character carries its font's side
+bearings and baseline into the box, so the ink sat low and to the left of the
+circle, and it moved with whatever font the WebView loaded. Fix, in all three
+sheets that share the button (Repositories, Select mode, Select model, plus
+the model sheet's back chevron):
+
+- **`components/SheetGlyphs.tsx`** draws `CloseGlyph` and `BackGlyph` as
+  stroked SVG paths in a square viewBox, centered by geometry. The chevron is
+  nudged one unit left so its visual mass reads centered.
+- **`.mode-close`** rests in the soft ink and lifts to the full ink on hover
+  (hover-capable pointers only) and on press; `line-height: 0` and a block
+  glyph remove the last stray baseline. The color fades ride `--dur-2` /
+  `--ease-standard`. The shorthand lives on `.mode-close.press-fb` because
+  `.press-fb` is declared later at equal specificity and its own
+  `transition: scale` would have reset the fades; press-fb's curt press-in
+  and spring-out are unchanged.
+- Verified centered in headless Chromium against the old glyph. Gates green:
+  app typecheck, lint, 384 tests.
+
+Left alone: the composer's attachment-chip "×" (a 16px chip, no circle to be
+off-center in), and the search glyph in the same sheet, which was already SVG.
+
 ## Current state (2026-09-03, Repositories connect over OAuth, the GitHub App path)
 
 Founder: the Repositories cards paste a GitHub/GitLab/Bitbucket token. "Possible
