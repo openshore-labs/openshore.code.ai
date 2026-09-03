@@ -19,6 +19,7 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
       if (event === 'generationDone') llama.doneCb = cb as typeof llama.doneCb;
       return { remove: async () => {} };
     },
+    ensureLocal: async () => ({ ready: true }),
     load: async () => ({ ok: true }),
     generate: async ({ requestId }: { requestId: string }) => {
       llama.requestIds.push(requestId);
