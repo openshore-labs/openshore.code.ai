@@ -64,9 +64,13 @@ tall cards, the version string in the lead slot, a destructive Clear with no
 confirm) and offered three directions: Tidy, The Ledger, The Manifest. Built
 the recommended one, **The Ledger**, the iOS grouped-settings shape on paper.
 
-- **Structure.** Serif group heads over inset cards, one row per thing, the
-  current value on the right, a chevron when a row opens a sheet. Groups in
-  order: Account (only when sign-in is configured) · This device
+- **Structure (founder reordered it 2026-09-02 from the phone).** Serif group
+  heads over inset cards, one row per thing, the current value on the right,
+  a chevron when a row opens a sheet. Groups in order: Account (always shown;
+  the row opens the sign-in sheet only when accounts are configured) ·
+  Privacy (one row, "Privacy and Conditions", opening one sheet with Privacy
+  plainly, Encrypted on this device with the live seal, and Local models
+  honestly, in that order) · This device
   (Appearance with the segmented control inline, Help improve the test build
   on a real switch, an Activity log row that appears when it is on) · Harbor
   (Web search, value DuckDuckGo or the chosen provider) · Privacy, plainly
