@@ -24,10 +24,16 @@ export function validateCatalog(catalog: unknown): Catalog {
 export function regressionGate(
   next: Catalog,
   previousRaw: unknown | undefined,
-  opts: { online?: boolean } = {},
+  opts: { online?: boolean; allowLargeDrop?: boolean } = {},
 ): RegressionResult {
   const breaches: GateBreach[] = [];
   const online = opts.online ?? false;
+  // A deliberate roster shrink (tightening the denylist, lowering the cap)
+  // legitimately drops more than the collapse guard allows. This escape hatch,
+  // set only on a build that means to prune, waives THAT one check so the prune
+  // can publish; every other invariant still holds. Off by default, so a real
+  // source outage still safe-fails.
+  const allowLargeDrop = opts.allowLargeDrop ?? false;
 
   // Invariant: a catalog with no models is never a valid publish.
   if (next.models.length === 0) {
@@ -98,7 +104,7 @@ export function regressionGate(
       }
       // The model count must not collapse: a fall of more than 25 percent reads
       // as a source failure, not an editorial choice.
-      if (prev.models.length > 0) {
+      if (prev.models.length > 0 && !allowLargeDrop) {
         const dropFraction = (prev.models.length - next.models.length) / prev.models.length;
         if (dropFraction > 0.25) {
           breaches.push({

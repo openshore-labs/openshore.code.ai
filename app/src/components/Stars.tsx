@@ -3,6 +3,7 @@
 // full stars and one exact half, never a rounded full star. On first paint the
 // fill wipes left to right; prefers-reduced-motion paints it instantly.
 import { useEffect, useRef, useState } from 'react';
+import { ranItLabel, type CommunityScore } from '../lib/reviewsMath.js';
 
 const STAR_PATH =
   'M12 2.2l2.9 6.26 6.85.72-5.1 4.62 1.42 6.74L12 17.6l-6.08 3.94 1.42-6.74-5.1-4.62 6.85-.72z';
@@ -84,6 +85,51 @@ export function NotRated({ label = 'Not yet rated' }: { label?: string }) {
   return (
     <span className="not-rated" role="note">
       {label}
+    </span>
+  );
+}
+
+/** The community score: a SINGLE warm star plus a numeral and a count. Its
+ *  silhouette differs from the benchmark 5-star track on purpose, and it always
+ *  carries a count, so a crowd score can never be misread as the measured
+ *  "OpenShore fit." Renders nothing when there are no reports unless `invite` is
+ *  set, in which case it shows the cold-start line that opens the door. */
+export function CommunityStars({
+  score,
+  size = 14,
+  invite = false,
+}: {
+  score: CommunityScore;
+  size?: number;
+  invite?: boolean;
+}) {
+  if (score.count === 0) {
+    if (!invite) return null;
+    return (
+      <span className="community-line cold">
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d={STAR_PATH}
+            fill="none"
+            stroke="var(--voice)"
+            strokeWidth="1.6"
+            strokeDasharray="3 2"
+          />
+        </svg>
+        <span className="community-count">No run reports yet</span>
+      </span>
+    );
+  }
+  const aria = score.hasAverage
+    ? `Community ${score.average} out of 5, ${ranItLabel(score.count)}`
+    : `${ranItLabel(score.count)}, not enough for an average yet`;
+  return (
+    <span className="community-line" role="img" aria-label={aria}>
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+        <path d={STAR_PATH} fill="var(--voice)" />
+      </svg>
+      {score.hasAverage ? <b className="community-avg">{score.average.toFixed(1)}</b> : null}
+      <span className="community-count">{ranItLabel(score.count)}</span>
     </span>
   );
 }

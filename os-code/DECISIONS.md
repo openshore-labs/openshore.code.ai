@@ -400,3 +400,18 @@ execution contract. Newest at the bottom.
   spring, added as a named token with the reason beside it, pinned by the
   tokens test. A drag-to-close keeps the standard curve on its velocity
   clock, because a moving finger's momentum wants the front-loaded start.
+- 2026-09-03: Crowd-sourced ratings are now allowed, reversing the "never
+  crowd-sourced" rule, on the founder's explicit request. Kept honest by making
+  community a SEPARATE axis (never in catalog.json `ratings`, own `--voice`
+  token, always shown with a count) so benchmark "OpenShore fit" stays
+  uncorrupted. Reviews gate on any signed-in user (founder's call over the
+  stricter entitlement gate); anti-abuse is one-per-user + report/block +
+  auto-hide + a count-gated, benchmark-shrunk average.
+- 2026-09-03: Marketplace coverage broadened but the TRUSTED_PUBLISHERS
+  allowlist stays (CTO): opening it readmits clean-named guardrail-stripped
+  models the name denylist cannot catch. Flagship big models arrive via
+  multi-part GGUF shard support instead. "All models" is served as the pipe
+  (install-by-name + discovery), never as a claim that every model is vetted.
+- 2026-09-03: Community stars ship on browse-list rows (batched RPC) and the
+  product page now; the store-front hero/shelves stay benchmark-only until a
+  review-aggregate sidecar lands in the catalog build, to avoid per-view egress.

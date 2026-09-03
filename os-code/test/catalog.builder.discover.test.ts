@@ -9,7 +9,11 @@ import {
   classify,
   discoverModels,
   pickGguf,
+  pickWeights,
+  shardSet,
   slugId,
+  nextLink,
+  MAX_DETAIL_READS,
   type DiscoveredRepo,
   type DiscoveryClient,
   type RepoDetail,
@@ -120,7 +124,10 @@ describe('discoverModels', () => {
     });
     const { models, skipped } = await discoverModels(c, { today: '2026-09-02' });
     expect(models).toEqual([]);
-    expect(skipped.map((s) => s.repo)).toEqual(trending.map((r) => r.id));
+    // Every listed repo is skipped. Order is not asserted: cheap rejections are
+    // now batched before the parallel detail reads, so the log groups them, but
+    // the set is the same and skip-log order is not load-bearing.
+    expect(skipped.map((s) => s.repo).sort()).toEqual(trending.map((r) => r.id).sort());
     // Cheap rejections never cost a detail read.
     expect(c.detailCalls).not.toContain('meta-llama/Llama-4-GGUF');
     expect(c.detailCalls).not.toContain('mistralai/Bad-Uncensored-GGUF');
@@ -203,15 +210,18 @@ describe('discoverModels', () => {
   });
 
   it('stops reading metadata once the per-build budget is spent', async () => {
-    const many = Array.from({ length: 200 }, (_, i) => repo(`mistralai/M${i}-GGUF`));
+    const over = 40;
+    const many = Array.from({ length: MAX_DETAIL_READS + over }, (_, i) =>
+      repo(`mistralai/M${i}-GGUF`),
+    );
     const details = Object.fromEntries(
       many.map((r) => [r.id, detail(r.id, { cardData: { license: 'other' } })]),
     );
     const c = client(many, [], details);
     const { models, skipped } = await discoverModels(c, { today: '2026-09-02' });
     expect(models).toEqual([]);
-    expect(c.detailCalls).toHaveLength(160);
-    expect(skipped.filter((s) => /budget/.test(s.reason))).toHaveLength(40);
+    expect(c.detailCalls).toHaveLength(MAX_DETAIL_READS);
+    expect(skipped.filter((s) => /budget/.test(s.reason))).toHaveLength(over);
   });
 
   it('keeps one entry per underlying model across quantizers and imatrix twins', async () => {
@@ -428,5 +438,78 @@ describe('discovered models through the build', () => {
       overlay: {},
     });
     expect(drops.map((d) => d.id)).toEqual(['hf-x']);
+  });
+});
+
+describe('coverage expansion (shards, big models, pagination)', () => {
+  it('pickWeights sums a complete shard set and marks it sharded', () => {
+    const files = [
+      { rfilename: 'Big-Q4_K_M-00001-of-00003.gguf', size: 20e9 },
+      { rfilename: 'Big-Q4_K_M-00002-of-00003.gguf', size: 20e9 },
+      { rfilename: 'Big-Q4_K_M-00003-of-00003.gguf', size: 8e9 },
+    ];
+    const w = pickWeights(files);
+    expect(w).toEqual({
+      quant: 'Q4_K_M',
+      sizeBytes: 48e9,
+      rfilename: files[0]!.rfilename,
+      sharded: true,
+    });
+  });
+
+  it('pickWeights prefers a single file over a shard set', () => {
+    const files = [
+      { rfilename: 'M-Q4_K_M.gguf', size: 5e9 },
+      { rfilename: 'M-Q8_0-00001-of-00002.gguf', size: 9e9 },
+      { rfilename: 'M-Q8_0-00002-of-00002.gguf', size: 9e9 },
+    ];
+    const w = pickWeights(files);
+    expect(w?.sharded).toBe(false);
+    expect(w?.quant).toBe('Q4_K_M');
+  });
+
+  it('shardSet rejects an incomplete set or one with an unknown size', () => {
+    expect(
+      shardSet([{ rfilename: 'X-Q4_K_M-00001-of-00002.gguf', size: 2e9 }], 'Q4_K_M'),
+    ).toBeUndefined();
+    expect(
+      shardSet(
+        [
+          { rfilename: 'X-Q4_K_M-00001-of-00002.gguf', size: 2e9 },
+          { rfilename: 'X-Q4_K_M-00002-of-00002.gguf' },
+        ],
+        'Q4_K_M',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('carries a flagship sharded model as a desktop-only entry with summed size', async () => {
+    const trending = [repo('mistralai/Big-70B-GGUF')];
+    const details = {
+      'mistralai/Big-70B-GGUF': detail('mistralai/Big-70B-GGUF', {
+        siblings: [
+          { rfilename: 'Big-70B-Q4_K_M-00001-of-00002.gguf', size: 24e9 },
+          { rfilename: 'Big-70B-Q4_K_M-00002-of-00002.gguf', size: 18e9 },
+        ],
+      }),
+    };
+    const { models } = await discoverModels(client(trending, [], details), { today: '2026-09-02' });
+    expect(models).toHaveLength(1);
+    expect(models[0]!.sizeGB).toBe(42);
+    // Too big for a phone: a sharded model is desktop-only, pulled whole by the
+    // Ollama hf.co ref, and never carries an onDevice download.
+    expect(models[0]!.onDevice).toBeUndefined();
+    expect(models[0]!.source.ref).toBe('hf.co/mistralai/Big-70B-GGUF:Q4_K_M');
+  });
+
+  it('nextLink parses the rel=next url from a Link header, resolving relative', () => {
+    const base = 'https://huggingface.co';
+    const header = '<https://huggingface.co/api/models?cursor=abc>; rel="next"';
+    expect(nextLink(header, base)).toBe('https://huggingface.co/api/models?cursor=abc');
+    expect(nextLink('</api/models?cursor=xyz>; rel="next"', base)).toBe(
+      'https://huggingface.co/api/models?cursor=xyz',
+    );
+    expect(nextLink('<https://x/y>; rel="prev"', base)).toBeUndefined();
+    expect(nextLink(null, base)).toBeUndefined();
   });
 });

@@ -43,6 +43,12 @@
   --cloud: #a35f0a;
   --cloud-soft: rgba(163, 95, 10, 0.13);
 
+  /* Voice: the community-rating tone. A honey gold, warmer and lighter than the
+     brown spend-amber (--cloud), used ONLY for the people-signal so a community
+     star can never be misread as spend or as the teal benchmark score. */
+  --voice: #c98a1f;
+  --voice-soft: rgba(201, 138, 31, 0.14);
+
   /* Status. Deepened so they read as text on a light ground. */
   --ok: #2f8f4e;
   /* Soft ok fill (mirrors --cloud-soft), shared by every green status pill. */
@@ -150,6 +156,8 @@
     --local-soft: rgba(107, 179, 196, 0.16);
     --cloud: #e0902f;
     --cloud-soft: rgba(224, 144, 47, 0.16);
+    --voice: #eab94f;
+    --voice-soft: rgba(234, 185, 79, 0.18);
     --ok: #5fbf7e;
     --ok-soft: rgba(95, 191, 126, 0.16);
     --warn: #d6a53a;
@@ -181,6 +189,8 @@
   --local-soft: rgba(107, 179, 196, 0.16);
   --cloud: #e0902f;
   --cloud-soft: rgba(224, 144, 47, 0.16);
+  --voice: #eab94f;
+  --voice-soft: rgba(234, 185, 79, 0.18);
   --ok: #5fbf7e;
   --ok-soft: rgba(95, 191, 126, 0.16);
   --warn: #d6a53a;
@@ -4415,6 +4425,302 @@ textarea {
   margin: 0;
   font-size: 12.5px;
   color: var(--muted);
+}
+
+/* The windowed list's growth sentinel: an invisible marker the observer watches
+   to page more cards in ahead of the scroll. */
+.list-sentinel {
+  height: 1px;
+}
+
+/* ---------------------------------------------------------------- reviews
+   The community rating axis. Warm --voice throughout, a single star and a
+   count, so it never reads as the cool teal benchmark score above it. */
+
+/* The compact community line on a browse card and inside summaries. */
+.community-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--voice);
+}
+.community-line svg {
+  display: block;
+}
+.community-avg {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.community-count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.community-line.cold .community-count {
+  color: var(--muted);
+}
+.market-community {
+  margin-top: 8px;
+}
+
+.reviews {
+  margin-top: 14px;
+}
+.reviews-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.reviews-title {
+  margin: 0;
+  font-size: 15px;
+}
+.reviews-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Cold start: an open door, not a dead widget. */
+.reviews-cold {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--voice-soft);
+}
+.reviews-cold-lead {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--ink);
+}
+.reviews-cold-sub {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.reviews-summary {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+.reviews-avg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 64px;
+}
+.reviews-avg-num {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+  color: var(--ink);
+}
+.reviews-avg-num.muted {
+  color: var(--muted);
+}
+.reviews-avg.pop .reviews-avg-num {
+  animation: count-pop var(--dur-3) var(--ease-spring);
+}
+
+.reviews-dist {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dist-star {
+  width: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+.dist-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.dist-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+  background: var(--voice);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-7) var(--ease-glide);
+}
+.dist-count {
+  width: 24px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reviews-early {
+  margin-top: 10px;
+}
+.reviews-signal {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--voice-soft);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.reviews-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.review-row {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.review-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.review-mine {
+  font-size: 11px;
+  color: var(--voice);
+  font-weight: 600;
+}
+.review-more {
+  margin-left: auto;
+  color: var(--muted);
+  padding: 2px 4px;
+}
+.review-body {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+.review-chips {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.review-menu {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.review-menu-item {
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.reviews-cta {
+  margin-top: 14px;
+  width: 100%;
+}
+
+/* The write-a-review sheet. */
+.write-review {
+  display: flex;
+  flex-direction: column;
+}
+.write-stars {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 6px;
+}
+.write-star {
+  padding: 2px;
+}
+.write-label {
+  margin-top: 14px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.write-body {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+.write-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.write-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    color var(--dur-1) var(--ease-standard);
+}
+.write-chip.on {
+  background: var(--voice-soft);
+  color: var(--ink);
+  border-color: var(--voice);
+}
+.write-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.write-field-label {
+  width: 120px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.write-field input {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+.write-eula {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.write-eula input {
+  margin-top: 2px;
 }
 
 @keyframes fade-rise {
