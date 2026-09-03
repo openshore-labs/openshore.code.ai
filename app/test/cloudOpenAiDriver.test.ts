@@ -6,6 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
 
 const calls: Array<{ url: string; body: unknown }> = [];
+// The next canned response the mocked native fetch returns; a test can drop the
+// usage block to exercise the local estimate fallback.
+let nextBody: Record<string, unknown> = {
+  choices: [{ message: { content: 'Hi from GPT.' } }],
+  usage: { prompt_tokens: 1000, completion_tokens: 20 },
+};
 
 vi.mock('../src/lib/platform.js', () => ({
   platform: () => 'ios',
@@ -18,10 +24,7 @@ vi.mock('../src/lib/nativeFetch.js', () => ({
     return {
       ok: true,
       status: 200,
-      json: async () => ({
-        choices: [{ message: { content: 'Hi from GPT.' } }],
-        usage: { prompt_tokens: 1000, completion_tokens: 20 },
-      }),
+      json: async () => nextBody,
       text: async () => '',
     };
   }),
@@ -54,6 +57,10 @@ async function runTurn(text: string): Promise<DriverEvent[]> {
 describe('CloudOpenAiDriver (device path)', () => {
   beforeEach(() => {
     calls.length = 0;
+    nextBody = {
+      choices: [{ message: { content: 'Hi from GPT.' } }],
+      usage: { prompt_tokens: 1000, completion_tokens: 20 },
+    };
   });
 
   it('posts to the provider endpoint with the chosen model and streams off', async () => {
@@ -73,5 +80,14 @@ describe('CloudOpenAiDriver (device path)', () => {
     // 1000 of a 400k window rounds to 0 percent, but the tokens are carried.
     expect(usage).toMatchObject({ promptTokens: 1000, dollars: 0 });
     expect(events.at(-1)).toMatchObject({ type: 'task-done', reason: 'complete' });
+  });
+
+  it('estimates prompt tokens locally when the provider omits usage', async () => {
+    // Gemini and Kimi may not report usage. The meter should still fill from a
+    // local estimate rather than sit at zero.
+    nextBody = { choices: [{ message: { content: 'ok' } }] };
+    const events = await runTurn('a fairly long prompt to estimate tokens over');
+    const usage = events.find((e) => e.type === 'usage') as { promptTokens: number } | undefined;
+    expect(usage?.promptTokens).toBeGreaterThan(0);
   });
 });

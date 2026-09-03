@@ -42,6 +42,19 @@ interface OaiUsage {
   completion_tokens?: number;
 }
 
+/** A rough token count for a message list, used only when the provider reports
+ *  no usage of its own, so the context meter still fills instead of sitting
+ *  empty. About four characters per token over the text; an estimate, and never
+ *  billed (OpenShore prices nothing). */
+function estimateTokens(messages: OaiMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    if (typeof m.content === 'string') chars += m.content.length;
+    else for (const part of m.content) if (part.type === 'text') chars += part.text.length;
+  }
+  return Math.ceil(chars / 4);
+}
+
 export class CloudOpenAiDriver implements ChatDriver {
   readonly kind = 'cloud' as const;
   private emitter = new DriverEmitter();
@@ -97,6 +110,8 @@ export class CloudOpenAiDriver implements ChatDriver {
       },
       ...this.history,
     ];
+    // A local prompt-token estimate, used only if the provider omits usage.
+    const estimatePrompt = estimateTokens(messages);
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       authorization: `Bearer ${this.apiKey}`,
@@ -122,7 +137,7 @@ export class CloudOpenAiDriver implements ChatDriver {
           answer = content;
           this.emitter.emit({ type: 'text-delta', text: content });
         }
-        this.emitUsage(data.usage);
+        this.emitUsage(data.usage, estimatePrompt);
       } else {
         this.controller = new AbortController();
         const res = await streamingFetch(`${this.baseUrl}/chat/completions`, {
@@ -168,7 +183,7 @@ export class CloudOpenAiDriver implements ChatDriver {
             }
           }
         }
-        this.emitUsage(usage);
+        this.emitUsage(usage, estimatePrompt);
       }
 
       if (this.aborted) {
@@ -192,11 +207,12 @@ export class CloudOpenAiDriver implements ChatDriver {
     }
   }
 
-  private emitUsage(usage: OaiUsage | undefined): void {
+  private emitUsage(usage: OaiUsage | undefined, estimatePrompt: number): void {
     // OpenShore does not price usage; billing rides the user's own account. The
     // honest signal we surface is the context meter, from the reported prompt
-    // tokens (providers that omit usage read as 0, never a fabricated cost).
-    const promptTokens = usage?.prompt_tokens ?? 0;
+    // tokens, or a local estimate when the provider omits usage, so the meter
+    // still fills for every provider (never a fabricated cost).
+    const promptTokens = usage?.prompt_tokens ?? estimatePrompt;
     this.emitter.emit({
       type: 'usage',
       promptTokens,

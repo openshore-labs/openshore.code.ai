@@ -216,6 +216,16 @@ export function providerModelLabel(providerId: string, modelId: string): string 
   return p?.models.find((m) => m.id === modelId)?.label ?? modelId;
 }
 
+/** Whether a provider model can read images (its catalog lists the vision
+ *  capability), so the composer offers the attach button only where it works. */
+export function providerModelVision(providerId: string, modelId: string): boolean {
+  return Boolean(
+    providerInfo(providerId)
+      ?.models.find((m) => m.id === modelId)
+      ?.categories?.includes('vision'),
+  );
+}
+
 /** The secret-store key for a provider's API key. */
 export function providerSecretKey(providerId: string): string {
   return `oscode.secret.${providerId}`;
