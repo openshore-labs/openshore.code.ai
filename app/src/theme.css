@@ -2026,11 +2026,13 @@ textarea {
 /* Pressed-state feedback for every tappable that opts in. Curt press-down, a
    spring back out. Rides the individual `scale` property on purpose, so an
    inline transform on the same element can never shadow it. */
-.press-fb {
+.press-fb,
+.linklike {
   /* Release rides the slow spring-out (overshoot lives only here). */
   transition: scale var(--press-out);
 }
-.press-fb:active {
+.press-fb:active,
+.linklike:active {
   /* Press-down is the curt accelerate-in; overshoot never happens here. */
   scale: var(--press-scale-btn);
   transition: scale var(--press-in);
@@ -2078,6 +2080,8 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .press-fb,
   .press-fb:active,
+  .linklike,
+  .linklike:active,
   .ms-seg-slider,
   .send-btn,
   .composer-chip {
@@ -2937,7 +2941,9 @@ textarea {
 }
 
 /* A text button that reads as an inline link (auth mode toggle, "email me a
-   link instead"). No box, just the link color and a hover underline. */
+   link instead"). No box, just the link color and a hover underline. It is a
+   tappable like any other, so it shares the press-fb scale (declared with
+   press-fb in the polish section above). */
 .linklike {
   background: none;
   border: none;

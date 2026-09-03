@@ -21,6 +21,13 @@ on the same two primitives Cloud Connections already uses:
   "Repos also live on your desktop" card has a Connect button plus an inline
   link, and Your stack's phone hint links `Connect your desktop`. All go
   through `setView('pair')`, so the back chevron returns to where you were.
+- **Polish pass, all three tiers (founder: "do all the polish").** `.linklike`
+  now shares the press-fb scale in `theme.css` (declared beside press-fb, and
+  killed under reduced motion with it), so every inline link answers the
+  finger like any other tappable. `openInAppBrowser` marks the hop to the
+  browser sheet with `hapticTick` (a silent no-op off the phone), one seam
+  instead of four call sites. Cloud Connections' "your stack" link is a
+  `.linklike` like the rest, not an inline-styled hint button.
 
 ## Current state (2026-09-02, quick chat is gone; the Chats room breathes)
 
