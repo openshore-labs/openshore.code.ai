@@ -3,6 +3,49 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the header picks repositories, not a model name)
+
+Founder: "In the header let's replace the model name with a repo drop down
+that allows you to select multiple repos that are connected to your account
+like you can do in Claude Code. That should be possible in basic chats and
+also in projects."
+
+- **What a connected repository is here.** Two roads, one list
+  (`hooks/useConnectedRepos.ts`): the paired computer's workspaces (a clone
+  on disk, id = its path, the id `Project.repoIds` has always used) and the
+  connected GitHub account's repositories, listed on the stored token
+  through `/user/repos` (`lib/chatRepos.ts`, id `github:owner/name`, newest
+  push first, up to 300, cached on the device for ten minutes). GitLab and
+  Bitbucket tokens connect but list nothing yet; their rows are a follow-up
+  on the same seam.
+- **The picker (`components/RepoPicker.tsx`).** A quiet pill in the header's
+  subtitle line where "model · kind" was (the model still lives in the
+  composer pill): a branch glyph, the first repo's name and a count, a live
+  desktop session's branch and dirty dot. Tapped, a panel drops under the
+  header: search, "On your computer", "GitHub", any number checked, and a
+  foot that says plainly where the agent works. Nothing connected yet opens
+  on one button to the Repositories room. The empty-state top bar carries
+  the same picker so repos are chosen before the first message, seeded from
+  the active project; the first send carries them onto the new chat.
+- **Per chat, seeded by the project.** `Conversation.repoIds` is new; a chat
+  starts with what was picked, else its project's list, and keeps its own
+  from then on (`setConversationRepos`). The project sheet offers the same
+  combined list, so a project's default can name a GitHub repo too.
+- **What the selection does, honestly.** The engine works in one directory
+  per session, so the first selected workspace is the session's cwd when the
+  source names none, and every selected repo rides into the chat's context
+  by name (the desktop session's instructions, the stack's project
+  instructions, a new `extraSystem` line on the cloud driver). A GitHub repo
+  with no clone is context until it is cloned; a live session's cwd cannot
+  change after it starts, and a changed list reaches the model on the next
+  session. The panel's foot states the first half of this in one line.
+- `test/chatRepos.test.ts` pins the ids and labels, the summary, the
+  first-workspace rule and the context line, the GitHub mapping, paging, and
+  auth header, a refused token surfacing as an error, and the wiring in the
+  header, the first send, the store, and each driver. Gates green: app
+  typecheck, lint, 376 tests. Verified headless against a stubbed GitHub
+  API: pick two, search, dismiss, start a chat, the selection persists.
+
 ## Current state (2026-09-03, the text box never sits under the keyboard)
 
 Founder, from a second recording: "Keyboard bug. Blocking text box. UI

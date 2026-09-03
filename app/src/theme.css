@@ -6287,6 +6287,137 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
 }
+/* The repo picker (components/RepoPicker.tsx) in the top bar's subtitle line,
+   where the model name used to be. A quiet pill that reads as text until it
+   is tapped; its panel drops below the header on the popover entrance. The
+   empty-state top bar carries the same picker so repos are chosen before the
+   first message, the Claude Code way. */
+.topbar-spacer-repos {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.repo-picker {
+  position: relative;
+  min-width: 0;
+}
+.repo-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 2px 9px 2px 8px;
+  line-height: 1.5;
+}
+.repo-picker-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+.repo-picker-branch {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.85;
+}
+.repo-picker-caret {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.repo-panel {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  top: calc(var(--header-height, 56px) + 6px);
+  max-width: 420px;
+  margin: 0 auto;
+  z-index: 30;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(var(--shadow-rgb), 0.16);
+  padding: 8px;
+  transform-origin: top center;
+  animation: menu-pop var(--dur-2) var(--ease-standard) backwards;
+}
+.repo-panel.closing {
+  animation: menu-unpop var(--dur-2) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+@keyframes menu-unpop {
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(-3px);
+  }
+}
+.repo-list {
+  max-height: min(48vh, 360px);
+}
+.repo-group {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 8px 10px 4px;
+}
+.repo-row {
+  align-items: flex-start;
+}
+.repo-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.repo-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14.5px;
+}
+.repo-row-lock {
+  font-size: 10.5px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+.repo-row-detail {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-hint,
+.repo-foot {
+  margin: 0;
+  padding: 6px 10px;
+}
+.repo-foot {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 8px;
+}
+.repo-panel-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+.repo-panel-empty p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
 .repo-chip {
   font-family: var(--font-mono);
   font-size: 11.5px;

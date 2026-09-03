@@ -156,6 +156,10 @@ export interface Conversation {
   source: ConversationSource;
   /** The project this chat belongs to, if any. */
   projectId?: string;
+  /** The repositories this chat works with (lib/chatRepos.ts ids: a workspace
+   *  path or "github:owner/name"), picked in the header. Seeded from the
+   *  project's repoIds when the chat starts; the chat keeps its own list. */
+  repoIds?: string[];
   /** Explicitly unfiled (its project was deleted), as opposed to a legacy chat
    *  that predates projects. The init orphan-migration adopts only the latter,
    *  so an intentionally unfiled chat is never re-adopted on the next launch. */
