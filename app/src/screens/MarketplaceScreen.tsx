@@ -1583,7 +1583,16 @@ export function MarketplaceScreen() {
                 >
                   {t === 'icloud' ? (
                     <span className="seg-cloud" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="13"
+                        height="13"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M7 16a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.3A3.5 3.5 0 0 1 18 16" />
                         <path d="M12 12v6m0 0l-2.2-2.2M12 18l2.2-2.2" />
                       </svg>
@@ -1613,9 +1622,12 @@ export function MarketplaceScreen() {
             <p className="dl-machine-lead">
               This is a large model. It likes about {requiredRam} GB of memory to stretch out.
             </p>
-            <p className="dl-machine-path">Keep it in your iCloud and draw from it whenever you are online.</p>
             <p className="dl-machine-path">
-              Or pair a machine with about {rec.ramGB} GB of memory over Tailscale and run it full speed.
+              Keep it in your iCloud and draw from it whenever you are online.
+            </p>
+            <p className="dl-machine-path">
+              Or pair a machine with about {rec.ramGB} GB of memory over Tailscale and run it full
+              speed.
             </p>
           </div>
         ) : null}

@@ -126,19 +126,31 @@ describe('deviceRunsComfortably', () => {
 describe('defaultTarget and availableTargets', () => {
   it('prefers the device when the bytes fit with headroom', () => {
     expect(
-      defaultTarget({ neededBytes: gbToBytes(4), deviceFreeBytes: gbToBytes(64), icloudAvailable: true }),
+      defaultTarget({
+        neededBytes: gbToBytes(4),
+        deviceFreeBytes: gbToBytes(64),
+        icloudAvailable: true,
+      }),
     ).toBe('device');
   });
 
   it('falls back to iCloud when it will not fit and iCloud is signed in', () => {
     expect(
-      defaultTarget({ neededBytes: gbToBytes(40), deviceFreeBytes: gbToBytes(10), icloudAvailable: true }),
+      defaultTarget({
+        neededBytes: gbToBytes(40),
+        deviceFreeBytes: gbToBytes(10),
+        icloudAvailable: true,
+      }),
     ).toBe('icloud');
   });
 
   it('never blocks: still picks the device when iCloud is absent', () => {
     expect(
-      defaultTarget({ neededBytes: gbToBytes(40), deviceFreeBytes: gbToBytes(10), icloudAvailable: false }),
+      defaultTarget({
+        neededBytes: gbToBytes(40),
+        deviceFreeBytes: gbToBytes(10),
+        icloudAvailable: false,
+      }),
     ).toBe('device');
   });
 

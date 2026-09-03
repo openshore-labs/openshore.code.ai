@@ -99,7 +99,8 @@ export interface MachineRec {
  *  pair such a machine over Tailscale rather than buy one. */
 export function recommendMachine(requiredRamGB: number): MachineRec {
   const target = requiredRamGB / COMFORT_FRACTION;
-  const ramGB = MACHINE_TIERS_GB.find((t) => t >= target) ?? MACHINE_TIERS_GB[MACHINE_TIERS_GB.length - 1]!;
+  const ramGB =
+    MACHINE_TIERS_GB.find((t) => t >= target) ?? MACHINE_TIERS_GB[MACHINE_TIERS_GB.length - 1]!;
   const capped = target > ramGB;
   let label: string;
   if (ramGB <= 16) {
