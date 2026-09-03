@@ -81,7 +81,11 @@ export function BackBar({
           <MenuIcon open={drawerOpen} />
         </button>
       ) : null}
-      <div className="topbar-title">{title}</div>
+      {/* Keyed so a new title (a page opening inside the room) remounts and
+          plays its cross-fade (theme.css title-in). */}
+      <div className="topbar-title" key={title}>
+        {title}
+      </div>
       {action}
       <ProfileStatus />
     </header>

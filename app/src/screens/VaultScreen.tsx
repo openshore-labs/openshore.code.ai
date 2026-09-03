@@ -287,7 +287,7 @@ export function VaultScreen() {
     };
     return (
       <div className="screen">
-        <BackBar title="Vault" back={{ to: 'Vault', onBack: backToNotes }} />
+        <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
         <div className="screen-inner vault-note">
           <div className="vault-note-bar">
             <button className="linklike" onClick={backToNotes}>

@@ -755,6 +755,36 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Keyed by its text (BackBar), so a page opening inside a room cross-fades
+     the title in rather than swapping it. */
+  animation: title-in var(--dur-4) var(--ease-glide) backwards;
+}
+@keyframes title-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* The left slot's control arrives from the edge it points at: the chevron
+   slides in from the left when a page opens, the menu fades back when it
+   closes. Backwards fill, never both, so the press state stays live. */
+.topbar .back-btn,
+.topbar .menu-btn {
+  animation: leftslot-in var(--dur-4) var(--ease-glide) backwards;
+}
+@keyframes leftslot-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 /* The empty-state opening keeps the top bar bare (hamburger + the OpenShore
@@ -2711,6 +2741,16 @@ textarea {
 /* Every sheet plays an exit before unmounting, never a hard cut. */
 .sheet.closing {
   transform: translateY(110%);
+}
+/* Drag-to-dismiss on every sheet (components/Sheet.tsx): exactly under the
+   finger while it holds, a spring back on a short release. A committed drag
+   keeps its inline position until `closing` lands, so the exit continues
+   from where the hand left it. */
+.sheet.dragging {
+  transition: none;
+}
+.sheet.settling {
+  transition: transform var(--dur-5) var(--ease-spring);
 }
 
 /* On a wide screen the sheet is a centered card, so it rises a short way and
