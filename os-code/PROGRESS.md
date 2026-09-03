@@ -3,6 +3,48 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, BYOM pill, per-status stacks, cloud favorites and direct chat)
+
+Founder-driven arc off the phone Stack screen and the model picker, shipped to
+`main` end to end (gates green, then merged with the storage/iCloud work below).
+
+- **BYOM control is a labelled pill with a top-sheet explainer.** The round
+  plus on the Stack header became a "BYOM +" pill with a small info glyph
+  hanging off its top-right corner; the glyph lowers a sheet from the top
+  edge that says what bringing your own model means. `Sheet.tsx` gained a
+  `top` variant (the same door hinged at the top, dragging up to dismiss);
+  the drag math runs in dismiss-positive travel space so one path serves both.
+- **A stack per connectivity status, chosen automatically.** The single stack
+  became one per status (`settings.stacks`, keyed docked/offshore/offline);
+  routing already knew the effective status, so the matching stack is used
+  automatically. The status row on the page is a dropdown (large title, byline
+  beneath, a "now" chip). First launch pins the old single stack to the status
+  the user is in and leaves the other two anchor-only. Edit actions take a
+  target status; BYOM disconnect clears every status; healing runs per status.
+- **Fuller Claude lineup with a visible favorite star.** `claudeModels.ts`
+  gained a tier field: the current family up top, older models (Opus 4.8, 4.7,
+  4.6, Sonnet 4.6, Fable 5) behind a new "More models" sheet, in the Claude
+  app's shape. Favoriting is a visible star on every model row (swipe still
+  works); a pinned model rides the top of Select model for one tap.
+- **Favorites and direct chat for every cloud provider.** The conversation
+  source's provider widened from the anthropic literal to any provider id, so
+  any connected provider's model can be pinned and picked. A new
+  `CloudOpenAiDriver` speaks OpenAI-compatible `/chat/completions` (streaming
+  on web, the native shim's whole-answer path on device); `buildDriver` routes
+  Claude to the Anthropic SDK and everything else to it. The chat sheet lists
+  every provider's models as pinnable rows; the Stack bench surfaces favorites
+  first for each. Image attach follows the chosen model's real vision
+  capability; the context meter fills for every provider (a local token
+  estimate fills in when a provider reports no usage).
+- **Model dev check.** `app/scripts/verify-cloud-models.ts`
+  (`pnpm --filter oscode-app verify:models`, tsx): reads each provider's live
+  `/v1/models` with keys from the environment and reports any offered model
+  that is a dead button or newly available. Manual, network + keys, out of CI.
+- Gates green before the push: app typecheck, lint, 424 tests, vite build;
+  Prettier clean. Open caveat: the older Claude ids and context windows in the
+  `more` tier follow the house convention and want a `verify:models` pass with
+  real keys before the next device ship.
+
 ## Current state (2026-09-03, large models are never restricted: storage, iCloud home, machine hint)
 
 Founder, from the Kimi marketplace screen: "I don't want any models restricted
