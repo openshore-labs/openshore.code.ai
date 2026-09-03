@@ -23,7 +23,19 @@ import {
   sortHostedNewest,
   type HostedModel,
 } from '../lib/hosted.js';
-import { Llama } from '../lib/llamaPlugin.js';
+import { Llama, type DeviceCapacity, type StorageTarget } from '../lib/llamaPlugin.js';
+import { isIcloudAvailable } from '../lib/gitos/icloud.js';
+import {
+  availableTargets,
+  defaultTarget,
+  deviceRunsComfortably,
+  estimatedRamGB,
+  formatBytes,
+  gbToBytes,
+  recommendMachine,
+  storageFit,
+  type StorageFit,
+} from '../lib/modelStorage.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
@@ -126,6 +138,7 @@ export function MarketplaceScreen() {
   const {
     settings,
     addDeviceModel,
+    addCloudModel,
     showToast,
     libraryIntro,
     endLibraryIntro,
@@ -177,6 +190,18 @@ export function MarketplaceScreen() {
   // Desktop models already pulled onto the paired machine (by source ref), so a
   // model that is installed shows as installed rather than an endless Get.
   const [installedRefs, setInstalledRefs] = useState<Set<string>>(() => new Set());
+  // This device's live storage and memory, for the capacity monitor and the fit
+  // math. Undefined until the native read returns (or on web, the mock).
+  const [capacity, setCapacity] = useState<DeviceCapacity | undefined>();
+  // Whether iCloud Drive is signed in on this device, so a large model can be
+  // downloaded there instead of the phone. Probed once at mount.
+  const [icloudReady, setIcloudReady] = useState(false);
+  // A per-model override of where a download should land, when the user picks a
+  // target on the product page. Absent means "use the sensible default."
+  const [targetChoice, setTargetChoice] = useState<Record<string, StorageTarget>>({});
+  // The storage readout is ambient (a chip); its full detail opens in a sheet,
+  // so status is one tap away without a card sitting over the store front.
+  const [storageSheetOpen, setStorageSheetOpen] = useState(false);
 
   useEffect(() => {
     // Snap the machine tier to detected hardware on the desktop, so fit badges
@@ -198,6 +223,26 @@ export function MarketplaceScreen() {
       setNote(note);
     });
   }, [settings.daemon]);
+
+  useEffect(() => {
+    // Read this device's storage, memory, and whether iCloud is signed in, for
+    // the capacity monitor and the download-target math. Both are best-effort:
+    // a failure leaves the monitor hidden rather than showing a wrong number.
+    let cancelled = false;
+    void Llama.deviceCapacity()
+      .then((c) => {
+        if (!cancelled) setCapacity(c);
+      })
+      .catch(() => {});
+    void isIcloudAvailable()
+      .then((ok) => {
+        if (!cancelled) setIcloudReady(ok);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     // Remember the open hosted page for the way back, whatever room comes next.
@@ -327,22 +372,46 @@ export function MarketplaceScreen() {
       return next;
     });
 
-  const pullToDevice = async (model: CatalogModel) => {
+  // Where a download for this model should land: the user's explicit pick on
+  // the product page, or the sensible default (this phone when it fits with
+  // headroom, iCloud when it does not and iCloud is signed in). Never blocked.
+  const targetFor = (model: CatalogModel): StorageTarget => {
+    const chosen = targetChoice[model.id];
+    if (chosen) return chosen;
+    const neededBytes = gbToBytes(model.onDevice?.sizeGB ?? model.sizeGB);
+    return defaultTarget({
+      neededBytes,
+      deviceFreeBytes: capacity?.freeBytes ?? Number.POSITIVE_INFINITY,
+      icloudAvailable: icloudReady,
+    });
+  };
+
+  const pullToDevice = async (model: CatalogModel, target: StorageTarget = targetFor(model)) => {
     if (!model.onDevice) return;
+    const toCloud = target === 'icloud';
     setDownloads((d) => ({
       ...d,
-      [model.id]: { percent: 0, label: 'Connecting', indeterminate: true },
+      [model.id]: {
+        percent: 0,
+        label: toCloud ? 'Connecting to iCloud' : 'Connecting',
+        indeterminate: true,
+      },
     }));
     try {
-      await Llama.downloadModel({ id: model.id, url: model.onDevice.url });
+      await Llama.downloadModel({ id: model.id, url: model.onDevice.url, target });
       setDownloads((d) => ({
         ...d,
         [model.id]: { percent: 100, label: 'Verifying', indeterminate: true },
       }));
-      await addDeviceModel(model.id, model.name);
+      if (toCloud) await addCloudModel(model.id, model.name);
+      else await addDeviceModel(model.id, model.name);
       hapticSuccess();
-      logEvent('model_downloaded', { id: model.id, target: 'device' });
-      showToast(`${model.name} is on your bench. Place it in your stack.`);
+      logEvent('model_downloaded', { id: model.id, target });
+      showToast(
+        toCloud
+          ? `${model.name} is in your iCloud. Place it in your stack. Loads when you are online.`
+          : `${model.name} is on your bench. Place it in your stack.`,
+      );
       clearDownload(model.id);
     } catch (err) {
       setDownloads((d) => ({
@@ -811,7 +880,7 @@ export function MarketplaceScreen() {
             <div className="sub">{model.tagline}</div>
           </div>
           {owned ? (
-            <span className="pill local">{model.onDevice ? 'on device' : 'installed'}</span>
+            <span className="pill local">{ownedLabel(model)}</span>
           ) : dl && !dl.failed ? null : (
             <button
               className="btn ghost market-get"
@@ -886,6 +955,8 @@ export function MarketplaceScreen() {
           {model.sizeGB} GB · {model.quantization} · {model.contextTokens.toLocaleString()} ctx
         </div>
         <div className="license-line">{licenseLabel(model)}</div>
+
+        {focused ? renderDownloadOptions(model) : null}
 
         {dl && dl.failed ? (
           <div className="hint" style={{ marginTop: 8, color: 'var(--danger)' }}>
@@ -1336,10 +1407,221 @@ export function MarketplaceScreen() {
     );
   };
 
-  // A model already present: on-device by the device-models record, a desktop
-  // model by whether its source ref is in the paired machine's Ollama list.
+  // A model already present: on-device by the device-models record, in iCloud
+  // by the cloud-models record, a desktop model by whether its source ref is in
+  // the paired machine's Ollama list.
+  const inCloud = (model: CatalogModel): boolean => Boolean(settings.cloudModels?.[model.id]);
   const isOwned = (model: CatalogModel): boolean =>
-    model.onDevice ? Boolean(settings.deviceModels[model.id]) : installedRefs.has(model.source.ref);
+    model.onDevice
+      ? Boolean(settings.deviceModels[model.id]) || inCloud(model)
+      : installedRefs.has(model.source.ref);
+
+  // The plain label for an owned model's home, so the pill reads where it is.
+  const ownedLabel = (model: CatalogModel): string =>
+    inCloud(model) ? 'in iCloud' : model.onDevice ? 'on device' : 'installed';
+
+  // The footprint of the models already on this device, summed from the live
+  // catalog, so the monitor can say what the downloads are spending, not only
+  // what the OS reports free. iCloud-stored models are not on the phone, so
+  // they are not counted here. A plain computation, not a hook: this runs below
+  // the loading early-return, where catalog is always present.
+  const deviceModelsBytes = (): number => {
+    let sum = 0;
+    for (const id of Object.keys(settings.deviceModels)) {
+      const m = catalog?.models.find((mm) => mm.id === id);
+      if (m) sum += gbToBytes(m.onDevice?.sizeGB ?? m.sizeGB);
+    }
+    return sum;
+  };
+
+  // The used fraction and low-space flag for a device, clamped for the bar.
+  const usedFractionOf = (c: DeviceCapacity) =>
+    Math.min(1, Math.max(0, (c.totalBytes - c.freeBytes) / c.totalBytes));
+  const isLowSpace = (c: DeviceCapacity) => c.freeBytes < gbToBytes(8);
+
+  // The ambient capacity chip: a glance at free space, right where the eye
+  // starts, that opens the full readout in a sheet. Status stays out of the
+  // way of the store front instead of a card competing with the hero rail.
+  const renderCapacityChip = () => {
+    if (!isPhone() || !capacity || capacity.totalBytes <= 0) return null;
+    const used = usedFractionOf(capacity);
+    const low = isLowSpace(capacity);
+    return (
+      <div className="cap-chip-row">
+        <button
+          className="cap-chip press-fb"
+          onClick={() => setStorageSheetOpen(true)}
+          aria-label={`Storage, ${formatBytes(capacity.freeBytes)} free. Open details.`}
+        >
+          <span className="cap-chip-meter" aria-hidden="true">
+            <span
+              className={`cap-chip-fill${low ? ' low' : ''}`}
+              style={{ transform: `scaleX(${used})` }}
+            />
+          </span>
+          <span className="cap-chip-text">{formatBytes(capacity.freeBytes)} free</span>
+          {icloudReady ? <span className="cap-chip-dot" title="iCloud ready" /> : null}
+        </button>
+      </div>
+    );
+  };
+
+  // The full storage readout, opened from the chip. Same honest numbers as
+  // before, now in a sheet that animates in and out, never a persistent card.
+  const renderStorageSheetBody = () => {
+    if (!capacity || capacity.totalBytes <= 0) return null;
+    const { freeBytes, totalBytes } = capacity;
+    const used = usedFractionOf(capacity);
+    const low = isLowSpace(capacity);
+    const modelsBytes = deviceModelsBytes();
+    return (
+      <>
+        <h2>Storage</h2>
+        <div className="sheet-sub">
+          {formatBytes(freeBytes)} free of {formatBytes(totalBytes)} on this iPhone
+        </div>
+        <div className="cap-track" role="img" aria-label={`${formatBytes(freeBytes)} free`}>
+          <div
+            className={`cap-fill${low ? ' low' : ''}`}
+            style={{ transform: `scaleX(${used})` }}
+          />
+        </div>
+        <p className="hint" style={{ marginTop: 10 }}>
+          {modelsBytes > 0 ? `Your models use about ${formatBytes(modelsBytes)}. ` : ''}
+          {icloudReady
+            ? 'A model too big for the phone can download to your iCloud and load when you are online.'
+            : 'Sign in to iCloud on this iPhone to keep large models in the cloud instead.'}
+        </p>
+      </>
+    );
+  };
+
+  // The download options for an on-device model: where the bytes land, whether
+  // they fit, and the machine that runs it full speed. The load-bearing rule
+  // lives here: nothing in this block disables the download. A model too big for
+  // the phone gets iCloud as its home and an aspirational machine note, never a
+  // locked button. Phone only; off a phone these numbers would be a mock.
+  const renderDownloadOptions = (model: CatalogModel) => {
+    if (!model.onDevice || isOwned(model) || !isPhone()) return null;
+    const neededBytes = gbToBytes(model.onDevice.sizeGB);
+    const target = targetFor(model);
+    const toCloud = target === 'icloud';
+    const targets = availableTargets(icloudReady);
+    const fit: StorageFit | undefined = capacity
+      ? storageFit(neededBytes, capacity.freeBytes)
+      : undefined;
+    const freeAfter = capacity ? capacity.freeBytes - neededBytes : undefined;
+    const requiredRam = estimatedRamGB(model);
+    const deviceRamGB = capacity?.ramBytes ? Math.round(capacity.ramBytes / 1e9) : 0;
+    // Only speak to the machine when we actually read this device's memory and
+    // it is short. With no reading, stay silent rather than guess.
+    const comfortable = deviceRamGB === 0 || deviceRunsComfortably(requiredRam, deviceRamGB);
+    const rec = comfortable ? undefined : recommendMachine(requiredRam);
+
+    // The footprint block: the model's bytes as a fraction of the whole disk,
+    // starting at the used edge. On iCloud it lifts off (see .cap-ghost). Its
+    // width is capped at the free space so a too-big model reaches the edge
+    // rather than overflowing the track; the copy carries the honest overflow.
+    const used = capacity ? usedFractionOf(capacity) : 0;
+    const low = capacity ? isLowSpace(capacity) : false;
+    const footprint = capacity ? neededBytes / capacity.totalBytes : 0;
+    const shownFootprint = Math.min(footprint, Math.max(0, 1 - used));
+    const ghostTransform = `translateX(${used * 100}%) translateY(${toCloud ? '-8px' : '0'}) scaleX(${
+      toCloud ? 0 : shownFootprint
+    })`;
+
+    // The fit line: calm on iCloud (it need not fit), amber on the phone when it
+    // would not. Never red; a large model is a nudge to move it, not a failure.
+    const storageLine =
+      fit === undefined
+        ? undefined
+        : toCloud
+          ? `Kept in your iCloud, so it does not have to fit on this iPhone.`
+          : fit === 'plenty'
+            ? `Fits with room to spare. About ${formatBytes(freeAfter ?? 0)} free after.`
+            : fit === 'tight'
+              ? `Fits, but it fills most of your free space. About ${formatBytes(Math.max(0, freeAfter ?? 0))} free after.`
+              : `Larger than the ${formatBytes(capacity?.freeBytes ?? 0)} free on this iPhone.`;
+    const storageTail =
+      !toCloud && fit === 'wont-fit'
+        ? icloudReady
+          ? ' Switch to iCloud Drive to keep it without freeing up space.'
+          : ' Sign in to iCloud to keep it in the cloud, or free up space first. You can still download it.'
+        : '';
+
+    return (
+      <div className="dl-options">
+        {capacity ? (
+          <div className="dl-meter">
+            <div className="cap-track" aria-hidden="true">
+              <div
+                className={`cap-fill${low ? ' low' : ''}`}
+                style={{ transform: `scaleX(${used})` }}
+              />
+              <div
+                className={`cap-ghost${toCloud ? ' lifted' : ''}`}
+                style={{ transform: ghostTransform, opacity: toCloud ? 0 : 1 }}
+              />
+            </div>
+            <div className="dl-meter-legend">
+              {formatBytes(capacity.freeBytes)} free · this model {formatBytes(neededBytes)}
+            </div>
+          </div>
+        ) : null}
+
+        {targets.length > 1 ? (
+          <div className="dl-target">
+            <div className="dl-target-label">Where it goes</div>
+            <div className="segmented" role="tablist" aria-label="Download location">
+              {targets.map((t) => (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={target === t}
+                  className={`seg press-fb${target === t ? ' active' : ''}`}
+                  onClick={() => setTargetChoice((c) => ({ ...c, [model.id]: t }))}
+                >
+                  {t === 'icloud' ? (
+                    <span className="seg-cloud" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M7 16a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.3A3.5 3.5 0 0 1 18 16" />
+                        <path d="M12 12v6m0 0l-2.2-2.2M12 18l2.2-2.2" />
+                      </svg>
+                    </span>
+                  ) : null}
+                  {t === 'device' ? 'This iPhone' : 'iCloud Drive'}
+                </button>
+              ))}
+            </div>
+            <p className="dl-consequence" key={target}>
+              {toCloud
+                ? 'Kept in your iCloud. Loads when you are online, and uses your iCloud storage.'
+                : 'Lives on your phone. Works with no signal.'}
+            </p>
+          </div>
+        ) : null}
+
+        {storageLine ? (
+          <p className={`dl-fit${!toCloud && fit === 'wont-fit' ? ' warn' : ''}`} key={target}>
+            {storageLine}
+            {storageTail}
+          </p>
+        ) : null}
+
+        {rec ? (
+          <div className="dl-machine">
+            <p className="dl-machine-lead">
+              This is a large model. It likes about {requiredRam} GB of memory to stretch out.
+            </p>
+            <p className="dl-machine-path">Keep it in your iCloud and draw from it whenever you are online.</p>
+            <p className="dl-machine-path">
+              Or pair a machine with about {rec.ramGB} GB of memory over Tailscale and run it full speed.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   // The compact download control shared by hero cards and shelf rows: a Get
   // button, its in-flight percent, a Retry on failure, or the owned state.
@@ -1348,7 +1630,7 @@ export function MarketplaceScreen() {
     const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
     const owned = isOwned(model);
     if (owned) {
-      return <span className="pill local">{model.onDevice ? 'on device' : 'installed'}</span>;
+      return <span className="pill local">{ownedLabel(model)}</span>;
     }
     if (dl && !dl.failed) {
       return (
@@ -1821,6 +2103,8 @@ export function MarketplaceScreen() {
 
           {categoryRail}
 
+          {renderCapacityChip()}
+
           {browsing ? (
             <div className="store-front" key="store">
               {featured.length || hostedHero ? (
@@ -1954,6 +2238,10 @@ export function MarketplaceScreen() {
           onClose={() => setCompareOpen(false)}
         />
       ) : null}
+
+      <Sheet open={storageSheetOpen} onClose={() => setStorageSheetOpen(false)}>
+        {storageSheetOpen ? renderStorageSheetBody() : null}
+      </Sheet>
 
       <Sheet open={Boolean(showFilters)} onClose={() => setShowFilters(false)}>
         {showFilters ? (

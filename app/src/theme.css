@@ -4200,6 +4200,190 @@ textarea {
   font-size: 12.5px;
 }
 
+/* Storage capacity monitor: a used-space bar plus its readout. The bar fills
+   from the left with a transform, never a width, so it never reflows. It
+   settles on the glide over the door clock, so it reads as a fill coming to
+   rest rather than a progress bar racing. Relative, so the footprint ghost can
+   sit over it. */
+.cap-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface);
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.cap-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 4px;
+  background: var(--wave);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-7) var(--ease-glide);
+}
+
+/* Nearly full: the used bar warms to the amber caution tone so a low-space
+   state reads at a glance. Amber, never red: owning models is not an error, and
+   nothing here blocks a download. */
+.cap-fill.low {
+  background: var(--warn);
+}
+
+/* The footprint block: a translucent amber segment that begins at the used edge
+   and shows how much of the disk this model would claim. On iCloud it lifts off
+   and fades, so "it does not have to fit here" is a thing you watch happen. */
+.cap-ghost {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--warn) 60%, transparent);
+  transform-origin: left;
+  transition:
+    transform var(--dur-6) var(--ease-glide),
+    opacity var(--dur-6) var(--ease-glide);
+}
+
+/* The ambient capacity chip: a glance at free space that opens the full
+   readout, right-aligned so it never competes with the shelves. */
+.cap-chip-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px 0 2px;
+}
+
+.cap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.cap-chip-meter {
+  width: 34px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.cap-chip-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+  background: var(--wave);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-7) var(--ease-glide);
+}
+
+.cap-chip-fill.low {
+  background: var(--warn);
+}
+
+.cap-chip-text {
+  font-variant-numeric: tabular-nums;
+}
+
+.cap-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wave);
+}
+
+/* Download options on a model's product page: where the bytes land, the fit,
+   and the machine that runs it full speed. Never a locked control. */
+.dl-options {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dl-meter-legend {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dl-target-label {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+
+.seg-cloud {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 5px;
+}
+
+/* The consequence of the active target, so the choice teaches. Keyed on the
+   target, so switching cross-fades it in on the glide rather than hard-cutting. */
+.dl-consequence {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+
+.dl-fit {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 0;
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+
+/* A model that will not fit on the phone: stated plainly, paired with the
+   iCloud path. Amber, not an alarm, because it is never a refusal. */
+.dl-fit.warn {
+  color: var(--warn);
+}
+
+/* The machine moment, framed as an opening. A hairline top divider sets it
+   apart as a real choice, not muted fine print. Lead names the model's
+   ambition; the two paths are calm equals. */
+.dl-machine {
+  margin: 2px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dl-machine-lead {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.dl-machine-path {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .divider {
   height: 1px;
   background: var(--border);
