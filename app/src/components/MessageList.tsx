@@ -42,13 +42,15 @@ function AssistantBubble({
   }, [shown.length, onReveal]);
   // The caret stays while any text is still on its way (the stream may have
   // ended with the tail still typing) and fades once the last character lands.
+  // It rides inside the markdown as a pseudo-element on the last line, so it
+  // sits at the end of the text rather than as its own block beneath it.
   const live = streaming || settling;
   const { mounted: caretMounted, closing: caretClosing } = useExitPresence(live, 300);
+  const caret = caretMounted ? (caretClosing ? 'out' : 'on') : 'off';
   return (
     <div className="msg-assistant">
       {showModel && model ? <div className="msg-model">{model}</div> : null}
-      <Markdown text={shown} streaming={live} />
-      {caretMounted ? <span className={`cursor-caret${caretClosing ? ' closing' : ''}`} /> : null}
+      <Markdown text={shown} streaming={live} caret={caret} />
     </div>
   );
 }

@@ -97,9 +97,20 @@ export function closeOpenFence(text: string, streaming: boolean): string {
   return fences % 2 === 1 ? `${text}\n\`\`\`` : text;
 }
 
-export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+export function Markdown({
+  text,
+  streaming = false,
+  caret = 'off',
+}: {
+  text: string;
+  streaming?: boolean;
+  /** The live typing caret, rendered inline at the end of the last line via a
+   *  pseudo-element on `.md`: 'on' breathes, 'out' fades, 'off' shows none. */
+  caret?: 'on' | 'out' | 'off';
+}) {
+  const caretClass = caret === 'on' ? ' md-caret' : caret === 'out' ? ' md-caret md-caret-out' : '';
   return (
-    <div className="md">
+    <div className={`md${caretClass}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}

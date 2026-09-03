@@ -1026,10 +1026,23 @@ textarea {
   border-radius: 999px;
 }
 
-/* The caret breathes rather than blinks (a hard steps() blink was the one
-   snappy thing left in the transcript), stays while the tail of a reply is
-   still typing, and fades once the last character lands. */
-.cursor-caret {
+/* The live caret rides a pseudo-element on the reply's last line, so it sits
+   inline at the end of the text rather than as its own block beneath it. It
+   breathes rather than blinks (a hard steps() blink was the one snappy thing
+   left in the transcript), stays while the tail of a reply is still typing,
+   and fades once the last character lands. Scoped to the text blocks a reply
+   ends on (a paragraph, a heading, the last item of a trailing list); a reply
+   whose last block is code carries no trailing caret, which reads cleaner than
+   a bar hung under a fence. The global reduced-motion reset covers *::after,
+   so the breath stills there without a rule of its own. */
+.md-caret > p:last-child::after,
+.md-caret > h1:last-child::after,
+.md-caret > h2:last-child::after,
+.md-caret > h3:last-child::after,
+.md-caret > h4:last-child::after,
+.md-caret > ul:last-child li:last-child::after,
+.md-caret > ol:last-child li:last-child::after {
+  content: '';
   display: inline-block;
   width: 7px;
   height: 1.05em;
@@ -1039,7 +1052,13 @@ textarea {
   margin-left: 2px;
   animation: caret-breathe var(--loop-2) var(--ease-loop) infinite;
 }
-.cursor-caret.closing {
+.md-caret-out > p:last-child::after,
+.md-caret-out > h1:last-child::after,
+.md-caret-out > h2:last-child::after,
+.md-caret-out > h3:last-child::after,
+.md-caret-out > h4:last-child::after,
+.md-caret-out > ul:last-child li:last-child::after,
+.md-caret-out > ol:last-child li:last-child::after {
   animation: caret-out var(--dur-4) var(--ease-standard) forwards;
 }
 
