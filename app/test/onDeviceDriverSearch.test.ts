@@ -17,6 +17,7 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
       return { remove: async () => {} };
     },
     stop: async () => {},
+    ensureLocal: async () => ({ ready: true }),
     load: async () => ({ ok: true }),
     generate: async (opts: { requestId: string }) => {
       generateCalls.push(opts);

@@ -8,17 +8,51 @@ export interface DeviceModelInfo {
   id: string;
   fileName: string;
   sizeBytes: number;
+  /** Where the bytes live. 'icloud' is the app's iCloud Drive container; such a
+   *  model may be evicted (placeholder only) until ensureLocal pulls it back. */
+  location?: 'device' | 'icloud';
+  /** True for an iCloud model whose bytes are not on this device right now. */
+  evicted?: boolean;
+}
+
+/** Where a model download should land. 'device' is this phone's own storage;
+ *  'icloud' is the app's iCloud Drive container, so a model too big for the
+ *  phone still has a home and is pulled back on demand when you are online. */
+export type StorageTarget = 'device' | 'icloud';
+
+/** This device's live storage and memory, for the capacity monitor. Bytes for
+ *  storage; ramBytes is the physical memory, used to size a machine
+ *  recommendation. A zero anywhere means "could not read it" (older native
+ *  builds, or the web mock), which the UI degrades around rather than trusting. */
+export interface DeviceCapacity {
+  freeBytes: number;
+  totalBytes: number;
+  ramBytes: number;
 }
 
 export interface LlamaPluginContract {
   /** Can this device run local inference at all? */
   isSupported(): Promise<{ supported: boolean; reason?: string }>;
-  /** Models already downloaded into the app's storage. */
+  /** Live storage and memory for the capacity monitor. */
+  deviceCapacity(): Promise<DeviceCapacity>;
+  /** Models already downloaded, on this device or in iCloud. */
   listModels(): Promise<{ models: DeviceModelInfo[] }>;
   /** Download a GGUF straight from its source; progress via 'downloadProgress'.
    *  The transfer runs on a background URLSession, so it keeps going while the
-   *  app is backgrounded or closed and the app is relaunched to finish it. */
-  downloadModel(options: { id: string; url: string }): Promise<{ path: string }>;
+   *  app is backgrounded or closed and the app is relaunched to finish it.
+   *  `target` chooses where the bytes land (default 'device'); 'icloud' places
+   *  them in the app's iCloud Drive container so a large model never has to fit
+   *  on the phone. */
+  downloadModel(options: {
+    id: string;
+    url: string;
+    target?: StorageTarget;
+  }): Promise<{ path: string; location: StorageTarget }>;
+  /** Make an iCloud-stored model's bytes present on this device, downloading
+   *  them if they were evicted. A no-op for a device model or one already
+   *  materialized. `ready` is false only when it could not be fetched (offline
+   *  with an evicted model); `downloading` says a fetch is under way. */
+  ensureLocal(options: { id: string }): Promise<{ ready: boolean; downloading?: boolean }>;
   /** Model ids the background session is still transferring right now. Used on
    *  launch to re-show progress for a download that was mid-flight. */
   activeDownloads(): Promise<{ ids: string[] }>;
@@ -101,19 +135,36 @@ class LlamaWeb {
     return { supported: false, reason: DEVICE_INFERENCE_UNAVAILABLE };
   }
 
+  async deviceCapacity() {
+    // Off a real phone there is no per-app volume to read. Return believable
+    // numbers so the capacity monitor renders in dev and the marketplace demo,
+    // never a stall; a shipping iPhone reads the real figures natively.
+    return {
+      freeBytes: 64 * 1e9,
+      totalBytes: 128 * 1e9,
+      ramBytes: 8 * 1e9,
+    };
+  }
+
   async listModels() {
     return { models: this.models };
   }
 
-  async downloadModel({ id }: { id: string; url: string }) {
+  async downloadModel({ id, target }: { id: string; url: string; target?: StorageTarget }) {
+    const location: StorageTarget = target ?? 'device';
     const total = 1_100_000_000;
     for (let step = 1; step <= 10; step++) {
       await new Promise((r) => setTimeout(r, 120));
       this.fire('downloadProgress', { id, completed: (total / 10) * step, total });
     }
-    const model = { id, fileName: `${id}.gguf`, sizeBytes: total };
+    const model = { id, fileName: `${id}.gguf`, sizeBytes: total, location };
     this.models = [...this.models.filter((m) => m.id !== id), model];
-    return { path: `demo://${id}.gguf` };
+    return { path: `demo://${id}.gguf`, location };
+  }
+
+  async ensureLocal() {
+    // The mock keeps every model materialized, so making it local is a no-op.
+    return { ready: true };
   }
 
   async activeDownloads() {

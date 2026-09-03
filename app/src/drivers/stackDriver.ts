@@ -346,6 +346,14 @@ export class StackDriver implements ChatDriver {
   ): Promise<void> {
     await this.listenersReady;
     if (this.loadedDeviceId !== ref.modelId) {
+      // Materialize an iCloud-stored model before loading it; a device model is
+      // a no-op. Offline with an evicted model is a real, guided stop.
+      const local = await Llama.ensureLocal({ id: ref.modelId }).catch(() => ({ ready: true }));
+      if (!local.ready) {
+        throw new RouteUnavailable(
+          `${ref.modelName} lives in your iCloud and is not on this device yet. Connect to the internet so it can download, then try again.`,
+        );
+      }
       this.emit({ type: 'status', message: `Warming up ${ref.modelName} on this device.` });
       const load = await Llama.load({
         id: ref.modelId,
