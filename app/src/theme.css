@@ -2094,18 +2094,44 @@ textarea {
   gap: 12px;
   margin-bottom: 16px;
 }
+/* The round close/back button. Its glyph is a stroked SVG (SheetGlyphs.tsx),
+   never a typed "×": a character brings its font's side bearings and baseline
+   along and lands low-left of the circle. Rest is quiet (soft ink on the
+   surface); hover lifts to the full ink; press-fb answers the finger. */
 .mode-close {
   width: 34px;
   height: 34px;
+  padding: 0;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 22px;
-  line-height: 1;
-  color: var(--ink);
+  line-height: 0;
+  color: var(--ink-soft);
   background: var(--surface);
   border: 1px solid var(--border);
   flex-shrink: 0;
+}
+/* Compound selector on purpose: .press-fb is declared later with the same
+   specificity and its `transition: scale` shorthand would otherwise reset the
+   color fades. Rest keeps the spring-out; .press-fb:active still wins the
+   curt press-in, as it does everywhere else. */
+.mode-close.press-fb {
+  transition:
+    color var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
+}
+.mode-close .sheet-glyph {
+  display: block;
+}
+@media (hover: hover) {
+  .mode-close:hover {
+    color: var(--ink);
+    border-color: var(--border-strong);
+  }
+}
+.mode-close:active {
+  color: var(--ink);
 }
 .mode-head h2 {
   margin: 0;

@@ -4,6 +4,7 @@
 // too; inert for plain chat.
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
+import { CloseGlyph } from './SheetGlyphs.js';
 import {
   PERMISSION_MODES,
   permissionModeLabel,
@@ -70,7 +71,7 @@ export function ModeSheet({ onClose }: { onClose: () => void }) {
       >
         <div className="mode-head">
           <button className="mode-close press-fb" aria-label="Close" onClick={dismiss}>
-            {'×'}
+            <CloseGlyph />
           </button>
           <h2>Select mode</h2>
         </div>

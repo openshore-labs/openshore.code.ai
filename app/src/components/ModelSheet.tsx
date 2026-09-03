@@ -18,6 +18,7 @@ import { PROVIDERS } from '../lib/providers.js';
 import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
 import { isPinned, pinKey, togglePin } from '../lib/pins.js';
 import { SwipeRow } from './SwipeRow.js';
+import { BackGlyph, CloseGlyph } from './SheetGlyphs.js';
 
 function RowContent({
   main,
@@ -162,7 +163,7 @@ export function ModelSheet({
         aria-label={stage === 'root' ? 'Close' : 'Back'}
         onClick={() => (stage === 'root' ? dismiss() : setStage('root'))}
       >
-        {stage === 'root' ? '×' : '‹'}
+        {stage === 'root' ? <CloseGlyph /> : <BackGlyph />}
       </button>
       <h2>{title}</h2>
     </div>
