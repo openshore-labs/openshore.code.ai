@@ -3,6 +3,54 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the text box never sits under the keyboard)
+
+Founder, from a second recording: "Keyboard bug. Blocking text box. UI
+should work like Claude (image selector expands chatbox too)." The path was
+Control Center, the drawer, the Chats room, a tap on a chat, a tap on the
+field; the keyboard rose clean over the composer and it never lifted. The
+same build, the same chat, had lifted correctly minutes earlier, so the DOM
+and the CSS were fine and the plugin's `keyboardWillShow` road had simply
+not delivered a usable number that time. The root cause is not pinned (the
+native plugin's zero-height rewrite is iPad-only, the listener lives at the
+shell from boot, nothing on that path touches the root's inline style), so
+the fix is resilience: the lift no longer hangs on one event with one good
+number.
+
+- **Belt and braces in `hooks/useKeyboardInset.ts`.** Both `keyboardWillShow`
+  and `keyboardDidShow` feed the inset, and the plain window events the
+  plugin also fires are read as a second road. A real height is remembered
+  on the device (`lib/keyboardHeight.ts`, device-local by design, default
+  336 before any reading); a reported zero or a bare accessory bar lifts by
+  the remembered height instead of collapsing the composer to 4px. A text
+  field that takes focus and hears nothing within 420 ms is lifted on the
+  remembered height anyway, and that fallback lets go on blur, while a lift
+  the plugin confirmed waits for the plugin's own hide. Verified headless:
+  with no native keyboard at all, a focused composer lifts at the fallback
+  beat and drops on blur.
+- **The attach tray, Claude-style (`components/AttachTray.tsx`).** On a
+  phone the + no longer jumps straight to the file picker: it opens a tray
+  in the keyboard's slot, sized to the remembered keyboard height, so when
+  the keyboard swaps for it the composer does not move. Three tiles, each a
+  real picker: Camera (`capture="environment"`), Photos (`accept="image/*"`),
+  Files (anything; a text file folds into a pasted chip as before). The root
+  class and `--tray-inset` are set in the tap itself, before the field
+  blurs, so the composer never dips between the keyboard's hide and the
+  tray's arrival; focusing the field closes the tray and the keyboard swaps
+  back in on the same y. Slides in and out on transform; the desktop + is
+  unchanged. Verified headless: tray up, refocus, blur, the composer holds
+  at the same top through the swap.
+- `test/keyboardInset.test.ts` pins the remembered height and its floor,
+  the zero-to-remembered rule, both show and hide listeners plus the window
+  road, the fallback beat, the shell-only registration, and the tray's
+  slot, exit, three sources, and close-on-focus. Gates green: app
+  typecheck, lint, 365 tests.
+
+**Open for the founder:** if the keyboard still ever rises over the field on
+the device, the next step is a one-line breadcrumb (which road lifted, and
+what the plugin reported) surfaced in Settings, so the root cause can be
+read off the phone rather than guessed from a recording.
+
 ## Current state (2026-09-03, the wait has a shore)
 
 Founder, from a screen recording of the chat: "make the OpenShore shapes move

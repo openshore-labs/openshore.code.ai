@@ -363,3 +363,11 @@ execution contract. Newest at the bottom.
   (founder, 2026-09-03: "a more graceful typing of the response"), while the
   TUI keeps drain-a-sixth-per-tick, which suits a terminal that repaints
   whole lines. Each stays covered by its own test.
+- **The keyboard lift has a fallback, and the attach tray is web-only.** The
+  composer lifts on the plugin's height when it arrives and on the device's
+  remembered height when it does not (default 336, a portrait iPhone with the
+  QuickType bar; a compact phone gets a small gap rather than a covered
+  field). The tray's three sources are plain file inputs (camera via
+  `capture`, photos via `accept`, any file) rather than `@capacitor/camera`,
+  so no native permission strings or plugin wiring ride on a polish fix;
+  a native picker can replace them later behind the same `AttachSource`.

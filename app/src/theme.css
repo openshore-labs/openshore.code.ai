@@ -1542,6 +1542,76 @@ textarea {
   :root.kb-open .composer-wrap {
     padding-bottom: calc(4px + var(--kb-inset, 0px));
   }
+  /* The attach tray takes the keyboard's slot: --tray-inset is the remembered
+     keyboard height (lib/keyboardHeight.ts), so when the keyboard swaps for
+     the tray the composer holds its place. Later than the kb-open rule on
+     purpose: during the swap both classes are briefly present and the two
+     values are the same. */
+  :root.tray-open .composer-wrap {
+    padding-bottom: calc(4px + var(--tray-inset, 336px));
+  }
+}
+
+/* The attach tray (components/AttachTray.tsx), phone only: sits in the
+   composer's bottom padding, the keyboard's slot, and slides in and out on
+   transform. Three tiles at the top; the rest is calm ground, like the
+   keyboard it replaces. */
+.attach-tray {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--tray-inset, 336px);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 16px calc(16px + var(--safe-bottom));
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  z-index: 5;
+  animation: tray-in var(--dur-5) var(--ease-arrive) backwards;
+}
+.attach-tray.closing {
+  animation: tray-out var(--dur-4) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+@keyframes tray-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tray-out {
+  to {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+.attach-tile {
+  flex: 1;
+  height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  color: var(--ink);
+}
+.attach-tile-glyph {
+  color: var(--local);
+  display: grid;
+  place-items: center;
+}
+.attach-tile-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
 }
 
 @media (pointer: coarse) and (prefers-reduced-motion: reduce) {
