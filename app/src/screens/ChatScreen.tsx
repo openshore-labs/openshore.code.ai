@@ -3,7 +3,6 @@
 // living in the composer. A live conversation swaps in the transcript and a
 // header that names the chat.
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Keyboard } from '@capacitor/keyboard';
 import { INIT_PROMPT } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { sourceLabel, sourceSupportsVision, type ConversationSource } from '../state/types.js';
@@ -78,45 +77,6 @@ function useBooted(): boolean {
     return () => obs.disconnect();
   }, [booted]);
   return booted;
-}
-
-// How much of the screen the on-screen keyboard covers used to not be
-// something CSS could see on its own, so this tracked visualViewport as a
-// proxy and set a live CSS var, --kb-inset, for the composer to hug the
-// keyboard with no gap (see .composer-wrap in theme.css). That approach also
-// had to fight the SAME cause behind a much worse bug: on this device
-// WKWebView was performing a real native scroll to keep the focused composer
-// above the keyboard, which dragged the whole page, including the header and
-// a position: fixed greeting, off its anchored spot no matter how that drag
-// was compensated for from the web layer (translateY(visualViewport.offsetTop)
-// and three detection strategies before it each shipped and each still let
-// the greeting move on the founder's device).
-//
-// capacitor.config.ts now sets Keyboard.resize: 'none', which stops WKWebView
-// from touching the page at all when the keyboard opens: nothing scrolls,
-// nothing resizes, so there is no drag left to compensate for and the
-// greeting's position: fixed layout (see .greeting in theme.css) simply holds,
-// by construction, with no JS involvement whatsoever. All that is left for
-// JS to report is the keyboard's own height, which the plugin hands over
-// directly and exactly, no visualViewport math or device-model guessing
-// needed.
-function useKeyboardInset(): void {
-  useEffect(() => {
-    if (!window.matchMedia('(pointer: coarse)').matches) return;
-    const rootEl = document.documentElement;
-    const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
-      rootEl.style.setProperty('--kb-inset', `${info.keyboardHeight}px`);
-      rootEl.classList.add('kb-open');
-    });
-    const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
-      rootEl.classList.remove('kb-open');
-    });
-    return () => {
-      void showHandle.then((h) => h.remove());
-      void hideHandle.then((h) => h.remove());
-      rootEl.classList.remove('kb-open');
-    };
-  }, []);
 }
 
 // .greeting is position: fixed (see theme.css), so its top offset is measured
@@ -196,7 +156,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const booted = useBooted();
   const headerRef = useRef<HTMLElement>(null);
   useHeaderHeight(headerRef);
-  useKeyboardInset();
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;

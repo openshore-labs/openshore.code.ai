@@ -29,6 +29,7 @@ import { useCompact } from './hooks/useCompact.js';
 import { useExitPresence } from './hooks/useExitPresence.js';
 import { useRoomGhost } from './hooks/useRoomGhost.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
+import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 
 /** The drawer's rendered width (see .sidebar.drawer in theme.css). */
 function drawerWidth(): number {
@@ -39,6 +40,9 @@ export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();
   const theme = useApp((s) => s.settings.theme);
   const compact = useCompact();
+  // The keyboard inset listener lives here, from boot, so no screen can
+  // mount after the keyboard has already started to rise and miss it.
+  useKeyboardInset();
   // The drawer and the toast stay mounted through their exits (motion standard:
   // everything that animates in animates out). The toast keeps its last text so
   // the fade-out does not empty the pill mid-flight.
@@ -82,7 +86,7 @@ export function App() {
   //
   // Coverage used to be measured from visualViewport shrinking for the
   // keyboard, but capacitor.config.ts now sets Keyboard.resize: 'none' (see
-  // useKeyboardInset in ChatScreen.tsx for why), which means the webview's
+  // hooks/useKeyboardInset.ts for why), which means the webview's
   // frame, and so visualViewport, no longer shrinks for the keyboard at all.
   // Coverage is measured against the plugin's own keyboardHeight instead,
   // which stays correct under 'none'.
