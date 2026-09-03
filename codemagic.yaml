@@ -76,19 +76,26 @@ workflows:
       - name: Stamp the build number
         script: |
           set -euo pipefail
-          # Two prior fixes here (trusting Codemagic's own $BUILD_NUMBER, then
-          # querying Apple for the latest TestFlight/App Store build number)
-          # BOTH still collided with the build already on record: the query
-          # path is not returning a usable number in this environment, for a
-          # reason not worth chasing further. A UTC timestamp needs no query to
-          # Apple, Codemagic, or anything else to get right: real time only
-          # moves forward, so every build gets a strictly higher number than
-          # every build before it, always, with nothing left to drift out of
-          # sync. A single large integer is a valid CFBundleVersion.
-          NEXT=$(date -u +%s)
-          echo "Stamping build number $NEXT (UTC seconds since epoch)."
+          # Codemagic's own build index. It increments once per build on this
+          # app, forever, so it is already monotonic and always ahead of what
+          # Apple has on record. This line shipped ~62 builds to TestFlight
+          # without a single duplicate.
+          #
+          # History, so nobody "fixes" this again: on 2026-09-03 a publish
+          # failed for an unrelated reason (ITMS-90474, the iPad orientation
+          # keys, fixed in Info.plist) and this step was rewritten twice on a
+          # guess. The first rewrite queried Apple for the latest TestFlight
+          # build number and stamped LATEST + 1, which is exactly how a
+          # duplicate gets created: a build still processing is not yet the
+          # "latest," so the query returns the one before it and LATEST + 1
+          # lands on a number already taken. That rewrite caused the duplicate
+          # it was meant to prevent. The second rewrite stamped a UTC timestamp,
+          # which is monotonic but a one-way door: once a ~1.8 billion build
+          # number is on record, every future build has to beat it forever.
+          # Neither was needed. Do not replace this with a query to Apple.
+          echo "Stamping build number $BUILD_NUMBER (Codemagic build index)."
           cd app/ios/App
-          agvtool new-version -all "$NEXT"
+          agvtool new-version -all "$BUILD_NUMBER"
       - name: Set up code signing
         script: |
           set -e
