@@ -24,7 +24,7 @@ const ROLES: Array<{ role: string; plain: string }> = [
 ];
 
 export function StackScreen() {
-  const { settings, showToast } = useApp();
+  const { settings, showToast, setView } = useApp();
   const [status, setStatus] = useState<DesktopStatus | undefined>();
   const [remote, setRemote] = useState<DaemonStackInfo | undefined>();
   const [pickFor, setPickFor] = useState<string | undefined>(); // 'orchestrator' or a role
@@ -275,9 +275,16 @@ export function StackScreen() {
 
         {!isDesktop() ? (
           <p className="hint">
-            {settings.daemon
-              ? 'The stack lives on your desktop; edit it there. This phone rides it over Tailscale.'
-              : 'Connect your desktop (Menu, then Desktop + phone) to see and use its stack.'}
+            {settings.daemon ? (
+              'The stack lives on your desktop; edit it there. This phone rides it over Tailscale.'
+            ) : (
+              <>
+                <button className="linklike" onClick={() => setView('pair')}>
+                  Connect your desktop
+                </button>{' '}
+                (Menu, then Desktop + phone) to see and use its stack.
+              </>
+            )}
           </p>
         ) : !admin ? (
           <p className="hint">

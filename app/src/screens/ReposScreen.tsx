@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
-import { isDesktop } from '../lib/platform.js';
+import { isDesktop, openInAppBrowser } from '../lib/platform.js';
 import { daemonCloneRepo, daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { homeRepoReady, REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
@@ -126,12 +126,17 @@ export function ReposScreen() {
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
             You can add a token now. Repositories open once this phone is connected to your
             computer, where the code lives.{' '}
+            <button className="linklike" onClick={() => setView('pair')}>
+              Open Desktop + phone
+            </button>
+            {' or '}
             <button
               className="linklike"
               onClick={() => void useApp.getState().startGuideChat('pair-computer')}
             >
-              Walk me through connecting it
+              walk me through connecting it
             </button>
+            .
           </p>
         ) : null}
         {REPO_CONNECTORS.map((c) => {
@@ -170,6 +175,17 @@ export function ReposScreen() {
               </div>
               {connecting === c.id ? (
                 <div style={{ marginTop: 12 }}>
+                  {/* Same errand as a cloud key: an in-app browser sheet on the
+                      phone, so creating the token and pasting it never leaves
+                      OpenShore; the system browser on the desktop and web. */}
+                  <button
+                    type="button"
+                    className="linklike"
+                    style={{ marginBottom: 8 }}
+                    onClick={() => openInAppBrowser(c.tokenUrl)}
+                  >
+                    Get a {c.name} token ↗
+                  </button>
                   <div className="field">
                     <input
                       autoFocus
@@ -190,7 +206,7 @@ export function ReposScreen() {
                     Save token
                   </button>
                   <p className="hint" style={{ marginTop: 8 }}>
-                    Create one at {c.tokenUrl}. It stays in this device Keychain, never in a log.
+                    It stays in this device Keychain, never in a log.
                   </p>
                 </div>
               ) : null}
@@ -417,11 +433,29 @@ export function ReposScreen() {
           </>
         ) : (
           <div className="card">
-            <h3>Repos also live on your desktop</h3>
-            <div className="sub">
-              Connect this phone to your desktop over Tailscale (Menu, then Desktop + phone) and
-              every repo there is one tap away.
+            <div className="card-row">
+              <div className="grow">
+                <h3>Repos also live on your desktop</h3>
+                <div className="sub">
+                  Connect this phone to your desktop over Tailscale and every repo there is one tap
+                  away.
+                </div>
+              </div>
+              <button
+                className="btn ghost"
+                style={{ padding: '8px 14px' }}
+                onClick={() => setView('pair')}
+              >
+                Connect
+              </button>
             </div>
+            <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
+              The same screen lives under Menu, then{' '}
+              <button className="linklike" onClick={() => setView('pair')}>
+                Desktop + phone
+              </button>
+              .
+            </p>
           </div>
         )}
       </div>

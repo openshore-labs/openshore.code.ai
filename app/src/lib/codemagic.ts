@@ -16,6 +16,9 @@ import { nativeFetch } from './nativeFetch.js';
 
 export const CODEMAGIC_BASE = 'https://api.codemagic.io';
 export const CODEMAGIC_SECRET_KEY = 'oscode.secret.codemagic';
+/** Where a person creates the API token: Teams, then the personal account,
+ *  then Integrations, then Codemagic API. Shown as an in-app link on Launch. */
+export const CODEMAGIC_TOKEN_URL = 'https://codemagic.io/teams';
 
 export type BuildStatus =
   'queued' | 'preparing' | 'building' | 'finished' | 'failed' | 'canceled' | 'timeout' | 'unknown';

@@ -3,6 +3,25 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, every connection point is a real link)
+
+Founder, from the phone, on Repositories: the connection points should carry
+actual links you can navigate in-app, the way Cloud Connections does. Built
+on the same two primitives Cloud Connections already uses:
+
+- **Token pages open in-app.** Each platform card's token form now leads with
+  `Get a GitHub token ↗` (GitLab, Bitbucket likewise) via `openInAppBrowser`:
+  an in-app browser sheet on the phone with the standard Done button, the
+  system browser on desktop and web. The bare URL in the hint is gone; the
+  Keychain line stays. Launch gets the same for Codemagic
+  (`CODEMAGIC_TOKEN_URL` in `lib/codemagic.ts`, the Teams page where the API
+  token lives).
+- **"Menu, then Desktop + phone" is a link, not directions.** Repositories'
+  lead hint offers `Open Desktop + phone` beside the walk-through, the
+  "Repos also live on your desktop" card has a Connect button plus an inline
+  link, and Your stack's phone hint links `Connect your desktop`. All go
+  through `setView('pair')`, so the back chevron returns to where you were.
+
 ## Current state (2026-09-02, quick chat is gone; the Chats room breathes)
 
 Founder: get rid of the quick chat feature altogether. Removed end to end:
