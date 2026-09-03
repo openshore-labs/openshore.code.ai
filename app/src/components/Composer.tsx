@@ -30,6 +30,8 @@ import {
 import { fileToAttachment, type Attachment } from '../lib/attachments.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
+import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
+import { AttachTray, type AttachSource } from './AttachTray.js';
 
 // The iOS keyboard dictation microphone, the same outline Claude uses.
 function MicIcon() {
@@ -233,7 +235,33 @@ export function Composer({
   const terminal = canRunCommands && termMode;
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const anyFileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  // The attach tray (phone only): + opens a tray in the keyboard's slot, the
+  // camera, the photo library, and any file, and the composer stays put while
+  // the keyboard swaps for it. The root class and --tray-inset are set right
+  // in the tap, before the field blurs, so the composer never dips between
+  // the keyboard's hide and the tray's arrival. The desktop + goes straight
+  // to the file picker.
+  const [tray, setTray] = useState(false);
+  const trayPresence = useExitPresence(tray, 300);
+  const closeTray = () => {
+    document.documentElement.classList.remove('tray-open');
+    setTray(false);
+  };
+  useEffect(() => () => document.documentElement.classList.remove('tray-open'), []);
+  const pickFrom = (source: AttachSource) => {
+    closeTray();
+    const input =
+      source === 'camera'
+        ? cameraRef.current
+        : source === 'photos'
+          ? fileRef.current
+          : anyFileRef.current;
+    input?.click();
+  };
 
   // The command menu: open while the field is exactly "/" plus a word.
   const slashMatch = /^\/(\w*)$/.exec(value);
@@ -386,6 +414,18 @@ export function Composer({
       showToast('This model reads text only. Switch to Claude to send images.');
       return;
     }
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      if (tray) {
+        closeTray();
+        return;
+      }
+      const root = document.documentElement;
+      root.style.setProperty('--tray-inset', `${knownKeyboardHeight()}px`);
+      root.classList.add('tray-open');
+      areaRef.current?.blur();
+      setTray(true);
+      return;
+    }
     fileRef.current?.click();
   };
 
@@ -427,7 +467,8 @@ export function Composer({
   const onFiles = async (files: FileList | null) => {
     if (!files || !files.length) return;
     await addFiles(Array.from(files));
-    if (fileRef.current) fileRef.current.value = '';
+    // Clear every picker so choosing the same file again still fires change.
+    for (const ref of [fileRef, cameraRef, anyFileRef]) if (ref.current) ref.current.value = '';
   };
 
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -693,6 +734,9 @@ export function Composer({
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
+          onFocus={() => {
+            if (tray) closeTray();
+          }}
         />
 
         <div className="composer-row">
@@ -704,10 +748,26 @@ export function Composer({
             hidden
             onChange={(e) => void onFiles(e.target.files)}
           />
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => void onFiles(e.target.files)}
+          />
+          <input
+            ref={anyFileRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => void onFiles(e.target.files)}
+          />
           <button
             className={`composer-add press-fb${visionSupported ? '' : ' muted'}`}
             onClick={addTap}
-            aria-label="Add image"
+            aria-label="Attach"
+            aria-expanded={tray}
           >
             {'+'}
           </button>
@@ -773,6 +833,9 @@ export function Composer({
           )}
         </div>
       </div>
+      {trayPresence.mounted ? (
+        <AttachTray closing={trayPresence.closing} onPick={pickFrom} />
+      ) : null}
     </div>
   );
 }
