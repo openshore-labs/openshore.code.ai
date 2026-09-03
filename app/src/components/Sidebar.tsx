@@ -1,6 +1,7 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
 // rooms at the top, the second-session rooms at the bottom, nothing else. New
 // chat and the project switcher live in the Chats and Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
+import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { BrandMark } from './BrandMark.js';
@@ -222,7 +223,14 @@ export function Sidebar({
   const body = (
     <aside
       className={`sidebar${drawer ? ' drawer' : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
-      style={dragX !== null ? { transform: `translateX(${dragX}px)` } : undefined}
+      // --drawer-x lets the exit keyframe (theme.css drawer-out) start from
+      // the finger's position after a drag-to-close, so the door keeps sliding
+      // rather than jumping back to open first.
+      style={
+        dragX !== null
+          ? ({ transform: `translateX(${dragX}px)`, '--drawer-x': `${dragX}px` } as CSSProperties)
+          : undefined
+      }
       {...(drawer ? dragProps : {})}
     >
       <div className="sidebar-head">
@@ -295,8 +303,14 @@ export function Sidebar({
   return (
     <>
       <div
-        className={`drawer-scrim${closing ? ' closing' : ''}${dragging || progress !== null ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
-        style={progress !== null ? { opacity: progress } : undefined}
+        // While closing, the scrim hands its held opacity to the exit keyframe
+        // (--drawer-scrim) instead of freezing under the dragging class.
+        className={`drawer-scrim${closing ? ' closing' : ''}${dragging || (progress !== null && !closing) ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
+        style={
+          progress !== null
+            ? ({ opacity: progress, '--drawer-scrim': progress } as CSSProperties)
+            : undefined
+        }
         onClick={() => setDrawer(false)}
       />
       {body}

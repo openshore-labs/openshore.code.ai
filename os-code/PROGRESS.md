@@ -3,6 +3,22 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the drawer is a sliding door)
+
+Founder, with a screen recording: the phone drawer retracted as a ghost, a
+24px nudge while it faded to transparent. Wanted: still a slide, never a
+transparent object, "just like a sliding door being moved out of the way,"
+smooth. Now in `theme.css`: `drawer-out` carries the panel, fully opaque, off
+the left edge (past its own shadow, so nothing lingers) on `--ease-standard`
+over `--dur-5`; only the scrim fades (`drawer-scrim-out`). The entrance
+(`drawer-in`) is the same door coming the other way, so in and out match.
+A drag-to-close no longer jumps back to open before leaving: the gesture
+hook holds the finger's position through the exit and Sidebar hands it to
+the keyframes as `--drawer-x` (and the scrim's held opacity as
+`--drawer-scrim`), so the door keeps going from where the hand left it.
+`via-gesture` stays on through that exit so the entrance cannot replay in
+the render before `closing` lands.
+
 ## Current state (2026-09-03, every connection point is a real link)
 
 Founder, from the phone, on Repositories: the connection points should carry
