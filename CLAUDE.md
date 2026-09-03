@@ -53,7 +53,11 @@ vocabulary; `app/test/polish-standards.test.ts` fails CI on drift.
    `--dur-1..6`, `--press-*`). New motion references the tokens, never a raw
    `cubic-bezier()`, an `ease` keyword, or an ad-hoc millisecond value. The
    guard allows raw values only on `infinite` loops and on delays of a second
-   or more.
+   or more. A surface that crosses the screen (the drawer, a sheet) travels
+   on `--ease-glide` over `--dur-7`, the door clock: the standard curve
+   front-loads two thirds of its travel into the first fifth of the clock,
+   which on a 310px door reads as a pop, not a slide. Rows that arrive one
+   after another step by `--stagger`.
 2. **Every tappable acknowledges the touch, instantly.** `press-fb` (or the
    base button group). Press physics are asymmetric: curt accelerate-in
    (`--press-in`), slow spring-out (`--press-out`).

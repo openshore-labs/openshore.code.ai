@@ -30,6 +30,7 @@ import {
 import { fileToAttachment, type Attachment } from '../lib/attachments.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
+import { CloseGlyph } from './SheetGlyphs.js';
 import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
 import { AttachTray, type AttachSource } from './AttachTray.js';
 
@@ -686,7 +687,7 @@ export function Composer({
                   aria-label={`Remove ${a.name}`}
                   onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
                 >
-                  {'×'}
+                  <CloseGlyph size={12} />
                 </button>
               </span>
             ))}
@@ -703,7 +704,7 @@ export function Composer({
                   aria-label={`Remove pasted text ${i + 1}`}
                   onClick={() => setPasted((prev) => prev.filter((x) => x.id !== p.id))}
                 >
-                  {'×'}
+                  <CloseGlyph size={12} />
                 </button>
               </span>
             ))}

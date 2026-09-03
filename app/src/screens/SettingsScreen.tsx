@@ -18,6 +18,7 @@ import { InfoSheet } from '../components/InfoSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
+import { SheetHead } from '../components/SheetHead.js';
 import type { SearchBackend } from '../lib/webSearch.js';
 import type { StackHealthSealFact } from 'os-code/protocol';
 
@@ -322,7 +323,7 @@ export function SettingsScreen() {
       </div>
 
       <Sheet open={sheet === 'account'} onClose={close}>
-        <h2>{signedIn ? 'Your account' : 'Sign in'}</h2>
+        <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />
         {signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
             {tierById(org.tierId).name} plan · {priceLabel(tierById(org.tierId))} ·{' '}
@@ -345,7 +346,7 @@ export function SettingsScreen() {
       </Sheet>
 
       <Sheet open={sheet === 'log'} onClose={close}>
-        <h2>Activity log</h2>
+        <SheetHead title="Activity log" onClose={close} />
         <p className="sheet-sub">
           A plain record of where setup goes smoothly or gets stuck, kept on this device. Nothing is
           ever sent unless you copy it and hand it back yourself.
@@ -369,7 +370,7 @@ export function SettingsScreen() {
       </Sheet>
 
       <Sheet open={sheet === 'search'} onClose={close}>
-        <h2>Web search</h2>
+        <SheetHead title="Web search" onClose={close} />
         <p className="sheet-sub">
           Harbor searches the web when it needs to. DuckDuckGo needs no key. Bring your own Brave
           Search or Tavily key to search on your own account.
@@ -420,7 +421,7 @@ export function SettingsScreen() {
       </Sheet>
 
       <Sheet open={sheet === 'paths'} onClose={close}>
-        <h2>Add to your setup</h2>
+        <SheetHead title="Add to your setup" onClose={close} />
         <p className="sheet-sub">The starting paths, any time.</p>
         <div className="settings-card">
           <StartingPaths context="settings" variant="rows" />

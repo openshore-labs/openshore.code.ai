@@ -104,6 +104,8 @@
   --dur-6: 420ms;
   /* The door's clock: the one duration for a surface that crosses the screen. */
   --dur-7: 520ms;
+  /* The step between rows that arrive one after another (the drawer's). */
+  --stagger: 40ms;
   /* Loops (spinners, pulses, shimmers): outside the transition range on
      purpose, but still one vocabulary. */
   --loop-1: 800ms;
@@ -619,6 +621,31 @@ textarea {
 .sidebar.drawer.via-gesture::after {
   animation: none;
 }
+/* The door brings its contents with it: the wordmark, then each row, arrive
+   a step apart just behind the panel (--i is set inline by Sidebar), so the
+   drawer reads as a room being opened rather than a printed sheet sliding
+   in. Opened by the finger, the rows are simply there. */
+.sidebar.drawer .sidebar-head,
+.sidebar.drawer .nav-item,
+.sidebar.drawer .sidebar-signin {
+  animation: drawer-row-in var(--dur-5) var(--ease-glide) backwards;
+  animation-delay: calc(var(--dur-2) + var(--i, 0) * var(--stagger));
+}
+.sidebar.drawer.via-gesture .sidebar-head,
+.sidebar.drawer.via-gesture .nav-item,
+.sidebar.drawer.via-gesture .sidebar-signin {
+  animation: none;
+}
+@keyframes drawer-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
 .drawer-scrim.dragging {
   animation: none;
   transition: none;
@@ -770,6 +797,31 @@ textarea {
 
 .menu-btn:active .menu-glyph {
   transform: scale(1.1);
+}
+
+/* While the drawer is open the bars fold into a chevron on the door clock,
+   so the control acknowledges what it opened; the door covers it a beat
+   later and uncovers it on the way out, mid-fold both times. Transform and
+   opacity only, each bar about its own center. */
+.menu-glyph path {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform var(--dur-7) var(--ease-glide),
+    opacity var(--dur-7) var(--ease-glide);
+}
+/* Each bar shortens to 0.6 and turns 45 degrees about its own center; the
+   translate then brings both left ends to one apex (about x 8, y 12 on the
+   24-unit grid), so they meet as a chevron rather than crossing. */
+.menu-glyph.open .menu-bar-top {
+  transform: translate(-0.5px, 1.65px) rotate(-45deg) scaleX(0.6);
+}
+.menu-glyph.open .menu-bar-mid {
+  opacity: 0;
+  transform: scaleX(0.4);
+}
+.menu-glyph.open .menu-bar-bottom {
+  transform: translate(-0.5px, -1.65px) rotate(45deg) scaleX(0.6);
 }
 
 /* Stack header: title on the left, the bring-your-own-model "+" on the right. */
@@ -1908,9 +1960,23 @@ textarea {
 }
 .composer-chip-x {
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1;
-  padding: 0 2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 0;
+  border-radius: 50%;
+}
+/* Compound on purpose: .press-fb is declared later at equal specificity and
+   its `transition: scale` would reset the color fade. */
+.composer-chip-x.press-fb {
+  transition:
+    color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
+}
+.composer-chip-x:hover {
+  color: var(--ink);
 }
 
 /* Model + effort sheet. Effort pinned at the top, then grouped model rows. */
@@ -2113,7 +2179,10 @@ textarea {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* A hairline shelf under the header, the Claude app's sheet shape. */
+  padding-bottom: 12px;
   margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 /* The round close/back button. Its glyph is a stroked SVG (SheetGlyphs.tsx),
    never a typed "×": a character brings its font's side bearings and baseline
@@ -2141,6 +2210,10 @@ textarea {
     color var(--dur-2) var(--ease-standard),
     border-color var(--dur-2) var(--ease-standard),
     scale var(--press-out);
+}
+/* A round 34px target collapses a touch further than a wide button. */
+.mode-close.press-fb:active {
+  scale: var(--press-scale-tile);
 }
 .mode-close .sheet-glyph {
   display: block;
@@ -2581,12 +2654,14 @@ textarea {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  animation: fade-in var(--dur-2) var(--ease-standard);
-  transition: opacity var(--dur-4) var(--ease-standard);
+  /* The scrim dims on the sheet's clock, so the room darkens at the rate the
+     sheet covers it, the same seam the drawer's scrim keeps. */
+  animation: fade-in var(--dur-7) var(--ease-glide);
+  transition: opacity var(--dur-7) var(--ease-glide);
 }
 
-/* Dismissal: the scrim fades as the sheet slides back down (see
-   ProfileStatus.tsx, which holds the unmount for the exit's full length). */
+/* Dismissal: the scrim fades as the sheet slides back down (useSheetExit and
+   Sheet.tsx hold the unmount for the door clock, lib/motion.ts sheetExitMs). */
 .sheet-scrim.closing {
   animation: none;
   opacity: 0;
@@ -2613,10 +2688,13 @@ textarea {
   box-shadow:
     0 -1px 2px rgba(var(--shadow-rgb), 0.05),
     0 -12px 40px rgba(var(--shadow-rgb), 0.14);
-  animation: sheet-up var(--dur-6) var(--ease-spring);
+  /* A sheet is a door from the bottom edge: it slides up solid on the glide
+     over the door clock, the drawer's own motion turned ninety degrees
+     (founder, 2026-09-03: "smooth and slow"). */
+  animation: sheet-up var(--dur-7) var(--ease-glide);
   /* The exit (added by useSheetExit) transitions this transform; the entrance
      is the one-shot animation above. */
-  transition: transform var(--dur-5) var(--ease-standard);
+  transition: transform var(--dur-7) var(--ease-glide);
 }
 
 /* Every sheet plays an exit before unmounting, never a hard cut. */
@@ -2624,6 +2702,9 @@ textarea {
   transform: translateY(110%);
 }
 
+/* On a wide screen the sheet is a centered card, so it rises a short way and
+   settles rather than crossing the whole window; still the glide, still the
+   door clock, with the fade the phone's solid door does not need. */
 @media (min-width: 720px) {
   .sheet {
     border-radius: var(--radius-lg);
@@ -2631,15 +2712,31 @@ textarea {
     box-shadow:
       0 1px 2px rgba(var(--shadow-rgb), 0.05),
       0 18px 50px rgba(var(--shadow-rgb), 0.16);
+    animation-name: sheet-rise;
+    transition:
+      transform var(--dur-7) var(--ease-glide),
+      opacity var(--dur-7) var(--ease-glide);
+  }
+  .sheet.closing {
+    transform: translateY(24px) scale(0.98);
+    opacity: 0;
   }
 }
 
-/* A touch of overshoot on the rise, the way a real sheet settles into place
-   rather than just easing to a stop. */
+/* The phone's sheet: from below the bottom edge (past its own shadow) to
+   rest, solid the whole way. */
 @keyframes sheet-up {
   from {
+    transform: translateY(calc(100% + 40px));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheet-rise {
+  from {
     transform: translateY(34px) scale(0.97);
-    opacity: 0.4;
+    opacity: 0;
   }
   to {
     transform: translateY(0) scale(1);
@@ -2890,7 +2987,9 @@ textarea {
 /* Room changes fade and rise rather than hard-cutting, so navigation between
    screens reads as calm. Keyed by the screen so React remounts and replays it. */
 .screen {
-  animation: room-in var(--dur-4) var(--ease-arrive) backwards;
+  /* On the glide, a touch longer, so a room change moves at the pace of the
+     drawer it was just opened from. */
+  animation: room-in var(--dur-6) var(--ease-glide) backwards;
 }
 @keyframes room-in {
   from {
@@ -6428,6 +6527,8 @@ textarea {
   flex-direction: column;
   gap: 10px;
   align-items: flex-start;
+  /* Lands a beat after the header, so the sheet arrives before its card. */
+  animation: room-in var(--dur-4) var(--ease-arrive) var(--dur-1) backwards;
 }
 .repo-sheet-search {
   display: flex;
@@ -6438,6 +6539,14 @@ textarea {
   background: var(--bg-raised);
   border-top: 1px solid var(--border);
   color: var(--muted);
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard);
+}
+/* The field answers the tap: its rule and glyph lift while it has focus. */
+.repo-sheet-search:focus-within {
+  border-top-color: var(--border-strong);
+  color: var(--ink-soft);
 }
 .repo-sheet-search input {
   flex: 1;

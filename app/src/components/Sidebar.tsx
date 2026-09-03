@@ -205,12 +205,17 @@ export function Sidebar({
   const unlocked = personalUnlockedNow();
   const LOCKED_VIEWS = new Set<NavIconName>(['marketplace']);
 
-  const item = ({ view: v, label }: { view: NavIconName; label: string }) => {
+  // --i is the row's place in the drawer's entrance stagger (theme.css
+  // drawer-row-in): the wordmark is 0, the primary rooms follow, and the
+  // bottom group carries on counting so the whole door fills top to bottom.
+  const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
+  const item = ({ view: v, label }: { view: NavIconName; label: string }, i: number) => {
     const locked = !unlocked && LOCKED_VIEWS.has(v);
     return (
       <button
         key={v}
         className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}`}
+        style={stagger(1 + i)}
         onClick={() => setView(v, { root: true })}
       >
         <span className="glyph">
@@ -245,7 +250,7 @@ export function Sidebar({
       }
       {...(drawer ? dragProps : {})}
     >
-      <div className="sidebar-head">
+      <div className="sidebar-head" style={stagger(0)}>
         <span className="brand-lockup">
           <BrandMark size={26} />
           <span className="wordmark">
@@ -259,6 +264,7 @@ export function Sidebar({
         {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
           <button
             className={`nav-item press-fb press-fb--row${view === 'admin' ? ' active' : ''}`}
+            style={stagger(1)}
             onClick={() => setView('admin', { root: true })}
           >
             <span className="glyph">
@@ -276,6 +282,7 @@ export function Sidebar({
         <button
           type="button"
           className="sidebar-signin"
+          style={stagger(1 + PRIMARY_NAV.length)}
           onClick={() => {
             setView('settings', { root: true });
             setDrawer(false);
@@ -306,7 +313,7 @@ export function Sidebar({
       {/* The second-session rooms stay at the bottom, Settings last. */}
       <nav className="sidebar-nav">
         <div className="nav-section-label">More rooms</div>
-        {EXPLORE_NAV.map(item)}
+        {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 1 + i))}
       </nav>
     </aside>
   );

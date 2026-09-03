@@ -28,6 +28,7 @@ const CANON: Record<string, string> = {
   '--dur-5': '320ms',
   '--dur-6': '420ms',
   '--dur-7': '520ms',
+  '--stagger': '40ms',
   '--loop-1': '800ms',
   '--loop-2': '1100ms',
   '--loop-3': '1400ms',

@@ -3,13 +3,13 @@
 // font's side bearings and baseline with it, so it lands low and to the left
 // of the circle it sits in (founder screenshot, 2026-09-03). A path in a
 // square viewBox is centered by geometry, whatever font is loaded.
-export function CloseGlyph() {
+export function CloseGlyph({ size = 18 }: { size?: number }) {
   return (
     <svg
       className="sheet-glyph"
       viewBox="0 0 24 24"
-      width="18"
-      height="18"
+      width={size}
+      height={size}
       fill="none"
       stroke="currentColor"
       strokeWidth="2.2"

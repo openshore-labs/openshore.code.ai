@@ -1,11 +1,13 @@
 // The menu (hamburger) glyph for the top-left drawer button. A drawn SVG rather
 // than the thin Unicode bars, so it reads a touch more substantial: three full
 // width, round-capped strokes on the shared 24-unit icon grid. Decorative; the
-// button carries its own aria-label.
-export function MenuIcon({ size = 22 }: { size?: number }) {
+// button carries its own aria-label. With `open`, the bars fold into a back
+// chevron on the door clock (theme.css .menu-glyph.open), so the control
+// acknowledges the drawer it opened.
+export function MenuIcon({ size = 22, open = false }: { size?: number; open?: boolean }) {
   return (
     <svg
-      className="menu-glyph"
+      className={`menu-glyph${open ? ' open' : ''}`}
       viewBox="0 0 24 24"
       width={size}
       height={size}
@@ -16,7 +18,9 @@ export function MenuIcon({ size = 22 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <path d="M3.5 6.75h17M3.5 12h17M3.5 17.25h17" />
+      <path className="menu-bar-top" d="M3.5 6.75h17" />
+      <path className="menu-bar-mid" d="M3.5 12h17" />
+      <path className="menu-bar-bottom" d="M3.5 17.25h17" />
     </svg>
   );
 }
