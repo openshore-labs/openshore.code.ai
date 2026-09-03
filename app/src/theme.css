@@ -4930,6 +4930,40 @@ textarea {
 .model-tile.on-device {
   background: linear-gradient(150deg, var(--wave), var(--local-deep));
 }
+/* A cloud-hosted model wears the amber spend family, never teal: teal is
+   reserved for local and private, and a hosted model is billed spend. */
+.model-tile.cloud {
+  background: linear-gradient(150deg, var(--cloud-bright), var(--cloud));
+}
+
+/* ---- Frontier, on your key: cloud-hosted models in the store ---- */
+/* The hosted hero catches an amber light instead of the teal one, so a person
+   reads "this one is billed" before the pill says so. Declared after the
+   per-capability heroes so it wins without carrying a data-cap. */
+.hero-card.cloud {
+  background:
+    radial-gradient(140% 120% at 100% 0%, rgba(240, 168, 80, 0.5), transparent 60%),
+    linear-gradient(145deg, #6b430f, #2e1f0a);
+}
+.hero-card.cloud .pill.cloud {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.hosted-group .store-row:last-child {
+  border-bottom: none;
+}
+.hosted-page .card-row .model-tile {
+  margin-right: 2px;
+}
+.hosted-page .detail-panel {
+  margin-top: 12px;
+}
+.hosted-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
 
 /* Sort control scrolls horizontally on narrow screens rather than wrapping. */
 .seg-scroll {

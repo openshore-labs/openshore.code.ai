@@ -3,6 +3,50 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, Kimi in the store: the frontier shelf)
+
+Founder, with a Marketplace screenshot: "I'm not seeing the new Kimi model.
+I want it and I want that level of selection." Two things were wrong. The
+Kimi provider added on 2026-09-02 listed Moonshot's July-2025 ids
+(`kimi-k2-0711-preview`, `moonshot-v1-128k`), all retired since (the K2
+previews on 2026-05-25, K2.5 and the moonshot-v1 series on 2026-08-31), so
+every Kimi row was a dead button. And a cloud model was only reachable from
+Cloud Connections, a settings room, so the store never showed it at all.
+
+- **The Moonshot lineup is current.** `providers.ts` now lists Kimi K3 (the
+  flagship, 1M context, API 2026-07-16), Kimi K2.7 Code (2026-06-12) plus its
+  high-speed lane, and Kimi K2.6 (2026-04-20), under Moonshot's live ids, the
+  console link moved to platform.kimi.ai. `RETIRED_PROVIDER_MODEL_IDS` names
+  the sunset ids and `moonshotProvider.test.ts` fails on any of them. Every
+  provider model (Claude, OpenAI, Gemini too) now carries store copy: a plain
+  tagline, capability categories, context, release date, open-weights flag,
+  and the Ollama `:cloud` tag where Ollama hosts the same model.
+- **"Frontier, on your key" in the Marketplace.** `lib/hosted.ts` derives a
+  browsable list from the BYOK providers (so the store and Cloud Connections
+  can never drift) and the store renders it three ways: the newest release
+  (Kimi K3) leads the hero row on an amber cloud card, a shelf sits right
+  under the heroes, and search or a capability chip folds matching hosted
+  rows in above the catalog list. The control is Connect, not Get: it opens
+  Cloud Connections with that provider's paste field already open and
+  scrolled into view (`openConnections` in the store, `connectionsFocus`
+  honored once by the screen). A connected provider reads "on bench", since
+  the Stack already derives its cloud bench from the same providers. Each
+  model has a product page: what it is good at, who bills, open versus closed
+  weights, and on a desktop with Ollama a second path, "Pull through Ollama
+  instead", which runs `kimi-k3:cloud` through the install-by-ref seam.
+- **Honesty kept.** Hosted rows show for search and capability facets only;
+  hardware fit, license, size, source, and on-device facets are about
+  downloads and hide them. Hosted search is a substring match, not the
+  catalog's subsequence fuzzy: "kimi" must not surface Haiku. Cloud wears the
+  amber spend family everywhere (tile, hero, pill); teal stays local.
+  `hosted.test.ts` pins the lineup, the retired-id ban, search, the facet
+  rule, and the newest ordering.
+- Note: Moonshot's docs and ollama.com were unreachable from the sandbox, so
+  the lineup was cross-checked across OpenRouter, Ollama's announcements,
+  DeepInfra, and the Kimi Code CLI docs. A console verify of the four ids
+  before the next release is still the right habit.
+  Gates green: os-code build; app typecheck, lint, 327 tests.
+
 ## Current state (2026-09-03, the door leaves at the speed the hand gave it)
 
 Founder: "do all the polish," the second round, the two items captured
