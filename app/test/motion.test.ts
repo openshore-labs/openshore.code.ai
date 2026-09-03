@@ -31,4 +31,22 @@ describe('motion readers', () => {
       /\.sidebar\.drawer \{[^}]*transition:\s*transform var\(--drawer-settle, var\(--dur-4\)\) var\(--ease-spring\)/,
     );
   });
+
+  it('lets the exit take its duration from the release velocity, shadow included', () => {
+    // Panel, scrim, and the shadow pseudo-element all leave on --drawer-exit
+    // (default --dur-5), so a flick and a slow release stay one motion.
+    for (const selector of [
+      '.sidebar.drawer.closing',
+      '.drawer-scrim.closing',
+      '.sidebar.drawer.closing::after',
+    ]) {
+      const block = THEME.match(new RegExp(`${selector.replace(/[.:]/g, '\\$&')} \\{[^}]*\\}`));
+      expect(block, `${selector} not found`).toBeTruthy();
+      expect(block![0]).toMatch(/animation:\s*[\w-]+ var\(--drawer-exit, var\(--dur-5\)\)/);
+    }
+    // The shadow is the pseudo-element's, never the panel's own, so it can
+    // fade on opacity while the panel stays solid.
+    expect(THEME).toMatch(/\.sidebar\.drawer::after \{[^}]*box-shadow:/);
+    expect(THEME).not.toMatch(/\.sidebar\.drawer \{[^}]*box-shadow:/);
+  });
 });

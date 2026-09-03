@@ -177,6 +177,7 @@ export function Sidebar({
   closing,
   dragX = null,
   settleMs = null,
+  exitMs = null,
   dragging = false,
   viaGesture = false,
   progress = null,
@@ -188,6 +189,8 @@ export function Sidebar({
   dragX?: number | null;
   /** Spring duration for a settle in flight (feeds --drawer-settle). */
   settleMs?: number | null;
+  /** Exit duration after a drag-to-close (feeds --drawer-exit on panel and scrim). */
+  exitMs?: number | null;
   dragging?: boolean;
   /** Opened by the edge swipe: skip the CSS entrance (the finger already did it). */
   viaGesture?: boolean;
@@ -231,6 +234,7 @@ export function Sidebar({
               transform: `translateX(${dragX}px)`,
               '--drawer-x': `${dragX}px`,
               ...(settleMs !== null ? { '--drawer-settle': `${settleMs}ms` } : {}),
+              ...(exitMs !== null ? { '--drawer-exit': `${exitMs}ms` } : {}),
             } as CSSProperties)
           : undefined
       }
@@ -311,7 +315,11 @@ export function Sidebar({
         className={`drawer-scrim${closing ? ' closing' : ''}${dragging || (progress !== null && !closing) ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
         style={
           progress !== null
-            ? ({ opacity: progress, '--drawer-scrim': progress } as CSSProperties)
+            ? ({
+                opacity: progress,
+                '--drawer-scrim': progress,
+                ...(exitMs !== null ? { '--drawer-exit': `${exitMs}ms` } : {}),
+              } as CSSProperties)
             : undefined
         }
         onClick={() => setDrawer(false)}
