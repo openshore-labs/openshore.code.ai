@@ -1466,9 +1466,7 @@ export const useApp = create<AppState>((set, get) => {
           const keptCloud = Object.fromEntries(
             Object.entries(settings.cloudModels ?? {}).filter(([id]) => cloudPresent.has(id)),
           );
-          if (
-            Object.keys(keptCloud).length !== Object.keys(settings.cloudModels ?? {}).length
-          ) {
+          if (Object.keys(keptCloud).length !== Object.keys(settings.cloudModels ?? {}).length) {
             settings.cloudModels = keptCloud;
             changed = true;
           }
