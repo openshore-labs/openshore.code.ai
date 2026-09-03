@@ -3,6 +3,22 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, the edge swipe no longer wedges the app)
+
+Founder, with a screenshot: after the drawer retracted nothing was tappable,
+and the app had to be quit. Root cause in the day-old gesture: a touch on
+the 22px left edge made the edge zone capture the pointer and set `peek`,
+and App rendered the zone only while `!gesture.peek`, so the very next
+render removed it. A removed element loses its capture, the release handler
+never fired, the gesture stayed armed, and the drawer stayed mounted with
+its scrim at opacity 0 over the whole room, eating every tap. Any touch
+near the left edge (an edge swipe to reopen, a thumb resting there) did it.
+Fix: the zone is rendered under `!drawerOpen || gesture.peek`, so it
+outlives the gesture it started; and both gesture surfaces bind
+`onLostPointerCapture` to their release handler, so a pointer the platform
+takes away still releases (the echo after a normal pointerup is a no-op).
+`polish-standards.test.ts` pins both.
+
 ## Current state (2026-09-03, the drawer is a sliding door)
 
 Founder, with a screen recording: the phone drawer retracted as a ghost, a

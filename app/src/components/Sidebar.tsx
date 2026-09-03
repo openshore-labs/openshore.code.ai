@@ -4,6 +4,7 @@
 import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
+import type { GestureProps } from '../hooks/useDrawerGesture.js';
 import { BrandMark } from './BrandMark.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
@@ -189,12 +190,7 @@ export function Sidebar({
   viaGesture?: boolean;
   /** 0..1 for the scrim while dragging; null lets CSS own it. */
   progress?: number | null;
-  dragProps?: {
-    onPointerDown: (e: React.PointerEvent) => void;
-    onPointerMove: (e: React.PointerEvent) => void;
-    onPointerUp: (e: React.PointerEvent) => void;
-    onPointerCancel: (e: React.PointerEvent) => void;
-  };
+  dragProps?: GestureProps;
 }) {
   const { view, setView, setDrawer, settings, personalUnlockedNow } = useApp();
   const { configured: authConfigured, signedIn } = useAuth();

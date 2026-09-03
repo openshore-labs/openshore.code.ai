@@ -35,18 +35,19 @@ export interface DrawerGesture {
   viaGesture: boolean;
   /** 0 (closed) to 1 (open), for the scrim. Null when not dragging. */
   progress: number | null;
-  edgeProps: {
-    onPointerDown: (e: ReactPointerEvent) => void;
-    onPointerMove: (e: ReactPointerEvent) => void;
-    onPointerUp: (e: ReactPointerEvent) => void;
-    onPointerCancel: (e: ReactPointerEvent) => void;
-  };
-  drawerProps: {
-    onPointerDown: (e: ReactPointerEvent) => void;
-    onPointerMove: (e: ReactPointerEvent) => void;
-    onPointerUp: (e: ReactPointerEvent) => void;
-    onPointerCancel: (e: ReactPointerEvent) => void;
-  };
+  edgeProps: GestureProps;
+  drawerProps: GestureProps;
+}
+
+/** The handlers a gesture surface binds. Lost capture is a release too: the
+ *  platform can take the pointer away (a system gesture, an interruption) and
+ *  a gesture that never releases leaves the drawer wedged. */
+export interface GestureProps {
+  onPointerDown: (e: ReactPointerEvent) => void;
+  onPointerMove: (e: ReactPointerEvent) => void;
+  onPointerUp: (e: ReactPointerEvent) => void;
+  onPointerCancel: (e: ReactPointerEvent) => void;
+  onLostPointerCapture: (e: ReactPointerEvent) => void;
 }
 
 export function useDrawerGesture({
@@ -240,17 +241,21 @@ export function useDrawerGesture({
     // CSS entrance cannot replay in the render before the closing class lands.
     viaGesture: viaGesture && (open || peek || dragX !== null),
     progress,
+    // A release handler is idempotent (pointerId clears on the first call), so
+    // the lostpointercapture that follows every pointerup is a harmless echo.
     edgeProps: {
       onPointerDown: edgeDown,
       onPointerMove: edgeMove,
       onPointerUp: edgeUp,
       onPointerCancel: edgeUp,
+      onLostPointerCapture: edgeUp,
     },
     drawerProps: {
       onPointerDown: drawerDown,
       onPointerMove: drawerMove,
       onPointerUp: drawerUp,
       onPointerCancel: drawerUp,
+      onLostPointerCapture: drawerUp,
     },
   };
 }

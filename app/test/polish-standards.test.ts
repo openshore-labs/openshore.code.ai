@@ -155,6 +155,24 @@ describe('polish standards', () => {
     expect(offenders, offenders.join('\n  ')).toEqual([]);
   });
 
+  it('keeps a pointer-capturing surface mounted through its own gesture', () => {
+    // The edge zone captures the pointer on touch-down. App once rendered it
+    // under `!gesture.peek`, so the render that followed removed it; a removed
+    // element loses its capture, the release handler never fired, the gesture
+    // stayed armed, and the drawer's invisible scrim sat over the room eating
+    // every tap until the app was quit (founder, 2026-09-03). Pinned here: the
+    // zone outlives the gesture, and lost capture counts as a release.
+    const app = readFileSync(join(SRC, 'App.tsx'), 'utf8').split('\n');
+    const at = app.findIndex((line) => line.includes('className="edge-swipe-zone"'));
+    expect(at, 'edge-swipe-zone not rendered in App.tsx').toBeGreaterThan(0);
+    const condition = app[at - 1]!; // the `{compact && (...) ? (` line above the zone
+    expect(condition).toMatch(/\|\|\s*gesture\.peek/);
+    expect(condition).not.toMatch(/!\s*gesture\.peek/);
+    const hook = readFileSync(join(SRC, 'hooks', 'useDrawerGesture.ts'), 'utf8');
+    expect(hook).toMatch(/onLostPointerCapture:\s*edgeUp/);
+    expect(hook).toMatch(/onLostPointerCapture:\s*drawerUp/);
+  });
+
   it('routes haptics through @capacitor/haptics, never navigator.vibrate', () => {
     const src = readFileSync(join(SRC, 'lib', 'haptics.ts'), 'utf8');
     expect(src.includes('@capacitor/haptics')).toBe(true);
