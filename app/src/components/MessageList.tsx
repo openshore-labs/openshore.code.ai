@@ -83,6 +83,11 @@ export function MessageList({
   const pinnedRef = useRef(true);
   const prevCount = useRef(0);
   const [unseen, setUnseen] = useState(0);
+  // True once the reader has scrolled up a meaningful distance from the foot,
+  // so the jump pill offers a way back down even on an already-finished reply
+  // with nothing new below. Distinct from unseen (which counts messages that
+  // landed while scrolled up): either one shows the pill.
+  const [scrolledUp, setScrolledUp] = useState(false);
   const itemCount = thread.items.length;
   const lastItem = thread.items[itemCount - 1];
   const streamingLen =
@@ -98,9 +103,13 @@ export function MessageList({
     const el = threadRef.current;
     if (!el) return;
     const onScroll = () => {
-      const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const pinned = distanceFromBottom < 48;
       pinnedRef.current = pinned;
       if (pinned) setUnseen(0);
+      // A wider threshold than the pin gap so the pill never flickers on a hair
+      // of scroll near the foot; it earns its place once you have moved off.
+      setScrolledUp(distanceFromBottom > 240);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -136,6 +145,7 @@ export function MessageList({
     hapticTick();
     pinnedRef.current = true;
     setUnseen(0);
+    setScrolledUp(false);
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   };
 
@@ -159,10 +169,14 @@ export function MessageList({
 
   let lastModel: string | undefined;
 
-  // The pill plays an exit; its last count is held while it fades.
-  const { mounted: pillMounted, closing: pillClosing } = useExitPresence(unseen > 0, 240);
-  const lastUnseen = useRef(0);
-  if (unseen > 0) lastUnseen.current = unseen;
+  // The pill shows either because messages arrived while scrolled up (unseen)
+  // or simply because the reader has scrolled up and may want back down. It
+  // plays an exit; its count is held while it fades, and reads zero when it is
+  // only a jump affordance (no unseen messages), which renders as a bare arrow.
+  const pillVisible = unseen > 0 || scrolledUp;
+  const { mounted: pillMounted, closing: pillClosing } = useExitPresence(pillVisible, 240);
+  const heldUnseen = useRef(0);
+  if (pillVisible) heldUnseen.current = unseen;
 
   return (
     <div className="thread" ref={threadRef}>
@@ -292,10 +306,13 @@ export function MessageList({
       {pillMounted ? (
         <button
           type="button"
-          className={`scroll-pill press-fb${pillClosing ? ' closing' : ''}`}
+          className={`scroll-pill press-fb${heldUnseen.current > 0 ? '' : ' bare'}${pillClosing ? ' closing' : ''}`}
           onClick={jumpToBottom}
+          aria-label={heldUnseen.current > 0 ? undefined : 'Jump to latest'}
         >
-          {lastUnseen.current === 1 ? 'New message' : `${lastUnseen.current} new`} {'↓'}
+          {heldUnseen.current > 0
+            ? `${heldUnseen.current === 1 ? 'New message' : `${heldUnseen.current} new`} ↓`
+            : '↓'}
         </button>
       ) : null}
     </div>

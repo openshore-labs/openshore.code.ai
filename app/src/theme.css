@@ -6085,6 +6085,17 @@ textarea {
   animation: pill-in var(--dur-2) var(--ease-arrive);
   z-index: 4;
 }
+/* When the pill is only a jump affordance (scrolled up, nothing new), it drops
+   its label and reads as a round floating button, the iMessage shape. */
+.scroll-pill.bare {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+}
 @keyframes pill-in {
   from {
     opacity: 0;
