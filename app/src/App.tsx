@@ -30,11 +30,7 @@ import { useExitPresence } from './hooks/useExitPresence.js';
 import { useRoomGhost } from './hooks/useRoomGhost.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
-
-/** The drawer's rendered width (see .sidebar.drawer in theme.css). */
-function drawerWidth(): number {
-  return Math.min(310, window.innerWidth * 0.84);
-}
+import { drawerWidth } from './lib/motion.js';
 
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();
@@ -238,6 +234,7 @@ export function App() {
           drawer
           closing={drawer.closing && !gesture.peek}
           dragX={gesture.dragX}
+          settleMs={gesture.settleMs}
           dragging={gesture.dragging}
           viaGesture={gesture.viaGesture}
           progress={gesture.progress}

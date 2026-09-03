@@ -3,6 +3,24 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, drawer polish, all three tiers)
+
+Founder: "do all the polish." Three changes around the drawer gesture:
+
+- **A 30px edge strip** (was 22px), about iOS's own back-swipe zone, so the
+  reopen swipe lands reliably now that a release is guaranteed.
+- **The settle spring scales with distance.** `useDrawerGesture` reads
+  `--dur-3` and `--dur-5` out of the stylesheet and picks a duration between
+  them from how far the panel still has to travel, then hands it to the
+  panel as `--drawer-settle`, which the CSS transition consumes. A nudge back
+  is brisk, a full-width return glides; the timer that clears the inline
+  position uses the same number, so JS and CSS never disagree.
+- **One copy of the drawer width.** `--drawer-width: min(310px, 84vw)` in
+  `:root`, registered as a `<length>` with `@property` so its computed value
+  comes back in pixels; `lib/motion.ts` (`drawerWidth`, `durationMs`) reads
+  it and App no longer carries its own `min(310, innerWidth * 0.84)`.
+  `test/motion.test.ts` pins the registration and the readers' fallbacks.
+
 ## Current state (2026-09-03, the edge swipe no longer wedges the app)
 
 Founder, with a screenshot: after the drawer retracted nothing was tappable,
@@ -966,6 +984,11 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Drawer polish left on the table (2026-09-03, captured, not declined):**
+      a velocity-aware drag-to-close exit (a fast flick finishes in `--dur-3`,
+      a slow release in `--dur-5`, via the same `--drawer-settle` seam); and
+      fading the panel's shadow with the scrim during the exit, which needs a
+      pseudo-element so it stays within the transform/opacity rule.
 - [ ] **BYOM on-device streaming (R-16), still deferred:** true streaming and
       cancel for BYOM/OpenAI-compatible endpoints on iOS and Electron
       (buffer-then-dump today). Needs an Electron IPC streaming channel and an
