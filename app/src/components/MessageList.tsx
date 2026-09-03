@@ -3,7 +3,7 @@
 // changed-files record, quiet status lines, and citations at the end. A
 // working row fills the gap between a send and the first token, and a "new
 // messages" pill offers the way back when the person has scrolled up.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
@@ -22,23 +22,33 @@ function AssistantBubble({
   streaming,
   model,
   showModel,
+  onReveal,
 }: {
   text: string;
   streaming: boolean;
   model?: string;
   showModel: boolean;
+  /** Called as revealed text grows, so a pinned thread follows the typing. */
+  onReveal?: () => void;
 }) {
-  const shown = useSmoothedReveal(text, streaming);
+  const { text: shown, settling } = useSmoothedReveal(text, streaming);
   // Fires once per bubble mount, i.e. right as its first token lands.
   useEffect(() => {
     if (streaming) hapticTick();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    onReveal?.();
+  }, [shown.length, onReveal]);
+  // The caret stays while any text is still on its way (the stream may have
+  // ended with the tail still typing) and fades once the last character lands.
+  const live = streaming || settling;
+  const { mounted: caretMounted, closing: caretClosing } = useExitPresence(live, 300);
   return (
     <div className="msg-assistant">
       {showModel && model ? <div className="msg-model">{model}</div> : null}
-      <Markdown text={shown} streaming={streaming} />
-      {streaming ? <span className="cursor-caret" /> : null}
+      <Markdown text={shown} streaming={live} />
+      {caretMounted ? <span className={`cursor-caret${caretClosing ? ' closing' : ''}`} /> : null}
     </div>
   );
 }
@@ -111,6 +121,13 @@ export function MessageList({
     }
   }, [itemCount, streamingLen, lastItem?.kind]);
 
+  // The reveal keeps typing after the stream ends, so a pinned thread follows
+  // the revealed text, not only the incoming deltas.
+  const followReveal = useCallback(() => {
+    const el = threadRef.current;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, []);
+
   const jumpToBottom = () => {
     const el = threadRef.current;
     if (!el) return;
@@ -126,6 +143,17 @@ export function MessageList({
     (lastItem!.kind === 'assistant' || lastItem!.kind === 'thinking') &&
     lastItem!.streaming;
   const showWorking = thread.busy && !streamingNow && thread.pendingApprovals.length === 0;
+  // The row eases out rather than vanishing. When the reply is what ended it,
+  // the exit plays over the arriving first line (`seam`), so the wave and the
+  // word dissolve into the text on the same spot instead of leaving a hole.
+  const { mounted: workingMounted, closing: workingClosing } = useExitPresence(showWorking, 300);
+  const workingSeam = workingClosing && streamingNow;
+  // The exit holds whatever the row was saying when the reply arrived. The
+  // first token flips the note to "Writing" in the same reduce that ends the
+  // row, and the exit class lands a render later, so the note is frozen here,
+  // on the synchronous signal, not in the row.
+  const heldNote = useRef(thread.stepNote);
+  if (showWorking) heldNote.current = thread.stepNote;
 
   let lastModel: string | undefined;
 
@@ -155,6 +183,7 @@ export function MessageList({
                   streaming={item.streaming}
                   model={item.model}
                   showModel={showModel}
+                  onReveal={followReveal}
                 />
               );
             }
@@ -242,7 +271,11 @@ export function MessageList({
             <span className="msg-queued-tag">queued · tap to remove</span>
           </button>
         ))}
-        {showWorking ? <WorkingRow since={thread.busySince} note={thread.stepNote} /> : null}
+        {workingMounted ? (
+          <div className={`working-slot${workingSeam ? ' seam' : ''}`}>
+            <WorkingRow since={thread.busySince} note={heldNote.current} closing={workingClosing} />
+          </div>
+        ) : null}
         {!thread.busy && thread.citations.length > 0 ? (
           <div className="citations">
             <div className="citations-title">Sources</div>

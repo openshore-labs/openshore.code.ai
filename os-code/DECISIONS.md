@@ -357,3 +357,9 @@ execution contract. Newest at the bottom.
   its "Frontier, on your key" shelf from `providers.ts` at runtime instead:
   one list feeds Cloud Connections, the Stack bench, and the Marketplace, no
   schema change, works offline, and old clients still parse the feed.
+- **The phone's stream smoother diverges from the terminal's.** The two
+  copies of `nextRevealLength` were kept in step by hand; the app's now runs a
+  calm fixed pace with a bounded lag and keeps ticking after the stream ends
+  (founder, 2026-09-03: "a more graceful typing of the response"), while the
+  TUI keeps drain-a-sixth-per-tick, which suits a terminal that repaints
+  whole lines. Each stays covered by its own test.
