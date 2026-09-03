@@ -337,6 +337,9 @@ interface AppState {
   cloudKeyPresent: boolean;
   /** Which cloud providers are connected (keys live in the Keychain). */
   connectedProviders: Record<string, boolean>;
+  /** A provider whose Connect form Cloud Connections should open on arrival
+   *  (set by a Connect tap in the Marketplace, cleared once honored). */
+  connectionsFocus?: string;
   /** Whether a Codemagic API token is connected (the token lives in Keychain). */
   codemagicConnected: boolean;
   /** Which repo platforms are connected (tokens live in the Keychain). */
@@ -405,6 +408,9 @@ interface AppState {
   /** Go to a room. From the panel pass `{ root: true }` so the trail clears;
    *  from inside a room the current room joins the trail. */
   setView(view: ViewName, opts?: { root?: boolean }): void;
+  /** Open Cloud Connections with this provider's Connect form already open. */
+  openConnections(providerId: string): void;
+  clearConnectionsFocus(): void;
   /** Return to the previous room on the trail; the panel's room if none. */
   goBack(): void;
   setDrawer(open: boolean): void;
@@ -1596,6 +1602,15 @@ export const useApp = create<AppState>((set, get) => {
     async setProfileOverride(profile) {
       await get().saveSettings({ profileOverride: profile });
       logEvent('profile_override', { profile: profile ?? 'auto' });
+    },
+
+    openConnections(providerId) {
+      set({ connectionsFocus: providerId });
+      get().setView('connections');
+    },
+
+    clearConnectionsFocus() {
+      if (get().connectionsFocus) set({ connectionsFocus: undefined });
     },
 
     setView(view, opts) {

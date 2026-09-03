@@ -11,6 +11,17 @@ import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { daemonInstallModel, daemonInstallProgress } from '../drivers/remoteDriver.js';
 import { bundleModelIds, bundleTotalGB, bundlesFor, type StackBundle } from '../lib/bundles.js';
+import {
+  HOSTED_SHELF,
+  contextLabel,
+  filterHosted,
+  hostedFacetsApply,
+  hostedIsNew,
+  hostedModels,
+  newestHosted,
+  sortHostedNewest,
+  type HostedModel,
+} from '../lib/hosted.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isPhone } from '../lib/platform.js';
@@ -106,8 +117,15 @@ export function MarketplaceScreen() {
     endLibraryIntro,
     harborMiniDownload,
     harborDownload,
+    connectedProviders,
+    setView,
+    openConnections,
   } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
+  // The frontier shelf: cloud-hosted models derived from the BYOK providers.
+  // Their product page is its own focus, distinct from a catalog model's.
+  const hosted = useMemo(() => hostedModels(), []);
+  const [focusedHostedId, setFocusedHostedId] = useState<string | undefined>();
   // Which stack bundle is installing, if any (hooks stay above every early
   // return; the bundle logic itself lives further down with the other installs).
   const [bundleBusy, setBundleBusy] = useState<string | undefined>();
@@ -419,11 +437,26 @@ export function MarketplaceScreen() {
     [compareIds, catalog],
   );
 
+  // Hosted models that answer the current search or capability. Hardware,
+  // license, size, and source facets are about downloads, so any of those set
+  // keeps hosted rows out of the list (hostedFacetsApply).
+  const hostedMatches = useMemo(
+    () =>
+      hostedFacetsApply(facets)
+        ? sortHostedNewest(filterHosted(hosted, facets.query, facets.capability))
+        : [],
+    [hosted, facets],
+  );
+  const hostedShelf = useMemo(() => sortHostedNewest(hosted), [hosted]);
+  const hostedHero = useMemo(() => newestHosted(hosted), [hosted]);
+
   // The store front (App Store "Apps" tab) shows when nothing is being searched
   // or filtered: a featured row and themed shelves to browse. The moment a
   // search term or any facet is set, we fall back to the full sortable list.
-  const browsing = !focusedId && !facets.query.trim() && activeFacetCount(facets) === 0;
+  const browsing =
+    !focusedId && !focusedHostedId && !facets.query.trim() && activeFacetCount(facets) === 0;
   const focusedModel = focusedId ? catalog?.models.find((m) => m.id === focusedId) : undefined;
+  const focusedHosted = focusedHostedId ? hosted.find((m) => m.id === focusedHostedId) : undefined;
 
   const featured = useMemo(() => (catalog ? featuredModels(catalog.models) : []), [catalog]);
   const shelves = useMemo(
@@ -567,7 +600,8 @@ export function MarketplaceScreen() {
         <h3>Have a model in mind?</h3>
         <p className="hint" style={{ marginTop: 4 }}>
           Type any name from the Ollama library and install it, even brand new models not listed
-          here yet. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b.
+          here yet. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b. A :cloud tag
+          (kimi-k3:cloud) runs on Ollama&apos;s cloud under your Ollama account.
         </p>
         <div className="field" style={{ marginTop: 8 }}>
           <input
@@ -661,6 +695,7 @@ export function MarketplaceScreen() {
   const setFacet = <K extends keyof Facets>(key: K, value: Facets[K]) => {
     // Any search or filter leaves the single-model product view.
     setFocusedId(undefined);
+    setFocusedHostedId(undefined);
     setFacets((f) => ({ ...f, [key]: value }));
   };
 
@@ -867,9 +902,263 @@ export function MarketplaceScreen() {
   // its full card with ratings, license, and details expanded up front.
   const openModel = (model: CatalogModel) => {
     setFacets(EMPTY_FACETS);
+    setFocusedHostedId(undefined);
     setFocusedId(model.id);
     setDetailOpen(model.id);
     window.scrollTo?.({ top: 0 });
+  };
+
+  // ---- hosted (cloud) models: the frontier shelf ---------------------------
+  // Kimi K3, Claude Opus, GPT-5, Gemini Pro: too big to download, so the store
+  // offers Connect instead of Get. A connected provider already has its models
+  // on the Bench (the Stack derives them from the same providers), so the
+  // control flips to "on bench" the moment the key is saved.
+  const openHosted = (m: HostedModel) => {
+    setFacets(EMPTY_FACETS);
+    setFocusedId(undefined);
+    setDetailOpen(undefined);
+    setFocusedHostedId(m.id);
+    window.scrollTo?.({ top: 0 });
+  };
+
+  const hostedConnected = (m: HostedModel) => Boolean(connectedProviders[m.providerId]);
+
+  const hostedControl = (m: HostedModel) =>
+    hostedConnected(m) ? (
+      <span className="pill cloud">on bench</span>
+    ) : (
+      <button
+        className="store-get"
+        onClick={(e) => {
+          e.stopPropagation();
+          logEvent('hosted_connect_tap', { id: m.id });
+          openConnections(m.providerId);
+        }}
+      >
+        Connect
+      </button>
+    );
+
+  const hostedMeta = (m: HostedModel) =>
+    `${m.providerName} · ${m.contextTokens ? `${contextLabel(m.contextTokens)} context` : 'cloud'}${
+      hostedIsNew(m) ? ' · New' : ''
+    }`;
+
+  const renderHostedHero = (m: HostedModel, index: number) => (
+    <div
+      className="hero-card cloud"
+      key={m.id}
+      role="button"
+      tabIndex={0}
+      style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
+      onClick={() => openHosted(m)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openHosted(m);
+        }
+      }}
+      aria-label={`${m.name}. ${m.tagline}`}
+    >
+      <div className="hero-eyebrow">
+        {hostedIsNew(m) ? 'New from ' : ''}
+        {m.providerName}
+      </div>
+      <div className="hero-title">{m.name}</div>
+      <div className="hero-tagline">{m.tagline}</div>
+      <div className="hero-foot">
+        <ModelTile name={m.name} cloud size={48} />
+        <div className="hero-foot-meta">
+          <span className="pill cloud">On your key</span>
+          <span className="hero-size">
+            {m.contextTokens ? `${contextLabel(m.contextTokens)} context` : 'Cloud'}
+          </span>
+        </div>
+        <span className="hero-get-wrap">{hostedControl(m)}</span>
+      </div>
+    </div>
+  );
+
+  const renderHostedRow = (m: HostedModel) => {
+    const primaryCap = m.categories[0];
+    return (
+      <div
+        className="store-row"
+        key={m.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => openHosted(m)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openHosted(m);
+          }
+        }}
+      >
+        <ModelTile name={m.name} cloud size={52} />
+        <div className="store-row-body">
+          <div className="store-row-name">{m.name}</div>
+          <div className="store-row-sub">{m.tagline}</div>
+          <div className="store-row-meta">
+            {primaryCap ? <CapIcon cap={primaryCap} size={12} /> : null}
+            {hostedMeta(m)}
+          </div>
+        </div>
+        <span className="store-row-get">{hostedControl(m)}</span>
+      </div>
+    );
+  };
+
+  const renderHostedShelf = () => {
+    const columns: HostedModel[][] = [];
+    for (let i = 0; i < hostedShelf.length; i += 3) {
+      columns.push(hostedShelf.slice(i, i + 3));
+    }
+    return (
+      <section className="shelf" key={HOSTED_SHELF.key}>
+        <div className="shelf-head static">
+          <span className="shelf-head-text">
+            <span className="shelf-title">{HOSTED_SHELF.title}</span>
+            <span className="shelf-sub">{HOSTED_SHELF.subtitle}</span>
+          </span>
+        </div>
+        <div className="shelf-scroll">
+          {columns.map((col, i) => (
+            <div className="shelf-col" key={i}>
+              {col.map(renderHostedRow)}
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
+  // Pull the same model through Ollama's cloud on this desktop (no provider
+  // key; an Ollama account instead). The engine's install-by-ref seam does the
+  // pull and returns Ollama's own result, never a fabricated success.
+  const pullHostedViaOllama = async (m: HostedModel) => {
+    const b = bridge();
+    const ref = m.ollamaCloudRef;
+    if (!b || !ref) return;
+    setDownloads((d) => ({
+      ...d,
+      [m.id]: { percent: 0, label: `Pulling ${ref} through Ollama`, indeterminate: true },
+    }));
+    try {
+      const r = await b.installOllamaRef(ref);
+      clearDownload(m.id);
+      if (r.ok) {
+        hapticSuccess();
+        setInstalledRefs((s) => new Set(s).add(ref));
+        await useApp.getState().refreshDesktopStatus();
+      }
+      showToast(r.detail);
+    } catch (err) {
+      setDownloads((d) => ({
+        ...d,
+        [m.id]: {
+          percent: 0,
+          label: err instanceof Error ? err.message : 'Could not pull that model.',
+          failed: true,
+        },
+      }));
+    }
+  };
+
+  const renderHostedPage = (m: HostedModel) => {
+    const connected = hostedConnected(m);
+    const dl = downloads[m.id];
+    const ollamaHere = Boolean(m.ollamaCloudRef) && !isPhone();
+    const viaOllamaDone = m.ollamaCloudRef ? installedRefs.has(m.ollamaCloudRef) : false;
+    return (
+      <div className="card market-card hosted-page" key={m.id}>
+        <div className="card-row">
+          <ModelTile name={m.name} cloud size={56} />
+          <div className="grow">
+            <h3>{m.name}</h3>
+            <div className="sub">{m.tagline}</div>
+          </div>
+        </div>
+
+        <div className="badge-row">
+          {hostedIsNew(m) ? <span className="pill cloud">New</span> : null}
+          <span className="pill cloud">Cloud, on your key</span>
+          <span className="pill muted">{m.openWeights ? 'Open weights' : 'Closed weights'}</span>
+          {connected ? <span className="pill ok">connected</span> : null}
+        </div>
+
+        <div className="market-meta">
+          {m.providerName}
+          {m.contextTokens ? ` · ${m.contextTokens.toLocaleString()} ctx` : ''}
+          {m.released ? ` · released ${m.released}` : ''}
+        </div>
+
+        <div className="detail-panel">
+          <p>
+            Runs on {m.providerName}&apos;s servers, on the key you connect under Cloud Connections.{' '}
+            {m.providerName} bills your account directly. OpenShore asks before it spends.
+          </p>
+          <p>Good at: {m.categories.map((c) => CAPABILITIES[c].plain).join(', ')}.</p>
+          {m.openWeights ? (
+            <p>
+              The weights are published, so this model also runs on other hosts. It is far too large
+              for a laptop or a phone, which is why it is not a download here.
+            </p>
+          ) : null}
+          {ollamaHere && m.ollamaCloudRef ? (
+            <>
+              <p>
+                Also on Ollama&apos;s cloud. With an Ollama account signed in on this desktop, pull
+                it like any library model and it runs there, no {m.providerName} key needed.
+              </p>
+              <div className="pull-cmd">
+                <code>ollama pull {m.ollamaCloudRef}</code>
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        {dl && dl.failed ? (
+          <div className="hint" style={{ marginTop: 8, color: 'var(--danger)' }}>
+            {dl.label}
+          </div>
+        ) : dl ? (
+          <>
+            <div className="progress-track">
+              <div className="progress-fill indeterminate" />
+            </div>
+            <div className="hint" style={{ marginTop: 6 }}>
+              {dl.label}
+            </div>
+          </>
+        ) : null}
+
+        <div className="hosted-actions">
+          <button
+            className="btn primary press-fb"
+            onClick={() => {
+              if (connected) {
+                setView('stack');
+              } else {
+                logEvent('hosted_connect_tap', { id: m.id });
+                openConnections(m.providerId);
+              }
+            }}
+          >
+            {connected ? 'Place it in your stack' : `Connect ${m.providerName}`}
+          </button>
+          {ollamaHere && bridge() ? (
+            <button
+              className="btn ghost press-fb"
+              disabled={Boolean(dl && !dl.failed) || viaOllamaDone}
+              onClick={() => void pullHostedViaOllama(m)}
+            >
+              {viaOllamaDone ? 'Installed through Ollama' : 'Pull through Ollama instead'}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
   };
 
   // A model already present: on-device by the device-models record, a desktop
@@ -1098,6 +1387,7 @@ export function MarketplaceScreen() {
         className={`cat-chip${browsing ? ' active' : ''}`}
         onClick={() => {
           setFocusedId(undefined);
+          setFocusedHostedId(undefined);
           setFacets({ ...EMPTY_FACETS });
         }}
       >
@@ -1338,8 +1628,11 @@ export function MarketplaceScreen() {
 
           {browsing ? (
             <div className="store-front" key="store">
-              {featured.length ? (
-                <div className="hero-scroll">{featured.map(renderHero)}</div>
+              {featured.length || hostedHero ? (
+                <div className="hero-scroll">
+                  {hostedHero ? renderHostedHero(hostedHero, 0) : null}
+                  {featured.map((m, i) => renderHero(m, hostedHero ? i + 1 : i))}
+                </div>
               ) : null}
 
               {isPhone() ? (
@@ -1349,6 +1642,8 @@ export function MarketplaceScreen() {
                 </p>
               ) : null}
 
+              {renderHostedShelf()}
+
               {renderBundleShelf()}
 
               {renderInstallByName()}
@@ -1356,6 +1651,16 @@ export function MarketplaceScreen() {
               {shelves.map(renderShelf)}
 
               {catalog.presets.length ? renderPresetShelf() : null}
+            </div>
+          ) : focusedHosted ? (
+            <div className="focused-view">
+              <button
+                className="btn quiet market-back"
+                onClick={() => setFocusedHostedId(undefined)}
+              >
+                All models
+              </button>
+              <div className="market-list">{renderHostedPage(focusedHosted)}</div>
             </div>
           ) : focusedModel ? (
             <div className="focused-view">
@@ -1393,8 +1698,9 @@ export function MarketplaceScreen() {
 
                 <div className="market-main">
                   <div className="result-bar">
-                    <span className="result-count" key={visible.length}>
-                      {visible.length} model{visible.length === 1 ? '' : 's'}
+                    <span className="result-count" key={visible.length + hostedMatches.length}>
+                      {visible.length + hostedMatches.length} model
+                      {visible.length + hostedMatches.length === 1 ? '' : 's'}
                     </span>
                     {isPhone() ? (
                       <button className="filter-open" onClick={() => setShowFilters(true)}>
@@ -1410,10 +1716,22 @@ export function MarketplaceScreen() {
                     </p>
                   ) : null}
 
+                  {hostedMatches.length ? (
+                    <section className="shelf hosted-group" key="hosted-matches">
+                      <div className="shelf-head static">
+                        <span className="shelf-head-text">
+                          <span className="shelf-title">{HOSTED_SHELF.title}</span>
+                          <span className="shelf-sub">{HOSTED_SHELF.subtitle}</span>
+                        </span>
+                      </div>
+                      {hostedMatches.map(renderHostedRow)}
+                    </section>
+                  ) : null}
+
                   <div className="market-list" key={sort}>
                     {visible.length ? (
                       visible.map(renderCard)
-                    ) : (
+                    ) : hostedMatches.length ? null : (
                       <div className="market-empty">
                         <p className="hint">No models match these filters yet.</p>
                         {activeFacetCount(facets) > 0 || facets.query.trim() ? (

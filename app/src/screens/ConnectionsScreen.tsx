@@ -2,7 +2,7 @@
 // provider you connect puts its models on your Bench, ready to place in your
 // stack (as the Reasoning LLM or a specialist). Keys live in this device's
 // Keychain, scoped to the provider, and are spent only with your approval.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { PROVIDERS, validateProviderKey } from '../lib/providers.js';
 import { BackBar } from '../components/BackBar.js';
@@ -17,6 +17,8 @@ export function ConnectionsScreen() {
     setView,
     startGuideChat,
     settings,
+    connectionsFocus,
+    clearConnectionsFocus,
   } = useApp();
   const [editing, setEditing] = useState<string | undefined>();
   const [value, setValue] = useState('');
@@ -24,6 +26,23 @@ export function ConnectionsScreen() {
   // last saved on this device so a reconnect is one paste, not two.
   const [workspace, setWorkspace] = useState('');
   const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    // Arrived from a Connect tap elsewhere (the Marketplace's frontier shelf):
+    // open that provider's form and bring its card into view, so the person
+    // lands on the paste field, not at the top of a list to hunt through.
+    if (!connectionsFocus) return;
+    if (!connectedProviders[connectionsFocus]) {
+      setEditing(connectionsFocus);
+      setValue('');
+      setWorkspace(settings.anthropicWorkspaceId ?? '');
+    }
+    document
+      .getElementById(`provider-${connectionsFocus}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    clearConnectionsFocus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionsFocus]);
 
   const save = async (id: string, name: string) => {
     const key = value.trim();
@@ -80,7 +99,7 @@ export function ConnectionsScreen() {
         {PROVIDERS.map((p) => {
           const on = Boolean(connectedProviders[p.id]);
           return (
-            <div className="card" key={p.id}>
+            <div className="card" key={p.id} id={`provider-${p.id}`}>
               <div className="card-row">
                 <div className="grow">
                   <h3>{p.name}</h3>

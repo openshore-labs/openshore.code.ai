@@ -351,3 +351,9 @@ execution contract. Newest at the bottom.
   conversation, prune logic on every navigation, and a "keep this?" seam in
   the top bar, for a case the New chat row already covers. Old ephemeral
   rows are dropped on load rather than adopted.
+- **Hosted models derive from the providers, not the catalog (founder, 2026-09-03).**
+  Kimi and the other frontier models are too large to download, so a catalog
+  entry would need a fake size and a Get that cannot deliver. The store builds
+  its "Frontier, on your key" shelf from `providers.ts` at runtime instead:
+  one list feeds Cloud Connections, the Stack bench, and the Marketplace, no
+  schema change, works offline, and old clients still parse the feed.

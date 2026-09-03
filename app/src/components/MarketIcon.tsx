@@ -55,19 +55,22 @@ export function CapIcon({ cap, size = 16 }: { cap: CapabilityCategory; size?: nu
   );
 }
 
-/** The generated "app icon" tile for a model. */
+/** The generated "app icon" tile for a model. Teal for on-device (local and
+ *  private), the amber spend family for a cloud-hosted model, ink otherwise. */
 export function ModelTile({
   name,
   onDevice = false,
+  cloud = false,
   size = 52,
 }: {
   name: string;
   onDevice?: boolean;
+  cloud?: boolean;
   size?: number;
 }) {
   return (
     <div
-      className={`model-tile${onDevice ? ' on-device' : ''}`}
+      className={`model-tile${onDevice ? ' on-device' : ''}${cloud ? ' cloud' : ''}`}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
       aria-hidden="true"
     >
