@@ -277,19 +277,19 @@ export function VaultScreen() {
       });
     };
 
+    // The way back to the tree, in the top bar (the iOS grammar) and as the
+    // "All notes" crumb beneath it; both save first.
+    const backToNotes = () => {
+      flushSave();
+      setFolder(parent);
+      vaultCloseNote();
+    };
     return (
       <div className="screen">
-        <BackBar title="Vault" />
+        <BackBar title="Vault" back={{ to: 'Vault', onBack: backToNotes }} />
         <div className="screen-inner vault-note">
           <div className="vault-note-bar">
-            <button
-              className="linklike"
-              onClick={() => {
-                flushSave();
-                setFolder(parent);
-                vaultCloseNote();
-              }}
-            >
+            <button className="linklike" onClick={backToNotes}>
               All notes
             </button>
             <div style={{ flex: 1 }} />

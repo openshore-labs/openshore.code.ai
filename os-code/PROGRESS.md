@@ -3,6 +3,31 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-03, a page inside a room has a way back in the top bar)
+
+Founder, from the Kimi K3 page in the store: "Need a back button when you
+enter into any of the navigations within marketplace so I can go back to
+marketplace. That's the pattern that needs to exist across the main pages."
+Room-to-room already had it (the `viewTrail`, 2026-09-02); what was missing
+was the second depth, a page a room opens over its own list, which kept the
+menu in the top bar.
+
+- **`BackBar` takes an in-room `back`** (`{ to, onBack }`, exported as
+  `InRoomBack`). It wins over the room trail, because the nearest step back
+  is the one the eye expects; the chevron, the desktop label, and the aria
+  name all read from it. Nothing changes for rooms without one.
+- **Three rooms carry an inner page and now hand it over.** The Marketplace's
+  product pages (catalog and hosted) go back through the same tile hop as
+  "All models", and the page's title becomes the model's name. An open Vault
+  note goes back to the tree, saving first, the same handler as the "All
+  notes" crumb. Launch's embedded Codemagic page goes back to Launch.
+- `docs/interaction-model.md` gains a "Navigation" section stating the
+  grammar at both depths, and for sheets. `test/wayBack.test.ts` pins the
+  three rooms. Gates green: app typecheck, lint, 390 tests.
+
+Open: an audit of every sheet for a visible dismiss control is in progress;
+any sheet whose only way out is the scrim tap gets the round close button.
+
 ## Current state (2026-09-03, the drawer glides on its own curve and clock)
 
 Founder, with a screen recording: "I need the panel coming in and out to be a

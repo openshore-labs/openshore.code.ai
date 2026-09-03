@@ -99,7 +99,7 @@ export function LaunchScreen() {
   if (embedded && canEmbed) {
     return (
       <div className="screen screen-embed">
-        <BackBar title="Launch" />
+        <BackBar title="Codemagic" back={{ to: 'Launch', onBack: () => setEmbedded(false) }} />
         <EmbeddedSite site="codemagic" label="Codemagic" onClose={() => setEmbedded(false)} />
       </div>
     );
