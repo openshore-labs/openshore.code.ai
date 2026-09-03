@@ -1,9 +1,9 @@
 // The Chats room, in the shape of the Claude app's history: a plain nav
 // title with a compose icon, a search pill, then one flat list of chats
 // sorted by recency, each a one-line title over a quiet "2h ago · Claude".
-// No cards, no date captions; the timestamp carries recency and a wider gap
-// marks where the day changes. Tap to open, swipe to delete (with a confirm,
-// since it cannot be undone), hold to name.
+// No cards, no date captions, no grouping; the timestamp carries recency.
+// Tap to open, swipe to delete (with a confirm, since it cannot be undone),
+// hold to name.
 // Sessions running on the paired desktop with no chat here yet sit in the
 // same list, marked, so a job started at the desk is picked up from the couch.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -165,9 +165,6 @@ export function ChatsScreen() {
     }));
 
   const rows = [...chats, ...desktopRows].sort((a, b) => b.at - a.at);
-  // A wider gap where the day changes: the eye feels the break without a
-  // caption to read.
-  const dayOf = (t: number) => new Date(t).toDateString();
 
   const confirmConv = confirmId ? conversations[confirmId] : undefined;
   const renameConv = renameId ? conversations[renameId] : undefined;
@@ -240,8 +237,6 @@ export function ChatsScreen() {
 
           {rows.map((row, i) => {
             const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
-            const dayBreak = i > 0 && row.at > 0 && dayOf(rows[i - 1]!.at) !== dayOf(row.at);
-            const breakClass = dayBreak ? ' day-break' : '';
             if (row.kind === 'desktop') {
               const s = row.session;
               const name =
@@ -249,7 +244,7 @@ export function ChatsScreen() {
                   ? s.title
                   : (s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd);
               return (
-                <div key={row.id} className={`swipe-row chat-swipe${breakClass}`} style={style}>
+                <div key={row.id} className="swipe-row chat-swipe" style={style}>
                   <button
                     type="button"
                     className="chat-row press-fb press-fb--row"
@@ -279,7 +274,6 @@ export function ChatsScreen() {
                 key={row.id}
                 variant="danger"
                 label="Delete"
-                className={breakClass.trim() || undefined}
                 style={style}
                 onTap={() => openConversation(row.id)}
                 onToggle={() => setConfirmId(row.id)}

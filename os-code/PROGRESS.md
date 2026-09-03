@@ -23,11 +23,12 @@ the `ephemeral` flag on Conversation, `quickChat`, `keepQuickChat`, and the
 prune-on-navigate logic in the store, the "not saved, keep this chat" offer
 in the chat top bar, the link in the Chats room, the dashed dot, and the
 tests. Every chat now belongs to a project and persists; a persisted row
-from the quick-chat era is dropped on load. Then the Chats polish pass the
-founder asked for ("follow their guidance and fix it"): the title a touch
-larger with tighter tracking, rows 60px with more air between title and
-subtitle, the secondary line a whisper, and a wider gap where the day
-changes instead of a caption. Calm from spacing and type, not containers.
+from the quick-chat era is dropped on load. The "follow their guidance" was
+the Creative Studio's: their Chats spec (56px rows, 16px title, 13px
+secondary, one flat list with no grouping of any kind) stands as built; a
+brief detour that stretched the rows and added a gap where the day changes
+was reverted the same day, since the Studio had argued against soft
+grouping on purpose.
 
 ## Current state (2026-09-02, the Chats room is the Claude shape)
 
