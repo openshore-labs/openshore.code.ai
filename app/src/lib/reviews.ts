@@ -208,6 +208,51 @@ export async function hasAcceptedEula(session: Session): Promise<boolean> {
   }
 }
 
+// -------------------------------------------------------------- moderation
+
+/** One row in the moderation queue: a review plus its status and flag count. */
+export interface ModeratedReview extends ReviewRow {
+  status: 'visible' | 'reported' | 'hidden';
+  flag_count: number;
+}
+
+/** Whether the signed-in user is a review moderator (an operator seeded into
+ *  review_moderators). Decides whether the moderation surface shows at all. */
+export async function isReviewModerator(session?: Session): Promise<boolean> {
+  if (!isConfigured() || !session) return false;
+  const token = await tokenFor(session);
+  if (!token) return false;
+  try {
+    return (await rpcPublic<boolean>('is_review_moderator', {}, token)) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The moderation queue: reported, hidden, or flagged reviews, most-flagged
+ *  first. Empty for a non-moderator (the RPC refuses them). */
+export async function listModerationQueue(session: Session): Promise<ModeratedReview[]> {
+  const token = await tokenFor(session);
+  if (!token) return [];
+  try {
+    return await rpcPublic<ModeratedReview[]>('admin_list_reviews', { p_limit: 100 }, token);
+  } catch {
+    return [];
+  }
+}
+
+/** Hide, restore (visible), or re-flag a review as a moderator. Restoring
+ *  clears its flag count so it is not immediately re-hidden. */
+export async function setReviewStatus(
+  session: Session,
+  reviewId: string,
+  status: 'visible' | 'hidden' | 'reported',
+): Promise<void> {
+  const token = await tokenFor(session);
+  if (!token) throw new Error('Sign in as a moderator.');
+  await rpcPublic('admin_set_review_status', { p_review_id: reviewId, p_status: status }, token);
+}
+
 /** Record acceptance of the current review EULA (required before a first
  *  review, Apple 1.2). */
 export async function acceptEula(session: Session): Promise<void> {

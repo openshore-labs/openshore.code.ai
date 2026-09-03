@@ -415,3 +415,11 @@ execution contract. Newest at the bottom.
 - 2026-09-03: Community stars ship on browse-list rows (batched RPC) and the
   product page now; the store-front hero/shelves stay benchmark-only until a
   review-aggregate sidecar lands in the catalog build, to avoid per-view egress.
+- 2026-09-03: Community stars on the store-front hero and shelves are served by
+  one batched RPC per view (all on-screen model ids at once), not the CTO's
+  CI-to-Supabase sidecar. Same visible result, far less infra; the sidecar
+  stays the scale path if per-view browse volume ever makes the call chatty.
+- 2026-09-03: Review moderation is operator-scoped, not org-admin: a
+  review_moderators allowlist seeded by the founder, guarded SECURITY DEFINER
+  RPCs, and a panel in AdminScreen that renders only for a moderator (so it
+  works for a personal-account operator too, independent of the org umbrella).
