@@ -59,6 +59,11 @@ export function Sheet({
   const pointerId = useRef<number | null>(null);
   const samples = useRef<Sample[]>([]);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // The card's height, captured at grab start, so the scrim dims in proportion
+  // to how far down the sheet has been pulled (the room comes back as the sheet
+  // leaves, the same seam the drawer's scrim keeps).
+  const cardH = useRef(0);
 
   useEffect(() => {
     if (!open) return;
@@ -95,6 +100,7 @@ export function Sheet({
     if (closing) return;
     startY.current = e.clientY;
     dragYRef.current = 0;
+    cardH.current = cardRef.current?.offsetHeight ?? 0;
     samples.current = [{ t: performance.now(), y: 0 }];
     pointerId.current = e.pointerId;
     if (settleTimer.current) clearTimeout(settleTimer.current);
@@ -143,9 +149,20 @@ export function Sheet({
   const scrim = variant === 'confirm' ? 'confirm-scrim' : 'sheet-scrim';
   const card = variant === 'confirm' ? 'confirm-card' : 'sheet';
   const draggable = variant === 'sheet';
+  // While a downward drag is in flight, the scrim tracks it 1:1 (no transition)
+  // and lightens toward clear as the sheet nears fully gone.
+  const dragScrim =
+    dragging && dragY > 0 && cardH.current
+      ? { opacity: Math.max(0, 1 - dragY / cardH.current) }
+      : undefined;
   return (
-    <div className={`${scrim}${closing ? ' closing' : ''}`} onClick={onClose}>
+    <div
+      className={`${scrim}${closing ? ' closing' : ''}${dragScrim ? ' dragging' : ''}`}
+      style={dragScrim}
+      onClick={onClose}
+    >
       <div
+        ref={cardRef}
         className={`${card}${className ? ` ${className}` : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${settling ? ' settling' : ''}`}
         style={!closing && dragY !== 0 ? { transform: `translateY(${dragY}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}
