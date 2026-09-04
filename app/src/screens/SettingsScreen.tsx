@@ -513,8 +513,13 @@ export function SettingsScreen() {
             </p>
             <p>
               It is on by default, and most people leave it on. Turn it off and the standard drops
-              out of the prompt, so a model runs on a shorter prompt and answers a little faster. A
-              project can also set its own voice rules that ride on top.
+              out of the prompt, so a model runs on a shorter prompt and answers a little faster.
+              Off reaches your chats here and any paired desktop session this app starts.
+            </p>
+            <p>
+              Two things it does not touch. A project can keep its own setting in its config, and
+              that always wins. And the small on-device guides (Harbor and Harbor Light) are left as
+              they are, to protect their limited context.
             </p>
           </InfoSheet>
         </SettingsGroup>

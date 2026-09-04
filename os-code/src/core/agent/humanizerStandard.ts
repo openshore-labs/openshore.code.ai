@@ -185,6 +185,25 @@ export const AI_VOCABULARY: string[] = [
 ];
 
 /**
+ * Whether the humanizer is on for a session, folding the project config and an
+ * optional per-session override (the app's "Humanize Writing" setting, sent
+ * through the daemon or the electron bridge).
+ *
+ * Precedence: the override can only turn it OFF, never force it on. A project
+ * that set `humanizer.standard: "off"` (or added `notes`) in its config made a
+ * deliberate project-level call that always holds, per the founder's rule that
+ * a project's own instructions win. So the app toggle's OFF propagates
+ * everywhere the app starts a session, while its ON defers to the config.
+ */
+export function humanizerEnabled(
+  configStandard: 'on' | 'off' | undefined,
+  override?: boolean,
+): boolean {
+  if (override === false) return false;
+  return configStandard !== 'off';
+}
+
+/**
  * The prompt block. `notes` is a project's own additions from
  * config.humanizer.notes, appended verbatim.
  */

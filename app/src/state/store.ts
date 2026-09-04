@@ -1200,6 +1200,10 @@ export const useApp = create<AppState>((set, get) => {
           // Current State top sheet and the rest to a folder named for the project.
           projectName: project?.name,
           projectSecrets,
+          // Humanize Writing setting rides to the engine so a paired desktop
+          // honors the toggle too (it only ever turns the humanizer off; a
+          // project's own config still wins). Undefined means on.
+          humanize: settings.humanizeWriting !== false,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -1246,6 +1250,7 @@ export const useApp = create<AppState>((set, get) => {
           sessionId = await daemonCreateSession(settings.daemon, cwd, {
             instructions: sessionOpts.instructions,
             permissionMode: sessionOpts.permissionMode,
+            humanize: sessionOpts.humanize,
           });
           conv.source.sessionId = sessionId;
         }

@@ -105,7 +105,7 @@ export async function daemonHealth(target: DaemonTarget): Promise<{ ok: boolean;
 export async function daemonCreateSession(
   target: DaemonTarget,
   cwd?: string,
-  opts: { instructions?: string; permissionMode?: PermissionMode } = {},
+  opts: { instructions?: string; permissionMode?: PermissionMode; humanize?: boolean } = {},
 ): Promise<string> {
   const res = await fetch(`${target.baseUrl}/sessions`, {
     method: 'POST',
@@ -114,6 +114,7 @@ export async function daemonCreateSession(
       ...(cwd ? { cwd } : {}),
       ...(opts.instructions ? { instructions: opts.instructions } : {}),
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
+      ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
     }),
     signal: AbortSignal.timeout(10_000),
   });
