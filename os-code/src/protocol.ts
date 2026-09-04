@@ -47,6 +47,20 @@ export {
 export type { HumanizerSign } from './core/agent/humanizerStandard.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
+// Codemagic build-log safety (pure: redact then extract). Shared so the app's
+// Launch flow and the engine's codemagic tool apply the exact same guarantee
+// before any log text reaches a model. The REST client (fetch + token) stays on
+// each side; only these pure helpers and types are shared.
+export {
+  isTerminal,
+  normalizeStatus,
+  logArtifacts,
+  redactLog,
+  extractErrors,
+  safeLogExcerpt,
+} from './core/codemagic/safety.js';
+export type { BuildStatus, BuildArtifact, BuildInfo } from './core/codemagic/safety.js';
+
 // Stack Health: pure payload types only. The aggregator that fills them in
 // (insights/stackHealth.ts) touches the filesystem and is NOT imported here.
 export type {
