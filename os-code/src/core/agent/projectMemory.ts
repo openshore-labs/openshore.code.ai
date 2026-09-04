@@ -1,35 +1,41 @@
 // Project memory: every coding project keeps a small, durable set of markdown
-// notes in the Vault, so the model never loses context between sessions. The
-// agent reads the Current State top sheet first and digs page by page only when
-// it needs more, which keeps planning and debugging cheap. The person can open
-// any note in the Vault at any time.
+// notes so the model never loses context between sessions. The agent reads the
+// Current State top sheet first and digs page by page only when it needs more,
+// which keeps planning and debugging cheap. The person can open the notes in
+// any editor, or read them in the app's Vault section.
 //
-// The notes live under Projects/<project>/ in the personal Vault. This module
-// is the harness copy of the shared spec (names, order, templates); the app's
-// copy is app/src/lib/projectMemory.ts, and projectMemory.test.ts pins the two
-// against each other so they cannot drift. The agent keeps the notes current
-// through the projectMemoryWrite tool, whose writes land silently but visibly
-// (a narrow exception to the always-ask rule for general vault writes). No em
-// dashes anywhere in this file, comments included (repo policy is total here).
+// The notes live INSIDE the project's primary repo, in a folder named
+// "OpenShore Project <name> MDs/", committed with the code (not hosted by the
+// app). This module is the harness copy of the shared spec (names, order,
+// templates, folder convention); the app's copy is app/src/lib/projectMemory.ts,
+// and projectMemory.test.ts pins the two against each other so they cannot
+// drift. The agent keeps the notes current through the projectMemoryWrite tool,
+// whose writes land silently but visibly (a narrow exception to the always-ask
+// rule for general writes). No em dashes anywhere in this file, comments
+// included (repo policy is total here).
 import { basename } from 'node:path';
 
-/** The vault folder that holds every project's memory folder. */
-export const PROJECTS_ROOT = 'Projects';
+/** The memory folder is "OpenShore Project <name> MDs". The literal wrapper is
+ *  deliberate: the fixed prefix and suffix mean the enclosed name can never be
+ *  a bare ".." that climbs out of the repo, and the folder reads plainly in a
+ *  file browser. */
+export const MEMORY_FOLDER_PREFIX = 'OpenShore Project ';
+export const MEMORY_FOLDER_SUFFIX = ' MDs';
 
 /** The top sheet: read this first, a 2 to 5 minute catch up. */
 export const CURRENT_STATE_FILE = 'Current State';
 
 /** The dedicated tool that keeps the memory notes current. The permission
  *  engine auto-allows this tool by name (the tool is hard-scoped to the five
- *  managed files under a project's memory folder), while every general vault
- *  write stays always-ask. */
+ *  managed files inside the project's memory folder), while every general write
+ *  stays always-ask. */
 export const PROJECT_MEMORY_WRITE_TOOL = 'projectMemoryWrite';
 
 /** One preset note: its title (and filename), plus the body it starts with. */
 export interface MemoryFile {
   /** Note title, which is also its filename without the .md extension. */
   title: string;
-  /** The markdown the note is seeded with on first open. */
+  /** The markdown the note is seeded with when the folder is first created. */
   seed: string;
 }
 
@@ -127,19 +133,18 @@ How this project is built, tested, and shipped: the reusable recipes, commands, 
 
 const MEMORY_TITLES = new Set(MEMORY_FILES.map((f) => f.title.toLowerCase()));
 
-/** Sanitize one project name into a single vault-safe folder segment: strip
- *  path separators and the characters forbidden on common filesystems or in
- *  Obsidian's link syntax, and collapse whitespace. Returns '' when nothing
- *  usable is left. Matches the app copy so both compute the same folder. */
+/** Sanitize one project name into the middle of the memory folder name: strip
+ *  path separators and the characters forbidden on common filesystems, and
+ *  collapse whitespace. Returns '' when nothing usable is left (the caller
+ *  falls back to the workspace basename). Matches the app copy. */
 export function sanitizeFolderSegment(name: string): string {
   const cleaned = name
     .normalize('NFC')
-    .replace(/[/\\<>:"|?*#^[\]]/g, ' ')
+    .replace(/[/\\<>:"|?*]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  // A segment of only dots ("." or "..") would climb out of the project folder
-  // (Projects/../Skills.md resolves to a sibling in the vault). Treat it as
-  // unusable so the caller falls back to the project id.
+  // A name of only dots is unusable (a bare "." or ".." reads oddly and adds
+  // nothing); fall back to the workspace basename instead.
   if (/^\.+$/.test(cleaned)) return '';
   return cleaned;
 }
@@ -154,31 +159,55 @@ export function memorySegment(projectName: string | undefined, cwd: string): str
   return sanitizeFolderSegment(basename(cwd));
 }
 
-/** The vault folder for one project's memory, e.g. "Projects/My App". */
+/** The repo-relative memory folder for a project, e.g.
+ *  "OpenShore Project My App MDs". */
 export function memoryFolder(segment: string): string {
-  return `${PROJECTS_ROOT}/${segment}`;
+  return `${MEMORY_FOLDER_PREFIX}${segment}${MEMORY_FOLDER_SUFFIX}`;
 }
 
-/** The vault path of one preset inside a project, e.g.
- *  "Projects/My App/Current State.md". */
+/** The repo-relative path of one preset, e.g.
+ *  "OpenShore Project My App MDs/Current State.md". */
 export function memoryFilePath(segment: string, title: string): string {
   return `${memoryFolder(segment)}/${title}.md`;
 }
 
-/** Whether a vault path is one of the five managed presets under a
- *  Projects/<one segment>/ folder. Deliberately strict: exactly three path
- *  parts, the first being the Projects root, the last being a known preset.
- *  This is the shape the permission engine and the write tool both trust. */
+/** The five notes to seed a project's folder with, from the standard templates.
+ *  The tool ensures these exist before applying an update, so the set always
+ *  materializes together. */
+export function memorySeeds(segment: string): Array<{ path: string; text: string }> {
+  return MEMORY_FILES.map((f) => ({ path: memoryFilePath(segment, f.title), text: f.seed }));
+}
+
+/** The enclosed name of a memory folder, or undefined when the folder is not a
+ *  memory folder. Rejects an empty or dot-only inner name. */
+export function memoryFolderName(folder: string): string | undefined {
+  if (!folder.startsWith(MEMORY_FOLDER_PREFIX) || !folder.endsWith(MEMORY_FOLDER_SUFFIX)) {
+    return undefined;
+  }
+  const inner = folder.slice(
+    MEMORY_FOLDER_PREFIX.length,
+    folder.length - MEMORY_FOLDER_SUFFIX.length,
+  );
+  if (!inner || /^\.+$/.test(inner)) return undefined;
+  return inner;
+}
+
+/** Whether a repo-relative path is one of the five managed presets inside a
+ *  memory folder. Deliberately strict: exactly two path parts, the first a
+ *  valid memory folder, the last a known preset. This is the shape the
+ *  permission engine and the write tool both trust. */
 export function isMemoryFilePath(path: string): boolean {
   const parts = path.split('/');
-  if (parts.length !== 3) return false;
-  if (parts[0] !== PROJECTS_ROOT) return false;
-  const segment = parts[1]!;
-  // Reject a dot segment that would traverse out of the project folder, and an
-  // empty one, before trusting the filename.
-  if (!segment || segment === '.' || segment === '..') return false;
-  const base = parts[2]!.replace(/\.md$/i, '').toLowerCase();
+  if (parts.length !== 2) return false;
+  if (memoryFolderName(parts[0]!) === undefined) return false;
+  const base = parts[1]!.replace(/\.md$/i, '').toLowerCase();
   return MEMORY_TITLES.has(base);
+}
+
+/** True when a folder is exactly one project's memory folder, so the UI can pin
+ *  the Current State top sheet there. */
+export function isProjectMemoryFolder(folder: string): boolean {
+  return !folder.includes('/') && memoryFolderName(folder) !== undefined;
 }
 
 /** The system-prompt block that teaches the agent to use the project memory:
@@ -188,15 +217,15 @@ export function projectMemoryPrompt(segment: string): string {
   const folder = memoryFolder(segment);
   const titles = MEMORY_FILES.map((f) => f.title).join(', ');
   return [
-    `PROJECT MEMORY (this project's durable knowledge, in the Vault under ${folder}/):`,
-    `Five notes carry everything worth remembering across sessions: ${titles}. Reach for them for planning, for debugging, and to recall how something worked when it was healthy.`,
-    'Read the top sheet first. Open "Current State" (a 2 to 5 minute catch up) before you start; it names what last landed, the key outstanding build and test actions, the immediate blockers, and the suggested next steps. Only open Progress, Decisions, Action Items, or Skills when you need the deeper record behind a line on the top sheet. Do not read all five up front.',
-    `Keep them current as work lands, using the ${PROJECT_MEMORY_WRITE_TOOL} tool (these writes save without interrupting you; every other vault write still asks first):`,
+    `PROJECT MEMORY (this project's durable knowledge, in this repo under "${folder}/"):`,
+    `Five notes carry everything worth remembering across sessions: ${titles}. Reach for them for planning, for debugging, and to recall how something worked when it was healthy. They are committed with the repo, so they travel with the code.`,
+    `Read the top sheet first. Open "${folder}/${CURRENT_STATE_FILE}.md" (a 2 to 5 minute catch up) before you start; it names what last landed, the key outstanding build and test actions, the immediate blockers, and the suggested next steps. Only open Progress, Decisions, Action Items, or Skills when you need the deeper record behind a line on the top sheet. Do not read all five up front.`,
+    `Keep them current as work lands, using the ${PROJECT_MEMORY_WRITE_TOOL} tool (these writes save without interrupting you; every other write still asks first):`,
     '- Current State: after a meaningful change lands, refresh all five sections and keep it short (a 2 to 5 minute read). It is a summary, not a log.',
     '- Progress: add one dated entry at the top per meaningful landing or deploy (what changed, why, how it was verified).',
     '- Decisions: add one line whenever you make an ambiguous call, so it is not relitigated later.',
     '- Action Items: keep the list ranked, check off what is done, add follow-ups you surfaced.',
     '- Skills: capture the reusable build, test, and ship recipes and the gotchas that worked, so the next session does not rediscover them.',
-    'Never put a memory update in front of the person. Do the work they asked for first, then update the notes as it completes. If a note does not exist yet, writing it creates it from the standard template.',
+    'Never put a memory update in front of the person. Do the work they asked for first, then update the notes as it completes. The notes ride into your commit alongside the change that prompted them; do not make a separate commit just for them.',
   ].join('\n');
 }
