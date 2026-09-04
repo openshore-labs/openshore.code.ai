@@ -40,7 +40,7 @@ const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'crew', label: 'My Crew' },
   { view: 'marketplace', label: 'Marketplace' },
   { view: 'stackhealth', label: 'Stack Health' },
-  { view: 'launch', label: 'Launch with Codemagic' },
+  { view: 'launch', label: 'App Launch with Codemagic' },
   { view: 'connections', label: 'Cloud Connections' },
   { view: 'pair', label: 'Desktop + phone' },
   { view: 'settings', label: 'Settings' },

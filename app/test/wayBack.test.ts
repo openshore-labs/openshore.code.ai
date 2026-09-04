@@ -111,10 +111,10 @@ describe('the way back', () => {
     }
   });
 
-  it('the embedded site goes back to Launch with Codemagic', () => {
+  it('the embedded site goes back to App Launch with Codemagic', () => {
     const launch = src('screens', 'LaunchScreen.tsx');
     expect(launch).toMatch(
-      /<BackBar title="Codemagic" back=\{\{ to: 'Launch with Codemagic', onBack: \(\) => setEmbedded\(false\) \}\} \/>/,
+      /<BackBar title="Codemagic" back=\{\{ to: 'App Launch with Codemagic', onBack: \(\) => setEmbedded\(false\) \}\} \/>/,
     );
   });
 });
