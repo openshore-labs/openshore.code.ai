@@ -30,6 +30,9 @@ export interface ReconcileSummary {
   conflicts: ReconcileResult[];
   /** Repos whose remote was unreachable; worth retrying on the next reconnect. */
   offline: number;
+  /** Repos that failed for another reason (e.g. no push credentials); the
+   *  person should know their notes are not reaching the remote. */
+  errors: number;
 }
 
 export function summarizeReconcile(results: ReconcileResult[]): ReconcileSummary {
@@ -37,6 +40,7 @@ export function summarizeReconcile(results: ReconcileResult[]): ReconcileSummary
     pushed: results.filter((r) => r.status === 'pushed' || r.status === 'merged').length,
     conflicts: results.filter((r) => r.status === 'conflict'),
     offline: results.filter((r) => r.status === 'offline').length,
+    errors: results.filter((r) => r.status === 'error').length,
   };
 }
 
@@ -51,6 +55,12 @@ export function reconcileToast(s: ReconcileSummary): string | undefined {
   if (s.pushed > 0) {
     const n = s.pushed;
     return `Synced your project notes to ${n === 1 ? 'the repository' : `${n} repositories`}.`;
+  }
+  // Nothing pushed and nothing to merge, but something failed outright (usually
+  // missing push credentials): tell the person their notes are not syncing.
+  if (s.errors > 0) {
+    const n = s.errors;
+    return `Could not sync ${n === 1 ? 'a project repository' : `${n} project repositories`}. Your notes are safe here and will retry.`;
   }
   return undefined;
 }

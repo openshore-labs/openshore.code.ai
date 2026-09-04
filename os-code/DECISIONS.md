@@ -458,6 +458,14 @@ execution contract. Newest at the bottom.
   non-GitHub repo id), matching the "primary repo" choice for the notes, rather
   than every attached repo, so the behavior is predictable and does not push
   repos the project only references remotely.
+- 2026-09-04: CTO review of the auto-push (GO, data-safety rails sound) drove
+  three follow-ups, applied: the push targets the tracked upstream branch name
+  (HEAD:<upstream>), not a same-named remote branch; a 20s block timeout so a
+  stalled transfer gives up; outright failures (e.g. missing push credentials)
+  are surfaced to the person. A per-project opt-out `sync.autoPush:false`
+  (os-code.config.json) lets a repo whose branch deploys on push keep manual
+  control. The CTO's one behavioral concern (auto-pushing a default/deploy
+  branch) is going to the founder as a conscious call.
 - 2026-09-04: The five presets auto-write through a dedicated
   `projectMemoryWrite` tool that the permission engine allows by name, rather
   than making the existing `vaultWrite` path-aware. Keeps `vaultWrite`'s

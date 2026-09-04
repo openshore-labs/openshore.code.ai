@@ -128,6 +128,22 @@ describe('reconcilePush', () => {
     expect(head.latest?.message).toBe('remote edit');
   });
 
+  it('pushes to the tracked upstream branch, not a same-named remote branch', async () => {
+    const { remote, clone } = await remoteAndClone();
+    // A local branch "work" that tracks origin/main (a hand-set mismatch).
+    await simpleGit(clone).checkoutLocalBranch('work');
+    await simpleGit(clone).raw(['branch', '--set-upstream-to=origin/main', 'work']);
+    await commitFile(clone, 'note.md', 'from work\n', 'work commit');
+    const r = await reconcilePush(clone);
+    expect(r.status).toBe('pushed');
+    // The commit landed on the remote's main, and no stray "work" branch exists.
+    const verify = tmp('osc-verify-track-');
+    await simpleGit().clone(remote, verify);
+    const branches = await simpleGit(remote).raw(['branch', '--list']);
+    expect(branches).not.toMatch(/\bwork\b/);
+    expect(existsSync(join(verify, 'note.md'))).toBe(true);
+  });
+
   it('skips a repo with an unfinished merge and says so', async () => {
     const { remote, clone } = await remoteAndClone();
     const other = tmp('osc-other3-');
