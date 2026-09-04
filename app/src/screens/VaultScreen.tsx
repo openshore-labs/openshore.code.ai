@@ -51,6 +51,7 @@ export function VaultScreen() {
     disconnectGdriveAccount,
     settings,
     showToast,
+    openProjectMemory,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -552,6 +553,29 @@ export function VaultScreen() {
             </>
           ) : null}
         </p>
+
+        {!team && !folder && (settings.projects?.length ?? 0) > 0 ? (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-row">
+              <h3 style={{ marginBottom: 0 }}>Coding projects</h3>
+            </div>
+            <p className="hint" style={{ marginTop: 0 }}>
+              Historical knowledge the agent keeps in each project's repository. Read only here.
+            </p>
+            <div className="vault-tree">
+              {settings.projects!.map((p) => (
+                <button
+                  key={p.id}
+                  className="conv-item vault-row press-fb press-fb--row"
+                  onClick={() => openProjectMemory(p.id)}
+                >
+                  <span className="vault-row-chevron" aria-hidden="true" />
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {crumbs.length ? (
           <p className="hint vault-crumbs">

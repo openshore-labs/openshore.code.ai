@@ -1177,6 +1177,20 @@ textarea {
   gap: 8px;
 }
 
+/* The Current State "Top sheet" badge, and the "not created yet" marker on a
+   note the agent has not written, sit at the trailing edge of their row so the
+   eye reads the note name first. */
+.vault-topsheet {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* A note that does not exist in the repo yet: shown, but quiet and not tappable. */
+.vault-row--absent {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .vault-row-chevron {
   flex-shrink: 0;
   width: 7px;

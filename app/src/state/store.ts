@@ -207,6 +207,7 @@ export type ViewName =
   | 'settings'
   | 'terminal'
   | 'project'
+  | 'projectmemory'
   | 'onboarding';
 
 // Which locked surface triggered the Personal upgrade sheet. Free is chat only;
@@ -514,6 +515,8 @@ interface AppState {
   ): Promise<void>;
   /** Open a project's detail room (its chats, instructions, repos, access). */
   openProject(id: string): void;
+  /** Open a project's read-only memory notes (from the Vault section). */
+  openProjectMemory(id: string): void;
   /** Start a fresh chat that belongs to a project, opened with a way back to
    *  the project's detail room. */
   startProjectChat(projectId: string): void;
@@ -2158,6 +2161,15 @@ export const useApp = create<AppState>((set, get) => {
       set({ viewProjectId: id });
       get().setView('project');
       logEvent('project_open');
+    },
+
+    openProjectMemory(id) {
+      // The read-only notes view opens from the Vault, over the Vault's own
+      // list, so setView pushes Vault onto the trail and the top bar offers a
+      // way back to it.
+      set({ viewProjectId: id });
+      get().setView('projectmemory');
+      logEvent('project_memory_open');
     },
 
     startProjectChat(projectId) {
