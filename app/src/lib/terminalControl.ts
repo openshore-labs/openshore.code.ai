@@ -8,6 +8,7 @@
 // room, and the settings row all read the same rules from here, and the tests
 // pin them without standing up the store. No em dashes anywhere.
 import type { ApprovalRequest } from 'os-code/protocol';
+import { autoApproves, type PermissionMode } from './permissionMode.js';
 
 /** The id used for the machine this desktop app runs on itself (its local
  *  engine). A phone or a second desktop attaching over the tailnet keys off the
@@ -106,17 +107,17 @@ export function terminalControlDenyReason(opts: { label: string; canControl: boo
 }
 
 /** What the store should do with an approval request, as one pure function so
- *  the whole assembly (the driver-kind fence, the shell-only gate, the target
- *  resolution, the On/Off decision, the deny reason) is pinned by tests rather
- *  than living only inside the store's event handler. 'passthrough' means this
- *  is not a desktop shell call, so the store's existing permission-mode rules
- *  decide it. */
-export type ShellApprovalDecision =
+ *  the WHOLE assembly is pinned by tests rather than living in the event
+ *  handler. 'sheet' means show the approval sheet and let the person decide,
+ *  never client-auto-approve. This is deliberately exhaustive so a desktop
+ *  non-shell tool (e.g. an always-ask vaultWrite) can never be auto-approved by
+ *  the client: an engine session already decided to ask, so the sheet stands. */
+export type ApprovalDecision =
   | { action: 'auto-approve' }
   | { action: 'auto-deny'; reason: string }
-  | { action: 'passthrough' };
+  | { action: 'sheet' };
 
-export function decideDesktopShellApproval(
+export function decideApproval(
   req: Pick<ApprovalRequest, 'kind' | 'toolName'>,
   ctx: {
     driverKind: string;
@@ -124,20 +125,30 @@ export function decideDesktopShellApproval(
     daemon?: { baseUrl: string; name?: string };
     control: Record<string, boolean> | undefined;
     canControl: boolean;
+    mode: PermissionMode;
   },
-): ShellApprovalDecision {
-  // Only a shell call on a desktop-backed session is Terminal Control's to
-  // decide. A cloud-spend ask on the same session, or any client-brain tool,
-  // passes through to the existing rules.
-  if (ctx.driverKind !== 'desktop') return { action: 'passthrough' };
-  if (!isShellApproval(req)) return { action: 'passthrough' };
-  const targetId = terminalTargetId({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
-  if (shouldAutoRunShell(req, { targetId, control: ctx.control, canControl: ctx.canControl })) {
-    return { action: 'auto-approve' };
+): ApprovalDecision {
+  // A shell call on a desktop-backed session is Terminal Control's to decide.
+  if (ctx.driverKind === 'desktop' && isShellApproval(req)) {
+    const targetId = terminalTargetId({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
+    if (shouldAutoRunShell(req, { targetId, control: ctx.control, canControl: ctx.canControl })) {
+      return { action: 'auto-approve' };
+    }
+    const label = terminalTargetLabel({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
+    return {
+      action: 'auto-deny',
+      reason: terminalControlDenyReason({ label, canControl: ctx.canControl }),
+    };
   }
-  const label = terminalTargetLabel({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
-  return {
-    action: 'auto-deny',
-    reason: terminalControlDenyReason({ label, canControl: ctx.canControl }),
-  };
+  // A client-brain tool runs in the app, so the permission mode auto-answers the
+  // class it covers, exactly as before Terminal Control existed.
+  if (ctx.driverKind !== 'desktop') {
+    return autoApproves(ctx.mode, req.toolName, req.kind)
+      ? { action: 'auto-approve' }
+      : { action: 'sheet' };
+  }
+  // A desktop non-shell ask (cloud spend, an always-ask tool like vaultWrite):
+  // the engine already chose to ask, so the sheet always shows. The client
+  // never auto-approves an engine session's non-shell tool.
+  return { action: 'sheet' };
 }

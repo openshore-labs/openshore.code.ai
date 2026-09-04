@@ -43,6 +43,86 @@ pre-push pass, then to `main`.
   turning Terminal Control on fires the firmer decisive-commit haptic over the
   Switch's tick.
 
+## Current state (2026-09-04, offline reconcile: project commits push to the remote on open and reconnect)
+
+Founder ask: nothing should linger only on the device. If you are offline, the
+app buffers your changes and pushes/merges the markdown updates into your repos
+when you reconnect, and every app open checks for pending local activity to push
+to wherever the project points. Because the notes are committed with the code,
+"pending local activity" is unpushed local commits on the desktop clone; the
+build is desktop-side. Branch `claude/openshore-vault-presets-bscvtq`.
+
+- **Reconcile engine (os-code).** `os-code/src/git/reconcile.ts`
+  `reconcilePush(cwd)`: pushes the current branch's unpushed commits to its
+  tracking upstream; on a moved-on remote it fetches and merges, then pushes; a
+  real conflict is aborted (tree left exactly as it was) and reported. Rails:
+  only pushes a branch that has a tracking upstream, never force-pushes, never
+  merges over a dirty tree. `reconcileRepos` runs several, isolating failures.
+  Tested against real temp repos (fast-forward, merge, conflict-abort).
+- **Desktop host + bridge.** `EngineHost.reconcileRepos` runs the engine on the
+  real clones; exposed as the `reconcileRepos` bridge method (main.ts ipc +
+  preload + electronBridge type). The result type rides the browser-safe
+  `os-code/protocol` barrel as a type-only export.
+- **Triggers + surface (app).** `store.reconcileProjectRepos(trigger)` gathers
+  each project's primary local clone (`app/src/lib/repoReconcile.ts`), guards to
+  desktop + online + single-flight, and runs on every app open and on the
+  `online` event. Quiet toast on a push, a plain reassuring toast plus a Vault
+  notice on a conflict (work is never lost). iOS has no local clone, so it just
+  reads the always-current remote.
+
+## Current state (2026-09-04, per-project memory notes, stored in the repo, kept current by the harness)
+
+Founder ask: a coding project should carry a few preset markdowns that run as
+historical knowledge, kept up to speed by the harness and organized by project,
+so a model reads the "top sheet" first and digs deeper page by page only as
+needed, for planning and debugging. On storage the founder was explicit: the
+notes live INSIDE the project's primary attached repo, in a folder named
+"OpenShore Project <name> MDs/", committed with the code, not hosted by the app.
+Branch `claude/openshore-vault-presets-bscvtq`.
+
+- **The five presets, per project, in the repo.** The primary repo gets a folder
+  "OpenShore Project <name> MDs/" holding Current State, Progress, Decisions,
+  Action Items, and Skills. Current State is the pinned top sheet: a 2 to 5
+  minute catch up with five sections (what last landed and launched, key
+  outstanding build actions, key outstanding test actions, immediate blockers,
+  suggested next steps). Progress is the fuller record and log; Decisions is one
+  line per ambiguous call; Action Items is the ranked to-do; Skills is the
+  project's reusable build/test/ship recipes and gotchas. The literal
+  prefix/suffix wrapper on the folder name means the enclosed project name can
+  never be a bare ".." that climbs out of the repo.
+- **One shared spec.** `app/src/lib/projectMemory.ts` and
+  `os-code/src/core/agent/projectMemory.ts` are the mirrored source of truth for
+  the file set, order, seed templates, folder convention, and path predicates. A
+  test in each package pins the shape so they cannot drift.
+- **The harness keeps them current.** A project-memory protocol rides into the
+  coding agent's system prompt (`projectMemoryPrompt`, injected in `loop.ts`
+  beside the UX standard): read the Current State top sheet first, dig page by
+  page only as needed, and update the five notes as work lands. The project name
+  is threaded from the app (`store.ts`) through the Electron bridge, the daemon,
+  and `bootstrapSession` into the tool context, so the agent's folder matches
+  the project.
+- **Narrow silent auto-write, into the repo.** A dedicated `projectMemoryWrite`
+  tool (`os-code/src/core/tools/projectMemory.ts`), hard-scoped to the five files
+  inside the current project's memory folder in the repo working tree, lands its
+  writes without the always-ask prompt: the permission engine auto-allows it by
+  name for a managed memory path, while every general write (writeFile, editFile,
+  vaultWrite) still asks. It seeds the full set from templates on first touch,
+  and the notes ride into the agent's commit with the code (no separate commit).
+  This is the founder's "narrow exception," pinned by tests.
+- **App read-only view, cross-platform (BUILT).** The founder chose full
+  cross-platform, so the notes are readable in the app's Vault section on both
+  platforms. A "Coding projects" list in the Vault opens a read-only
+  `ProjectMemoryScreen` (view `projectmemory`, reached via `openProjectMemory`)
+  that lists the five notes (Current State pinned, "Top sheet" marker) and
+  renders each read-only. The source is chosen per platform
+  (`app/src/lib/projectMemoryRead.ts`): the local clone on desktop (new
+  read-only bridge `repoReadDir`/`repoReadFile`, jailed to the repo root in the
+  main process), else the primary GitHub repo (new read-only contents client
+  `app/src/lib/github.ts`, using the existing OAuth token). Friendly states for
+  no-repo, not-created-yet, and unreachable.
+- Gates green: os-code typecheck + lint + 374 tests + build; app typecheck +
+  lint + 495 tests + build; Prettier clean on all changed files.
+
 ## Current state (2026-09-04, Terminal room and Terminal Control, shipped)
 
 Founder ask: bring a Termius-style in-app terminal to OpenShore as a dedicated
@@ -117,8 +197,8 @@ projects until then.
   admin/owner always holds edit; everyone else holds their grant, matched by
   verified uid OR email, never client input), RLS that hides other orgs, and
   the ONLY write path is a set of level-checked RPCs (list/create/update/delete
-  + set/revoke access). Direct table writes are revoked, the same lockdown shape
-  as `org_vault` (0010). A grant can only be handed to a real member of the org.
+  - set/revoke access). Direct table writes are revoked, the same lockdown shape
+    as `org_vault` (0010). A grant can only be handed to a real member of the org.
 - **The read/write/edit ladder.** read = open the project and its chats; write =
   read plus start/run chats in it; edit = write plus change its instructions,
   repos, and access. `app/src/lib/projectAccess.ts` answers the ladder; a shared
@@ -160,7 +240,7 @@ signed in on device, reviews backend live, moderator seeded).
   os-code 356 tests, app 442, lint, typecheck, app vite build.
   TURNED ON and verified live: the two `CATALOG_REVIEWS_*` secrets are set on
   the catalog workflow, `0013` is applied to the live database (`supabase db
-  push`), and a dispatched catalog run baked the snapshot cleanly (run 24 hit a
+push`), and a dispatched catalog run baked the snapshot cleanly (run 24 hit a
   404 because `0013` was not yet pushed, run 25 read the RPC and baked with no
   404). The published `catalog.json` on the marketing site now carries
   `reviewsSnapshotAt: 2026-09-04` over 174 models, 0 currently carrying a
@@ -465,7 +545,7 @@ clock. On a 310px door the visible slide was roughly 110ms of 320ms, then an
 invisible crawl of the last few percent. A pop, then nothing.
 
 - **Two new tokens, with the reason beside them.** `--ease-glide:
-  cubic-bezier(0.3, 0.1, 0.15, 1)`, a bezier fit of UIKit's critically damped
+cubic-bezier(0.3, 0.1, 0.15, 1)`, a bezier fit of UIKit's critically damped
   spring (response 0.5s): soft start, one long even slide, a settle with no
   overshoot. `--dur-7: 520ms`, the door clock, for a surface that crosses the
   screen. The family was closed on purpose; this is the stated-reason door,
@@ -1885,6 +1965,19 @@ Layer status:
 - [x] **Terminal: a desktop drives a remote hub, and multi-hub.** Both built
       (2026-09-04): `preferRemoteHub` in `buildDriver`, `settings.daemons` with
       the active one mirrored into `settings.daemon`, and PairScreen management.
+- [x] **Project memory: read-only view in the app (DONE, cross-platform).** The
+      founder chose full cross-platform. Built: a desktop read-only repo bridge
+      (`repoReadDir`/`repoReadFile`, jailed to the repo root), a read-only GitHub
+      contents client (`app/src/lib/github.ts`) for iOS and clone-less devices,
+      the source chooser (`app/src/lib/projectMemoryRead.ts`), and the
+      `ProjectMemoryScreen` reached from a "Coding projects" list in the Vault.
+- [ ] **Project memory: a "note updated" nudge (P3, optional).** The
+      `projectMemoryWrite` tool lands silently by design, and `mode: 'replace'`
+      can overwrite a note the person hand-edited. The full diff is emitted on
+      tool-end (visible in the transcript), so it is not truly silent, but a
+      lightweight "memory note updated" toast would let a person notice when the
+      agent rewrote something they touched. CTO-suggested, accepted as a
+      non-blocking nicety (2026-09-04).
 
 - [x] **Community reviews: LIVE.** The backend was validated against a real
       Postgres (0011 + 0012 + 0013 apply clean; anon reads visible rows,

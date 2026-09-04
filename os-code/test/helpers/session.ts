@@ -31,6 +31,10 @@ export interface TestSessionOptions {
   approve?: (request: ApprovalRequest) => ApprovalAnswer | Promise<ApprovalAnswer>;
   configOverrides?: Record<string, unknown>;
   escalation?: MockProvider;
+  /** The project this session belongs to, for the project-memory folder. */
+  projectName?: string;
+  /** The on-device vault root, when a test exercises the vault tools. */
+  vaultRoot?: string;
 }
 
 export function makeTestSession(
@@ -72,6 +76,8 @@ export function makeTestSession(
       jail: new Jail(cwd),
       egress: new EgressPolicy(config.egress),
       config,
+      projectName: options.projectName,
+      vaultRoot: options.vaultRoot,
     },
     permissions: new PermissionEngine(
       config.permissions as PermissionConfig,

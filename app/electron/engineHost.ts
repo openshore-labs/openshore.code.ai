@@ -23,6 +23,7 @@ import { installModel, installOllamaRef } from 'os-code/dist/src/market/install.
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
 import { clone } from 'os-code/dist/src/git/index.js';
+import { reconcileRepos, type ReconcileResult } from 'os-code/dist/src/git/reconcile.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
 import {
   hashToken,
@@ -166,7 +167,7 @@ export class EngineHost {
 
   async createSession(
     cwd?: string,
-    opts: { instructions?: string; permissionMode?: PermissionMode } = {},
+    opts: { instructions?: string; permissionMode?: PermissionMode; projectName?: string } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
     const { driver, warnings } = bootstrapSession({
@@ -175,6 +176,7 @@ export class EngineHost {
       terminalReader: this.readTerminal,
       instructions: opts.instructions,
       permissionMode: opts.permissionMode,
+      projectName: opts.projectName,
     });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
@@ -544,6 +546,37 @@ export class EngineHost {
       return { cwd: target, name };
     } catch (err) {
       return { error: `Could not clone: ${(err as Error).message}` };
+    }
+  }
+
+  // Push each clone's unpushed commits to its remote (merging a moved-on remote
+  // first), so a project's memory notes and code never linger only on this
+  // device. Read the reconcile engine for the safety rails (never force-push,
+  // never merge over uncommitted work, conflicts surfaced not clobbered). Only
+  // real, existing directories are attempted.
+  private reconcileInFlight = false;
+  async reconcileRepos(roots: string[]): Promise<ReconcileResult[]> {
+    // A project can opt out of auto-push in its os-code.config.json
+    // (sync.autoPush:false), e.g. when its branch deploys on push. Honor that
+    // per repo before any git runs.
+    const real = roots.filter((r) => {
+      if (!r || !existsSync(r)) return false;
+      try {
+        return loadConfig(r).config.sync?.autoPush !== false;
+      } catch {
+        return true; // no readable config means the default (auto-push on)
+      }
+    });
+    if (!real.length) return [];
+    // Serialize in the main process: two windows (or a rapid open + reconnect)
+    // must not run git on the same clones at once. A concurrent call is a no-op,
+    // never a queued double-push; the next open/reconnect picks up anything left.
+    if (this.reconcileInFlight) return [];
+    this.reconcileInFlight = true;
+    try {
+      return await reconcileRepos(real);
+    } finally {
+      this.reconcileInFlight = false;
     }
   }
 

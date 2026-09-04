@@ -6,6 +6,7 @@ import type {
   Catalog,
   DriverEvent,
   PermissionMode,
+  ReconcileResult,
   StackHealth,
   StackHealthRange,
 } from 'os-code/protocol';
@@ -70,7 +71,7 @@ export interface OscodeBridge {
   // Sessions (conversations backed by the engine).
   createSession(
     cwd?: string,
-    opts?: { instructions?: string; permissionMode?: PermissionMode },
+    opts?: { instructions?: string; permissionMode?: PermissionMode; projectName?: string },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the
    *  permission mode, the project's standing instructions, manual compaction,
@@ -154,6 +155,10 @@ export interface OscodeBridge {
   pickFolder(): Promise<string | null>;
   cloneRepo(url: string): Promise<{ cwd: string; name: string } | { error: string }>;
   recentWorkspaces(): Promise<Array<{ cwd: string; name: string; lastUsed?: string }>>;
+  /** Push each clone's unpushed commits to its remote (merging a moved-on
+   *  remote first), so nothing a project committed lingers only on this device.
+   *  Never force-pushes; surfaces conflicts. Returns one result per repo. */
+  reconcileRepos(roots: string[]): Promise<ReconcileResult[]>;
 
   // Phone pairing (the daemon).
   daemonInfo(): Promise<DaemonInfo>;
@@ -172,6 +177,14 @@ export interface OscodeBridge {
   vaultRead(path: string): Promise<StoredFile | null>;
   vaultWrite(path: string, text: string): Promise<StoredFile>;
   vaultRemove(path: string): Promise<void>;
+
+  // Read-only access to a repo working tree, for the project-memory viewer. The
+  // notes live in the repo under "OpenShore Project <name> MDs/"; these list a
+  // folder's filenames and read a file's text, both jailed to `root` in the main
+  // process (symlink-safe). `root` is a project workspace path. Never writes.
+  // null means the folder or file is not there yet. Keep in lockstep with main.ts.
+  repoReadDir(root: string, subdir: string): Promise<string[] | null>;
+  repoReadFile(root: string, relPath: string): Promise<string | null>;
 
   // OS-encrypted secret store (safeStorage), for the data-encryption key.
   secureGet(key: string): Promise<string | null>;

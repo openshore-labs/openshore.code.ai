@@ -3,6 +3,7 @@
 // cloud quota gets its own distinct confirmation.
 import { minimatch } from '../util/minimatch.js';
 import type { SecurityProfile } from '../security/profiles.js';
+import { PROJECT_MEMORY_WRITE_TOOL, isMemoryFilePath } from '../agent/projectMemory.js';
 
 /** What a tool can do to you, coarse-grained for policy. */
 export type ToolRisk = 'read' | 'write' | 'shell' | 'network' | 'push' | 'cloud-spend';
@@ -77,6 +78,20 @@ export class PermissionEngine {
     // is the "never silent" guarantee for agent vault writes.
     if (q.alwaysAsk) {
       return { decision: 'ask', reason: 'this action always asks first' };
+    }
+
+    // Narrow, built-in exception (founder ruling): the coding agent keeps each
+    // project's five memory notes current, and those writes land silently but
+    // visibly. Only this dedicated tool, and only a managed memory file under
+    // Projects/<project>/, is auto-allowed here; every general vault write stays
+    // always-ask above. The write tool is itself hard-scoped to those five
+    // files, so this is defense in depth, not the only guard.
+    if (
+      q.toolName === PROJECT_MEMORY_WRITE_TOOL &&
+      q.path !== undefined &&
+      isMemoryFilePath(q.path)
+    ) {
+      return { decision: 'allow', reason: 'project memory note, kept current by the agent' };
     }
 
     // Session grants never apply to shell or cloud spend on restrictive profiles.
