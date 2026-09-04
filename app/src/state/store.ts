@@ -113,6 +113,11 @@ import {
   normalizePermissionMode,
   type PermissionMode,
 } from '../lib/permissionMode.js';
+import {
+  canControlTerminal as canControlTerminalFor,
+  shouldAutoRunShell,
+  terminalTargetId,
+} from '../lib/terminalControl.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
@@ -207,6 +212,7 @@ export type ViewName =
   | 'pair'
   | 'settings'
   | 'terminal'
+  | 'terminalroom'
   | 'project'
   | 'projectmemory'
   | 'onboarding';
@@ -288,6 +294,15 @@ export interface AppSettings {
    *  sheets. They surface under My Stack on the root model sheet for one-tap
    *  selection, and swipe there to unpin. Only concrete models pin. */
   pinnedModels?: ConversationSource[];
+  /** Terminal Control: whether the model may run shell commands on its own,
+   *  keyed per target (the local engine, or a hub's base URL) so an On state at
+   *  one machine never follows a session to another. Missing means Off, the
+   *  opt-in default. Device local by nature (a per device, per machine consent
+   *  choice), so it is never synced. */
+  terminalControl?: Record<string, boolean>;
+  /** Whether the Terminal room's first-run intro has been shown on this device.
+   *  A first-run flag, device local, never synced. */
+  terminalRoomSeen?: boolean;
 }
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
@@ -759,6 +774,10 @@ interface AppState {
   killCommand(runId: string): void;
   /** Whether the active conversation can run terminal commands (desktop-backed). */
   canRunCommands(): boolean;
+  /** Set Terminal Control for the machine the active session runs on. On lets
+   *  the model run shell commands on its own there; Off (the default) keeps it
+   *  to the approval sheet. Scoped to that one target. */
+  setTerminalControl(on: boolean): Promise<void>;
 
   saveSettings(patch: Partial<AppSettings>): Promise<void>;
   /** Record a freshly downloaded on-device model, reading fresh state so two
@@ -986,10 +1005,37 @@ export const useApp = create<AppState>((set, get) => {
       // the app): auto-answer the approvals the mode covers. Engine sessions
       // decide inside the loop (it never asks for what the mode allows), so a
       // question that reaches here from one is a real one and always shows.
-      if (event.type === 'approval-request' && driver.kind !== 'desktop') {
-        const mode = get().settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
-        if (autoApproves(mode, event.request.toolName, event.request.kind)) {
+      if (event.type === 'approval-request') {
+        // Terminal Control, ahead of the mode rules: when the person has turned
+        // it On for the machine this session runs on (and is allowed to), a
+        // shell command runs on its own. It governs the hub's own terminal, so
+        // it only ever fires for a desktop-backed session (the engine drivers,
+        // the sole emitters of runShell today); the driver.kind fence keeps a
+        // future client brain that gained a shell tool from being auto-approved
+        // silently. Off, the default, this never fires, so the command falls
+        // through to the approval sheet and nothing touches the machine without
+        // a tap.
+        const s = get();
+        const desktopLocal = isDesktop() && Boolean(bridge());
+        const targetId = terminalTargetId({ desktopLocal, daemon: s.settings.daemon });
+        const canControl = canControlTerminalFor(
+          s.settings.account,
+          isOrgAdmin(s.settings.account) || s.serverRole === 'admin',
+        );
+        if (
+          driver.kind === 'desktop' &&
+          shouldAutoRunShell(event.request, {
+            targetId,
+            control: s.settings.terminalControl,
+            canControl,
+          })
+        ) {
           drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
+        } else if (driver.kind !== 'desktop') {
+          const mode = s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
+          if (autoApproves(mode, event.request.toolName, event.request.kind)) {
+            drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
+          }
         }
       }
       // The task ended: a message typed mid-run goes out now, in order. A
@@ -4123,6 +4169,15 @@ export const useApp = create<AppState>((set, get) => {
       void driver.runCommand(command).then((runId) => {
         if (!runId) get().showToast('Could not reach the desktop to run that. Try again.');
       });
+    },
+
+    async setTerminalControl(on) {
+      const s = get();
+      const desktopLocal = isDesktop() && Boolean(bridge());
+      const targetId = terminalTargetId({ desktopLocal, daemon: s.settings.daemon });
+      if (!targetId) return;
+      const map = { ...(s.settings.terminalControl ?? {}), [targetId]: on };
+      await get().saveSettings({ terminalControl: map });
     },
 
     sendCommandStdin(runId, data) {

@@ -1738,6 +1738,47 @@ textarea {
   border-color: var(--link);
 }
 
+/* ------------------------------------------------------- Terminal room */
+.terminal-firstrun {
+  margin: 8px 0 12px;
+  padding-left: 20px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.terminal-firstrun li + li {
+  margin-top: 8px;
+}
+
+.tc-card {
+  margin-top: 14px;
+}
+
+.tc-running {
+  margin: 16px 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tc-host {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* xterm needs a real height, so the live shell is its own bounded column. */
+.terminal-room-live {
+  display: flex;
+  flex-direction: column;
+  height: 60vh;
+  min-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b0d12;
+}
+
 /* --------------------------------------------- code block toolbar (Run/Copy) */
 
 .md-code {

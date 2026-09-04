@@ -25,6 +25,7 @@ import { AdminScreen } from './screens/AdminScreen.js';
 import { LaunchScreen } from './screens/LaunchScreen.js';
 import { PairScreen } from './screens/PairScreen.js';
 import { TerminalScreen } from './screens/TerminalScreen.js';
+import { TerminalRoomScreen } from './screens/TerminalRoomScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
 import { useCompact } from './hooks/useCompact.js';
@@ -200,6 +201,8 @@ export function App() {
       <VaultScreen />
     ) : view === 'projects' ? (
       <ProjectsScreen />
+    ) : view === 'terminalroom' ? (
+      <TerminalRoomScreen />
     ) : view === 'project' ? (
       <ProjectDetailScreen />
     ) : view === 'projectmemory' ? (
