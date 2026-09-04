@@ -436,10 +436,18 @@ execution contract. Newest at the bottom.
 - 2026-09-04: The memory notes ride into the agent's commit alongside the change
   that prompted them; the tool does not make a separate commit or push just for
   the notes.
-- 2026-09-04: The app read-only view of the notes is deferred pending a scope
-  call: the app has no repo file reader today, so it is net-new plumbing on both
-  desktop (a repo-cwd bridge reader) and iOS (a GitHub contents reader). Surfaced
-  rather than built blind (foundations rule).
+- 2026-09-04: The app read-only view of the notes was surfaced for a scope call
+  (net-new plumbing on both platforms), then built full cross-platform on the
+  founder's choice: a desktop repo-read bridge jailed to the repo root, and a
+  read-only GitHub contents client for iOS / clone-less devices. On desktop the
+  local clone is preferred (it shows uncommitted edits); otherwise the primary
+  GitHub repo is read. The view is strictly read-only (the agent owns writes).
+- 2026-09-04: The desktop repo-read IPC handlers are contained twice: a Jail
+  rooted at the repo (blocks traversal/symlink/absolute escape) AND a shape
+  guard that only permits listing an "OpenShore Project <name> MDs/" folder and
+  reading a .md file directly inside one, with a 4MB size cap. So the handlers
+  are self-evidently safe in isolation, not only because the renderer is trusted
+  (CTO GO, both its non-blocking follow-ups folded in).
 - 2026-09-04: The five presets auto-write through a dedicated
   `projectMemoryWrite` tool that the permission engine allows by name, rather
   than making the existing `vaultWrite` path-aware. Keeps `vaultWrite`'s

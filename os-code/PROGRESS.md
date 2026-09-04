@@ -42,14 +42,19 @@ Branch `claude/openshore-vault-presets-bscvtq`.
   vaultWrite) still asks. It seeds the full set from templates on first touch,
   and the notes ride into the agent's commit with the code (no separate commit).
   This is the founder's "narrow exception," pinned by tests.
-- **App view is a pending decision (not built yet).** The founder wants the notes
-  readable in the app's Vault section, but the app has no repo file reader today
-  (verified): a read-only view is net-new plumbing on both platforms (a desktop
-  bridge reader jailed to the repo cwd, and a GitHub contents reader for iOS).
-  Surfaced for a scope call (desktop-first vs full cross-platform vs defer)
-  before building. Tracked in the follow-ups below.
+- **App read-only view, cross-platform (BUILT).** The founder chose full
+  cross-platform, so the notes are readable in the app's Vault section on both
+  platforms. A "Coding projects" list in the Vault opens a read-only
+  `ProjectMemoryScreen` (view `projectmemory`, reached via `openProjectMemory`)
+  that lists the five notes (Current State pinned, "Top sheet" marker) and
+  renders each read-only. The source is chosen per platform
+  (`app/src/lib/projectMemoryRead.ts`): the local clone on desktop (new
+  read-only bridge `repoReadDir`/`repoReadFile`, jailed to the repo root in the
+  main process), else the primary GitHub repo (new read-only contents client
+  `app/src/lib/github.ts`, using the existing OAuth token). Friendly states for
+  no-repo, not-created-yet, and unreachable.
 - Gates green: os-code typecheck + lint + 374 tests + build; app typecheck +
-  lint + 480 tests; Prettier clean on all changed files.
+  lint + 495 tests + build; Prettier clean on all changed files.
 
 ## Current state (2026-09-04, Projects get their own room and enterprise sharing)
 
@@ -1833,15 +1838,12 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Project memory: read-only view in the app (P2, needs a scope call).**
-      The notes live in the repo; the founder wants them readable in the Vault
-      section. The app has no repo file reader today, so this is net-new: a
-      desktop bridge reader jailed to the repo cwd (mirror `vaultList`/`vaultRead`
-      at `app/electron/main.ts`, rooted at `firstWorkspace(project.repoIds)` /
-      `conv.source.cwd`), and, for iOS, a GitHub contents reader using the token
-      from `gitos/repoOAuth.ts`. The app spec (`app/src/lib/projectMemory.ts`,
-      with `memoryFolderForProject` and `orderMemoryTitlesFirst`) is ready for
-      the viewer. Decide scope: desktop-first, full cross-platform, or defer.
+- [x] **Project memory: read-only view in the app (DONE, cross-platform).** The
+      founder chose full cross-platform. Built: a desktop read-only repo bridge
+      (`repoReadDir`/`repoReadFile`, jailed to the repo root), a read-only GitHub
+      contents client (`app/src/lib/github.ts`) for iOS and clone-less devices,
+      the source chooser (`app/src/lib/projectMemoryRead.ts`), and the
+      `ProjectMemoryScreen` reached from a "Coding projects" list in the Vault.
 - [ ] **Project memory: a "note updated" nudge (P3, optional).** The
       `projectMemoryWrite` tool lands silently by design, and `mode: 'replace'`
       can overwrite a note the person hand-edited. The full diff is emitted on

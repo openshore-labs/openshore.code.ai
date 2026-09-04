@@ -19,6 +19,7 @@ import { ReposScreen } from './screens/ReposScreen.js';
 import { VaultScreen } from './screens/VaultScreen.js';
 import { ProjectsScreen } from './screens/ProjectsScreen.js';
 import { ProjectDetailScreen } from './screens/ProjectDetailScreen.js';
+import { ProjectMemoryScreen } from './screens/ProjectMemoryScreen.js';
 import { CrewScreen } from './screens/CrewScreen.js';
 import { AdminScreen } from './screens/AdminScreen.js';
 import { LaunchScreen } from './screens/LaunchScreen.js';
@@ -201,6 +202,8 @@ export function App() {
       <ProjectsScreen />
     ) : view === 'project' ? (
       <ProjectDetailScreen />
+    ) : view === 'projectmemory' ? (
+      <ProjectMemoryScreen />
     ) : view === 'crew' ? (
       <CrewScreen />
     ) : view === 'admin' ? (

@@ -173,6 +173,14 @@ export interface OscodeBridge {
   vaultWrite(path: string, text: string): Promise<StoredFile>;
   vaultRemove(path: string): Promise<void>;
 
+  // Read-only access to a repo working tree, for the project-memory viewer. The
+  // notes live in the repo under "OpenShore Project <name> MDs/"; these list a
+  // folder's filenames and read a file's text, both jailed to `root` in the main
+  // process (symlink-safe). `root` is a project workspace path. Never writes.
+  // null means the folder or file is not there yet. Keep in lockstep with main.ts.
+  repoReadDir(root: string, subdir: string): Promise<string[] | null>;
+  repoReadFile(root: string, relPath: string): Promise<string | null>;
+
   // OS-encrypted secret store (safeStorage), for the data-encryption key.
   secureGet(key: string): Promise<string | null>;
   secureSet(key: string, value: string): Promise<boolean>;
