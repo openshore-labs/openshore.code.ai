@@ -191,11 +191,26 @@ export interface Project {
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
   /** Enterprise: per-teammate access grants, keyed by email, that decide who
-   *  may read, write, or edit this project once it is shared with the team.
-   *  Admin-managed. Absent/empty means no one but the admin has been granted
-   *  access yet. Local-first scaffold, same posture as the Org model above: a
-   *  UX affordance today, enforced server-side when org-shared projects land. */
+   *  may read, write, or edit this project. Admin-managed. For a shared project
+   *  these mirror the server roster (org_project_members); for a local project
+   *  they are a draft that becomes the roster the moment it is shared. */
   access?: ProjectAccess[];
+  /** True once this project lives on the org server (org_projects), visible to
+   *  the team and enforced by RLS. A local (device-only) project has this
+   *  unset. */
+  shared?: boolean;
+  /** org_projects.id, when shared. The identity that syncs across devices;
+   *  chats stay device-local and keep referencing the local `id`. */
+  serverId?: string;
+  /** The owning org's server id, when shared. */
+  orgId?: string;
+  /** Server revision last seen, handed back on the next write as an honest
+   *  base. */
+  rev?: number;
+  /** The signed-in person's server-resolved level on a shared project
+   *  ('read' | 'write' | 'edit'), so the UI can gate without re-deriving it.
+   *  Unset for a local project (the owner holds everything). */
+  myLevel?: ProjectPermission;
   createdAt: string;
 }
 

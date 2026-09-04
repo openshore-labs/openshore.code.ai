@@ -153,7 +153,7 @@ describe('project detail room', () => {
     expect(useApp.getState().viewTrail).toEqual(['project']);
   });
 
-  it('setProjectAccess stores per-email grants on the project', async () => {
+  it('setProjectAccess drafts per-email grants on a local project (no server)', async () => {
     const s = useApp.getState();
     const id = await s.createProject('Alpha');
     await s.setProjectAccess(id, [
@@ -163,6 +163,24 @@ describe('project detail room', () => {
     const proj = useApp.getState().settings.projects!.find((p) => p.id === id)!;
     expect(proj.access).toHaveLength(2);
     expect(proj.access!.find((a) => a.email === 'b@co.com')!.level).toBe('edit');
+    expect(proj.shared).toBeUndefined();
+  });
+
+  it('shareProject needs a signed-in company account (stays local otherwise)', async () => {
+    const s = useApp.getState();
+    const id = await s.createProject('Alpha');
+    await s.shareProject(id); // no account configured in this runner
+    const proj = useApp.getState().settings.projects!.find((p) => p.id === id)!;
+    expect(proj.shared).toBeUndefined();
+    expect(proj.serverId).toBeUndefined();
+  });
+
+  it('syncOrgProjects is a no-op for a personal account', async () => {
+    const s = useApp.getState();
+    await s.createProject('Alpha');
+    const before = JSON.stringify(useApp.getState().settings.projects);
+    await s.syncOrgProjects();
+    expect(JSON.stringify(useApp.getState().settings.projects)).toBe(before);
   });
 
   it('deleting the open project falls back to the Projects list', async () => {

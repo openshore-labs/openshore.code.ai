@@ -147,6 +147,15 @@ import {
   type StackModelRef,
 } from '../lib/stack.js';
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
+import {
+  createOrgProject,
+  deleteOrgProject,
+  listOrgProjects,
+  mergeSharedProjects,
+  revokeOrgProjectAccess,
+  setOrgProjectAccess,
+  updateOrgProject,
+} from '../lib/orgProjects.js';
 import { SETUP_GUIDES, guideOpening, type SetupGuideId } from '../lib/setupGuides.js';
 import {
   providerFor,
@@ -508,10 +517,22 @@ interface AppState {
   /** Start a fresh chat that belongs to a project, opened with a way back to
    *  the project's detail room. */
   startProjectChat(projectId: string): void;
-  /** Enterprise: replace a project's per-teammate access grants (admin-only in
-   *  the UI; the store trusts the caller, the way the other admin mutations do). */
+  /** Enterprise: set a project's per-teammate access. For a shared project the
+   *  change is applied to the org server (the RLS-enforced roster); for a local
+   *  project it is a draft that ships when the project is shared. */
   setProjectAccess(projectId: string, access: ProjectAccess[]): Promise<void>;
-  /** Remove a project; its chats stay but drop back to no project. */
+  /** Enterprise: share a local project with the org so the team can use it (org
+   *  admin only; server-enforced). Its instructions, repos, and any drafted
+   *  access grants go up, and it starts syncing. */
+  shareProject(id: string): Promise<void>;
+  /** Enterprise: stop sharing a project with the team. It becomes a local
+   *  project again on this device (the server copy is removed). */
+  unshareProject(id: string): Promise<void>;
+  /** Enterprise: pull the shared projects the signed-in person can reach and
+   *  merge them into the projects list. No-op offline or for a personal account. */
+  syncOrgProjects(): Promise<void>;
+  /** Remove a project; its chats stay but drop back to no project. A shared
+   *  project is also removed on the server (needs edit access). */
   deleteProject(id: string): Promise<void>;
 
   // Account & organization.
@@ -1303,6 +1324,26 @@ export const useApp = create<AppState>((set, get) => {
     }
   }
 
+  // A fresh access token for an org-projects RPC, or undefined when there is no
+  // signed-in session / accounts are not configured (so the caller degrades to
+  // local-only). Refreshes and re-stores the session like orgWrite.
+  async function orgProjectToken(): Promise<string | undefined> {
+    const session = get().authSession;
+    if (!session || !authConfigured()) return undefined;
+    const fresh = await freshSession(session);
+    if (fresh !== session) set({ authSession: fresh });
+    return fresh.accessToken;
+  }
+
+  // Patch a project's locally-stored fields (no server round-trip). The shared
+  // write paths call this to reflect a server result on the device.
+  async function patchProjectLocal(id: string, patch: Partial<Project>): Promise<void> {
+    const projects = (get().settings.projects ?? []).map((p) =>
+      p.id === id ? { ...p, ...patch } : p,
+    );
+    await get().saveSettings({ projects });
+  }
+
   // A1: adding seats or inviting members is gated on an active entitlement, but
   // ONLY once the org is server-backed and subject to billing. A purely local
   // org (offline demo, not yet signed in or synced) is never gated, and existing
@@ -1392,6 +1433,7 @@ export const useApp = create<AppState>((set, get) => {
     await reconcileOrg(session);
     await get().refreshOrgRole();
     void get().refreshEntitlement();
+    void get().syncOrgProjects();
     logEvent('auth_sign_in');
   }
 
@@ -1685,6 +1727,7 @@ export const useApp = create<AppState>((set, get) => {
           if (stored) {
             await reconcileOrg(stored);
             await get().refreshOrgRole();
+            void get().syncOrgProjects();
             // A pure-web buyer returns from checkout on this origin with
             // ?checkout=success (no deep link to fire); reconcile the
             // entitlement right away instead of waiting for a refocus.
@@ -2129,18 +2172,171 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async updateProject(id, patch) {
-      const projects = (get().settings.projects ?? []).map((p) =>
-        p.id === id ? { ...p, ...patch } : p,
-      );
-      await get().saveSettings({ projects });
+      const project = get().settings.projects?.find((p) => p.id === id);
+      const touchesContent =
+        patch.name !== undefined || patch.instructions !== undefined || patch.repoIds !== undefined;
+      // A shared project's content lives on the org server; the RLS-enforced
+      // update_org_project RPC is the write path (only an editor may change it).
+      if (project?.shared && project.serverId && touchesContent) {
+        const token = await orgProjectToken();
+        if (token) {
+          try {
+            const rev = await updateOrgProject(token, {
+              serverId: project.serverId,
+              name: patch.name ?? project.name,
+              instructions: patch.instructions ?? project.instructions ?? '',
+              repoIds: patch.repoIds ?? project.repoIds,
+              baseRev: project.rev ?? 1,
+            });
+            await patchProjectLocal(id, { ...patch, rev });
+          } catch (err) {
+            // Do not write locally on refusal: the device must not drift from
+            // the server the person actually cannot edit.
+            get().showToast(err instanceof Error ? err.message : 'Could not save to the team.');
+          }
+          return;
+        }
+      }
+      await patchProjectLocal(id, patch);
     },
 
     async setProjectAccess(projectId, access) {
-      await get().updateProject(projectId, { access });
+      const project = get().settings.projects?.find((p) => p.id === projectId);
+      // A shared project's roster is the server's; diff the draft against it and
+      // apply each change through the RLS-enforced grant RPCs, then re-sync.
+      if (project?.shared && project.serverId) {
+        const token = await orgProjectToken();
+        if (!token) {
+          get().showToast('Sign in to change who can use this project.');
+          return;
+        }
+        const before = new Map(
+          (project.access ?? []).map((g) => [g.email.trim().toLowerCase(), g.level]),
+        );
+        const after = new Map(access.map((g) => [g.email.trim().toLowerCase(), g.level]));
+        try {
+          for (const [email, level] of after) {
+            if (before.get(email) !== level) {
+              await setOrgProjectAccess(token, project.serverId, email, level);
+            }
+          }
+          for (const email of before.keys()) {
+            if (!after.has(email)) await revokeOrgProjectAccess(token, project.serverId, email);
+          }
+        } catch (err) {
+          get().showToast(err instanceof Error ? err.message : 'Could not update access.');
+        }
+        await get().syncOrgProjects(); // resnap to the server's truth either way
+        logEvent('project_access_set', { grants: access.length, shared: true });
+        return;
+      }
+      // Local project: a draft roster that ships when the project is shared.
+      await patchProjectLocal(projectId, { access });
       logEvent('project_access_set', { grants: access.length });
     },
 
+    async shareProject(id) {
+      const account = get().settings.account;
+      const orgId = account?.org?.serverId;
+      if (account?.type !== 'commercial' || !orgId) {
+        get().showToast('Sharing needs a company account signed in.');
+        return;
+      }
+      if (!isOrgAdmin(account)) {
+        get().showToast('Only an admin can share a project with the team.');
+        return;
+      }
+      const project = get().settings.projects?.find((p) => p.id === id);
+      if (!project || project.shared) return;
+      const token = await orgProjectToken();
+      if (!token) {
+        get().showToast('Sign in to share a project.');
+        return;
+      }
+      try {
+        const serverId = await createOrgProject(token, {
+          orgId,
+          name: project.name,
+          instructions: project.instructions ?? '',
+          repoIds: project.repoIds,
+        });
+        // Push any grants drafted while the project was local.
+        for (const g of project.access ?? []) {
+          try {
+            await setOrgProjectAccess(token, serverId, g.email, g.level);
+          } catch {
+            // A draft email that is not an org member is skipped; the admin can
+            // re-add it from the roster once the person has a seat.
+          }
+        }
+        await patchProjectLocal(id, {
+          shared: true,
+          serverId,
+          orgId,
+          rev: 1,
+          myLevel: 'edit',
+        });
+        await get().syncOrgProjects();
+        get().showToast('Shared with your team.');
+        logEvent('project_shared');
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : 'Could not share this project.');
+      }
+    },
+
+    async unshareProject(id) {
+      const project = get().settings.projects?.find((p) => p.id === id);
+      if (!project?.shared || !project.serverId) return;
+      const token = await orgProjectToken();
+      if (token) {
+        try {
+          await deleteOrgProject(token, project.serverId);
+        } catch (err) {
+          get().showToast(err instanceof Error ? err.message : 'Could not stop sharing.');
+          return;
+        }
+      }
+      await patchProjectLocal(id, {
+        shared: false,
+        serverId: undefined,
+        orgId: undefined,
+        rev: undefined,
+        myLevel: undefined,
+      });
+      get().showToast('No longer shared with the team.');
+      logEvent('project_unshared');
+    },
+
+    async syncOrgProjects() {
+      const account = get().settings.account;
+      // Only a server-backed commercial org has shared projects to pull.
+      if (account?.type !== 'commercial' || !account.org?.serverId) return;
+      const token = await orgProjectToken();
+      if (!token) return;
+      try {
+        const rows = await listOrgProjects(token);
+        const merged = mergeSharedProjects(get().settings.projects ?? [], rows);
+        await get().saveSettings({ projects: merged });
+      } catch {
+        // Offline, or the migration is not live yet: keep local projects as-is.
+      }
+    },
+
     async deleteProject(id) {
+      const target = get().settings.projects?.find((p) => p.id === id);
+      // A shared project is removed on the server too (the RPC needs edit). Bail
+      // if the server refuses, so the row is not orphaned there.
+      if (target?.shared && target.serverId) {
+        const token = await orgProjectToken();
+        if (token) {
+          try {
+            await deleteOrgProject(token, target.serverId);
+          } catch (err) {
+            get().showToast(err instanceof Error ? err.message : 'Could not delete this project.');
+            return;
+          }
+        }
+      }
       const projects = (get().settings.projects ?? []).filter((p) => p.id !== id);
       const activeProjectId =
         get().settings.activeProjectId === id ? undefined : get().settings.activeProjectId;
@@ -2421,6 +2617,14 @@ export const useApp = create<AppState>((set, get) => {
       // device never shows the previous org's note titles or open note to the
       // next person who signs in.
       resetOrgVault();
+      // Drop the org's shared projects from this device so the next person to
+      // sign in never sees the previous account's team projects. Local projects
+      // stay. (Their chats keep their local link; it simply resolves to nothing
+      // until the project is pulled again on the next sign-in.)
+      const localProjects = (get().settings.projects ?? []).filter((p) => !p.shared);
+      if (localProjects.length !== (get().settings.projects ?? []).length) {
+        await get().saveSettings({ projects: localProjects });
+      }
       set({
         authSession: undefined,
         serverRole: undefined,
