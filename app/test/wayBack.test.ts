@@ -98,7 +98,7 @@ describe('the way back', () => {
     // their own. SheetHead is the round close over a hairline (RepoPicker's
     // shape). A sheet whose body ends in Cancel or Done is exempt.
     const uses: Array<[string[], number]> = [
-      [['screens', 'SettingsScreen.tsx'], 4], // account, log, search, paths
+      [['screens', 'SettingsScreen.tsx'], 3], // account, log, search
       [['screens', 'StackScreen.tsx'], 1], // pick a model for a role
       [['screens', 'VaultScreen.tsx'], 2], // note options, where the vault lives
       [['components', 'SourcePicker.tsx'], 1],
