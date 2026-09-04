@@ -6,6 +6,7 @@ import type {
   Catalog,
   DriverEvent,
   PermissionMode,
+  ReconcileResult,
   StackHealth,
   StackHealthRange,
 } from 'os-code/protocol';
@@ -154,6 +155,10 @@ export interface OscodeBridge {
   pickFolder(): Promise<string | null>;
   cloneRepo(url: string): Promise<{ cwd: string; name: string } | { error: string }>;
   recentWorkspaces(): Promise<Array<{ cwd: string; name: string; lastUsed?: string }>>;
+  /** Push each clone's unpushed commits to its remote (merging a moved-on
+   *  remote first), so nothing a project committed lingers only on this device.
+   *  Never force-pushes; surfaces conflicts. Returns one result per repo. */
+  reconcileRepos(roots: string[]): Promise<ReconcileResult[]>;
 
   // Phone pairing (the daemon).
   daemonInfo(): Promise<DaemonInfo>;

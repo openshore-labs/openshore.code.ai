@@ -448,6 +448,16 @@ execution contract. Newest at the bottom.
   reading a .md file directly inside one, with a 4MB size cap. So the handlers
   are self-evidently safe in isolation, not only because the renderer is trusted
   (CTO GO, both its non-blocking follow-ups folded in).
+- 2026-09-04: Offline reconcile pushes the repo's unpushed commits (notes ride
+  with the code) to the tracking upstream, automatically on app open and on
+  reconnect (founder's picks). Never force-pushes; on a moved-on remote it
+  fetches and merges, and a real conflict is aborted and surfaced, never
+  clobbered. It runs desktop-side only, since that is where the clones and the
+  agent's commits live; iOS reads the always-current remote.
+- 2026-09-04: Reconcile scope is each project's PRIMARY local clone (the first
+  non-GitHub repo id), matching the "primary repo" choice for the notes, rather
+  than every attached repo, so the behavior is predictable and does not push
+  repos the project only references remotely.
 - 2026-09-04: The five presets auto-write through a dedicated
   `projectMemoryWrite` tool that the permission engine allows by name, rather
   than making the existing `vaultWrite` path-aware. Keeps `vaultWrite`'s

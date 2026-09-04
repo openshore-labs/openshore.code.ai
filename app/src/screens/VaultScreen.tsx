@@ -52,6 +52,7 @@ export function VaultScreen() {
     settings,
     showToast,
     openProjectMemory,
+    repoSyncConflicts,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -562,6 +563,13 @@ export function VaultScreen() {
             <p className="hint" style={{ marginTop: 0 }}>
               Historical knowledge the agent keeps in each project's repository. Read only here.
             </p>
+            {repoSyncConflicts && repoSyncConflicts.length > 0 ? (
+              <p className="hint" style={{ marginTop: 0, color: 'var(--warn)' }}>
+                {repoSyncConflicts.length === 1
+                  ? '1 repository needs a manual merge before it can sync. Your work is safe on this device.'
+                  : `${repoSyncConflicts.length} repositories need a manual merge before they can sync. Your work is safe on this device.`}
+              </p>
+            ) : null}
             <div className="vault-tree">
               {settings.projects!.map((p) => (
                 <button

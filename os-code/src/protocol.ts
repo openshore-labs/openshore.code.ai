@@ -16,6 +16,12 @@ export { PERMISSION_MODES } from './core/agent/types.js';
 import type { PermissionMode } from './core/agent/types.js';
 export { INIT_PROMPT } from './core/agent/initPrompt.js';
 
+// Repo reconcile result (push unpushed commits, merge a moved-on remote). Type
+// only: the reconcile engine itself pulls Node/simple-git, but its result shape
+// is pure data the WebView needs to render the sync outcome. `export type` is
+// erased at build, so no Node runtime import reaches the bundle.
+export type { ReconcileResult, ReconcileStatus } from './git/reconcile.js';
+
 export {
   CatalogSchema,
   CatalogModelSchema,
