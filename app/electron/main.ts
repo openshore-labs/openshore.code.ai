@@ -435,7 +435,12 @@ ipcMain.handle(
     _e,
     sessionId: string,
     approvalId: string,
-    answer: { approve: boolean; alwaysThisSession?: boolean },
+    answer: {
+      approve: boolean;
+      alwaysThisSession?: boolean;
+      alwaysInProject?: boolean;
+      reason?: string;
+    },
   ) => host.answerApproval(sessionId, approvalId, answer),
 );
 

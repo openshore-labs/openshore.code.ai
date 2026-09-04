@@ -652,10 +652,14 @@ export class AgentSession {
         if (saved) permissions.allowForSession(call.name);
       }
       if (!answer.approve) {
-        this.emit({ type: 'tool-denied', call, reason: 'You declined this step.' });
+        // A caller-supplied reason (e.g. Terminal Control is off) tells the
+        // model what to do about the denial; otherwise it is a plain decline.
+        const denied = answer.reason?.trim();
+        this.emit({ type: 'tool-denied', call, reason: denied || 'You declined this step.' });
         this.pushObservation(
           call,
-          'The user declined this action. Do not retry it as-is; adjust the approach or ask what they would prefer.',
+          denied ||
+            'The user declined this action. Do not retry it as-is; adjust the approach or ask what they would prefer.',
           toolMode,
         );
         return 'failed';

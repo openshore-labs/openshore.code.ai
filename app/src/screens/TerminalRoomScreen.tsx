@@ -8,9 +8,11 @@
 // attached over the tailnet), so on a one machine setup there is never a choice
 // to make. Reaching a second desktop's own hub is a separate, approved
 // follow-up; for now this room shows the local engine and any attached hub.
+import type { CSSProperties } from 'react';
 import { driverFor, isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
+import { hapticApproval } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { Switch } from '../components/Switch.js';
 import { DesktopTerminal } from '../components/DesktopTerminal.js';
@@ -31,7 +33,7 @@ export function TerminalRoomScreen() {
 
   const driver = activeId ? driverFor(activeId) : undefined;
   const hasTerminal = typeof driver?.openTerminal === 'function';
-  const desktopLocal = isDesktop() && Boolean(bridge());
+  const desktopLocal = isDesktop() && Boolean(bridge()) && !settings.preferRemoteHub;
   const targetId = terminalTargetId({ desktopLocal, daemon: settings.daemon });
   const targetLabel = terminalTargetLabel({ desktopLocal, daemon: settings.daemon });
   const canControl = canControlTerminal(
@@ -100,26 +102,32 @@ export function TerminalRoomScreen() {
       <div className="screen-inner">
         <h1>Terminal</h1>
         <p className="lead">
-          The terminal runs wherever your active coding session runs. Turn on Terminal Control to
-          let the model use it on its own.
+          The terminal runs wherever your active coding session runs. With Terminal Control off, the
+          model stays out of it and you drive the terminal yourself. Turn it on to let the model run
+          commands here.
         </p>
 
         {targetId ? (
-          <div className="card tc-card">
+          <div className="card tc-card tc-section" style={{ '--i': 0 } as CSSProperties}>
             <div className="card-row">
               <div className="grow">
                 <h3 style={{ margin: 0 }}>Terminal Control</h3>
                 <div className="sub">
                   {controlOn
                     ? `On. The model runs commands on ${targetLabel} on its own.`
-                    : `Off. The model asks first, so nothing runs on ${targetLabel} without your tap.`}
+                    : `Off. The model cannot use the terminal on ${targetLabel}. You run commands here yourself.`}
                 </div>
               </div>
               {canControl ? (
                 <Switch
                   checked={controlOn}
                   label="Terminal Control"
-                  onChange={(next) => void setTerminalControl(next)}
+                  onChange={(next) => {
+                    // Turning it on is a decisive commit (autonomous shell), so
+                    // mark it with the firmer tap over the Switch's own tick.
+                    if (next) hapticApproval();
+                    void setTerminalControl(next);
+                  }}
                 />
               ) : (
                 <span className="pill">admin only</span>
@@ -134,16 +142,17 @@ export function TerminalRoomScreen() {
         ) : null}
 
         {hasTerminal && driver ? (
-          <>
+          <div className="tc-section" style={{ '--i': 1 } as CSSProperties}>
             <div className="tc-running">
+              <span className="tc-dot" aria-hidden="true" />
               Running on <span className="tc-host">{targetLabel}</span>
             </div>
             <div className="terminal-room-live">
               <DesktopTerminal key={activeId} driver={driver} />
             </div>
-          </>
+          </div>
         ) : targetId ? (
-          <div className="card">
+          <div className="card tc-section" style={{ '--i': 1 } as CSSProperties}>
             <h3 style={{ marginTop: 0 }}>No session open</h3>
             <p className="hint" style={{ marginBottom: 10 }}>
               The terminal follows your active coding session. Open a repository to start one on{' '}
@@ -154,7 +163,7 @@ export function TerminalRoomScreen() {
             </button>
           </div>
         ) : (
-          <div className="card">
+          <div className="card tc-section" style={{ '--i': 0 } as CSSProperties}>
             <h3 style={{ marginTop: 0 }}>Connect your hub</h3>
             <p className="hint" style={{ marginBottom: 10 }}>
               This device is not paired with a computer yet. Set it up under Desktop and phone, then

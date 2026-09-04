@@ -109,13 +109,12 @@ import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
 import {
   DEFAULT_PERMISSION_MODE,
-  autoApproves,
   normalizePermissionMode,
   type PermissionMode,
 } from '../lib/permissionMode.js';
 import {
   canControlTerminal as canControlTerminalFor,
-  shouldAutoRunShell,
+  decideApproval,
   terminalTargetId,
 } from '../lib/terminalControl.js';
 import { hapticSuccess } from '../lib/haptics.js';
@@ -224,7 +223,21 @@ export type PaywallReason = 'coding' | 'marketplace';
 
 export interface AppSettings {
   onboarded: boolean;
+  /** The active hub: the desktop this device runs sessions on over the tailnet.
+   *  One value, read everywhere a daemon call is made. Multi-hub keeps the saved
+   *  set in `daemons` and selecting one writes it here, so every existing reader
+   *  keeps working against the active hub. */
   daemon?: DaemonTarget;
+  /** Saved hubs, for switching between more than one central computer. The
+   *  active one is mirrored into `daemon`. Additive: absent means the single
+   *  paired hub in `daemon`, exactly as before. */
+  daemons?: DaemonTarget[];
+  /** On a desktop only: run sessions on a remote hub (the active `daemon`)
+   *  instead of this machine's own engine. A laptop that is not the hub sets
+   *  this to reach the central computer, the way the phone does. Off (default)
+   *  keeps a desktop as its own engine. Ignored on a phone, which has no engine
+   *  of its own. Device local. */
+  preferRemoteHub?: boolean;
   claudeModel: string;
   /** Downloaded on-device models: catalog id -> friendly name. */
   deviceModels: Record<string, string>;
@@ -374,6 +387,14 @@ const vaultBodyCache = new Map<string, { updatedAt: string; text: string }>();
 
 export function driverFor(conversationId: string): ChatDriver | undefined {
   return drivers.get(conversationId);
+}
+
+/** The saved hubs, with the older single-hub setup folded in: a device that only
+ *  ever had one paired `daemon` reads as a one-item list, so multi-hub is purely
+ *  additive and needs no migration. */
+export function hubList(settings: AppSettings): DaemonTarget[] {
+  if (settings.daemons) return settings.daemons;
+  return settings.daemon ? [settings.daemon] : [];
 }
 
 interface AppState {
@@ -782,9 +803,20 @@ interface AppState {
   /** Whether the active conversation can run terminal commands (desktop-backed). */
   canRunCommands(): boolean;
   /** Set Terminal Control for the machine the active session runs on. On lets
-   *  the model run shell commands on its own there; Off (the default) keeps it
-   *  to the approval sheet. Scoped to that one target. */
+   *  the model run shell commands on its own there; Off (the default) blocks the
+   *  model from the terminal entirely. Scoped to that one target. */
   setTerminalControl(on: boolean): Promise<void>;
+  /** Save a hub (upsert by base URL) and make it the active one. */
+  saveHub(target: DaemonTarget): Promise<void>;
+  /** Switch the active hub to a saved one by base URL. */
+  selectHub(baseUrl: string): Promise<void>;
+  /** Forget a saved hub; if it was active, fall back to another or none. */
+  removeHub(baseUrl: string): Promise<void>;
+  /** Give a saved hub a friendly name (blank clears it). */
+  renameHub(baseUrl: string, name: string): Promise<void>;
+  /** On a desktop, run sessions on the active remote hub instead of this
+   *  machine's own engine. Ignored on a phone. */
+  setPreferRemoteHub(on: boolean): Promise<void>;
 
   saveSettings(patch: Partial<AppSettings>): Promise<void>;
   /** Record a freshly downloaded on-device model, reading fresh state so two
@@ -1013,37 +1045,35 @@ export const useApp = create<AppState>((set, get) => {
       // decide inside the loop (it never asks for what the mode allows), so a
       // question that reaches here from one is a real one and always shows.
       if (event.type === 'approval-request') {
-        // Terminal Control, ahead of the mode rules: when the person has turned
-        // it On for the machine this session runs on (and is allowed to), a
-        // shell command runs on its own. It governs the hub's own terminal, so
-        // it only ever fires for a desktop-backed session (the engine drivers,
-        // the sole emitters of runShell today); the driver.kind fence keeps a
-        // future client brain that gained a shell tool from being auto-approved
-        // silently. Off, the default, this never fires, so the command falls
-        // through to the approval sheet and nothing touches the machine without
-        // a tap.
+        // Terminal Control is the master gate for the model's shell on the hub:
+        // On (and permitted) auto-runs the command; Off auto-denies it with a
+        // reason that sends the person to the switch, keeping the model and the
+        // terminal fully separate until they let it in. It governs only a shell
+        // call on a desktop-backed session (the engine drivers, the sole
+        // emitters of runShell); a non-shell desktop ask (cloud spend) and a
+        // client brain fall through untouched to the existing rules.
         const s = get();
-        const desktopLocal = isDesktop() && Boolean(bridge());
-        const targetId = terminalTargetId({ desktopLocal, daemon: s.settings.daemon });
-        const canControl = canControlTerminalFor(
-          s.settings.account,
-          isOrgAdmin(s.settings.account) || s.serverRole === 'admin',
-        );
-        if (
-          driver.kind === 'desktop' &&
-          shouldAutoRunShell(event.request, {
-            targetId,
-            control: s.settings.terminalControl,
-            canControl,
-          })
-        ) {
+        const decision = decideApproval(event.request, {
+          driverKind: driver.kind,
+          desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
+          daemon: s.settings.daemon,
+          control: s.settings.terminalControl,
+          canControl: canControlTerminalFor(
+            s.settings.account,
+            isOrgAdmin(s.settings.account) || s.serverRole === 'admin',
+          ),
+          mode: s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
+        });
+        if (decision.action === 'auto-approve') {
           drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
-        } else if (driver.kind !== 'desktop') {
-          const mode = s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
-          if (autoApproves(mode, event.request.toolName, event.request.kind)) {
-            drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
-          }
+        } else if (decision.action === 'auto-deny') {
+          drivers
+            .get(conversationId)
+            ?.answerApproval(event.request.id, { approve: false, reason: decision.reason });
         }
+        // 'sheet': leave the approval request on the sheet for the person. A
+        // desktop non-shell tool (an always-ask vaultWrite included) is never
+        // client-auto-approved; the engine already decided to ask.
       }
       // The task ended: a message typed mid-run goes out now, in order. A
       // completed task also gets the success tap Claude Code's bell stands for.
@@ -1163,7 +1193,11 @@ export const useApp = create<AppState>((set, get) => {
           projectSecrets,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
-        if (isDesktop() && bridge()) {
+        // A desktop is its own engine, unless the person has pointed it at a
+        // remote hub (a laptop that is not the central computer): then it runs
+        // sessions on that hub over the tailnet, the way the phone does, and
+        // falls through to the daemon path below.
+        if (isDesktop() && bridge() && !settings.preferRemoteHub) {
           let sessionId = conv.source.sessionId;
           let journal: Array<{ seq: number; event: DriverEvent }> | undefined;
           if (!sessionId) {
@@ -4203,11 +4237,44 @@ export const useApp = create<AppState>((set, get) => {
 
     async setTerminalControl(on) {
       const s = get();
-      const desktopLocal = isDesktop() && Boolean(bridge());
+      const desktopLocal = isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub;
       const targetId = terminalTargetId({ desktopLocal, daemon: s.settings.daemon });
       if (!targetId) return;
       const map = { ...(s.settings.terminalControl ?? {}), [targetId]: on };
       await get().saveSettings({ terminalControl: map });
+    },
+
+    async saveHub(target) {
+      const list = hubList(get().settings);
+      const prior = list.find((d) => d.baseUrl === target.baseUrl);
+      // Keep a name already on file if this save did not carry one.
+      const merged: DaemonTarget = { ...target, name: target.name ?? prior?.name };
+      const others = list.filter((d) => d.baseUrl !== target.baseUrl);
+      await get().saveSettings({ daemon: merged, daemons: [...others, merged] });
+    },
+
+    async selectHub(baseUrl) {
+      const hub = hubList(get().settings).find((d) => d.baseUrl === baseUrl);
+      if (hub) await get().saveSettings({ daemon: hub });
+    },
+
+    async removeHub(baseUrl) {
+      const s = get().settings;
+      const daemons = hubList(s).filter((d) => d.baseUrl !== baseUrl);
+      const daemon = s.daemon?.baseUrl === baseUrl ? daemons[0] : s.daemon;
+      await get().saveSettings({ daemons, daemon });
+    },
+
+    async renameHub(baseUrl, name) {
+      const s = get().settings;
+      const trimmed = name.trim() || undefined;
+      const daemons = hubList(s).map((d) => (d.baseUrl === baseUrl ? { ...d, name: trimmed } : d));
+      const daemon = s.daemon?.baseUrl === baseUrl ? { ...s.daemon, name: trimmed } : s.daemon;
+      await get().saveSettings({ daemons, daemon });
+    },
+
+    async setPreferRemoteHub(on) {
+      await get().saveSettings({ preferRemoteHub: on });
     },
 
     sendCommandStdin(runId, data) {
