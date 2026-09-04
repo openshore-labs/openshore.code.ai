@@ -9,10 +9,13 @@ attribution ship in the app.
 
 ## Harbor Mini (bundled with the app)
 
-- **Weights:** Qwen2.5-0.5B-Instruct (GGUF, Q4_K_M quantization).
-- **Source:** the Qwen team, via Hugging Face (`Qwen/Qwen2.5-0.5B-Instruct`).
-  The weights are placed into the app bundle at build time from
-  `HARBOR_MINI_MODEL_URL` in `app/src/lib/harborMini.ts` (see `docs/HARBOR.md`).
+- **Weights:** SmolLM2-135M-Instruct (GGUF, Q4_K_M quantization), about 105 MB.
+  Chosen so the whole app stays under the 170 MB download budget once the guide
+  is bundled (Qwen2.5-0.5B was 380 MB, far over).
+- **Source:** Hugging Face (`HuggingFaceTB/SmolLM2-135M-Instruct`), via the
+  unsloth GGUF repo. The weights are placed into the app bundle at build time
+  from `HARBOR_MINI_MODEL_URL` in `app/src/lib/harborMini.ts` (see
+  `docs/HARBOR.md`).
 - **License:** Apache License 2.0. Redistributed inside the app under its terms,
   with the license and attribution retained.
 

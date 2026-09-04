@@ -303,7 +303,7 @@ export function SettingsScreen() {
               Harbor and Harbor Mini, and any model you run on this device, are AI. They can be
               confidently wrong, and OpenShore does not filter what a local model says. Neither is a
               coder. For real work, connect a bigger model. What you type to a local model stays on
-              this device. Harbor is Qwen3-1.7B and Harbor Mini is Qwen2.5-0.5B-Instruct, both used
+              this device. Harbor is Qwen3-1.7B and Harbor Mini is SmolLM2-135M-Instruct, both used
               under the Apache License 2.0.
             </p>
           </InfoSheet>

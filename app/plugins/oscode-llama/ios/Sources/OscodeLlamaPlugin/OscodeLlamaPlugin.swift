@@ -150,9 +150,9 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         #if targetEnvironment(simulator)
         call.resolve(["supported": true, "reason": "Simulator run: slower than a real iPhone."])
         #else
-        // Harbor (0.5B) and other pocket models run comfortably on ~3GB
-        // phones; keep this gate low so the built-in guide is available broadly.
-        // The marketplace is where larger pocket models get sized per device.
+        // Harbor Mini (135M, bundled) and other pocket models run comfortably on
+        // ~3GB phones; keep this gate low so the built-in guide is available
+        // broadly. The marketplace is where larger pocket models get sized per device.
         let ramGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
         if ramGB < 2.9 {
             call.resolve([

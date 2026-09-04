@@ -1,14 +1,25 @@
-// Harbor Mini: the small, fast on-device guide. Qwen2.5-0.5B, and now BUNDLED
-// with the app so it is present the moment the app is installed, with no
-// first-launch download. It greets the user and answers setup and "how do I"
+// Harbor Mini: the small, fast on-device guide. SmolLM2-135M-Instruct, and
+// BUNDLED with the app so it is present the moment the app is installed, with
+// no first-launch download. It greets the user and answers setup and "how do I"
 // questions offline, handing off to a real model for actual work. It is a
 // concierge, never a stack member: not a quarterback, not a specialist, and
 // never competes with the models the user chooses. The lighter sibling of
 // Harbor (the flagship guide, in harbor.ts).
 //
-// Harbor Mini is a reserved on-device model id, so it flows through the
-// existing OnDeviceDriver / llama plugin. Because it ships inside the app
-// bundle, the native ModelStore resolves it from the bundle (see
+// The model was chosen against a hard budget: the whole App Store download must
+// stay under 170 MB, and the guide's weights ship inside it. SmolLM2-135M's
+// Q4_K_M GGUF is about 105 MB, small enough to bundle with room for the base
+// app; the previous Qwen2.5-0.5B was 380 MB, far over budget once bundled (its
+// 151k-token vocabulary inflates even a 0.5B model). SmolLM2-135M is small, so
+// it is a grounded guide, not a reasoner: it reads the injected app facts and
+// walks the person through the front end, and hands off to Harbor for anything
+// real. See DECISIONS.md.
+//
+// Harbor Mini is a reserved on-device model id, decoupled from the weights it
+// points at (like Harbor's id): swapping the model changes the URL, labels, and
+// attribution, never the id, so a bundled harbor-mini.gguf keeps working. It
+// flows through the existing OnDeviceDriver / llama plugin. Because it ships
+// inside the app bundle, the native ModelStore resolves it from the bundle (see
 // ModelStore.swift bundledURL), so it is always "present" on iOS and cannot be
 // removed. The download path still exists as the fallback for any build that
 // does not carry the bundled weights.
@@ -18,12 +29,13 @@ import { APP_KNOWLEDGE } from './guideKnowledge.js';
 export const HARBOR_MINI_MODEL_ID = 'harbor-mini';
 export const HARBOR_MINI_MODEL_NAME = 'Harbor Mini';
 
-// Qwen2.5-0.5B-Instruct, Q4_K_M (Apache-2.0), from the Qwen team on Hugging
-// Face. VERIFY the exact filename/casing resolves (200) before a build; this
-// sandbox cannot reach the network to check it.
+// SmolLM2-135M-Instruct, Q4_K_M (Apache-2.0), from unsloth's GGUF repo (the
+// same source we use for Harbor's Qwen3-1.7B). About 105 MB. VERIFY the exact
+// filename/casing resolves (200) before a build; this sandbox cannot reach
+// huggingface.co to check it.
 export const HARBOR_MINI_MODEL_URL =
-  'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';
-export const HARBOR_MINI_APPROX_LABEL = 'about 380 MB';
+  'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf';
+export const HARBOR_MINI_APPROX_LABEL = 'about 105 MB';
 
 // Harbor Mini ships inside the app bundle, so it is available on first launch
 // with nothing to download, and it cannot be uninstalled (the bytes are part
