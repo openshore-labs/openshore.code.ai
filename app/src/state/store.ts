@@ -993,9 +993,13 @@ export const useApp = create<AppState>((set, get) => {
       if (event.type === 'approval-request') {
         // Terminal Control, ahead of the mode rules: when the person has turned
         // it On for the machine this session runs on (and is allowed to), a
-        // shell command runs on its own, engine session or client brain alike.
-        // Off, the default, this never fires, so the command falls through to
-        // the approval sheet and nothing touches the machine without a tap.
+        // shell command runs on its own. It governs the hub's own terminal, so
+        // it only ever fires for a desktop-backed session (the engine drivers,
+        // the sole emitters of runShell today); the driver.kind fence keeps a
+        // future client brain that gained a shell tool from being auto-approved
+        // silently. Off, the default, this never fires, so the command falls
+        // through to the approval sheet and nothing touches the machine without
+        // a tap.
         const s = get();
         const desktopLocal = isDesktop() && Boolean(bridge());
         const targetId = terminalTargetId({ desktopLocal, daemon: s.settings.daemon });
@@ -1004,6 +1008,7 @@ export const useApp = create<AppState>((set, get) => {
           isOrgAdmin(s.settings.account) || s.serverRole === 'admin',
         );
         if (
+          driver.kind === 'desktop' &&
           shouldAutoRunShell(event.request, {
             targetId,
             control: s.settings.terminalControl,
