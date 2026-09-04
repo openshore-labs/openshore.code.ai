@@ -109,7 +109,7 @@ export function stackForProfile(stacks: ProfileStacks | undefined, profile: Prof
   return stacks?.[profile] ?? emptyStack();
 }
 
-/** A fresh stack: Harbor Mini is the first Reasoning LLM (kept small so
+/** A fresh stack: Harbor Light is the first Reasoning LLM (kept small so
  *  first-run download size and time stay low), nothing placed yet. */
 export function emptyStack(): AppStack {
   return { reasoning: harborRef(), active: [], saved: {} };

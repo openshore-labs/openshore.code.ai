@@ -32,7 +32,7 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
     title: 'Get Harbor',
     goal: 'Add Harbor, a stronger on-device model that can help me build for real.',
     steps: [
-      'Open Settings and find the Harbor section. Harbor Mini, the built-in guide, is already there. Harbor is its bigger sibling.',
+      'Open Settings and find the Harbor section. Harbor Light, the built-in guide, is already there. Harbor is its bigger sibling.',
       'On the Harbor row, tap Install. It downloads straight from the source, about 1.1 GB, roughly a couple of minutes on wifi. You can keep chatting while it lands.',
       'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
     ],

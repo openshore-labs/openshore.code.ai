@@ -1,4 +1,4 @@
-// The tappable "First Moves" under a fresh Harbor Mini chat, so a brand-new
+// The tappable "First Moves" under a fresh Harbor Light chat, so a brand-new
 // person never faces a blank composer. Creative Studio direction "The Standing
 // Light": the chips arrive stepped by --stagger, so they assemble calmly under
 // the seeded greeting rather than popping in as a block. Each carries press-fb,

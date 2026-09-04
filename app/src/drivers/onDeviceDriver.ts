@@ -119,7 +119,7 @@ export class OnDeviceDriver implements ChatDriver {
           type: 'status',
           message: `Warming up ${this.modelName} on this device.`,
         });
-        // Harbor Mini only writes short guidance, so a small context keeps
+        // Harbor Light only writes short guidance, so a small context keeps
         // the KV cache and load time down. Harbor is bigger and does an
         // extra search round-trip, so it gets the full window like a chosen
         // pocket model does.

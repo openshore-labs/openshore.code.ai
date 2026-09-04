@@ -36,7 +36,7 @@ transport is IP-addressed CGNAT.
 
 ## Background model downloads (background URLSession)
 
-Pocket-model weights (Harbor, Harbor Mini, and marketplace models) are large:
+Pocket-model weights (Harbor, Harbor Light, and marketplace models) are large:
 about 380 MB to over 1 GB each. They download on a background `URLSession`
 (`URLSessionConfiguration.background`, identifier
 `ai.openshore.oscode.model-downloads`, in

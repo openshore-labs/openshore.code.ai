@@ -3,6 +3,28 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, renamed to Harbor Light, all Creative Studio microcopy applied)
+
+Founder call: the built-in guide is now named **Harbor Light** (was Harbor
+Mini), and every Creative Studio proposal from the "Standing Light" pass is
+applied. Branch `claude/harbor-settings-rows-bundle-tbu2ct`, then to `main`.
+
+- **Rename.** Every user-facing "Harbor Mini" string reads "Harbor Light"
+  (`HARBOR_MINI_MODEL_NAME` = "Harbor Light", greeting, cards, personas, docs,
+  privacy copy). The code identifiers (`HARBOR_MINI_*`, `harborMini.ts`) and the
+  model id `"harbor-mini"` are kept as the stable slot: the id rides persisted
+  settings, stack refs, and the bundled `harbor-mini.gguf`, so it never moves on
+  a rename (same pattern as `HARBOR_MODEL_NAME` "Harbor 1.0" over id "harbor").
+  A test pins that no "Harbor Mini" survives in shipping copy.
+- **All studio microcopy wired.** Byline is now the three-beat promise "Built
+  in. Offline. Always on." A Harbor Light chat's composer rests on "Still here.
+  Ask me anything about the app." (`HARBOR_MINI_EMPTY_HINT`). Starting a Harbor
+  download toasts "Bringing it in. I'll be right here."
+  (`HARBOR_MINI_HANDOFF_LINE`). Greeting, First Moves, hero card, "go further"
+  tier, graceful-limit tone, and motion (stagger, press-fb, no first-run
+  spinner) were already in from the prior pass. `test/harborGuides.test.ts`
+  covers the rename and the new microcopy.
+
 ## Current state (2026-09-04, Harbor Mini optimized for guiding, delightful first-run by the Creative Studio)
 
 Founder ask: with Mini now SmolLM2-135M, optimize it purely for guiding around

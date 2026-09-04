@@ -512,3 +512,12 @@ execution contract. Newest at the bottom.
   only primary button), demoting Harbor/cloud/Marketplace to a "go further"
   tier. Creative Studio direction "The Standing Light." Mini is instant now, so
   making it the front door is honest, not hype.
+- 2026-09-04: Renamed the guide to "Harbor Light" (display only). Kept the code
+  identifiers HARBOR_MINI_* and the model id "harbor-mini" as the stable slot:
+  the id is persisted in settings, stack refs, and the bundled harbor-mini.gguf,
+  so moving it would strand state and the bundle for no user gain. Same slot
+  pattern as Harbor's id vs its display name.
+- 2026-09-04: Applied the studio's byline "Built in. Offline. Always on." over
+  the earlier capability sentence (founder said apply all studio proposals). The
+  "Built in" pill stays as the row's control-slot status; a small overlap with
+  the byline is acceptable next to the honest name of the affordance.

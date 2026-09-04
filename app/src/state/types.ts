@@ -359,7 +359,7 @@ export function sourceLabel(source: ConversationSource): string {
     case 'desktop-chat':
       return 'Your desktop · chat';
     case 'device':
-      if (isHarborMini(source.modelId)) return 'Harbor Mini · built-in guide';
+      if (isHarborMini(source.modelId)) return 'Harbor Light · built-in guide';
       if (isHarbor(source.modelId)) return 'Harbor · built-in guide';
       return `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
     case 'cloud':

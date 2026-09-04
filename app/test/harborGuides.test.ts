@@ -1,4 +1,4 @@
-// The two Harbor guides as they appear in Settings: Harbor Mini bundled with
+// The two Harbor guides as they appear in Settings: Harbor Light bundled with
 // the app (Built in, not removable) and Harbor as a real install/uninstall
 // download. Plus the disclosure boundary both guides carry: open about every
 // front-end feature, silent on backend build internals. Kept in tests so a copy
@@ -14,9 +14,12 @@ import {
   HARBOR_MINI_APPROX_LABEL,
   HARBOR_MINI_BUNDLED,
   HARBOR_MINI_BYLINE,
+  HARBOR_MINI_EMPTY_HINT,
   HARBOR_MINI_FIRST_MOVES,
   HARBOR_MINI_GREETING,
+  HARBOR_MINI_HANDOFF_LINE,
   HARBOR_MINI_MODEL_ID,
+  HARBOR_MINI_MODEL_NAME,
   HARBOR_MINI_MODEL_URL,
   buildHarborMiniSystemPrompt,
 } from '../src/lib/harborMini.js';
@@ -30,7 +33,7 @@ function oneSentence(s: string): boolean {
   return s.trim().endsWith('.') && (s.match(/\./g) ?? []).length === 1;
 }
 
-describe('Harbor Mini is bundled (native with the app)', () => {
+describe('Harbor Light is bundled (native with the app)', () => {
   it('declares itself bundled', () => {
     expect(HARBOR_MINI_BUNDLED).toBe(true);
   });
@@ -70,11 +73,11 @@ describe('the Harbor rows in Settings', () => {
   const screen = readFileSync(join(process.cwd(), 'src/screens/SettingsScreen.tsx'), 'utf8');
 
   it('renders both guide rows under the Harbor group', () => {
-    expect(screen).toContain('label="Harbor Mini"');
+    expect(screen).toContain('label="Harbor Light"');
     expect(screen).toContain('label="Harbor"');
   });
 
-  it('gives Harbor Mini the built-in status and Harbor the install toggle', () => {
+  it('gives Harbor Light the built-in status and Harbor the install toggle', () => {
     expect(screen).toContain('bundled={HARBOR_MINI_BUNDLED}');
     expect(screen).toContain('onInstall={() => void installHarbor()}');
     expect(screen).toContain('onUninstall={() => void uninstallHarbor()}');
@@ -82,17 +85,24 @@ describe('the Harbor rows in Settings', () => {
 });
 
 describe('the guide bylines', () => {
-  it('are each a single em-dash-free sentence', () => {
+  it('are em-dash free and short enough for a row', () => {
     for (const byline of [HARBOR_BYLINE, HARBOR_MINI_BYLINE]) {
       expect(byline).not.toMatch(NO_EM_DASH);
-      expect(oneSentence(byline)).toBe(true);
+      expect(byline.length).toBeGreaterThan(0);
+      expect(byline.length).toBeLessThanOrEqual(140);
     }
   });
 
-  it('name what each guide is for', () => {
-    expect(HARBOR_MINI_BYLINE.toLowerCase()).toContain('guide');
-    expect(HARBOR_MINI_BYLINE.toLowerCase()).toContain('limit');
+  it('keeps Harbor a one-sentence capability line', () => {
+    expect(oneSentence(HARBOR_BYLINE)).toBe(true);
     expect(HARBOR_BYLINE.toLowerCase()).toContain('coding agent');
+  });
+
+  it('gives Harbor Light its "always on" promise (Creative Studio)', () => {
+    const b = HARBOR_MINI_BYLINE.toLowerCase();
+    expect(b).toContain('built in');
+    expect(b).toContain('offline');
+    expect(b).toContain('always on');
   });
 });
 
@@ -110,14 +120,14 @@ describe('the front-end open, backend private disclosure boundary', () => {
     }
   });
 
-  it('has Harbor Mini own its limits and point to a bigger model', () => {
+  it('has Harbor Light own its limits and point to a bigger model', () => {
     const mini = buildHarborMiniSystemPrompt().toLowerCase();
     expect(mini).toContain('know your limits');
     expect(mini).toContain('bigger model');
   });
 });
 
-describe('Harbor Mini is optimized for guiding, not building', () => {
+describe('Harbor Light is optimized for guiding, not building', () => {
   const prompt = buildHarborMiniSystemPrompt();
 
   it('scopes it to navigation plus honest handoff, not real work', () => {
@@ -155,6 +165,42 @@ describe('a get-harbor walkthrough exists and is accurate to the Settings row', 
   });
 });
 
+describe('the rename to Harbor Light keeps a stable slot', () => {
+  it('shows "Harbor Light" but keeps the id and bundle on harbor-mini', () => {
+    expect(HARBOR_MINI_MODEL_NAME).toBe('Harbor Light');
+    // The wire id is the stable slot: persisted settings, stack refs, and the
+    // bundled harbor-mini.gguf ride it, so it never changes on a rename.
+    expect(HARBOR_MINI_MODEL_ID).toBe('harbor-mini');
+  });
+
+  it('leaves no "Harbor Mini" in the shipping app copy', () => {
+    for (const rel of [
+      'src/lib/harborMini.ts',
+      'src/lib/harbor.ts',
+      'src/lib/guideKnowledge.ts',
+      'src/components/StartingPaths.tsx',
+      'src/screens/SettingsScreen.tsx',
+    ]) {
+      expect(readFileSync(join(process.cwd(), rel), 'utf8')).not.toContain('Harbor Mini');
+    }
+  });
+});
+
+describe('the remaining Creative Studio microcopy is wired', () => {
+  it('gives a Harbor Light chat its "always here" resting prompt', () => {
+    expect(HARBOR_MINI_EMPTY_HINT).not.toMatch(NO_EM_DASH);
+    const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
+    expect(chat).toContain('HARBOR_MINI_EMPTY_HINT');
+    expect(chat).toContain('placeholder=');
+  });
+
+  it('speaks the handoff line when a bigger model starts coming down', () => {
+    expect(HARBOR_MINI_HANDOFF_LINE).not.toMatch(NO_EM_DASH);
+    const settings = readFileSync(join(process.cwd(), 'src/screens/SettingsScreen.tsx'), 'utf8');
+    expect(settings).toContain('HARBOR_MINI_HANDOFF_LINE');
+  });
+});
+
 describe('the delightful first-run (Creative Studio: The Standing Light)', () => {
   it('greets warmly, is honest, offline, and ends by inviting a first move', () => {
     expect(HARBOR_MINI_GREETING).not.toMatch(NO_EM_DASH);
@@ -173,7 +219,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     }
   });
 
-  it('wires the First Moves into a fresh Harbor Mini chat', () => {
+  it('wires the First Moves into a fresh Harbor Light chat', () => {
     const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
     expect(chat).toContain('MiniFirstMoves');
     expect(chat).toContain('HARBOR_MINI_MODEL_ID');
@@ -181,7 +227,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
 
   it('makes the built-in guide the onboarding hero, others a "go further" tier', () => {
     const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
-    expect(paths).toContain('Harbor Mini is already here');
+    expect(paths).toContain('Harbor Light is already here');
     expect(paths).toContain('Say hello');
     expect(paths).toContain("When you're ready to go further");
   });

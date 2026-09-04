@@ -56,7 +56,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
 
     /// Model ids that ship INSIDE the app bundle, so they are present the moment
     /// the app is installed with nothing to download, and cannot be removed (the
-    /// bytes are part of the app). Harbor Mini is bundled; keep this in step with
+    /// bytes are part of the app). Harbor Light is bundled; keep this in step with
     /// HARBOR_MINI_BUNDLED in app/src/lib/harborMini.ts. The weights file is
     /// dropped into the app's Models resource folder at build time (see
     /// docs/HARBOR.md); it is not committed to the repo.
@@ -207,7 +207,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         let device = deviceURL(for: id)
         if FileManager.default.fileExists(atPath: device.path) { return device }
         if let cloud = iCloudURL(for: id), cloudItemPresent(cloud) { return cloud }
-        // Last, the copy that ships inside the app bundle (Harbor Mini). A
+        // Last, the copy that ships inside the app bundle (Harbor Light). A
         // downloaded or iCloud copy wins over it, but the bundle guarantees the
         // model is always resolvable even with nothing downloaded.
         if let bundled = bundledURL(for: id) { return bundled }
@@ -217,7 +217,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     func list() -> [LocalModel] {
         var models = deviceModels() + iCloudModels()
         let owned = Set(models.map { $0.id })
-        // Surface bundled models (Harbor Mini) as present, unless a downloaded
+        // Surface bundled models (Harbor Light) as present, unless a downloaded
         // or iCloud copy of the same id already covers them. Reported as a
         // device model, never evicted: the bytes are inside the app.
         for id in Self.bundledModelIds where !owned.contains(id) {
@@ -292,7 +292,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     }
 
     func delete(id: String) {
-        // A bundled model (Harbor Mini) lives inside the app and cannot be
+        // A bundled model (Harbor Light) lives inside the app and cannot be
         // removed; any downloaded or iCloud copy is deleted, and the bundle
         // copy keeps the model present. This is what makes "Built in" honest.
         try? FileManager.default.removeItem(at: deviceURL(for: id))
