@@ -17,6 +17,7 @@ import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
 import { analyzeImageTool, delegateTool, searchRepoTool } from '../tools/specialist.js';
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../tools/vault.js';
+import { projectMemoryWriteTool } from '../tools/projectMemory.js';
 import { todoWriteTool } from '../tools/todoWrite.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -54,6 +55,10 @@ export function buildToolRegistry(options: {
   registry.register(vaultReadTool);
   registry.register(vaultListTool);
   registry.register(vaultWriteTool);
+  // The project-memory notes are the exception: hard-scoped to five files under
+  // Projects/<project>/, so these writes land without asking (the engine
+  // auto-allows this tool by name).
+  registry.register(projectMemoryWriteTool);
   // Specialist-facing tools appear only when the stack can serve them, so a
   // single-model setup never tempts the model with tools that cannot work.
   if (options.stackHasVision) registry.register(analyzeImageTool);
@@ -67,8 +72,10 @@ export function buildToolContext(options: {
   config: OscConfig;
   router: Router;
   providers: ProviderRegistry;
+  /** The project this session belongs to, when it belongs to one. */
+  projectName?: string;
 }): ToolContext {
-  const { cwd, config, router, providers } = options;
+  const { cwd, config, router, providers, projectName } = options;
   const egress = new EgressPolicy(config.egress);
   const jail = new Jail(cwd);
 
@@ -104,5 +111,6 @@ export function buildToolContext(options: {
     delegate: (role, task, images) => router.delegate(role, task, images),
     searchRepo,
     vaultRoot,
+    projectName,
   };
 }

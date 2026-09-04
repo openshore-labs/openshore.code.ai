@@ -423,3 +423,59 @@ execution contract. Newest at the bottom.
   review_moderators allowlist seeded by the founder, guarded SECURITY DEFINER
   RPCs, and a panel in AdminScreen that renders only for a moderator (so it
   works for a personal-account operator too, independent of the org umbrella).
+- 2026-09-04: Project memory lives INSIDE the project's primary attached repo,
+  in a folder "OpenShore Project <name> MDs/", committed with the code and not
+  hosted by the app (founder's explicit call, revising an earlier session choice
+  to keep it in the personal Vault). The notes travel with the repo; the harness
+  writes them through its normal repo-jailed file path.
+- 2026-09-04: Only the PRIMARY attached repo holds the folder (not every
+  attached repo), so the notes have one home and cannot diverge across repos.
+- 2026-09-04: The folder name wraps the project name with a fixed prefix and
+  suffix ("OpenShore Project " + name + " MDs"), which both reads plainly and
+  makes a bare ".." project name a literal folder rather than a traversal.
+- 2026-09-04: The memory notes ride into the agent's commit alongside the change
+  that prompted them; the tool does not make a separate commit or push just for
+  the notes.
+- 2026-09-04: The app read-only view of the notes was surfaced for a scope call
+  (net-new plumbing on both platforms), then built full cross-platform on the
+  founder's choice: a desktop repo-read bridge jailed to the repo root, and a
+  read-only GitHub contents client for iOS / clone-less devices. On desktop the
+  local clone is preferred (it shows uncommitted edits); otherwise the primary
+  GitHub repo is read. The view is strictly read-only (the agent owns writes).
+- 2026-09-04: The desktop repo-read IPC handlers are contained twice: a Jail
+  rooted at the repo (blocks traversal/symlink/absolute escape) AND a shape
+  guard that only permits listing an "OpenShore Project <name> MDs/" folder and
+  reading a .md file directly inside one, with a 4MB size cap. So the handlers
+  are self-evidently safe in isolation, not only because the renderer is trusted
+  (CTO GO, both its non-blocking follow-ups folded in).
+- 2026-09-04: Offline reconcile pushes the repo's unpushed commits (notes ride
+  with the code) to the tracking upstream, automatically on app open and on
+  reconnect (founder's picks). Never force-pushes; on a moved-on remote it
+  fetches and merges, and a real conflict is aborted and surfaced, never
+  clobbered. It runs desktop-side only, since that is where the clones and the
+  agent's commits live; iOS reads the always-current remote.
+- 2026-09-04: Reconcile scope is each project's PRIMARY local clone (the first
+  non-GitHub repo id), matching the "primary repo" choice for the notes, rather
+  than every attached repo, so the behavior is predictable and does not push
+  repos the project only references remotely.
+- 2026-09-04: CTO review of the auto-push (GO, data-safety rails sound) drove
+  three follow-ups, applied: the push targets the tracked upstream branch name
+  (HEAD:<upstream>), not a same-named remote branch; a 20s block timeout so a
+  stalled transfer gives up; outright failures (e.g. missing push credentials)
+  are surfaced to the person. A per-project opt-out `sync.autoPush:false`
+  (os-code.config.json) lets a repo whose branch deploys on push keep manual
+  control. The CTO's one behavioral concern (auto-pushing a default/deploy
+  branch) went to the founder, who chose to keep pushing any branch including
+  main (truest to "nothing lingers on the device"); `sync.autoPush:false` is the
+  per-project escape hatch for a repo that deploys on push.
+- 2026-09-04: The five presets auto-write through a dedicated
+  `projectMemoryWrite` tool that the permission engine allows by name, rather
+  than making the existing `vaultWrite` path-aware. Keeps `vaultWrite`'s
+  always-ask ruling and its test intact, and makes the memory capability a
+  distinct, hard-scoped affordance the model reaches for on purpose.
+- 2026-09-04: Skills.md holds the project's reusable build/test/ship recipes and
+  gotchas (founder's pick), not a registry of agents/skills.
+- 2026-09-04: Seeding moved to the harness (the app no longer writes the notes,
+  since it does not own the repo working tree): the projectMemoryWrite tool
+  creates any missing notes from templates on its first write, so the folder
+  materializes as a complete set the first time the agent touches it.

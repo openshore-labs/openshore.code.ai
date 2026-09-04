@@ -401,7 +401,10 @@ function deepLinkFromArgv(argv: string[]): string | undefined {
 // Keep in lockstep with src/lib/electronBridge.ts and electron/preload.cjs.
 
 ipcMain.handle('osc:createSession', (_e, cwd?: string, opts?: Record<string, unknown>) =>
-  host.createSession(cwd, opts as { instructions?: string; permissionMode?: never } | undefined),
+  host.createSession(
+    cwd,
+    opts as { instructions?: string; permissionMode?: never; projectName?: string } | undefined,
+  ),
 );
 ipcMain.handle('osc:setMode', (_e, sessionId: string, mode: string) =>
   host.setMode(sessionId, mode as never),
@@ -495,6 +498,9 @@ ipcMain.handle('osc:pickFolder', async () => {
 });
 ipcMain.handle('osc:cloneRepo', (_e, url: string) => host.cloneRepo(url));
 ipcMain.handle('osc:recentWorkspaces', () => host.recentWorkspaces());
+ipcMain.handle('osc:reconcileRepos', (_e, roots: string[]) =>
+  host.reconcileRepos(Array.isArray(roots) ? roots : []),
+);
 
 ipcMain.handle('osc:daemonInfo', () => host.daemonInfo());
 ipcMain.handle('osc:daemonStart', () => host.daemonStart());
@@ -556,6 +562,56 @@ ipcMain.handle('osc:vaultWrite', (_e, path: string, text: string) => {
 ipcMain.handle('osc:vaultRemove', (_e, path: string) => {
   const abs = vaultJail().resolve(path);
   if (existsSync(abs)) rmSync(abs);
+});
+
+// Read-only access to a repo working tree, for the project-memory viewer. Two
+// layers of containment: every path resolves through a Jail rooted at the repo
+// (so a relative path can never escape it, symlinks included), AND the read is
+// confined to the project-memory folders themselves ("OpenShore Project <name>
+// MDs/") and to .md files. So even a compromised renderer can only ever read
+// markdown notes in those folders, never arbitrary files under the root. Read
+// only; there is no repo-write bridge. `null` means "not there / not allowed".
+// The folder shape mirrors app/src/lib/projectMemory.ts (kept simple on purpose,
+// this is a security guard, not the source of truth).
+const MEM_FOLDER_PREFIX = 'OpenShore Project ';
+const MEM_FOLDER_SUFFIX = ' MDs';
+const MAX_MEMORY_FILE_BYTES = 4 * 1024 * 1024;
+function isMemoryFolderSegment(seg: string): boolean {
+  if (seg.includes('/') || seg.includes('\\')) return false;
+  if (!seg.startsWith(MEM_FOLDER_PREFIX) || !seg.endsWith(MEM_FOLDER_SUFFIX)) return false;
+  const inner = seg.slice(MEM_FOLDER_PREFIX.length, seg.length - MEM_FOLDER_SUFFIX.length);
+  return inner.length > 0 && !/^\.+$/.test(inner);
+}
+ipcMain.handle('osc:repoReadDir', (_e, root: string, subdir: string): string[] | null => {
+  try {
+    // Only a single memory folder may be listed, never an arbitrary directory.
+    if (!root || typeof subdir !== 'string' || !isMemoryFolderSegment(subdir)) return null;
+    if (!existsSync(root) || !statSync(root).isDirectory()) return null;
+    const abs = new Jail(root).resolve(subdir);
+    if (!existsSync(abs) || !statSync(abs).isDirectory()) return null;
+    return readdirSync(abs, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /\.md$/i.test(entry.name))
+      .map((entry) => entry.name);
+  } catch {
+    return null;
+  }
+});
+ipcMain.handle('osc:repoReadFile', (_e, root: string, relPath: string): string | null => {
+  try {
+    // Only an .md file directly inside a memory folder may be read.
+    if (!root || typeof relPath !== 'string') return null;
+    const parts = relPath.split('/');
+    if (parts.length !== 2 || !isMemoryFolderSegment(parts[0]!) || !/\.md$/i.test(parts[1]!)) {
+      return null;
+    }
+    if (!existsSync(root)) return null;
+    const abs = new Jail(root).resolve(relPath);
+    if (!existsSync(abs) || !statSync(abs).isFile()) return null;
+    if (statSync(abs).size > MAX_MEMORY_FILE_BYTES) return null;
+    return readFileSync(abs, 'utf8');
+  } catch {
+    return null;
+  }
 });
 
 // OS-encrypted secret store (used for the app's data-encryption key).

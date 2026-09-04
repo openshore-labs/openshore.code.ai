@@ -4,7 +4,7 @@
 // their transcript by replaying the engine's journal, so the phone and the
 // desktop can both close and reopen with nothing lost.
 import { create } from 'zustand';
-import type { DriverEvent } from 'os-code/protocol';
+import type { DriverEvent, ReconcileResult } from 'os-code/protocol';
 import {
   emptyThread,
   seedFromTranscript,
@@ -109,13 +109,12 @@ import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
 import {
   DEFAULT_PERMISSION_MODE,
-  autoApproves,
   normalizePermissionMode,
   type PermissionMode,
 } from '../lib/permissionMode.js';
 import {
   canControlTerminal as canControlTerminalFor,
-  decideDesktopShellApproval,
+  decideApproval,
   terminalTargetId,
 } from '../lib/terminalControl.js';
 import { hapticSuccess } from '../lib/haptics.js';
@@ -179,6 +178,7 @@ import {
   disconnectRepoOAuth,
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath } from '../lib/vault.js';
+import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -213,6 +213,7 @@ export type ViewName =
   | 'terminal'
   | 'terminalroom'
   | 'project'
+  | 'projectmemory'
   | 'onboarding';
 
 // Which locked surface triggered the Personal upgrade sheet. Free is chat only;
@@ -368,6 +369,9 @@ const unsubscribers = new Map<string, () => void>();
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
 let outboxSyncing = false;
+// Serialize repo reconcile passes: the boot check and a reconnect can otherwise
+// fire at once and push the same clones twice.
+let reconcilingRepos = false;
 // Note bodies keyed by `${resourceId}::${path}`, so backlink derivation
 // (vaultReadAll on every note open) re-reads only files whose updatedAt moved.
 // Self-invalidating: a mismatched updatedAt misses; a distinct resource id
@@ -474,6 +478,10 @@ interface AppState {
   libraryIntro?: boolean;
   /** Live reach signals that drive the active connectivity profile. */
   connectivity: Connectivity;
+  /** Project repos whose local commits diverged from the remote and need a
+   *  manual merge before they can sync. Set by reconcileProjectRepos; surfaced
+   *  in the Vault so pending work is never silently stuck on the device. */
+  repoSyncConflicts?: ReconcileResult[];
   toast?: string;
   /** When set, the Personal upgrade sheet is showing, and which locked surface
    *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
@@ -551,6 +559,8 @@ interface AppState {
   ): Promise<void>;
   /** Open a project's detail room (its chats, instructions, repos, access). */
   openProject(id: string): void;
+  /** Open a project's read-only memory notes (from the Vault section). */
+  openProjectMemory(id: string): void;
   /** Start a fresh chat that belongs to a project, opened with a way back to
    *  the project's detail room. */
   startProjectChat(projectId: string): void;
@@ -817,6 +827,10 @@ interface AppState {
 
   /** Re-check home reachability + internet, updating the connectivity signals. */
   refreshConnectivity(): Promise<void>;
+  /** Push each project repo's unpushed local commits to its remote, so a
+   *  project's notes and code never linger only on this device. Runs on app
+   *  open and on reconnect; desktop only (that is where the clones live). */
+  reconcileProjectRepos(trigger: 'open' | 'reconnect'): Promise<void>;
   /** Manually step down to a more restrictive profile, or clear (auto). */
   setProfileOverride(profile?: ProfileId): Promise<void>;
 
@@ -1032,7 +1046,7 @@ export const useApp = create<AppState>((set, get) => {
         // emitters of runShell); a non-shell desktop ask (cloud spend) and a
         // client brain fall through untouched to the existing rules.
         const s = get();
-        const decision = decideDesktopShellApproval(event.request, {
+        const decision = decideApproval(event.request, {
           driverKind: driver.kind,
           desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
           daemon: s.settings.daemon,
@@ -1041,6 +1055,7 @@ export const useApp = create<AppState>((set, get) => {
             s.settings.account,
             isOrgAdmin(s.settings.account) || s.serverRole === 'admin',
           ),
+          mode: s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
         });
         if (decision.action === 'auto-approve') {
           drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
@@ -1048,14 +1063,10 @@ export const useApp = create<AppState>((set, get) => {
           drivers
             .get(conversationId)
             ?.answerApproval(event.request.id, { approve: false, reason: decision.reason });
-        } else {
-          // Passthrough: not a desktop shell call, so the client-side mode rules
-          // decide, exactly as before Terminal Control existed.
-          const mode = s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
-          if (autoApproves(mode, event.request.toolName, event.request.kind)) {
-            drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
-          }
         }
+        // 'sheet': leave the approval request on the sheet for the person. A
+        // desktop non-shell tool (an always-ask vaultWrite included) is never
+        // client-auto-approved; the engine already decided to ask.
       }
       // The task ended: a message typed mid-run goes out now, in order. A
       // completed task also gets the success tap Claude Code's bell stands for.
@@ -1157,6 +1168,10 @@ export const useApp = create<AppState>((set, get) => {
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
+          // The project's name places its memory notes under
+          // "OpenShore Project <name> MDs/" in the repo, so the agent writes the
+          // Current State top sheet and the rest to a folder named for the project.
+          projectName: project?.name,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -1832,10 +1847,18 @@ export const useApp = create<AppState>((set, get) => {
       // Watch the connection so the profile status is always live.
       void get().refreshConnectivity();
       if (typeof window !== 'undefined') {
-        window.addEventListener('online', () => void get().refreshConnectivity());
+        window.addEventListener('online', () => {
+          void get().refreshConnectivity();
+          // Reconnected: flush any project commits that piled up offline.
+          void get().reconcileProjectRepos('reconnect');
+        });
         window.addEventListener('offline', () => void get().refreshConnectivity());
         setInterval(() => void get().refreshConnectivity(), 20000);
       }
+
+      // On every app open, check for local project work that never reached the
+      // remote and push it, so nothing important is stranded on this device.
+      void get().reconcileProjectRepos('open');
 
       // While the phone is foreground on a desktop chat, beat the daemon so it
       // knows the user is watching and holds the completion push back. The
@@ -1873,6 +1896,39 @@ export const useApp = create<AppState>((set, get) => {
       const prev = get().connectivity;
       if (prev.online !== online || prev.homeReachable !== homeReachable) {
         set({ connectivity: { online, homeReachable } });
+      }
+    },
+
+    async reconcileProjectRepos(trigger) {
+      // Desktop only: the clones live here, and the bridge does the git work.
+      // Nothing to push from a phone (its repos are remote, read-only here).
+      if (!isDesktop() || !bridge()) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      // One at a time: the boot check and a reconnect can otherwise overlap.
+      if (reconcilingRepos) return;
+      const roots = projectWorkspaces(get().settings.projects ?? []);
+      if (!roots.length) return;
+      reconcilingRepos = true;
+      try {
+        const results = await bridge()!.reconcileRepos(roots);
+        const summary = summarizeReconcile(results);
+        set({ repoSyncConflicts: summary.conflicts.length ? summary.conflicts : undefined });
+        // reconcileToast is silent unless something is worth saying (a push, a
+        // conflict, or an outright failure), so a routine boot with nothing to
+        // do stays quiet.
+        const message = reconcileToast(summary);
+        if (message) get().showToast(message);
+        logEvent('repo_reconcile', {
+          trigger,
+          pushed: summary.pushed,
+          conflicts: summary.conflicts.length,
+          offline: summary.offline,
+        });
+      } catch {
+        // A failed reconcile is never fatal and never loses work; the next open
+        // or reconnect tries again.
+      } finally {
+        reconcilingRepos = false;
       }
     },
 
@@ -2238,6 +2294,15 @@ export const useApp = create<AppState>((set, get) => {
       set({ viewProjectId: id });
       get().setView('project');
       logEvent('project_open');
+    },
+
+    openProjectMemory(id) {
+      // The read-only notes view opens from the Vault, over the Vault's own
+      // list, so setView pushes Vault onto the trail and the top bar offers a
+      // way back to it.
+      set({ viewProjectId: id });
+      get().setView('projectmemory');
+      logEvent('project_memory_open');
     },
 
     startProjectChat(projectId) {

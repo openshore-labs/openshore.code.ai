@@ -22,6 +22,7 @@ export const ROOM_NAMES: Record<ViewName, string> = {
   vault: 'Vault',
   projects: 'Projects',
   project: 'Project',
+  projectmemory: 'Project notes',
   crew: 'My Crew',
   admin: 'Admin',
   launch: 'Launch',

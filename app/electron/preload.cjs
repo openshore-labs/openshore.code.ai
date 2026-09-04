@@ -56,6 +56,11 @@ contextBridge.exposeInMainWorld('oscode', {
   setGithubToken: invoke('osc:setGithubToken'),
   disconnect: invoke('osc:disconnect'),
 
+  repoReadDir: invoke('osc:repoReadDir'),
+  repoReadFile: invoke('osc:repoReadFile'),
+
+  reconcileRepos: invoke('osc:reconcileRepos'),
+
   pickFolder: invoke('osc:pickFolder'),
   cloneRepo: invoke('osc:cloneRepo'),
   recentWorkspaces: invoke('osc:recentWorkspaces'),
