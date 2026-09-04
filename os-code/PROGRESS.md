@@ -24,10 +24,16 @@ signed in on device, reviews backend live, moderator seeded).
   product page still fetches the live number when a reader taps in, so a daily
   snapshot on browse costs no freshness that matters. Fully back-compatible:
   no stamp (older catalog, or the reviews backend unconfigured in CI) means the
-  app falls back to the live browse RPC, exactly as before. Founder action to
-  turn it on: add the two `CATALOG_REVIEWS_*` secrets to the catalog workflow
-  (the anon key suffices). Gates green: os-code 356 tests, app 442, lint,
-  typecheck, app vite build.
+  app falls back to the live browse RPC, exactly as before. Gates green:
+  os-code 356 tests, app 442, lint, typecheck, app vite build.
+  TURNED ON and verified live: the two `CATALOG_REVIEWS_*` secrets are set on
+  the catalog workflow, `0013` is applied to the live database (`supabase db
+  push`), and a dispatched catalog run baked the snapshot cleanly (run 24 hit a
+  404 because `0013` was not yet pushed, run 25 read the RPC and baked with no
+  404). The published `catalog.json` on the marketing site now carries
+  `reviewsSnapshotAt: 2026-09-04` over 174 models, 0 currently carrying a
+  `community` field because no reviews are written yet. The moment reviews land,
+  the daily build bakes their aggregates with no code change.
 - **TestFlight publish incident (2026-09-03), CLOSED.** The only real blocker
   was ITMS-90474 (an iPad app declaring no landscape orientation must also
   declare `UIRequiresFullScreen`), fixed in `Info.plist` (`d3f3c90`). Two
@@ -1737,27 +1743,23 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Community reviews: founder config (the only thing left to go live).**
-      The backend was VALIDATED against a real Postgres this session (0011 + 0012
-      apply clean; anon reads visible rows, per-reader block, aggregate + batched
-      RPCs, one-per-user upsert, the report auto-hide trigger at 3, and the
-      moderator guard all exercised), which caught and fixed two bugs that would
-      have 403'd in production: missing table grants, and the block subquery in
-      the read policy locking anon out of every review (now a SECURITY DEFINER
-      `author_blocked` helper). So the only steps left are yours: (1) run
-      `supabase db push` (applies 0011_model_reviews AND 0012_review_moderation);
-      (2) ship a build with VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY set
-      (without both, the store shows benchmark stars only, graceful); (3) to
-      moderate, seed yourself once from the SQL editor
-      (`insert into review_moderators (user_id) select id from auth.users where
-      email = '<you>' on conflict do nothing;`), then the queue appears under
-      Admin. `first_successful_run` (per model, via logOnce) now fires so the
-      activation funnel can be measured later. The CTO's scale-path sidecar (a
-      review-aggregate snapshot in the daily catalog build) is now BUILT (see the
-      2026-09-04 entry, migration 0013). Still deferred, non-blocking: sybil
-      hardening (account-age weighting or an installed-signal gate) if
-      astroturfing appears, since "any signed-in user may review" leans on
-      one-per-user + report/block + auto-hide + the count-gated average.
+- [x] **Community reviews: LIVE.** The backend was validated against a real
+      Postgres (0011 + 0012 + 0013 apply clean; anon reads visible rows,
+      per-reader block, single/batched/snapshot aggregate RPCs, one-per-user
+      upsert, the report auto-hide trigger at 3, and the moderator guard all
+      exercised), which caught and fixed two bugs that would have 403'd in
+      production: missing table grants, and the block subquery in the read policy
+      locking anon out of every review (now a SECURITY DEFINER `author_blocked`
+      helper). All founder steps are done: `supabase db push` applied 0011/0012/
+      0013; a build shipped with VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY set,
+      installed and signed in; the founder is seeded into `review_moderators`
+      (`founder@openshore.ai`), so the Admin queue is reachable. The scale-path
+      snapshot is turned on and verified (see the 2026-09-04 entry).
+      `first_successful_run` (per model, via logOnce) fires so the activation
+      funnel can be measured later. Still deferred, non-blocking: sybil hardening
+      (account-age weighting or an installed-signal gate) if astroturfing
+      appears, since "any signed-in user may review" leans on one-per-user +
+      report/block + auto-hide + the count-gated average.
 - [ ] **Large-model iCloud home, TestFlight validation + the CTO caveat.** The
       "download to iCloud" path (ModelStore places the GGUF in the app's iCloud
       Drive container, ensureLocal materializes it before a load) is unverifiable
