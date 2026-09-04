@@ -3,10 +3,12 @@
 // Nothing here is sent anywhere; the screen only asks the engine to aggregate
 // what it already wrote. Water teal is private/local, amber is cloud/spend, and
 // every privacy fact is literally true, including the ones that are not green.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { BackBar } from '../components/BackBar.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { loadAppStackHealth } from '../lib/stackHealth.js';
+import { usePullToRefresh } from '../hooks/usePullToRefresh.js';
 import { useApp } from '../state/store.js';
 import type { StackHealth, StackHealthRange, SustainabilityFootprint } from 'os-code/protocol';
 
@@ -85,10 +87,18 @@ function equivalent(f: SustainabilityFootprint): string {
   return parts.join(' · ');
 }
 
+// A stagger slot as an inline custom property; the CSS turns --i into a delay so
+// the green card's pieces arrive one after another.
+function itemStagger(i: number): CSSProperties {
+  return { '--i': i } as CSSProperties;
+}
+
 // A number that eases up from 0 on mount and whenever the target changes. The
 // count-up is the single most delightful beat on the screen, so it earns a
-// spring; reduced-motion lands on the value immediately.
-function useCountUp(target: number, durationMs = 1100): number {
+// spring; reduced-motion lands on the value immediately. An optional delay lets
+// a number wait for its slot in a staggered reveal so it settles with the piece
+// it belongs to rather than racing ahead.
+function useCountUp(target: number, durationMs = 1100, delayMs = 0): number {
   const [value, setValue] = useState(prefersReducedMotion() ? target : 0);
   const fromRef = useRef(0);
   useEffect(() => {
@@ -100,7 +110,14 @@ function useCountUp(target: number, durationMs = 1100): number {
     const start = performance.now();
     let raf = 0;
     const tick = (t: number) => {
-      const p = Math.min(1, (t - start) / durationMs);
+      const elapsed = t - start - delayMs;
+      if (elapsed < 0) {
+        // Still in the stagger delay: hold at the start value, keep waiting.
+        setValue(from);
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const p = Math.min(1, elapsed / durationMs);
       const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
       setValue(from + (target - from) * eased);
       if (p < 1) raf = requestAnimationFrame(tick);
@@ -108,7 +125,7 @@ function useCountUp(target: number, durationMs = 1100): number {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [target, durationMs]);
+  }, [target, durationMs, delayMs]);
   return value;
 }
 
@@ -281,43 +298,100 @@ export function StackHealthScreen() {
   );
   const [animate, setAnimate] = useState(false);
   const daemon = settings.daemon;
+  const reqRef = useRef(0);
 
-  useEffect(() => {
-    let live = true;
-    setState('loading');
-    setAnimate(false);
-    loadAppStackHealth(range, daemon)
-      .then((r) => {
-        if (!live) return;
+  // One loader, shared by the range effect and pull-to-refresh. `quiet` keeps
+  // the current numbers on screen while a refresh re-fetches (the content is
+  // pinned under the finger), rather than flashing the loading state. A request
+  // token drops a stale answer if the range changed underneath it.
+  const load = useCallback(
+    async (quiet = false): Promise<void> => {
+      const token = ++reqRef.current;
+      if (!quiet) {
+        setState('loading');
+        setAnimate(false);
+      }
+      try {
+        const r = await loadAppStackHealth(range, daemon);
+        if (token !== reqRef.current) return;
         if (r.kind === 'ready') {
           setHealth(r.health);
           setState('ready');
-          // Let the first paint settle, then release the ring/sparkline fills.
-          requestAnimationFrame(() => requestAnimationFrame(() => live && setAnimate(true)));
+          if (!quiet) {
+            // Let the first paint settle, then release the ring/sparkline fills.
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => token === reqRef.current && setAnimate(true)),
+            );
+          }
         } else {
           setState(r.kind);
         }
-      })
-      .catch(() => live && setState('error'));
-    return () => {
-      live = false;
-    };
-  }, [range, daemon]);
+      } catch {
+        if (token === reqRef.current) setState('error');
+      }
+    },
+    [range, daemon],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const refresh = usePullToRefresh(() => load(true), { enabled: state !== 'loading' });
 
   const saved = useCountUp(health?.savedDollars ?? 0);
   // The founder singled out water: it is the count-up beat on the green section.
-  const waterAvoided = useCountUp((health?.sustainability.avoided.liters ?? 0) * 1000);
+  // A small lead-in delay lets the number start as the hero slides into its slot
+  // rather than counting before the card has arrived.
+  const waterAvoided = useCountUp((health?.sustainability.avoided.liters ?? 0) * 1000, 1100, 220);
 
   const basis = health?.savingsBasis.model ?? 'Claude Sonnet';
   const crew = useMemo(() => health?.crew ?? [], [health]);
 
   return (
-    <div className="screen sh-screen">
+    <div className="screen sh-screen" {...refresh.handlers}>
       <BackBar title="Stack Health" />
 
       {state === 'ready' && health ? <SealBand health={health} /> : null}
 
-      <div className="screen-inner">
+      {/* Pull-to-refresh indicator, riding the gap the pull opens. It sits in
+          normal flow at the top of the content so the scroll container never
+          clips it, and it rises and fades in with the finger. */}
+      <div className="sh-pull-holder" aria-hidden={!refresh.pull && !refresh.refreshing}>
+        <div
+          className={`sh-pull-ind${refresh.settling ? ' settling' : ''}`}
+          style={
+            {
+              transform: `translateY(${refresh.pull}px)`,
+              opacity: refresh.refreshing ? 1 : Math.min(1, refresh.pull / 72),
+            } as CSSProperties
+          }
+        >
+          {refresh.refreshing ? (
+            <span className="sh-pull-spinner" aria-label="Refreshing" />
+          ) : (
+            <svg
+              className={`sh-pull-arrow${refresh.armed ? ' armed' : ''}`}
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M6 13l6 6 6-6" />
+            </svg>
+          )}
+        </div>
+      </div>
+
+      <div
+        className={`screen-inner${refresh.settling ? ' sh-pull-settling' : ''}`}
+        style={{ transform: `translateY(${refresh.pull}px)` } as CSSProperties}
+      >
         <h1>Stack Health</h1>
         <p className="lead">
           How your stack is really working, read on your own machine. Nothing here leaves this
@@ -413,25 +487,42 @@ export function StackHealthScreen() {
             </div>
 
             {/* The greener way to build: energy, water, and carbon your local
-                work kept off the grid versus the same work in a data center. */}
+                work kept off the grid versus the same work in a data center. The
+                pieces arrive one after another on the house stagger; the "≈"
+                marks every figure as an estimate at a glance. */}
             <section className="card sh-card sh-green">
-              <p className="sh-eyebrow">The greener way to build</p>
-              <div className="sh-green-hero">
-                <span className="sh-green-num">{water(waterAvoided / 1000)}</span>
+              <p className="sh-eyebrow sh-green-item" style={itemStagger(0)}>
+                The greener way to build
+              </p>
+              <div className="sh-green-hero sh-green-item" style={itemStagger(1)}>
+                <span className="sh-green-num">
+                  <span className="sh-approx" aria-hidden="true">
+                    {'≈'}
+                  </span>
+                  {water(waterAvoided / 1000)}
+                </span>
                 <span className="sh-green-cap">of water not drawn from a data center</span>
               </div>
               <div className="sh-green-grid">
-                <div className="sh-green-tile">
-                  <span className="sh-green-tile-num">{energy(health.sustainability.avoided.kwh)}</span>
+                <div className="sh-green-tile sh-green-item" style={itemStagger(2)}>
+                  <span className="sh-green-tile-num">
+                    <span className="sh-approx" aria-hidden="true">
+                      {'≈'}
+                    </span>
+                    {energy(health.sustainability.avoided.kwh)}
+                  </span>
                   <span className="sh-green-tile-cap">energy avoided</span>
                 </div>
-                <div className="sh-green-tile">
+                <div className="sh-green-tile sh-green-item" style={itemStagger(3)}>
                   <span className="sh-green-tile-num">
+                    <span className="sh-approx" aria-hidden="true">
+                      {'≈'}
+                    </span>
                     {carbon(health.sustainability.avoided.grams)}
                   </span>
                   <span className="sh-green-tile-cap">CO2e avoided</span>
                 </div>
-                <div className="sh-green-tile">
+                <div className="sh-green-tile sh-green-item" style={itemStagger(4)}>
                   <span className="sh-green-tile-num">
                     {pct(
                       health.sustainability.cloudCounterfactual.kwh > 0
@@ -445,23 +536,24 @@ export function StackHealthScreen() {
                 </div>
               </div>
               {equivalent(health.sustainability.avoided) ? (
-                <p className="sub sh-card-read">
+                <p className="sub sh-card-read sh-green-item" style={itemStagger(5)}>
                   Running local this period was about {equivalent(health.sustainability.avoided)},
                   versus the same work on {basis} in a hyperscale data center.
                 </p>
               ) : (
-                <p className="sub sh-card-read">
+                <p className="sub sh-card-read sh-green-item" style={itemStagger(5)}>
                   Build a little more with local models and this fills in: the energy, water, and
                   carbon your own hardware keeps off the grid.
                 </p>
               )}
               {health.sustainability.cloudActual.kwh > 0 ? (
-                <p className="hint sh-crew-note">
-                  Your cloud turns this period drew about {energy(health.sustainability.cloudActual.kwh)}{' '}
-                  and {water(health.sustainability.cloudActual.liters)} of water in a data center.
+                <p className="hint sh-crew-note sh-green-item" style={itemStagger(6)}>
+                  Your cloud turns this period drew about{' '}
+                  {energy(health.sustainability.cloudActual.kwh)} and{' '}
+                  {water(health.sustainability.cloudActual.liters)} of water in a data center.
                 </p>
               ) : null}
-              <p className="hint sh-green-basis">
+              <p className="hint sh-green-basis sh-green-item" style={itemStagger(7)}>
                 An estimate, not a meter. Local work is repriced at published energy, grid carbon,
                 and data-center water intensities. Assumptions travel with the number and stay
                 conservative.
