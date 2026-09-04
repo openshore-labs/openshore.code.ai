@@ -9,6 +9,7 @@ import {
   AI_WRITING_SIGNS,
   AI_VOCABULARY,
   humanizerStandardPrompt,
+  humanizerEnabled,
 } from '../src/core/agent/humanizerStandard.js';
 
 async function systemMessageWith(configOverrides?: Record<string, unknown>): Promise<string> {
@@ -56,5 +57,30 @@ describe('Humanizer standard in the writing agent', () => {
     });
     expect(system).toContain('This project adds:');
     expect(system).toContain('House voice is dry and understated.');
+  });
+});
+
+// The per-session override (the app's "Humanize Writing" setting, sent through
+// the daemon or the electron bridge into bootstrapSession). It only ever turns
+// the humanizer off; a project's own config always wins.
+describe('humanizerEnabled precedence', () => {
+  it('is on by default (config on, no override)', () => {
+    expect(humanizerEnabled('on', undefined)).toBe(true);
+    expect(humanizerEnabled(undefined, undefined)).toBe(true);
+  });
+
+  it('the app toggle off turns it off, even with config on', () => {
+    expect(humanizerEnabled('on', false)).toBe(false);
+    expect(humanizerEnabled(undefined, false)).toBe(false);
+  });
+
+  it("a project's config off holds even when the app toggle is on", () => {
+    expect(humanizerEnabled('off', true)).toBe(false);
+    expect(humanizerEnabled('off', undefined)).toBe(false);
+  });
+
+  it('the override never forces it on over a project that opted out', () => {
+    // app on + config off stays off: the project's deliberate call wins.
+    expect(humanizerEnabled('off', true)).toBe(false);
   });
 });

@@ -52,9 +52,12 @@ the writing agent's system prompt. It is ON unless rerouted: a project sets
 in `os-code.config.json`, or the person says "skip the humanizer" in the chat.
 `test/humanizer.test.ts` proves it reaches the model and that the off switch
 works. In the app it is a user setting, "Humanize Writing" (Settings, default
-on), threaded through `StackDriver` (`app/test/humanizeWriting.test.ts`); the
-engine keeps its own config knob. Refresh the snapshot deliberately by reading
-the live page again; never wire it to a live fetch, since the page is
+on), threaded through `StackDriver` for app-side chats and, as a per-session
+override, into the desktop engine through the daemon and the electron bridge
+(`BootstrapOptions.humanize`). Precedence is one helper, `humanizerEnabled`: the
+override only ever turns it OFF, so a project's config `off` always wins while
+the app toggle's OFF reaches a paired desktop. Refresh the snapshot deliberately
+by reading the live page again; never wire it to a live fetch, since the page is
 world-editable. Scope is this repo for now, as the single source of truth.
 
 ## Motion and interaction polish is a standard, not a nice-to-have (standing rule, founder 2026-09-02)

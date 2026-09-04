@@ -76,6 +76,7 @@ export interface OscodeBridge {
       permissionMode?: PermissionMode;
       projectName?: string;
       projectSecrets?: string;
+      humanize?: boolean;
     },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the

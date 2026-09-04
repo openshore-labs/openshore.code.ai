@@ -172,6 +172,7 @@ export class EngineHost {
       permissionMode?: PermissionMode;
       projectName?: string;
       projectSecrets?: string;
+      humanize?: boolean;
     } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
@@ -183,6 +184,7 @@ export class EngineHost {
       permissionMode: opts.permissionMode,
       projectName: opts.projectName,
       projectSecrets: opts.projectSecrets,
+      humanize: opts.humanize,
     });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };

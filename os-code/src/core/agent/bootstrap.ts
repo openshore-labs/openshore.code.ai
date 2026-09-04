@@ -18,6 +18,7 @@ import { LocalDriver } from '../../daemon/session.js';
 import { buildCodeMap } from '../../context/codeMap.js';
 import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
+import { humanizerEnabled } from './humanizerStandard.js';
 import type { PermissionMode } from './types.js';
 import { logger } from '../../util/log.js';
 
@@ -50,6 +51,11 @@ export interface BootstrapOptions {
   projectSecrets?: string;
   /** The permission mode to start in (default: ask for writes and shell). */
   permissionMode?: PermissionMode;
+  /** The app's "Humanize Writing" setting for this session. Undefined leaves
+   *  the project config in charge; false forces the humanizer off for this
+   *  session (the override only ever turns it off, never on over a project that
+   *  opted out). See humanizerEnabled in humanizerStandard.ts. */
+  humanize?: boolean;
 }
 
 export interface BootstrapResult {
@@ -68,6 +74,14 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     const loaded = loadConfig(options.cwd);
     config = loaded.config;
     warnings.push(...loaded.warnings);
+  }
+
+  // The app's Humanize Writing setting rides in as a per-session override. It
+  // only ever turns the humanizer off (a project's config 'off' or notes always
+  // hold); applied here so loop.ts keeps reading config.humanizer as its single
+  // source. A fresh config object, never mutating a caller's (tests pass one in).
+  if (!humanizerEnabled(config.humanizer?.standard, options.humanize)) {
+    config = { ...config, humanizer: { ...config.humanizer, standard: 'off' } };
   }
 
   const providers = new ProviderRegistry(config, getAnthropicKey);

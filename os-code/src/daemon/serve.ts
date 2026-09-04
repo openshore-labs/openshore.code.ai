@@ -524,6 +524,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const permissionMode = isPermissionMode(body.permissionMode)
         ? body.permissionMode
         : undefined;
+      // The app's Humanize Writing setting for this session (only ever an off).
+      const humanize = typeof body.humanize === 'boolean' ? body.humanize : undefined;
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
         sendJson(res, 403, {
           error:
@@ -539,6 +541,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           instructions,
           projectName,
           permissionMode,
+          humanize,
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);

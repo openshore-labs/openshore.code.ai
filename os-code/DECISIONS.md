@@ -563,3 +563,17 @@ execution contract. Newest at the bottom.
   writing runs on cloud or BYOM models where the small-context concern does not
   apply, so the toggle governs those; the desktop engine carries the standard for
   its own agent.
+- 2026-09-04: The app toggle now reaches the desktop engine as a per-session
+  override, but the override can only turn the humanizer OFF, never force it on
+  (helper `humanizerEnabled`). A project that set `humanizer.standard: "off"` (or
+  `notes`) in its config made a deliberate project-level call that wins, per the
+  founder's "a project's own instructions win" rule; the app toggle's OFF is the
+  direction that matters (turning it off for speed or preference), so that is the
+  direction we propagate. Chosen over a full two-way sync of app setting and
+  engine config, which would add a source-of-truth conflict (who wins, staleness,
+  offline) for no real gain. CTO wanted the state-consistency fix; CMO wanted the
+  toggle's promise to hold where writing is most visible; this satisfies both.
+- 2026-09-04: Applied the override in `bootstrapSession` (translating the app
+  preference into the session's effective config) rather than adding a new branch
+  in `loop.ts`, so `loop.ts` keeps `config.humanizer` as its single source and the
+  daemon and bridge paths share one code path.

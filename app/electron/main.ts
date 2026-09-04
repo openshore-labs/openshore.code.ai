@@ -409,6 +409,7 @@ ipcMain.handle('osc:createSession', (_e, cwd?: string, opts?: Record<string, unk
           permissionMode?: never;
           projectName?: string;
           projectSecrets?: string;
+          humanize?: boolean;
         }
       | undefined,
   ),

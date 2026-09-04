@@ -42,6 +42,7 @@ export {
   AI_WRITING_SIGNS,
   AI_VOCABULARY,
   humanizerStandardPrompt,
+  humanizerEnabled,
 } from './core/agent/humanizerStandard.js';
 export type { HumanizerSign } from './core/agent/humanizerStandard.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';

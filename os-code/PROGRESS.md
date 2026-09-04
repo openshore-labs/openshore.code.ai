@@ -147,6 +147,19 @@ output unless a given project's instructions say otherwise. Branch
   desktop engine still carries the standard through its own config. Off means a
   shorter prompt, so the model runs a little faster. `app/test/humanizeWriting.test.ts`
   pins the wiring; the full app suite is green (524 tests).
+- **The setting now reaches the desktop engine (CTO/CMO follow-up).** The app
+  toggle is sent as a per-session override into `bootstrapSession`
+  (`BootstrapOptions.humanize`), threaded through both session paths: the daemon
+  (`POST /sessions` body, `daemonCreateSession`) and the electron bridge
+  (`engineHost.createSession`, IPC, `electronBridge`). Precedence lives in one
+  pure helper, `humanizerEnabled(configStandard, override)`: the override can only
+  turn the humanizer OFF, never force it on, so a project's `humanizer.standard:
+  "off"` (or `notes`) always wins while the app toggle's OFF propagates to a
+  paired desktop. Applied in bootstrap so `loop.ts` keeps reading `config.humanizer`
+  as its single source. The Settings info sheet now states the true scope (app
+  chats and paired desktop sessions; a project config still wins; the on-device
+  guides are left as they are). Gates green: os-code 402 tests, app 540 tests,
+  typecheck and lint across both packages.
 
 ## Current state (2026-09-04, Tokens and Secrets: a per-project encrypted note, local models only)
 
