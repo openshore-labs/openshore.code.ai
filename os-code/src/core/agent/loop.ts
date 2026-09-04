@@ -59,6 +59,10 @@ export interface AgentDeps {
   repoInstructions?: RepoInstructions;
   /** The person's standing instructions for this project (the app's Projects). */
   instructions?: string;
+  /** The project's tokens and secrets, present ONLY for a local orchestrator
+   *  (bootstrap drops it for a cloud one). When present, it rides into the
+   *  system prompt and the session never escalates to the cloud. */
+  projectSecrets?: string;
   /** The permission mode to start in. Defaults to asking for writes and shell. */
   permissionMode?: PermissionMode;
   /** Persist an allow rule for this tool in the workspace ("don't ask again
@@ -220,6 +224,20 @@ export class AgentSession {
     // which is any real workspace.
     const memorySeg = memorySegment(toolContext.projectName, toolContext.cwd);
     if (memorySeg) parts.push(projectMemoryPrompt(memorySeg));
+    // Project secrets, present only for a local orchestrator (bootstrap drops
+    // them for a cloud one). They ride in so the model can use the project's
+    // credentials without asking for a paste; the session runs under egress
+    // lockdown and never escalates to the cloud, so they cannot leave the device.
+    if (this.deps.projectSecrets?.trim()) {
+      parts.push(
+        [
+          "PROJECT SECRETS (the person's own tokens and secrets, from their encrypted on-device store).",
+          'These are provided so you can run commands and call APIs for this project without asking the person to paste a credential again. Use them only for this project, and never repeat a secret back in full in your visible reply.',
+          'You are running as a local, on-device model. Web tools and cloud escalation are turned off for this session, so nothing you do here leaves the machine; keep it that way.',
+          this.deps.projectSecrets.trim(),
+        ].join('\n'),
+      );
+    }
     // Premium UX out of the box: everything with a screen is built to the
     // twenty laws plus the house bar unless a project turns it off in config
     // or the user says to skip it (uxStandard.ts).
@@ -739,6 +757,10 @@ export class AgentSession {
 
   private async maybeEscalate(failStreak: number): Promise<boolean> {
     const { config, router } = this.deps;
+    // Never escalate a session that holds the project's secrets: cloud
+    // escalation would send the local model's history (which may carry a secret
+    // it used) to a cloud provider. Secrets sessions stay local, always.
+    if (this.deps.projectSecrets?.trim()) return false;
     if (this.escalated) return false;
     if (!router.escalationEnabled()) return false;
     if (failStreak < config.routing.escalation.afterToolFailures) return false;

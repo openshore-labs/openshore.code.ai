@@ -180,6 +180,7 @@ import {
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath } from '../lib/vault.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
+import { readProjectSecrets } from '../lib/projectSecrets.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -303,6 +304,12 @@ export interface AppSettings {
   /** Whether the Terminal room's first-run intro has been shown on this device.
    *  A first-run flag, device local, never synced. */
   terminalRoomSeen?: boolean;
+  /** Tokens and Secrets: whether the per-project secrets note is enabled. Off by
+   *  default (a privacy choice the person makes). When on, a local model may use
+   *  the project's stored credentials; the secrets themselves live in the sealed
+   *  device-local store, never in a vault or repo, and never sync. Device local
+   *  by nature (it turns on access to secrets that only exist on this device). */
+  storeSecrets?: boolean;
 }
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
@@ -1135,6 +1142,16 @@ export const useApp = create<AppState>((set, get) => {
         const repoLine = repoContextLine(conv.repoIds ?? []);
         const instructions =
           [project?.instructions?.trim(), repoLine].filter(Boolean).join('\n\n') || undefined;
+        // The project's tokens and secrets, when the person has turned the
+        // feature on, so a local model can use them. Read from the sealed
+        // device-local store here and handed to the in-process desktop engine
+        // only; the engine drops them for a cloud orchestrator. They are never
+        // sent over the daemon to a remote machine.
+        let projectSecrets: string | undefined;
+        if (settings.storeSecrets && project) {
+          const stored = await readProjectSecrets(project.id);
+          if (stored.trim()) projectSecrets = stored;
+        }
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -1142,6 +1159,7 @@ export const useApp = create<AppState>((set, get) => {
           // "OpenShore Project <name> MDs/" in the repo, so the agent writes the
           // Current State top sheet and the rest to a folder named for the project.
           projectName: project?.name,
+          projectSecrets,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         if (isDesktop() && bridge()) {

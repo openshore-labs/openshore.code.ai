@@ -17,6 +17,7 @@ import { UsageTracker } from '../../auth/usage.js';
 import { LocalDriver } from '../../daemon/session.js';
 import { buildCodeMap } from '../../context/codeMap.js';
 import { readRepoInstructions } from './instructions.js';
+import { gateProjectSecrets } from './secretsGate.js';
 import type { PermissionMode } from './types.js';
 import { logger } from '../../util/log.js';
 
@@ -42,6 +43,11 @@ export interface BootstrapOptions {
    *  Undefined for a project-less chat or the bare CLI (the memory folder then
    *  falls back to the workspace basename). */
   projectName?: string;
+  /** The project's tokens and secrets markdown, decrypted, passed only when the
+   *  person has turned the feature on. It reaches the model ONLY when the
+   *  orchestrator is local; a cloud orchestrator drops it. See the gate in
+   *  bootstrapSession. */
+  projectSecrets?: string;
   /** The permission mode to start in (default: ask for writes and shell). */
   permissionMode?: PermissionMode;
 }
@@ -69,11 +75,23 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   warnings.push(...stack.notes);
   const router = new Router(config, providers, stack);
 
+  // The project's secrets reach the model ONLY when the orchestrator is a local
+  // model (gateProjectSecrets). A cloud orchestrator never receives them (they
+  // are dropped here, not merely hidden in the prompt), and a secrets-bearing
+  // session runs under egress lockdown so no tool can send them off the device.
+  // See loop.ts for the matching "no cloud escalation while secrets are present".
+  const orchestratorKind = stack.orchestrator.provider.kind === 'cloud' ? 'cloud' : 'local';
+  const { projectSecrets, egressLockdown } = gateProjectSecrets(
+    orchestratorKind,
+    options.projectSecrets,
+  );
+
   const tools = buildToolRegistry({
     stackHasVision:
       Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
     stackHasImageGen: stack.imageGen,
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
+    egressLockdown,
   });
   const toolContext = buildToolContext({
     cwd: options.cwd,
@@ -126,6 +144,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     codeMap,
     repoInstructions,
     instructions: options.instructions,
+    projectSecrets,
     permissionMode: options.permissionMode,
     persistRule: (rule) => {
       try {
