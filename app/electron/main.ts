@@ -493,6 +493,9 @@ ipcMain.handle('osc:pickFolder', async () => {
 });
 ipcMain.handle('osc:cloneRepo', (_e, url: string) => host.cloneRepo(url));
 ipcMain.handle('osc:recentWorkspaces', () => host.recentWorkspaces());
+ipcMain.handle('osc:reconcileRepos', (_e, roots: string[]) =>
+  host.reconcileRepos(Array.isArray(roots) ? roots : []),
+);
 
 ipcMain.handle('osc:daemonInfo', () => host.daemonInfo());
 ipcMain.handle('osc:daemonStart', () => host.daemonStart());

@@ -3,6 +3,33 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, offline reconcile: project commits push to the remote on open and reconnect)
+
+Founder ask: nothing should linger only on the device. If you are offline, the
+app buffers your changes and pushes/merges the markdown updates into your repos
+when you reconnect, and every app open checks for pending local activity to push
+to wherever the project points. Because the notes are committed with the code,
+"pending local activity" is unpushed local commits on the desktop clone; the
+build is desktop-side. Branch `claude/openshore-vault-presets-bscvtq`.
+
+- **Reconcile engine (os-code).** `os-code/src/git/reconcile.ts`
+  `reconcilePush(cwd)`: pushes the current branch's unpushed commits to its
+  tracking upstream; on a moved-on remote it fetches and merges, then pushes; a
+  real conflict is aborted (tree left exactly as it was) and reported. Rails:
+  only pushes a branch that has a tracking upstream, never force-pushes, never
+  merges over a dirty tree. `reconcileRepos` runs several, isolating failures.
+  Tested against real temp repos (fast-forward, merge, conflict-abort).
+- **Desktop host + bridge.** `EngineHost.reconcileRepos` runs the engine on the
+  real clones; exposed as the `reconcileRepos` bridge method (main.ts ipc +
+  preload + electronBridge type). The result type rides the browser-safe
+  `os-code/protocol` barrel as a type-only export.
+- **Triggers + surface (app).** `store.reconcileProjectRepos(trigger)` gathers
+  each project's primary local clone (`app/src/lib/repoReconcile.ts`), guards to
+  desktop + online + single-flight, and runs on every app open and on the
+  `online` event. Quiet toast on a push, a plain reassuring toast plus a Vault
+  notice on a conflict (work is never lost). iOS has no local clone, so it just
+  reads the always-current remote.
+
 ## Current state (2026-09-04, per-project memory notes, stored in the repo, kept current by the harness)
 
 Founder ask: a coding project should carry a few preset markdowns that run as

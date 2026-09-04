@@ -4,7 +4,7 @@
 // their transcript by replaying the engine's journal, so the phone and the
 // desktop can both close and reopen with nothing lost.
 import { create } from 'zustand';
-import type { DriverEvent } from 'os-code/protocol';
+import type { DriverEvent, ReconcileResult } from 'os-code/protocol';
 import {
   emptyThread,
   seedFromTranscript,
@@ -174,6 +174,7 @@ import {
   disconnectRepoOAuth,
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath } from '../lib/vault.js';
+import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -340,6 +341,9 @@ const unsubscribers = new Map<string, () => void>();
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
 let outboxSyncing = false;
+// Serialize repo reconcile passes: the boot check and a reconnect can otherwise
+// fire at once and push the same clones twice.
+let reconcilingRepos = false;
 // Note bodies keyed by `${resourceId}::${path}`, so backlink derivation
 // (vaultReadAll on every note open) re-reads only files whose updatedAt moved.
 // Self-invalidating: a mismatched updatedAt misses; a distinct resource id
@@ -438,6 +442,10 @@ interface AppState {
   libraryIntro?: boolean;
   /** Live reach signals that drive the active connectivity profile. */
   connectivity: Connectivity;
+  /** Project repos whose local commits diverged from the remote and need a
+   *  manual merge before they can sync. Set by reconcileProjectRepos; surfaced
+   *  in the Vault so pending work is never silently stuck on the device. */
+  repoSyncConflicts?: ReconcileResult[];
   toast?: string;
   /** When set, the Personal upgrade sheet is showing, and which locked surface
    *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
@@ -768,6 +776,10 @@ interface AppState {
 
   /** Re-check home reachability + internet, updating the connectivity signals. */
   refreshConnectivity(): Promise<void>;
+  /** Push each project repo's unpushed local commits to its remote, so a
+   *  project's notes and code never linger only on this device. Runs on app
+   *  open and on reconnect; desktop only (that is where the clones live). */
+  reconcileProjectRepos(trigger: 'open' | 'reconnect'): Promise<void>;
   /** Manually step down to a more restrictive profile, or clear (auto). */
   setProfileOverride(profile?: ProfileId): Promise<void>;
 
@@ -1755,10 +1767,18 @@ export const useApp = create<AppState>((set, get) => {
       // Watch the connection so the profile status is always live.
       void get().refreshConnectivity();
       if (typeof window !== 'undefined') {
-        window.addEventListener('online', () => void get().refreshConnectivity());
+        window.addEventListener('online', () => {
+          void get().refreshConnectivity();
+          // Reconnected: flush any project commits that piled up offline.
+          void get().reconcileProjectRepos('reconnect');
+        });
         window.addEventListener('offline', () => void get().refreshConnectivity());
         setInterval(() => void get().refreshConnectivity(), 20000);
       }
+
+      // On every app open, check for local project work that never reached the
+      // remote and push it, so nothing important is stranded on this device.
+      void get().reconcileProjectRepos('open');
 
       // While the phone is foreground on a desktop chat, beat the daemon so it
       // knows the user is watching and holds the completion push back. The
@@ -1796,6 +1816,40 @@ export const useApp = create<AppState>((set, get) => {
       const prev = get().connectivity;
       if (prev.online !== online || prev.homeReachable !== homeReachable) {
         set({ connectivity: { online, homeReachable } });
+      }
+    },
+
+    async reconcileProjectRepos(trigger) {
+      // Desktop only: the clones live here, and the bridge does the git work.
+      // Nothing to push from a phone (its repos are remote, read-only here).
+      if (!isDesktop() || !bridge()) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      // One at a time: the boot check and a reconnect can otherwise overlap.
+      if (reconcilingRepos) return;
+      const roots = projectWorkspaces(get().settings.projects ?? []);
+      if (!roots.length) return;
+      reconcilingRepos = true;
+      try {
+        const results = await bridge()!.reconcileRepos(roots);
+        const summary = summarizeReconcile(results);
+        set({ repoSyncConflicts: summary.conflicts.length ? summary.conflicts : undefined });
+        const message = reconcileToast(summary);
+        // Stay quiet on a routine boot when nothing moved; always speak up for a
+        // conflict, and confirm a push the person did not explicitly ask for.
+        if (message && (summary.conflicts.length > 0 || summary.pushed > 0)) {
+          get().showToast(message);
+        }
+        logEvent('repo_reconcile', {
+          trigger,
+          pushed: summary.pushed,
+          conflicts: summary.conflicts.length,
+          offline: summary.offline,
+        });
+      } catch {
+        // A failed reconcile is never fatal and never loses work; the next open
+        // or reconnect tries again.
+      } finally {
+        reconcilingRepos = false;
       }
     },
 

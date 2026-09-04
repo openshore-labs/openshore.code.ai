@@ -23,6 +23,7 @@ import { installModel, installOllamaRef } from 'os-code/dist/src/market/install.
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
 import { clone } from 'os-code/dist/src/git/index.js';
+import { reconcileRepos, type ReconcileResult } from 'os-code/dist/src/git/reconcile.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
 import {
   hashToken,
@@ -540,6 +541,27 @@ export class EngineHost {
       return { cwd: target, name };
     } catch (err) {
       return { error: `Could not clone: ${(err as Error).message}` };
+    }
+  }
+
+  // Push each clone's unpushed commits to its remote (merging a moved-on remote
+  // first), so a project's memory notes and code never linger only on this
+  // device. Read the reconcile engine for the safety rails (never force-push,
+  // never merge over uncommitted work, conflicts surfaced not clobbered). Only
+  // real, existing directories are attempted.
+  private reconcileInFlight = false;
+  async reconcileRepos(roots: string[]): Promise<ReconcileResult[]> {
+    const real = roots.filter((r) => r && existsSync(r));
+    if (!real.length) return [];
+    // Serialize in the main process: two windows (or a rapid open + reconnect)
+    // must not run git on the same clones at once. A concurrent call is a no-op,
+    // never a queued double-push; the next open/reconnect picks up anything left.
+    if (this.reconcileInFlight) return [];
+    this.reconcileInFlight = true;
+    try {
+      return await reconcileRepos(real);
+    } finally {
+      this.reconcileInFlight = false;
     }
   }
 
