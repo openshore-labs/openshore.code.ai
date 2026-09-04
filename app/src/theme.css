@@ -1779,6 +1779,28 @@ textarea {
   background: #0b0d12;
 }
 
+/* The room's blocks assemble one after another, the same vocabulary the
+   Projects room uses. Reduced motion is handled by the global reset. */
+.tc-section {
+  animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* A calm status dot beside the host name on the live terminal. */
+.tc-running {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tc-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok, #3aa675);
+  flex: 0 0 auto;
+}
+
 /* --------------------------------------------- code block toolbar (Run/Copy) */
 
 .md-code {

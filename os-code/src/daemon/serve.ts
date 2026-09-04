@@ -837,6 +837,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           approve: body.approve,
           alwaysThisSession: Boolean(body.alwaysThisSession),
           alwaysInProject: Boolean(body.alwaysInProject),
+          reason: typeof body.reason === 'string' ? body.reason : undefined,
         });
         sendJson(res, 200, { resolved: true });
         return;

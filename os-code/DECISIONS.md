@@ -475,6 +475,17 @@ execution contract. Newest at the bottom.
   distinct, hard-scoped affordance the model reaches for on purpose.
 - 2026-09-04: Skills.md holds the project's reusable build/test/ship recipes and
   gotchas (founder's pick), not a registry of agents/skills.
+- 2026-09-04: Tokens and Secrets is a per-project note (founder's pick over one
+  shared note), stored in the sealed device-local store (not a vault note, which
+  can move to a cloud provider, and not the repo, which is pushed), off by
+  default behind a Settings toggle.
+- 2026-09-04: Secrets reach the coding model ONLY when the orchestrator is a
+  local model (founder's "local models only"). Enforced in one pure gate
+  (secretsGate.ts) at bootstrap; a cloud orchestrator has them dropped. A
+  secrets session also runs under egress lockdown (no web, no specialist/vision/
+  image delegation) and never escalates to the cloud, so a secret has no path
+  off the device. Secrets are handed only to the in-process desktop engine,
+  never sent over the daemon to a remote machine.
 - 2026-09-04: Seeding moved to the harness (the app no longer writes the notes,
   since it does not own the repo working tree): the projectMemoryWrite tool
   creates any missing notes from templates on its first write, so the folder

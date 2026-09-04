@@ -3,7 +3,7 @@
 // Current State first, and reads each one. Read only on purpose: the agent
 // writes and commits them, the app only shows them. Reached from the Vault
 // section (openProjectMemory), so its top bar goes back to the Vault.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
@@ -11,6 +11,12 @@ import { isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 import { repoAccessToken } from '../lib/gitos/repoOAuth.js';
 import { noteTitle } from '../lib/vault.js';
+import {
+  readProjectSecrets,
+  secretsTemplate,
+  writeProjectSecrets,
+  SECRETS_NOTE_TITLE,
+} from '../lib/projectSecrets.js';
 import {
   githubRepoReader,
   localRepoReader,
@@ -41,12 +47,43 @@ async function readerFor(source: RepoSource): Promise<RepoReader | undefined> {
 }
 
 export function ProjectMemoryScreen() {
-  const { viewProjectId, settings } = useApp();
+  const { viewProjectId, settings, setView } = useApp();
   const project = settings.projects?.find((p) => p.id === viewProjectId);
+  const secretsOn = Boolean(settings.storeSecrets);
 
   const [state, setState] = useState<LoadState>({ phase: 'loading' });
   const [open, setOpen] = useState<{ title: string; text: string } | null>(null);
   const [reader, setReader] = useState<RepoReader | undefined>(undefined);
+  // The Tokens and Secrets note is device-local and editable (not a repo note),
+  // so it has its own editor state, separate from the read-only note view above.
+  const [secretsOpen, setSecretsOpen] = useState(false);
+  const [secretsDraft, setSecretsDraft] = useState('');
+  const secretsSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const saveSecrets = useCallback(
+    (text: string) => {
+      if (!project) return;
+      setSecretsDraft(text);
+      clearTimeout(secretsSaveTimer.current);
+      secretsSaveTimer.current = setTimeout(() => {
+        void writeProjectSecrets(project.id, text);
+      }, 500);
+    },
+    [project],
+  );
+
+  const openSecrets = useCallback(async () => {
+    if (!project) return;
+    const stored = await readProjectSecrets(project.id);
+    setSecretsDraft(stored.trim() ? stored : secretsTemplate());
+    setSecretsOpen(true);
+  }, [project]);
+
+  const closeSecrets = useCallback(() => {
+    clearTimeout(secretsSaveTimer.current);
+    if (project) void writeProjectSecrets(project.id, secretsDraft);
+    setSecretsOpen(false);
+  }, [project, secretsDraft]);
 
   const load = useCallback(async () => {
     if (!project) {
@@ -123,6 +160,34 @@ export function ProjectMemoryScreen() {
     );
   }
 
+  // ---- the Tokens and Secrets note, editable, device-local ---------------
+  if (secretsOpen) {
+    return (
+      <div className="screen">
+        <BackBar
+          title={SECRETS_NOTE_TITLE}
+          back={{ to: project?.name ?? 'Project notes', onBack: closeSecrets }}
+        />
+        <div className="screen-inner">
+          <h1 className="vault-title">{SECRETS_NOTE_TITLE}</h1>
+          <p className="hint" style={{ marginTop: 2 }}>
+            Private to this device. Encrypted at rest. Never pushed to your repo, never synced. A
+            local model can use these; a cloud model never receives them.
+          </p>
+          <div className="vault-editor-wrap">
+            <textarea
+              className="vault-editor"
+              autoFocus
+              value={secretsDraft}
+              placeholder="Record the project's tokens and secrets here."
+              onChange={(e) => saveSecrets(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ---- the project's note list -------------------------------------------
   return (
     <div className="screen">
@@ -185,6 +250,45 @@ export function ProjectMemoryScreen() {
             )}
           </div>
         )}
+
+        {/* Tokens and Secrets: device-local and private, separate from the repo
+            notes. Grayed out until the person turns it on in Settings. */}
+        <div className="card" style={{ marginTop: 18 }}>
+          <div className="card-row">
+            <h3 style={{ marginBottom: 0 }}>Private to this device</h3>
+          </div>
+          {secretsOn ? (
+            <>
+              <p className="hint" style={{ marginTop: 0 }}>
+                Encrypted here, never pushed to your repo or synced. A local model can use these to
+                run without asking you to paste a credential again.
+              </p>
+              <div className="vault-tree">
+                <button
+                  className="conv-item vault-row press-fb press-fb--row"
+                  onClick={() => void openSecrets()}
+                >
+                  <span aria-hidden="true">{'\u{1F512}'} </span>
+                  {SECRETS_NOTE_TITLE}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="hint" style={{ marginTop: 0 }}>
+                Keep this project's tokens and secrets in one encrypted, on-device place.
+              </p>
+              <button
+                className="conv-item vault-row vault-row--absent press-fb press-fb--row"
+                onClick={() => setView('settings')}
+              >
+                <span aria-hidden="true">{'\u{1F512}'} </span>
+                {SECRETS_NOTE_TITLE}
+                <span className="hint vault-topsheet">Toggle on in Settings to enable</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
