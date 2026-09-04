@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { loadConfig } from '../config/load.js';
 import { listSessions, sessionsDir, type SessionInfo } from '../daemon/session.js';
 import { isSealed, loadOrCreateDataKey, openString } from '../core/security/atRest.js';
+import { computeSustainability } from './sustainability.js';
 import type { DriverEvent } from '../core/agent/types.js';
 import type {
   StackHealth,
@@ -565,6 +566,11 @@ export function computeStackHealth(
     cloudDollars: totals.cloudDollars,
     wouldHavePaid,
     savingsBasis: SAVINGS_BASIS,
+
+    sustainability: computeSustainability(
+      totals.localPrompt + totals.localCompletion,
+      totals.cloudPrompt + totals.cloudCompletion,
+    ),
 
     privacyRing: {
       localTurns: totals.localTurns,

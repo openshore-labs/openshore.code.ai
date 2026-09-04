@@ -56,6 +56,9 @@ export type {
   StackHealthRange,
   StackHealthSealFact,
   SavingsBasis,
+  Sustainability,
+  SustainabilityBasis,
+  SustainabilityFootprint,
 } from './insights/stackHealthTypes.js';
 
 /** Wire shapes the daemon serves that are not agent events. */

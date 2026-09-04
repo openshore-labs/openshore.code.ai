@@ -5,9 +5,10 @@
 // every privacy fact is literally true, including the ones that are not green.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BackBar } from '../components/BackBar.js';
-import { bridge } from '../lib/electronBridge.js';
 import { hapticSuccess } from '../lib/haptics.js';
-import type { StackHealth, StackHealthRange } from 'os-code/protocol';
+import { loadAppStackHealth } from '../lib/stackHealth.js';
+import { useApp } from '../state/store.js';
+import type { StackHealth, StackHealthRange, SustainabilityFootprint } from 'os-code/protocol';
 
 const RANGES: Array<{ id: StackHealthRange; label: string }> = [
   { id: 'day', label: 'Day' },
@@ -29,6 +30,59 @@ function money(n: number): string {
 
 function pct(f: number): number {
   return Math.round(f * 100);
+}
+
+// ---- Sustainability formatting. Every number is an estimate, so these round
+// generously and never manufacture false precision. Small weeks read small, and
+// that is the honest picture.
+
+/** Energy: watt-hours below a kilowatt-hour, then kWh. */
+function energy(kwh: number): string {
+  const wh = kwh * 1000;
+  if (wh < 1) return `${(wh * 1000).toFixed(0)} mWh`;
+  if (wh < 1000) return `${wh < 10 ? wh.toFixed(1) : Math.round(wh)} Wh`;
+  return `${kwh < 10 ? kwh.toFixed(1) : Math.round(kwh)} kWh`;
+}
+
+/** Water: milliliters below a liter, then liters. */
+function water(liters: number): string {
+  if (liters < 1) return `${Math.round(liters * 1000)} mL`;
+  return `${liters < 10 ? liters.toFixed(1) : Math.round(liters)} L`;
+}
+
+/** Carbon: grams below a kilogram, then kg. */
+function carbon(grams: number): string {
+  if (grams < 1000) return `${grams < 10 ? grams.toFixed(1) : Math.round(grams)} g`;
+  return `${(grams / 1000).toFixed(grams < 10_000 ? 1 : 0)} kg`;
+}
+
+// Relatable equivalents. Illustrative, labelled as such in the copy, each with a
+// stated conversion so nothing is a magic number.
+const WH_PER_PHONE_CHARGE = 12; // a full smartphone charge, ~12 Wh
+const ML_PER_GLASS = 250; // a glass of water
+const GRAMS_CO2_PER_KM = 170; // an average passenger car, gCO2e per km
+
+function phoneCharges(kwh: number): number {
+  return (kwh * 1000) / WH_PER_PHONE_CHARGE;
+}
+function glasses(liters: number): number {
+  return (liters * 1000) / ML_PER_GLASS;
+}
+function kmDriven(grams: number): number {
+  return grams / GRAMS_CO2_PER_KM;
+}
+
+/** A short, honest equivalence line for a footprint, or empty when it rounds to
+ *  nothing worth saying. */
+function equivalent(f: SustainabilityFootprint): string {
+  const charges = phoneCharges(f.kwh);
+  const g = glasses(f.liters);
+  const km = kmDriven(f.grams);
+  const parts: string[] = [];
+  if (charges >= 1) parts.push(`${Math.round(charges)} phone ${Math.round(charges) === 1 ? 'charge' : 'charges'}`);
+  if (g >= 1) parts.push(`${Math.round(g)} ${Math.round(g) === 1 ? 'glass' : 'glasses'} of water`);
+  if (km >= 1) parts.push(`${Math.round(km)} km not driven`);
+  return parts.join(' · ');
 }
 
 // A number that eases up from 0 on mount and whenever the target changes. The
@@ -219,35 +273,40 @@ function roleLabel(role: string): string {
 }
 
 export function StackHealthScreen() {
+  const { settings } = useApp();
   const [range, setRange] = useState<StackHealthRange>('week');
   const [health, setHealth] = useState<StackHealth | undefined>();
-  const [state, setState] = useState<'loading' | 'ready' | 'nobridge' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'none' | 'unreachable' | 'error'>(
+    'loading',
+  );
   const [animate, setAnimate] = useState(false);
+  const daemon = settings.daemon;
 
   useEffect(() => {
-    const b = bridge();
-    if (!b) {
-      setState('nobridge');
-      return;
-    }
     let live = true;
     setState('loading');
     setAnimate(false);
-    b.stackHealth(range)
-      .then((h) => {
+    loadAppStackHealth(range, daemon)
+      .then((r) => {
         if (!live) return;
-        setHealth(h);
-        setState('ready');
-        // Let the first paint settle, then release the ring/sparkline fills.
-        requestAnimationFrame(() => requestAnimationFrame(() => live && setAnimate(true)));
+        if (r.kind === 'ready') {
+          setHealth(r.health);
+          setState('ready');
+          // Let the first paint settle, then release the ring/sparkline fills.
+          requestAnimationFrame(() => requestAnimationFrame(() => live && setAnimate(true)));
+        } else {
+          setState(r.kind);
+        }
       })
       .catch(() => live && setState('error'));
     return () => {
       live = false;
     };
-  }, [range]);
+  }, [range, daemon]);
 
   const saved = useCountUp(health?.savedDollars ?? 0);
+  // The founder singled out water: it is the count-up beat on the green section.
+  const waterAvoided = useCountUp((health?.sustainability.avoided.liters ?? 0) * 1000);
 
   const basis = health?.savingsBasis.model ?? 'Claude Sonnet';
   const crew = useMemo(() => health?.crew ?? [], [health]);
@@ -285,13 +344,24 @@ export function StackHealthScreen() {
         {state === 'error' ? (
           <p className="hint">Could not read Stack Health right now. Try again in a moment.</p>
         ) : null}
-        {state === 'nobridge' ? (
+        {state === 'none' ? (
           <div className="card" style={{ marginTop: 12 }}>
-            <h3>Stack Health lives on your desktop</h3>
+            <h3>See it on every device you pair</h3>
             <p className="sub" style={{ marginTop: 6 }}>
-              It reads the sessions stored on the machine that runs your models. Open OpenShore on
-              your Mac or PC to see it. Your phone stays a window onto that machine, never a copy of
-              it.
+              Stack Health reads the sessions on the machine that runs your models. Pair this phone
+              with your hub and it shows up here too, folded on that machine and sent as a summary.
+              Your phone stays a window onto it, never a copy. On your Mac or PC, open OpenShore to
+              see it directly.
+            </p>
+          </div>
+        ) : null}
+        {state === 'unreachable' ? (
+          <div className="card" style={{ marginTop: 12 }}>
+            <h3>Your hub is not answering</h3>
+            <p className="sub" style={{ marginTop: 6 }}>
+              Stack Health is folded on the machine that runs your models. It looks asleep or off
+              your network right now. Wake it, or check you are both on the same Tailscale network,
+              and pull to try again.
             </p>
           </div>
         ) : null}
@@ -341,6 +411,62 @@ export function StackHealthScreen() {
                 Saved {pct(health.savedRing.fraction)}%
               </span>
             </div>
+
+            {/* The greener way to build: energy, water, and carbon your local
+                work kept off the grid versus the same work in a data center. */}
+            <section className="card sh-card sh-green">
+              <p className="sh-eyebrow">The greener way to build</p>
+              <div className="sh-green-hero">
+                <span className="sh-green-num">{water(waterAvoided / 1000)}</span>
+                <span className="sh-green-cap">of water not drawn from a data center</span>
+              </div>
+              <div className="sh-green-grid">
+                <div className="sh-green-tile">
+                  <span className="sh-green-tile-num">{energy(health.sustainability.avoided.kwh)}</span>
+                  <span className="sh-green-tile-cap">energy avoided</span>
+                </div>
+                <div className="sh-green-tile">
+                  <span className="sh-green-tile-num">
+                    {carbon(health.sustainability.avoided.grams)}
+                  </span>
+                  <span className="sh-green-tile-cap">CO2e avoided</span>
+                </div>
+                <div className="sh-green-tile">
+                  <span className="sh-green-tile-num">
+                    {pct(
+                      health.sustainability.cloudCounterfactual.kwh > 0
+                        ? health.sustainability.avoided.kwh /
+                            health.sustainability.cloudCounterfactual.kwh
+                        : 0,
+                    )}
+                    %
+                  </span>
+                  <span className="sh-green-tile-cap">lighter than the cloud</span>
+                </div>
+              </div>
+              {equivalent(health.sustainability.avoided) ? (
+                <p className="sub sh-card-read">
+                  Running local this period was about {equivalent(health.sustainability.avoided)},
+                  versus the same work on {basis} in a hyperscale data center.
+                </p>
+              ) : (
+                <p className="sub sh-card-read">
+                  Build a little more with local models and this fills in: the energy, water, and
+                  carbon your own hardware keeps off the grid.
+                </p>
+              )}
+              {health.sustainability.cloudActual.kwh > 0 ? (
+                <p className="hint sh-crew-note">
+                  Your cloud turns this period drew about {energy(health.sustainability.cloudActual.kwh)}{' '}
+                  and {water(health.sustainability.cloudActual.liters)} of water in a data center.
+                </p>
+              ) : null}
+              <p className="hint sh-green-basis">
+                An estimate, not a meter. Local work is repriced at published energy, grid carbon,
+                and data-center water intensities. Assumptions travel with the number and stay
+                conservative.
+              </p>
+            </section>
 
             {/* Where your work goes, over time. */}
             <section className="card sh-card">

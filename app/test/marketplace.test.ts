@@ -91,6 +91,32 @@ describe('sortModels undefined ordering', () => {
   });
 });
 
+describe('sortModels greenest', () => {
+  it('orders leanest first by estimated energy, then curated rank', () => {
+    const models = [
+      model({ id: 'big', rank: 1, sizeGB: 40 }),
+      model({ id: 'small', rank: 9, sizeGB: 2 }),
+      model({ id: 'mid', rank: 5, sizeGB: 8 }),
+    ];
+    const out = sortModels(models, 'greenest', 16).map((m) => m.id);
+    expect(out).toEqual(['small', 'mid', 'big']);
+  });
+
+  it('prefers the on-device footprint when a model can run on the phone', () => {
+    const a = model({ id: 'a', rank: 1, sizeGB: 20 });
+    const b = model({
+      id: 'b',
+      rank: 2,
+      sizeGB: 20,
+      onDevice: { url: 'https://x/b.gguf', sizeGB: 1.5, minRamGB: 4 },
+    });
+    // Same catalog size, but b advertises a small on-device build, so it is
+    // estimated leaner and sorts first.
+    const out = sortModels([a, b], 'greenest', 16).map((m) => m.id);
+    expect(out).toEqual(['b', 'a']);
+  });
+});
+
 describe('filterModels', () => {
   const models = [
     model({ id: 'coder', rank: 1, categories: ['coding'], sizeGB: 4 }),
@@ -226,7 +252,12 @@ describe('buildShelves', () => {
     const shelves = buildShelves(models, 16);
     const keys = shelves.map((s) => s.key);
     expect(keys).toContain('pocket');
+    expect(keys).toContain('lean');
     expect(keys).toContain('cap-coding');
+    // The lean shelf is ordered leanest first and carries the greenest axis.
+    const lean = shelves.find((s) => s.key === 'lean')!;
+    expect(lean.sort).toBe('greenest');
+    expect(lean.models[0].id).toBe('phone1');
     // Coding shelf keeps curated order and holds all three coding models.
     const coding = shelves.find((s) => s.key === 'cap-coding')!;
     expect(coding.models.map((m) => m.id)).toEqual(['code1', 'code2', 'code3']);

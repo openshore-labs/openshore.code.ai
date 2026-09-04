@@ -6740,6 +6740,63 @@ textarea {
   display: block;
 }
 
+/* The greener way to build. Deliberately in the teal/water family, never green:
+   the discipline is teal means local/private, and everything saved here is a
+   consequence of staying local. A soft wave-tinted shore edge sets it apart from
+   the neutral cards without breaking the palette. */
+.sh-green {
+  box-shadow: inset 3px 0 0 var(--wave);
+}
+.sh-green-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+.sh-green-num {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--local);
+  font-variant-numeric: tabular-nums;
+}
+.sh-green-cap {
+  font-size: 13px;
+  color: var(--muted);
+}
+.sh-green-grid {
+  display: flex;
+  gap: 10px;
+}
+.sh-green-tile {
+  flex: 1;
+  text-align: center;
+  padding: 12px 6px;
+  background: var(--local-soft);
+  border-radius: var(--radius);
+}
+.sh-green-tile-num {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--local-deep);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.sh-green-tile-cap {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 4px;
+  display: block;
+}
+.sh-green-basis {
+  margin-top: 12px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sh-ring-fill {
     transition: none;
