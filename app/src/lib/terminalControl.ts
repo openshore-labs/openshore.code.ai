@@ -32,12 +32,15 @@ export function terminalTargetId(opts: {
 }
 
 /** A plain name for the target, shown wherever the switch is armed so no one
- *  ever mistakes the hub for the laptop in front of them. */
+ *  ever mistakes the hub for the laptop in front of them. Prefers the hub's
+ *  saved name, then its tailnet host. */
 export function terminalTargetLabel(opts: {
   desktopLocal: boolean;
-  daemon?: { baseUrl: string };
+  daemon?: { baseUrl: string; name?: string };
 }): string {
   if (opts.desktopLocal) return 'This computer';
+  const name = opts.daemon?.name?.trim();
+  if (name) return name;
   const url = opts.daemon?.baseUrl;
   if (!url) return 'your hub';
   try {
@@ -89,4 +92,52 @@ export function shouldAutoRunShell(
   if (!opts.canControl) return false;
   if (!isShellApproval(req)) return false;
   return terminalControlOn(opts.control, opts.targetId);
+}
+
+/** The reason handed back to the model when it tries to run a shell command
+ *  while Terminal Control is Off, so it directs the person to the switch
+ *  instead of retrying. Off keeps the model and the terminal fully separate:
+ *  the person works the terminal themselves until they let the model in. */
+export function terminalControlDenyReason(opts: { label: string; canControl: boolean }): string {
+  if (!opts.canControl) {
+    return `Terminal Control is off for ${opts.label}, and only an organization admin can turn it on. Do not run terminal commands. Tell the person to ask an admin to enable Terminal Control, or give them the exact command to run themselves and use what they paste back.`;
+  }
+  return `Terminal Control is off, so you cannot run terminal commands on ${opts.label}. Do not retry. Tell the person to turn on Terminal Control in Settings (or the Terminal room) to let you run commands here, or give them the exact command to run themselves and use what they paste back.`;
+}
+
+/** What the store should do with an approval request, as one pure function so
+ *  the whole assembly (the driver-kind fence, the shell-only gate, the target
+ *  resolution, the On/Off decision, the deny reason) is pinned by tests rather
+ *  than living only inside the store's event handler. 'passthrough' means this
+ *  is not a desktop shell call, so the store's existing permission-mode rules
+ *  decide it. */
+export type ShellApprovalDecision =
+  | { action: 'auto-approve' }
+  | { action: 'auto-deny'; reason: string }
+  | { action: 'passthrough' };
+
+export function decideDesktopShellApproval(
+  req: Pick<ApprovalRequest, 'kind' | 'toolName'>,
+  ctx: {
+    driverKind: string;
+    desktopLocal: boolean;
+    daemon?: { baseUrl: string; name?: string };
+    control: Record<string, boolean> | undefined;
+    canControl: boolean;
+  },
+): ShellApprovalDecision {
+  // Only a shell call on a desktop-backed session is Terminal Control's to
+  // decide. A cloud-spend ask on the same session, or any client-brain tool,
+  // passes through to the existing rules.
+  if (ctx.driverKind !== 'desktop') return { action: 'passthrough' };
+  if (!isShellApproval(req)) return { action: 'passthrough' };
+  const targetId = terminalTargetId({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
+  if (shouldAutoRunShell(req, { targetId, control: ctx.control, canControl: ctx.canControl })) {
+    return { action: 'auto-approve' };
+  }
+  const label = terminalTargetLabel({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
+  return {
+    action: 'auto-deny',
+    reason: terminalControlDenyReason({ label, canControl: ctx.canControl }),
+  };
 }

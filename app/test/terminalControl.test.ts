@@ -6,8 +6,10 @@ import type { ApprovalRequest } from 'os-code/protocol';
 import {
   LOCAL_TARGET,
   canControlTerminal,
+  decideDesktopShellApproval,
   isShellApproval,
   shouldAutoRunShell,
+  terminalControlDenyReason,
   terminalControlOn,
   terminalTargetId,
   terminalTargetLabel,
@@ -119,5 +121,87 @@ describe('the auto run decision', () => {
         canControl: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe('the store assembly (decideDesktopShellApproval)', () => {
+  const base = {
+    driverKind: 'desktop',
+    desktopLocal: true,
+    daemon: undefined,
+    canControl: true,
+  };
+
+  it('auto-approves a desktop shell call when On for the local engine', () => {
+    expect(
+      decideDesktopShellApproval(shell(), { ...base, control: { [LOCAL_TARGET]: true } }),
+    ).toEqual({ action: 'auto-approve' });
+  });
+
+  it('auto-denies with a reason when Off (the strict default)', () => {
+    const d = decideDesktopShellApproval(shell(), { ...base, control: {} });
+    expect(d.action).toBe('auto-deny');
+    if (d.action === 'auto-deny') expect(d.reason).toContain('Terminal Control is off');
+  });
+
+  it('auto-denies a commercial member even with On stored, and tells them it is admin only', () => {
+    const d = decideDesktopShellApproval(shell(), {
+      ...base,
+      canControl: false,
+      control: { [LOCAL_TARGET]: true },
+    });
+    expect(d.action).toBe('auto-deny');
+    if (d.action === 'auto-deny') expect(d.reason).toContain('admin');
+  });
+
+  it('keys On to the remote hub when the desktop runs on one, not the local engine', () => {
+    const daemon = { baseUrl: 'http://100.1.2.3:4816' };
+    // desktopLocal false means the session runs on the hub; On must be stored
+    // under the hub URL, not the local key.
+    expect(
+      decideDesktopShellApproval(shell(), {
+        driverKind: 'desktop',
+        desktopLocal: false,
+        daemon,
+        canControl: true,
+        control: { [daemon.baseUrl]: true },
+      }),
+    ).toEqual({ action: 'auto-approve' });
+    expect(
+      decideDesktopShellApproval(shell(), {
+        driverKind: 'desktop',
+        desktopLocal: false,
+        daemon,
+        canControl: true,
+        control: { [LOCAL_TARGET]: true },
+      }).action,
+    ).toBe('auto-deny');
+  });
+
+  it('passes a cloud-spend ask on a desktop session through to the mode rules', () => {
+    expect(
+      decideDesktopShellApproval(spend(), { ...base, control: { [LOCAL_TARGET]: true } }),
+    ).toEqual({ action: 'passthrough' });
+  });
+
+  it('passes a client-brain shell tool through, never auto-approving it', () => {
+    expect(
+      decideDesktopShellApproval(shell(), {
+        driverKind: 'device',
+        desktopLocal: true,
+        daemon: undefined,
+        canControl: true,
+        control: { [LOCAL_TARGET]: true },
+      }),
+    ).toEqual({ action: 'passthrough' });
+  });
+});
+
+describe('the deny reason', () => {
+  it('points a permitted person at the Settings toggle', () => {
+    expect(terminalControlDenyReason({ label: 'my-hub', canControl: true })).toContain('Settings');
+  });
+  it('points a member at an admin', () => {
+    expect(terminalControlDenyReason({ label: 'my-hub', canControl: false })).toContain('admin');
   });
 });

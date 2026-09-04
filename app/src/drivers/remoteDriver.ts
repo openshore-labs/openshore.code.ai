@@ -33,6 +33,9 @@ export interface DaemonTarget {
   /** e.g. http://100.101.1.2:4816 (the desktop's tailnet address). */
   baseUrl: string;
   token: string;
+  /** A friendly name for the hub, shown when more than one is saved. Optional;
+   *  the tailnet host stands in when it is absent. */
+  name?: string;
 }
 
 function headers(target: DaemonTarget): Record<string, string> {
