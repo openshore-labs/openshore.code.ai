@@ -416,3 +416,43 @@ describe('daemon request hygiene (P2-7)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('Stack Health visibility (admin-gated on a shared hub)', () => {
+  it('defaults to admins: a member is refused with a distinct reason, an admin is served', async () => {
+    const { token: memberToken } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_shm' });
+    const mres = await fetch(`${base}/stack-health?range=week`, { headers: auth(memberToken) });
+    expect(mres.status).toBe(403);
+    expect(((await mres.json()) as { error?: string }).error).toBe('restricted');
+
+    const ares = await fetch(`${base}/stack-health?range=week`, { headers: auth(adminToken) });
+    expect(ares.status).toBe(200);
+  });
+
+  it('stamps scope honestly: legacy admin is personal, a minted credential is machine', async () => {
+    const legacy = await fetch(`${base}/stack-health`, { headers: auth(adminToken) });
+    expect(((await legacy.json()) as { scope: string }).scope).toBe('personal');
+    const { token: mintedAdmin } = mintCredential({ role: 'admin', label: 'Hub', userId: 'u_sha' });
+    const minted = await fetch(`${base}/stack-health`, { headers: auth(mintedAdmin) });
+    expect(((await minted.json()) as { scope: string }).scope).toBe('machine');
+  });
+
+  it('an admin opens it to everyone and the change takes effect with no restart', async () => {
+    const { token: memberToken } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_shm2' });
+    expect((await fetch(`${base}/stack-health`, { headers: auth(memberToken) })).status).toBe(403);
+    // A member cannot change the setting.
+    const denied = await fetch(`${base}/stack-health/visibility`, {
+      method: 'POST',
+      headers: auth(memberToken),
+      body: JSON.stringify({ visibility: 'everyone' }),
+    });
+    expect(denied.status).toBe(403);
+    // An admin can, and the same running daemon then serves the member.
+    const set = await fetch(`${base}/stack-health/visibility`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ visibility: 'everyone' }),
+    });
+    expect(set.status).toBe(200);
+    expect((await fetch(`${base}/stack-health`, { headers: auth(memberToken) })).status).toBe(200);
+  });
+});

@@ -3,6 +3,50 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Stack Health: daily cadence, admin-gated visibility, Run leaner)
+
+Founder: update Stack Health on a daily basis (no on-demand refresh), and build
+the two deferred items, with the CTO and CMO agreeing the design calls. Same
+branch `claude/stack-health-sustainability-9wnf1y`.
+
+- **Daily cadence, no manual refresh.** The pull-to-refresh gesture and its hook
+  are gone. `app/src/lib/stackHealth.ts` now caches a per-range fold for 24h and
+  only refolds on open past a day; the screen shows "Updated <when>. Refreshes
+  once a day." Honest and quiet.
+- **CTO + CMO agreed both deferred items** (run as advisor subagents; one
+  synthesized direction, one disagree-and-commit noted). Details in DECISIONS.md.
+
+- **Item A, enterprise admin-controlled visibility (server-enforced).** An admin
+  sets whether everyone or only admins may see Stack Health on a shared hub. The
+  setting lives in daemon config (`DaemonSchema.stackHealthVisibility`, default
+  `admins`), enforced by a FRESH config read in `GET /stack-health` (no restart),
+  with a distinct 403 `restricted` the phone renders as its own calm state.
+  Admin-only `POST /stack-health/visibility` sets it; a member-readable `GET`
+  backs the Settings control. No Supabase migration: the data is folded on the
+  hub and enforced on the hub, so authority stays co-located. A Settings "Stack
+  Health" group (shown when a hub is paired) lets an admin flip it.
+- **Honesty fix the CTO surfaced (owed regardless).** `computeStackHealth` folds
+  EVERY session on the machine, so on a shared hub a member sees a machine-wide
+  aggregate. The payload now carries `scope: 'personal' | 'machine'` (stamped by
+  the route from the auth source) and the screen states it: "Across every session
+  on this hub. Never broken down by person." The false "user's OWN usage" comment
+  is corrected. Default-closed means a shared hub does not leak until an admin
+  opens it. Three daemon tests pin the gate, the scope stamp, and the no-restart
+  toggle.
+- **Item B, "Run leaner" (advisory, read-only).** A greener-stack recommender.
+  `app/src/lib/stackOptimizer.ts` (pure, 7 tests) proposes at most one leaner
+  local peer per role, behind a capability-parity gate: a candidate is surfaced
+  only when it preserves the role's capability, clears a quality floor, AND is
+  meaningfully leaner, so the size-proxy energy score can never quietly gut the
+  stack. One basis (`modelEnergyPer1kTok`), estimates labelled, a cloud model is
+  never called greener (the win is running a capable local peer). It renders on
+  the Stack Health green card with the swap, the estimated saving, the model's
+  OpenShore fit beside it, and a "Browse lean models" link. NO-GO (CTO) on the
+  open "greener stack for a workload" framing; per-suggestion Apply on the Stack
+  screen is the fast-follow.
+- Gates green: os-code typecheck + lint + 420 tests + build; app typecheck +
+  lint + 604 tests + vite build; motion/polish and total em-dash guards clean.
+
 ## Current state (2026-09-04, Stack Health sustainability: all the polish)
 
 Founder: "Do all of the polish," on the sustainability + carry-through drop

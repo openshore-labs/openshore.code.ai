@@ -6798,46 +6798,15 @@ textarea {
   font-weight: 400;
 }
 
-/* Pull-to-refresh. The holder is a zero-height flow marker at the top of the
-   content; the indicator rides absolutely in the gap the pull opens, so the
-   scroll container never clips it. Transform and opacity only; the settle back
-   runs on the arrive curve (no overshoot, so content never dips past its rest). */
-.sh-pull-holder {
-  position: relative;
-  height: 0;
+/* Stack Health folds once a day, so the header carries a quiet "when" line, and
+   an honest scope line that says whose sessions the numbers cover. */
+.sh-scope {
+  margin-top: 10px;
+  font-weight: 500;
+  color: var(--ink);
 }
-.sh-pull-ind {
-  position: absolute;
-  top: -44px;
-  left: 0;
-  right: 0;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--local);
-  pointer-events: none;
-  will-change: transform;
-}
-.sh-pull-ind.settling {
-  transition: transform var(--dur-5) var(--ease-arrive);
-}
-.sh-pull-arrow {
-  transition: transform var(--dur-3) var(--ease-standard);
-}
-.sh-pull-arrow.armed {
-  transform: rotate(180deg);
-}
-.sh-pull-spinner {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid var(--local-soft);
-  border-top-color: var(--local);
-  animation: spin 0.8s linear infinite;
-}
-.screen-inner.sh-pull-settling {
-  transition: transform var(--dur-5) var(--ease-arrive);
+.sh-updated {
+  margin-top: 4px;
 }
 .sh-green-hero {
   display: flex;
@@ -6887,6 +6856,39 @@ textarea {
   margin-top: 12px;
   font-size: 11px;
   opacity: 0.85;
+}
+
+/* Run leaner: advisory swap rows. Capability sits beside the saving on purpose,
+   so leaner reads as a choice with a cost. */
+.sh-lean-list {
+  display: grid;
+  gap: 8px;
+}
+.sh-lean-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--local-soft);
+  border-radius: var(--radius);
+}
+.sh-lean-swap {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sh-lean-meta {
+  font-size: 12px;
+  margin-top: 2px;
+}
+.sh-lean-browse {
+  margin-top: 12px;
+  padding: 9px 14px;
+  border: 1px solid var(--local);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--local-deep);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 @media (prefers-reduced-motion: reduce) {

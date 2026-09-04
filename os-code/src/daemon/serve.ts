@@ -19,7 +19,7 @@ import {
   loadOrCreateToken,
   resolveAuth,
 } from '../core/security/daemonAuth.js';
-import { oscHome, loadConfig } from '../config/load.js';
+import { oscHome, loadConfig, saveGlobalConfig } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
@@ -431,16 +431,49 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // served to a paired phone so the dashboard reaches every device without a
     // copy leaving the hub. The phone is a window onto this machine: the numbers
     // are computed here, on the local journals, and only the aggregate payload
-    // crosses the tailnet. Member-auth, the same gate as /stack and /catalog.
+    // crosses the tailnet. On a shared hub the fold spans every member's
+    // sessions, so an admin can restrict it (default 'admins', per the CTO/CMO
+    // call). The setting lives in daemon config and is read FRESH here so an
+    // admin's toggle takes effect without a restart. Scope is stamped honestly:
+    // a minted multi-user credential sees a 'machine' aggregate, the legacy solo
+    // token sees 'personal'.
     if (req.method === 'GET' && url.pathname === '/stack-health') {
+      const visibility = loadConfig().config.daemon.stackHealthVisibility;
+      if (visibility === 'admins' && !hasRole(auth, 'admin')) {
+        sendJson(res, 403, {
+          error: 'restricted',
+          message: 'Stack Health is visible to admins on this hub.',
+        });
+        return;
+      }
       const raw = url.searchParams.get('range') ?? 'week';
       const allowed: StackHealthRange[] = ['day', 'week', 'month', 'year', 'all'];
       const range = (allowed as string[]).includes(raw) ? (raw as StackHealthRange) : 'week';
+      const scope = auth.source === 'legacy' ? 'personal' : 'machine';
       try {
-        sendJson(res, 200, computeStackHealth(range));
+        sendJson(res, 200, computeStackHealth(range, new Date(), scope));
       } catch (err) {
         sendJson(res, 500, { error: (err as Error).message });
       }
+      return;
+    }
+    // Read the current Stack Health visibility (any member, so the app can show
+    // the right state and, for an admin, the current setting).
+    if (req.method === 'GET' && url.pathname === '/stack-health/visibility') {
+      sendJson(res, 200, { visibility: loadConfig().config.daemon.stackHealthVisibility });
+      return;
+    }
+    // Set it. Admin-only, persisted to the machine's global config.
+    if (req.method === 'POST' && url.pathname === '/stack-health/visibility') {
+      if (!requireAdmin()) return;
+      const body = await readJson(req);
+      const v = body.visibility;
+      if (v !== 'everyone' && v !== 'admins') {
+        sendJson(res, 400, { error: 'Send {"visibility": "everyone" | "admins"}.' });
+        return;
+      }
+      saveGlobalConfig({ daemon: { stackHealthVisibility: v } });
+      sendJson(res, 200, { visibility: v });
       return;
     }
     if (req.method === 'GET' && url.pathname === '/catalog') {
