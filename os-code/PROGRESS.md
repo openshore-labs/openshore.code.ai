@@ -96,6 +96,57 @@ Branch `claude/harbor-settings-rows-bundle-tbu2ct`.
   owning its limits and pointing to a bigger model. `docs/HARBOR.md` and
   `app/MODEL-LICENSES.md` rewritten (Mini is now redistributed in the bundle
   under Apache-2.0). `test/harborGuides.test.ts` pins all of it.
+## Current state (2026-09-04, Humanizer: written output avoids AI writing patterns by default)
+
+Founder ask: OpenShore harnesses the active models, and one way it does that is
+by running any written output through a Humanizer Mechanism so published
+material avoids AI writing patterns. The main source is Wikipedia's "Signs of AI
+writing." Because that page is world-editable, ingest what is on it today as a
+snapshot (data, not instructions), and keep humanizing the voice of written
+output unless a given project's instructions say otherwise. Branch
+`claude/humanizer-ai-writing-patterns-sv9j3b`.
+
+- **The standard, distilled from the source.** `os-code/src/core/agent/humanizerStandard.ts`
+  is a curated, dated snapshot (captured 2026-09-04) of the prose-voice tells
+  from the "Signs of AI writing" page, rewritten as avoid-this build
+  instructions the model acts on while it writes. It carries the twenty-plus
+  signs (inflated significance, canned notability, superficial trailing
+  analysis, promotional tone, vague attribution, outline-style "faces
+  challenges" conclusions, negative parallelisms, rule of three, Title Case
+  headings, excessive boldface, bold-lead-in lists, em dashes, decorative emoji,
+  unnecessary tables, curly quotes, leaked assistant chatter, knowledge-cutoff
+  filler, unfilled placeholders, model-internal markup leftovers) plus the
+  overused "AI vocabulary" word list. The Wikipedia-specific signs (wikitext vs
+  Markdown markup, heading levels, category and template hallucinations, DOI and
+  ISBN integrity) were dropped as out of scope for general written output. The
+  header records the source URL, the capture date, and the rule that the page is
+  refreshed deliberately, never wired to a live fetch.
+- **The mechanism is injection, not a rewrite pass.** Rather than a second model
+  call over finished output, the standard rides into the writing agent's system
+  prompt (`humanizerStandardPrompt`, injected in `loop.ts` beside the UX
+  standard) so output is born humanized in one pass. Local-first friendly, no
+  extra cost.
+- **On by default, with an off switch.** `humanizer.standard` defaults to `on`
+  (`config/schema.ts`, `HumanizerSchema`). A project sets `humanizer.standard:
+  "off"` in `os-code.config.json`, or adds its own voice rules in
+  `humanizer.notes`, or a person says "skip the humanizer" in the chat. Mirrors
+  the UX standard's off switch exactly. Documented in
+  `os-code.config.example.json`.
+- **Proven by a test.** `test/humanizer.test.ts` checks the standard through a
+  real AgentSession on the mock provider: it reaches the model by default, a
+  project can turn it off, and project voice notes ride along. The full suite is
+  green (389 tests), and the total em-dash guard passes over the new files.
+- **User-facing setting "Humanize Writing" (app).** Founder follow-up: expose it
+  as a plain on/off setting, default on, named so a person can see what it is
+  and so it can be renovated as its own feature. Added `humanizeWriting` to
+  `app` settings (default on), a "Writing" group in `SettingsScreen` with a
+  Switch and a "How this works" info sheet for transparency, and threading
+  through `StackDriver` (`humanizerApplies`, `StackContext.humanize`) so app-side
+  chats carry the standard unless it is off. On-device pocket models are skipped
+  to protect their small context, the same carve-out the UX standard makes; the
+  desktop engine still carries the standard through its own config. Off means a
+  shorter prompt, so the model runs a little faster. `app/test/humanizeWriting.test.ts`
+  pins the wiring; the full app suite is green (524 tests).
 
 ## Current state (2026-09-04, Tokens and Secrets: a per-project encrypted note, local models only)
 

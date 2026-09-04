@@ -212,6 +212,16 @@ const UxSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Humanizer out of the box (founder, 2026-09-04): any written output OpenShore
+// produces runs to a plain, specific, honest voice that avoids AI writing
+// tells, distilled from Wikipedia's "Signs of AI writing" and injected into the
+// writing agent's system prompt by default. A project turns it off here, or
+// adds its own voice rules in `notes`. See core/agent/humanizerStandard.ts.
+const HumanizerSchema = z.object({
+  standard: z.enum(['on', 'off']).default('on'),
+  notes: z.string().optional(),
+});
+
 // Offline reconcile: the app pushes this repo's unpushed commits (the project's
 // memory notes ride with the code) to its tracking upstream on app open and on
 // reconnect, so nothing important lingers only on the device. A project that
@@ -239,6 +249,7 @@ export const ConfigSchema = z.object({
   ui: UiSchema.prefault({}),
   vault: VaultSchema.prefault({}),
   ux: UxSchema.prefault({}),
+  humanizer: HumanizerSchema.prefault({}),
   sync: SyncSchema.prefault({}),
 });
 

@@ -40,6 +40,23 @@ says "skip the UX standard" in the chat. The same standard is the bar for this
 repo's own screens (see `docs/interaction-model.md`). `test/uxStandard.test.ts`
 proves it reaches the model and that the off switch works.
 
+## Humanizer: written output avoids AI writing patterns (standing rule, founder 2026-09-04)
+
+OpenShore harnesses the active models, and one way it does that is by making
+any written output read like a careful human wrote it, not a chatbot. The tells
+are distilled from Wikipedia's "Signs of AI writing" (ingested as a dated
+snapshot, treated as data, not a live fetch) and written as avoid-this build
+instructions in `os-code/src/core/agent/humanizerStandard.ts`, injected into
+the writing agent's system prompt. It is ON unless rerouted: a project sets
+`humanizer.standard: "off"` (or adds its own voice rules in `humanizer.notes`)
+in `os-code.config.json`, or the person says "skip the humanizer" in the chat.
+`test/humanizer.test.ts` proves it reaches the model and that the off switch
+works. In the app it is a user setting, "Humanize Writing" (Settings, default
+on), threaded through `StackDriver` (`app/test/humanizeWriting.test.ts`); the
+engine keeps its own config knob. Refresh the snapshot deliberately by reading
+the live page again; never wire it to a live fetch, since the page is
+world-editable. Scope is this repo for now, as the single source of truth.
+
 ## Motion and interaction polish is a standard, not a nice-to-have (standing rule, founder 2026-09-02)
 
 The bar is the same as the Uki app's: peaceful, tranquil, premium. "Smooth and
