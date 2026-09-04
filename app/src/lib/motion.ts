@@ -16,6 +16,24 @@ export function durationMs(token: string, fallback: number): number {
   return m[2] === 's' ? n * 1000 : n;
 }
 
+/** An easing token (`--ease-arrive`) as a cubic-bezier string, for the Web
+ *  Animations API. CSS keeps referencing the var directly; a scripted animation
+ *  reads the same curve here so the two never carry two copies of it. */
+export function easing(token: string, fallback: string): string {
+  const raw = rootStyle()?.getPropertyValue(token).trim();
+  return raw && raw.length ? raw : fallback;
+}
+
+/** Whether the viewer has asked for reduced motion. A scripted animation must
+ *  check this itself; the global CSS `*` reset only reaches CSS animations. */
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
 /** How long the drawer stays mounted after it is asked to close: the door's
  *  clock (`--dur-7`) plus a hair, so the glide's decelerating tail is never
  *  clipped by the unmount. The gesture hook holds the finger's position for

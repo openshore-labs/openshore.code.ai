@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
+import { captureTitleHero } from '../lib/heroTitle.js';
 
 export function ProjectsScreen() {
   const { settings, createProject, openProject, showToast } = useApp();
@@ -73,12 +74,17 @@ export function ProjectsScreen() {
               className="card press-fb press-fb--row"
               key={p.id}
               style={{ width: '100%', textAlign: 'left', display: 'block' }}
-              onClick={() => openProject(p.id)}
+              onClick={(e) => {
+                // Hand the tapped name to the detail room, so it flies up into
+                // the room's large title (a shared-element move).
+                captureTitleHero(e.currentTarget.querySelector('.project-card-name'));
+                openProject(p.id);
+              }}
             >
               <div className="card-row">
                 <div className="grow">
                   <h3>
-                    {p.name}
+                    <span className="project-card-name">{p.name}</span>
                     {p.id === activeId ? (
                       <span className="pill local" style={{ marginLeft: 8 }}>
                         active
