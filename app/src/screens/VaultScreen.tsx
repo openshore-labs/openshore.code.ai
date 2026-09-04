@@ -15,7 +15,6 @@ import {
   treeAt,
   wikilinkContext,
 } from '../lib/vault.js';
-import { CURRENT_STATE_FILE, isProjectMemoryFolder } from '../lib/projectMemory.js';
 import {
   PROVIDER_ROSTER,
   probeReady,
@@ -232,18 +231,7 @@ export function VaultScreen() {
     void vaultCreate(path);
   };
 
-  // Inside a project's memory folder, the Current State top sheet always sits
-  // first, so a 2 to 5 minute catch up is the first thing the eye lands on; the
-  // rest keep their alphabetical order.
-  const inProjectMemory = isProjectMemoryFolder(folder);
-  const rawEntries = treeAt(folder, vaultFiles);
-  const entries = inProjectMemory
-    ? [...rawEntries].sort((a, b) => {
-        const aTop = a.kind === 'note' && a.name === CURRENT_STATE_FILE ? 0 : 1;
-        const bTop = b.kind === 'note' && b.name === CURRENT_STATE_FILE ? 0 : 1;
-        return aTop - bTop;
-      })
-    : rawEntries;
+  const entries = treeAt(folder, vaultFiles);
   const crumbs = folder ? folder.split('/') : [];
 
   // ---- note view ----------------------------------------------------------
@@ -626,9 +614,6 @@ export function VaultScreen() {
                   onClick={() => openNote(e.path)}
                 >
                   {e.name}
-                  {inProjectMemory && e.name === CURRENT_STATE_FILE ? (
-                    <span className="pill local vault-topsheet">Top sheet</span>
-                  ) : null}
                 </button>
               ),
             )}

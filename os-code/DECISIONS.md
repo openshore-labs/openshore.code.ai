@@ -423,14 +423,23 @@ execution contract. Newest at the bottom.
   review_moderators allowlist seeded by the founder, guarded SECURITY DEFINER
   RPCs, and a panel in AdminScreen that renders only for a moderator (so it
   works for a personal-account operator too, independent of the org umbrella).
-- 2026-09-04: Project memory lives in the personal Vault under
-  `Projects/<project>/`, not committed into the repo (founder call): it is
-  private context the app already owns through the Vault seam, and staying out
-  of the repo keeps it from colliding with contributors' trees.
-- 2026-09-04: Per-project memory is a folder convention inside the single
-  personal Vault resource, not a new vault resource per project. Additive to the
-  shipped single-resource model (no renovation), and it shows up as ordinary
-  Vault folders.
+- 2026-09-04: Project memory lives INSIDE the project's primary attached repo,
+  in a folder "OpenShore Project <name> MDs/", committed with the code and not
+  hosted by the app (founder's explicit call, revising an earlier session choice
+  to keep it in the personal Vault). The notes travel with the repo; the harness
+  writes them through its normal repo-jailed file path.
+- 2026-09-04: Only the PRIMARY attached repo holds the folder (not every
+  attached repo), so the notes have one home and cannot diverge across repos.
+- 2026-09-04: The folder name wraps the project name with a fixed prefix and
+  suffix ("OpenShore Project " + name + " MDs"), which both reads plainly and
+  makes a bare ".." project name a literal folder rather than a traversal.
+- 2026-09-04: The memory notes ride into the agent's commit alongside the change
+  that prompted them; the tool does not make a separate commit or push just for
+  the notes.
+- 2026-09-04: The app read-only view of the notes is deferred pending a scope
+  call: the app has no repo file reader today, so it is net-new plumbing on both
+  desktop (a repo-cwd bridge reader) and iOS (a GitHub contents reader). Surfaced
+  rather than built blind (foundations rule).
 - 2026-09-04: The five presets auto-write through a dedicated
   `projectMemoryWrite` tool that the permission engine allows by name, rather
   than making the existing `vaultWrite` path-aware. Keeps `vaultWrite`'s
@@ -438,6 +447,7 @@ execution contract. Newest at the bottom.
   distinct, hard-scoped affordance the model reaches for on purpose.
 - 2026-09-04: Skills.md holds the project's reusable build/test/ship recipes and
   gotchas (founder's pick), not a registry of agents/skills.
-- 2026-09-04: Backfill seeds a project's five notes only when it has none of
-  them yet (true first open), so a note the person or agent later deletes is not
-  resurrected on the next Vault refresh.
+- 2026-09-04: Seeding moved to the harness (the app no longer writes the notes,
+  since it does not own the repo working tree): the projectMemoryWrite tool
+  creates any missing notes from templates on its first write, so the folder
+  materializes as a complete set the first time the agent touches it.

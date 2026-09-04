@@ -3,47 +3,53 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
-## Current state (2026-09-04, Vault gets per-project memory the harness keeps current)
+## Current state (2026-09-04, per-project memory notes, stored in the repo, kept current by the harness)
 
-Founder ask: the Vault should carry a few preset markdowns per coding project
-that run as historical knowledge, kept up to speed by the harness and organized
-by project, so a model reads the "top sheet" first and digs deeper page by page
-only as needed, for both planning and debugging. Built additively on the Vault
-and gitOS seams (no renovation) on branch
-`claude/openshore-vault-presets-bscvtq`.
+Founder ask: a coding project should carry a few preset markdowns that run as
+historical knowledge, kept up to speed by the harness and organized by project,
+so a model reads the "top sheet" first and digs deeper page by page only as
+needed, for planning and debugging. On storage the founder was explicit: the
+notes live INSIDE the project's primary attached repo, in a folder named
+"OpenShore Project <name> MDs/", committed with the code, not hosted by the app.
+Branch `claude/openshore-vault-presets-bscvtq`.
 
-- **The five presets, per project.** Every project gets a folder under
-  `Projects/<project>/` in the personal Vault holding Current State, Progress,
-  Decisions, Action Items, and Skills. Current State is the pinned top sheet: a
-  2 to 5 minute catch up with five sections (what last landed and launched, key
+- **The five presets, per project, in the repo.** The primary repo gets a folder
+  "OpenShore Project <name> MDs/" holding Current State, Progress, Decisions,
+  Action Items, and Skills. Current State is the pinned top sheet: a 2 to 5
+  minute catch up with five sections (what last landed and launched, key
   outstanding build actions, key outstanding test actions, immediate blockers,
   suggested next steps). Progress is the fuller record and log; Decisions is one
   line per ambiguous call; Action Items is the ranked to-do; Skills is the
-  project's reusable build/test/ship recipes and gotchas.
+  project's reusable build/test/ship recipes and gotchas. The literal
+  prefix/suffix wrapper on the folder name means the enclosed project name can
+  never be a bare ".." that climbs out of the repo.
 - **One shared spec.** `app/src/lib/projectMemory.ts` and
   `os-code/src/core/agent/projectMemory.ts` are the mirrored source of truth for
-  the file set, order, seed templates, folder convention (collision-safe), and
-  path predicates. A test in each package pins the shape so they cannot drift.
+  the file set, order, seed templates, folder convention, and path predicates. A
+  test in each package pins the shape so they cannot drift.
 - **The harness keeps them current.** A project-memory protocol rides into the
-  coding agent's system prompt (`projectMemoryPrompt`, injected in
-  `loop.ts` beside the UX standard): read the Current State top sheet first, dig
-  page by page only as needed, and update the five notes as work lands. The
-  project name is threaded from the app (`store.ts`) through the Electron bridge
+  coding agent's system prompt (`projectMemoryPrompt`, injected in `loop.ts`
+  beside the UX standard): read the Current State top sheet first, dig page by
+  page only as needed, and update the five notes as work lands. The project name
+  is threaded from the app (`store.ts`) through the Electron bridge, the daemon,
   and `bootstrapSession` into the tool context, so the agent's folder matches
-  the app's.
-- **Narrow silent auto-write.** A dedicated `projectMemoryWrite` tool
-  (`os-code/src/core/tools/projectMemory.ts`), hard-scoped to the five files
-  under the current project, lands its writes without the always-ask prompt: the
-  permission engine auto-allows it by name for a managed memory path, while every
-  general `vaultWrite` keeps its always-ask guarantee. This is the founder's
-  "narrow exception," pinned by tests.
-- **Backfill on first open.** The app seeds a project's five notes the first
-  time its Vault is opened (`seedProjectMemory` in `store.ts`, from the pure
-  `seedPlan`), only when the project has none of them yet, so deletions are
-  respected. Inside a project folder the Vault screen pins Current State first
-  with a "Top sheet" marker.
-- Gates green: os-code typecheck + lint + 373 tests; app typecheck + lint + 483
-  tests + build declarations; Prettier clean on all changed files.
+  the project.
+- **Narrow silent auto-write, into the repo.** A dedicated `projectMemoryWrite`
+  tool (`os-code/src/core/tools/projectMemory.ts`), hard-scoped to the five files
+  inside the current project's memory folder in the repo working tree, lands its
+  writes without the always-ask prompt: the permission engine auto-allows it by
+  name for a managed memory path, while every general write (writeFile, editFile,
+  vaultWrite) still asks. It seeds the full set from templates on first touch,
+  and the notes ride into the agent's commit with the code (no separate commit).
+  This is the founder's "narrow exception," pinned by tests.
+- **App view is a pending decision (not built yet).** The founder wants the notes
+  readable in the app's Vault section, but the app has no repo file reader today
+  (verified): a read-only view is net-new plumbing on both platforms (a desktop
+  bridge reader jailed to the repo cwd, and a GitHub contents reader for iOS).
+  Surfaced for a scope call (desktop-first vs full cross-platform vs defer)
+  before building. Tracked in the follow-ups below.
+- Gates green: os-code typecheck + lint + 374 tests + build; app typecheck +
+  lint + 480 tests; Prettier clean on all changed files.
 
 ## Current state (2026-09-04, Projects get their own room and enterprise sharing)
 
@@ -1827,6 +1833,15 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Project memory: read-only view in the app (P2, needs a scope call).**
+      The notes live in the repo; the founder wants them readable in the Vault
+      section. The app has no repo file reader today, so this is net-new: a
+      desktop bridge reader jailed to the repo cwd (mirror `vaultList`/`vaultRead`
+      at `app/electron/main.ts`, rooted at `firstWorkspace(project.repoIds)` /
+      `conv.source.cwd`), and, for iOS, a GitHub contents reader using the token
+      from `gitos/repoOAuth.ts`. The app spec (`app/src/lib/projectMemory.ts`,
+      with `memoryFolderForProject` and `orderMemoryTitlesFirst`) is ready for
+      the viewer. Decide scope: desktop-first, full cross-platform, or defer.
 - [ ] **Project memory: a "note updated" nudge (P3, optional).** The
       `projectMemoryWrite` tool lands silently by design, and `mode: 'replace'`
       can overwrite a note the person hand-edited. The full diff is emitted on

@@ -1,17 +1,20 @@
-// Project memory: every coding project gets a small, durable set of markdown
-// notes in the Vault, so context is never lost between sessions. The model
-// reads the Current State top sheet first and digs page by page only when it
-// needs more, which keeps planning and debugging cheap. The person can open
-// any of the notes in the Vault at any time.
+// Project memory: every coding project keeps a small, durable set of markdown
+// notes so context is never lost between sessions. They live INSIDE the
+// project's primary repo, in a folder named "OpenShore Project <name> MDs/",
+// committed with the code (not hosted by the app). The coding agent (the
+// os-code harness) creates and maintains them; the app reads them.
 //
-// The notes live under Projects/<project>/ in the personal Vault (private, not
-// committed to any repo). The coding agent (the os-code harness) keeps them
-// current; this module is the single source of truth for their names, order,
-// and starting templates, mirrored in os-code/src/core/agent/projectMemory.ts.
-import type { Project } from '../state/types.js';
+// This module is the app copy of the shared spec (names, order, templates,
+// folder convention); the harness copy is
+// os-code/src/core/agent/projectMemory.ts, and projectMemory.test.ts in each
+// package pins the two against each other so they cannot drift.
 
-/** The vault folder that holds every project's memory folder. */
-export const PROJECTS_ROOT = 'Projects';
+/** The memory folder is "OpenShore Project <name> MDs". The literal wrapper is
+ *  deliberate: the fixed prefix and suffix mean the enclosed name can never be
+ *  a bare ".." that climbs out of the repo, and the folder reads plainly in a
+ *  file browser. */
+export const MEMORY_FOLDER_PREFIX = 'OpenShore Project ';
+export const MEMORY_FOLDER_SUFFIX = ' MDs';
 
 /** The top sheet: read this first, a 2 to 5 minute catch up. */
 export const CURRENT_STATE_FILE = 'Current State';
@@ -20,13 +23,13 @@ export const CURRENT_STATE_FILE = 'Current State';
 export interface MemoryFile {
   /** Note title, which is also its filename without the .md extension. */
   title: string;
-  /** The markdown the note is seeded with on first open. */
+  /** The markdown the note is seeded with when the folder is first created. */
   seed: string;
 }
 
 // The five presets, in display order. Current State leads on purpose: it is the
-// top sheet, kept short, with the fuller record in the notes beneath it. None
-// of these bodies may carry an em dash (repo policy is total here).
+// top sheet, kept short, with the fuller record in the notes beneath it. These
+// bodies must match the harness copy byte for byte (the parity test checks it).
 export const MEMORY_FILES: MemoryFile[] = [
   {
     title: CURRENT_STATE_FILE,
@@ -118,97 +121,76 @@ How this project is built, tested, and shipped: the reusable recipes, commands, 
 
 const MEMORY_TITLES = new Set(MEMORY_FILES.map((f) => f.title.toLowerCase()));
 
-/** Sanitize one project name into a single vault-safe folder segment: strip
- *  path separators and the characters forbidden on common filesystems or in
- *  Obsidian's link syntax, and collapse whitespace. Returns '' when nothing
- *  usable is left (the caller falls back to the project id). */
+/** Sanitize one project name into the middle of the memory folder name: strip
+ *  path separators and the characters forbidden on common filesystems, and
+ *  collapse whitespace. Returns '' when nothing usable is left. Matches the
+ *  harness copy so both compute the same folder. */
 export function sanitizeFolderSegment(name: string): string {
   const cleaned = name
     .normalize('NFC')
-    .replace(/[/\\<>:"|?*#^[\]]/g, ' ')
+    .replace(/[/\\<>:"|?*]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  // A segment of only dots ("." or "..") would climb out of the project folder
-  // (Projects/../Skills.md resolves to a sibling in the vault). Treat it as
-  // unusable so the caller falls back to the project id.
   if (/^\.+$/.test(cleaned)) return '';
   return cleaned;
 }
 
-/** Map every project to its memory folder segment, keeping segments unique so
- *  two projects with the same (or empty) sanitized name never share one memory
- *  folder. Collisions and empties fall back to a short slice of the project id.
- *  Returns a Map keyed by project id. */
-export function projectFolders(projects: Project[]): Map<string, string> {
-  const out = new Map<string, string>();
-  const taken = new Set<string>();
-  for (const p of projects) {
-    let seg = sanitizeFolderSegment(p.name);
-    if (!seg || taken.has(seg.toLowerCase())) {
-      const suffix = p.id.replace(/[^A-Za-z0-9]/g, '').slice(0, 6) || 'project';
-      seg = seg ? `${seg} ${suffix}` : suffix;
-    }
-    taken.add(seg.toLowerCase());
-    out.set(p.id, seg);
-  }
-  return out;
+/** The repo-relative memory folder for a project, e.g.
+ *  "OpenShore Project My App MDs". Returns undefined when the name sanitizes to
+ *  nothing usable. */
+export function memoryFolderForProject(name: string): string | undefined {
+  const segment = sanitizeFolderSegment(name);
+  return segment ? memoryFolder(segment) : undefined;
 }
 
-/** The vault folder for one project's memory, e.g. "Projects/My App". */
+/** The repo-relative memory folder for a sanitized segment. */
 export function memoryFolder(segment: string): string {
-  return `${PROJECTS_ROOT}/${segment}`;
+  return `${MEMORY_FOLDER_PREFIX}${segment}${MEMORY_FOLDER_SUFFIX}`;
 }
 
-/** The vault path of one preset inside a project, e.g.
- *  "Projects/My App/Current State.md". */
+/** The repo-relative path of one preset, e.g.
+ *  "OpenShore Project My App MDs/Current State.md". */
 export function memoryFilePath(segment: string, title: string): string {
   return `${memoryFolder(segment)}/${title}.md`;
 }
 
-/** Whether a vault path is one of the five managed memory presets under a
- *  Projects/<one segment>/ folder. This is the gate the harness uses to decide
- *  what may auto-write, so it is deliberately strict: exactly three path parts,
- *  the first being the Projects root, the last being a known preset. */
+/** The enclosed name of a memory folder, or undefined when the folder is not a
+ *  memory folder. Rejects an empty or dot-only inner name. */
+export function memoryFolderName(folder: string): string | undefined {
+  if (!folder.startsWith(MEMORY_FOLDER_PREFIX) || !folder.endsWith(MEMORY_FOLDER_SUFFIX)) {
+    return undefined;
+  }
+  const inner = folder.slice(
+    MEMORY_FOLDER_PREFIX.length,
+    folder.length - MEMORY_FOLDER_SUFFIX.length,
+  );
+  if (!inner || /^\.+$/.test(inner)) return undefined;
+  return inner;
+}
+
+/** Whether a repo-relative path is one of the five managed presets inside a
+ *  memory folder: exactly two path parts, the first a valid memory folder, the
+ *  last a known preset. */
 export function isMemoryFilePath(path: string): boolean {
   const parts = path.split('/');
-  if (parts.length !== 3) return false;
-  if (parts[0] !== PROJECTS_ROOT) return false;
-  const segment = parts[1]!;
-  // Reject a dot segment that would traverse out of the project folder, and an
-  // empty one, before trusting the filename.
-  if (!segment || segment === '.' || segment === '..') return false;
-  const base = parts[2]!.replace(/\.md$/i, '').toLowerCase();
+  if (parts.length !== 2) return false;
+  if (memoryFolderName(parts[0]!) === undefined) return false;
+  const base = parts[1]!.replace(/\.md$/i, '').toLowerCase();
   return MEMORY_TITLES.has(base);
 }
 
-/** True when a vault folder is exactly one project's memory folder
- *  ("Projects/<segment>"), so the UI can pin the Current State top sheet there. */
+/** True when a folder is exactly one project's memory folder, so the UI can pin
+ *  the Current State top sheet there. */
 export function isProjectMemoryFolder(folder: string): boolean {
-  const parts = folder.split('/');
-  return parts.length === 2 && parts[0] === PROJECTS_ROOT && Boolean(parts[1]);
+  return !folder.includes('/') && memoryFolderName(folder) !== undefined;
 }
 
-/** The notes to seed so every project starts with the full preset set. A
- *  project is seeded only when it has NONE of its memory files yet (true first
- *  open); once any exist, the person and the agent own the folder and deletions
- *  are respected. Pure: it reads the current path list and returns the writes,
- *  it does not perform them. */
-export function seedPlan(
-  projects: Project[],
-  existingPaths: string[],
-): Array<{ path: string; text: string }> {
-  const present = new Set(existingPaths.map((p) => p.toLowerCase()));
-  const folders = projectFolders(projects);
-  const writes: Array<{ path: string; text: string }> = [];
-  for (const p of projects) {
-    const seg = folders.get(p.id)!;
-    const hasAny = MEMORY_FILES.some((f) =>
-      present.has(memoryFilePath(seg, f.title).toLowerCase()),
-    );
-    if (hasAny) continue;
-    for (const f of MEMORY_FILES) {
-      writes.push({ path: memoryFilePath(seg, f.title), text: f.seed });
-    }
-  }
-  return writes;
+/** Order note filenames so the Current State top sheet leads, the rest keeping
+ *  their given order. Used by a read-only project view. */
+export function orderMemoryTitlesFirst<T>(items: T[], titleOf: (item: T) => string): T[] {
+  return [...items].sort((a, b) => {
+    const av = titleOf(a) === CURRENT_STATE_FILE ? 0 : 1;
+    const bv = titleOf(b) === CURRENT_STATE_FILE ? 0 : 1;
+    return av - bv;
+  });
 }
