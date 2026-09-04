@@ -6,12 +6,19 @@ import type { ApprovalRequest } from 'os-code/protocol';
 import {
   LOCAL_TARGET,
   canControlTerminal,
+  decideApproval,
   isShellApproval,
   shouldAutoRunShell,
+  terminalControlDenyReason,
   terminalControlOn,
   terminalTargetId,
   terminalTargetLabel,
 } from '../src/lib/terminalControl.js';
+
+const write = (): Pick<ApprovalRequest, 'kind' | 'toolName'> => ({
+  kind: 'tool',
+  toolName: 'vaultWrite',
+});
 
 const shell = (): Pick<ApprovalRequest, 'kind' | 'toolName'> => ({
   kind: 'tool',
@@ -119,5 +126,108 @@ describe('the auto run decision', () => {
         canControl: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe('the store assembly (decideApproval)', () => {
+  const base = {
+    driverKind: 'desktop',
+    desktopLocal: true,
+    daemon: undefined,
+    canControl: true,
+    mode: 'acceptEdits' as const,
+  };
+
+  it('auto-approves a desktop shell call when On for the local engine', () => {
+    expect(decideApproval(shell(), { ...base, control: { [LOCAL_TARGET]: true } })).toEqual({
+      action: 'auto-approve',
+    });
+  });
+
+  it('auto-denies with a reason when Off (the strict default)', () => {
+    const d = decideApproval(shell(), { ...base, control: {} });
+    expect(d.action).toBe('auto-deny');
+    if (d.action === 'auto-deny') expect(d.reason).toContain('Terminal Control is off');
+  });
+
+  it('auto-denies a commercial member even with On stored, and tells them it is admin only', () => {
+    const d = decideApproval(shell(), {
+      ...base,
+      canControl: false,
+      control: { [LOCAL_TARGET]: true },
+    });
+    expect(d.action).toBe('auto-deny');
+    if (d.action === 'auto-deny') expect(d.reason).toContain('admin');
+  });
+
+  it('keys On to the remote hub when the desktop runs on one, not the local engine', () => {
+    const daemon = { baseUrl: 'http://100.1.2.3:4816' };
+    expect(
+      decideApproval(shell(), {
+        ...base,
+        desktopLocal: false,
+        daemon,
+        control: { [daemon.baseUrl]: true },
+      }),
+    ).toEqual({ action: 'auto-approve' });
+    expect(
+      decideApproval(shell(), {
+        ...base,
+        desktopLocal: false,
+        daemon,
+        control: { [LOCAL_TARGET]: true },
+      }).action,
+    ).toBe('auto-deny');
+  });
+
+  it('NEVER client-auto-approves a desktop non-shell tool, even an always-ask one under acceptEdits', () => {
+    // The regression guard: vaultWrite is always-ask; the engine asked, so the
+    // sheet must stand. It must not be swept up by the client mode rules.
+    expect(decideApproval(write(), { ...base, control: { [LOCAL_TARGET]: true } })).toEqual({
+      action: 'sheet',
+    });
+    expect(decideApproval(write(), { ...base, mode: 'bypassPermissions', control: {} })).toEqual({
+      action: 'sheet',
+    });
+  });
+
+  it('shows the sheet for a desktop cloud-spend ask', () => {
+    expect(decideApproval(spend(), { ...base, control: { [LOCAL_TARGET]: true } })).toEqual({
+      action: 'sheet',
+    });
+  });
+
+  it('lets the mode auto-approve a client-brain edit, but not a client-brain shell', () => {
+    // Client brains run their tools in the app, so the mode decides. acceptEdits
+    // covers an edit; shell still asks.
+    expect(
+      decideApproval(write(), {
+        driverKind: 'device',
+        desktopLocal: true,
+        daemon: undefined,
+        canControl: true,
+        control: {},
+        mode: 'acceptEdits',
+      }),
+    ).toEqual({ action: 'auto-approve' });
+    expect(
+      decideApproval(shell(), {
+        driverKind: 'device',
+        desktopLocal: true,
+        daemon: undefined,
+        canControl: true,
+        control: { [LOCAL_TARGET]: true },
+        mode: 'acceptEdits',
+      }),
+    ).toEqual({ action: 'sheet' });
+  });
+});
+
+describe('the deny reason', () => {
+  it('points a permitted person at the Settings toggle', () => {
+    expect(terminalControlDenyReason({ label: 'my-hub', canControl: true })).toContain('Settings');
+  });
+  it('points a member at an admin', () => {
+    expect(terminalControlDenyReason({ label: 'my-hub', canControl: false })).toContain('admin');
   });
 });

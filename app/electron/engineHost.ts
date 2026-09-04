@@ -167,7 +167,12 @@ export class EngineHost {
 
   async createSession(
     cwd?: string,
-    opts: { instructions?: string; permissionMode?: PermissionMode; projectName?: string } = {},
+    opts: {
+      instructions?: string;
+      permissionMode?: PermissionMode;
+      projectName?: string;
+      projectSecrets?: string;
+    } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
     const { driver, warnings } = bootstrapSession({
@@ -177,6 +182,7 @@ export class EngineHost {
       instructions: opts.instructions,
       permissionMode: opts.permissionMode,
       projectName: opts.projectName,
+      projectSecrets: opts.projectSecrets,
     });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
@@ -229,7 +235,12 @@ export class EngineHost {
   answerApproval(
     sessionId: string,
     approvalId: string,
-    answer: { approve: boolean; alwaysThisSession?: boolean; alwaysInProject?: boolean },
+    answer: {
+      approve: boolean;
+      alwaysThisSession?: boolean;
+      alwaysInProject?: boolean;
+      reason?: string;
+    },
   ): void {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
   }

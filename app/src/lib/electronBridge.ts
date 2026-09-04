@@ -71,7 +71,12 @@ export interface OscodeBridge {
   // Sessions (conversations backed by the engine).
   createSession(
     cwd?: string,
-    opts?: { instructions?: string; permissionMode?: PermissionMode; projectName?: string },
+    opts?: {
+      instructions?: string;
+      permissionMode?: PermissionMode;
+      projectName?: string;
+      projectSecrets?: string;
+    },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the
    *  permission mode, the project's standing instructions, manual compaction,

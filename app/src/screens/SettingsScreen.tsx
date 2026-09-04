@@ -10,9 +10,15 @@ import { platform, isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 import { HARBOR_BYLINE } from '../lib/harbor.js';
 import { HARBOR_MINI_BYLINE, HARBOR_MINI_BUNDLED, HARBOR_MINI_HANDOFF_LINE } from '../lib/harborMini.js';
+import {
+  canControlTerminal,
+  terminalControlOn,
+  terminalTargetId,
+  terminalTargetLabel,
+} from '../lib/terminalControl.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
-import { hapticTick } from '../lib/haptics.js';
+import { hapticApproval, hapticTick } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { InfoSheet } from '../components/InfoSheet.js';
@@ -197,6 +203,8 @@ export function SettingsScreen() {
     removeHarbor,
     cancelHarbor,
     harborDownload,
+    setTerminalControl,
+    serverRole,
   } = useApp();
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
@@ -255,6 +263,21 @@ export function SettingsScreen() {
       ? tierById(org.tierId).name
       : 'Free'
     : 'Optional';
+
+  const termDesktopLocal = isDesktop() && Boolean(bridge()) && !settings.preferRemoteHub;
+  const termTargetId = terminalTargetId({
+    desktopLocal: termDesktopLocal,
+    daemon: settings.daemon,
+  });
+  const termLabel = terminalTargetLabel({
+    desktopLocal: termDesktopLocal,
+    daemon: settings.daemon,
+  });
+  const canControlTerm = canControlTerminal(
+    settings.account,
+    isOrgAdmin(settings.account) || serverRole === 'admin',
+  );
+  const termControlOn = terminalControlOn(settings.terminalControl, termTargetId);
 
   let group = 0;
 
@@ -362,7 +385,57 @@ export function SettingsScreen() {
               onClick={() => setSheet('log')}
             />
           ) : null}
+          <SettingsRow
+            label="Store tokens and secrets"
+            sub="A per-project note of your credentials, encrypted here. Off by default."
+            trailing={
+              <Switch
+                checked={Boolean(settings.storeSecrets)}
+                label="Store tokens and secrets"
+                onChange={(next) => {
+                  void saveSettings({ storeSecrets: next });
+                  showToast(
+                    next
+                      ? 'On. Secrets stay sealed on this device, and only a local model can use them.'
+                      : 'Off. Your saved secrets stay on this device but no model will use them.',
+                  );
+                }}
+              />
+            }
+          />
         </SettingsGroup>
+
+        {termTargetId ? (
+          <SettingsGroup title="Terminal" index={group++}>
+            <SettingsRow
+              label="Terminal Control"
+              sub={
+                termControlOn
+                  ? `On. The model runs commands on ${termLabel}.`
+                  : `Off. The model stays out of the terminal on ${termLabel}. You run commands yourself.`
+              }
+              trailing={
+                canControlTerm ? (
+                  <Switch
+                    checked={termControlOn}
+                    label="Terminal Control"
+                    onChange={(next) => {
+                      if (next) hapticApproval();
+                      void setTerminalControl(next);
+                      showToast(
+                        next
+                          ? `Terminal Control on for ${termLabel}.`
+                          : `Terminal Control off for ${termLabel}.`,
+                      );
+                    }}
+                  />
+                ) : (
+                  <span className="pill">admin only</span>
+                )
+              }
+            />
+          </SettingsGroup>
+        ) : null}
 
         <SettingsGroup title="Harbor" index={group++}>
           <SettingsRow

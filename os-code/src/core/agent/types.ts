@@ -24,6 +24,11 @@ export interface ApprovalAnswer {
    *  the command's first word), in the project's os-code.config.json. The
    *  Claude Code "don't ask again for this in this project". */
   alwaysInProject?: boolean;
+  /** On a denial, the reason the model should see and act on, in place of the
+   *  generic "the user declined" line. The client uses it to explain a policy
+   *  denial the model can do something about, e.g. Terminal Control being off,
+   *  so the model tells the person how to change it rather than just retrying. */
+  reason?: string;
 }
 
 export type Approver = (request: ApprovalRequest) => Promise<ApprovalAnswer>;

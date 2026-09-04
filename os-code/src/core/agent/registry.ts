@@ -29,6 +29,11 @@ export function buildToolRegistry(options: {
   stackHasVision: boolean;
   stackHasImageGen: boolean;
   stackHasSpecialists: boolean;
+  // On when the session may hold the project's secrets (local model only): no
+  // tool may send anything off the device. Web tools are dropped, and the
+  // specialist/vision/image tools stay off regardless of the stack flags, so a
+  // secret can never ride out to a cloud model or a web request.
+  egressLockdown?: boolean;
 }): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(readFileTool);
@@ -47,8 +52,12 @@ export function buildToolRegistry(options: {
   registry.register(gitStatusTool);
   registry.register(gitDiffTool);
   registry.register(gitCommitTool);
-  registry.register(webSearchTool);
-  registry.register(webFetchTool);
+  // Web tools reach the internet, so they are the one outbound path a secret
+  // could leak through. Under egress lockdown they are not registered at all.
+  if (!options.egressLockdown) {
+    registry.register(webSearchTool);
+    registry.register(webFetchTool);
+  }
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes
   // always ask (vaultWriteTool.alwaysAsk).
@@ -60,10 +69,14 @@ export function buildToolRegistry(options: {
   // auto-allows this tool by name).
   registry.register(projectMemoryWriteTool);
   // Specialist-facing tools appear only when the stack can serve them, so a
-  // single-model setup never tempts the model with tools that cannot work.
-  if (options.stackHasVision) registry.register(analyzeImageTool);
-  if (options.stackHasImageGen) registry.register(generateImageTool);
-  if (options.stackHasSpecialists) registry.register(delegateTool);
+  // single-model setup never tempts the model with tools that cannot work. They
+  // delegate to other models (some of which may be cloud), so egress lockdown
+  // drops them too: a secrets session does its own work, on-device.
+  if (!options.egressLockdown) {
+    if (options.stackHasVision) registry.register(analyzeImageTool);
+    if (options.stackHasImageGen) registry.register(generateImageTool);
+    if (options.stackHasSpecialists) registry.register(delegateTool);
+  }
   return registry;
 }
 
@@ -74,13 +87,20 @@ export function buildToolContext(options: {
   providers: ProviderRegistry;
   /** The project this session belongs to, when it belongs to one. */
   projectName?: string;
+  /** On when the session holds the project's secrets (local model only): no
+   *  work may reach an off-device service. Forces repo search to the local
+   *  keyword index, so a cloud embedder is never called (it would send repo
+   *  chunks and the query, which could carry a secret, off the machine). */
+  egressLockdown?: boolean;
 }): ToolContext {
-  const { cwd, config, router, providers, projectName } = options;
+  const { cwd, config, router, providers, projectName, egressLockdown } = options;
   const egress = new EgressPolicy(config.egress);
   const jail = new Jail(cwd);
 
   // Semantic retrieval when an embedder is enabled, keyword ranking when not.
-  const embeddingRole = router.embeddingRole();
+  // Under egress lockdown the embedder is never used, even when configured: it
+  // can point at a cloud endpoint, and repo search must stay on the device.
+  const embeddingRole = egressLockdown ? undefined : router.embeddingRole();
   let searchRepo: ToolContext['searchRepo'];
   if (embeddingRole) {
     const index = new RepoIndex(
