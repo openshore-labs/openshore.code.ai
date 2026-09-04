@@ -465,7 +465,9 @@ execution contract. Newest at the bottom.
   are surfaced to the person. A per-project opt-out `sync.autoPush:false`
   (os-code.config.json) lets a repo whose branch deploys on push keep manual
   control. The CTO's one behavioral concern (auto-pushing a default/deploy
-  branch) is going to the founder as a conscious call.
+  branch) went to the founder, who chose to keep pushing any branch including
+  main (truest to "nothing lingers on the device"); `sync.autoPush:false` is the
+  per-project escape hatch for a repo that deploys on push.
 - 2026-09-04: The five presets auto-write through a dedicated
   `projectMemoryWrite` tool that the permission engine allows by name, rather
   than making the existing `vaultWrite` path-aware. Keeps `vaultWrite`'s
