@@ -123,13 +123,13 @@ export function StartingPaths({
     </div>
   );
 
-  // Harbor Mini is bundled with the app, so it is here the instant the app opens.
+  // Harbor Light is bundled with the app, so it is here the instant the app opens.
   // Creative Studio direction "The Standing Light" (2026-09-04): it is not a
   // thing you fetch, it is the guide already in the room, so it leads onboarding
   // as the one hero card. No download states; "Say hello" opens its chat.
   const harborMiniHeroCard = (
     <div className="card">
-      <h3>Harbor Mini is already here</h3>
+      <h3>Harbor Light is already here</h3>
       <div className="sub" style={{ marginBottom: 10 }}>
         Your built-in guide. Works offline, the moment you open the app.
       </div>
@@ -220,7 +220,7 @@ export function StartingPaths({
         {!isDesktop()
           ? guideRow(
               HARBOR_MINI_MODEL_ID,
-              'Harbor Mini',
+              'Harbor Light',
               HARBOR_MINI_APPROX_LABEL,
               settings.harborMiniReady,
               harborMiniDownload,

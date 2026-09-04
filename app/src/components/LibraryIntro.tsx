@@ -102,7 +102,7 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
   // once finished, whichever is not yet ready) tells us which guide this run
   // is for. Harbor is the default when neither has started yet.
   const isHarbor = Boolean(harborDownload) || (!harborMiniDownload && !settings.harborReady);
-  const guideName = isHarbor ? 'Harbor' : 'Harbor Mini';
+  const guideName = isHarbor ? 'Harbor' : 'Harbor Light';
   const guideDownload = isHarbor ? harborDownload : harborMiniDownload;
   const BEATS = beatsFor(guideName);
   const [beat, setBeat] = useState(0);

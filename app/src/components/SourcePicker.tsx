@@ -72,7 +72,7 @@ export function SourcePicker({
                   onClose();
                 }}
               >
-                Harbor Mini, the smaller built-in guide
+                Harbor Light, the smaller built-in guide
               </button>
               <button
                 className="btn ghost"

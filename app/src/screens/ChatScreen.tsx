@@ -19,7 +19,7 @@ import { RepoPicker } from '../components/RepoPicker.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
 import { Sheet } from '../components/Sheet.js';
-import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
+import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_EMPTY_HINT } from '../lib/harborMini.js';
 import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { hapticTick } from '../lib/haptics.js';
 import { isDesktop } from '../lib/platform.js';
@@ -521,7 +521,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           </div>
         )}
 
-        {/* First Moves: on a fresh Harbor Mini chat (just the seeded greeting, not
+        {/* First Moves: on a fresh Harbor Light chat (just the seeded greeting, not
             yet busy), offer tappable openers so a new person is never staring at
             a blank box. They vanish the moment a first message is sent. */}
         {conv &&
@@ -542,6 +542,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           busy={Boolean(thread?.busy)}
           source={composerSource}
           visionSupported={sourceSupportsVision(composerSource)}
+          placeholder={
+            conv?.source.kind === 'device' && conv.source.modelId === HARBOR_MINI_MODEL_ID
+              ? HARBOR_MINI_EMPTY_HINT
+              : undefined
+          }
           autoFocus={isEmpty && booted}
           focusSignal={focusSignal}
           agent={agent}

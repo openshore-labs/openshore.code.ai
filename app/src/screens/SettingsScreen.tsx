@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 import { HARBOR_BYLINE } from '../lib/harbor.js';
-import { HARBOR_MINI_BYLINE, HARBOR_MINI_BUNDLED } from '../lib/harborMini.js';
+import { HARBOR_MINI_BYLINE, HARBOR_MINI_BUNDLED, HARBOR_MINI_HANDOFF_LINE } from '../lib/harborMini.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -125,7 +125,7 @@ function platformLabel(): string {
 /** The one control on the right of a Harbor row. A single button whose label
  *  and action follow the model's state: Install when it is absent, its live
  *  percent (tap to cancel) while it downloads, Retry after a failure, Uninstall
- *  once it is on the device. A bundled model (Harbor Mini) ships with the app
+ *  once it is on the device. A bundled model (Harbor Light) ships with the app
  *  and cannot be removed, so it shows a plain "Built in" status instead. */
 function HarborInstallButton({
   bundled,
@@ -213,6 +213,10 @@ export function SettingsScreen() {
 
   const installHarbor = async () => {
     hapticTick();
+    // Harbor Light's voice on the handoff: the guide stays beside you while the
+    // bigger model comes down. Only when a download actually starts (not when
+    // Harbor is already here and ensureHarbor is an instant no-op).
+    if (!settings.harborReady) showToast(HARBOR_MINI_HANDOFF_LINE);
     const ok = await ensureHarbor();
     if (ok) showToast('Harbor is installed and ready on this device.');
   };
@@ -300,10 +304,10 @@ export function SettingsScreen() {
             {facts ? <LiveSeal facts={facts} /> : null}
             <h3 className="settings-sheet-head">Local models, honestly</h3>
             <p>
-              Harbor and Harbor Mini, and any model you run on this device, are AI. They can be
+              Harbor and Harbor Light, and any model you run on this device, are AI. They can be
               confidently wrong, and OpenShore does not filter what a local model says. Neither is a
               coder. For real work, connect a bigger model. What you type to a local model stays on
-              this device. Harbor is Qwen3-1.7B and Harbor Mini is SmolLM2-135M-Instruct, both used
+              this device. Harbor is Qwen3-1.7B and Harbor Light is SmolLM2-135M-Instruct, both used
               under the Apache License 2.0.
             </p>
           </InfoSheet>
@@ -373,7 +377,7 @@ export function SettingsScreen() {
           {!isDesktop() ? (
             <>
               <SettingsRow
-                label="Harbor Mini"
+                label="Harbor Light"
                 sub={HARBOR_MINI_BYLINE}
                 subWrap
                 trailing={<HarborInstallButton bundled={HARBOR_MINI_BUNDLED} />}

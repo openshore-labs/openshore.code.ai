@@ -1,11 +1,11 @@
-# Harbor and Harbor Mini: the built-in guides
+# Harbor and Harbor Light: the built-in guides
 
 OpenShore ships two on-device guides. Both are grounded in this repository, so
 they are experts on the app: they explain any front-end feature or setup step in
 as much depth as the person wants, and they never reveal backend build
 internals, infrastructure, or how OpenShore is implemented under the hood.
 
-- **Harbor Mini** (SmolLM2-135M-Instruct, Apache-2.0). The small, fast guide.
+- **Harbor Light** (SmolLM2-135M-Instruct, Apache-2.0). The small, fast guide.
   It knows its own limits and, when a question needs real reasoning or real
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
@@ -25,19 +25,19 @@ The Settings > Harbor group carries one row per guide, below the web-search row.
 Each row is a name, a one-sentence byline, and a single control on the right
 whose label follows the model's state:
 
-- **Harbor Mini**: shows **Built in**. It ships inside the app and cannot be
+- **Harbor Light**: shows **Built in**. It ships inside the app and cannot be
   removed, so there is no install/uninstall toggle, just an honest status.
 - **Harbor**: **Install** when absent, its live percent (tap to cancel) while it
   downloads, **Retry** after a failure, **Uninstall** once it is on the device.
   Uninstall deletes the weights and re-heals any stack whose Reasoning anchor
-  was Harbor to Harbor Mini (which is always present). Re-installable any time.
+  was Harbor to Harbor Light (which is always present). Re-installable any time.
 
 The store actions are `ensureHarbor` / `removeHarbor` (`app/src/state/store.ts`);
 `test/harborGuides.test.ts` pins the rows and the disclosure boundary.
 
-## How Harbor Mini is bundled (native with the app)
+## How Harbor Light is bundled (native with the app)
 
-Harbor Mini's weights ship inside the app bundle rather than downloading on
+Harbor Light's weights ship inside the app bundle rather than downloading on
 first launch. The native `ModelStore` (`ModelStore.swift`) treats any id in
 `bundledModelIds` as always present:
 
@@ -98,7 +98,7 @@ still install over a mobile network.
 Confirm each resolves (`curl -I` returns 200) and that the chat template is
 embedded in the file (the runner reads it from the file). This sandbox cannot
 reach the network, so that check is a manual pre-build step. If a filename or
-casing has changed upstream, update the constant. The Harbor Mini URL is also
+casing has changed upstream, update the constant. The Harbor Light URL is also
 the source of the bundled weights file.
 
 ## Desktop
@@ -119,7 +119,7 @@ open, backend private boundary. Full retrieval over docs is a later upgrade.
 ## License
 
 Both models are Apache-2.0. Harbor downloads from the source (we do not
-redistribute its weights), the same posture as any pocket model. Harbor Mini's
+redistribute its weights), the same posture as any pocket model. Harbor Light's
 weights are redistributed inside the app bundle; Apache-2.0 permits that,
 provided the license and attribution ship with it. The in-app attribution and
 the on-device-content disclaimer live in Settings; keep them in step with
