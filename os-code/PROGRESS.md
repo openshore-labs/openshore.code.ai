@@ -1827,6 +1827,13 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Project memory: a "note updated" nudge (P3, optional).** The
+      `projectMemoryWrite` tool lands silently by design, and `mode: 'replace'`
+      can overwrite a note the person hand-edited. The full diff is emitted on
+      tool-end (visible in the transcript), so it is not truly silent, but a
+      lightweight "memory note updated" toast would let a person notice when the
+      agent rewrote something they touched. CTO-suggested, accepted as a
+      non-blocking nicety (2026-09-04).
 - [x] **Community reviews: LIVE.** The backend was validated against a real
       Postgres (0011 + 0012 + 0013 apply clean; anon reads visible rows,
       per-reader block, single/batched/snapshot aggregate RPCs, one-per-user
