@@ -25,6 +25,11 @@ import {
   runCodemagicTool,
   codemagicSystemNote,
   codemagicToolSpec,
+  codemagicOpenAiTool,
+  parseCodemagicArgs,
+  mergeToolCallDeltas,
+  finalizeToolCalls,
+  type ToolCallAccum,
 } from '../src/lib/codemagicTool.js';
 
 const target = { id: 'l1', platform: 'ios', appId: 'app1', workflowId: 'wf1', branch: 'main' };
@@ -120,5 +125,61 @@ describe('codemagicSystemNote', () => {
     expect(note).toMatch(/codemagic tool/i);
     expect(note).toMatch(/cannot edit the repo/i);
     expect(note).toMatch(/green/i);
+  });
+});
+
+describe('codemagicOpenAiTool', () => {
+  it('is a function tool mirroring the shared schema', () => {
+    expect(codemagicOpenAiTool.type).toBe('function');
+    expect(codemagicOpenAiTool.function.name).toBe('codemagic');
+    expect(codemagicOpenAiTool.function.parameters).toBe(codemagicToolSpec.input_schema);
+  });
+});
+
+describe('parseCodemagicArgs', () => {
+  it('parses a valid action', () => {
+    expect(parseCodemagicArgs('{"action":"trigger","branch":"main"}')).toEqual({
+      action: 'trigger',
+      buildId: undefined,
+      branch: 'main',
+    });
+  });
+  it('rejects an unknown action, bad JSON, or missing args', () => {
+    expect(parseCodemagicArgs('{"action":"delete"}')).toBeNull();
+    expect(parseCodemagicArgs('not json')).toBeNull();
+    expect(parseCodemagicArgs(undefined)).toBeNull();
+  });
+  it('drops non-string buildId/branch', () => {
+    expect(parseCodemagicArgs('{"action":"status","buildId":123}')).toEqual({
+      action: 'status',
+      buildId: undefined,
+      branch: undefined,
+    });
+  });
+});
+
+describe('streamed tool-call accumulation', () => {
+  it('joins fragments across chunks by index', () => {
+    const acc = new Map<number, ToolCallAccum>();
+    mergeToolCallDeltas(acc, [{ index: 0, id: 'call_1', function: { name: 'codemagic' } }]);
+    mergeToolCallDeltas(acc, [{ index: 0, function: { arguments: '{"act' } }]);
+    mergeToolCallDeltas(acc, [{ index: 0, function: { arguments: 'ion":"trigger"}' } }]);
+    const calls = finalizeToolCalls(acc);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ id: 'call_1', name: 'codemagic', args: '{"action":"trigger"}' });
+    expect(parseCodemagicArgs(calls[0]!.args)).toEqual({
+      action: 'trigger',
+      buildId: undefined,
+      branch: undefined,
+    });
+  });
+  it('keeps two parallel calls separate and ordered', () => {
+    const acc = new Map<number, ToolCallAccum>();
+    mergeToolCallDeltas(acc, [
+      { index: 1, id: 'b', function: { name: 'codemagic', arguments: '{}' } },
+      { index: 0, id: 'a', function: { name: 'codemagic', arguments: '{}' } },
+    ]);
+    const calls = finalizeToolCalls(acc);
+    expect(calls.map((c) => c.id)).toEqual(['a', 'b']);
   });
 });

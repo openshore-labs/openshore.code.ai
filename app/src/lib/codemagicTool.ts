@@ -49,6 +49,67 @@ export interface CodemagicToolInput {
   branch?: string;
 }
 
+/** The same tool in OpenAI / BYOM function-calling shape, so the model drives
+ *  every network backend the same way (built-in OpenAI-compatible providers and
+ *  a bring-your-own-model endpoint both speak this). */
+export const codemagicOpenAiTool = {
+  type: 'function' as const,
+  function: {
+    name: CODEMAGIC_TOOL_NAME,
+    description: codemagicToolSpec.description,
+    parameters: codemagicToolSpec.input_schema,
+  },
+};
+
+/** Parse a tool call's arguments (a JSON string from the model) into a valid
+ *  input, or null when it is malformed or names an action we do not offer. The
+ *  loop turns null into a short correction the model can act on. */
+export function parseCodemagicArgs(argString: string | undefined): CodemagicToolInput | null {
+  try {
+    const o = JSON.parse(argString || '{}') as Record<string, unknown>;
+    if (o.action === 'trigger' || o.action === 'status' || o.action === 'logs') {
+      return {
+        action: o.action,
+        buildId: typeof o.buildId === 'string' ? o.buildId : undefined,
+        branch: typeof o.branch === 'string' ? o.branch : undefined,
+      };
+    }
+  } catch {
+    // fall through to null
+  }
+  return null;
+}
+
+/** One accumulating tool call as OpenAI streams it in fragments. */
+export interface ToolCallAccum {
+  id: string;
+  name: string;
+  args: string;
+}
+
+/** Merge a streamed `delta.tool_calls` array into the accumulator, keyed by the
+ *  index OpenAI assigns each call, so fragments across chunks join up. */
+export function mergeToolCallDeltas(
+  acc: Map<number, ToolCallAccum>,
+  deltas:
+    | Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }>
+    | undefined,
+): void {
+  for (const d of deltas ?? []) {
+    const idx = d.index ?? 0;
+    const cur = acc.get(idx) ?? { id: '', name: '', args: '' };
+    if (d.id) cur.id = d.id;
+    if (d.function?.name) cur.name = d.function.name;
+    if (typeof d.function?.arguments === 'string') cur.args += d.function.arguments;
+    acc.set(idx, cur);
+  }
+}
+
+/** Finalize the accumulator into an ordered list of complete tool calls. */
+export function finalizeToolCalls(acc: Map<number, ToolCallAccum>): ToolCallAccum[] {
+  return [...acc.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
+}
+
 async function savedTarget(): Promise<LaunchTarget | undefined> {
   const settings = await storeGetJson<{ launch?: { target?: LaunchTarget } }>('oscode.settings.v1');
   return settings?.launch?.target;

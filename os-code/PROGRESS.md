@@ -36,16 +36,23 @@ Play). Founder chose BOTH surfaces (engine tool AND phone loop). Branch
   secrets). Registered only when a token was delivered, dropped under egress
   lockdown with the web tools. `test/codemagicTool.test.ts` (os-code).
 - **Phone surface (StackDriver, client-brain).** A contained Codemagic tool-use
-  loop on the Anthropic path only, engaged only when Access is on, so the
-  existing single-turn/tool-less path is untouched otherwise. One `codemagic`
-  tool, executed on-device via `app/src/lib/codemagicTool.ts` (mirrors the
-  engine tool), bounded to 16 rounds. App Launch gains a "Have the model launch
-  it" button backed by `launchWithModel`. `app/test/codemagicTool.test.ts`.
+  loop engaged only when Access is on, so the existing single-turn/tool-less path
+  is untouched otherwise. It covers EVERY network backend: the Anthropic path
+  (native tool use) and the OpenAI-compatible path, which serves the built-in
+  cloud providers AND a bring-your-own-model endpoint (function calling, native
+  shim on device/desktop and true SSE on the web, streamed tool-call fragments
+  joined by index). One `codemagic` tool, executed on-device via
+  `app/src/lib/codemagicTool.ts` (mirrors the engine tool), bounded to 16 rounds.
+  App Launch gains a "Have the model launch it" button backed by
+  `launchWithModel`. `app/test/codemagicTool.test.ts` covers the handler, the
+  OpenAI tool spec, arg parsing, and the streamed-tool-call accumulation.
 - **Honest limits.** The phone can trigger, diagnose, retry, and report, but
   cannot edit the repo, so code fixes are described for the person or their
   paired desktop; the engine surface is what actually edits code and loops to
-  green. The phone loop is Anthropic-only for now (OpenAI-compatible/BYOM and
-  on-device models do not get the tool yet). Suites green: app 589, os-code 410.
+  green. On-device pocket models (the bundled 135M-class guides) stay guidance
+  only: they are too small for reliable tool use, and driving Codemagic needs the
+  network anyway, so the device-only case coincides with not reaching Codemagic
+  at all. Suites green: app 595, os-code 410.
 
 ## Current state (2026-09-04, renamed to Harbor Light, all Creative Studio microcopy applied)
 

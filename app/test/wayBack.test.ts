@@ -113,8 +113,9 @@ describe('the way back', () => {
 
   it('the embedded site goes back to App Launch with Codemagic', () => {
     const launch = src('screens', 'LaunchScreen.tsx');
+    // Whitespace-tolerant so Prettier wrapping the attributes cannot break it.
     expect(launch).toMatch(
-      /<BackBar title="Codemagic" back=\{\{ to: 'App Launch with Codemagic', onBack: \(\) => setEmbedded\(false\) \}\} \/>/,
+      /<BackBar\s+title="Codemagic"\s+back=\{\{ to: 'App Launch with Codemagic', onBack: \(\) => setEmbedded\(false\) \}\}\s*\/>/,
     );
   });
 });
