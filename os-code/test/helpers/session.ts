@@ -35,6 +35,8 @@ export interface TestSessionOptions {
   projectName?: string;
   /** The on-device vault root, when a test exercises the vault tools. */
   vaultRoot?: string;
+  /** The project's secrets, for tests of the local-only secrets path. */
+  projectSecrets?: string;
 }
 
 export function makeTestSession(
@@ -86,6 +88,7 @@ export function makeTestSession(
     guardrails: new Guardrails(config.guardrails),
     usage: new UsageTracker(),
     profile: profileFor('local-interactive'),
+    projectSecrets: options.projectSecrets,
     approver: async (request) => {
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };

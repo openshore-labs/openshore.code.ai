@@ -3,6 +3,38 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Tokens and Secrets: a per-project encrypted note, local models only)
+
+Founder ask: a private "tokens and secrets" note per project so the project and
+the model keep track of credentials and the person does not have to hunt them
+down or rotate them for lack of a record. Gated by a Settings toggle (privacy),
+off by default, opt-in. Branch `claude/openshore-vault-presets-bscvtq`.
+
+- **Sealed, device-local, never in a repo.** The note lives in the encrypted
+  device store (`app/src/lib/projectSecrets.ts`, secretGet/secretSet, keychain
+  or secure enclave on iOS), keyed per project. It is NOT a vault note (a vault
+  can move to iCloud/Drive) and NOT in the repo (the repo is pushed by the
+  reconcile feature), so it never leaves the device. Emptying it deletes the
+  sealed entry.
+- **Local models only, enforced in one place.**
+  `os-code/src/core/agent/secretsGate.ts` `gateProjectSecrets` carries the
+  secrets and turns on egress lockdown ONLY for a local orchestrator; a cloud
+  orchestrator has them dropped in bootstrap before they can reach a prompt.
+  A secrets-bearing session runs under egress lockdown: `buildToolRegistry`
+  drops webSearch, webFetch, and every specialist/vision/image tool (they could
+  route to a cloud model), and `loop.ts maybeEscalate` never escalates to the
+  cloud. The secrets block is added to the system prompt only when the session
+  carries secrets; it is built per request and never stored in history or the
+  journal (which is redacted anyway).
+- **The toggle and the note.** Settings gains "Store tokens and secrets" (device
+  local, off by default). In the project's Vault view a "Tokens and Secrets" row
+  is editable when on (with a clear "encrypted here, never pushed or synced"
+  note) and grayed with "Toggle on in Settings to enable" when off. Secrets flow
+  to the model only over the in-process desktop engine, never over the daemon to
+  a remote machine.
+- Gates green: os-code typecheck + lint + 392 tests + build; app typecheck +
+  lint + 526 tests + build; Prettier clean.
+
 ## Current state (2026-09-04, offline reconcile: project commits push to the remote on open and reconnect)
 
 Founder ask: nothing should linger only on the device. If you are offline, the

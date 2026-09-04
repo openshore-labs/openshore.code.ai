@@ -403,7 +403,14 @@ function deepLinkFromArgv(argv: string[]): string | undefined {
 ipcMain.handle('osc:createSession', (_e, cwd?: string, opts?: Record<string, unknown>) =>
   host.createSession(
     cwd,
-    opts as { instructions?: string; permissionMode?: never; projectName?: string } | undefined,
+    opts as
+      | {
+          instructions?: string;
+          permissionMode?: never;
+          projectName?: string;
+          projectSecrets?: string;
+        }
+      | undefined,
   ),
 );
 ipcMain.handle('osc:setMode', (_e, sessionId: string, mode: string) =>

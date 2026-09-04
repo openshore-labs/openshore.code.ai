@@ -283,6 +283,24 @@ export function SettingsScreen() {
               onClick={() => setSheet('log')}
             />
           ) : null}
+          <SettingsRow
+            label="Store tokens and secrets"
+            sub="A per-project note of your credentials, encrypted here. Off by default."
+            trailing={
+              <Switch
+                checked={Boolean(settings.storeSecrets)}
+                label="Store tokens and secrets"
+                onChange={(next) => {
+                  void saveSettings({ storeSecrets: next });
+                  showToast(
+                    next
+                      ? 'On. Secrets stay sealed on this device, and only a local model can use them.'
+                      : 'Off. Your saved secrets stay on this device but no model will use them.',
+                  );
+                }}
+              />
+            }
+          />
         </SettingsGroup>
 
         <SettingsGroup title="Harbor" index={group++}>
