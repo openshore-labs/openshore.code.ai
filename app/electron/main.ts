@@ -410,6 +410,13 @@ ipcMain.handle('osc:createSession', (_e, cwd?: string, opts?: Record<string, unk
           projectName?: string;
           projectSecrets?: string;
           humanize?: boolean;
+          codemagicToken?: string;
+          codemagicTarget?: {
+            appId: string;
+            workflowId: string;
+            branch: string;
+            platform?: string;
+          };
         }
       | undefined,
   ),

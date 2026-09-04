@@ -1212,6 +1212,30 @@ export const useApp = create<AppState>((set, get) => {
           const stored = await readProjectSecrets(project.id);
           if (stored.trim()) projectSecrets = stored;
         }
+        // Codemagic Access on: hand this device's Codemagic token and the saved
+        // launch target to the in-process local engine, so its codemagic tool
+        // can drive App Launch builds. Read from the sealed device-local store
+        // here. Like projectSecrets, this rides sessionOpts, which the remote
+        // daemon path below deliberately does NOT forward, so the token stays on
+        // this device and only ever runs on this device.
+        let codemagicToken: string | undefined;
+        let codemagicTarget:
+          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
+        if (settings.codemagicAccess) {
+          const tok = await secretGet(CODEMAGIC_SECRET_KEY);
+          if (tok) {
+            codemagicToken = tok;
+            const t = settings.launch?.target;
+            if (t) {
+              codemagicTarget = {
+                appId: t.appId,
+                workflowId: t.workflowId,
+                branch: t.branch,
+                platform: t.platform,
+              };
+            }
+          }
+        }
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -1224,6 +1248,8 @@ export const useApp = create<AppState>((set, get) => {
           // honors the toggle too (it only ever turns the humanizer off; a
           // project's own config still wins). Undefined means on.
           humanize: settings.humanizeWriting !== false,
+          codemagicToken,
+          codemagicTarget,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a

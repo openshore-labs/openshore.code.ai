@@ -64,6 +64,17 @@ export interface ToolContext {
    * leave it undefined and the tool degrades to "no terminal here".
    */
   terminal?: (lines: number, termId?: string) => string | undefined;
+  /**
+   * The person's Codemagic token and saved launch target, so the codemagic tool
+   * can trigger and read App Launch builds. Injected per session ONLY on the
+   * local, on-device engine and only when the person turned Codemagic Access on;
+   * never delivered to a remote hub (same stance as project secrets). Undefined
+   * leaves the codemagic tool degraded to "not connected here".
+   */
+  codemagic?: {
+    token: string;
+    target?: { appId: string; workflowId: string; branch: string; platform?: string };
+  };
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
