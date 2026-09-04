@@ -180,7 +180,7 @@ import {
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath } from '../lib/vault.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
-import { readProjectSecrets } from '../lib/projectSecrets.js';
+import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -1145,8 +1145,9 @@ export const useApp = create<AppState>((set, get) => {
         // The project's tokens and secrets, when the person has turned the
         // feature on, so a local model can use them. Read from the sealed
         // device-local store here and handed to the in-process desktop engine
-        // only; the engine drops them for a cloud orchestrator. They are never
-        // sent over the daemon to a remote machine.
+        // (which drops them for a cloud orchestrator). The remote-daemon path
+        // below deliberately does NOT forward them (it builds its own opts), so
+        // secrets meant for this device never travel to another machine.
         let projectSecrets: string | undefined;
         if (settings.storeSecrets && project) {
           const stored = await readProjectSecrets(project.id);
@@ -1194,7 +1195,15 @@ export const useApp = create<AppState>((set, get) => {
         }
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
-          sessionId = await daemonCreateSession(settings.daemon, cwd, sessionOpts);
+          // Never hand secrets to a remote daemon: this is a phone driving
+          // another machine, so the secrets (which are for THIS device's local
+          // model) must not travel. Pass an explicit opts object without
+          // projectSecrets, so a future change to the daemon client cannot leak
+          // them even by accident.
+          sessionId = await daemonCreateSession(settings.daemon, cwd, {
+            instructions: sessionOpts.instructions,
+            permissionMode: sessionOpts.permissionMode,
+          });
           conv.source.sessionId = sessionId;
         }
         // Opening a desktop session is the walk-away-able moment: the run
@@ -2474,6 +2483,9 @@ export const useApp = create<AppState>((set, get) => {
       const activeProjectId =
         get().settings.activeProjectId === id ? undefined : get().settings.activeProjectId;
       await get().saveSettings({ projects, activeProjectId });
+      // Wipe the project's sealed tokens and secrets so nothing lingers in the
+      // device store after the project is gone.
+      await writeProjectSecrets(id, '');
       // Chats that lived in the project stay, but drop their now-dead link. Mark
       // them `unfiled` so the init orphan-migration does not re-adopt them into
       // another project on the next launch (P2-13).

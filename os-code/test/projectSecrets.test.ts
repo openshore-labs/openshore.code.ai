@@ -1,9 +1,15 @@
 // The project-secrets security core: the local-only gate, the egress lockdown
 // in the tool registry, the secrets block reaching the (local) model's system
 // prompt, and the "never escalate a secrets session to the cloud" rule.
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { gateProjectSecrets } from '../src/core/agent/secretsGate.js';
-import { buildToolRegistry } from '../src/core/agent/registry.js';
+import { buildToolRegistry, buildToolContext } from '../src/core/agent/registry.js';
+import { ConfigSchema } from '../src/config/schema.js';
+import type { Router } from '../src/router/router.js';
+import type { ProviderRegistry } from '../src/providers/registry.js';
 import { MockProvider, textTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 
@@ -54,6 +60,45 @@ describe('egress lockdown in the tool registry', () => {
     expect(open).toContain('webSearch');
     expect(open).toContain('webFetch');
     expect(open).toContain('delegate');
+  });
+});
+
+describe('egress lockdown forces on-device repo search (no cloud embedder)', () => {
+  // A router that offers an embedding role, and providers whose embedder throws
+  // the moment it is touched, so any attempt to use the (possibly cloud)
+  // embedder is loud. Under lockdown the embedder must never be reached.
+  const router = {
+    embeddingRole: () => ({ ref: { provider: 'x', model: 'm' } }),
+    delegate: async () => '',
+  } as unknown as Router;
+  const providers = {
+    embedder: () => {
+      throw new Error('embedder used');
+    },
+    imageProvider: () => undefined,
+  } as unknown as ProviderRegistry;
+  const config = ConfigSchema.parse({});
+
+  it('does not build the embedder index under lockdown, and searches locally', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-lockdown-'));
+    try {
+      const ctx = buildToolContext({ cwd, config, router, providers, egressLockdown: true });
+      // keyword search only: resolves without ever calling the embedder.
+      await expect(ctx.searchRepo!('anything', 3)).resolves.toBeTypeOf('string');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('WOULD use the embedder without lockdown (proving the guard is what stops it)', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-open-'));
+    try {
+      expect(() =>
+        buildToolContext({ cwd, config, router, providers, egressLockdown: false }),
+      ).toThrow(/embedder used/);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });
 

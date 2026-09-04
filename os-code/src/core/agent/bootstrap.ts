@@ -99,6 +99,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     router,
     providers,
     projectName: options.projectName,
+    egressLockdown,
   });
 
   const profile = profileFor(options.profile);

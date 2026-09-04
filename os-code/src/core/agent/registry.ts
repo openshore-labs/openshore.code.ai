@@ -87,13 +87,20 @@ export function buildToolContext(options: {
   providers: ProviderRegistry;
   /** The project this session belongs to, when it belongs to one. */
   projectName?: string;
+  /** On when the session holds the project's secrets (local model only): no
+   *  work may reach an off-device service. Forces repo search to the local
+   *  keyword index, so a cloud embedder is never called (it would send repo
+   *  chunks and the query, which could carry a secret, off the machine). */
+  egressLockdown?: boolean;
 }): ToolContext {
-  const { cwd, config, router, providers, projectName } = options;
+  const { cwd, config, router, providers, projectName, egressLockdown } = options;
   const egress = new EgressPolicy(config.egress);
   const jail = new Jail(cwd);
 
   // Semantic retrieval when an embedder is enabled, keyword ranking when not.
-  const embeddingRole = router.embeddingRole();
+  // Under egress lockdown the embedder is never used, even when configured: it
+  // can point at a cloud endpoint, and repo search must stay on the device.
+  const embeddingRole = egressLockdown ? undefined : router.embeddingRole();
   let searchRepo: ToolContext['searchRepo'];
   if (embeddingRole) {
     const index = new RepoIndex(
