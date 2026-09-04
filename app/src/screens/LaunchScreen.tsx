@@ -10,6 +10,7 @@ import { BackBar } from '../components/BackBar.js';
 import type { BuildRun, LaunchTarget } from '../state/types.js';
 import { EmbeddedSite, embeddedSitesAvailable } from '../components/EmbeddedSite.js';
 import { CODEMAGIC_TOKEN_URL } from '../lib/codemagic.js';
+import { codemagicAccessOn } from '../lib/codemagicControl.js';
 import { openInAppBrowser } from '../lib/platform.js';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -39,9 +40,12 @@ export function LaunchScreen() {
     startBuild,
     reviewBuild,
     diagnoseBuild,
+    launchWithModel,
     newConversation,
     showToast,
   } = useApp();
+
+  const modelCanLaunch = codemagicAccessOn(settings.codemagicAccess);
 
   const launch = settings.launch;
   const target = launch?.target;
@@ -99,7 +103,10 @@ export function LaunchScreen() {
   if (embedded && canEmbed) {
     return (
       <div className="screen screen-embed">
-        <BackBar title="Codemagic" back={{ to: 'Launch', onBack: () => setEmbedded(false) }} />
+        <BackBar
+          title="Codemagic"
+          back={{ to: 'App Launch with Codemagic', onBack: () => setEmbedded(false) }}
+        />
         <EmbeddedSite site="codemagic" label="Codemagic" onClose={() => setEmbedded(false)} />
       </div>
     );
@@ -107,9 +114,9 @@ export function LaunchScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Launch" />
+      <BackBar title="App Launch with Codemagic" />
       <div className="screen-inner">
-        <h1>Launch</h1>
+        <h1>App Launch with Codemagic</h1>
         <p className="lead">
           Get your built app to the App Store or Google Play, guided from here. The model walks you
           through the accounts and setup. When you build, OpenShore follows Codemagic and reads the
@@ -342,6 +349,23 @@ export function LaunchScreen() {
         {!codemagicConnected || !target ? (
           <p className="hint" style={{ marginTop: 8 }}>
             Connect Codemagic and set a launch target to build.
+          </p>
+        ) : null}
+
+        {codemagicConnected && target && modelCanLaunch ? (
+          <button
+            className="btn"
+            style={{ width: '100%', marginTop: 8 }}
+            disabled={busy}
+            onClick={() => void launchWithModel()}
+          >
+            Have the model launch it
+          </button>
+        ) : null}
+        {codemagicConnected && target && !modelCanLaunch ? (
+          <p className="hint" style={{ marginTop: 8 }}>
+            Turn on Codemagic Access in Settings to let the model trigger builds, read failures, and
+            drive it to a green build for you.
           </p>
         ) : null}
 

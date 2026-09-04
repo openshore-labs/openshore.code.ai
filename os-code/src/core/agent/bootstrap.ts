@@ -56,6 +56,15 @@ export interface BootstrapOptions {
    *  session (the override only ever turns it off, never on over a project that
    *  opted out). See humanizerEnabled in humanizerStandard.ts. */
   humanize?: boolean;
+  /** The person's Codemagic token, so the codemagic tool can drive App Launch
+   *  builds. Delivered ONLY by the local, on-device engine and only when the
+   *  person turned Codemagic Access on; the daemon path never forwards it, so
+   *  the token never travels to another machine. Undefined leaves the codemagic
+   *  tool out (and degraded if it is somehow reached). */
+  codemagicToken?: string;
+  /** The saved launch target (app id, workflow, branch), so a trigger uses it
+   *  without the model guessing. Paired with codemagicToken. */
+  codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
 }
 
 export interface BootstrapResult {
@@ -106,6 +115,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     stackHasImageGen: stack.imageGen,
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
     egressLockdown,
+    hasCodemagic: Boolean(options.codemagicToken),
   });
   const toolContext = buildToolContext({
     cwd: options.cwd,
@@ -143,6 +153,13 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (options.terminalReader) {
     const reader = options.terminalReader;
     toolContext.terminal = (lines, termId) => reader(driver.id, lines, termId);
+  }
+
+  // The person's Codemagic token and saved target, so the codemagic tool can
+  // drive App Launch builds. Set only on this local engine; the daemon never
+  // forwards a token, so it never leaves the device.
+  if (options.codemagicToken) {
+    toolContext.codemagic = { token: options.codemagicToken, target: options.codemagicTarget };
   }
 
   const agent = new AgentSession({
