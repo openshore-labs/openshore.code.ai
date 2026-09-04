@@ -140,6 +140,23 @@ export const CatalogModelSchema = z.object({
       note: z.string().optional(),
     })
     .optional(),
+  /**
+   * Community review aggregate, baked in by the daily builder from a snapshot of
+   * the reviews backend (the scale path: a browse row shows a crowd star without
+   * a per-view request to Supabase). It is the SEPARATE community axis, never the
+   * benchmark ratings above, and always carries its count so it can never be read
+   * as the measured score. A daily snapshot, not live: the product page still
+   * fetches the live number when a reader taps in. Present only on models that
+   * had visible reviews at snapshot time; absence means zero as of that day.
+   * OPTIONAL for back-compat, and independent of `reviewsSnapshotAt`, which says
+   * whether the snapshot ran at all.
+   */
+  community: z
+    .object({
+      count: z.number().int().min(0),
+      average: z.number().min(0).max(5),
+    })
+    .optional(),
 });
 
 export const CatalogPresetSchema = z.object({
@@ -166,6 +183,15 @@ export const CatalogSchema = z.object({
   updated: z.string(),
   models: z.array(CatalogModelSchema),
   presets: z.array(CatalogPresetSchema),
+  /** The day (YYYY-MM-DD) the community review aggregates on the models were
+   *  snapshotted, set by the builder only when the reviews snapshot actually ran.
+   *  Its PRESENCE is the signal that per-model `community` fields are complete as
+   *  of that day, so the app can drive the browse list from them alone and skip
+   *  the live per-view summary request entirely (the scale path). When absent
+   *  (an older catalog, or a build with no reviews backend configured) the app
+   *  falls back to the live browse RPC, exactly as before. OPTIONAL for
+   *  back-compat: older catalogs and clients omit it. */
+  reviewsSnapshotAt: z.string().optional(),
 });
 
 export type Catalog = z.infer<typeof CatalogSchema>;

@@ -253,6 +253,24 @@ export function MarketplaceScreen() {
     });
   }, [settings.daemon]);
 
+  // The scale path: when the builder baked a review snapshot into the catalog
+  // (it stamped reviewsSnapshotAt), every model's community aggregate is already
+  // here, so seed the browse stars from the catalog with ZERO network, and the
+  // live per-view browse RPC below stands down entirely. Absence of the stamp
+  // means an older or unconfigured build, and the live effect fills in instead,
+  // exactly as before. The product page always fetches the live number when a
+  // reader taps in, so a daily snapshot on browse costs no freshness that
+  // matters.
+  const snapshotComplete = Boolean(catalog?.reviewsSnapshotAt);
+  useEffect(() => {
+    if (!catalog?.reviewsSnapshotAt) return;
+    const seeded = new Map<string, { count: number; average: number }>();
+    for (const m of catalog.models) {
+      if (m.community) seeded.set(m.id, { count: m.community.count, average: m.community.average });
+    }
+    setReviewSummaries(seeded);
+  }, [catalog]);
+
   useEffect(() => {
     // Read this device's storage, memory, and whether iCloud is signed in, for
     // the capacity monitor and the download-target math. Both are best-effort:
@@ -664,6 +682,10 @@ export function MarketplaceScreen() {
   // per row (the CTO's per-browse-egress guard). Degrades to nothing off a
   // configured build or when the read fails.
   useEffect(() => {
+    // When the catalog carries a complete review snapshot, browse is driven from
+    // the baked aggregates alone (seeded above) and this live per-view call is
+    // exactly the egress the scale path removes, so stand it down.
+    if (snapshotComplete) return;
     if (!reviewsAvailable() || onScreenModelIds.length === 0) return;
     const missing = onScreenModelIds.filter((id) => !reviewSummaries.has(id));
     if (missing.length === 0) return;

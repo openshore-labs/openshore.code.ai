@@ -17,6 +17,7 @@ import { regressionGate, validateCatalog } from './gate.js';
 import { gatherMetadata, HuggingFaceSource } from './sources.js';
 import { derivePresets } from './presets.js';
 import { discoverModels, HuggingFaceDiscovery } from './discover.js';
+import { mergeCommunity, SupabaseReviewSource } from './reviews.js';
 import type { BuildInputs, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -129,6 +130,24 @@ async function main(): Promise<void> {
 
   for (const drop of drops) {
     console.log(`dropped ${drop.id}: ${drop.reason}`);
+  }
+
+  // Bake the community-review snapshot into the catalog (the scale path): one
+  // aggregate read per build lets a browse row show a crowd star with no
+  // per-view request to Supabase. Only when online AND the reviews backend is
+  // configured; a failure degrades to an empty snapshot (no field written), and
+  // an unconfigured build simply ships without it, so the app falls back to the
+  // live browse RPC exactly as before. reviewsSnapshotAt is stamped ONLY when
+  // the snapshot ran, because its presence is the signal the app trusts to drive
+  // browse from the baked aggregates alone.
+  const reviewSource = new SupabaseReviewSource();
+  if (online && reviewSource.configured) {
+    const aggregates = await reviewSource.snapshot();
+    catalog.models = mergeCommunity(catalog.models, aggregates);
+    catalog.reviewsSnapshotAt = new Date().toISOString().slice(0, 10);
+    console.log(`review snapshot: baked ${aggregates.length} model aggregates`);
+  } else if (online) {
+    console.log('review snapshot: reviews backend not configured, building without it');
   }
 
   // Prefab stacks reassess themselves from the current model set: derive them
