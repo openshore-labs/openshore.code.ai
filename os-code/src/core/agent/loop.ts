@@ -12,6 +12,7 @@ import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js
 import type { Router } from '../../router/router.js';
 import type { ToolContext, ToolRegistry } from '../tools/index.js';
 import { uxStandardPrompt } from './uxStandard.js';
+import { humanizerStandardPrompt } from './humanizerStandard.js';
 import { memorySegment, projectMemoryPrompt } from './projectMemory.js';
 import {
   extractTextCalls,
@@ -243,6 +244,11 @@ export class AgentSession {
     // or the user says to skip it (uxStandard.ts).
     const ux = this.deps.config.ux;
     if (ux?.standard !== 'off') parts.push(uxStandardPrompt(ux?.notes));
+    // Humanizer out of the box: any written output reads plain, specific, and
+    // honest, avoiding AI writing tells, unless a project turns it off in config
+    // or the user says to skip it (humanizerStandard.ts).
+    const humanizer = this.deps.config.humanizer;
+    if (humanizer?.standard !== 'off') parts.push(humanizerStandardPrompt(humanizer?.notes));
     if (codeMap) {
       parts.push(`Repository map (files and symbols):\n${codeMap}`);
     }

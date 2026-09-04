@@ -111,5 +111,11 @@
 
   "ui": {
     "plain": false
+  },
+
+  "humanizer": {
+    "standard": "on",
+    "notes": "",
+    "$comment": "Any written output the agent produces avoids AI writing tells (distilled from Wikipedia's Signs of AI writing) and reads plain, specific, and honest. Default 'on'. Set 'off' to disable, or say 'skip the humanizer' in chat. 'notes' adds your project's own voice rules on top."
   }
 }

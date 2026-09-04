@@ -36,6 +36,14 @@ export { CAPABILITIES, SPECIALIST_ROLES, ROLE_CATEGORY, plainLabel } from './rou
 // specialists share it with the engine's agent).
 export { UX_LAWS, HOUSE_STANDARD, uxStandardPrompt } from './core/agent/uxStandard.js';
 export type { UxLaw } from './core/agent/uxStandard.js';
+// The Humanizer Standard every model writes to by default: written output
+// avoids AI writing tells (app-side chat specialists share it with the engine).
+export {
+  AI_WRITING_SIGNS,
+  AI_VOCABULARY,
+  humanizerStandardPrompt,
+} from './core/agent/humanizerStandard.js';
+export type { HumanizerSign } from './core/agent/humanizerStandard.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // Stack Health: pure payload types only. The aggregator that fills them in

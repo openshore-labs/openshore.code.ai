@@ -490,3 +490,23 @@ execution contract. Newest at the bottom.
   since it does not own the repo working tree): the projectMemoryWrite tool
   creates any missing notes from templates on its first write, so the folder
   materializes as a complete set the first time the agent touches it.
+- 2026-09-04: Humanizer ships as an injected system-prompt standard (like the UX
+  standard), not a separate rewrite pass over finished output. The founder's
+  phrasing ("output runs through a Humanizer Mechanism") reads like a post-filter,
+  but a second model call over every output fights the local-first budget; born
+  humanized in one pass is cheaper and matches how the UX standard already works.
+  Config knob `humanizer.standard` ('on' | 'off', default 'on'), chat escape
+  "skip the humanizer".
+- 2026-09-04: The "Signs of AI writing" page is ingested as a dated snapshot
+  baked into source, never a live fetch. The founder flagged the risk ("anything
+  can be written in this page"); a world-editable page read at runtime is a
+  prompt-injection and quality hazard, so it is treated as data captured on
+  2026-09-04 and refreshed deliberately.
+- 2026-09-04: Only the prose-voice signs were carried over. The source's
+  Wikipedia-specific signs (wikitext vs Markdown, heading levels, category and
+  template hallucinations, DOI and ISBN integrity, citation reuse) do not apply
+  to OpenShore's general written output and would add noise, so they were left
+  out.
+- 2026-09-04: Scope is openshore.code.ai only for now, as the single source of
+  truth next to uxStandard.ts (founder call). HQ and the marketing site can
+  reference it later rather than each carrying a copy.
