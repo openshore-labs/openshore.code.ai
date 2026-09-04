@@ -14,7 +14,13 @@ import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { isGithubRepoId, repoLabel } from '../lib/chatRepos.js';
-import { PERMISSION_LADDER, permissionLabel, projectPermissionFor } from '../lib/projectAccess.js';
+import {
+  PERMISSION_LADDER,
+  canEdit,
+  canWrite,
+  permissionLabel,
+  projectPermissionFor,
+} from '../lib/projectAccess.js';
 import { relativeTime, sourceShort } from './ChatsScreen.js';
 import { hapticTick } from '../lib/haptics.js';
 import { useTitleHero } from '../lib/heroTitle.js';
@@ -40,6 +46,8 @@ export function ProjectDetailScreen() {
     updateProject,
     deleteProject,
     setProjectAccess,
+    shareProject,
+    unshareProject,
     openConversation,
     startProjectChat,
     setView,
@@ -49,13 +57,18 @@ export function ProjectDetailScreen() {
   const project = settings.projects?.find((p) => p.id === viewProjectId);
   const account = settings.account;
   const isActive = (settings.activeProjectId ?? settings.projects?.[0]?.id) === project?.id;
-  // Enterprise: the access card shows only for a company account, and only an
-  // admin (not previewing the member view) can change grants. Members see who
-  // has access, read-only. Detail editing of the project itself is unchanged
-  // for the local owner (projects are not shared yet), so it is never gated.
   const isCommercial = account?.type === 'commercial';
-  const canManageAccess = isCommercial && stackAdmin(account);
-  const myLevel = projectPermissionFor(project ?? { access: [] }, account);
+  // The signed-in person's level on this project. A local project is fully the
+  // owner's ('edit'); a shared project trusts the server-resolved level, so a
+  // read/write teammate sees it but cannot change its content or roster.
+  const myLevel = projectPermissionFor(project ?? {});
+  const mayEdit = canEdit(myLevel);
+  const mayWrite = canWrite(myLevel);
+  // Who can change the roster: an editor on a shared project; a company admin on
+  // a local draft (which ships when the project is shared).
+  const canManageAccess = project?.shared ? mayEdit : isCommercial && stackAdmin(account);
+  // Only a company admin can lift a local project onto the org server.
+  const canShare = Boolean(project && !project.shared && isCommercial && stackAdmin(account));
 
   // Details editor (name + standing instructions), saved on demand.
   const [details, setDetails] = useState<{ name: string; instructions: string } | undefined>();
@@ -109,7 +122,7 @@ export function ProjectDetailScreen() {
     showToast('Project updated.');
   };
 
-  const newChat = (
+  const newChat = mayWrite ? (
     <button
       type="button"
       className="icon-btn press-fb"
@@ -122,7 +135,7 @@ export function ProjectDetailScreen() {
     >
       <ComposeIcon />
     </button>
-  );
+  ) : undefined;
 
   return (
     <div className="screen">
@@ -149,6 +162,10 @@ export function ProjectDetailScreen() {
               Make active
             </button>
           )}
+          {project.shared ? <span className="pill">Shared</span> : null}
+          {project.shared && !mayEdit && myLevel ? (
+            <span className="pill">You {permissionLabel(myLevel).toLowerCase()}</span>
+          ) : null}
           <span className="sub" style={{ alignSelf: 'center' }}>
             {summaryLine(project, chats.length, isCommercial)}
           </span>
@@ -158,7 +175,7 @@ export function ProjectDetailScreen() {
         <div className="card project-section" style={{ '--i': 0 } as CSSProperties}>
           <div className="card-row">
             <h3 className="grow">Standing instructions</h3>
-            {!editingDetails ? (
+            {!editingDetails && mayEdit ? (
               <button className="suggestion" onClick={startDetails}>
                 Edit
               </button>
@@ -213,9 +230,11 @@ export function ProjectDetailScreen() {
                 The codebases this project works in. Their files ride into every chat here.
               </div>
             </div>
-            <button className="suggestion" onClick={() => setManageRepos(true)}>
-              Manage
-            </button>
+            {mayEdit ? (
+              <button className="suggestion" onClick={() => setManageRepos(true)}>
+                Manage
+              </button>
+            ) : null}
           </div>
           {project.repoIds.length ? (
             <div className="check-list" style={{ marginTop: 8 }}>
@@ -241,21 +260,23 @@ export function ProjectDetailScreen() {
             <h3 className="grow">Chats</h3>
           </div>
           <div className="chat-list" style={{ marginTop: 4 }}>
-            <button
-              type="button"
-              className="chat-row chat-row-new press-fb press-fb--row"
-              onClick={() => {
-                hapticTick();
-                startProjectChat(project.id);
-              }}
-            >
-              <span className="chat-row-title">
-                <span className="chat-new-plus" aria-hidden="true">
-                  +
+            {mayWrite ? (
+              <button
+                type="button"
+                className="chat-row chat-row-new press-fb press-fb--row"
+                onClick={() => {
+                  hapticTick();
+                  startProjectChat(project.id);
+                }}
+              >
+                <span className="chat-row-title">
+                  <span className="chat-new-plus" aria-hidden="true">
+                    +
+                  </span>
+                  New chat
                 </span>
-                New chat
-              </span>
-            </button>
+              </button>
+            ) : null}
             {chats.map((conv, i) => {
               const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
               return (
@@ -281,7 +302,9 @@ export function ProjectDetailScreen() {
           </div>
           {chats.length === 0 ? (
             <p className="hint" style={{ marginTop: 6 }}>
-              No chats yet. Start one and it stays with this project.
+              {mayWrite
+                ? 'No chats yet. Start one and it stays with this project.'
+                : 'No chats yet. You have read access, so you can see this project but not start chats in it.'}
             </p>
           ) : null}
         </div>
@@ -299,9 +322,21 @@ export function ProjectDetailScreen() {
         ) : null}
 
         <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 8 }}>
-          <button className="suggestion" onClick={() => setConfirmDelete(true)}>
-            Delete project
-          </button>
+          {canShare ? (
+            <button className="suggestion" onClick={() => void shareProject(project.id)}>
+              Share with team
+            </button>
+          ) : null}
+          {project.shared && mayEdit ? (
+            <button className="suggestion" onClick={() => void unshareProject(project.id)}>
+              Stop sharing
+            </button>
+          ) : null}
+          {mayEdit ? (
+            <button className="suggestion" onClick={() => setConfirmDelete(true)}>
+              Delete project
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -322,7 +357,11 @@ export function ProjectDetailScreen() {
 
       <Sheet open={confirmDelete} onClose={() => setConfirmDelete(false)} variant="confirm">
         <h3>Delete this project?</h3>
-        <p>Its chats are kept. They just stop belonging to a project. This cannot be undone.</p>
+        <p>
+          {project.shared
+            ? 'This removes the project for your whole team. Each person keeps their own chats; they just stop belonging to a project. This cannot be undone.'
+            : 'Its chats are kept. They just stop belonging to a project. This cannot be undone.'}
+        </p>
         <div className="confirm-row">
           <button className="btn ghost" onClick={() => setConfirmDelete(false)}>
             Keep it
@@ -402,8 +441,9 @@ function TeamAccess({
         <div className="grow">
           <h3>Team access</h3>
           <div className="sub">
-            Who on your team can read, write, or edit this project. Takes effect once the project is
-            shared with your team.
+            {project.shared
+              ? 'Who on your team can read, write, or edit this project. Changes apply right away and are enforced on the server.'
+              : 'Draft who can read, write, or edit. It applies the moment you share this project with your team.'}
           </div>
         </div>
       </div>
@@ -411,7 +451,7 @@ function TeamAccess({
       {!canManage ? (
         <p className="hint" style={{ marginTop: 6 }}>
           {myLevel ? `Your access: ${permissionLabel(myLevel).toLowerCase()}. ` : ''}
-          Only an admin can change who has access.
+          Only an editor can change who has access.
         </p>
       ) : (
         <>

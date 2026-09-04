@@ -3,6 +3,48 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Projects get their own room and enterprise sharing)
+
+Founder arc off the Projects screen: "you should be able to click into a project
+and it shows all of the chats and the instructions and files and repos tied to
+that project ... a sub-interface for the coding agent tailored to the project at
+hand. Also for the enterprise version you are able to handle permissions of who
+is permitted to read, write, and/or edit by email." Then: "build the enterprise
+permissions so they can be deployed in projects." Built end to end and shipped to
+`main` (gates green). The permissions half is server-enforced but needs
+`supabase db push` (0014) before it lights up; it degrades to local-only
+projects until then.
+
+- **A project detail room.** Tapping a project on the Projects list opens its
+  own room (`app/src/screens/ProjectDetailScreen.tsx`, view `project`): its
+  chats (tap to open, with a way back), standing instructions (edited inline),
+  the repositories and their files it works in, and a New chat scoped to it. The
+  Projects list is now lean tap-to-open cards. Navigation reuses the back-trail
+  grammar, so a chat opened from the room returns to it.
+- **Enterprise project sharing, server-enforced.**
+  `supabase/migrations/0014_org_projects.sql`: `org_projects` +
+  `org_project_members`, a SECURITY DEFINER `project_level()` resolver (an org
+  admin/owner always holds edit; everyone else holds their grant, matched by
+  verified uid OR email, never client input), RLS that hides other orgs, and
+  the ONLY write path is a set of level-checked RPCs (list/create/update/delete
+  + set/revoke access). Direct table writes are revoked, the same lockdown shape
+  as `org_vault` (0010). A grant can only be handed to a real member of the org.
+- **The read/write/edit ladder.** read = open the project and its chats; write =
+  read plus start/run chats in it; edit = write plus change its instructions,
+  repos, and access. `app/src/lib/projectAccess.ts` answers the ladder; a shared
+  project reflects the server-resolved level, a local project is always the
+  owner's own (its grant roster is a draft that ships when shared).
+- **Client wiring.** `app/src/lib/orgProjects.ts` maps rows and wraps the RPCs;
+  the store gains shareProject / unshareProject / syncOrgProjects and routes a
+  shared project's content and roster writes through the server (local projects
+  stay device-local). Shared projects sync on sign-in and drop on sign-out so a
+  handed-off device never leaks another account's team projects. The detail room
+  shows a Share button (admins), a Shared badge, and gates editing by the
+  person's level.
+- Gates green: app typecheck, lint, 472 tests, vite build; Prettier clean; the
+  migration's shape is pinned by a test. Not exercised against a live database
+  until `supabase db push` runs 0014.
+
 ## Current state (2026-09-04, reviews scale path baked in + TestFlight incident closed)
 
 Two things this session: the CTO's reviews scale path is built, and the

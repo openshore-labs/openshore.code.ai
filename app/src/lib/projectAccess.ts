@@ -1,14 +1,10 @@
-// Project access, resolved. Enterprise projects carry per-teammate grants by
-// email (Project.access); this module turns a project + the signed-in account
-// into the level the current person holds, and answers read/write/edit.
-//
-// Honest scope (same posture as the Account/Org model in state/types.ts): these
-// are a UX affordance, not a security boundary. Projects are device-local
-// today, so a grant here only shapes what THIS person's app offers; real
-// enforcement lands when org-shared projects are server-backed. The shapes are
-// chosen so that server can honor them without a rewrite.
-import type { Account, Project, ProjectPermission } from '../state/types.js';
-import { isOrgAdmin } from '../state/store.js';
+// Project access, resolved. A SHARED (enterprise) project is enforced on the
+// server (supabase/migrations/0014_org_projects.sql); the client reflects the
+// level the server resolved for this person. A LOCAL project is the owner's own
+// device project, so the owner always holds edit; its grant roster is a draft
+// that becomes the server's the moment the project is shared. This module turns
+// a project into the level the current person holds, and answers read/write/edit.
+import type { Project, ProjectPermission } from '../state/types.js';
 
 // Coarsest to finest; the index is the rank. edit implies write implies read.
 export const PERMISSION_LADDER: ProjectPermission[] = ['read', 'write', 'edit'];
@@ -24,24 +20,15 @@ export function permits(held: ProjectPermission | undefined, needed: ProjectPerm
 
 /**
  * The level the signed-in person holds on a project:
- *  - a personal account owns everything ('edit');
- *  - a commercial admin always holds 'edit';
- *  - otherwise the grant matching their signed-in email, if any;
- *  - undefined when they have no grant (no access to this project yet).
- * Email match is case-insensitive. No account context (signed out, or accounts
- * not configured) is treated as the owner, so the solo/local experience is
- * unchanged.
+ *  - a SHARED project reflects the server-resolved `myLevel` (RLS is the truth);
+ *  - a LOCAL project is the owner's own, so they always hold 'edit'. Its grant
+ *    roster is a draft, never a restriction on the owner.
+ * `account` is accepted for call-site symmetry but no longer needed.
  */
 export function projectPermissionFor(
-  project: Pick<Project, 'access'>,
-  account?: Account,
+  project: Pick<Project, 'shared' | 'myLevel'>,
 ): ProjectPermission | undefined {
-  if (!account || account.type === 'personal') return 'edit';
-  if (isOrgAdmin(account)) return 'edit';
-  const email = account.selfEmail?.trim().toLowerCase();
-  if (!email) return undefined;
-  const grant = (project.access ?? []).find((a) => a.email.trim().toLowerCase() === email);
-  return grant?.level;
+  return project.shared ? project.myLevel : 'edit';
 }
 
 export const canRead = (level: ProjectPermission | undefined): boolean => permits(level, 'read');
