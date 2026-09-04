@@ -26,6 +26,7 @@ export function SettingsGroup({
 export function SettingsRow({
   label,
   sub,
+  subWrap,
   value,
   trailing,
   onClick,
@@ -34,6 +35,9 @@ export function SettingsRow({
 }: {
   label: string;
   sub?: ReactNode;
+  /** Let the sub wrap to two lines instead of truncating on one. For a full
+   *  sentence byline, where the whole line matters. */
+  subWrap?: boolean;
   /** A short value on the right (the current choice, a count). */
   value?: ReactNode;
   /** A control on the right instead of a chevron. */
@@ -47,7 +51,9 @@ export function SettingsRow({
     <>
       <span className="settings-row-text">
         <span className="settings-row-label">{label}</span>
-        {sub ? <span className="settings-row-sub">{sub}</span> : null}
+        {sub ? (
+          <span className={`settings-row-sub${subWrap ? ' wrap' : ''}`}>{sub}</span>
+        ) : null}
       </span>
       {value !== undefined ? <span className="settings-row-value">{value}</span> : null}
       {trailing ?? (onClick ? <span className="disclosure-chevron" aria-hidden="true" /> : null)}

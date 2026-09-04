@@ -4,10 +4,12 @@
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
 import { useEffect, useState } from 'react';
-import { isOrgAdmin, useApp } from '../state/store.js';
+import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { platform } from '../lib/platform.js';
+import { platform, isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
+import { HARBOR_BYLINE } from '../lib/harbor.js';
+import { HARBOR_MINI_BYLINE, HARBOR_MINI_BUNDLED } from '../lib/harborMini.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -120,6 +122,64 @@ function platformLabel(): string {
   }
 }
 
+/** The one control on the right of a Harbor row. A single button whose label
+ *  and action follow the model's state: Install when it is absent, its live
+ *  percent (tap to cancel) while it downloads, Retry after a failure, Uninstall
+ *  once it is on the device. A bundled model (Harbor Mini) ships with the app
+ *  and cannot be removed, so it shows a plain "Built in" status instead. */
+function HarborInstallButton({
+  bundled,
+  ready,
+  download,
+  onInstall,
+  onUninstall,
+  onCancel,
+}: {
+  bundled?: boolean;
+  ready?: boolean;
+  download?: HarborDownload;
+  /** Required for the real (non-bundled) toggle; omitted for a bundled model. */
+  onInstall?: () => void;
+  onUninstall?: () => void;
+  onCancel?: () => void;
+}) {
+  if (bundled) {
+    return <span className="harbor-action is-builtin">Built in</span>;
+  }
+  if (download && !download.failed) {
+    const label = download.indeterminate ? 'Downloading' : `${Math.round(download.percent)}%`;
+    return (
+      <button
+        type="button"
+        className="harbor-action is-progress press-fb"
+        onClick={onCancel}
+        aria-label="Cancel download"
+      >
+        {label}
+      </button>
+    );
+  }
+  if (download?.failed) {
+    return (
+      <button type="button" className="harbor-action is-retry press-fb" onClick={onInstall}>
+        Retry
+      </button>
+    );
+  }
+  if (ready) {
+    return (
+      <button type="button" className="harbor-action is-remove press-fb" onClick={onUninstall}>
+        Uninstall
+      </button>
+    );
+  }
+  return (
+    <button type="button" className="harbor-action is-install press-fb" onClick={onInstall}>
+      Install
+    </button>
+  );
+}
+
 type SheetName = 'account' | 'log' | 'search' | 'clear';
 
 export function SettingsScreen() {
@@ -133,6 +193,10 @@ export function SettingsScreen() {
     searchKeyConfigured,
     setSearchBackend,
     clearSearchBackend,
+    ensureHarbor,
+    removeHarbor,
+    cancelHarbor,
+    harborDownload,
   } = useApp();
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
@@ -146,6 +210,17 @@ export function SettingsScreen() {
   const facts = useSeal();
   const sealed = facts ? facts.every((f) => f.state === 'good') : false;
   const close = () => setSheet(undefined);
+
+  const installHarbor = async () => {
+    hapticTick();
+    const ok = await ensureHarbor();
+    if (ok) showToast('Harbor is installed and ready on this device.');
+  };
+  const uninstallHarbor = async () => {
+    hapticTick();
+    await removeHarbor();
+    showToast('Harbor removed. You can reinstall it any time.');
+  };
 
   const saveSearch = async () => {
     const key = searchKeyValue.trim();
@@ -295,6 +370,30 @@ export function SettingsScreen() {
               setSheet('search');
             }}
           />
+          {!isDesktop() ? (
+            <>
+              <SettingsRow
+                label="Harbor Mini"
+                sub={HARBOR_MINI_BYLINE}
+                subWrap
+                trailing={<HarborInstallButton bundled={HARBOR_MINI_BUNDLED} />}
+              />
+              <SettingsRow
+                label="Harbor"
+                sub={HARBOR_BYLINE}
+                subWrap
+                trailing={
+                  <HarborInstallButton
+                    ready={settings.harborReady}
+                    download={harborDownload}
+                    onInstall={() => void installHarbor()}
+                    onUninstall={() => void uninstallHarbor()}
+                    onCancel={() => cancelHarbor()}
+                  />
+                }
+              />
+            </>
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup index={group++}>

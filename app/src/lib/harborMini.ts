@@ -1,15 +1,17 @@
-// Harbor Mini: the small, fast on-device guide. Qwen2.5-0.5B, downloaded on
-// first launch, greets the user, and answers setup and "how do I" questions
-// offline, handing off to a real model for actual work. It is a concierge,
-// never a stack member: not a quarterback, not a specialist, and never
-// competes with the models the user chooses. The lighter sibling of Harbor
-// (the flagship guide, in harbor.ts); a fresh stack seeds with Mini so
-// first-run download size and time stay small.
+// Harbor Mini: the small, fast on-device guide. Qwen2.5-0.5B, and now BUNDLED
+// with the app so it is present the moment the app is installed, with no
+// first-launch download. It greets the user and answers setup and "how do I"
+// questions offline, handing off to a real model for actual work. It is a
+// concierge, never a stack member: not a quarterback, not a specialist, and
+// never competes with the models the user chooses. The lighter sibling of
+// Harbor (the flagship guide, in harbor.ts).
 //
 // Harbor Mini is a reserved on-device model id, so it flows through the
-// existing OnDeviceDriver / llama plugin and the same download path as any
-// pocket model. Its weights come straight from Hugging Face, so "downloads
-// come from the source, never from OpenShore" holds for the guide too.
+// existing OnDeviceDriver / llama plugin. Because it ships inside the app
+// bundle, the native ModelStore resolves it from the bundle (see
+// ModelStore.swift bundledURL), so it is always "present" on iOS and cannot be
+// removed. The download path still exists as the fallback for any build that
+// does not carry the bundled weights.
 
 import { APP_KNOWLEDGE } from './guideKnowledge.js';
 
@@ -22,6 +24,19 @@ export const HARBOR_MINI_MODEL_NAME = 'Harbor Mini';
 export const HARBOR_MINI_MODEL_URL =
   'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';
 export const HARBOR_MINI_APPROX_LABEL = 'about 380 MB';
+
+// Harbor Mini ships inside the app bundle, so it is available on first launch
+// with nothing to download, and it cannot be uninstalled (the bytes are part
+// of the app). This is the flag the Settings row reads to show "Built in"
+// instead of an install/uninstall toggle. See docs/HARBOR.md for the bundle
+// step and what it does to the App Store download size.
+export const HARBOR_MINI_BUNDLED = true;
+
+// The one-sentence byline shown under the Harbor Mini row in Settings. It is
+// the app's guide: an expert on every setup step and screen, honest about
+// where its own limits are.
+export const HARBOR_MINI_BYLINE =
+  'A built-in guide to the whole app, offline, that knows its limits and points you to a bigger model when you have outgrown it.';
 
 export function isHarborMini(modelId: string): boolean {
   return modelId === HARBOR_MINI_MODEL_ID;
@@ -40,10 +55,11 @@ export const HARBOR_MINI_GREETING = [
 
 const HARBOR_MINI_PERSONA = [
   "You are Harbor Mini, the small, fast guide in the user's OpenShore stack, running on their own device.",
-  'You are the starter guide that gets someone from an empty install to a working stack, and you fully expect to be replaced by the bigger models they add. That is the point, not a flaw.',
+  'You ship built into the app, so you are here from the first launch with nothing to download. You are the starter guide that gets someone from an empty install to a working stack, and you fully expect to be replaced by the bigger models they add. That is the point, not a flaw.',
+  'You are an expert on OpenShore itself, grounded in its own repository. Explain any front-end feature or setup step the person asks about, and go as deep as they want on how to set their OpenShore system up. Never reveal backend build internals, infrastructure, or anything about how OpenShore is implemented under the hood; keep to what the person can see and do in the app.',
   'Your two jobs: (1) help the user right now through brief chat, and (2) walk them toward a real stack: a quarterback, specialists, a desktop over Tailscale, or Claude on their own key.',
   'Voice: warm, brief, plainspoken. One idea per answer, a few short sentences.',
-  'You are small: good for guidance and quick questions, not for writing or editing real code. If asked for non-trivial code or repository work, say so plainly and point to a real model instead of faking it.',
+  'You are small: good for guidance and quick questions, not for writing or editing real code. Know your limits and say so early: when a question needs real reasoning or real coding, tell the person plainly that you have reached your edge, then walk them through getting a bigger model set up (a pocket model, a desktop over Tailscale, or Claude on their own key). Never fake work beyond you.',
   'Only answer from the facts below. If you do not know, say so and point to the right screen.',
   'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
   'Never use em dashes. Use a period or a comma instead.',

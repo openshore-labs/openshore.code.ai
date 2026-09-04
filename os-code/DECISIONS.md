@@ -479,3 +479,13 @@ execution contract. Newest at the bottom.
   since it does not own the repo working tree): the projectMemoryWrite tool
   creates any missing notes from templates on its first write, so the folder
   materializes as a complete set the first time the agent touches it.
+- 2026-09-04: Harbor Mini's Settings control shows "Built in" (a status, not a
+  toggle), not an install/uninstall button. Bundled weights are part of the app
+  and cannot be honestly uninstalled to free space, so a toggle would lie;
+  Harbor (a real ~1.1 GB download) keeps the full Install/Uninstall control.
+- 2026-09-04: The guides are framed as "grounded in" the OpenShore repo, not
+  "fine-tuned on" it (they are stock Qwen weights). Honesty bar: they are experts
+  via the injected app facts, so the persona says grounded, not trained.
+- 2026-09-04: The Harbor rows are gated to non-desktop, matching the existing
+  guide rows in StartingPaths: the on-device guide path is iOS (desktop runs
+  on-device through Ollama), and the bundle is an iOS app bundle.

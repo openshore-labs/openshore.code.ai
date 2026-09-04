@@ -1,21 +1,33 @@
 # Model licenses
 
-OpenShore does not ship model weights inside the app. Every model, including
-Harbor (the built-in guide), is downloaded by the user straight from its own
-public source. OpenShore never rehosts weights.
+With one exception, OpenShore does not ship model weights inside the app: every
+model is downloaded by the user straight from its own public source, and
+OpenShore never rehosts weights. The exception is Harbor Mini, the small guide,
+whose weights are bundled with the app so it is present on first launch. Its
+license (Apache-2.0) permits that redistribution, and the license and
+attribution ship in the app.
 
-## Harbor
+## Harbor Mini (bundled with the app)
 
 - **Weights:** Qwen2.5-0.5B-Instruct (GGUF, Q4_K_M quantization).
-- **Source:** the Qwen team, via Hugging Face (`Qwen/Qwen2.5-0.5B-Instruct`),
-  downloaded on first launch (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
-- **License:** Apache License 2.0.
+- **Source:** the Qwen team, via Hugging Face (`Qwen/Qwen2.5-0.5B-Instruct`).
+  The weights are placed into the app bundle at build time from
+  `HARBOR_MINI_MODEL_URL` in `app/src/lib/harborMini.ts` (see `docs/HARBOR.md`).
+- **License:** Apache License 2.0. Redistributed inside the app under its terms,
+  with the license and attribution retained.
+
+## Harbor (downloaded)
+
+- **Weights:** Qwen3-1.7B (GGUF, Q4_K_M quantization).
+- **Source:** via Hugging Face (`unsloth/Qwen3-1.7B-GGUF`), downloaded on demand
+  (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
+- **License:** Apache License 2.0. Downloaded from the source, not redistributed
+  by us, the same posture as any pocket model.
 
 The in-app attribution and the on-device-content disclaimer live in Settings
-("Local models, honestly"). Because Harbor is downloaded from the source rather
-than redistributed by us, it carries the same license posture as any pocket
-model. If the starter model that `HARBOR_MODEL_URL` points at ever changes,
-re-check its license and update the in-app attribution in the same change.
+("Local models, honestly"). If the model either constant points at ever changes,
+re-check its license and update the in-app attribution in the same change. When
+Harbor Mini's weights change, update the bundled file too.
 
 ## Everything else
 
