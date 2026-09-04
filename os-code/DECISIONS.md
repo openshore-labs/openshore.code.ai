@@ -510,3 +510,14 @@ execution contract. Newest at the bottom.
 - 2026-09-04: Scope is openshore.code.ai only for now, as the single source of
   truth next to uxStandard.ts (founder call). HQ and the marketing site can
   reference it later rather than each carrying a copy.
+- 2026-09-04: Humanizer is surfaced as a user setting "Humanize Writing" (app),
+  default on (founder follow-up: a named, visible feature aids transparency and
+  lets it be renovated on its own; off trims the prompt for a little speed). The
+  app toggle governs app-side chats (StackDriver); the desktop engine keeps its
+  own config knob, matching how the UX standard already splits app UI from engine
+  config, rather than adding a new app-to-engine config write path.
+- 2026-09-04: The Humanize Writing setting skips on-device pocket models (Harbor,
+  Harbor Mini), the same context-protection carve-out the UX standard makes. Real
+  writing runs on cloud or BYOM models where the small-context concern does not
+  apply, so the toggle governs those; the desktop engine carries the standard for
+  its own agent.
