@@ -114,6 +114,68 @@ describe('project bucketing', () => {
   });
 });
 
+describe('project detail room', () => {
+  beforeEach(resetStore);
+
+  it('openProject enters the detail room with a way back to Projects', async () => {
+    const s = useApp.getState();
+    useApp.setState({ view: 'projects', viewTrail: [] });
+    const id = await s.createProject('Alpha');
+    useApp.getState().openProject(id);
+    const st = useApp.getState();
+    expect(st.view).toBe('project');
+    expect(st.viewProjectId).toBe(id);
+    expect(st.viewTrail).toEqual(['projects']);
+  });
+
+  it('startProjectChat opens a fresh chat bound to the project, back to it', async () => {
+    const s = useApp.getState();
+    const id = await s.createProject('Alpha');
+    await s.createProject('Beta'); // make Alpha not the default active
+    useApp.getState().startProjectChat(id);
+    const st = useApp.getState();
+    expect(st.view).toBe('chat');
+    expect(st.activeId).toBeUndefined();
+    expect(st.viewProjectId).toBe(id);
+    expect(st.viewTrail).toEqual(['project']);
+    expect(st.settings.activeProjectId).toBe(id);
+    // The next chat then lands in that project.
+    const chatId = await useApp.getState().newConversation({ kind: 'mock' });
+    expect(useApp.getState().conversations[chatId]!.projectId).toBe(id);
+  });
+
+  it('a chat opened from the project room carries a way back to it', async () => {
+    const s = useApp.getState();
+    const id = await s.createProject('Alpha');
+    const chatId = await s.newConversation({ kind: 'mock' });
+    useApp.setState({ view: 'project', viewProjectId: id, activeId: undefined });
+    useApp.getState().openConversation(chatId);
+    expect(useApp.getState().viewTrail).toEqual(['project']);
+  });
+
+  it('setProjectAccess stores per-email grants on the project', async () => {
+    const s = useApp.getState();
+    const id = await s.createProject('Alpha');
+    await s.setProjectAccess(id, [
+      { email: 'a@co.com', level: 'read', grantedAt: 't' },
+      { email: 'b@co.com', level: 'edit', grantedAt: 't' },
+    ]);
+    const proj = useApp.getState().settings.projects!.find((p) => p.id === id)!;
+    expect(proj.access).toHaveLength(2);
+    expect(proj.access!.find((a) => a.email === 'b@co.com')!.level).toBe('edit');
+  });
+
+  it('deleting the open project falls back to the Projects list', async () => {
+    const s = useApp.getState();
+    const id = await s.createProject('Alpha');
+    useApp.getState().openProject(id);
+    await useApp.getState().deleteProject(id);
+    const st = useApp.getState();
+    expect(st.view).toBe('projects');
+    expect(st.viewProjectId).toBeUndefined();
+  });
+});
+
 describe('outbox producer', () => {
   beforeEach(resetStore);
 

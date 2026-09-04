@@ -36,7 +36,7 @@ export function relativeTime(iso: string, now = Date.now()): string {
 }
 
 /** The quiet source half of the secondary line. */
-function sourceShort(conv: Conversation): string {
+export function sourceShort(conv: Conversation): string {
   const s = conv.source;
   switch (s.kind) {
     case 'cloud':

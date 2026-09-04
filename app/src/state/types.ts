@@ -190,7 +190,29 @@ export interface Project {
   instructions?: string;
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
+  /** Enterprise: per-teammate access grants, keyed by email, that decide who
+   *  may read, write, or edit this project once it is shared with the team.
+   *  Admin-managed. Absent/empty means no one but the admin has been granted
+   *  access yet. Local-first scaffold, same posture as the Org model above: a
+   *  UX affordance today, enforced server-side when org-shared projects land. */
+  access?: ProjectAccess[];
   createdAt: string;
+}
+
+// A project permission, coarsest to finest. Each level includes the ones below
+// it (edit implies write implies read); admins always hold edit.
+//   read  - open the project and its chats, see its instructions and repos.
+//   write - read, plus send messages and run the coding agent in its chats.
+//   edit  - write, plus change the project's instructions, repos, and access.
+export type ProjectPermission = 'read' | 'write' | 'edit';
+
+/** One teammate's access to a project, granted by an admin, keyed by email. */
+export interface ProjectAccess {
+  email: string;
+  /** The highest level this teammate holds. Widen to a role set later if the
+   *  three levels ever stop being a strict ladder. */
+  level: ProjectPermission;
+  grantedAt: string;
 }
 
 // One member of "My Crew": a user-authored agent with a name, a persona, and a

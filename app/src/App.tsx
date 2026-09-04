@@ -18,6 +18,7 @@ import { ConnectionsScreen } from './screens/ConnectionsScreen.js';
 import { ReposScreen } from './screens/ReposScreen.js';
 import { VaultScreen } from './screens/VaultScreen.js';
 import { ProjectsScreen } from './screens/ProjectsScreen.js';
+import { ProjectDetailScreen } from './screens/ProjectDetailScreen.js';
 import { CrewScreen } from './screens/CrewScreen.js';
 import { AdminScreen } from './screens/AdminScreen.js';
 import { LaunchScreen } from './screens/LaunchScreen.js';
@@ -198,6 +199,8 @@ export function App() {
       <VaultScreen />
     ) : view === 'projects' ? (
       <ProjectsScreen />
+    ) : view === 'project' ? (
+      <ProjectDetailScreen />
     ) : view === 'crew' ? (
       <CrewScreen />
     ) : view === 'admin' ? (

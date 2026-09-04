@@ -13,7 +13,9 @@ import { BrandMark } from './BrandMark.js';
 // is the honest form of the reviewer's `Record<ViewName | 'admin', ...>` without
 // demanding unused icons. Typing ICON_NODES and NavIcon by it makes a missing or
 // misspelled key a compile error instead of a silently empty SVG (CR3).
-type NavIconName = Exclude<ViewName, 'chat' | 'onboarding' | 'terminal'>;
+// 'project' is a detail room reached by tapping a project, not a nav
+// destination, so it never appears in the sidebar or needs an icon.
+type NavIconName = Exclude<ViewName, 'chat' | 'onboarding' | 'terminal' | 'project'>;
 
 // The nav is split so a first-week user is not met with a dozen destinations
 // at once (CMO ruling). PRIMARY is the day-one set, pinned to the top: chat,
