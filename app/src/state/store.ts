@@ -1833,12 +1833,11 @@ export const useApp = create<AppState>((set, get) => {
         const results = await bridge()!.reconcileRepos(roots);
         const summary = summarizeReconcile(results);
         set({ repoSyncConflicts: summary.conflicts.length ? summary.conflicts : undefined });
+        // reconcileToast is silent unless something is worth saying (a push, a
+        // conflict, or an outright failure), so a routine boot with nothing to
+        // do stays quiet.
         const message = reconcileToast(summary);
-        // Stay quiet on a routine boot when nothing moved; always speak up for a
-        // conflict, and confirm a push the person did not explicitly ask for.
-        if (message && (summary.conflicts.length > 0 || summary.pushed > 0)) {
-          get().showToast(message);
-        }
+        if (message) get().showToast(message);
         logEvent('repo_reconcile', {
           trigger,
           pushed: summary.pushed,

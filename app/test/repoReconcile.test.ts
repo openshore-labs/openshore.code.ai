@@ -41,6 +41,11 @@ describe('summarizeReconcile', () => {
     expect(s.conflicts.map((c) => c.cwd)).toEqual(['/c']);
     expect(s.offline).toBe(1);
   });
+
+  it('counts outright errors', () => {
+    const s = summarizeReconcile([result('error'), result('clean')]);
+    expect(s.errors).toBe(1);
+  });
 });
 
 describe('reconcileToast', () => {
@@ -66,5 +71,11 @@ describe('reconcileToast', () => {
     // Conflict wins over a concurrent push in the message.
     const both = reconcileToast(summarizeReconcile([result('pushed'), result('conflict')]));
     expect(both).toMatch(/manual merge/);
+  });
+
+  it('surfaces an outright failure so the person knows notes are not syncing', () => {
+    const msg = reconcileToast(summarizeReconcile([result('error'), result('clean')]));
+    expect(msg).toMatch(/Could not sync/);
+    expect(msg).toMatch(/retry/);
   });
 });

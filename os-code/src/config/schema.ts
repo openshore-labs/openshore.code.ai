@@ -212,6 +212,15 @@ const UxSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Offline reconcile: the app pushes this repo's unpushed commits (the project's
+// memory notes ride with the code) to its tracking upstream on app open and on
+// reconnect, so nothing important lingers only on the device. A project that
+// does not want its commits auto-pushed (e.g. its branch deploys on push) sets
+// autoPush:false here and pushes on its own schedule.
+const SyncSchema = z.object({
+  autoPush: z.boolean().default(true),
+});
+
 export const ConfigSchema = z.object({
   providers: z
     .record(z.string(), ProviderEndpointSchema)
@@ -230,6 +239,7 @@ export const ConfigSchema = z.object({
   ui: UiSchema.prefault({}),
   vault: VaultSchema.prefault({}),
   ux: UxSchema.prefault({}),
+  sync: SyncSchema.prefault({}),
 });
 
 export type OscConfig = z.infer<typeof ConfigSchema>;

@@ -551,7 +551,17 @@ export class EngineHost {
   // real, existing directories are attempted.
   private reconcileInFlight = false;
   async reconcileRepos(roots: string[]): Promise<ReconcileResult[]> {
-    const real = roots.filter((r) => r && existsSync(r));
+    // A project can opt out of auto-push in its os-code.config.json
+    // (sync.autoPush:false), e.g. when its branch deploys on push. Honor that
+    // per repo before any git runs.
+    const real = roots.filter((r) => {
+      if (!r || !existsSync(r)) return false;
+      try {
+        return loadConfig(r).config.sync?.autoPush !== false;
+      } catch {
+        return true; // no readable config means the default (auto-push on)
+      }
+    });
     if (!real.length) return [];
     // Serialize in the main process: two windows (or a rapid open + reconnect)
     // must not run git on the same clones at once. A concurrent call is a no-op,

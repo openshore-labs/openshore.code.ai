@@ -13,7 +13,24 @@
 //  - Never merges over uncommitted work: a dirty tree on divergence is reported,
 //    not stepped on.
 // No em dashes anywhere in this file (repo policy is total here).
-import { git } from './index.js';
+import { simpleGit, type SimpleGit } from 'simple-git';
+
+/** A git handle for reconcile work, time-bounded so a stalled transfer (an
+ *  unreachable remote, a credential prompt that never gets answered) gives up
+ *  after 20s rather than leaking a running op. The parent process environment
+ *  (PATH, the credential helper, the SSH agent) passes through unchanged. */
+function reconcileGit(cwd: string): SimpleGit {
+  return simpleGit(cwd, { timeout: { block: 20_000 } });
+}
+
+/** Split a tracking ref ("origin/main", "origin/feature/x") into its remote and
+ *  the upstream branch name, so the push targets the branch actually tracked,
+ *  not a same-named branch on the remote. */
+function splitTracking(tracking: string): { remote: string; branch: string } {
+  const slash = tracking.indexOf('/');
+  if (slash <= 0) return { remote: 'origin', branch: tracking };
+  return { remote: tracking.slice(0, slash), branch: tracking.slice(slash + 1) };
+}
 
 export type ReconcileStatus =
   | 'not-repo' // the path is not a git repository
@@ -54,7 +71,7 @@ export function isOffline(message: string): boolean {
 /** Push a clone's unpushed commits to its upstream, merging the remote in first
  *  when it has advanced. See the file header for the safety rails. */
 export async function reconcilePush(cwd: string): Promise<ReconcileResult> {
-  const g = git(cwd);
+  const g = reconcileGit(cwd);
   if (!(await g.checkIsRepo())) return { cwd, status: 'not-repo' };
 
   const status = await g.status();
@@ -74,11 +91,11 @@ export async function reconcilePush(cwd: string): Promise<ReconcileResult> {
   const ahead = status.ahead ?? 0;
   if (ahead === 0) return { cwd, status: 'clean', branch, ahead: 0 };
 
-  const remote = status.tracking.split('/')[0] || 'origin';
+  const { remote, branch: upstreamBranch } = splitTracking(status.tracking);
 
-  // First try a plain push of the branch to its upstream.
+  // First try a plain push of the current HEAD to the branch it tracks.
   try {
-    await g.push(remote, branch);
+    await g.push(remote, `HEAD:${upstreamBranch}`);
     return { cwd, status: 'pushed', branch, ahead };
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
@@ -102,7 +119,7 @@ export async function reconcilePush(cwd: string): Promise<ReconcileResult> {
   // Fetch and merge the upstream in. A conflict is aborted so the tree is left
   // exactly as it was, and reported rather than forced.
   try {
-    await g.fetch(remote, branch);
+    await g.fetch(remote, upstreamBranch);
     await g.merge([status.tracking]);
   } catch (err) {
     try {
@@ -124,7 +141,7 @@ export async function reconcilePush(cwd: string): Promise<ReconcileResult> {
 
   // Merge is clean: push the integrated branch.
   try {
-    await g.push(remote, branch);
+    await g.push(remote, `HEAD:${upstreamBranch}`);
     return { cwd, status: 'merged', branch, ahead };
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
