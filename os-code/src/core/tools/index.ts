@@ -50,6 +50,11 @@ export interface ToolContext {
   /** Absolute path to the on-device knowledge vault (markdown files). The vault
    *  tools resolve note paths under here, jailed to it. */
   vaultRoot?: string;
+  /** The name of the project this session belongs to, when it belongs to one.
+   *  The project-memory tool derives its Projects/<project>/ folder from this
+   *  (falling back to the workspace basename). Undefined for a project-less
+   *  chat or the bare CLI. */
+  projectName?: string;
   /**
    * Read the recent raw output of this session's interactive terminal (Phase 2
    * PTY bridge), so the agent can look at the user's terminal with no
@@ -70,8 +75,10 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
    *  path (session grant, permission rule, trusted repo). Used for actions that
    *  must never happen silently, e.g. the agent writing to the user's vault. */
   alwaysAsk?: boolean;
-  /** Primary path argument, for glob-scoped permission rules. */
-  pathOf?: (args: z.infer<S>) => string | undefined;
+  /** Primary path argument, for glob-scoped permission rules. Receives the
+   *  session context so a tool whose path is derived from context (not from its
+   *  arguments) can still report it; context-free tools ignore the second arg. */
+  pathOf?: (args: z.infer<S>, ctx?: ToolContext) => string | undefined;
   /** Build the approval preview. Called only when the decision is 'ask'. */
   preview?: (args: z.infer<S>, ctx: ToolContext) => Promise<ToolPreview>;
   execute: (args: z.infer<S>, ctx: ToolContext) => Promise<ToolOutput>;

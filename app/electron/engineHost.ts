@@ -166,7 +166,7 @@ export class EngineHost {
 
   async createSession(
     cwd?: string,
-    opts: { instructions?: string; permissionMode?: PermissionMode } = {},
+    opts: { instructions?: string; permissionMode?: PermissionMode; projectName?: string } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
     const { driver, warnings } = bootstrapSession({
@@ -175,6 +175,7 @@ export class EngineHost {
       terminalReader: this.readTerminal,
       instructions: opts.instructions,
       permissionMode: opts.permissionMode,
+      projectName: opts.projectName,
     });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
@@ -595,7 +596,8 @@ export class EngineHost {
       // loopback fallback (Tailscale down) reports 127.0.0.1. The Pair screen
       // uses this to avoid publishing an unreachable QR with false copy.
       mode: (this.daemon?.host === '127.0.0.1' ? 'loopback' : 'tailscale') as
-        'loopback' | 'tailscale',
+        | 'loopback'
+        | 'tailscale',
     };
   }
 

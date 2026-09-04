@@ -401,7 +401,10 @@ function deepLinkFromArgv(argv: string[]): string | undefined {
 // Keep in lockstep with src/lib/electronBridge.ts and electron/preload.cjs.
 
 ipcMain.handle('osc:createSession', (_e, cwd?: string, opts?: Record<string, unknown>) =>
-  host.createSession(cwd, opts as { instructions?: string; permissionMode?: never } | undefined),
+  host.createSession(
+    cwd,
+    opts as { instructions?: string; permissionMode?: never; projectName?: string } | undefined,
+  ),
 );
 ipcMain.handle('osc:setMode', (_e, sessionId: string, mode: string) =>
   host.setMode(sessionId, mode as never),

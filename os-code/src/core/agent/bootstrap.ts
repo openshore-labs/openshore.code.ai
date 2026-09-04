@@ -37,6 +37,11 @@ export interface BootstrapOptions {
   terminalReader?: (sessionId: string, lines: number, termId?: string) => string | undefined;
   /** The person's standing instructions for the project this chat belongs to. */
   instructions?: string;
+  /** The name of the project this chat belongs to, when it belongs to one. Used
+   *  to place the project's memory notes under Projects/<project>/ in the vault.
+   *  Undefined for a project-less chat or the bare CLI (the memory folder then
+   *  falls back to the workspace basename). */
+  projectName?: string;
   /** The permission mode to start in (default: ask for writes and shell). */
   permissionMode?: PermissionMode;
 }
@@ -70,7 +75,13 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     stackHasImageGen: stack.imageGen,
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
   });
-  const toolContext = buildToolContext({ cwd: options.cwd, config, router, providers });
+  const toolContext = buildToolContext({
+    cwd: options.cwd,
+    config,
+    router,
+    providers,
+    projectName: options.projectName,
+  });
 
   const profile = profileFor(options.profile);
   const permissions = new PermissionEngine(config.permissions as PermissionConfig, profile);
