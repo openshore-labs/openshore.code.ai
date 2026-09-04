@@ -208,6 +208,7 @@ export function SettingsScreen() {
   } = useApp();
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
+  const humanizeOn = settings.humanizeWriting !== false;
   const account = settings.account;
   const org = account?.org;
   const [sheet, setSheet] = useState<SheetName | undefined>();
@@ -471,6 +472,51 @@ export function SettingsScreen() {
               />
             </>
           ) : null}
+        </SettingsGroup>
+
+        <SettingsGroup title="Writing" index={group++}>
+          <SettingsRow
+            label="Humanize Writing"
+            sub="Keeps generated text plain and specific, free of AI writing tells. On by default."
+            trailing={
+              <Switch
+                checked={humanizeOn}
+                label="Humanize Writing"
+                onChange={(next) => {
+                  void saveSettings({ humanizeWriting: next });
+                  showToast(
+                    next
+                      ? 'Humanize Writing on. Generated text avoids AI writing tells.'
+                      : 'Humanize Writing off. Models run on a shorter prompt.',
+                  );
+                }}
+              />
+            }
+          />
+          <InfoSheet
+            title="Humanize Writing"
+            renderTrigger={(open) => (
+              <SettingsRow label="How this works" sub="What it changes, and why" onClick={open} />
+            )}
+          >
+            <p>
+              With Humanize Writing on, any text a model writes for you, whether a report, a commit
+              message, docs, or copy, is held to a plain, specific, honest voice. The model is told
+              to avoid the habits that mark text as AI-written: inflated significance, brochure
+              language, vague attribution, the rule of three, Title Case headings, formulaic "faces
+              challenges" endings, leftover chatbot chatter, and the rest.
+            </p>
+            <p>
+              The list of tells is distilled from the community-maintained field guide "Signs of AI
+              writing" and shipped with the app as a fixed snapshot, so nothing is fetched from the
+              web while you work.
+            </p>
+            <p>
+              It is on by default, and most people leave it on. Turn it off and the standard drops
+              out of the prompt, so a model runs on a shorter prompt and answers a little faster. A
+              project can also set its own voice rules that ride on top.
+            </p>
+          </InfoSheet>
         </SettingsGroup>
 
         <SettingsGroup index={group++}>
