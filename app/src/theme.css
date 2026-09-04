@@ -6742,10 +6742,102 @@ textarea {
 
 /* The greener way to build. Deliberately in the teal/water family, never green:
    the discipline is teal means local/private, and everything saved here is a
-   consequence of staying local. A soft wave-tinted shore edge sets it apart from
-   the neutral cards without breaking the palette. */
+   consequence of staying local. A wave-tinted shore edge sets it apart from the
+   neutral cards without breaking the palette, and it fills like water, once,
+   bottom to top, on first reveal. */
 .sh-green {
-  box-shadow: inset 3px 0 0 var(--wave);
+  position: relative;
+  overflow: hidden;
+}
+/* The shore edge as a pseudo-element bar so it can fill. Rests full; the
+   keyframe scales it up from the bottom once. Under reduced motion the global
+   reset collapses the animation to an instant, landing it full. */
+.sh-green::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--wave);
+  transform-origin: bottom;
+  animation: sh-water-fill var(--dur-7) var(--ease-arrive) backwards;
+}
+@keyframes sh-water-fill {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+/* Each piece of the card arrives a step after the last, on the house stagger,
+   the same grammar the drawer rows use. Backwards fill covers the delay without
+   pinning the end (which would kill a press state elsewhere). */
+.sh-green-item {
+  animation: sh-green-in var(--dur-4) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+@keyframes sh-green-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* The estimate marker: present but quiet, so a figure reads as "about this" at a
+   glance without shouting over the number. */
+.sh-approx {
+  color: var(--muted);
+  font-size: 0.6em;
+  margin-right: 0.12em;
+  vertical-align: 0.12em;
+  font-weight: 400;
+}
+
+/* Pull-to-refresh. The holder is a zero-height flow marker at the top of the
+   content; the indicator rides absolutely in the gap the pull opens, so the
+   scroll container never clips it. Transform and opacity only; the settle back
+   runs on the arrive curve (no overshoot, so content never dips past its rest). */
+.sh-pull-holder {
+  position: relative;
+  height: 0;
+}
+.sh-pull-ind {
+  position: absolute;
+  top: -44px;
+  left: 0;
+  right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--local);
+  pointer-events: none;
+  will-change: transform;
+}
+.sh-pull-ind.settling {
+  transition: transform var(--dur-5) var(--ease-arrive);
+}
+.sh-pull-arrow {
+  transition: transform var(--dur-3) var(--ease-standard);
+}
+.sh-pull-arrow.armed {
+  transform: rotate(180deg);
+}
+.sh-pull-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--local-soft);
+  border-top-color: var(--local);
+  animation: spin 0.8s linear infinite;
+}
+.screen-inner.sh-pull-settling {
+  transition: transform var(--dur-5) var(--ease-arrive);
 }
 .sh-green-hero {
   display: flex;

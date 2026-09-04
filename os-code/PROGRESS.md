@@ -3,6 +3,38 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Stack Health sustainability: all the polish)
+
+Founder: "Do all of the polish," on the sustainability + carry-through drop
+below. Same branch `claude/stack-health-sustainability-9wnf1y`.
+
+- **The green card arrives one piece at a time.** Each element (eyebrow, water
+  hero, the three tiles, the read lines, the basis) steps in on the house
+  `--stagger` via a shared `sh-green-in` entrance (`--i` inline index, backwards
+  fill, arrive curve). The water count-up gained an optional lead-in delay so it
+  starts as the hero slides into its slot rather than counting before the card
+  has landed.
+- **The shore edge fills like water.** The static teal box-shadow became an
+  animated `::before` bar that scales up from the bottom once on first reveal
+  (`sh-water-fill` over the door clock, arrive curve), reduced-motion safe.
+- **Every green figure is marked an estimate.** A quiet "almost-equal" glyph
+  (`.sh-approx`, muted, sub-scale) sits before the water hero and the energy and
+  carbon tiles, so the card reads as "about this" at a glance, not a meter.
+- **Pull-to-refresh, to the house gesture bar.** New `app/src/hooks/usePullToRefresh.ts`:
+  engages ONLY at the top of the scroll on a real downward touch, tracks the
+  finger 1:1 through asymptotic damping to a ceiling, arms past a distance
+  threshold (a light haptic marks the arm), commits on release (a success
+  haptic), and settles back on the arrive curve. Safety rails match the drawer:
+  a lost pointer capture counts as a release, capture refusal stands down, and a
+  move that is not a top-of-scroll pull is left entirely to the browser so
+  normal scrolling is untouched. The loader is now one `load(quiet)` callback
+  shared by the range effect and the refresh; a quiet refresh keeps the current
+  numbers on screen (pinned under the finger) while it re-fetches. The indicator
+  rides the gap the pull opens (a chevron that flips to point up when armed, a
+  spinner while refreshing) and never clips.
+- Gates green: app typecheck + lint + 565 tests + vite build; the motion-token,
+  polish-standards, and total em-dash guards all pass over the new files.
+
 ## Current state (2026-09-04, Stack Health goes to the phone, gains a sustainability read, marketplace runs lean)
 
 Founder ask, off the phone Stack Health screen (which said "lives on your
