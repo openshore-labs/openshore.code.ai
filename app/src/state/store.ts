@@ -672,6 +672,10 @@ interface AppState {
   ensureHarbor(): Promise<boolean>;
   /** Cancel an in-progress Harbor download. */
   cancelHarbor(): void;
+  /** Remove Harbor's weights from this device and drop its ready flag. Harbor
+   *  is a real download (about 1.1 GB), so it is uninstallable; Harbor Mini is
+   *  bundled with the app and has no counterpart here. */
+  removeHarbor(): Promise<void>;
   /** First-run: start Harbor Mini's download and open the LLM Library intro. */
   beginHarborMiniWithIntro(): void;
   /** First-run: start Harbor's download and open the LLM Library intro. */
@@ -3395,6 +3399,32 @@ export const useApp = create<AppState>((set, get) => {
       void Llama.cancelDownload({ id: HARBOR_MODEL_ID }).catch(() => {});
       logEvent('harbor_download_cancel');
       set({ harborDownload: undefined });
+    },
+
+    async removeHarbor() {
+      // Delete the weights from disk, then drop the ready flag. Any status
+      // whose Reasoning anchor was Harbor is healed to whichever guide is still
+      // present (Harbor Mini is bundled, so it always is), so "My Stack" chat
+      // keeps working instead of pointing at a model that is gone. Harbor is
+      // re-downloadable from the same row, so nothing is lost for good.
+      await Llama.deleteModel({ id: HARBOR_MODEL_ID }).catch(() => {});
+      logEvent('harbor_removed');
+      await get().saveSettings({ harborReady: false });
+      const stacks = get().settings.stacks;
+      if (stacks) {
+        let changed = false;
+        const next: Partial<Record<ProfileId, AppStack>> = { ...stacks };
+        for (const p of PROFILE_ORDER) {
+          const st = stacks[p];
+          if (!st) continue;
+          const healed = healedAnchor(st, false, Boolean(get().settings.harborMiniReady));
+          if (healed !== st) {
+            next[p] = healed;
+            changed = true;
+          }
+        }
+        if (changed) await get().saveSettings({ stacks: next });
+      }
     },
 
     beginHarborMiniWithIntro() {

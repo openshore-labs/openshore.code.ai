@@ -7835,6 +7835,53 @@ button.settings-row:active {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A full-sentence byline reads on two lines rather than truncating. */
+.settings-row-sub.wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+
+/* The compact install/uninstall control that sits on the right of a Harbor
+   row. A pill, sized to the row, on the house press physics (press-fb). Its
+   state carries the color: install invites (local accent), uninstall recedes
+   (quiet outline), retry warns, progress is a live label. "Built in" is a
+   status, not a button, so it takes no press feedback. */
+.harbor-action {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+}
+.harbor-action.is-install {
+  background: var(--local);
+  color: var(--bg);
+}
+.harbor-action.is-remove {
+  background: var(--surface);
+  color: var(--muted);
+  border-color: var(--border-strong);
+}
+.harbor-action.is-retry {
+  background: var(--danger);
+  color: #fff;
+}
+.harbor-action.is-progress {
+  background: var(--surface);
+  color: var(--ink-soft);
+  border-color: var(--border);
+}
+.harbor-action.is-builtin {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+}
 .settings-row-value {
   flex-shrink: 0;
   font-size: 14px;

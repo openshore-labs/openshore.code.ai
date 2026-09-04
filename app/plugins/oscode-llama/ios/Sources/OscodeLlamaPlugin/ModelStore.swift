@@ -54,6 +54,14 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     /// session object.
     static let backgroundSessionIdentifier = "ai.openshore.oscode.model-downloads"
 
+    /// Model ids that ship INSIDE the app bundle, so they are present the moment
+    /// the app is installed with nothing to download, and cannot be removed (the
+    /// bytes are part of the app). Harbor Mini is bundled; keep this in step with
+    /// HARBOR_MINI_BUNDLED in app/src/lib/harborMini.ts. The weights file is
+    /// dropped into the app's Models resource folder at build time (see
+    /// docs/HARBOR.md); it is not committed to the repo.
+    static let bundledModelIds: [String] = ["harbor-mini"]
+
     /// The iCloud container, matched to the entitlement and the OscodeIcloud
     /// plugin so models sit beside the Vault in the same Drive folder.
     static let iCloudContainerId = "iCloud.ai.openshore.oscode"
@@ -177,6 +185,17 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         iCloudModelsRoot()?.appendingPathComponent("\(sanitize(id)).gguf")
     }
 
+    /// The read-only URL for a model that ships inside the app bundle, or nil
+    /// when this id is not bundled (or the weights were not included in this
+    /// build). Checked with and without a "Models" subdirectory so it resolves
+    /// whether the file was added as a folder reference or a plain resource.
+    func bundledURL(for id: String) -> URL? {
+        guard Self.bundledModelIds.contains(id) else { return nil }
+        let name = sanitize(id)
+        return Bundle.main.url(forResource: name, withExtension: "gguf", subdirectory: "Models")
+            ?? Bundle.main.url(forResource: name, withExtension: "gguf")
+    }
+
     /// Kept as the historical name some call sites used; the device home.
     func localURL(for id: String) -> URL { deviceURL(for: id) }
 
@@ -188,11 +207,30 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         let device = deviceURL(for: id)
         if FileManager.default.fileExists(atPath: device.path) { return device }
         if let cloud = iCloudURL(for: id), cloudItemPresent(cloud) { return cloud }
+        // Last, the copy that ships inside the app bundle (Harbor Mini). A
+        // downloaded or iCloud copy wins over it, but the bundle guarantees the
+        // model is always resolvable even with nothing downloaded.
+        if let bundled = bundledURL(for: id) { return bundled }
         return nil
     }
 
     func list() -> [LocalModel] {
-        deviceModels() + iCloudModels()
+        var models = deviceModels() + iCloudModels()
+        let owned = Set(models.map { $0.id })
+        // Surface bundled models (Harbor Mini) as present, unless a downloaded
+        // or iCloud copy of the same id already covers them. Reported as a
+        // device model, never evicted: the bytes are inside the app.
+        for id in Self.bundledModelIds where !owned.contains(id) {
+            guard let url = bundledURL(for: id) else { continue }
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
+            models.append(LocalModel(
+                id: id,
+                fileName: "\(id).gguf",
+                sizeBytes: size,
+                location: .device,
+                evicted: false))
+        }
+        return models
     }
 
     private func deviceModels() -> [LocalModel] {
@@ -254,6 +292,9 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     }
 
     func delete(id: String) {
+        // A bundled model (Harbor Mini) lives inside the app and cannot be
+        // removed; any downloaded or iCloud copy is deleted, and the bundle
+        // copy keeps the model present. This is what makes "Built in" honest.
         try? FileManager.default.removeItem(at: deviceURL(for: id))
         if let cloud = iCloudURL(for: id) {
             var coordError: NSError?
@@ -271,6 +312,8 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     func ensureLocal(id: String) -> (ready: Bool, downloading: Bool) {
         let fm = FileManager.default
         if fm.fileExists(atPath: deviceURL(for: id).path) { return (true, false) }
+        // A bundled model is always local: its bytes ship with the app.
+        if bundledURL(for: id) != nil { return (true, false) }
         guard let cloud = iCloudURL(for: id), cloudItemPresent(cloud) else {
             // Not an iCloud model (or not owned at all); let load speak to it.
             return (true, false)
@@ -311,6 +354,12 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     }
 
     func download(id: String, from url: URL, target: StorageTarget) {
+        // A bundled model already ships with the app; never spend the network
+        // re-fetching it. Report it done so the caller records it as present.
+        if let bundled = bundledURL(for: id) {
+            reportComplete(id: id, location: .device, result: .success(bundled))
+            return
+        }
         // The weights may already be on disk in either home (a background
         // transfer that finished while the app was closed). Do not re-download;
         // report it done so the caller records it as present.

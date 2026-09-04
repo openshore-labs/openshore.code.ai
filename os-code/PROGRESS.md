@@ -3,6 +3,43 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Harbor + Harbor Mini rows in Settings, Mini bundled with the app)
+
+Founder ask: add two rows to the Settings > Harbor group, below the web-search
+row, one for Harbor Mini and one for Harbor, each with a one-sentence byline and
+a single install/uninstall control on the right. Harbor Mini should come native
+with the app (bundled), so it is present on first launch. The guides are
+grounded in this repo: open about every front-end feature so people can go deep
+on setting their system up, silent on backend build internals. Mini is the app's
+guide that knows its limits and tells you when you need a bigger model and how to
+set one up; Harbor is a reasonably capable first coding agent and app expert.
+Branch `claude/harbor-settings-rows-bundle-tbu2ct`.
+
+- **The two rows (app).** `SettingsScreen.tsx` Harbor group now carries a Harbor
+  Mini row and a Harbor row under web search, gated to non-desktop (the guides
+  are the iOS on-device path). Each byline wraps to a full sentence (new
+  `subWrap` on `SettingsRow`, `.settings-row-sub.wrap` in `theme.css`).
+- **The single control (app).** `HarborInstallButton` (in `SettingsScreen.tsx`,
+  styled `.harbor-action` on the house press physics): **Built in** for a bundled
+  model (Harbor Mini), else **Install** / live percent (tap to cancel) / **Retry**
+  / **Uninstall** for Harbor. Uninstall is a new store action `removeHarbor`
+  (delete weights, drop `harborReady`, re-heal any stack anchored on Harbor to
+  Mini). Harbor stays re-installable from the same row.
+- **Harbor Mini bundled (native).** `HARBOR_MINI_BUNDLED` in `harborMini.ts` is
+  the JS flag; the native `ModelStore.swift` carries `bundledModelIds` and
+  resolves/lists/ensures a bundled model from `Bundle.main` (`bundledURL`), never
+  re-downloads it, and never deletes it, so "Built in" is honest and it loads
+  offline with nothing downloaded. The weights file is dropped into the app
+  bundle at build time (not committed); `docs/HARBOR.md` has the step and the App
+  Store size math (roughly 400 to 450 MB total, Mini's ~380 MB GGUF plus the base
+  app; Harbor's 1.1 GB stays a download).
+- **Personas + knowledge.** `harbor.ts` / `harborMini.ts` personas and the shared
+  `guideKnowledge.ts` now carry the front-end open, backend private boundary,
+  "grounded in its own repository," Harbor as a first coding agent, and Mini
+  owning its limits and pointing to a bigger model. `docs/HARBOR.md` and
+  `app/MODEL-LICENSES.md` rewritten (Mini is now redistributed in the bundle
+  under Apache-2.0). `test/harborGuides.test.ts` pins all of it.
+
 ## Current state (2026-09-04, offline reconcile: project commits push to the remote on open and reconnect)
 
 Founder ask: nothing should linger only on the device. If you are offline, the
