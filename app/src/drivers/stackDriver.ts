@@ -19,10 +19,15 @@ import { Llama } from '../lib/llamaPlugin.js';
 import { platform, secretGet, storeGetJson } from '../lib/platform.js';
 import {
   CODEMAGIC_TOOL_NAME,
+  codemagicOpenAiTool,
   codemagicSystemNote,
   codemagicToolSpec,
+  finalizeToolCalls,
+  mergeToolCallDeltas,
+  parseCodemagicArgs,
   runCodemagicTool,
   type CodemagicToolInput,
+  type ToolCallAccum,
 } from '../lib/codemagicTool.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
@@ -222,9 +227,11 @@ export class StackDriver implements ChatDriver {
     // turned the setting off (humanizerStandard.ts, config in Settings).
     if (humanizerApplies(ref, this.context.humanize)) parts.push(humanizerStandardPrompt());
     // Codemagic Access is on: tell the model it can drive App Launch builds. The
-    // tool itself is offered only on the Anthropic path (native tool use), so
-    // this note only earns its place there.
-    if (this.context.codemagicAccess && ref.kind === 'cloud' && ref.provider === 'anthropic') {
+    // tool is offered on every network model (Anthropic native tool use, and
+    // OpenAI-compatible + BYOM function calling), so the note earns its place on
+    // any non-device model. On-device pocket models are too small for reliable
+    // tool use and stay guidance only.
+    if (this.context.codemagicAccess && ref.kind !== 'device') {
       parts.push(codemagicSystemNote());
     }
     return parts.join('\n\n');
@@ -431,7 +438,11 @@ export class StackDriver implements ChatDriver {
       if (!base) {
         throw new RouteUnavailable(`No endpoint configured for ${ref.provider}.`);
       }
-      await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system);
+      if (this.context.codemagicAccess) {
+        await this.runOpenAiCompatibleWithTools(ref.provider, base, key, ref.model, system);
+      } else {
+        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system);
+      }
     }
   }
 
@@ -443,7 +454,13 @@ export class StackDriver implements ChatDriver {
     // unauthenticated requests, so an absent key is not an error here.
     const key = (await secretGet(byomSecretKey(ref.id))) ?? undefined;
     const system = this.systemFor(ref, placement);
-    await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system);
+    // Codemagic Access on: the tool-use loop (function calling) so the model can
+    // drive builds. Off keeps the original single-turn path exactly as it was.
+    if (this.context.codemagicAccess) {
+      await this.runOpenAiCompatibleWithTools(ref.label, ref.baseUrl, key, ref.model, system);
+    } else {
+      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system);
+    }
   }
 
   private async runAnthropic(key: string, model: string, system: string): Promise<void> {
@@ -553,17 +570,10 @@ export class StackDriver implements ChatDriver {
       messages.push({ role: 'assistant', content: final.content });
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const tu of toolUses) {
-        let observation: string;
-        if (tu.name === CODEMAGIC_TOOL_NAME) {
-          const input = tu.input as CodemagicToolInput;
-          this.emit({
-            type: 'status',
-            message: `Codemagic: ${input.action}${input.buildId ? ` ${input.buildId}` : ''}.`,
-          });
-          observation = await runCodemagicTool(input);
-        } else {
-          observation = `Unknown tool ${tu.name}.`;
-        }
+        const observation = await this.runCodemagicToolCall(
+          tu.name,
+          tu.input as CodemagicToolInput,
+        );
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: observation });
       }
       messages.push({ role: 'user', content: results });
@@ -650,6 +660,189 @@ export class StackDriver implements ChatDriver {
       }
     }
     this.finish(this.aborted ? 'aborted' : 'complete');
+  }
+
+  // Execute one codemagic tool call on-device and return the observation. Shared
+  // by the Anthropic and OpenAI-compatible loops so the two behave identically.
+  private async runCodemagicToolCall(name: string, input: CodemagicToolInput): Promise<string> {
+    if (name !== CODEMAGIC_TOOL_NAME) return `Unknown tool ${name}.`;
+    this.emit({
+      type: 'status',
+      message: `Codemagic: ${input.action}${input.buildId ? ` ${input.buildId}` : ''}.`,
+    });
+    return runCodemagicTool(input);
+  }
+
+  // The Codemagic tool-use loop for every OpenAI-compatible backend: the built-in
+  // cloud providers AND a bring-your-own-model endpoint, which both speak
+  // function calling. Same request shape as runOpenAiCompatible (native shim on
+  // device/desktop, true SSE on the web), plus the codemagic tool; each tool call
+  // runs on-device (token in the Keychain, never sent to the model) and the
+  // observation is fed back until the model answers with no tool call. Bounded so
+  // a build loop cannot run away. Used only when Codemagic Access is on.
+  private async runOpenAiCompatibleWithTools(
+    label: string,
+    base: string,
+    key: string | undefined,
+    model: string,
+    system: string,
+  ): Promise<void> {
+    const authHeaders: Record<string, string> = { 'content-type': 'application/json' };
+    if (key) authHeaders.authorization = `Bearer ${key}`;
+    const messages: Array<Record<string, unknown>> = [
+      { role: 'system', content: system },
+      ...this.history.map((m) => ({ role: m.role, content: m.content })),
+    ];
+    const nativeShim = platform() === 'ios' || platform() === 'electron';
+    const MAX_ROUNDS = 16;
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      if (this.aborted) {
+        this.finish('aborted');
+        return;
+      }
+      const { toolCalls, assistantMessage } = await this.oneOpenAiToolRound(
+        label,
+        base,
+        authHeaders,
+        model,
+        messages,
+        nativeShim,
+        round,
+      );
+      if (this.aborted) {
+        this.finish('aborted');
+        return;
+      }
+      if (!toolCalls.length) {
+        this.finish('complete');
+        return;
+      }
+      messages.push(assistantMessage);
+      for (const tc of toolCalls) {
+        const input = parseCodemagicArgs(tc.args);
+        const observation = input
+          ? await this.runCodemagicToolCall(tc.name, input)
+          : 'Those tool arguments could not be parsed. Call the codemagic tool with JSON like {"action":"trigger"} or {"action":"status","buildId":"..."}.';
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: observation });
+      }
+    }
+    this.emit({
+      type: 'status',
+      message: 'Paused the build loop after several rounds. Send a message to continue.',
+    });
+    this.finish(this.aborted ? 'aborted' : 'complete');
+  }
+
+  // One request/response round of the OpenAI tool loop. Emits any assistant text
+  // as it arrives and returns the tool calls plus the assistant message to append
+  // to the running transcript. A newline separates a later round's prose from the
+  // previous one so tool rounds do not butt together.
+  private async oneOpenAiToolRound(
+    label: string,
+    base: string,
+    authHeaders: Record<string, string>,
+    model: string,
+    messages: Array<Record<string, unknown>>,
+    nativeShim: boolean,
+    round: number,
+  ): Promise<{ toolCalls: ToolCallAccum[]; assistantMessage: Record<string, unknown> }> {
+    let started = false;
+    const pushText = (delta: string) => {
+      if (this.aborted || !delta) return;
+      if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) {
+        this.answer += '\n\n';
+        this.emit({ type: 'text-delta', text: '\n\n' });
+      }
+      started = true;
+      this.answer += delta;
+      this.emit({ type: 'text-delta', text: delta });
+    };
+    const body = JSON.stringify({
+      model,
+      stream: !nativeShim,
+      messages,
+      tools: [codemagicOpenAiTool],
+    });
+
+    if (nativeShim) {
+      const res = await nativeFetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: authHeaders,
+        body,
+      });
+      if (!res.ok) throw new RouteUnavailable(`${label} answered ${res.status}.`);
+      const data = (await res.json()) as {
+        choices?: Array<{
+          message?: {
+            content?: string;
+            tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+          };
+        }>;
+      };
+      const msg = data.choices?.[0]?.message;
+      if (typeof msg?.content === 'string') pushText(msg.content);
+      const raw = msg?.tool_calls ?? [];
+      const toolCalls: ToolCallAccum[] = raw.map((tc) => ({
+        id: tc.id,
+        name: tc.function.name,
+        args: tc.function.arguments,
+      }));
+      const assistantMessage: Record<string, unknown> = raw.length
+        ? { role: 'assistant', content: msg?.content ?? '', tool_calls: raw }
+        : { role: 'assistant', content: msg?.content ?? '' };
+      return { toolCalls, assistantMessage };
+    }
+
+    const res = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: authHeaders,
+      body,
+      signal: this.abortController?.signal,
+    });
+    if (!res.ok || !res.body) throw new RouteUnavailable(`${label} answered ${res.status}.`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    const acc = new Map<number, ToolCallAccum>();
+    let text = '';
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done || this.aborted) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const choice = (JSON.parse(payload) as { choices?: Array<Record<string, any>> })
+            ?.choices?.[0];
+          const dtext = choice?.delta?.content;
+          if (typeof dtext === 'string' && dtext) {
+            text += dtext;
+            pushText(dtext);
+          }
+          mergeToolCallDeltas(acc, choice?.delta?.tool_calls);
+        } catch {
+          // skip a partial or non-JSON keepalive line
+        }
+      }
+    }
+    const toolCalls = finalizeToolCalls(acc);
+    const assistantMessage: Record<string, unknown> = toolCalls.length
+      ? {
+          role: 'assistant',
+          content: text || null,
+          tool_calls: toolCalls.map((tc) => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: tc.args },
+          })),
+        }
+      : { role: 'assistant', content: text };
+    return { toolCalls, assistantMessage };
   }
 
   // ---- lifecycle ----------------------------------------------------------

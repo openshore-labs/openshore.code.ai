@@ -589,9 +589,12 @@ execution contract. Newest at the bottom.
   egress lockdown. It sends only build identifiers to the fixed api.codemagic.io
   host and returns redacted excerpts, so it never carries project context off
   the device; the token presence (Access on) is the real gate.
-- 2026-09-04: **The phone Codemagic tool loop is Anthropic-only for v1.**
-  StackDriver was deliberately tool-less; the loop is added on the Anthropic
-  native-tool-use path only, engaged only when Access is on, so the existing
-  single-turn path is untouched. OpenAI-compatible/BYOM and on-device backends
-  do not get the tool yet (their tool-use plumbing is a later step); the engine
-  surface covers the rest.
+- 2026-09-04: **The phone Codemagic tool loop covers every network backend.**
+  StackDriver was deliberately tool-less; the loop is added only when Access is
+  on, so the existing single-turn path is untouched. It runs on the Anthropic
+  native-tool-use path and the OpenAI-compatible path (built-in cloud providers
+  AND BYOM, via function calling; native shim on device/desktop, SSE on the
+  web). On-device pocket models are deliberately excluded: they are too small for
+  reliable tool use, and driving Codemagic needs the network anyway, so a
+  device-only stack cannot reach Codemagic regardless. (Supersedes the earlier
+  "Anthropic-only for v1" scoping from the same day.)
