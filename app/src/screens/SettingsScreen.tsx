@@ -9,13 +9,18 @@ import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 import { HARBOR_BYLINE } from '../lib/harbor.js';
-import { HARBOR_MINI_BYLINE, HARBOR_MINI_BUNDLED, HARBOR_MINI_HANDOFF_LINE } from '../lib/harborMini.js';
+import {
+  HARBOR_MINI_BYLINE,
+  HARBOR_MINI_BUNDLED,
+  HARBOR_MINI_HANDOFF_LINE,
+} from '../lib/harborMini.js';
 import {
   canControlTerminal,
   terminalControlOn,
   terminalTargetId,
   terminalTargetLabel,
 } from '../lib/terminalControl.js';
+import { canControlCodemagic, codemagicAccessOn } from '../lib/codemagicControl.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticApproval, hapticTick } from '../lib/haptics.js';
@@ -204,6 +209,8 @@ export function SettingsScreen() {
     cancelHarbor,
     harborDownload,
     setTerminalControl,
+    setCodemagicAccess,
+    codemagicConnected,
     serverRole,
   } = useApp();
   const { configured, signedIn, email } = useAuth();
@@ -279,6 +286,12 @@ export function SettingsScreen() {
     isOrgAdmin(settings.account) || serverRole === 'admin',
   );
   const termControlOn = terminalControlOn(settings.terminalControl, termTargetId);
+
+  const canControlCm = canControlCodemagic(
+    settings.account,
+    isOrgAdmin(settings.account) || serverRole === 'admin',
+  );
+  const codemagicAccessIsOn = codemagicAccessOn(settings.codemagicAccess);
 
   let group = 0;
 
@@ -428,6 +441,35 @@ export function SettingsScreen() {
                           ? `Terminal Control on for ${termLabel}.`
                           : `Terminal Control off for ${termLabel}.`,
                       );
+                    }}
+                  />
+                ) : (
+                  <span className="pill">admin only</span>
+                )
+              }
+            />
+          </SettingsGroup>
+        ) : null}
+
+        {codemagicConnected ? (
+          <SettingsGroup title="App Launch" index={group++}>
+            <SettingsRow
+              label="Codemagic Access"
+              subWrap
+              sub={
+                codemagicAccessIsOn
+                  ? 'On. The model can trigger builds, read the failure, fix, and rebuild until it goes green, then tell you where it landed.'
+                  : 'Off. The model stays out of Codemagic. You run the builds yourself.'
+              }
+              trailing={
+                canControlCm ? (
+                  <Switch
+                    checked={codemagicAccessIsOn}
+                    label="Codemagic Access"
+                    onChange={(next) => {
+                      if (next) hapticApproval();
+                      void setCodemagicAccess(next);
+                      showToast(next ? 'Codemagic Access on.' : 'Codemagic Access off.');
                     }}
                   />
                 ) : (
