@@ -116,7 +116,11 @@ describe('the wiring', () => {
       /const cwd = conv\.source\.cwd \?\? firstWorkspace\(conv\.repoIds \?\? \[\]\)/,
     );
     expect(store).toMatch(/createSession\(cwd, sessionOpts\)/);
-    expect(store).toMatch(/daemonCreateSession\(settings\.daemon, cwd, sessionOpts\)/);
+    // The daemon path hands the repo context (instructions) over explicitly,
+    // NOT the whole sessionOpts, so a device's project secrets never travel to a
+    // remote machine. The repo context still reaches it via instructions.
+    expect(store).toMatch(/daemonCreateSession\(settings\.daemon, cwd, \{/);
+    expect(store).toMatch(/instructions: sessionOpts\.instructions/);
     expect((store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length).toBe(4);
     expect(read('drivers/cloudClaudeDriver.ts')).toMatch(/this\.extraSystem\]\.filter\(Boolean\)/);
   });

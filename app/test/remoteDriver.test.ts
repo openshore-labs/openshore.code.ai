@@ -1,6 +1,6 @@
 // The phone's SSE wire format: frames in, protocol events out.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RemoteDriver, parseSseFrame } from '../src/drivers/remoteDriver.js';
+import { RemoteDriver, daemonCreateSession, parseSseFrame } from '../src/drivers/remoteDriver.js';
 
 interface FetchCall {
   url: string;
@@ -138,5 +138,31 @@ describe('RemoteDriver terminal (Phase 2)', () => {
     expect((stdin?.body as { dataBase64: string }).dataBase64).toBe(btoa('ls\n'));
     const kill = calls.find((c) => c.url.endsWith('/term/tm1') && c.method === 'DELETE');
     expect(kill).toBeTruthy();
+  });
+});
+
+describe('daemonCreateSession never forwards project secrets', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('drops projectSecrets from the wire body even if a caller passes it', async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    globalThis.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      sentBody = init?.body ? JSON.parse(init.body as string) : undefined;
+      return { ok: true, status: 200, json: async () => ({ id: 's1' }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const id = await daemonCreateSession({ baseUrl: 'http://desktop', token: 't' }, '/repo', {
+      instructions: 'hi',
+      permissionMode: 'default',
+      projectSecrets: 'TOP-SECRET-VALUE',
+    } as never);
+
+    expect(id).toBe('s1');
+    expect(sentBody).toBeDefined();
+    expect(sentBody).not.toHaveProperty('projectSecrets');
+    expect(JSON.stringify(sentBody)).not.toContain('TOP-SECRET-VALUE');
   });
 });

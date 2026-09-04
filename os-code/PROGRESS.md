@@ -32,8 +32,18 @@ off by default, opt-in. Branch `claude/openshore-vault-presets-bscvtq`.
   note) and grayed with "Toggle on in Settings to enable" when off. Secrets flow
   to the model only over the in-process desktop engine, never over the daemon to
   a remote machine.
-- Gates green: os-code typecheck + lint + 392 tests + build; app typecheck +
-  lint + 526 tests + build; Prettier clean.
+- **CTO review: safe to ship, one must-fix folded in.** The review confirmed the
+  local-only guarantee airtight on every path (cloud orchestrator, mid-session
+  escalation, specialist/vision/image delegation, web tools, the daemon on both
+  ends, and logging: the secrets block is never journaled and the journal is
+  redacted). The one gap it found: `searchRepo` could still reach a cloud
+  embedder under lockdown, because `buildToolContext` was not given the lockdown
+  flag. Fixed: lockdown now forces on-device keyword search (no embedder), with a
+  guard test. Also folded in the daemon-opts hardening (the daemon path builds
+  its own opts without secrets, pinned by a wire test) and a sealed-secret wipe
+  on project delete.
+- Gates green: os-code typecheck + lint + 394 tests + build; app typecheck +
+  lint + 527 tests + build; Prettier clean.
 
 ## Current state (2026-09-04, offline reconcile: project commits push to the remote on open and reconnect)
 
