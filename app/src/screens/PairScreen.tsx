@@ -3,12 +3,13 @@
 // daemon owns the run, so a dropped connection reattaches with nothing lost.
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { useApp } from '../state/store.js';
+import { hubList, useApp } from '../state/store.js';
 import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonHealth } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import { QrScanner } from '../components/QrScanner.js';
+import { Switch } from '../components/Switch.js';
 import { parsePairingQr } from '../lib/qrDecode.js';
 
 // Clean white glyphs for the Tailscale download rows, drawn on a solid teal
@@ -224,13 +225,103 @@ function DesktopPair() {
           connection needs its own token on top of the tailnet, and phone sessions are stricter than
           desk sessions: shell commands and cloud spend always ask.
         </p>
+
+        <RemoteHubPanel />
       </div>
     </div>
   );
 }
 
+// On a desktop that is not your central computer (a laptop away from the hub):
+// point it at a remote hub and it runs sessions there over the tailnet, the way
+// the phone does, instead of on this machine. Off by default, so a desktop stays
+// its own engine unless you say otherwise.
+function RemoteHubPanel() {
+  const { settings, saveHub, setPreferRemoteHub, showToast } = useApp();
+  const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
+  const [token, setToken] = useState(settings.daemon?.token ?? '');
+  const [testing, setTesting] = useState(false);
+  const [state, setState] = useState<string | undefined>();
+  const prefer = settings.preferRemoteHub === true;
+
+  const connect = async () => {
+    const baseUrl = address.trim().replace(/\/$/, '');
+    if (!/^https?:\/\//.test(baseUrl) || !token.trim()) {
+      setState('Enter the address and token shown on the hub computer.');
+      return;
+    }
+    setTesting(true);
+    const health = await daemonHealth({ baseUrl, token: token.trim() });
+    setTesting(false);
+    setState(health.detail);
+    if (health.ok) {
+      await saveHub({ baseUrl, token: token.trim() });
+      showToast('Hub connected. This computer now runs sessions there.');
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-row">
+        <div className="grow">
+          <h3 style={{ margin: 0 }}>Use a remote hub</h3>
+          <div className="sub">
+            {prefer
+              ? 'On. This computer runs sessions on the hub below, not on itself.'
+              : 'Off. This computer is its own engine. Turn on to run on another computer.'}
+          </div>
+        </div>
+        <Switch
+          checked={prefer}
+          label="Use a remote hub"
+          onChange={(next) => void setPreferRemoteHub(next)}
+        />
+      </div>
+
+      {prefer ? (
+        <>
+          <div className="field" style={{ marginTop: 12 }}>
+            <label>Hub address</label>
+            <input
+              placeholder="http://100.x.y.z:4816"
+              value={address}
+              autoCapitalize="none"
+              autoCorrect="off"
+              onChange={(e) => setAddress(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Pairing token</label>
+            <input
+              placeholder="osc_..."
+              value={token}
+              autoCapitalize="none"
+              autoCorrect="off"
+              onChange={(e) => setToken(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn primary press-fb"
+            style={{ width: '100%' }}
+            disabled={testing}
+            onClick={() => void connect()}
+          >
+            {testing ? 'Checking...' : 'Connect this computer to the hub'}
+          </button>
+          {state ? (
+            <p className="hint" style={{ marginTop: 10 }}>
+              {state}
+            </p>
+          ) : null}
+          <HubList />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function PhonePair() {
-  const { settings, saveSettings, showToast, startGuideChat } = useApp();
+  const { settings, saveHub, removeHub, showToast, startGuideChat } = useApp();
   const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
   const [token, setToken] = useState(settings.daemon?.token ?? '');
   const [testing, setTesting] = useState(false);
@@ -260,7 +351,7 @@ function PhonePair() {
     setTesting(false);
     setState(health.detail);
     if (health.ok) {
-      await saveSettings({ daemon: { baseUrl, token: rawToken.trim() } });
+      await saveHub({ baseUrl, token: rawToken.trim() });
       showToast('Connected. Pick your computer in the model menu to chat or code.');
     }
   };
@@ -381,12 +472,14 @@ function PhonePair() {
           </p>
         </div>
 
+        <HubList />
+
         {settings.daemon ? (
           <button
             className="btn quiet"
             style={{ width: '100%' }}
             onClick={async () => {
-              await saveSettings({ daemon: undefined });
+              await removeHub(settings.daemon!.baseUrl);
               setState(undefined);
               showToast('Desktop disconnected on this phone.');
             }}
@@ -395,6 +488,64 @@ function PhonePair() {
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// The saved hubs, for switching between more than one central computer. Shown
+// only once a second hub exists, so a single-computer setup never sees it. The
+// active one is marked; tapping another switches sessions to it, and each can
+// be named or forgotten.
+function HubList() {
+  const { settings, selectHub, removeHub, renameHub, showToast } = useApp();
+  const hubs = hubList(settings);
+  if (hubs.length < 2) return null;
+  const activeUrl = settings.daemon?.baseUrl;
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>Your hubs</h3>
+      <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
+        Switch which computer your sessions and terminal run on.
+      </p>
+      {hubs.map((h) => {
+        const active = h.baseUrl === activeUrl;
+        let host = h.baseUrl;
+        try {
+          host = new URL(h.baseUrl).hostname;
+        } catch {}
+        return (
+          <div className="card-row" key={h.baseUrl} style={{ alignItems: 'center' }}>
+            <button
+              className="linklike grow press-fb"
+              style={{ textAlign: 'left' }}
+              disabled={active}
+              onClick={() => void selectHub(h.baseUrl)}
+            >
+              <span style={{ fontWeight: 600 }}>{h.name?.trim() || host}</span>
+              {h.name?.trim() ? <span className="sub"> {host}</span> : null}
+            </button>
+            {active ? <span className="pill ok">active</span> : null}
+            <button
+              className="linklike press-fb"
+              onClick={() => {
+                const name = window.prompt('Name this hub', h.name ?? '');
+                if (name !== null) void renameHub(h.baseUrl, name);
+              }}
+            >
+              rename
+            </button>
+            <button
+              className="linklike press-fb"
+              onClick={() => {
+                void removeHub(h.baseUrl);
+                showToast('Hub forgotten on this device.');
+              }}
+            >
+              forget
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

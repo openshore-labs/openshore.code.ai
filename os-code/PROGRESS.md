@@ -45,6 +45,46 @@ off by default, opt-in. Branch `claude/openshore-vault-presets-bscvtq`.
 - Gates green: os-code typecheck + lint + 394 tests + build; app typecheck +
   lint + 527 tests + build; Prettier clean.
 
+## Current state (2026-09-04, Terminal Control strict OFF, remote hubs, polish)
+
+Follow-on to the Terminal drop, all founder-requested in one pass. Built on
+`claude/termius-terminal-integration-xspkyn`, recursive gate green (os-code 356
+tests, app 497 tests, typecheck, lint, prettier, build), pending the CTO's
+pre-push pass, then to `main`.
+
+- **Stricter OFF: the model and the terminal are fully separate.** Off no longer
+  means "ask per command"; it means the model is not allowed to run shell on the
+  hub at all. A desktop `runShell` approval is auto-denied with a reason that
+  tells the model to send the person to the Terminal Control switch (in Settings
+  or the Terminal room), or to hand them the command to run themselves. To carry
+  that guidance into the model's turn, `ApprovalAnswer` gained an optional
+  `reason` (os-code `types.ts`), used on decline in `loop.ts`, and forwarded
+  across the daemon (`serve.ts`) and the electron host and IPC. Absent reason is
+  the old generic decline, unchanged.
+- **The approval assembly is now a pure, tested function.** `decideDesktopShellApproval`
+  in `app/src/lib/terminalControl.ts` folds the driver-kind fence, the shell-only
+  gate, target resolution, the On/Off decision, and the deny reason into one
+  place the store calls; new tests pin approve / deny / passthrough and the
+  member case (the CTO's earlier nice-to-have, done).
+- **A desktop can drive a remote hub (fast-follow).** `buildDriver` uses this
+  machine's own engine unless `settings.preferRemoteHub` is set, then it runs
+  sessions on the active hub over the tailnet, the way the phone does. Terminal
+  Control keys to the hub URL in that mode, so an On state never leaks between a
+  desktop's own engine and a hub.
+- **Multi-hub (fast-follow).** `settings.daemons` holds the saved hubs; the
+  active one is mirrored into `settings.daemon`, so every existing single-hub
+  reader keeps working. `hubList()` folds a legacy single hub in (no migration).
+  Store actions: saveHub / selectHub / removeHub / renameHub / setPreferRemoteHub.
+  PairScreen gains a "Your hubs" switcher (rename, forget, switch active) and, on
+  a desktop, a "Use a remote hub" panel with the preferRemoteHub toggle and a
+  connect form. `DaemonTarget` gained an optional `name`.
+- **Terminal Control also lives in Settings** now (the founder's "turn the toggle
+  on in settings"), showing the target and gated to admins on a shared hub.
+- **Polish.** The room's sections assemble on the arrive curve with the house
+  stagger (reduced-motion safe), a calm status dot sits by the running host, and
+  turning Terminal Control on fires the firmer decisive-commit haptic over the
+  Switch's tick.
+
 ## Current state (2026-09-04, offline reconcile: project commits push to the remote on open and reconnect)
 
 Founder ask: nothing should linger only on the device. If you are offline, the
@@ -1957,6 +1997,16 @@ Layer status:
 
 ## What remains (known follow-ups, none blocking)
 
+- [x] **Terminal Control: the approval-handler assembly is pinned by tests.**
+      Extracted to the pure `decideDesktopShellApproval` in
+      `app/src/lib/terminalControl.ts` with tests for approve / deny / passthrough
+      and the member case (2026-09-04).
+- [x] **Terminal Control OFF semantics, founder call: stricter OFF shipped.** Off
+      keeps the model out of the terminal entirely and sends the person to the
+      switch; it no longer asks per command (2026-09-04).
+- [x] **Terminal: a desktop drives a remote hub, and multi-hub.** Both built
+      (2026-09-04): `preferRemoteHub` in `buildDriver`, `settings.daemons` with
+      the active one mirrored into `settings.daemon`, and PairScreen management.
 - [x] **Project memory: read-only view in the app (DONE, cross-platform).** The
       founder chose full cross-platform. Built: a desktop read-only repo bridge
       (`repoReadDir`/`repoReadFile`, jailed to the repo root), a read-only GitHub
@@ -1970,22 +2020,6 @@ Layer status:
       lightweight "memory note updated" toast would let a person notice when the
       agent rewrote something they touched. CTO-suggested, accepted as a
       non-blocking nicety (2026-09-04).
-- [ ] **Terminal Control: a store-level test for the approval-handler assembly**
-      (CTO nice-to-have). The pure rules have 17 tests, but the store's
-      composition in the approval handler (canControl + targetId from global
-      state + the driver.kind fence + the else-if preserving the old mode
-      behavior) is unpinned and is the part most likely to regress in a refactor.
-      Add: desktop driver + On -> approve, Off -> sheet, commercial member + On
-      -> sheet. `app/src/state/store.ts` (search `shouldAutoRunShell`).
-- [ ] **Terminal Control OFF semantics, founder call.** OFF currently means the
-      model asks before each command (per-command consent). The founder floated
-      a stricter OFF (the model never touches the terminal, you run commands and
-      paste back). One-line to switch if wanted; left at consent for now.
-- [ ] **Terminal: second desktop drives a remote hub, and multi-hub** (approved
-      fast-follows, out of this drop). A desktop attaching to a remote hub as
-      its engine is a buildDriver change (a desktop is hardwired to its own
-      engine today); multi-hub needs the single `settings.daemon` target to
-      become many. Both were explicitly deferred with the CTO.
 
 - [x] **Community reviews: LIVE.** The backend was validated against a real
       Postgres (0011 + 0012 + 0013 apply clean; anon reads visible rows,

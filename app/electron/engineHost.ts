@@ -235,7 +235,12 @@ export class EngineHost {
   answerApproval(
     sessionId: string,
     approvalId: string,
-    answer: { approve: boolean; alwaysThisSession?: boolean; alwaysInProject?: boolean },
+    answer: {
+      approve: boolean;
+      alwaysThisSession?: boolean;
+      alwaysInProject?: boolean;
+      reason?: string;
+    },
   ): void {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
   }
