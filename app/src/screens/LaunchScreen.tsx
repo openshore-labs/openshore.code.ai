@@ -99,7 +99,7 @@ export function LaunchScreen() {
   if (embedded && canEmbed) {
     return (
       <div className="screen screen-embed">
-        <BackBar title="Codemagic" back={{ to: 'Launch', onBack: () => setEmbedded(false) }} />
+        <BackBar title="Codemagic" back={{ to: 'Launch with Codemagic', onBack: () => setEmbedded(false) }} />
         <EmbeddedSite site="codemagic" label="Codemagic" onClose={() => setEmbedded(false)} />
       </div>
     );
@@ -107,9 +107,9 @@ export function LaunchScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Launch" />
+      <BackBar title="Launch with Codemagic" />
       <div className="screen-inner">
-        <h1>Launch</h1>
+        <h1>Launch with Codemagic</h1>
         <p className="lead">
           Get your built app to the App Store or Google Play, guided from here. The model walks you
           through the accounts and setup. When you build, OpenShore follows Codemagic and reads the
