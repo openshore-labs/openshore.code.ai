@@ -3,6 +3,43 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, reviews scale path baked in + TestFlight incident closed)
+
+Two things this session: the CTO's reviews scale path is built, and the
+2026-09-03 TestFlight publish incident is resolved (the app is installed and
+signed in on device, reviews backend live, moderator seeded).
+
+- **Reviews scale path (CTO), BUILT.** A whole-catalog review-aggregate snapshot
+  is baked into the daily catalog build, so a browse row shows its community star
+  straight from the shipped `catalog.json` with ZERO per-view request to
+  Supabase. Migration `0013_review_snapshot.sql` adds `model_review_snapshot()`
+  (count + average per model over VISIBLE rows only, no id list, safe for anon,
+  validated against a real Postgres: the hidden row is correctly excluded). The
+  builder (`os-code/scripts/build-catalog/reviews.ts`, `SupabaseReviewSource` +
+  a pure `mergeCommunity`, mirroring `sources.ts`) reads it once per build when
+  `CATALOG_REVIEWS_URL`/`CATALOG_REVIEWS_ANON_KEY` (fallback `SUPABASE_URL`/
+  `SUPABASE_ANON_KEY`) are set, and stamps a top-level `reviewsSnapshotAt`. The
+  app (`MarketplaceScreen`) seeds browse stars from the baked `community` fields
+  and, when the stamp is present, STANDS THE LIVE BROWSE RPC DOWN entirely; the
+  product page still fetches the live number when a reader taps in, so a daily
+  snapshot on browse costs no freshness that matters. Fully back-compatible:
+  no stamp (older catalog, or the reviews backend unconfigured in CI) means the
+  app falls back to the live browse RPC, exactly as before. Founder action to
+  turn it on: add the two `CATALOG_REVIEWS_*` secrets to the catalog workflow
+  (the anon key suffices). Gates green: os-code 356 tests, app 442, lint,
+  typecheck, app vite build.
+- **TestFlight publish incident (2026-09-03), CLOSED.** The only real blocker
+  was ITMS-90474 (an iPad app declaring no landscape orientation must also
+  declare `UIRequiresFullScreen`), fixed in `Info.plist` (`d3f3c90`). Two
+  build-number rewrites made on a guess during the incident were both reverted
+  (`bf37c7a`): the stamp is back to Codemagic's own `$BUILD_NUMBER`, the
+  mechanism that had shipped ~62 builds without a duplicate. The query-Apple
+  rewrite was the likely cause of the `previousBundleVersion: 62` duplicate
+  (a build still processing is not yet the "latest," so `LATEST + 1` lands on a
+  taken number); the codemagic comment now carries that history so it is not
+  redone. App installed, sign-in works (the build now carries the Supabase env),
+  moderator seeded and verified (`founder@openshore.ai`).
+
 ## Current state (2026-09-03, a broader marketplace and community run reports)
 
 Founder, from a "best local LLM" list: carry essentially every available local
@@ -1715,13 +1752,12 @@ Layer status:
       (`insert into review_moderators (user_id) select id from auth.users where
       email = '<you>' on conflict do nothing;`), then the queue appears under
       Admin. `first_successful_run` (per model, via logOnce) now fires so the
-      activation funnel can be measured later. Still deferred, non-blocking and
-      NOT needed to go live: the CTO's sidecar (a review-aggregate snapshot in
-      the daily catalog build) is the scale path if per-view browse volume ever
-      makes the batched RPC chatty; and sybil hardening (account-age weighting or
-      an installed-signal gate) if astroturfing appears, since "any signed-in
-      user may review" leans on one-per-user + report/block + auto-hide + the
-      count-gated average.
+      activation funnel can be measured later. The CTO's scale-path sidecar (a
+      review-aggregate snapshot in the daily catalog build) is now BUILT (see the
+      2026-09-04 entry, migration 0013). Still deferred, non-blocking: sybil
+      hardening (account-age weighting or an installed-signal gate) if
+      astroturfing appears, since "any signed-in user may review" leans on
+      one-per-user + report/block + auto-hide + the count-gated average.
 - [ ] **Large-model iCloud home, TestFlight validation + the CTO caveat.** The
       "download to iCloud" path (ModelStore places the GGUF in the app's iCloud
       Drive container, ensureLocal materializes it before a load) is unverifiable
