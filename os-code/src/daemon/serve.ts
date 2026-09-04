@@ -520,6 +520,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const body = await readJson(req);
       const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : process.cwd();
       const instructions = typeof body.instructions === 'string' ? body.instructions : undefined;
+      const projectName = typeof body.projectName === 'string' ? body.projectName : undefined;
       const permissionMode = isPermissionMode(body.permissionMode)
         ? body.permissionMode
         : undefined;
@@ -536,6 +537,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           profile: 'remote-attached',
           terminalReader,
           instructions,
+          projectName,
           permissionMode,
         });
         trackDriver(driver);

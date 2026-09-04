@@ -12,6 +12,7 @@ import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js
 import type { Router } from '../../router/router.js';
 import type { ToolContext, ToolRegistry } from '../tools/index.js';
 import { uxStandardPrompt } from './uxStandard.js';
+import { memorySegment, projectMemoryPrompt } from './projectMemory.js';
 import {
   extractTextCalls,
   repairPrompt,
@@ -213,6 +214,12 @@ export class AgentSession {
     }
     const standing = instructionsPrompt(this.deps.repoInstructions, this.instructions);
     if (standing) parts.push(standing);
+    // Project memory: read the Current State top sheet first, dig page by page
+    // only as needed, and keep the five notes current as work lands
+    // (projectMemory.ts). Engages whenever the session has a memory folder,
+    // which is any real workspace.
+    const memorySeg = memorySegment(toolContext.projectName, toolContext.cwd);
+    if (memorySeg) parts.push(projectMemoryPrompt(memorySeg));
     // Premium UX out of the box: everything with a screen is built to the
     // twenty laws plus the house bar unless a project turns it off in config
     // or the user says to skip it (uxStandard.ts).
@@ -250,11 +257,13 @@ export class AgentSession {
     const content: string | ContentPart[] = images?.length
       ? [
           { type: 'text', text: modelText },
-          ...images.map((i): ContentPart => ({
-            type: 'image',
-            imageBase64: i.base64,
-            mediaType: i.mediaType,
-          })),
+          ...images.map(
+            (i): ContentPart => ({
+              type: 'image',
+              imageBase64: i.base64,
+              mediaType: i.mediaType,
+            }),
+          ),
         ]
       : modelText;
     this.history.push({ role: 'user', content });
@@ -536,7 +545,7 @@ export class AgentSession {
       return 'aborted';
     }
 
-    const path = tool.pathOf?.(call.args);
+    const path = tool.pathOf?.(call.args, toolContext);
     let decision = permissions.decide({
       toolName: call.name,
       risk: tool.risk,

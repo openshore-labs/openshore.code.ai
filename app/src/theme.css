@@ -1177,6 +1177,13 @@ textarea {
   gap: 8px;
 }
 
+/* The Current State "Top sheet" badge sits at the trailing edge of its row, so
+   the eye reads the note name first and the marker second. */
+.vault-topsheet {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .vault-row-chevron {
   flex-shrink: 0;
   width: 7px;

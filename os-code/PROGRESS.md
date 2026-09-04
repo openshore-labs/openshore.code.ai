@@ -3,6 +3,48 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Vault gets per-project memory the harness keeps current)
+
+Founder ask: the Vault should carry a few preset markdowns per coding project
+that run as historical knowledge, kept up to speed by the harness and organized
+by project, so a model reads the "top sheet" first and digs deeper page by page
+only as needed, for both planning and debugging. Built additively on the Vault
+and gitOS seams (no renovation) on branch
+`claude/openshore-vault-presets-bscvtq`.
+
+- **The five presets, per project.** Every project gets a folder under
+  `Projects/<project>/` in the personal Vault holding Current State, Progress,
+  Decisions, Action Items, and Skills. Current State is the pinned top sheet: a
+  2 to 5 minute catch up with five sections (what last landed and launched, key
+  outstanding build actions, key outstanding test actions, immediate blockers,
+  suggested next steps). Progress is the fuller record and log; Decisions is one
+  line per ambiguous call; Action Items is the ranked to-do; Skills is the
+  project's reusable build/test/ship recipes and gotchas.
+- **One shared spec.** `app/src/lib/projectMemory.ts` and
+  `os-code/src/core/agent/projectMemory.ts` are the mirrored source of truth for
+  the file set, order, seed templates, folder convention (collision-safe), and
+  path predicates. A test in each package pins the shape so they cannot drift.
+- **The harness keeps them current.** A project-memory protocol rides into the
+  coding agent's system prompt (`projectMemoryPrompt`, injected in
+  `loop.ts` beside the UX standard): read the Current State top sheet first, dig
+  page by page only as needed, and update the five notes as work lands. The
+  project name is threaded from the app (`store.ts`) through the Electron bridge
+  and `bootstrapSession` into the tool context, so the agent's folder matches
+  the app's.
+- **Narrow silent auto-write.** A dedicated `projectMemoryWrite` tool
+  (`os-code/src/core/tools/projectMemory.ts`), hard-scoped to the five files
+  under the current project, lands its writes without the always-ask prompt: the
+  permission engine auto-allows it by name for a managed memory path, while every
+  general `vaultWrite` keeps its always-ask guarantee. This is the founder's
+  "narrow exception," pinned by tests.
+- **Backfill on first open.** The app seeds a project's five notes the first
+  time its Vault is opened (`seedProjectMemory` in `store.ts`, from the pure
+  `seedPlan`), only when the project has none of them yet, so deletions are
+  respected. Inside a project folder the Vault screen pins Current State first
+  with a "Top sheet" marker.
+- Gates green: os-code typecheck + lint + 373 tests; app typecheck + lint + 483
+  tests + build declarations; Prettier clean on all changed files.
+
 ## Current state (2026-09-04, Projects get their own room and enterprise sharing)
 
 Founder arc off the Projects screen: "you should be able to click into a project
@@ -27,8 +69,8 @@ projects until then.
   admin/owner always holds edit; everyone else holds their grant, matched by
   verified uid OR email, never client input), RLS that hides other orgs, and
   the ONLY write path is a set of level-checked RPCs (list/create/update/delete
-  + set/revoke access). Direct table writes are revoked, the same lockdown shape
-  as `org_vault` (0010). A grant can only be handed to a real member of the org.
+  - set/revoke access). Direct table writes are revoked, the same lockdown shape
+    as `org_vault` (0010). A grant can only be handed to a real member of the org.
 - **The read/write/edit ladder.** read = open the project and its chats; write =
   read plus start/run chats in it; edit = write plus change its instructions,
   repos, and access. `app/src/lib/projectAccess.ts` answers the ladder; a shared
@@ -70,7 +112,7 @@ signed in on device, reviews backend live, moderator seeded).
   os-code 356 tests, app 442, lint, typecheck, app vite build.
   TURNED ON and verified live: the two `CATALOG_REVIEWS_*` secrets are set on
   the catalog workflow, `0013` is applied to the live database (`supabase db
-  push`), and a dispatched catalog run baked the snapshot cleanly (run 24 hit a
+push`), and a dispatched catalog run baked the snapshot cleanly (run 24 hit a
   404 because `0013` was not yet pushed, run 25 read the RPC and baked with no
   404). The published `catalog.json` on the marketing site now carries
   `reviewsSnapshotAt: 2026-09-04` over 174 models, 0 currently carrying a
@@ -375,7 +417,7 @@ clock. On a 310px door the visible slide was roughly 110ms of 320ms, then an
 invisible crawl of the last few percent. A pop, then nothing.
 
 - **Two new tokens, with the reason beside them.** `--ease-glide:
-  cubic-bezier(0.3, 0.1, 0.15, 1)`, a bezier fit of UIKit's critically damped
+cubic-bezier(0.3, 0.1, 0.15, 1)`, a bezier fit of UIKit's critically damped
   spring (response 0.5s): soft start, one long even slide, a settle with no
   overshoot. `--dur-7: 520ms`, the door clock, for a surface that crosses the
   screen. The family was closed on purpose; this is the stated-reason door,

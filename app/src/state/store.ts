@@ -174,6 +174,7 @@ import {
   disconnectRepoOAuth,
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath } from '../lib/vault.js';
+import { seedPlan } from '../lib/projectMemory.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
@@ -1077,6 +1078,10 @@ export const useApp = create<AppState>((set, get) => {
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
+          // The project's name places its memory notes under Projects/<name>/ in
+          // the vault, so the agent's Current State top sheet matches the folder
+          // the app seeds and shows.
+          projectName: project?.name,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         if (isDesktop() && bridge()) {
@@ -1412,6 +1417,33 @@ export const useApp = create<AppState>((set, get) => {
       }
     }
     if (changed) await saveVaultPending(p);
+  }
+
+  // Seed each coding project's memory notes on their first open. A project is
+  // seeded only when it has none of its five notes yet, so this is a no-op on
+  // every refresh after the first and never overwrites a note the person or the
+  // agent has since edited or deleted. Returns whether anything was written, so
+  // the caller can refresh the file list. Best-effort: a failed write is left
+  // for the next refresh (offline vaults seed when they reconnect).
+  async function seedProjectMemory(target: {
+    provider: StorageProvider;
+    resourceId: string;
+  }): Promise<boolean> {
+    const projects = get().settings.projects ?? [];
+    if (!projects.length) return false;
+    const existing = get().vaultFiles.map((f) => f.path);
+    const writes = seedPlan(projects, existing);
+    if (!writes.length) return false;
+    let wrote = false;
+    for (const w of writes) {
+      try {
+        await target.provider.write(target.resourceId, w.path, w.text);
+        wrote = true;
+      } catch {
+        // Offline or unreachable: skip; the next refresh seeds what is missing.
+      }
+    }
+    return wrote;
   }
 
   // verified email, claim any invited org seat, and read the server role.
@@ -3434,6 +3466,11 @@ export const useApp = create<AppState>((set, get) => {
         // The list came back, so the provider is reachable: flush any drafts
         // stranded by an earlier offline write.
         await replayVaultPending(target);
+        // Backfill each coding project's memory notes on first open, then
+        // refresh the list so the new Projects/ folders show immediately.
+        if (get().vaultScope === 'personal' && (await seedProjectMemory(target))) {
+          set({ vaultFiles: await target.provider.list(target.resourceId) });
+        }
       } catch {
         // Keep the last-known file list so the screen can show an offline
         // state rather than the first-run "empty vault" greeting over notes
