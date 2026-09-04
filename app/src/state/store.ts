@@ -679,6 +679,10 @@ interface AppState {
   reviewBuild(): Promise<string | undefined>;
   /** Open a chat where the model reads a failed build and proposes a fix. */
   diagnoseBuild(runId: string): Promise<void>;
+  /** Open a chat and hand the whole launch to the model: trigger, watch, read
+   *  failures, and drive to a green build (Codemagic Access must be on). Returns
+   *  the chat id, or undefined when access is off or nothing is set up. */
+  launchWithModel(): Promise<string | undefined>;
 
   // Repositories.
   /** Connect a repo platform (GitHub, etc.) by token, stored in the Keychain. */
@@ -1378,6 +1382,9 @@ export const useApp = create<AppState>((set, get) => {
                 .join('\n\n') || undefined,
             crew,
             humanize: s.settings.humanizeWriting !== false,
+            // Codemagic Access on and connected: offer the codemagic tool so the
+            // model can drive App Launch builds on the phone (Anthropic path).
+            codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,
           },
           seed,
         );
@@ -3178,6 +3185,29 @@ export const useApp = create<AppState>((set, get) => {
       );
       await get().saveSettings({ launch: { ...get().settings.launch!, runs } });
       logEvent('build_diagnose');
+    },
+
+    async launchWithModel() {
+      const s = get();
+      if (!(s.settings.codemagicAccess === true && s.codemagicConnected)) {
+        s.showToast('Turn on Codemagic Access in Settings first.');
+        return undefined;
+      }
+      const target = s.settings.launch?.target;
+      if (!target) {
+        s.showToast('Set up your launch target first.');
+        return undefined;
+      }
+      const convId = await get().newConversation({ kind: 'stack' });
+      const prompt = [
+        `Launch my ${target.platform} app with Codemagic, from branch ${target.branch}.`,
+        'Trigger a build and watch it. If it fails, read the log, find the single root cause, and tell me the exact fix.',
+        'You can retry directly for a transient failure or a build-target change. For a code fix, tell me exactly what to change (I can apply it, or hand it to my desktop), then build again once I confirm.',
+        'When it is green, tell me plainly where it landed (TestFlight, the App Store, or Google Play).',
+      ].join(' ');
+      get().sendWhenAttached(convId, prompt);
+      logEvent('launch_with_model', { platform: target.platform });
+      return convId;
     },
 
     async connectRepoPlatform(id, token) {

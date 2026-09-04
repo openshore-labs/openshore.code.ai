@@ -17,6 +17,13 @@ import type { ApprovalAnswer } from 'os-code/protocol';
 import { uxStandardPrompt, humanizerStandardPrompt } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import { platform, secretGet, storeGetJson } from '../lib/platform.js';
+import {
+  CODEMAGIC_TOOL_NAME,
+  codemagicSystemNote,
+  codemagicToolSpec,
+  runCodemagicTool,
+  type CodemagicToolInput,
+} from '../lib/codemagicTool.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { providerInfo, providerSecretKey } from '../lib/providers.js';
@@ -48,6 +55,11 @@ export interface StackContext {
    *  to the plain, specific, honest voice that avoids AI writing tells. Off
    *  drops the standard from the prompt, so the model runs on a shorter prompt. */
   humanize?: boolean;
+  /** Codemagic Access is on (and Codemagic is connected), so the model may drive
+   *  App Launch builds. Offers the codemagic tool on the Anthropic path, where
+   *  native tool use runs the trigger/status/logs loop on-device. Off leaves the
+   *  chat exactly as it was, single turn and tool-less. */
+  codemagicAccess?: boolean;
 }
 
 /** Whether the Humanize Writing standard rides into this model's prompt. On by
@@ -209,6 +221,12 @@ export class StackDriver implements ChatDriver {
     // plain, specific, and honest, avoiding AI writing tells, unless the person
     // turned the setting off (humanizerStandard.ts, config in Settings).
     if (humanizerApplies(ref, this.context.humanize)) parts.push(humanizerStandardPrompt());
+    // Codemagic Access is on: tell the model it can drive App Launch builds. The
+    // tool itself is offered only on the Anthropic path (native tool use), so
+    // this note only earns its place there.
+    if (this.context.codemagicAccess && ref.kind === 'cloud' && ref.provider === 'anthropic') {
+      parts.push(codemagicSystemNote());
+    }
     return parts.join('\n\n');
   }
 
@@ -402,8 +420,13 @@ export class StackDriver implements ChatDriver {
       throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
     }
     const system = this.systemFor(ref, placement);
-    if (ref.provider === 'anthropic') await this.runAnthropic(key, ref.model, system);
-    else {
+    if (ref.provider === 'anthropic') {
+      // Codemagic Access on: run the tool-use loop so the model can drive builds
+      // (trigger, status, logs) on-device. Off keeps the original single-turn
+      // path exactly as it was.
+      if (this.context.codemagicAccess) await this.runAnthropicWithTools(key, ref.model, system);
+      else await this.runAnthropic(key, ref.model, system);
+    } else {
       const base = providerInfo(ref.provider)?.openaiBaseUrl;
       if (!base) {
         throw new RouteUnavailable(`No endpoint configured for ${ref.provider}.`);
@@ -456,6 +479,101 @@ export class StackDriver implements ChatDriver {
       }
       throw err;
     }
+    this.finish(this.aborted ? 'aborted' : 'complete');
+  }
+
+  // The Codemagic tool-use loop (Anthropic). Same streaming as runAnthropic, but
+  // the model is offered the codemagic tool and each tool_use is executed
+  // on-device (token in the Keychain, never sent to the model), the observation
+  // fed back, and the loop continues until the model answers with no tool call.
+  // Bounded so a build loop cannot run away. Used only when Codemagic Access is
+  // on; otherwise runAnthropic keeps the original single-turn path.
+  private async runAnthropicWithTools(key: string, model: string, system: string): Promise<void> {
+    const ws = (
+      await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
+    )?.anthropicWorkspaceId?.trim();
+    const client = new Anthropic({
+      apiKey: key,
+      dangerouslyAllowBrowser: true,
+      fetch: streamingFetch,
+      ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
+    });
+    const messages: Anthropic.MessageParam[] = this.history.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    const MAX_ROUNDS = 16;
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      if (this.aborted) {
+        this.finish('aborted');
+        return;
+      }
+      const stream = client.messages.stream(
+        {
+          model,
+          max_tokens: 2048,
+          system,
+          messages,
+          tools: [codemagicToolSpec as unknown as Anthropic.Tool],
+        },
+        { signal: this.abortController?.signal },
+      );
+      // A newline between rounds so a second round's prose does not butt against
+      // the first, once a tool result has come back.
+      let started = false;
+      stream.on('text', (delta) => {
+        if (this.aborted) return;
+        if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) {
+          this.answer += '\n\n';
+          this.emit({ type: 'text-delta', text: '\n\n' });
+        }
+        started = true;
+        this.answer += delta;
+        this.emit({ type: 'text-delta', text: delta });
+      });
+      let final: Anthropic.Message;
+      try {
+        final = await stream.finalMessage();
+      } catch (err) {
+        if (this.aborted) {
+          this.finish('aborted');
+          return;
+        }
+        throw err;
+      }
+      const toolUses = final.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+      );
+      if (!toolUses.length) {
+        this.finish(this.aborted ? 'aborted' : 'complete');
+        return;
+      }
+      // Record the assistant turn (its tool_use blocks), run each tool on-device,
+      // and hand the observations back as tool_result on the next user turn.
+      messages.push({ role: 'assistant', content: final.content });
+      const results: Anthropic.ToolResultBlockParam[] = [];
+      for (const tu of toolUses) {
+        let observation: string;
+        if (tu.name === CODEMAGIC_TOOL_NAME) {
+          const input = tu.input as CodemagicToolInput;
+          this.emit({
+            type: 'status',
+            message: `Codemagic: ${input.action}${input.buildId ? ` ${input.buildId}` : ''}.`,
+          });
+          observation = await runCodemagicTool(input);
+        } else {
+          observation = `Unknown tool ${tu.name}.`;
+        }
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: observation });
+      }
+      messages.push({ role: 'user', content: results });
+    }
+    // Ran the round budget without a final answer: settle with what we have so
+    // the chat does not hang, and let the person pick up from here.
+    this.emit({
+      type: 'status',
+      message: 'Paused the build loop after several rounds. Send a message to continue.',
+    });
     this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
