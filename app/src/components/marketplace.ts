@@ -10,8 +10,17 @@ import { CAPABILITIES } from 'os-code/protocol';
 // same catalog: 'staff' is the editorial shortlist (chosen), 'popular' is the
 // world's downloads/likes (counted, never quality), and 'used' is the user's
 // OWN local turn counts (private, this machine only). 'recommended' stays the
-// default, 'newest' and 'fit' are utility.
-export type SortKey = 'recommended' | 'staff' | 'popular' | 'used' | 'newest' | 'fit';
+// default, 'newest' and 'fit' are utility, and 'greenest' orders by the energy a
+// model is estimated to draw per token so a team can optimize a stack for
+// sustainability.
+export type SortKey =
+  | 'recommended'
+  | 'staff'
+  | 'popular'
+  | 'used'
+  | 'newest'
+  | 'fit'
+  | 'greenest';
 
 export type FitLabel = 'fits' | 'tight' | 'too-big';
 
@@ -168,6 +177,19 @@ function byValueThenRank(
   return direction === 'desc' ? vb - va : va - vb;
 }
 
+/** A rough, honest estimate of the energy a model draws per 1000 tokens when it
+ *  runs locally, in watt-hours. It scales with the model's on-disk size, a
+ *  stand-in for the compute it spends per token, and is anchored so a ~7B model
+ *  quantized to 4-bit (about 4 GB) lands near the local intensity Stack Health
+ *  assumes. This is a relative guide for browsing, never a measured figure, and
+ *  smaller models come out leaner. */
+export function modelEnergyPer1kTok(model: CatalogModel): number {
+  const REF_GB = 4; // a ~7B model at 4-bit
+  const REF_WH = 0.15; // matches SUSTAINABILITY_BASIS.localWhPerMTok (per 1M -> per 1k)
+  const gb = model.onDevice?.sizeGB ?? model.sizeGB;
+  return REF_WH * (gb / REF_GB);
+}
+
 export function sortModels(
   models: CatalogModel[],
   sort: SortKey,
@@ -205,6 +227,15 @@ export function sortModels(
         const fb = rank[fitFor(b.sizeGB, memoryGB)];
         if (fa !== fb) return fa - fb;
         if (a.sizeGB !== b.sizeGB) return a.sizeGB - b.sizeGB;
+        return a.curation.rank - b.curation.rank;
+      });
+    case 'greenest':
+      // Leanest first: least estimated energy per token, then curated order.
+      // The lens that lets a team optimize a stack for sustainability.
+      return list.sort((a, b) => {
+        const ea = modelEnergyPer1kTok(a);
+        const eb = modelEnergyPer1kTok(b);
+        if (ea !== eb) return ea - eb;
         return a.curation.rank - b.curation.rank;
       });
   }
@@ -342,6 +373,19 @@ export function buildShelves(models: CatalogModel[], memoryGB: number): Shelf[] 
       subtitle: 'Fully on-device, no desktop needed.',
       sort: 'recommended',
       models: pocket.slice(0, SHELF_MAX),
+    });
+  }
+
+  // Runs lean: the greenest models by estimated energy per token. A team that
+  // cares about sustainability can browse straight to the leanest stack.
+  const lean = sortModels(models, 'greenest', memoryGB);
+  if (lean.length >= SHELF_MIN) {
+    shelves.push({
+      key: 'lean',
+      title: 'Runs lean',
+      subtitle: 'Least energy per token. Optimize your stack for sustainability.',
+      sort: 'greenest',
+      models: lean.slice(0, SHELF_MAX),
     });
   }
 

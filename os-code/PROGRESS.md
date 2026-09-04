@@ -3,6 +3,64 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Stack Health goes to the phone, gains a sustainability read, marketplace runs lean)
+
+Founder ask, off the phone Stack Health screen (which said "lives on your
+desktop"): you should be able to monitor stack health on mobile and have it
+carry through to every device; there should be a sustainability bend showing the
+electricity, power, and water saved by running local models instead of a
+hyperscale data center, with a clear comparison to a cloud provider; and the
+marketplace should let a team optimize a stack for sustainability. Branch
+`claude/stack-health-sustainability-9wnf1y`.
+
+- **Sustainability read, folded from the same tokens as the dollars figure.**
+  `os-code/src/insights/sustainability.ts` (pure, no fs, no clock) reprices the
+  local and cloud token totals into energy (kWh at the wall, PUE folded in),
+  carbon (gCO2e), and water (liters): what your local work actually drew, what
+  the SAME work would have drawn on the cloud reference model in a data center
+  (the counterfactual), the difference kept off the grid (`avoided`), and the
+  honest other half, the real footprint of the cloud turns you did send
+  (`cloudActual`). Every number is an estimate, never a meter reading; the basis
+  (`SUSTAINABILITY_BASIS`, cited to Epoch AI, IEA, Google/Meta PUE reports, and
+  Li et al. "Making AI Less Thirsty") travels in the payload so the screen can
+  show what it assumed, held conservative so "avoided" is a floor. Wired into
+  `computeStackHealth`; `test/sustainability.test.ts` (7) plus a wiring assertion
+  in `stackHealth.test.ts` pin the math and the floors.
+- **The screen renders it in the teal/water family, never a new green** (keeps
+  Stack Health's discipline: teal is local/private, amber is spend, and
+  everything saved here is a consequence of staying local). A "The greener way to
+  build" card: a count-up water hero (the founder singled out water), three tiles
+  (energy avoided, CO2e avoided, percent lighter than the cloud), a plain-English
+  comparison with relatable equivalents (phone charges, glasses of water, km not
+  driven, each with a stated conversion), the cloud turns' real footprint, and a
+  one-line honesty note that it is an estimate. New `.sh-green*` tokens in
+  `theme.css`, all static (no motion-guard surface).
+- **Stack Health now reaches the phone over the hub.** New member-auth
+  `GET /stack-health?range=` on the daemon (`serve.ts`) folds it on the machine
+  that runs the models and sends only the aggregate; `app/src/lib/stackHealth.ts`
+  `loadAppStackHealth` tries the desktop bridge, then the paired hub, then a
+  no-window state. The screen reads the active hub from settings; the old "lives
+  on your desktop" card became "See it on every device you pair" plus an honest
+  "your hub is not answering" state. This keeps the foundation intact: the phone
+  is a window onto that machine, never a copy of the sessions.
+- **Marketplace "Runs lean" axis.** A new `greenest` sort and a "Runs lean" shelf
+  order models by `modelEnergyPer1kTok` (estimated from on-disk size, on-device
+  build preferred), a relative browse guide so a team can optimize a stack for
+  sustainability. Honest subhead names it an estimate. Tests extended.
+- Gates green: os-code typecheck + lint + 409 tests + build; app typecheck +
+  lint + 565 tests + vite build; the total em-dash guard passes over all new
+  files.
+
+**What remains (this arc):** two founder asks are captured for sign-off rather
+than shipped half-built. (1) Enterprise admin-controlled visibility: on a shared
+org, an admin sets whether everyone or only admins may see Stack Health,
+server-enforced like `org_projects`/`org_vault` (needs a migration + RLS + RPC).
+Today the hub endpoint is member-auth, matching `/stack`. (2) A deeper
+stack-level sustainability optimizer in the marketplace (beyond the "Runs lean"
+browse axis): recommend a greener stack for a given workload, model the
+tradeoffs. Both are in `DECISIONS.md` and the marketplace/enterprise follow-up
+lists.
+
 ## Current state (2026-09-04, renamed to Harbor Light, all Creative Studio microcopy applied)
 
 Founder call: the built-in guide is now named **Harbor Light** (was Harbor

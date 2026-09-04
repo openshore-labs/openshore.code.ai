@@ -126,6 +126,8 @@ const SORT_SUBHEAD: Partial<Record<SortKey, string>> = {
   popular:
     'Ranked by downloads and likes on Hugging Face. A snapshot of what the world runs, not a measure of quality. The stars are quality.',
   used: 'Counted on your machine. Never sent anywhere.',
+  greenest:
+    'Ordered by the energy a model is estimated to draw per token, leanest first. A relative guide from model size, not a measured figure.',
 };
 
 const FIT_PILL: Record<FitLabel, { cls: string; text: string }> = {
@@ -592,7 +594,11 @@ export function MarketplaceScreen() {
     if (staffAxisAvailable) list.push({ key: 'staff', label: 'Staff picks' });
     list.push({ key: 'popular', label: 'Popular' });
     if (usageAxisAvailable) list.push({ key: 'used', label: 'Your most-used' });
-    list.push({ key: 'newest', label: 'Newest' }, { key: 'fit', label: 'Best fit' });
+    list.push(
+      { key: 'newest', label: 'Newest' },
+      { key: 'fit', label: 'Best fit' },
+      { key: 'greenest', label: 'Runs lean' },
+    );
     return list;
   }, [usageAxisAvailable, staffAxisAvailable]);
 

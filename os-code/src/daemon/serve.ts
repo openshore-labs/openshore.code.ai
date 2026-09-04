@@ -34,6 +34,8 @@ import { loadCatalog, findModel } from '../market/catalog.js';
 import { installModel, type InstallProgress } from '../market/install.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { resolveStack } from '../router/stack.js';
+import { computeStackHealth } from '../insights/stackHealth.js';
+import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import type { ChatMessage } from '../providers/types.js';
 import { EgressPolicy } from '../core/security/egress.js';
@@ -423,6 +425,22 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         orchestrator,
         specialists,
       });
+      return;
+    }
+    // Stack Health, folded on this machine from the sessions already on disk and
+    // served to a paired phone so the dashboard reaches every device without a
+    // copy leaving the hub. The phone is a window onto this machine: the numbers
+    // are computed here, on the local journals, and only the aggregate payload
+    // crosses the tailnet. Member-auth, the same gate as /stack and /catalog.
+    if (req.method === 'GET' && url.pathname === '/stack-health') {
+      const raw = url.searchParams.get('range') ?? 'week';
+      const allowed: StackHealthRange[] = ['day', 'week', 'month', 'year', 'all'];
+      const range = (allowed as string[]).includes(raw) ? (raw as StackHealthRange) : 'week';
+      try {
+        sendJson(res, 200, computeStackHealth(range));
+      } catch (err) {
+        sendJson(res, 500, { error: (err as Error).message });
+      }
       return;
     }
     if (req.method === 'GET' && url.pathname === '/catalog') {

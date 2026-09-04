@@ -241,6 +241,28 @@ describe('stack health timeline sums equal the headline (F1)', () => {
     expect(health.privacyRing.localTurns).toBe(1);
     expect(timelineLocal).toBe(1);
   });
+
+  it('folds local tokens into a sustainability read with an avoided footprint', () => {
+    const now = new Date(2026, 7, 19, 12, 0, 0);
+    const ts = new Date(now.getTime() - 1 * DAY_MS).toISOString();
+    const turn: DriverEvent[] = [
+      { type: 'task-start', input: 'x' },
+      { type: 'turn-start', turn: 1, model: 'qwen2.5-coder', providerKind: 'local' },
+      { type: 'usage', promptTokens: 500_000, completionTokens: 500_000, dollars: 0, contextPercent: 5 },
+    ];
+    makeSession('s1', ts, turn);
+
+    const health = computeStackHealth('week', now);
+    // 1M local tokens ran on our own hardware: the read carries its stated basis
+    // and a real, positive avoided footprint (a small local model vs the cloud
+    // reference in a data center).
+    expect(health.sustainability.basis.cloudWhPerMTok).toBeGreaterThan(0);
+    expect(health.sustainability.local.kwh).toBeGreaterThan(0);
+    expect(health.sustainability.avoided.kwh).toBeGreaterThan(0);
+    expect(health.sustainability.avoided.liters).toBeGreaterThan(0);
+    // No cloud turns this session: nothing actually sent to the cloud.
+    expect(health.sustainability.cloudActual.kwh).toBe(0);
+  });
 });
 
 describe('stack health at-rest scan cache eviction (P2-2)', () => {

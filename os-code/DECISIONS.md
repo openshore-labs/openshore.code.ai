@@ -577,3 +577,22 @@ execution contract. Newest at the bottom.
   preference into the session's effective config) rather than adding a new branch
   in `loop.ts`, so `loop.ts` keeps `config.humanizer` as its single source and the
   daemon and bridge paths share one code path.
+- 2026-09-04: Stack Health sustainability numbers are estimates, not meter
+  readings, repriced from token counts at published intensities the same way
+  "dollars saved" is, with the basis (`SUSTAINABILITY_BASIS`) traveling in the
+  payload. Held conservative on purpose so "avoided" is a floor, not a headline;
+  sources cited beside the constants in `sustainability.ts`.
+- 2026-09-04: The sustainability section stays in the teal/water palette, never
+  a new green, to keep Stack Health's discipline (teal means local/private,
+  amber means spend) intact. Everything it counts is a consequence of staying
+  local, so teal is the honest color.
+- 2026-09-04: Stack Health reaches the phone by reading the paired hub's new
+  member-auth `GET /stack-health` (folded on the hub, only the aggregate
+  crosses), not by syncing sessions to the device. This keeps the foundation
+  "the phone is a window onto that machine, never a copy." Enterprise
+  admin-controlled visibility (who on a shared org may see it) is deferred as a
+  server-enforced follow-up rather than shipped half-built.
+- 2026-09-04: Marketplace "Runs lean" (greenest) axis estimates energy per token
+  from a model's on-disk size (on-device build preferred when present), a
+  relative browse guide, never a measured figure. A deeper stack-level
+  sustainability optimizer is captured as a follow-up.
