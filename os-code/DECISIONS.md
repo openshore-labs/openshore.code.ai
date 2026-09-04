@@ -498,3 +498,17 @@ execution contract. Newest at the bottom.
   decoupled from weights, like Harbor's id): a weights change touches only the
   URL, size label, and attribution, so the bundled `harbor-mini.gguf` and all
   reconcile/stack code keep working with no id churn.
+- 2026-09-04: Mini's handoff walkthroughs are RECITED from setupGuides.ts, not
+  authored fresh in the persona. A 135M model reciting a fixed script is reliable
+  where reasoning steps out is not, and sourcing them from the setup guides keeps
+  them from drifting from the real UI. Added a `get-harbor` setup guide so the
+  Harbor activation steps have a single home too.
+- 2026-09-04: First Moves live as tappable chips in the chat (a new
+  MiniFirstMoves), not as a new ThreadItem kind: it keeps the transcript model
+  untouched and the chips simply disappear once the first message is sent. They
+  snap-unmount, which the polish guard allows (it enforces exits for scrims, not
+  transient affordances).
+- 2026-09-04: Onboarding leads with the bundled guide as the single hero (the
+  only primary button), demoting Harbor/cloud/Marketplace to a "go further"
+  tier. Creative Studio direction "The Standing Light." Mini is instant now, so
+  making it the front door is honest, not hype.

@@ -3,6 +3,33 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Harbor Mini optimized for guiding, delightful first-run by the Creative Studio)
+
+Founder ask: with Mini now SmolLM2-135M, optimize it purely for guiding around
+the app. Its only reasoning is navigating the app, knowing where it is not
+capable, and routing the person to get Harbor / connect a cloud provider / open
+the Marketplace, then walking each activation step by step. And bring in the
+Creative Studio to shape a delightful first experience even though the model is
+limited. Branch `claude/harbor-settings-rows-bundle-tbu2ct`.
+
+- **Mini scoped to a guide, not a builder (app).** `harborMini.ts` persona
+  rewritten: it navigates and explains, notices its edge, and hands off warmly
+  (never grovels). It recites three activation walkthroughs verbatim rather than
+  reasoning them out, spliced from a single source: `setupGuides.ts`
+  `guideStepsCompact(id)` for `get-harbor` (new guide), `connect-cloud-key`, and
+  `pick-a-model`, so the scripts cannot drift from the real UI. Front-end open,
+  backend private, and "grounded in its own repository" kept.
+- **Delightful first-run: Creative Studio "The Standing Light" (app).** A harbor
+  light is small, always lit, and guides bigger vessels in. Because Mini is
+  bundled, onboarding leads with it as the one hero card ("Harbor Mini is already
+  here" / "Say hello"), and Harbor / cloud key / Marketplace drop to a quiet
+  "When you're ready to go further" tier (`StartingPaths.tsx`, cards variant).
+  The seeded greeting is warm, honest, and ends by inviting a first move; a new
+  `MiniFirstMoves` component renders tappable openers under it on a fresh Mini
+  chat (`ChatScreen.tsx`), stepped in on `--stagger` with `press-fb`
+  (`.first-move` in `theme.css`). Graceful-limit example lines documented in
+  `harborMini.ts`. `test/harborGuides.test.ts` extended to pin all of it.
+
 ## Current state (2026-09-04, Harbor + Harbor Mini rows in Settings, Mini bundled with the app)
 
 Founder ask: add two rows to the Settings > Harbor group, below the web-search

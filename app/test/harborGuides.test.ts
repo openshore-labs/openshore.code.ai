@@ -14,11 +14,14 @@ import {
   HARBOR_MINI_APPROX_LABEL,
   HARBOR_MINI_BUNDLED,
   HARBOR_MINI_BYLINE,
+  HARBOR_MINI_FIRST_MOVES,
+  HARBOR_MINI_GREETING,
   HARBOR_MINI_MODEL_ID,
   HARBOR_MINI_MODEL_URL,
   buildHarborMiniSystemPrompt,
 } from '../src/lib/harborMini.js';
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
+import { SETUP_GUIDES, guideStepsCompact } from '../src/lib/setupGuides.js';
 
 const NO_EM_DASH = /—|&mdash;|&#x2014;|&#8212;/;
 
@@ -111,5 +114,75 @@ describe('the front-end open, backend private disclosure boundary', () => {
     const mini = buildHarborMiniSystemPrompt().toLowerCase();
     expect(mini).toContain('know your limits');
     expect(mini).toContain('bigger model');
+  });
+});
+
+describe('Harbor Mini is optimized for guiding, not building', () => {
+  const prompt = buildHarborMiniSystemPrompt();
+
+  it('scopes it to navigation plus honest handoff, not real work', () => {
+    const lower = prompt.toLowerCase();
+    expect(lower).toContain('you are a guide, not a builder');
+    expect(lower).toContain('do not write real code');
+  });
+
+  it('recites the three activation walkthroughs verbatim from the setup guides', () => {
+    // A tiny model reciting scripts, not reasoning them out. The scripts are the
+    // single source in setupGuides.ts, so they cannot drift from the real UI.
+    expect(prompt).toContain('ACTIVATION STEPS');
+    for (const id of ['get-harbor', 'connect-cloud-key', 'pick-a-model'] as const) {
+      const steps = guideStepsCompact(id);
+      expect(steps).toMatch(/^1\. /);
+      expect(prompt).toContain(steps);
+    }
+  });
+
+  it('routes the three upgrades the founder named', () => {
+    const lower = prompt.toLowerCase();
+    expect(lower).toContain('get harbor');
+    expect(lower).toContain('cloud key');
+    expect(lower).toContain('marketplace');
+  });
+});
+
+describe('a get-harbor walkthrough exists and is accurate to the Settings row', () => {
+  it('walks the Harbor install from the Settings Harbor row', () => {
+    const g = SETUP_GUIDES['get-harbor'];
+    expect(g).toBeTruthy();
+    const joined = g.steps.map((s) => (typeof s === 'string' ? s : s.text)).join(' ');
+    expect(joined).toContain('Settings');
+    expect(joined).toContain('Install');
+  });
+});
+
+describe('the delightful first-run (Creative Studio: The Standing Light)', () => {
+  it('greets warmly, is honest, offline, and ends by inviting a first move', () => {
+    expect(HARBOR_MINI_GREETING).not.toMatch(NO_EM_DASH);
+    expect(HARBOR_MINI_GREETING.toLowerCase()).toContain('built into the app');
+    expect(HARBOR_MINI_GREETING.trim().endsWith('?')).toBe(true);
+  });
+
+  it('offers three or four short, em-dash-free First Moves', () => {
+    expect(HARBOR_MINI_FIRST_MOVES.length).toBeGreaterThanOrEqual(3);
+    expect(HARBOR_MINI_FIRST_MOVES.length).toBeLessThanOrEqual(4);
+    for (const move of HARBOR_MINI_FIRST_MOVES) {
+      expect(move.trim()).toBe(move);
+      expect(move.length).toBeGreaterThan(0);
+      expect(move.length).toBeLessThanOrEqual(30);
+      expect(move).not.toMatch(NO_EM_DASH);
+    }
+  });
+
+  it('wires the First Moves into a fresh Harbor Mini chat', () => {
+    const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
+    expect(chat).toContain('MiniFirstMoves');
+    expect(chat).toContain('HARBOR_MINI_MODEL_ID');
+  });
+
+  it('makes the built-in guide the onboarding hero, others a "go further" tier', () => {
+    const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
+    expect(paths).toContain('Harbor Mini is already here');
+    expect(paths).toContain('Say hello');
+    expect(paths).toContain("When you're ready to go further");
   });
 });
