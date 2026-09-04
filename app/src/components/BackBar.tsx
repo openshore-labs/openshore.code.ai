@@ -25,7 +25,7 @@ export const ROOM_NAMES: Record<ViewName, string> = {
   projectmemory: 'Project notes',
   crew: 'My Crew',
   admin: 'Admin',
-  launch: 'Launch',
+  launch: 'Launch with Codemagic',
   pair: 'Desktop + phone',
   settings: 'Settings',
   terminal: 'Terminal',
