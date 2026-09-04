@@ -14,7 +14,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
-import { uxStandardPrompt } from 'os-code/protocol';
+import { uxStandardPrompt, humanizerStandardPrompt } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import { platform, secretGet, storeGetJson } from '../lib/platform.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
@@ -44,6 +44,19 @@ export interface StackContext {
   projectInstructions?: string;
   /** Crew that speaks in this chat (already scoped to project + level). */
   crew?: CrewAgent[];
+  /** Humanize Writing setting: when true (the default), written output is held
+   *  to the plain, specific, honest voice that avoids AI writing tells. Off
+   *  drops the standard from the prompt, so the model runs on a shorter prompt. */
+  humanize?: boolean;
+}
+
+/** Whether the Humanize Writing standard rides into this model's prompt. On by
+ *  default; off when the person turned the setting off. On-device pocket models
+ *  are skipped to protect their small context (they are not the surface where
+ *  real writing happens), the same carve-out the UX standard makes; the desktop
+ *  engine carries the standard through its own config, not this path. */
+export function humanizerApplies(ref: StackModelRef, humanize?: boolean): boolean {
+  return humanize !== false && ref.kind !== 'device';
 }
 
 const BASE_SYSTEM = [
@@ -192,6 +205,10 @@ export class StackDriver implements ChatDriver {
     // agent on the desktop always carries it).
     const buildsCode = placement?.category === 'coding' || (!placement && ref.kind !== 'device');
     if (buildsCode) parts.push(uxStandardPrompt());
+    // Humanize Writing out of the box: any written output (not just code) reads
+    // plain, specific, and honest, avoiding AI writing tells, unless the person
+    // turned the setting off (humanizerStandard.ts, config in Settings).
+    if (humanizerApplies(ref, this.context.humanize)) parts.push(humanizerStandardPrompt());
     return parts.join('\n\n');
   }
 

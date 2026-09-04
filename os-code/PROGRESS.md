@@ -43,6 +43,17 @@ output unless a given project's instructions say otherwise. Branch
   real AgentSession on the mock provider: it reaches the model by default, a
   project can turn it off, and project voice notes ride along. The full suite is
   green (389 tests), and the total em-dash guard passes over the new files.
+- **User-facing setting "Humanize Writing" (app).** Founder follow-up: expose it
+  as a plain on/off setting, default on, named so a person can see what it is
+  and so it can be renovated as its own feature. Added `humanizeWriting` to
+  `app` settings (default on), a "Writing" group in `SettingsScreen` with a
+  Switch and a "How this works" info sheet for transparency, and threading
+  through `StackDriver` (`humanizerApplies`, `StackContext.humanize`) so app-side
+  chats carry the standard unless it is off. On-device pocket models are skipped
+  to protect their small context, the same carve-out the UX standard makes; the
+  desktop engine still carries the standard through its own config. Off means a
+  shorter prompt, so the model runs a little faster. `app/test/humanizeWriting.test.ts`
+  pins the wiring; the full app suite is green (524 tests).
 
 ## Current state (2026-09-04, Tokens and Secrets: a per-project encrypted note, local models only)
 
@@ -125,6 +136,7 @@ pre-push pass, then to `main`.
   stagger (reduced-motion safe), a calm status dot sits by the running host, and
   turning Terminal Control on fires the firmer decisive-commit haptic over the
   Switch's tick.
+
 ## Current state (2026-09-04, offline reconcile: project commits push to the remote on open and reconnect)
 
 Founder ask: nothing should linger only on the device. If you are offline, the

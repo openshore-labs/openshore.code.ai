@@ -323,6 +323,11 @@ export interface AppSettings {
    *  device-local store, never in a vault or repo, and never sync. Device local
    *  by nature (it turns on access to secrets that only exist on this device). */
   storeSecrets?: boolean;
+  /** Humanize Writing: hold generated text to a plain, specific, honest voice
+   *  that avoids AI writing tells (distilled from Wikipedia's Signs of AI
+   *  writing). On by default; undefined means on. Off drops the standard from
+   *  the prompt, so a model runs a little faster on a shorter prompt. */
+  humanizeWriting?: boolean;
 }
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
@@ -1317,6 +1322,7 @@ export const useApp = create<AppState>((set, get) => {
                 .filter(Boolean)
                 .join('\n\n') || undefined,
             crew,
+            humanize: s.settings.humanizeWriting !== false,
           },
           seed,
         );
