@@ -5,7 +5,7 @@ they are experts on the app: they explain any front-end feature or setup step in
 as much depth as the person wants, and they never reveal backend build
 internals, infrastructure, or how OpenShore is implemented under the hood.
 
-- **Harbor Mini** (Qwen2.5-0.5B-Instruct, Apache-2.0). The small, fast guide.
+- **Harbor Mini** (SmolLM2-135M-Instruct, Apache-2.0). The small, fast guide.
   It knows its own limits and, when a question needs real reasoning or real
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
@@ -54,24 +54,40 @@ Settings row reads. Keep it in step with `ModelStore.bundledModelIds`.
 ### The build step
 
 The weights file is NOT committed to the repo. At build time, drop the
-Qwen2.5-0.5B-Instruct Q4_K_M GGUF into the iOS app as a bundle resource named
+SmolLM2-135M-Instruct Q4_K_M GGUF into the iOS app as a bundle resource named
 `harbor-mini.gguf` (either directly in the app target's resources, or under a
 `Models/` folder reference). `cap sync ios` does not do this for you; add the
 file to the Xcode app target (or the packaging script) so it lands in
-`Bundle.main`. Verify the same URL as before (see below) is the source of that
-file, and that the ChatML template is embedded in the GGUF.
+`Bundle.main`. Verify the URL (see below) is the source of that file, and that
+the chat template is embedded in the GGUF.
+
+### The 170 MB budget, and why SmolLM2-135M
+
+The whole App Store download must stay under **170 MB**, and the bundled guide's
+weights count against it. That rules out the previous Qwen2.5-0.5B (its Q4_K_M
+GGUF is 380 MB, because a 151k-token vocabulary inflates even a 0.5B model), and
+also SmolLM2-360M (271 MB at Q4_K_M). SmolLM2-135M-Instruct (Apache-2.0) is the
+capable model that fits: its Q4_K_M GGUF is about **105 MB**.
+
+Being 135M, it is a grounded guide, not a reasoner. Its whole job here is to
+read the injected app facts (`APP_KNOWLEDGE`) and walk the person through the
+front end, so this is retrieval and paraphrase over supplied facts, not
+open-ended reasoning, which is where a model this small holds up. For anything
+beyond guiding, it hands off to Harbor.
 
 ### What it does to the App Store download size
 
 Bundling trades a first-launch download for a larger install:
 
-- The GGUF is about **380 MB** (`HARBOR_MINI_APPROX_LABEL`). Quantized weights
+- The GGUF is about **105 MB** (`HARBOR_MINI_APPROX_LABEL`). Quantized weights
   are already compressed, so App Store thinning shaves little off it.
 - The rest of the app (the llama.cpp + Metal binary and the web bundle) is on
-  the order of tens of MB.
-- So the App Store download lands at roughly **400 to 450 MB**, versus a small
-  base app plus a separate ~380 MB download today. Harbor (1.1 GB) is never
-  bundled; it stays a download.
+  the order of tens of MB. CONFIRM the real base size in a TestFlight build: the
+  105 MB model leaves roughly 65 MB of headroom under the 170 MB cap, and if a
+  build runs tight there is room to drop to Q4_0 (about 92 MB) or an IQ quant.
+- So the App Store download should land around **150 to 165 MB**, under the cap,
+  versus a small base app plus a separate ~105 MB download if Mini were not
+  bundled. Harbor (1.1 GB) is never bundled; it stays a download.
 
 This is comfortably under Apple's over-cellular download limit, so users can
 still install over a mobile network.

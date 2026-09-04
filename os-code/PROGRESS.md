@@ -30,9 +30,17 @@ Branch `claude/harbor-settings-rows-bundle-tbu2ct`.
   resolves/lists/ensures a bundled model from `Bundle.main` (`bundledURL`), never
   re-downloads it, and never deletes it, so "Built in" is honest and it loads
   offline with nothing downloaded. The weights file is dropped into the app
-  bundle at build time (not committed); `docs/HARBOR.md` has the step and the App
-  Store size math (roughly 400 to 450 MB total, Mini's ~380 MB GGUF plus the base
-  app; Harbor's 1.1 GB stays a download).
+  bundle at build time (not committed).
+- **Mini's model, sized to a 170 MB app (founder cap, 2026-09-04).** The whole
+  App Store download must stay under 170 MB with the guide bundled, so Mini moved
+  from Qwen2.5-0.5B (380 MB GGUF, over budget) to **SmolLM2-135M-Instruct**
+  (Apache-2.0), whose Q4_K_M GGUF is about 105 MB (SmolLM2-360M at 271 MB did not
+  fit either). Total lands around 150 to 165 MB; verify the base app size in a
+  TestFlight build, with Q4_0 (~92 MB) as the fallback if tight. The id stays
+  `harbor-mini` (a stable slot); only the URL, labels, and attribution changed.
+  Being 135M it is a grounded guide over the injected app facts, not a reasoner,
+  and hands off to Harbor for real work. `harbor.ts`/`docs/HARBOR.md`/
+  `MODEL-LICENSES.md`/Settings privacy copy all updated.
 - **Personas + knowledge.** `harbor.ts` / `harborMini.ts` personas and the shared
   `guideKnowledge.ts` now carry the front-end open, backend private boundary,
   "grounded in its own repository," Harbor as a first coding agent, and Mini

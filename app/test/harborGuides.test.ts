@@ -11,9 +11,11 @@ import {
   buildHarborSystemPrompt,
 } from '../src/lib/harbor.js';
 import {
+  HARBOR_MINI_APPROX_LABEL,
   HARBOR_MINI_BUNDLED,
   HARBOR_MINI_BYLINE,
   HARBOR_MINI_MODEL_ID,
+  HARBOR_MINI_MODEL_URL,
   buildHarborMiniSystemPrompt,
 } from '../src/lib/harborMini.js';
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
@@ -28,6 +30,21 @@ function oneSentence(s: string): boolean {
 describe('Harbor Mini is bundled (native with the app)', () => {
   it('declares itself bundled', () => {
     expect(HARBOR_MINI_BUNDLED).toBe(true);
+  });
+
+  it('stays small enough to bundle under the app download budget', () => {
+    // The whole App Store download is capped at 170 MB with Mini bundled, so a
+    // bundled guide must be measured in MB, not GB. A swap to a GB-scale model
+    // (the old Qwen2.5-0.5B was 380 MB) trips this before it ships.
+    expect(HARBOR_MINI_APPROX_LABEL).toMatch(/\bMB\b/);
+    expect(HARBOR_MINI_APPROX_LABEL).not.toMatch(/\bGB\b/);
+    const mb = Number(HARBOR_MINI_APPROX_LABEL.match(/(\d+)\s*MB/)?.[1]);
+    expect(mb).toBeGreaterThan(0);
+    expect(mb).toBeLessThanOrEqual(150);
+    // The bundled weights are a real Hugging Face source, matching the URL the
+    // build fetches them from.
+    expect(HARBOR_MINI_MODEL_URL).toMatch(/^https:\/\/huggingface\.co\//);
+    expect(HARBOR_MINI_MODEL_URL).toMatch(/\.gguf$/);
   });
 
   it('the native ModelStore treats harbor-mini as a bundled model', () => {

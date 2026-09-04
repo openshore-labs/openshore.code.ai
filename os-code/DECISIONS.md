@@ -489,3 +489,12 @@ execution contract. Newest at the bottom.
 - 2026-09-04: The Harbor rows are gated to non-desktop, matching the existing
   guide rows in StartingPaths: the on-device guide path is iOS (desktop runs
   on-device through Ollama), and the bundle is an iOS app bundle.
+- 2026-09-04: Harbor Mini's model is SmolLM2-135M-Instruct (Apache-2.0, ~105 MB
+  Q4_K_M), not Qwen2.5-0.5B (380 MB) or SmolLM2-360M (271 MB): founder capped the
+  whole App Store download at 170 MB with the guide bundled, and 135M is the
+  capable model that fits. It is a grounded guide (reads injected app facts),
+  not a reasoner; Harbor remains the upgrade for real work.
+- 2026-09-04: Kept the model id `harbor-mini` across the swap (stable slot,
+  decoupled from weights, like Harbor's id): a weights change touches only the
+  URL, size label, and attribution, so the bundled `harbor-mini.gguf` and all
+  reconcile/stack code keep working with no id churn.
