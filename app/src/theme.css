@@ -7916,6 +7916,46 @@ button.settings-row:active {
 .chat-list .swipe-fore {
   background: var(--bg);
 }
+
+/* ---------------------------------------------------------------------------
+   The project detail room. Its section cards assemble one after another on the
+   arrive curve; the team-access roster animates each grant in and plays a
+   removed one out before the data drops it; and its chat list sits inside a
+   card, so it cancels the full-bleed margin that the Chats screen uses.
+   --------------------------------------------------------------------------- */
+.project-section {
+  animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.project-hero-title {
+  /* The name flies up from the tapped card (lib/heroTitle.ts); keep the
+     scripted transform on the compositor. */
+  will-change: transform;
+}
+.project-section .chat-list {
+  margin: 0 -14px;
+}
+.access-row {
+  animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
+  animation-delay: var(--stagger, 0ms);
+}
+.access-row.leaving {
+  animation: access-row-out var(--dur-3) var(--ease-accel) forwards;
+}
+@keyframes access-row-out {
+  to {
+    opacity: 0;
+    transform: translateX(10px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-section,
+  .access-row,
+  .access-row.leaving {
+    animation: none;
+  }
+}
+
 .chat-list .chat-row {
   display: block;
   width: 100%;

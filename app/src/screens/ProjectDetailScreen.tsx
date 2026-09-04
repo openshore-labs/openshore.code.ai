@@ -7,7 +7,7 @@
 // configure who WILL have access once a project is shared with the team (a
 // server-backed capability on the roadmap). They never lock the local owner
 // out of their own project. Same posture as the Account/Org model.
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp, stackAdmin } from '../state/store.js';
 import type { Conversation, Project, ProjectAccess, ProjectPermission } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
@@ -17,6 +17,8 @@ import { isGithubRepoId, repoLabel } from '../lib/chatRepos.js';
 import { PERMISSION_LADDER, permissionLabel, projectPermissionFor } from '../lib/projectAccess.js';
 import { relativeTime, sourceShort } from './ChatsScreen.js';
 import { hapticTick } from '../lib/haptics.js';
+import { useTitleHero } from '../lib/heroTitle.js';
+import { durationMs } from '../lib/motion.js';
 
 /** A short, live summary line for the header: chats · repos · access. */
 function summaryLine(project: Project, chatCount: number, showAccess: boolean): string {
@@ -60,6 +62,17 @@ export function ProjectDetailScreen() {
   const editingDetails = details !== undefined;
   const [manageRepos, setManageRepos] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // The project name flies up from the tapped card into this title.
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useTitleHero(titleRef);
+
+  // Save earns its emphasis only once the draft actually differs, so an
+  // untouched editor never dangles a live-looking button.
+  const detailsDirty =
+    details !== undefined &&
+    (details.name.trim() !== project?.name ||
+      details.instructions !== (project?.instructions ?? ''));
 
   const chats = useMemo(
     () =>
@@ -115,7 +128,9 @@ export function ProjectDetailScreen() {
     <div className="screen">
       <BackBar title={project.name} action={newChat} />
       <div className="screen-inner">
-        <h1>{project.name}</h1>
+        <h1 ref={titleRef} className="project-hero-title">
+          {project.name}
+        </h1>
         <p className="lead">
           Everything for this project in one place. Standing instructions and its repositories ride
           into every chat here, so the coding agent works the way this project needs.
@@ -140,7 +155,7 @@ export function ProjectDetailScreen() {
         </div>
 
         {/* Standing instructions + name. */}
-        <div className="card">
+        <div className="card project-section" style={{ '--i': 0 } as CSSProperties}>
           <div className="card-row">
             <h3 className="grow">Standing instructions</h3>
             {!editingDetails ? (
@@ -168,11 +183,15 @@ export function ProjectDetailScreen() {
                 />
               </div>
               <div className="sheet-actions">
-                <button className="btn primary" onClick={() => void saveDetails()}>
+                <button
+                  className={detailsDirty ? 'btn primary' : 'btn quiet'}
+                  disabled={!detailsDirty}
+                  onClick={() => void saveDetails()}
+                >
                   Save
                 </button>
                 <button className="btn quiet" onClick={() => setDetails(undefined)}>
-                  Cancel
+                  {detailsDirty ? 'Cancel' : 'Done'}
                 </button>
               </div>
             </>
@@ -186,7 +205,7 @@ export function ProjectDetailScreen() {
         </div>
 
         {/* Repositories and their files. */}
-        <div className="card">
+        <div className="card project-section" style={{ '--i': 1 } as CSSProperties}>
           <div className="card-row">
             <div className="grow">
               <h3>Repositories and files</h3>
@@ -217,7 +236,7 @@ export function ProjectDetailScreen() {
         </div>
 
         {/* Chats in this project. */}
-        <div className="card">
+        <div className="card project-section" style={{ '--i': 2 } as CSSProperties}>
           <div className="card-row">
             <h3 className="grow">Chats</h3>
           </div>
@@ -270,6 +289,7 @@ export function ProjectDetailScreen() {
         {/* Enterprise: who on the team can read, write, or edit. */}
         {isCommercial ? (
           <TeamAccess
+            index={3}
             project={project}
             canManage={canManageAccess}
             myLevel={myLevel}
@@ -326,12 +346,14 @@ export function ProjectDetailScreen() {
 /** The team-access card: who can read, write, or edit, by email. Admins add and
  *  change grants; members see the roster read-only. */
 function TeamAccess({
+  index,
   project,
   canManage,
   myLevel,
   selfEmail,
   onChange,
 }: {
+  index: number;
   project: Project;
   canManage: boolean;
   myLevel: ProjectPermission | undefined;
@@ -341,6 +363,15 @@ function TeamAccess({
   const access = project.access ?? [];
   const [email, setEmail] = useState('');
   const [level, setLevel] = useState<ProjectPermission>('write');
+  // A removed row plays its exit before the data drops it, the way a deleted
+  // chat leaves its list. accessRef keeps the freshest list so two quick
+  // removes never clobber each other's mutation.
+  const [leaving, setLeaving] = useState<Set<string>>(() => new Set());
+  const accessRef = useRef(access);
+  accessRef.current = access;
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
+  const rowOutMs = durationMs('--dur-3', 220);
 
   const add = () => {
     const e = email.trim().toLowerCase();
@@ -352,10 +383,21 @@ function TeamAccess({
   };
   const setGrantLevel = (targetEmail: string, l: ProjectPermission) =>
     onChange(access.map((a) => (a.email === targetEmail ? { ...a, level: l } : a)));
-  const remove = (targetEmail: string) => onChange(access.filter((a) => a.email !== targetEmail));
+  const remove = (targetEmail: string) => {
+    setLeaving((s) => new Set(s).add(targetEmail));
+    const t = window.setTimeout(() => {
+      onChange(accessRef.current.filter((a) => a.email !== targetEmail));
+      setLeaving((s) => {
+        const n = new Set(s);
+        n.delete(targetEmail);
+        return n;
+      });
+    }, rowOutMs);
+    timers.current.push(t);
+  };
 
   return (
-    <div className="card">
+    <div className="card project-section" style={{ '--i': index } as CSSProperties}>
       <div className="card-row">
         <div className="grow">
           <h3>Team access</h3>
@@ -409,8 +451,14 @@ function TeamAccess({
 
       {access.length ? (
         <div className="check-list" style={{ marginTop: 12 }}>
-          {access.map((a) => (
-            <div key={a.email} className="multiselect-row" style={{ cursor: 'default' }}>
+          {access.map((a, i) => (
+            <div
+              key={a.email}
+              className={`multiselect-row access-row${leaving.has(a.email) ? ' leaving' : ''}`}
+              style={
+                { cursor: 'default', '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties
+              }
+            >
               <span className="grow">
                 {a.email}
                 {selfEmail && a.email.toLowerCase() === selfEmail.toLowerCase() ? (
