@@ -26,6 +26,7 @@ type NavIconName = Exclude<ViewName, 'chat' | 'onboarding' | 'terminal' | 'proje
 const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'chats', label: 'Chats' },
   { view: 'projects', label: 'Projects' },
+  { view: 'terminalroom', label: 'Terminal' },
   { view: 'repos', label: 'Repositories' },
   { view: 'stack', label: 'Your stack' },
   { view: 'vault', label: 'Vault' },
@@ -60,6 +61,14 @@ const ICON_NODES: Record<NavIconName, JSX.Element> = {
       <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3Z" />
       <path d="M3 12l9 4.5 9-4.5" />
       <path d="M3 16.5 12 21l9-4.5" />
+    </>
+  ),
+  // A terminal window with a prompt caret: the shell, wrapped in.
+  terminalroom: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M7 10l3 2.5L7 15" />
+      <path d="M12.5 15H16" />
     </>
   ),
   // Two people, a small crew.

@@ -3,6 +3,48 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, Terminal room and Terminal Control, on a branch)
+
+Founder ask: bring a Termius-style in-app terminal to OpenShore as a dedicated
+section below Projects, so the active model can run commands and read output
+while coding instead of the person copying results back into the chat by hand,
+gated by a "Termius Control" toggle people can leave off if they do not want to
+hand over their terminal. Termius itself is a closed third-party app with no
+embed or automation API, so it cannot be wrapped; the app already has the exact
+capability built natively (a PTY over Tailscale, xterm.js, an agent
+command bridge, four permission modes), so this drop surfaces and gates that.
+Built on `claude/termius-terminal-integration-xspkyn`, gates green, NOT on
+`main` yet (pending founder review and the CTO's pre-push pass).
+
+Decisions taken with the founder and the CTO: use the native terminal (not
+Termius); name it "Terminal Control"; one central hub; toggle default OFF;
+the terminal follows the active session's host (no machine picker); a second
+desktop driving a remote hub and multi-hub are approved fast-follows, not in
+this drop.
+
+- **A Terminal room below Projects.** `app/src/screens/TerminalRoomScreen.tsx`
+  (view `terminalroom`, nav entry + icon in `Sidebar.tsx`, route in `App.tsx`).
+  First run names the two one-time steps (install the OpenShore desktop engine
+  on your hub, put both devices on one Tailscale network) and hands off to
+  Desktop and phone, which owns the real download and pairing steps. After that
+  the room shows the live terminal when a desktop-backed session is active, a
+  "no session open" or "connect your hub" state otherwise. The terminal view is
+  `app/src/components/DesktopTerminal.tsx`, a sibling of the shipped from-chat
+  takeover (`screens/TerminalScreen.tsx`), which is left untouched.
+- **Terminal Control, per target, default OFF.** `app/src/lib/terminalControl.ts`
+  holds the pure rules; `app/test/terminalControl.test.ts` pins them (17 tests).
+  On lets the model auto-run `runShell` on the machine the session runs on; Off
+  keeps every command on the approval sheet, so nothing runs without a tap. It
+  is scoped per target (the local engine key, or a hub's base URL) so an On
+  state never follows a session to another machine, admin-only in a commercial
+  org (matching the daemon, which keeps the raw shell admin-only), and it gates
+  exactly `runShell`, never edits or cloud spend. Settings gain
+  `terminalControl` and `terminalRoomSeen` (both device-local, never synced);
+  the store's approval handler auto-approves through `shouldAutoRunShell` ahead
+  of the existing mode rules, which are otherwise untouched.
+- Gates green: app typecheck, eslint --max-warnings 0, 489 vitest tests,
+  prettier, vite build. Em-dash-total respected.
+
 ## Current state (2026-09-04, Projects get their own room and enterprise sharing)
 
 Founder arc off the Projects screen: "you should be able to click into a project

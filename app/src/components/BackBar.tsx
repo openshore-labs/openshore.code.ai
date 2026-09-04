@@ -28,6 +28,7 @@ export const ROOM_NAMES: Record<ViewName, string> = {
   pair: 'Desktop + phone',
   settings: 'Settings',
   terminal: 'Terminal',
+  terminalroom: 'Terminal',
   onboarding: 'Setup',
 };
 
