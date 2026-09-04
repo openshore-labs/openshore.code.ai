@@ -13,7 +13,6 @@ import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js
 import { hapticTick } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
-import { StartingPaths } from '../components/StartingPaths.js';
 import { InfoSheet } from '../components/InfoSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
@@ -121,7 +120,7 @@ function platformLabel(): string {
   }
 }
 
-type SheetName = 'account' | 'log' | 'search' | 'paths' | 'clear';
+type SheetName = 'account' | 'log' | 'search' | 'clear';
 
 export function SettingsScreen() {
   const {
@@ -298,14 +297,6 @@ export function SettingsScreen() {
           />
         </SettingsGroup>
 
-        <SettingsGroup title="Go further" index={group++}>
-          <SettingsRow
-            label="Add to your setup"
-            sub="The starting paths, any time"
-            onClick={() => setSheet('paths')}
-          />
-        </SettingsGroup>
-
         <SettingsGroup index={group++}>
           <SettingsRow
             label="Clear conversations"
@@ -417,14 +408,6 @@ export function SettingsScreen() {
               Back to DuckDuckGo
             </button>
           ) : null}
-        </div>
-      </Sheet>
-
-      <Sheet open={sheet === 'paths'} onClose={close}>
-        <SheetHead title="Add to your setup" onClose={close} />
-        <p className="sheet-sub">The starting paths, any time.</p>
-        <div className="settings-card">
-          <StartingPaths context="settings" variant="rows" />
         </div>
       </Sheet>
 
