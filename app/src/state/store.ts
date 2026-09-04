@@ -3448,7 +3448,12 @@ export const useApp = create<AppState>((set, get) => {
     openConversation(id) {
       const conv = get().conversations[id];
       if (!conv) return;
-      set({ activeId: id, view: 'chat', viewTrail: [], drawerOpen: false });
+      // A chat opened from the Chats list is a sub-page of it: its top bar
+      // offers a way back to Chats (the iOS grammar), instead of the drawer
+      // menu. Reached any other way (the panel's Chat, a fresh chat), the chat
+      // is a root and keeps the menu, so the trail clears.
+      const viewTrail: ViewName[] = get().view === 'chats' ? ['chats'] : [];
+      set({ activeId: id, view: 'chat', viewTrail, drawerOpen: false });
       if (!drivers.has(id)) {
         // Reattach lazily. Desktop threads replay their journal into the UI, so
         // they reset the thread and rebuild from the daemon with no seed. Chat
@@ -3760,7 +3765,12 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async openDesktopSession(info) {
-      // Already have a chat for it: just open that one.
+      // Reached from the Chats list like a saved chat, so it becomes a sub-page
+      // of Chats too (a way back, not the drawer menu). Captured before the view
+      // changes below.
+      const fromChats = get().view === 'chats';
+      // Already have a chat for it: just open that one (openConversation reads
+      // the current view and sets the same back trail).
       const existing = get().order.find((id) => {
         const c = get().conversations[id];
         return c?.source.kind === 'desktop' && c.source.sessionId === info.id;
@@ -3774,6 +3784,7 @@ export const useApp = create<AppState>((set, get) => {
         { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName },
         { title: info.title && !/^Session /.test(info.title) ? info.title : undefined },
       );
+      if (fromChats) set({ viewTrail: ['chats'] });
     },
 
     runCommand(command) {

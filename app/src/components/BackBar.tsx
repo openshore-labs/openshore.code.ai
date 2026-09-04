@@ -11,7 +11,7 @@ import { ProfileStatus } from './ProfileStatus.js';
 import { MenuIcon } from './MenuIcon.js';
 import { hapticTick } from '../lib/haptics.js';
 
-const ROOM_NAMES: Record<ViewName, string> = {
+export const ROOM_NAMES: Record<ViewName, string> = {
   chat: 'Chat',
   chats: 'Chats',
   marketplace: 'Marketplace',

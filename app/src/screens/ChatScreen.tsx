@@ -14,6 +14,7 @@ import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
+import { ROOM_NAMES } from '../components/BackBar.js';
 import { RepoPicker } from '../components/RepoPicker.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { Sheet } from '../components/Sheet.js';
@@ -110,6 +111,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     switchModel,
     setDrawer,
     setView,
+    goBack,
+    viewTrail,
     sourceReady,
     showToast,
     retryLast,
@@ -170,6 +173,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
+  // The room this chat was opened from, when it is a sub-page (opened from the
+  // Chats list). Names the way-back button in the header.
+  const backView = viewTrail[viewTrail.length - 1];
+  const backTo = backView ? ROOM_NAMES[backView] : undefined;
   const approval = thread?.pendingApprovals[0];
   const agent = Boolean(conv && conv.source.kind === 'desktop' && activeIsAgent());
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
@@ -330,7 +337,25 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   return (
     <div className="shell-main">
       <header className="topbar" ref={headerRef}>
-        {compact ? (
+        {/* A chat opened from the Chats list is a sub-page of it, so the left
+            slot is a way back to Chats (the iOS grammar), the same as the other
+            rooms. A root chat (from the panel, or a fresh one) keeps the drawer
+            menu. On the desktop the sidebar is beside the chat, so a root's slot
+            stays empty. */}
+        {backTo ? (
+          <button
+            className="icon-btn back-btn press-fb"
+            onClick={() => {
+              hapticTick();
+              goBack();
+            }}
+            aria-label={`Back to ${backTo}`}
+            title={`Back to ${backTo}`}
+          >
+            <span className="back-chevron" aria-hidden="true" />
+            {!compact ? <span className="back-label">{backTo}</span> : null}
+          </button>
+        ) : compact ? (
           <button
             className="icon-btn menu-btn press-fb"
             onClick={() => {
