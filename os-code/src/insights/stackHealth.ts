@@ -329,8 +329,10 @@ function summarizeStack(): StackSummary {
 
 /** Per-model turn counts on this machine, most-used first, zero-turn models
  *  dropped. A stable secondary sort by model id keeps the order deterministic
- *  when two models tie. This is the user's OWN local usage; it is never mixed
- *  with anyone else's and never leaves the device. */
+ *  when two models tie. This folds every session ON THIS MACHINE: on a personal
+ *  machine that is the user's own usage, but on a shared hub it spans every
+ *  member's sessions (the payload's `scope` says which, and the UI labels it).
+ *  It is folded locally and only the aggregate ever leaves the machine. */
 function buildModelUsage(
   turnsByModel: Map<string, number>,
 ): Array<{ model: string; turns: number }> {
@@ -505,6 +507,7 @@ function bucketIndex(starts: number[], when: number): number {
 export function computeStackHealth(
   range: StackHealthRange = 'week',
   now: Date = new Date(),
+  scope: 'personal' | 'machine' = 'personal',
 ): StackHealth {
   const dir = sessionsDir();
   const infos = existsSync(dir) ? listSessions() : [];
@@ -560,6 +563,7 @@ export function computeStackHealth(
   return {
     range,
     generatedAt: now.toISOString(),
+    scope,
     empty: totalTurns === 0 && totals.tasksAttempted === 0,
 
     savedDollars,

@@ -617,3 +617,37 @@ execution contract. Newest at the bottom.
   reliable tool use, and driving Codemagic needs the network anyway, so a
   device-only stack cannot reach Codemagic regardless. (Supersedes the earlier
   "Anthropic-only for v1" scoping from the same day.)
+- 2026-09-04: Stack Health updates on a DAILY cadence, not on demand (founder).
+  Removed the pull-to-refresh gesture and its hook; the app loader now serves a
+  per-range result from a 24h persisted cache and only refolds on open past a
+  day. An honest "Updated <when>. Refreshes once a day." line replaces the manual
+  refresh.
+- 2026-09-04: Enterprise Stack Health visibility (CTO+CMO agreed). The setting
+  lives in DAEMON CONFIG (`DaemonSchema.stackHealthVisibility`), not Supabase:
+  the data is folded on the hub and the enforcement point is the hub, so authority
+  stays co-located with both (no Supabase JWT path exists on the daemon anyway).
+  Enforced by a FRESH `loadConfig()` read in `GET /stack-health` (so an admin's
+  toggle needs no restart), with a distinct 403 `restricted` the phone renders as
+  its own state, never the unreachable card. Default is `admins` (CTO call; CMO
+  argued `everyone` for the team-scoreboard story and disagreed-and-committed):
+  the fold is machine-wide on a shared hub, and the legacy/solo token is implicit
+  admin so default-closed still shows a solo user everything. No migration.
+- 2026-09-04: Stack Health honesty fix the CTO surfaced: `computeStackHealth`
+  folds EVERY session on the machine, so on a shared hub a member sees a
+  machine-wide aggregate, not their own. The payload now carries
+  `scope: 'personal' | 'machine'` (stamped by the route from the auth source) and
+  the screen states it plainly ("Across every session on this hub. Never broken
+  down by person."). Corrected the false "user's OWN usage" comment.
+- 2026-09-04: Sustainability optimizer = "Run leaner" (CMO name, extends the
+  "Runs lean" axis). ADVISORY and read-only for v1 (CTO): it never mutates the
+  stack; a per-suggestion Apply is a fast-follow once the swap path is proven.
+  Capability-parity gate is a blocker, not a nicety (CTO must-fix): a candidate is
+  surfaced only when it preserves the role's capability AND clears a quality floor
+  AND is meaningfully leaner, so the size-proxy energy score can never quietly gut
+  the stack. One basis (`modelEnergyPer1kTok`/`SUSTAINABILITY_BASIS`), estimates
+  labelled, and a cloud model is never called "greener" (the win it names is
+  running a capable local peer). NO-GO on the open "greener stack for a workload"
+  framing (would need a capability/benchmark model we do not have). It renders on
+  the Stack Health green card, co-located with the crew data it reads, with a
+  "Browse lean models" link; the CMO's Stack-screen placement + per-suggestion
+  Apply is the fast-follow that pairs with the mutation path.

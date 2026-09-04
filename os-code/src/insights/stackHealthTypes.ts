@@ -98,6 +98,11 @@ export interface StackHealthBucket {
 export interface StackHealth {
   range: StackHealthRange;
   generatedAt: string;
+  /** Whose activity this fold covers. 'personal' is a single-user machine (a
+   *  desktop, or a legacy/solo hub): your own sessions. 'machine' is a shared
+   *  multi-user hub, where the fold spans every session on that machine, not just
+   *  the caller's, so the UI must say so plainly. */
+  scope: 'personal' | 'machine';
   /** True when there is no activity in the window: the UI shows a first-run state. */
   empty: boolean;
 

@@ -8,8 +8,11 @@ import type { CSSProperties } from 'react';
 import { BackBar } from '../components/BackBar.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { loadAppStackHealth } from '../lib/stackHealth.js';
-import { usePullToRefresh } from '../hooks/usePullToRefresh.js';
+import { loadAppCatalog } from '../lib/catalog.js';
+import { leanerSuggestions, type LeanerSuggestion } from '../lib/stackOptimizer.js';
+import { osCodeFit } from '../components/marketplace.js';
 import { useApp } from '../state/store.js';
+import type { Catalog } from 'os-code/protocol';
 import type { StackHealth, StackHealthRange, SustainabilityFootprint } from 'os-code/protocol';
 
 const RANGES: Array<{ id: StackHealthRange; label: string }> = [
@@ -91,6 +94,20 @@ function equivalent(f: SustainabilityFootprint): string {
 // the green card's pieces arrive one after another.
 function itemStagger(i: number): CSSProperties {
   return { '--i': i } as CSSProperties;
+}
+
+// A calm "when it last folded" label. Stack Health updates once a day, so the
+// grain is days, never a clock time that would imply a live feed.
+function updatedLabel(when: number): string {
+  const startOfDay = (t: number) => {
+    const d = new Date(t);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  };
+  const days = Math.round((startOfDay(Date.now()) - startOfDay(when)) / 86_400_000);
+  if (days <= 0) return 'Updated today';
+  if (days === 1) return 'Updated yesterday';
+  return `Updated ${days} days ago`;
 }
 
 // A number that eases up from 0 on mount and whenever the target changes. The
@@ -290,54 +307,46 @@ function roleLabel(role: string): string {
 }
 
 export function StackHealthScreen() {
-  const { settings } = useApp();
+  const { settings, setView } = useApp();
   const [range, setRange] = useState<StackHealthRange>('week');
   const [health, setHealth] = useState<StackHealth | undefined>();
-  const [state, setState] = useState<'loading' | 'ready' | 'none' | 'unreachable' | 'error'>(
-    'loading',
-  );
+  const [state, setState] = useState<
+    'loading' | 'ready' | 'none' | 'unreachable' | 'restricted' | 'error'
+  >('loading');
   const [animate, setAnimate] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | undefined>();
   const daemon = settings.daemon;
   const reqRef = useRef(0);
 
-  // One loader, shared by the range effect and pull-to-refresh. `quiet` keeps
-  // the current numbers on screen while a refresh re-fetches (the content is
-  // pinned under the finger), rather than flashing the loading state. A request
+  // The loader folds at a daily cadence (see lib/stackHealth): within a day it
+  // returns the same stamped numbers, so there is no manual refresh. A request
   // token drops a stale answer if the range changed underneath it.
-  const load = useCallback(
-    async (quiet = false): Promise<void> => {
-      const token = ++reqRef.current;
-      if (!quiet) {
-        setState('loading');
-        setAnimate(false);
+  const load = useCallback(async (): Promise<void> => {
+    const token = ++reqRef.current;
+    setState('loading');
+    setAnimate(false);
+    try {
+      const r = await loadAppStackHealth(range, daemon);
+      if (token !== reqRef.current) return;
+      if (r.kind === 'ready') {
+        setHealth(r.health);
+        setUpdatedAt(r.updatedAt);
+        setState('ready');
+        // Let the first paint settle, then release the ring/sparkline fills.
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => token === reqRef.current && setAnimate(true)),
+        );
+      } else {
+        setState(r.kind);
       }
-      try {
-        const r = await loadAppStackHealth(range, daemon);
-        if (token !== reqRef.current) return;
-        if (r.kind === 'ready') {
-          setHealth(r.health);
-          setState('ready');
-          if (!quiet) {
-            // Let the first paint settle, then release the ring/sparkline fills.
-            requestAnimationFrame(() =>
-              requestAnimationFrame(() => token === reqRef.current && setAnimate(true)),
-            );
-          }
-        } else {
-          setState(r.kind);
-        }
-      } catch {
-        if (token === reqRef.current) setState('error');
-      }
-    },
-    [range, daemon],
-  );
+    } catch {
+      if (token === reqRef.current) setState('error');
+    }
+  }, [range, daemon]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  const refresh = usePullToRefresh(() => load(true), { enabled: state !== 'loading' });
 
   const saved = useCountUp(health?.savedDollars ?? 0);
   // The founder singled out water: it is the count-up beat on the green section.
@@ -348,50 +357,27 @@ export function StackHealthScreen() {
   const basis = health?.savingsBasis.model ?? 'Claude Sonnet';
   const crew = useMemo(() => health?.crew ?? [], [health]);
 
+  // Run leaner: advisory, read-only suggestions for a greener stack, fed by the
+  // crew (the configured stack per role) and the catalog. It never mutates the
+  // stack; the person acts on it themselves. Loaded lazily once we are ready.
+  const [catalog, setCatalog] = useState<Catalog | undefined>();
+  const ready = state === 'ready' && !!health && !health.empty;
+  useEffect(() => {
+    if (!ready || catalog) return;
+    void loadAppCatalog(daemon).then(({ catalog: c }) => setCatalog(c));
+  }, [ready, catalog, daemon]);
+  const leaner = useMemo<LeanerSuggestion[]>(() => {
+    if (!catalog || !crew.length) return [];
+    return leanerSuggestions(crew, catalog.models);
+  }, [catalog, crew]);
+
   return (
-    <div className="screen sh-screen" {...refresh.handlers}>
+    <div className="screen sh-screen">
       <BackBar title="Stack Health" />
 
       {state === 'ready' && health ? <SealBand health={health} /> : null}
 
-      {/* Pull-to-refresh indicator, riding the gap the pull opens. It sits in
-          normal flow at the top of the content so the scroll container never
-          clips it, and it rises and fades in with the finger. */}
-      <div className="sh-pull-holder" aria-hidden={!refresh.pull && !refresh.refreshing}>
-        <div
-          className={`sh-pull-ind${refresh.settling ? ' settling' : ''}`}
-          style={
-            {
-              transform: `translateY(${refresh.pull}px)`,
-              opacity: refresh.refreshing ? 1 : Math.min(1, refresh.pull / 72),
-            } as CSSProperties
-          }
-        >
-          {refresh.refreshing ? (
-            <span className="sh-pull-spinner" aria-label="Refreshing" />
-          ) : (
-            <svg
-              className={`sh-pull-arrow${refresh.armed ? ' armed' : ''}`}
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M6 13l6 6 6-6" />
-            </svg>
-          )}
-        </div>
-      </div>
-
-      <div
-        className={`screen-inner${refresh.settling ? ' sh-pull-settling' : ''}`}
-        style={{ transform: `translateY(${refresh.pull}px)` } as CSSProperties}
-      >
+      <div className="screen-inner">
         <h1>Stack Health</h1>
         <p className="lead">
           How your stack is really working, read on your own machine. Nothing here leaves this
@@ -414,6 +400,17 @@ export function StackHealthScreen() {
           ))}
         </div>
 
+        {state === 'ready' && health ? (
+          <p className="hint sh-scope">
+            {health.scope === 'machine'
+              ? 'Across every session on this hub. Never broken down by person.'
+              : 'Your sessions on this machine.'}
+          </p>
+        ) : null}
+        {state === 'ready' && updatedAt ? (
+          <p className="hint sh-updated">{updatedLabel(updatedAt)}. Refreshes once a day.</p>
+        ) : null}
+
         {state === 'loading' ? <p className="hint">Reading your sessions...</p> : null}
         {state === 'error' ? (
           <p className="hint">Could not read Stack Health right now. Try again in a moment.</p>
@@ -435,7 +432,16 @@ export function StackHealthScreen() {
             <p className="sub" style={{ marginTop: 6 }}>
               Stack Health is folded on the machine that runs your models. It looks asleep or off
               your network right now. Wake it, or check you are both on the same Tailscale network,
-              and pull to try again.
+              then open this again.
+            </p>
+          </div>
+        ) : null}
+        {state === 'restricted' ? (
+          <div className="card" style={{ marginTop: 12 }}>
+            <h3>Stack Health is set to admins only</h3>
+            <p className="sub" style={{ marginTop: 6 }}>
+              Your team&apos;s admin keeps Stack Health private for now. Ask them to open it in
+              Settings if you would like to see it.
             </p>
           </div>
         ) : null}
@@ -559,6 +565,57 @@ export function StackHealthScreen() {
                 conservative.
               </p>
             </section>
+
+            {/* Run leaner: advisory, read-only swaps that would use less energy
+                per turn, each shown with its capability so leaner reads as a
+                choice with a cost, never a free upgrade. Nothing here changes the
+                stack; the person makes the swap themselves. */}
+            {leaner.length ? (
+              <section className="card sh-card sh-green">
+                <p className="sh-eyebrow">Run leaner</p>
+                <p className="sub" style={{ marginBottom: 12 }}>
+                  A few swaps that would use less energy, and what each one trades. All estimates.
+                </p>
+                <div className="sh-lean-list">
+                  {leaner.map((s) => (
+                    <div className="sh-lean-row" key={`${s.role}-${s.to.id}`}>
+                      <div className="grow">
+                        <p className="sh-lean-swap">
+                          {roleLabel(s.role)}: {s.fromModel} to {s.to.name}
+                        </p>
+                        <p className="sub sh-lean-meta">
+                          {s.fromCloud ? (
+                            <>Runs on your own hardware instead of a data center.</>
+                          ) : (
+                            <>
+                              <span className="sh-approx" aria-hidden="true">
+                                {'≈'}
+                              </span>
+                              {pct(s.savingFraction ?? 0)}% less energy per turn (estimated)
+                            </>
+                          )}
+                          {osCodeFit(s.to) !== undefined
+                            ? ` · OpenShore fit ${osCodeFit(s.to)}`
+                            : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="hint sh-green-basis">
+                  These are estimates from model size and published intensities, not measured
+                  readings. A leaner model is not always the more capable one.
+                </p>
+                <button className="sh-lean-browse press-fb" onClick={() => setView('marketplace')}>
+                  Browse lean models
+                </button>
+              </section>
+            ) : catalog && crew.length ? (
+              <p className="hint" style={{ marginTop: 14 }}>
+                Your stack is already running lean. Nothing here would save energy without giving up
+                capability.
+              </p>
+            ) : null}
 
             {/* Where your work goes, over time. */}
             <section className="card sh-card">

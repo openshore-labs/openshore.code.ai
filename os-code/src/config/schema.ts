@@ -174,6 +174,12 @@ export const DaemonSchema = z.object({
   // included: there is no reason apply/verify should reach an arbitrary repo,
   // and the ambient-credential push path makes it a real escalation surface.
   outboxAllowedRoots: z.array(z.string()).default([]),
+  // Who on a shared hub may read Stack Health. 'admins' (the default) keeps the
+  // machine-wide aggregate to admins only, since on a multi-user hub the fold
+  // spans every member's sessions; 'everyone' opens it to any member. A personal
+  // or legacy single-user hub authenticates as admin, so the default shows a solo
+  // user everything. Admin-owned machine config, set through an admin-only route.
+  stackHealthVisibility: z.enum(['everyone', 'admins']).default('admins'),
 });
 
 export const CatalogSchema = z.object({

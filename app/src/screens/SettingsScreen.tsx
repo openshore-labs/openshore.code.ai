@@ -21,6 +21,11 @@ import {
   terminalTargetLabel,
 } from '../lib/terminalControl.js';
 import { canControlCodemagic, codemagicAccessOn } from '../lib/codemagicControl.js';
+import {
+  getStackHealthVisibility,
+  setStackHealthVisibility,
+  type StackHealthVisibility,
+} from '../lib/stackHealth.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticApproval, hapticTick } from '../lib/haptics.js';
@@ -293,6 +298,29 @@ export function SettingsScreen() {
   );
   const codemagicAccessIsOn = codemagicAccessOn(settings.codemagicAccess);
 
+  // Stack Health visibility lives on the hub (admin-owned, server-enforced), so
+  // it only appears when a hub is paired. Read the current value from the hub;
+  // an admin can change it, everyone else sees it read-only.
+  const shHub = settings.daemon;
+  const [shVisibility, setShVisibility] = useState<StackHealthVisibility | undefined>();
+  useEffect(() => {
+    if (!shHub) {
+      setShVisibility(undefined);
+      return;
+    }
+    let live = true;
+    void getStackHealthVisibility(shHub).then((v) => {
+      if (live) setShVisibility(v);
+    });
+    return () => {
+      live = false;
+    };
+  }, [shHub]);
+  const canControlSh = canControlTerminal(
+    settings.account,
+    isOrgAdmin(settings.account) || serverRole === 'admin',
+  );
+
   let group = 0;
 
   return (
@@ -470,6 +498,49 @@ export function SettingsScreen() {
                       if (next) hapticApproval();
                       void setCodemagicAccess(next);
                       showToast(next ? 'Codemagic Access on.' : 'Codemagic Access off.');
+                    }}
+                  />
+                ) : (
+                  <span className="pill">admin only</span>
+                )
+              }
+            />
+          </SettingsGroup>
+        ) : null}
+
+        {shHub ? (
+          <SettingsGroup title="Stack Health" index={group++}>
+            <SettingsRow
+              label="Who can see Stack Health"
+              subWrap
+              sub={
+                shVisibility === 'admins'
+                  ? 'Admins only. Stack Health shows this hub. The numbers are always the hub total, never broken down by person.'
+                  : 'Everyone on the team. Stack Health shows this hub. The numbers are always the hub total, never broken down by person.'
+              }
+              trailing={
+                canControlSh ? (
+                  <Switch
+                    checked={shVisibility === 'admins'}
+                    label="Stack Health admins only"
+                    onChange={(next) => {
+                      if (!shHub) return;
+                      const v: StackHealthVisibility = next ? 'admins' : 'everyone';
+                      const prev = shVisibility;
+                      setShVisibility(v); // optimistic
+                      if (next) hapticApproval();
+                      void setStackHealthVisibility(shHub, v).then((ok) => {
+                        if (ok) {
+                          showToast(
+                            v === 'admins'
+                              ? 'Stack Health is now admins only.'
+                              : 'Stack Health is now open to everyone on the team.',
+                          );
+                        } else {
+                          setShVisibility(prev); // revert on failure
+                          showToast('Could not reach your hub to change that.');
+                        }
+                      });
                     }}
                   />
                 ) : (
