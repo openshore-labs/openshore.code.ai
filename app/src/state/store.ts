@@ -117,6 +117,10 @@ import {
   decideApproval,
   terminalTargetId,
 } from '../lib/terminalControl.js';
+import {
+  canControlCodemagic as canControlCodemagicFor,
+  decideCodemagicApproval,
+} from '../lib/codemagicControl.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
@@ -328,6 +332,13 @@ export interface AppSettings {
    *  writing). On by default; undefined means on. Off drops the standard from
    *  the prompt, so a model runs a little faster on a shorter prompt. */
   humanizeWriting?: boolean;
+  /** Codemagic Access: whether the model may drive Codemagic builds on its own
+   *  (trigger, read the failure, fix, rebuild until green) using this device's
+   *  Codemagic token. Off by default; missing means Off, the opt-in default. A
+   *  single device-local boolean (not per target like Terminal Control): the
+   *  token lives in this device's Keychain and only ever executes on this
+   *  device, never on a remote hub. Never synced. See codemagicControl.ts. */
+  codemagicAccess?: boolean;
 }
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
@@ -668,6 +679,10 @@ interface AppState {
   reviewBuild(): Promise<string | undefined>;
   /** Open a chat where the model reads a failed build and proposes a fix. */
   diagnoseBuild(runId: string): Promise<void>;
+  /** Open a chat and hand the whole launch to the model: trigger, watch, read
+   *  failures, and drive to a green build (Codemagic Access must be on). Returns
+   *  the chat id, or undefined when access is off or nothing is set up. */
+  launchWithModel(): Promise<string | undefined>;
 
   // Repositories.
   /** Connect a repo platform (GitHub, etc.) by token, stored in the Keychain. */
@@ -815,6 +830,7 @@ interface AppState {
    *  the model run shell commands on its own there; Off (the default) blocks the
    *  model from the terminal entirely. Scoped to that one target. */
   setTerminalControl(on: boolean): Promise<void>;
+  setCodemagicAccess(on: boolean): Promise<void>;
   /** Save a hub (upsert by base URL) and make it the active one. */
   saveHub(target: DaemonTarget): Promise<void>;
   /** Switch the active hub to a saved one by base URL. */
@@ -1062,17 +1078,25 @@ export const useApp = create<AppState>((set, get) => {
         // emitters of runShell); a non-shell desktop ask (cloud spend) and a
         // client brain fall through untouched to the existing rules.
         const s = get();
-        const decision = decideApproval(event.request, {
-          driverKind: driver.kind,
-          desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
-          daemon: s.settings.daemon,
-          control: s.settings.terminalControl,
-          canControl: canControlTerminalFor(
-            s.settings.account,
-            isOrgAdmin(s.settings.account) || s.serverRole === 'admin',
-          ),
-          mode: s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
-        });
+        const isAdmin = isOrgAdmin(s.settings.account) || s.serverRole === 'admin';
+        // Codemagic Access is the master gate for the model driving builds: On
+        // (and permitted) auto-runs the Codemagic tool; Off auto-denies it with a
+        // reason that sends the person to the switch. It governs only the one
+        // 'codemagic' tool; a non-Codemagic request returns undefined here and
+        // falls through to Terminal Control and the permission mode untouched.
+        const decision =
+          decideCodemagicApproval(event.request, {
+            access: s.settings.codemagicAccess,
+            canControl: canControlCodemagicFor(s.settings.account, isAdmin),
+          }) ??
+          decideApproval(event.request, {
+            driverKind: driver.kind,
+            desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
+            daemon: s.settings.daemon,
+            control: s.settings.terminalControl,
+            canControl: canControlTerminalFor(s.settings.account, isAdmin),
+            mode: s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
+          });
         if (decision.action === 'auto-approve') {
           drivers.get(conversationId)?.answerApproval(event.request.id, { approve: true });
         } else if (decision.action === 'auto-deny') {
@@ -1192,6 +1216,30 @@ export const useApp = create<AppState>((set, get) => {
           const stored = await readProjectSecrets(project.id);
           if (stored.trim()) projectSecrets = stored;
         }
+        // Codemagic Access on: hand this device's Codemagic token and the saved
+        // launch target to the in-process local engine, so its codemagic tool
+        // can drive App Launch builds. Read from the sealed device-local store
+        // here. Like projectSecrets, this rides sessionOpts, which the remote
+        // daemon path below deliberately does NOT forward, so the token stays on
+        // this device and only ever runs on this device.
+        let codemagicToken: string | undefined;
+        let codemagicTarget:
+          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
+        if (settings.codemagicAccess) {
+          const tok = await secretGet(CODEMAGIC_SECRET_KEY);
+          if (tok) {
+            codemagicToken = tok;
+            const t = settings.launch?.target;
+            if (t) {
+              codemagicTarget = {
+                appId: t.appId,
+                workflowId: t.workflowId,
+                branch: t.branch,
+                platform: t.platform,
+              };
+            }
+          }
+        }
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -1204,6 +1252,8 @@ export const useApp = create<AppState>((set, get) => {
           // honors the toggle too (it only ever turns the humanizer off; a
           // project's own config still wins). Undefined means on.
           humanize: settings.humanizeWriting !== false,
+          codemagicToken,
+          codemagicTarget,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -1332,6 +1382,9 @@ export const useApp = create<AppState>((set, get) => {
                 .join('\n\n') || undefined,
             crew,
             humanize: s.settings.humanizeWriting !== false,
+            // Codemagic Access on and connected: offer the codemagic tool so the
+            // model can drive App Launch builds on the phone (Anthropic path).
+            codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,
           },
           seed,
         );
@@ -3134,6 +3187,29 @@ export const useApp = create<AppState>((set, get) => {
       logEvent('build_diagnose');
     },
 
+    async launchWithModel() {
+      const s = get();
+      if (!(s.settings.codemagicAccess === true && s.codemagicConnected)) {
+        s.showToast('Turn on Codemagic Access in Settings first.');
+        return undefined;
+      }
+      const target = s.settings.launch?.target;
+      if (!target) {
+        s.showToast('Set up your launch target first.');
+        return undefined;
+      }
+      const convId = await get().newConversation({ kind: 'stack' });
+      const prompt = [
+        `Launch my ${target.platform} app with Codemagic, from branch ${target.branch}.`,
+        'Trigger a build and watch it. If it fails, read the log, find the single root cause, and tell me the exact fix.',
+        'You can retry directly for a transient failure or a build-target change. For a code fix, tell me exactly what to change (I can apply it, or hand it to my desktop), then build again once I confirm.',
+        'When it is green, tell me plainly where it landed (TestFlight, the App Store, or Google Play).',
+      ].join(' ');
+      get().sendWhenAttached(convId, prompt);
+      logEvent('launch_with_model', { platform: target.platform });
+      return convId;
+    },
+
     async connectRepoPlatform(id, token) {
       await secretSet(repoSecretKey(id), token.trim());
       set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: true } }));
@@ -4283,6 +4359,13 @@ export const useApp = create<AppState>((set, get) => {
       if (!targetId) return;
       const map = { ...(s.settings.terminalControl ?? {}), [targetId]: on };
       await get().saveSettings({ terminalControl: map });
+    },
+
+    async setCodemagicAccess(on) {
+      // A single device-local boolean: the Codemagic token lives on this device
+      // and only ever runs here, so there is no per-target map (see
+      // codemagicControl.ts).
+      await get().saveSettings({ codemagicAccess: on });
     },
 
     async saveHub(target) {

@@ -9,6 +9,7 @@ import { writeFileTool } from '../tools/writeFile.js';
 import { editFileTool } from '../tools/editFile.js';
 import { runShellTool } from '../tools/runShell.js';
 import { readTerminalTool } from '../tools/readTerminal.js';
+import { codemagicTool } from '../tools/codemagic.js';
 import { grepTool } from '../tools/grep.js';
 import { globTool } from '../tools/glob.js';
 import { gitCommitTool, gitDiffTool, gitStatusTool } from '../tools/git.js';
@@ -34,6 +35,10 @@ export function buildToolRegistry(options: {
   // specialist/vision/image tools stay off regardless of the stack flags, so a
   // secret can never ride out to a cloud model or a web request.
   egressLockdown?: boolean;
+  // On when the person connected Codemagic and turned Codemagic Access on, so a
+  // token was delivered to this session. Registers the codemagic tool. Dropped
+  // under egress lockdown, since it reaches the network like the web tools.
+  hasCodemagic?: boolean;
 }): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(readFileTool);
@@ -57,6 +62,9 @@ export function buildToolRegistry(options: {
   if (!options.egressLockdown) {
     registry.register(webSearchTool);
     registry.register(webFetchTool);
+    // Codemagic reaches the network too, so it rides with the web tools under
+    // the egress gate. Present only when a token was delivered (Access on).
+    if (options.hasCodemagic) registry.register(codemagicTool);
   }
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes

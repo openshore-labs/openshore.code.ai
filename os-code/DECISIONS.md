@@ -596,3 +596,24 @@ execution contract. Newest at the bottom.
   from a model's on-disk size (on-device build preferred when present), a
   relative browse guide, never a measured figure. A deeper stack-level
   sustainability optimizer is captured as a follow-up.
+- 2026-09-04: **Codemagic Access is a single device-local boolean**, not a
+  per-target map like Terminal Control. A shell command runs on a specific
+  machine, so Terminal Control keys per target; Codemagic is one cloud account
+  reached by one BYO token that lives in this device's Keychain and only ever
+  executes on this device (the local engine, or the phone's own client loop).
+  The token is never shipped to a remote hub (same stance as projectSecrets), so
+  there is no second host for an On state to leak onto.
+- 2026-09-04: **The engine codemagic tool uses a pinned-host global fetch**, not
+  `ctx.egress`, and is registered only when a token was delivered and not under
+  egress lockdown. It sends only build identifiers to the fixed api.codemagic.io
+  host and returns redacted excerpts, so it never carries project context off
+  the device; the token presence (Access on) is the real gate.
+- 2026-09-04: **The phone Codemagic tool loop covers every network backend.**
+  StackDriver was deliberately tool-less; the loop is added only when Access is
+  on, so the existing single-turn path is untouched. It runs on the Anthropic
+  native-tool-use path and the OpenAI-compatible path (built-in cloud providers
+  AND BYOM, via function calling; native shim on device/desktop, SSE on the
+  web). On-device pocket models are deliberately excluded: they are too small for
+  reliable tool use, and driving Codemagic needs the network anyway, so a
+  device-only stack cannot reach Codemagic regardless. (Supersedes the earlier
+  "Anthropic-only for v1" scoping from the same day.)
