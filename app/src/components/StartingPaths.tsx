@@ -56,10 +56,10 @@ export function StartingPaths({
         <>
           <h3>Chat with Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            Your preferred guide is ready. It runs on this iPhone and can search the web.
+            The bigger guide is ready. It runs on this iPhone and can search the web.
           </div>
           <button
-            className="btn primary"
+            className="btn ghost"
             style={{ width: '100%' }}
             onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
           >
@@ -68,12 +68,12 @@ export function StartingPaths({
         </>
       ) : harborDownload?.failed ? (
         <>
-          <h3>Start with Harbor</h3>
+          <h3>Get Harbor</h3>
           <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
             {harborDownload.label} Check your connection and try again.
           </div>
           <button
-            className="btn primary"
+            className="btn ghost"
             style={{ width: '100%' }}
             onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
           >
@@ -106,13 +106,13 @@ export function StartingPaths({
         </>
       ) : (
         <>
-          <h3>Start with Harbor, your preferred guide</h3>
+          <h3>Get Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            The recommended first model ({HARBOR_APPROX_LABEL}), running on this iPhone. It gets you
-            set up, answers questions, and searches the web when it needs to.
+            The bigger on-device guide. Real reasoning, web search, a first coding hand. About{' '}
+            {HARBOR_APPROX_LABEL}.
           </div>
           <button
-            className="btn primary"
+            className="btn ghost"
             style={{ width: '100%' }}
             onClick={() => beginHarborWithIntro()}
           >
@@ -123,75 +123,23 @@ export function StartingPaths({
     </div>
   );
 
-  const harborMiniCard = (
+  // Harbor Mini is bundled with the app, so it is here the instant the app opens.
+  // Creative Studio direction "The Standing Light" (2026-09-04): it is not a
+  // thing you fetch, it is the guide already in the room, so it leads onboarding
+  // as the one hero card. No download states; "Say hello" opens its chat.
+  const harborMiniHeroCard = (
     <div className="card">
-      {settings.harborMiniReady ? (
-        <>
-          <h3>Chat with Harbor Mini</h3>
-          <div className="sub" style={{ marginBottom: 10 }}>
-            Your smaller built-in guide is ready. It runs on this iPhone, offline.
-          </div>
-          <button
-            className="btn ghost"
-            style={{ width: '100%' }}
-            onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
-          >
-            Open Harbor Mini
-          </button>
-        </>
-      ) : harborMiniDownload?.failed ? (
-        <>
-          <h3>Start with Harbor Mini</h3>
-          <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
-            {harborMiniDownload.label} Check your connection and try again.
-          </div>
-          <button
-            className="btn ghost"
-            style={{ width: '100%' }}
-            onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
-          >
-            Retry
-          </button>
-        </>
-      ) : harborMiniDownload ? (
-        <>
-          <h3>Getting Harbor Mini</h3>
-          <div className="progress-track" style={{ marginTop: 4 }}>
-            <div
-              className={`progress-fill${harborMiniDownload.indeterminate ? ' indeterminate' : ''}`}
-              style={
-                harborMiniDownload.indeterminate
-                  ? undefined
-                  : { transform: `scaleX(${harborMiniDownload.percent / 100})` }
-              }
-            />
-          </div>
-          <div className="hint" style={{ marginTop: 6 }}>
-            {harborMiniDownload.label}. A one-time download, then you chat offline.
-          </div>
-          <button
-            className="btn quiet"
-            style={{ width: '100%', marginTop: 8 }}
-            onClick={() => cancelHarborMini()}
-          >
-            Cancel, I will connect my own stack
-          </button>
-        </>
-      ) : (
-        <>
-          <h3>Or start with Harbor Mini, the smaller guide</h3>
-          <div className="sub" style={{ marginBottom: 10 }}>
-            A lighter download ({HARBOR_MINI_APPROX_LABEL}), no web search, otherwise the same idea.
-          </div>
-          <button
-            className="btn ghost"
-            style={{ width: '100%' }}
-            onClick={() => beginHarborMiniWithIntro()}
-          >
-            Get Harbor Mini instead
-          </button>
-        </>
-      )}
+      <h3>Harbor Mini is already here</h3>
+      <div className="sub" style={{ marginBottom: 10 }}>
+        Your built-in guide. Works offline, the moment you open the app.
+      </div>
+      <button
+        className="btn primary"
+        style={{ width: '100%' }}
+        onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
+      >
+        Say hello
+      </button>
     </div>
   );
 
@@ -318,10 +266,44 @@ export function StartingPaths({
 
   return (
     <>
-      {!isDesktop() ? harborCard : null}
-      {!isDesktop() ? harborMiniCard : null}
-
-      {isDesktop() ? (
+      {!isDesktop() ? (
+        // The built-in guide leads; everything else is a clearly secondary "go
+        // further" tier. Creative Studio "The Standing Light" (2026-09-04).
+        <>
+          {harborMiniHeroCard}
+          <p className="paths-further-head">When you're ready to go further</p>
+          {harborCard}
+          <div className="card">
+            <h3>Connect your computer</h3>
+            <div className="sub" style={{ marginBottom: 10 }}>
+              Run your model on your own computer and reach it from your phone over your private
+              Tailscale network. Your machine does the work, so it does not drain your battery, and
+              a long answer keeps going even when you close the app.
+            </div>
+            <button
+              className="btn ghost"
+              style={{ width: '100%' }}
+              onClick={() => void go('pair')}
+            >
+              Connect your computer
+            </button>
+          </div>
+          <div className="card">
+            <h3>Browse pocket models</h3>
+            <div className="sub" style={{ marginBottom: 10 }}>
+              When you want more than a guide, download a larger model that runs fully on this
+              iPhone. Private by construction, works in airplane mode.
+            </div>
+            <button
+              className="btn ghost"
+              style={{ width: '100%' }}
+              onClick={() => void go('marketplace')}
+            >
+              Open the Marketplace
+            </button>
+          </div>
+        </>
+      ) : (
         <>
           <div className="card">
             <h3>Set up your local stack</h3>
@@ -348,38 +330,6 @@ export function StartingPaths({
               onClick={() => void go('repos')}
             >
               Pick a repo
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="card">
-            <h3>Use your own model, from anywhere</h3>
-            <div className="sub" style={{ marginBottom: 10 }}>
-              Run your model on your own computer and reach it from your phone over your private
-              Tailscale network. Your machine does the work, so it does not drain your battery, and
-              a long answer keeps going even when you close the app.
-            </div>
-            <button
-              className="btn primary"
-              style={{ width: '100%' }}
-              onClick={() => void go('pair')}
-            >
-              Connect your computer
-            </button>
-          </div>
-          <div className="card">
-            <h3>Add a bigger pocket model</h3>
-            <div className="sub" style={{ marginBottom: 10 }}>
-              When you want more than a guide, download a larger model that runs fully on this
-              iPhone. Private by construction, works in airplane mode.
-            </div>
-            <button
-              className="btn ghost"
-              style={{ width: '100%' }}
-              onClick={() => void go('marketplace')}
-            >
-              Browse pocket models
             </button>
           </div>
         </>

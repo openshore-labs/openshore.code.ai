@@ -5,6 +5,7 @@
 // The steps are written here, not model-generated, so they are right even on a
 // small model; the model's job is to answer questions and adapt. No em dashes.
 export type SetupGuideId =
+  | 'get-harbor'
   | 'connect-cloud-key'
   | 'pair-computer'
   | 'install-ollama'
@@ -26,6 +27,17 @@ export interface SetupGuide {
 }
 
 export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
+  'get-harbor': {
+    id: 'get-harbor',
+    title: 'Get Harbor',
+    goal: 'Add Harbor, a stronger on-device model that can help me build for real.',
+    steps: [
+      'Open Settings and find the Harbor section. Harbor Mini, the built-in guide, is already there. Harbor is its bigger sibling.',
+      'On the Harbor row, tap Install. It downloads straight from the source, about 1.1 GB, roughly a couple of minutes on wifi. You can keep chatting while it lands.',
+      'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
+    ],
+    done: 'Harbor answers with real reasoning and can search the web. For heavier work, add a cloud key or a bigger pocket model.',
+  },
   'connect-cloud-key': {
     id: 'connect-cloud-key',
     title: 'Connect your own key',
@@ -114,6 +126,16 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
     done: 'A build reaches TestFlight or Google Play and OpenShore shows it as delivered.',
   },
 };
+
+/** The bare numbered steps for a guide, on their own lines, for splicing into a
+ *  small model's grounding so it can recite an activation walkthrough verbatim
+ *  rather than reason it out. A step with something to paste keeps that on the
+ *  next line so the model can lift it into a copy block. */
+export function guideStepsCompact(id: SetupGuideId): string {
+  return SETUP_GUIDES[id].steps
+    .map((s, i) => (typeof s === 'string' ? `${i + 1}. ${s}` : `${i + 1}. ${s.text}\n${s.paste}`))
+    .join('\n');
+}
 
 /** The seeded first message of a guide chat: goal, plan, then step one, so the
  *  person can act immediately and ask anything between steps. */
