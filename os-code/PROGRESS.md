@@ -3,6 +3,50 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-04, App Launch: the model can drive Codemagic builds, default-off gate)
+
+Founder ask: rename Launch to "App Launch with Codemagic" and give the model
+full ability to drive Codemagic the way it drives the terminal, behind a
+Settings toggle (default off), so it can trigger builds, read failures, fix, and
+rebuild until green, then say where it landed (TestFlight, App Store, Google
+Play). Founder chose BOTH surfaces (engine tool AND phone loop). Branch
+`claude/launch-codemagic-rename-mckuh2`.
+
+- **Rename.** Nav item, screen title, back bar, and `ROOM_NAMES.launch` all read
+  "App Launch with Codemagic" (`Sidebar.tsx`, `LaunchScreen.tsx`, `BackBar.tsx`);
+  `wayBack.test.ts` updated. The `view: 'launch'` id is unchanged.
+- **The gate, modeled on Terminal Control.** `app/src/lib/codemagicControl.ts`
+  is a pure module (default off, deny-reason) keyed on the single `codemagic`
+  tool. Setting `codemagicAccess` is a single device-local boolean (NOT a
+  per-target map like Terminal Control): the BYO token lives in this device's
+  Keychain and only ever runs on this device. The store's approval handler asks
+  the Codemagic gate first (`decideCodemagicApproval`), then falls through to
+  Terminal Control. Settings shows an "App Launch" group with the Codemagic
+  Access switch (admin-gated in an org). `test/codemagicControl.test.ts`.
+- **Shared safety, one source.** The redact-then-extract build-log safety moved
+  into `os-code/src/core/codemagic/safety.ts`, exported from `os-code/protocol`,
+  so the app's Launch flow and the engine tool apply the identical guarantee.
+  `app/src/lib/codemagic.ts` re-exports the pure surface for back-compat.
+- **Engine surface (desktop, phone-paired-to-desktop).**
+  `os-code/src/core/tools/codemagic.ts` is a `cloud-spend` tool (trigger,
+  status, logs) that self-degrades without a token. The token and saved target
+  ride into `ToolContext.codemagic` via a `codemagicToken` bootstrap option,
+  delivered ONLY to the in-process local engine (createSession -> engineHost ->
+  bootstrapSession), never to the remote daemon (same stance as project
+  secrets). Registered only when a token was delivered, dropped under egress
+  lockdown with the web tools. `test/codemagicTool.test.ts` (os-code).
+- **Phone surface (StackDriver, client-brain).** A contained Codemagic tool-use
+  loop on the Anthropic path only, engaged only when Access is on, so the
+  existing single-turn/tool-less path is untouched otherwise. One `codemagic`
+  tool, executed on-device via `app/src/lib/codemagicTool.ts` (mirrors the
+  engine tool), bounded to 16 rounds. App Launch gains a "Have the model launch
+  it" button backed by `launchWithModel`. `app/test/codemagicTool.test.ts`.
+- **Honest limits.** The phone can trigger, diagnose, retry, and report, but
+  cannot edit the repo, so code fixes are described for the person or their
+  paired desktop; the engine surface is what actually edits code and loops to
+  green. The phone loop is Anthropic-only for now (OpenAI-compatible/BYOM and
+  on-device models do not get the tool yet). Suites green: app 589, os-code 410.
+
 ## Current state (2026-09-04, renamed to Harbor Light, all Creative Studio microcopy applied)
 
 Founder call: the built-in guide is now named **Harbor Light** (was Harbor

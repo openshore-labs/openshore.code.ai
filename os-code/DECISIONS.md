@@ -577,3 +577,21 @@ execution contract. Newest at the bottom.
   preference into the session's effective config) rather than adding a new branch
   in `loop.ts`, so `loop.ts` keeps `config.humanizer` as its single source and the
   daemon and bridge paths share one code path.
+- 2026-09-04: **Codemagic Access is a single device-local boolean**, not a
+  per-target map like Terminal Control. A shell command runs on a specific
+  machine, so Terminal Control keys per target; Codemagic is one cloud account
+  reached by one BYO token that lives in this device's Keychain and only ever
+  executes on this device (the local engine, or the phone's own client loop).
+  The token is never shipped to a remote hub (same stance as projectSecrets), so
+  there is no second host for an On state to leak onto.
+- 2026-09-04: **The engine codemagic tool uses a pinned-host global fetch**, not
+  `ctx.egress`, and is registered only when a token was delivered and not under
+  egress lockdown. It sends only build identifiers to the fixed api.codemagic.io
+  host and returns redacted excerpts, so it never carries project context off
+  the device; the token presence (Access on) is the real gate.
+- 2026-09-04: **The phone Codemagic tool loop is Anthropic-only for v1.**
+  StackDriver was deliberately tool-less; the loop is added on the Anthropic
+  native-tool-use path only, engaged only when Access is on, so the existing
+  single-turn path is untouched. OpenAI-compatible/BYOM and on-device backends
+  do not get the tool yet (their tool-use plumbing is a later step); the engine
+  surface covers the rest.
