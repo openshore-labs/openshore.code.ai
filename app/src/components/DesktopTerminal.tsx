@@ -163,7 +163,10 @@ export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
       disposed = true;
       window.removeEventListener('resize', onResize);
       removeAppListener?.();
+      // Send anything typed in the last few ms before the batch timer fired, so
+      // a fast keystroke right before leaving is not dropped.
       if (flushTimer) clearTimeout(flushTimer);
+      flush();
       streamAbort?.abort();
       // Leave the PTY alive on the desktop (the tmux property): only tear down
       // the local view, so returning to the room reattaches to the same shell.
