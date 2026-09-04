@@ -227,7 +227,12 @@ export class EngineHost {
   answerApproval(
     sessionId: string,
     approvalId: string,
-    answer: { approve: boolean; alwaysThisSession?: boolean; alwaysInProject?: boolean },
+    answer: {
+      approve: boolean;
+      alwaysThisSession?: boolean;
+      alwaysInProject?: boolean;
+      reason?: string;
+    },
   ): void {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
   }
@@ -595,7 +600,8 @@ export class EngineHost {
       // loopback fallback (Tailscale down) reports 127.0.0.1. The Pair screen
       // uses this to avoid publishing an unreachable QR with false copy.
       mode: (this.daemon?.host === '127.0.0.1' ? 'loopback' : 'tailscale') as
-        'loopback' | 'tailscale',
+        | 'loopback'
+        | 'tailscale',
     };
   }
 
