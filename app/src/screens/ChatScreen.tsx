@@ -113,6 +113,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     setView,
     goBack,
     viewTrail,
+    viewProjectId,
     sourceReady,
     showToast,
     retryLast,
@@ -173,10 +174,15 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
-  // The room this chat was opened from, when it is a sub-page (opened from the
-  // Chats list). Names the way-back button in the header.
+  // The room this chat was opened from, when it is a sub-page (the Chats list,
+  // or a project's detail room). Names the way-back button in the header; a
+  // project uses its own name, so the button reads "‹ Uki Audio", not "‹ Project".
   const backView = viewTrail[viewTrail.length - 1];
-  const backTo = backView ? ROOM_NAMES[backView] : undefined;
+  const backTo = !backView
+    ? undefined
+    : backView === 'project'
+      ? (settings.projects?.find((p) => p.id === viewProjectId)?.name ?? ROOM_NAMES.project)
+      : ROOM_NAMES[backView];
   const approval = thread?.pendingApprovals[0];
   const agent = Boolean(conv && conv.source.kind === 'desktop' && activeIsAgent());
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;

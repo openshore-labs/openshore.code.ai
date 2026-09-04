@@ -23,6 +23,7 @@ import {
   type OrgMember,
   type OrgRole,
   type Project,
+  type ProjectAccess,
 } from './types.js';
 import { tierForSeats, type AccountType } from '../lib/plans.js';
 import {
@@ -196,6 +197,7 @@ export type ViewName =
   | 'pair'
   | 'settings'
   | 'terminal'
+  | 'project'
   | 'onboarding';
 
 // Which locked surface triggered the Personal upgrade sheet. Free is chat only;
@@ -348,6 +350,9 @@ interface AppState {
    *  another room (a settings path, Manage, the terminal) pushes, so its top
    *  bar can offer a way back to where the person came from. */
   viewTrail: ViewName[];
+  /** Which project the `project` detail room is showing. Set by openProject;
+   *  read by the detail screen and by a chat opened from it (its way back). */
+  viewProjectId?: string;
   drawerOpen: boolean;
   conversations: Record<string, Conversation>;
   order: string[];
@@ -496,8 +501,16 @@ interface AppState {
   setActiveProject(id: string): void;
   updateProject(
     id: string,
-    patch: Partial<Pick<Project, 'name' | 'instructions' | 'repoIds'>>,
+    patch: Partial<Pick<Project, 'name' | 'instructions' | 'repoIds' | 'access'>>,
   ): Promise<void>;
+  /** Open a project's detail room (its chats, instructions, repos, access). */
+  openProject(id: string): void;
+  /** Start a fresh chat that belongs to a project, opened with a way back to
+   *  the project's detail room. */
+  startProjectChat(projectId: string): void;
+  /** Enterprise: replace a project's per-teammate access grants (admin-only in
+   *  the UI; the store trusts the caller, the way the other admin mutations do). */
+  setProjectAccess(projectId: string, access: ProjectAccess[]): Promise<void>;
   /** Remove a project; its chats stay but drop back to no project. */
   deleteProject(id: string): Promise<void>;
 
@@ -2092,11 +2105,39 @@ export const useApp = create<AppState>((set, get) => {
       logEvent('project_activate');
     },
 
+    openProject(id) {
+      // The detail room is a sub-page of the Projects list, so setView pushes
+      // Projects onto the trail and the room's top bar offers a way back.
+      set({ viewProjectId: id });
+      get().setView('project');
+      logEvent('project_open');
+    },
+
+    startProjectChat(projectId) {
+      // A fresh, empty chat scoped to the project. Making the project active is
+      // what binds the chat to it (newConversation reads activeProjectId on the
+      // first send); the ['project'] trail gives the chat a way back to here.
+      get().setActiveProject(projectId);
+      set({
+        activeId: undefined,
+        view: 'chat',
+        viewTrail: ['project'],
+        viewProjectId: projectId,
+        drawerOpen: false,
+        arrivedBack: false,
+      });
+    },
+
     async updateProject(id, patch) {
       const projects = (get().settings.projects ?? []).map((p) =>
         p.id === id ? { ...p, ...patch } : p,
       );
       await get().saveSettings({ projects });
+    },
+
+    async setProjectAccess(projectId, access) {
+      await get().updateProject(projectId, { access });
+      logEvent('project_access_set', { grants: access.length });
     },
 
     async deleteProject(id) {
@@ -2119,6 +2160,11 @@ export const useApp = create<AppState>((set, get) => {
         return touched ? { conversations } : s;
       });
       void persistConversations(get());
+      // If its detail room was open, there is nothing to show; fall back to the
+      // Projects list.
+      if (get().view === 'project' && get().viewProjectId === id) {
+        set({ view: 'projects', viewProjectId: undefined, viewTrail: [] });
+      }
       logEvent('project_delete');
     },
 
@@ -3448,11 +3494,13 @@ export const useApp = create<AppState>((set, get) => {
     openConversation(id) {
       const conv = get().conversations[id];
       if (!conv) return;
-      // A chat opened from the Chats list is a sub-page of it: its top bar
-      // offers a way back to Chats (the iOS grammar), instead of the drawer
-      // menu. Reached any other way (the panel's Chat, a fresh chat), the chat
-      // is a root and keeps the menu, so the trail clears.
-      const viewTrail: ViewName[] = get().view === 'chats' ? ['chats'] : [];
+      // A chat opened from the Chats list, or from inside a project's detail
+      // room, is a sub-page of that room: its top bar offers a way back there
+      // (the iOS grammar), instead of the drawer menu. Reached any other way
+      // (the panel's Chat, a fresh chat), the chat is a root and keeps the
+      // menu, so the trail clears.
+      const from = get().view;
+      const viewTrail: ViewName[] = from === 'chats' || from === 'project' ? [from] : [];
       set({ activeId: id, view: 'chat', viewTrail, drawerOpen: false });
       if (!drivers.has(id)) {
         // Reattach lazily. Desktop threads replay their journal into the UI, so
@@ -3765,10 +3813,12 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async openDesktopSession(info) {
-      // Reached from the Chats list like a saved chat, so it becomes a sub-page
-      // of Chats too (a way back, not the drawer menu). Captured before the view
-      // changes below.
-      const fromChats = get().view === 'chats';
+      // Reached from the Chats list (or a project's detail room) like a saved
+      // chat, so it becomes a sub-page of that room too (a way back, not the
+      // drawer menu). Captured before the view changes below.
+      const from = get().view;
+      const backRoom: ViewName | undefined =
+        from === 'chats' || from === 'project' ? from : undefined;
       // Already have a chat for it: just open that one (openConversation reads
       // the current view and sets the same back trail).
       const existing = get().order.find((id) => {
@@ -3784,7 +3834,7 @@ export const useApp = create<AppState>((set, get) => {
         { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName },
         { title: info.title && !/^Session /.test(info.title) ? info.title : undefined },
       );
-      if (fromChats) set({ viewTrail: ['chats'] });
+      if (backRoom) set({ viewTrail: [backRoom] });
     },
 
     runCommand(command) {

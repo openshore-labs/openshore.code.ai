@@ -121,7 +121,7 @@ describe('the wiring', () => {
     expect(read('drivers/cloudClaudeDriver.ts')).toMatch(/this\.extraSystem\]\.filter\(Boolean\)/);
   });
 
-  it('offers the same repos in the project sheet', () => {
-    expect(read('screens/ProjectsScreen.tsx')).toContain('useConnectedRepos(');
+  it('offers the same repos in the project detail sheet', () => {
+    expect(read('screens/ProjectDetailScreen.tsx')).toContain('useConnectedRepos(');
   });
 });
