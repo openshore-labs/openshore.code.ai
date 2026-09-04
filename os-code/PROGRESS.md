@@ -83,6 +83,56 @@ Branch `claude/openshore-vault-presets-bscvtq`.
 - Gates green: os-code typecheck + lint + 374 tests + build; app typecheck +
   lint + 495 tests + build; Prettier clean on all changed files.
 
+## Current state (2026-09-04, Terminal room and Terminal Control, shipped)
+
+Founder ask: bring a Termius-style in-app terminal to OpenShore as a dedicated
+section below Projects, so the active model can run commands and read output
+while coding instead of the person copying results back into the chat by hand,
+gated by a "Termius Control" toggle people can leave off if they do not want to
+hand over their terminal. Termius itself is a closed third-party app with no
+embed or automation API, so it cannot be wrapped; the app already has the exact
+capability built natively (a PTY over Tailscale, xterm.js, an agent
+command bridge, four permission modes), so this drop surfaces and gates that.
+Shipped to `main` at the founder's direction, after a CTO pre-push pass.
+
+Decisions taken with the founder and the CTO: use the native terminal (not
+Termius); name it "Terminal Control"; one central hub; toggle default OFF;
+the terminal follows the active session's host (no machine picker); a second
+desktop driving a remote hub and multi-hub are approved fast-follows, not in
+this drop.
+
+- **A Terminal room below Projects.** `app/src/screens/TerminalRoomScreen.tsx`
+  (view `terminalroom`, nav entry + icon in `Sidebar.tsx`, route in `App.tsx`).
+  First run names the two one-time steps (install the OpenShore desktop engine
+  on your hub, put both devices on one Tailscale network) and hands off to
+  Desktop and phone, which owns the real download and pairing steps. After that
+  the room shows the live terminal when a desktop-backed session is active, a
+  "no session open" or "connect your hub" state otherwise. The terminal view is
+  `app/src/components/DesktopTerminal.tsx`, a sibling of the shipped from-chat
+  takeover (`screens/TerminalScreen.tsx`), which is left untouched.
+- **Terminal Control, per target, default OFF.** `app/src/lib/terminalControl.ts`
+  holds the pure rules; `app/test/terminalControl.test.ts` pins them (17 tests).
+  On lets the model auto-run `runShell` on the machine the session runs on; Off
+  keeps every command on the approval sheet, so nothing runs without a tap. It
+  is scoped per target (the local engine key, or a hub's base URL) so an On
+  state never follows a session to another machine, admin-only in a commercial
+  org (matching the daemon, which keeps the raw shell admin-only), and it gates
+  exactly `runShell`, never edits or cloud spend. Settings gain
+  `terminalControl` and `terminalRoomSeen` (both device-local, never synced);
+  the store's approval handler auto-approves through `shouldAutoRunShell` ahead
+  of the existing mode rules, which are otherwise untouched.
+- **CTO pre-push review: safe to ship, no must-fixes.** All four security
+  checks pass (default OFF holds, no cross-target leak, gates only runShell and
+  not for a commercial member, existing daemon admin gate and mode rules
+  untouched). Two non-blocking hardenings were folded into the same deploy: a
+  `driver.kind === 'desktop'` fence on the shell gate (also the correct meaning,
+  since Terminal Control governs the hub's own terminal), and a final keystroke
+  flush on the terminal's unmount. The CTO named plainly that On is functionally
+  `bypassPermissions` for shell on that one machine, which is the intended,
+  admin-gated, default-OFF design.
+- Gates green: app typecheck, eslint --max-warnings 0, 489 vitest tests,
+  prettier, vite build. Em-dash-total respected.
+
 ## Current state (2026-09-04, Projects get their own room and enterprise sharing)
 
 Founder arc off the Projects screen: "you should be able to click into a project
@@ -1878,6 +1928,23 @@ Layer status:
       lightweight "memory note updated" toast would let a person notice when the
       agent rewrote something they touched. CTO-suggested, accepted as a
       non-blocking nicety (2026-09-04).
+- [ ] **Terminal Control: a store-level test for the approval-handler assembly**
+      (CTO nice-to-have). The pure rules have 17 tests, but the store's
+      composition in the approval handler (canControl + targetId from global
+      state + the driver.kind fence + the else-if preserving the old mode
+      behavior) is unpinned and is the part most likely to regress in a refactor.
+      Add: desktop driver + On -> approve, Off -> sheet, commercial member + On
+      -> sheet. `app/src/state/store.ts` (search `shouldAutoRunShell`).
+- [ ] **Terminal Control OFF semantics, founder call.** OFF currently means the
+      model asks before each command (per-command consent). The founder floated
+      a stricter OFF (the model never touches the terminal, you run commands and
+      paste back). One-line to switch if wanted; left at consent for now.
+- [ ] **Terminal: second desktop drives a remote hub, and multi-hub** (approved
+      fast-follows, out of this drop). A desktop attaching to a remote hub as
+      its engine is a buildDriver change (a desktop is hardwired to its own
+      engine today); multi-hub needs the single `settings.daemon` target to
+      become many. Both were explicitly deferred with the CTO.
+
 - [x] **Community reviews: LIVE.** The backend was validated against a real
       Postgres (0011 + 0012 + 0013 apply clean; anon reads visible rows,
       per-reader block, single/batched/snapshot aggregate RPCs, one-per-user
