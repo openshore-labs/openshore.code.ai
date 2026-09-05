@@ -945,3 +945,23 @@ execution contract. Newest at the bottom.
   stated reasoning was "cut IP from the product story and the copy entirely."
   CMO copy applied verbatim to every affected surface (Settings, README, both
   Terms of Use, `docs/ethics-layer.md`, marketing `ethics.njk`).
+- 2026-09-05: **Correction: `0016` HAD been applied to production, from its very
+  first draft, before every edit above.** The 2026-09-05 entry above ("never
+  applied to a live database, so a plain edit-in-place was safe") was wrong. A
+  direct query against the live schema (prompted by the founder asking what to
+  check before running `db push`) found `guardrail_events.ip_address`,
+  `likeness_consents.ip_address`, `request_ip()`, and `ip_ban_proposals` all
+  live, plus a three-argument `record_enforcement` the current app code no
+  longer calls (it calls the zero-argument version, so enforcement recording
+  has been silently broken in production since whichever session shipped that
+  app-side change). Postgres tracks a migration by version number, not file
+  content, so editing `0016` in place after it had already been recorded as
+  applied changed nothing on the server. Fixed with a new migration,
+  `0017_reconcile_stale_0016.sql`, rather than further edits to `0016`: drops
+  every stale IP object (confirmed empty first: 0 rows in `ip_ban_proposals`,
+  `guardrail_events`, and `likeness_consents`, so nothing real was lost),
+  drops the stale three-argument `record_enforcement`, and recreates the
+  zero-argument version the app already expects. Lesson: "has this migration
+  been applied" is a question for the live database, not the file's edit
+  history, and it should have been asked with a query the first time, not
+  four edits later.

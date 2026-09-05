@@ -2398,6 +2398,16 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-08-26)
 
+- **2026-09-05: Crew routines, the botOS clone brief, built and pushed to
+  main.** Go-with-conditions from the CMO, CTO, CFO, and CX; the founder signed
+  off on all four decision points (ship as Crew with routines; Personal to $50
+  when gates return; build v1 directly and measure the preset; push to main).
+  Engine scheduler and store, headless permission hardening, daemon routes,
+  Electron IPC, the app client and store slice, the Crew command room, the
+  Morning review preset, and a gitLog read tool. 25 new engine tests, 9 new
+  app tests. Gates: see the Current state above. The superseded
+  persona-chatbot stab from earlier in the day was dropped, not merged.
+
 - **2026-09-05: full-codebase review remediation, one wave.** Every finding
   in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
   P1 and P2 batches, the INF guards and CI hardening), rulings recorded in

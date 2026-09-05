@@ -12,6 +12,10 @@ import type { ImageProvider } from '../src/providers/types.js';
 import type { ConsentAssertion } from '../src/core/ethics/classify.js';
 
 const MIGRATION = join(__dirname, '../../supabase/migrations/0016_guardrail_enforcement.sql');
+const RECONCILE_MIGRATION = join(
+  __dirname,
+  '../../supabase/migrations/0017_reconcile_stale_0016.sql',
+);
 
 /** A one-pixel PNG the fake image server returns. */
 function tinyPngBase64(): string {
@@ -198,5 +202,47 @@ describe('the enforcement migration', () => {
     expect(sql).toMatch(
       /from public\.guardrail_events\s*\n\s*where user_id = v_uid and action = 'blocked'/,
     );
+  });
+});
+
+describe('the 0017 reconciliation migration', () => {
+  // 0016 was edited in place four times after it was already recorded as
+  // applied against production, from its very first (IP-capturing) draft.
+  // Postgres tracks a migration by version, not content, so none of those
+  // edits ever reached the live schema. 0017 is the actual fix: it drops the
+  // stale objects a live-schema audit found (2026-09-05) and recreates the
+  // server-side record_enforcement the app already expects.
+  const sql = readFileSync(RECONCILE_MIGRATION, 'utf8');
+
+  it('drops every stale IP object the live schema audit found', () => {
+    expect(sql).toMatch(/drop index if exists public\.guardrail_events_ip_idx/);
+    expect(sql).toMatch(
+      /alter table public\.guardrail_events drop column if exists ip_address/,
+    );
+    expect(sql).toMatch(
+      /alter table public\.likeness_consents drop column if exists ip_address/,
+    );
+    expect(sql).toMatch(/drop function if exists public\.request_ip \(\)/);
+    expect(sql).toMatch(/drop table if exists public\.ip_ban_proposals cascade/);
+    expect(sql).toMatch(/drop function if exists public\.admin_list_ip_ban_proposals \(int\)/);
+    expect(sql).toMatch(
+      /drop function if exists public\.admin_decide_ip_ban \(uuid, text, timestamptz\)/,
+    );
+  });
+
+  it('drops the stale client-driven record_enforcement signature before recreating it', () => {
+    expect(sql).toMatch(
+      /drop function if exists public\.record_enforcement \(smallint, text, text\)/,
+    );
+    expect(sql).toMatch(/create or replace function public\.record_enforcement \(\)/);
+    expect(sql).toMatch(/grant execute on function public\.record_enforcement \(\) to authenticated/);
+  });
+
+  it('introduces no new IP identifier while reconciling the old one away', () => {
+    // Every ip/request_ip/inet mention in this file must be inside a DROP
+    // statement removing it, never a CREATE or a column definition adding it
+    // back.
+    const creating = /(create table|create or replace function|create index)[^;]*\b(ip_address|request_ip|inet)\b/is;
+    expect(sql).not.toMatch(creating);
   });
 });
