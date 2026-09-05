@@ -56,6 +56,53 @@ export const gitDiffTool: ToolDef<typeof diffSchema> = {
   },
 };
 
+const logSchema = z.object({
+  count: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe('How many commits to show, newest first (default 10, max 50)'),
+  since: z
+    .string()
+    .max(80)
+    .optional()
+    .describe('Only commits after this point, e.g. "1 day ago", "yesterday", or "2026-09-01"'),
+  patch: z.boolean().optional().describe("Include each commit's diff (capped for length)"),
+  path: z.string().optional().describe('Limit to commits touching one path'),
+});
+
+/** Recent history, read-only. The read-risk sibling of gitDiff, so a plan-mode
+ *  (read-only) session, and an unattended routine, can review what landed
+ *  without a shell. Arguments reach git as argv, never a shell line. */
+export const gitLogTool: ToolDef<typeof logSchema> = {
+  name: 'gitLog',
+  description:
+    'Show recent commits (hash, date, author, subject, and the files each touched), newest first, optionally with their diffs. Read-only; use it to review what changed over a period.',
+  schema: logSchema,
+  risk: 'read',
+  async execute(args, ctx) {
+    try {
+      const git = simpleGit(ctx.cwd);
+      const params = [
+        'log',
+        `-n${args.count ?? 10}`,
+        '--date=iso',
+        '--format=%h %ad %an%n  %s',
+        '--stat',
+      ];
+      if (args.since) params.push(`--since=${args.since}`);
+      if (args.patch) params.push('-p');
+      if (args.path) params.push('--', args.path);
+      const out = await git.raw(params);
+      return { ok: true, content: out.trim() ? capContent(out) : 'No commits match.' };
+    } catch (err) {
+      return { ok: false, content: gitHint(err) };
+    }
+  },
+};
+
 const commitSchema = z.object({
   message: z.string().min(1).describe('Commit message'),
   paths: z

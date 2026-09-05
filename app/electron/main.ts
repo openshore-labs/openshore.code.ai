@@ -621,6 +621,18 @@ guarded('osc:reconcileRepos', (roots: unknown) =>
   host.reconcileRepos(Array.isArray(roots) ? strList(roots, 'roots') : []),
 );
 
+// Crew routines. Objects pass through as-is: the host validates every field
+// through the shared routine model before anything reaches the scheduler.
+guarded('osc:routinesList', () => host.routinesList());
+guarded('osc:routineCreate', (input: unknown) => host.routineCreate(input));
+guarded('osc:routineUpdate', (id: unknown, patch: unknown) =>
+  host.routineUpdate(str(id, 'id'), patch),
+);
+guarded('osc:routineDelete', (id: unknown) => host.routineDelete(str(id, 'id')));
+guarded('osc:routineRun', (id: unknown) => host.routineRun(str(id, 'id')));
+guarded('osc:routineStop', (id: unknown) => host.routineStop(str(id, 'id')));
+guarded('osc:routineNote', (runId: unknown) => host.routineNote(str(runId, 'runId')));
+
 guarded('osc:daemonInfo', () => host.daemonInfo());
 guarded('osc:daemonStart', () => host.daemonStart());
 guarded('osc:daemonStop', () => host.daemonStop());

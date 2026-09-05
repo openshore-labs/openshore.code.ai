@@ -7,6 +7,9 @@ import type {
   DriverEvent,
   PermissionMode,
   ReconcileResult,
+  RoutineInput,
+  RoutineRun,
+  RoutineView,
   StackHealth,
   StackHealthRange,
 } from 'os-code/protocol';
@@ -180,6 +183,20 @@ export interface OscodeBridge {
   /** Cut off one device by its credential id (a lost phone). Returns how many
    *  credentials were removed. Other paired devices stay connected. */
   revokeDeviceCredential(id: string): Promise<{ removed: number }>;
+
+  // Crew routines: the scheduled, unattended jobs that run on this computer.
+  // The same surface the daemon serves a phone; validation and the workspace
+  // gate live in the engine. Keep in lockstep with electron/main.ts.
+  routinesList(): Promise<{ routines: RoutineView[]; runs: RoutineRun[] }>;
+  routineCreate(input: RoutineInput): Promise<{ routine: RoutineView } | { error: string }>;
+  routineUpdate(
+    id: string,
+    patch: Partial<RoutineInput>,
+  ): Promise<{ routine: RoutineView } | { error: string }>;
+  routineDelete(id: string): Promise<{ deleted: boolean }>;
+  routineRun(id: string): Promise<{ queued: true; position: number } | { error: string }>;
+  routineStop(id: string): Promise<{ stopped: boolean }>;
+  routineNote(runId: string): Promise<{ path: string; markdown: string } | null>;
 
   // On-disk vault: plain .md files under the agent's vault dir (~/OSCode/Vault),
   // so the app's Vault and the agent share one folder. Paths are jailed to that

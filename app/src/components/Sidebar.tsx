@@ -18,7 +18,7 @@ import { BrandMark } from './BrandMark.js';
 // 'projectmemory' is the read-only notes view reached from the Vault.
 type NavIconName = Exclude<
   ViewName,
-  'chat' | 'onboarding' | 'terminal' | 'project' | 'projectmemory'
+  'chat' | 'onboarding' | 'terminal' | 'project' | 'projectmemory' | 'crewcommand'
 >;
 
 // The nav is split so a first-week user is not met with a dozen destinations

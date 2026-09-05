@@ -32,7 +32,17 @@ import {
   revokeCredential,
 } from 'os-code/dist/src/core/security/credentials.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
-import type { DriverEvent, PermissionMode, StackHealth, StackHealthRange } from 'os-code/protocol';
+import { getRoutineScheduler, type RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
+import { validateRoutineInput } from 'os-code/dist/src/routines/model.js';
+import type {
+  DriverEvent,
+  PermissionMode,
+  RoutineInput,
+  RoutineRun,
+  RoutineView,
+  StackHealth,
+  StackHealthRange,
+} from 'os-code/protocol';
 
 // One paired device as the renderer sees it. `id` is the credential's token
 // hash, which is also the handle the revoke store matches on (revokeCredential
@@ -120,6 +130,10 @@ export class EngineHost {
   // the live output subscriptions the renderer opened, keyed by termId.
   private terminals = new TerminalManager();
   private termSubs = new Map<string, () => void>();
+  // Crew routines: the process-wide scheduler. The desktop is home, so it
+  // runs whenever the app is open, daemon or no daemon; when the daemon is
+  // started later it shares this same instance, so a routine fires once.
+  private readonly scheduler: RoutineScheduler;
 
   constructor(
     private readonly forwardEvent: EventForward,
@@ -132,6 +146,13 @@ export class EngineHost {
       try {
         sealSessionsAtRest({ skipNewerThanMs: 60_000 });
       } catch {}
+    });
+    this.scheduler = getRoutineScheduler();
+    // A run's session is registered here as it opens, so opening its
+    // transcript from the command center resumes the live driver (and its
+    // journal replay) instead of rehydrating a second copy under the run.
+    this.scheduler.onDriver((driver) => {
+      this.drivers.set(driver.id, driver as LocalDriver);
     });
   }
 
@@ -604,6 +625,69 @@ export class EngineHost {
     return out;
   }
 
+  // ----------------------------------------------------------- crew routines
+  // The same surface the daemon serves the phone, over IPC. Validation lives
+  // in the shared model so the desktop and the daemon refuse the same shapes;
+  // the workspace gate lives in the scheduler so it holds for every caller.
+
+  routinesList(): { routines: RoutineView[]; runs: RoutineRun[] } {
+    return { routines: this.scheduler.list(), runs: this.scheduler.runs(60) };
+  }
+
+  routineCreate(input: unknown): { routine: RoutineView } | { error: string } {
+    const parsed = validateRoutineInput(input);
+    if (!parsed.ok) return { error: parsed.error };
+    const created = this.scheduler.create(parsed.value);
+    return 'error' in created ? created : { routine: created };
+  }
+
+  routineUpdate(id: string, patch: unknown): { routine: RoutineView } | { error: string } {
+    const existing = this.scheduler.get(id);
+    if (!existing) return { error: 'No such routine.' };
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      return { error: 'Send the fields to change.' };
+    }
+    const body = patch as Record<string, unknown>;
+    // Validated as the whole routine it would produce (same as the daemon).
+    const parsed = validateRoutineInput({
+      name: existing.name,
+      agentId: existing.agentId,
+      agentName: existing.agentName,
+      persona: existing.persona,
+      task: existing.task,
+      cwd: existing.cwd,
+      projectName: existing.projectName,
+      schedule: existing.schedule,
+      enabled: existing.enabled,
+      access: existing.access,
+      maxMinutes: existing.maxMinutes,
+      ...body,
+    });
+    if (!parsed.ok) return { error: parsed.error };
+    const narrowed: Partial<RoutineInput> = {};
+    for (const key of Object.keys(body) as Array<keyof RoutineInput>) {
+      if (key in parsed.value) (narrowed as Record<string, unknown>)[key] = parsed.value[key];
+    }
+    const updated = this.scheduler.update(id, narrowed);
+    return 'error' in updated ? updated : { routine: updated };
+  }
+
+  routineDelete(id: string): { deleted: boolean } {
+    return { deleted: this.scheduler.remove(id) };
+  }
+
+  routineRun(id: string): { queued: true; position: number } | { error: string } {
+    return this.scheduler.runNow(id);
+  }
+
+  routineStop(id: string): { stopped: boolean } {
+    return { stopped: this.scheduler.stopRun(id) };
+  }
+
+  routineNote(runId: string): { path: string; markdown: string } | null {
+    return this.scheduler.readNote(runId) ?? null;
+  }
+
   // ------------------------------------------------------------------ daemon
 
   // Tailscale detection shells out (up to a few seconds if tailscaled hangs).
@@ -688,6 +772,7 @@ export class EngineHost {
     for (const off of this.termSubs.values()) off();
     this.termSubs.clear();
     this.daemon?.close();
+    this.scheduler.stop();
   }
 }
 
