@@ -6,6 +6,7 @@
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
+import { STALL_TIMEOUT_MS, ensureDeviceModel, forgetDeviceModel } from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
 import { formatSearchResults, loadSearchKey, webSearch } from '../lib/webSearch.js';
@@ -35,7 +36,8 @@ export class OnDeviceDriver implements ChatDriver {
   private activeRequestId?: string;
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
-  private loaded = false;
+  /** UI-1: ends the task from this side when the native runner goes quiet. */
+  private watchdog?: ReturnType<typeof setTimeout>;
   private turn = 1;
   /** At most one search per user message, so a confused model can't loop. */
   private searchedThisTurn = false;
@@ -68,6 +70,7 @@ export class OnDeviceDriver implements ChatDriver {
     this.deviceListeners.push(
       await Llama.addListener('token', ({ requestId, delta }) => {
         if (requestId !== this.activeRequestId) return;
+        this.armWatchdog(requestId);
         this.answer += delta;
         this.emitter.emit({ type: 'text-delta', text: delta });
       }),
@@ -75,10 +78,32 @@ export class OnDeviceDriver implements ChatDriver {
     this.deviceListeners.push(
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
         if (requestId !== this.activeRequestId) return;
+        this.clearWatchdog();
         this.activeRequestId = undefined;
         void this.handleDone(stopReason, detail);
       }),
     );
+  }
+
+  // A started reply that produces no token for STALL_TIMEOUT_MS is over as far
+  // as this chat is concerned: the native side lost it (another chat's load
+  // unloaded the model mid-reply, or the runner wedged). Tell it to stop, drop
+  // the slot claim so the next send reloads, and end the task honestly.
+  private armWatchdog(requestId: string): void {
+    this.clearWatchdog();
+    this.watchdog = setTimeout(() => {
+      this.watchdog = undefined;
+      if (this.activeRequestId !== requestId) return;
+      this.activeRequestId = undefined;
+      void Llama.stop({ requestId }).catch(() => {});
+      forgetDeviceModel();
+      void this.handleDone('error', 'The on-device model stopped answering. Try again.');
+    }, STALL_TIMEOUT_MS);
+  }
+
+  private clearWatchdog(): void {
+    if (this.watchdog) clearTimeout(this.watchdog);
+    this.watchdog = undefined;
   }
 
   subscribe(sink: DriverEventSink): () => void {
@@ -101,47 +126,28 @@ export class OnDeviceDriver implements ChatDriver {
       providerKind: 'local',
     });
     try {
-      if (!this.loaded) {
-        // A model kept in iCloud may be evicted (placeholder only). Pull its
-        // bytes down first; a device-stored model is a no-op. If it cannot be
-        // fetched (offline with an evicted model), fail with a real message
-        // rather than a load error that reads as corruption.
-        const local = await Llama.ensureLocal({ id: this.modelId }).catch(() => ({ ready: true }));
-        if (!local.ready) {
-          this.emitter.emit({
-            type: 'task-done',
-            reason: 'error',
-            message: `${this.modelName} lives in your iCloud and is not on this device yet. Connect to the internet so it can download, then try again.`,
-          });
-          return;
-        }
-        this.emitter.emit({
-          type: 'status',
-          message: `Warming up ${this.modelName} on this device.`,
-        });
-        // Harbor Light only writes short guidance, so a small context keeps
-        // the KV cache and load time down. Harbor is bigger and does an
-        // extra search round-trip, so it gets the full window like a chosen
-        // pocket model does.
-        const load = await Llama.load({
+      // The phone has one model slot shared by every device chat (APP-3), so
+      // confirm this chat's model is the one loaded before every reply.
+      // Harbor Light only writes short guidance, so a small context keeps the
+      // KV cache and load time down. Harbor is bigger and does an extra
+      // search round-trip, so it gets the full window like a chosen pocket
+      // model does.
+      const ready = await ensureDeviceModel(
+        {
           id: this.modelId,
+          name: this.modelName,
           contextSize: this.guide && !this.searchable ? 2048 : 4096,
-        });
-        if (!load.ok) {
-          this.emitter.emit({
-            type: 'task-done',
-            reason: 'error',
-            message:
-              load.detail ??
-              `${this.modelName} would not load. Re-download it from the marketplace.`,
-          });
-          return;
-        }
-        this.loaded = true;
+        },
+        (message) => this.emitter.emit({ type: 'status', message }),
+      );
+      if (!ready.ok) {
+        this.emitter.emit({ type: 'task-done', reason: 'error', message: ready.detail });
+        return;
       }
       this.history.push({ role: 'user', content: text });
       await this.generate();
     } catch (err) {
+      this.clearWatchdog();
       this.activeRequestId = undefined;
       this.emitter.emit({
         type: 'task-done',
@@ -153,14 +159,19 @@ export class OnDeviceDriver implements ChatDriver {
 
   private async generate(): Promise<void> {
     this.answer = '';
-    this.activeRequestId = `req_${requestSeq++}`;
-    await Llama.generate({
-      requestId: this.activeRequestId,
+    const requestId = `req_${requestSeq++}`;
+    this.activeRequestId = requestId;
+    const res = await Llama.generate({
+      requestId,
       system: this.systemPrompt(),
       messages: this.history,
       maxTokens: this.guide ? (this.searchable ? 768 : 512) : 1024,
       temperature: this.guide ? 0.4 : 0.7,
     });
+    // A refused start already reported generationDone; only a started reply
+    // needs the watchdog.
+    if (res?.started === false) return;
+    this.armWatchdog(requestId);
   }
 
   private async handleDone(
@@ -169,6 +180,8 @@ export class OnDeviceDriver implements ChatDriver {
   ): Promise<void> {
     const text = this.answer.trim();
     if (stopReason === 'error') {
+      // Whatever the slot holds after an error is suspect; reload next time.
+      forgetDeviceModel();
       if (text) this.history.push({ role: 'assistant', content: text });
       this.emitter.emit({ type: 'text-final', text });
       this.emitter.emit({
@@ -234,6 +247,7 @@ export class OnDeviceDriver implements ChatDriver {
 
   dispose(): void {
     this.abort();
+    this.clearWatchdog();
     for (const h of this.deviceListeners) void h.remove();
     this.deviceListeners = [];
     this.emitter.clear();

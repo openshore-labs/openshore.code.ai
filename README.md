@@ -34,7 +34,8 @@ agent, running on models you download and keys you hold.
 
 ## Running it
 
-Everything needs Node 20+ and pnpm (`corepack enable`).
+Everything needs Node 22+ (22.12 or newer; `.nvmrc` pins the exact version
+CI and Codemagic use) and pnpm (`corepack enable`).
 
 Desktop (Linux):
 

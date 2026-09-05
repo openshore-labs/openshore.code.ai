@@ -7,6 +7,8 @@ import { StackError, describeStack, resolveStack } from '../src/router/stack.js'
 import { Router } from '../src/router/router.js';
 import { budgetFor, fitsBudget, pickProfile } from '../src/router/resourceBudget.js';
 import { MockProvider, textTurn } from './helpers/mockProvider.js';
+import { UsageTracker } from '../src/auth/usage.js';
+import type { ChatEvent, ChatRequest } from '../src/providers/types.js';
 
 function setup(
   overrides: Record<string, unknown> = {},
@@ -83,6 +85,71 @@ describe('delegation', () => {
     await expect(router.delegate('vision', 'what is in this image?')).rejects.toThrow(
       /cannot read images/,
     );
+  });
+
+  it('an abort stops a delegated subtask within a tick (DAE-4)', async () => {
+    // A specialist that streams one delta and then waits on the signal, the way
+    // a real provider stalls on reader.read() until the request is aborted.
+    const coder = new MockProvider('coder', []);
+    let sawSignal: AbortSignal | undefined;
+    coder.chat = async function* (
+      this: MockProvider,
+      _req: ChatRequest,
+      signal?: AbortSignal,
+    ): AsyncGenerator<ChatEvent, void, void> {
+      sawSignal = signal;
+      yield { type: 'text', delta: 'partial' };
+      await new Promise<void>((resolve) => {
+        if (!signal || signal.aborted) return resolve();
+        signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+      yield { type: 'done', stopReason: 'aborted' };
+    };
+    const { router } = setup(
+      {
+        stack: {
+          orchestrator: { provider: 'orch', model: 'big-model' },
+          specialists: { coding: { provider: 'coder', model: 'small-coder' } },
+        },
+      },
+      { coder },
+    );
+    const controller = new AbortController();
+    const pending = router.delegate('coding', 'write a function', undefined, {
+      signal: controller.signal,
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    controller.abort();
+    const settled = await Promise.race([
+      pending.then(() => 'settled'),
+      new Promise((r) => setTimeout(() => r('hung'), 50)),
+    ]);
+    expect(settled).toBe('settled');
+    expect(sawSignal?.aborted).toBe(true);
+  });
+
+  it('a cloud delegate reports its usage so the dollars are counted (DAE-4)', async () => {
+    const cloud = new MockProvider('anthropic', [textTurn('cloud specialist answer')], {
+      kind: 'cloud',
+    });
+    const { router } = setup(
+      {
+        stack: {
+          orchestrator: { provider: 'orch', model: 'big-model' },
+          specialists: { coding: { provider: 'anthropic', model: 'claude-sonnet-5' } },
+        },
+      },
+      { anthropic: cloud },
+    );
+    const usage = new UsageTracker();
+    const answer = await router.delegate('coding', 'write a function', undefined, {
+      onUsage: (u) => {
+        if (u.kind === 'cloud') usage.noteCloud(u.model, u.promptTokens, u.completionTokens);
+      },
+    });
+    expect(answer).toBe('cloud specialist answer');
+    expect(usage.session.dollars).toBeGreaterThan(0);
+    expect(usage.session.cloudCalls).toBe(1);
   });
 
   it('orchestrator-only mode never delegates', async () => {

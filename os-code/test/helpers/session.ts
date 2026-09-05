@@ -11,10 +11,11 @@ import { buildToolRegistry } from '../../src/core/agent/registry.js';
 import { AgentSession } from '../../src/core/agent/loop.js';
 import { PermissionEngine, type PermissionConfig } from '../../src/core/permissions/index.js';
 import { Guardrails } from '../../src/core/guardrails/index.js';
-import { profileFor } from '../../src/core/security/profiles.js';
+import { profileFor, type SecurityProfileName } from '../../src/core/security/profiles.js';
 import { UsageTracker } from '../../src/auth/usage.js';
 import { EgressPolicy } from '../../src/core/security/egress.js';
 import { Jail } from '../../src/core/security/jail.js';
+import type { ToolContext, ToolRegistry } from '../../src/core/tools/index.js';
 import type { AgentEvent, ApprovalAnswer, ApprovalRequest } from '../../src/core/agent/types.js';
 import type { MockProvider } from './mockProvider.js';
 
@@ -24,6 +25,13 @@ export interface TestSession {
   approvals: ApprovalRequest[];
   cwd: string;
   config: OscConfig;
+  /** The wired pieces, so a test can read counters or register a tool. */
+  tools: ToolRegistry;
+  toolContext: ToolContext;
+  guardrails: Guardrails;
+  usage: UsageTracker;
+  /** Every rule the session asked to persist ("always allow in this project"). */
+  persistedRules: Array<{ tool: string; pathGlob?: string }>;
 }
 
 export interface TestSessionOptions {
@@ -37,6 +45,8 @@ export interface TestSessionOptions {
   vaultRoot?: string;
   /** The project's secrets, for tests of the local-only secrets path. */
   projectSecrets?: string;
+  /** The security profile to run under (default: sitting at the desk). */
+  profile?: SecurityProfileName;
 }
 
 export function makeTestSession(
@@ -68,33 +78,50 @@ export function makeTestSession(
 
   const events: AgentEvent[] = [];
   const approvals: ApprovalRequest[] = [];
+  const persistedRules: Array<{ tool: string; pathGlob?: string }> = [];
+  const toolContext: ToolContext = {
+    cwd,
+    jail: new Jail(cwd),
+    egress: new EgressPolicy(config.egress),
+    config,
+    projectName: options.projectName,
+    vaultRoot: options.vaultRoot,
+  };
+  const guardrails = new Guardrails(config.guardrails);
+  const usage = new UsageTracker();
+  const profile = profileFor(options.profile ?? 'local-interactive');
 
   const agent = new AgentSession({
     config,
     router,
     tools,
-    toolContext: {
-      cwd,
-      jail: new Jail(cwd),
-      egress: new EgressPolicy(config.egress),
-      config,
-      projectName: options.projectName,
-      vaultRoot: options.vaultRoot,
-    },
-    permissions: new PermissionEngine(
-      config.permissions as PermissionConfig,
-      profileFor('local-interactive'),
-    ),
-    guardrails: new Guardrails(config.guardrails),
-    usage: new UsageTracker(),
-    profile: profileFor('local-interactive'),
+    toolContext,
+    permissions: new PermissionEngine(config.permissions as PermissionConfig, profile),
+    guardrails,
+    usage,
+    profile,
     projectSecrets: options.projectSecrets,
     approver: async (request) => {
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };
     },
     onEvent: (event) => events.push(event),
+    persistRule: (rule) => {
+      persistedRules.push(rule);
+      return true;
+    },
   });
 
-  return { agent, events, approvals, cwd, config };
+  return {
+    agent,
+    events,
+    approvals,
+    cwd,
+    config,
+    tools,
+    toolContext,
+    guardrails,
+    usage,
+    persistedRules,
+  };
 }
