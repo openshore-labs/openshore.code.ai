@@ -1,17 +1,13 @@
 // The rest of the acceptance criteria: the image path end to end (screened,
 // then labeled), the escalation a repeated Tier 1 attempt produces, and an
-// audit of the migration to prove the IP-ban queue cannot apply anything.
+// audit of the migration to prove no IP address exists anywhere in it.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GuardedImageProvider, EthicsBlocked } from '../src/core/ethics/guardedProvider.js';
 import { EthicsGuard, type EthicsRecord } from '../src/core/ethics/chokepoint.js';
 import { readPngProvenance } from '../src/core/ethics/provenance.js';
-import {
-  evaluateEnforcement,
-  prepareReport,
-  proposeIpBan,
-} from '../src/core/ethics/enforcement.js';
+import { evaluateEnforcement, prepareReport } from '../src/core/ethics/enforcement.js';
 import type { ImageProvider } from '../src/providers/types.js';
 import type { ConsentAssertion } from '../src/core/ethics/classify.js';
 
@@ -126,7 +122,7 @@ describe('the image path', () => {
 describe('a repeated Tier 1 attempt', () => {
   const guard = new EthicsGuard();
 
-  it('terminates, requires a report, and proposes an address for review', async () => {
+  it('terminates and requires a report; there is no IP anywhere in the outcome', async () => {
     const history: EthicsRecord[] = [];
     const recording = new EthicsGuard({ onRecord: (r) => history.push(r) });
 
@@ -144,7 +140,10 @@ describe('a repeated Tier 1 attempt', () => {
     expect(outcome.level).toBe(2);
     expect(outcome.action).toBe('terminate');
     expect(outcome.reportRequired).toBe(true);
-    expect(outcome.proposeIpBan).toBe(true);
+    // Termination plus a report is the entire consequence. No IP field exists
+    // on the outcome to propose, capture, or act on.
+    expect(outcome).not.toHaveProperty('proposeIpBan');
+    expect(Object.keys(outcome).join(',').toLowerCase()).not.toContain('ip');
 
     // The report is prepared, and says plainly that it was not submitted.
     const report = await prepareReport({
@@ -155,15 +154,6 @@ describe('a repeated Tier 1 attempt', () => {
     });
     expect(report.status).toBe('queued');
     expect(report.detail).toMatch(/nothing has been sent/i);
-
-    // The address goes to a queue, pending, with the reviewer's warnings.
-    const proposal = proposeIpBan({
-      ipAddress: '198.51.100.24',
-      accountId: 'acct_1',
-      reason: outcome.reason,
-    });
-    expect(proposal.status).toBe('pending');
-    expect(proposal.reviewNotes.length).toBeGreaterThan(2);
   });
 
   it('blocks every attempt on the way, not only the first', async () => {
@@ -180,27 +170,16 @@ describe('a repeated Tier 1 attempt', () => {
 describe('the enforcement migration', () => {
   const sql = readFileSync(MIGRATION, 'utf8');
 
-  it('has no function that applies or activates an IP ban', () => {
-    // The queue is a review surface. If a function ever appears here that bans
-    // an address, this test is the thing that should stop it.
-    expect(sql).not.toMatch(/create\s+(or\s+replace\s+)?function[^;]*apply_ip_ban/i);
-    expect(sql).not.toMatch(/create\s+(or\s+replace\s+)?function[^;]*ban_ip\b/i);
-    expect(sql).not.toMatch(/create\s+table[^;]*\bip_bans\b/i);
-  });
-
-  it('can only ever create a pending proposal', () => {
-    const inserts = sql.match(/insert into public\.ip_ban_proposals[\s\S]*?;/gi) ?? [];
-    expect(inserts.length).toBeGreaterThan(0);
-    for (const statement of inserts) {
-      expect(statement).not.toMatch(/'approved'/);
-      // status is omitted so the column default ('pending') applies.
-      expect(statement).not.toMatch(/\bstatus\b/);
-    }
-  });
-
-  it('requires a human and an expiry to approve one', () => {
-    expect(sql).toMatch(/is_abuse_reviewer/);
-    expect(sql).toMatch(/an approved IP ban needs an expiry/);
+  it('has no IP address anywhere: no column, no function, no table', () => {
+    // The founder cut IP capture entirely (2026-09-05, after CTO and CMO
+    // review): enforcement is account termination plus a lawful report, and
+    // nothing here may reintroduce an address by any name.
+    expect(sql).not.toMatch(/\bip_address\b/i);
+    expect(sql).not.toMatch(/\brequest_ip\b/i);
+    expect(sql).not.toMatch(/\bip_ban/i);
+    expect(sql).not.toMatch(/\bban_ip\b/i);
+    expect(sql).not.toMatch(/x-forwarded-for/i);
+    expect(sql).not.toMatch(/\binet\b/i);
   });
 
   it('has no column anywhere that could hold prompt or completion text', () => {
@@ -210,27 +189,6 @@ describe('the enforcement migration', () => {
     expect(sql).toMatch(
       /request_hash text not null check \(request_hash ~ '\^\[0-9a-f\]\{64\}\$'\)/,
     );
-  });
-
-  it('has an address column only on the block record and the ban proposal', () => {
-    const ipColumns = sql.match(/^\s*ip_address inet/gim) ?? [];
-    // guardrail_events and ip_ban_proposals only. likeness_consents no longer
-    // carries an address: an authorization assertion is not a violation.
-    expect(ipColumns).toHaveLength(2);
-    const consentsTable = /create table if not exists public\.likeness_consents \(([\s\S]*?)\n\);/.exec(
-      sql,
-    );
-    expect(consentsTable?.[1]).toBeDefined();
-    expect(consentsTable![1]).not.toMatch(/ip_address/);
-  });
-
-  it('fills the block record address only when the request was blocked', () => {
-    // A trigger, not a column default, so an allowed-with-assertion row never
-    // carries an address. The guarantee is server-enforced.
-    expect(sql).toMatch(/guardrail_events_set_ip/);
-    expect(sql).toMatch(/if new\.action = 'blocked' then\s*\n\s*new\.ip_address := public\.request_ip\(\);/i);
-    // The column has no request_ip() default; the trigger is the single writer.
-    expect(sql).not.toMatch(/ip_address inet default public\.request_ip\(\)/);
   });
 
   it('evaluates the enforcement ladder server-side, not from a client-passed level', () => {

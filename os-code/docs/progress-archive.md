@@ -2398,6 +2398,30 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-08-26)
 
+- **2026-08-26: Review remediation, full pass, merged to main.** Acted on the
+  2026-08-25 review (`CODE-REVIEW-FINDINGS-2026-08-25.md`) across the three
+  focus areas, closing out the substantive findings and a full premium-polish
+  pass, each fix test-backed; gates green (os-code 275 tests, app 192,
+  typecheck, lint, vite build). Founder directed the push to main.
+  Additions beyond the first pass below: the chat-to-terminal bridge now works
+  on the DESKTOP app too (Electron command lane over IPC) and gains a composer
+  Terminal mode ($) for typing your own command; the Marketplace got a premium
+  pass (a real single-model product page replacing the fuzzy-search stand-in, a
+  browsable Starter-stacks preset shelf, a shimmer skeleton loader, an installed
+  state for desktop models, a quantization gloss, brand-safe hero variety, a
+  button-in-button a11y fix, a filter-clear empty state); macOS Tailscale
+  detection and CGNAT alignment; honest loopback pairing state (no unreachable
+  QR); SSE write backpressure; a cached Tailscale probe so the Pair poll never
+  freezes the desktop; and polish haptics on the terminal commits. Still a
+  founder decision, deliberately NOT built: the desktop-chat paywall change
+  (C-suite recommended opening free desktop chat, a monetization-foundation
+  change needing explicit approval) and terminal-bridge Phase 2 (full PTY tab).
+  Still needs founder/device verification: the P0 streaming fix on a real
+  iPhone, and the native Swift changes compile on TestFlight. Larger follow-ups
+  left for their own scoping: the daemon model-install endpoint (MP-F2),
+  background-download adoption (MP-F4), per-device pairing credentials (TS-P2-4),
+  and the home-repo path writer (TS-P1-5).
+
 - **2026-08-26: Chat-surface refinements + polish (bigger menu, anchored
   greeting, guide-as-reasoning, a Chats room).** Founder asks over four
   screenshots. (1) Menu button: a drawn SVG glyph (`components/MenuIcon.tsx`),
