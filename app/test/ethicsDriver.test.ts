@@ -235,3 +235,57 @@ describe('the wrapper does not change what a driver is', () => {
     expect(pathOfDriver('desktop')).toBe('cloud');
   });
 });
+
+describe('a turn that ends without a text-final', () => {
+  it('still releases the held answer instead of losing it', async () => {
+    // A journal replay is deltas then task-done, with no closing text-final.
+    // The holdback has to drain on task-done too, or the whole answer is
+    // silently dropped. Found by the store's replay test during the merge.
+    const inner = new FakeDriver();
+    const guarded = guardDriver(inner);
+    const events = collect(guarded);
+
+    guarded.send('hello');
+    await settle();
+    inner.emit({ type: 'task-start', input: 'hello' });
+    for (let i = 0; i < 38; i++) inner.emit({ type: 'text-delta', text: `w${i} ` });
+    inner.emit({ type: 'task-done', reason: 'complete' });
+    await settle();
+
+    const shown = events
+      .filter((e) => e.type === 'text-delta')
+      .map((e) => ('text' in e ? e.text : ''))
+      .join('');
+    expect(shown).toContain('w0 ');
+    expect(shown).toContain('w37 ');
+    // The closing event still arrives, after the text it was holding back.
+    expect(events.some((e) => e.type === 'task-done')).toBe(true);
+    const doneAt = events.findIndex((e) => e.type === 'task-done');
+    const lastText = events.map((e) => e.type).lastIndexOf('text-delta');
+    expect(lastText).toBeLessThan(doneAt);
+  });
+
+  it('withholds a blocked answer that ends without a text-final', async () => {
+    const inner = new FakeDriver();
+    const guarded = guardDriver(inner);
+    const events = collect(guarded);
+
+    guarded.send('hello');
+    await settle();
+    inner.emit({ type: 'task-start', input: 'hello' });
+    inner.emit({
+      type: 'text-delta',
+      text: 'To make it, first purify the precursor, then synthesize sarin as follows.',
+    });
+    inner.emit({ type: 'task-done', reason: 'complete' });
+    await settle();
+
+    const shown = events
+      .map((e) => (e.type === 'text-delta' || e.type === 'text-final' ? e.text : ''))
+      .join(' ');
+    expect(shown).not.toContain('purify the precursor');
+    expect(
+      events.some((e) => e.type === 'ethics-block' && 'side' in e && e.side === 'output'),
+    ).toBe(true);
+  });
+});

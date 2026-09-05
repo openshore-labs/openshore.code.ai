@@ -33,6 +33,16 @@ function normalizeNotePath(raw: string): string {
   return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
 }
 
+/** The normalized note path for permission matching; a bad name is undefined
+ *  (pathOf never throws), and execute reports the real error. */
+function notePathOrUndefined(raw: string): string | undefined {
+  try {
+    return normalizeNotePath(raw);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Normalize a folder argument: same cleaning, no .md suffix. */
 function normalizeFolder(raw: string): string {
   return raw
@@ -71,7 +81,9 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
   risk: 'write',
   // Never silent: always prompt with a diff, before any auto-allow path.
   alwaysAsk: true,
-  pathOf: (args) => args.path,
+  // The vault has its own root, so the workspace jail must not resolve this.
+  pathJail: 'own',
+  pathOf: (args) => notePathOrUndefined(args.path),
   async preview(args, ctx) {
     const jail = vaultJail(ctx);
     const rel = normalizeNotePath(args.path);
@@ -112,7 +124,8 @@ export const vaultReadTool: ToolDef<typeof readSchema> = {
     "Read a note from the user's vault by path. Returns its markdown, or a note that it does not exist yet (you may then propose creating it with vaultWrite).",
   schema: readSchema,
   risk: 'read',
-  pathOf: (args) => args.path,
+  pathJail: 'own',
+  pathOf: (args) => notePathOrUndefined(args.path),
   async execute(args, ctx) {
     const jail = vaultJail(ctx);
     const rel = normalizeNotePath(args.path);

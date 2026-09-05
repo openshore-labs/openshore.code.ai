@@ -8,7 +8,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { bridge, type EmbeddedState } from '../lib/electronBridge.js';
-import { hapticTick } from '../lib/haptics.js';
 import { openExternal } from '../lib/platform.js';
 
 export function embeddedSitesAvailable(): boolean {
@@ -84,7 +83,6 @@ export function EmbeddedSite({
           aria-label="Back"
           disabled={!state?.canGoBack}
           onClick={() => {
-            hapticTick();
             void api?.embeddedBack();
           }}
         >
@@ -95,7 +93,6 @@ export function EmbeddedSite({
           className="icon-btn press-fb"
           aria-label="Reload"
           onClick={() => {
-            hapticTick();
             void api?.embeddedReload();
           }}
         >
@@ -125,7 +122,6 @@ export function EmbeddedSite({
           type="button"
           className="btn quiet press-fb"
           onClick={async () => {
-            hapticTick();
             await api?.embeddedSignOut();
             showToast(`Signed out of ${label} here.`);
           }}

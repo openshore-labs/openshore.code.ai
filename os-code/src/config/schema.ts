@@ -135,6 +135,9 @@ export const PermissionRuleSchema = z.object({
   tool: z.string(),
   decision: z.enum(['allow', 'ask', 'deny']),
   pathGlob: z.string().optional(),
+  /** For shell rules: the command's first word, matched exactly on every
+   *  segment of the command (see commandMatchesPrefix in the engine). */
+  commandPrefix: z.string().optional(),
 });
 
 export const PermissionsSchema = z.object({

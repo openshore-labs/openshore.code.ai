@@ -87,9 +87,13 @@ export function extractTextCalls(text: string, registry: ToolRegistry): TextExtr
     const obj = parsed as Record<string, unknown>;
     const name = firstString(obj, ['tool', 'name', 'tool_name', 'function']);
     if (!name) continue;
-    const rawArgs = firstObject(obj, ['args', 'arguments', 'parameters', 'input']) ?? {};
+    const rawArgs = firstObject(obj, ARG_KEYS) ?? {};
     const tool = registry.get(name);
     if (!tool) {
+      // An unknown name is only a malformed call when the object is shaped
+      // like one. A final answer that quotes a package.json ({"name": ...})
+      // is prose, not a call for a tool named "my-app" (ENG-2).
+      if (!looksLikeCall(obj)) continue;
       problems.push(
         `There is no tool named "${name}". The available tools are: ${registry.names().join(', ')}.`,
       );
@@ -157,6 +161,17 @@ function* jsonCandidates(text: string): Generator<{ text: string; start: number;
     yield { text: text.slice(open, end), start: open, end };
     i = end;
   }
+}
+
+const ARG_KEYS = ['args', 'arguments', 'parameters', 'input'];
+
+/** True when the object carries a call-shaped key: our own `tool` spelling, an
+ *  arguments key, or a nested function object with one. */
+function looksLikeCall(obj: Record<string, unknown>): boolean {
+  if ('tool' in obj || 'tool_name' in obj) return true;
+  if (ARG_KEYS.some((k) => k in obj)) return true;
+  const fn = obj.function;
+  return typeof fn === 'object' && fn !== null && ARG_KEYS.some((k) => k in fn);
 }
 
 function firstString(obj: Record<string, unknown>, keys: string[]): string | undefined {

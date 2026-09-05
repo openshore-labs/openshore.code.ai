@@ -5,11 +5,30 @@
 // empty object (P2-7). These start a real loopback daemon and drive it over
 // HTTP, the way a paired phone would.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startDaemon, type RunningDaemon } from '../src/daemon/serve.js';
-import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js';
+import {
+  isAdminProvisionedWorkspace,
+  isOutboxAllowedPath,
+  startDaemon,
+  type DaemonOptions,
+  type RunningDaemon,
+} from '../src/daemon/serve.js';
+import {
+  TerminalManager,
+  TerminalUnavailable,
+  type PtyFactory,
+  type TerminalPty,
+} from '../src/daemon/terminal.js';
 
 // The test daemon runs with node-pty simulated ABSENT, whether or not the
 // native module is built on this machine, so the 503 path is reproducible
@@ -29,7 +48,7 @@ let daemon: RunningDaemon;
 let base: string;
 let adminToken: string;
 
-async function startOnFreePort(): Promise<RunningDaemon> {
+async function startOnFreePort(extra: Partial<DaemonOptions> = {}): Promise<RunningDaemon> {
   for (let attempt = 0; attempt < 30; attempt++) {
     const port = 40000 + Math.floor(Math.random() * 20000);
     try {
@@ -38,6 +57,7 @@ async function startOnFreePort(): Promise<RunningDaemon> {
         bind: 'loopback',
         port,
         terminals: noPtyTerminals(),
+        ...extra,
       });
     } catch (err) {
       if (String(err).includes('EADDRINUSE')) continue;
@@ -162,6 +182,85 @@ describe('daemon RBAC (D1)', () => {
   // Outbox path-allowlist gating is covered by the "daemon outbox path
   // allowlist (SEC-2)" suite below (main's config-driven isOutboxAllowedPath,
   // which applies to every caller, superseded an earlier role-based gate).
+});
+
+// The workspace predicates resolve BOTH sides through realpath, so a symlink
+// planted inside ~/OSCode that points outside it cannot pass as provisioned
+// (the P0-1 escape). HOME is pointed at the scratch dir so ~/OSCode is ours.
+describe('workspace predicates follow symlinks (P0-1 prep)', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+
+  it('a symlink under ~/OSCode that points outside is neither provisioned nor an outbox target', () => {
+    process.env.HOME = home;
+    const managed = join(home, 'OSCode');
+    const outside = join(home, 'elsewhere');
+    mkdirSync(managed, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    mkdirSync(join(managed, 'real'), { recursive: true });
+    symlinkSync(outside, join(managed, 'escape'));
+
+    expect(isAdminProvisionedWorkspace(join(managed, 'real'))).toBe(true);
+    expect(isAdminProvisionedWorkspace(join(managed, 'escape'))).toBe(false);
+    expect(isOutboxAllowedPath(join(managed, 'escape'), defaultConfig())).toBe(false);
+    expect(isOutboxAllowedPath(join(managed, 'real'), defaultConfig())).toBe(true);
+    // A configured outbox root is held to the same rule.
+    const cfg = defaultConfig();
+    cfg.daemon.outboxAllowedRoots = [join(home, 'allowed')];
+    mkdirSync(join(home, 'allowed'), { recursive: true });
+    symlinkSync(outside, join(home, 'allowed', 'escape'));
+    expect(isOutboxAllowedPath(join(home, 'allowed', 'escape'), cfg)).toBe(false);
+  });
+});
+
+describe('listings are owner-scoped for members (DAE-1)', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+
+  it("a member lists exactly its own sessions and never another user's cwd or title", async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    const adminCwd = join(home, 'admin-private');
+    mkdirSync(adminCwd, { recursive: true });
+
+    // The admin opens a session in a private path; two members open theirs.
+    const adminRes = await createSessionAs(adminToken, adminCwd);
+    expect(adminRes.status).toBe(201);
+    const { id: adminId } = (await adminRes.json()) as { id: string };
+    const a = mintCredential({ role: 'member', label: 'A', userId: 'u_a' });
+    const b = mintCredential({ role: 'member', label: 'B', userId: 'u_b' });
+    const aRes = await createSessionAs(a.token, provisioned);
+    expect(aRes.status).toBe(201);
+    const { id: aId } = (await aRes.json()) as { id: string };
+    const bRes = await createSessionAs(b.token, provisioned);
+    expect(bRes.status).toBe(201);
+    const { id: bId } = (await bRes.json()) as { id: string };
+
+    const listed = (await (await fetch(`${base}/sessions`, { headers: auth(a.token) })).json()) as {
+      live: Array<{ id: string }>;
+      stored: Array<{ id: string }>;
+    };
+    expect(listed.live.map((s) => s.id)).toEqual([aId]);
+    expect(listed.stored.map((s) => s.id)).toEqual([aId]);
+
+    // Workspaces: the member sees the provisioned repo, never the admin's path.
+    const ws = (await (await fetch(`${base}/workspaces`, { headers: auth(a.token) })).json()) as {
+      workspaces: Array<{ cwd: string }>;
+    };
+    expect(ws.workspaces.some((w) => w.cwd === adminCwd)).toBe(false);
+    expect(ws.workspaces.some((w) => w.cwd === provisioned)).toBe(true);
+
+    // The admin still sees everything.
+    const all = (await (await fetch(`${base}/sessions`, { headers: auth(adminToken) })).json()) as {
+      live: Array<{ id: string }>;
+    };
+    expect(all.live.map((s) => s.id).sort()).toEqual([adminId, aId, bId].sort());
+  });
 });
 
 describe('free desktop chat (/chat, read-only)', () => {
@@ -419,7 +518,11 @@ describe('daemon request hygiene (P2-7)', () => {
 
 describe('Stack Health visibility (admin-gated on a shared hub)', () => {
   it('defaults to admins: a member is refused with a distinct reason, an admin is served', async () => {
-    const { token: memberToken } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_shm' });
+    const { token: memberToken } = mintCredential({
+      role: 'member',
+      label: 'Phone',
+      userId: 'u_shm',
+    });
     const mres = await fetch(`${base}/stack-health?range=week`, { headers: auth(memberToken) });
     expect(mres.status).toBe(403);
     expect(((await mres.json()) as { error?: string }).error).toBe('restricted');
@@ -437,7 +540,11 @@ describe('Stack Health visibility (admin-gated on a shared hub)', () => {
   });
 
   it('an admin opens it to everyone and the change takes effect with no restart', async () => {
-    const { token: memberToken } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_shm2' });
+    const { token: memberToken } = mintCredential({
+      role: 'member',
+      label: 'Phone',
+      userId: 'u_shm2',
+    });
     expect((await fetch(`${base}/stack-health`, { headers: auth(memberToken) })).status).toBe(403);
     // A member cannot change the setting.
     const denied = await fetch(`${base}/stack-health/visibility`, {
@@ -454,5 +561,465 @@ describe('Stack Health visibility (admin-gated on a shared hub)', () => {
     });
     expect(set.status).toBe(200);
     expect((await fetch(`${base}/stack-health`, { headers: auth(memberToken) })).status).toBe(200);
+  });
+});
+
+// ---- terminal exit, session scoping, body caps, close, eviction, delete ----
+
+/** A pty stand-in the daemon drives over HTTP; the test holds it to trigger
+ *  output and exit as the real shell would. */
+class RoutePty implements TerminalPty {
+  writes: string[] = [];
+  private dataCb?: (data: string) => void;
+  private exitCb?: (info: { exitCode: number }) => void;
+  write(data: string): void {
+    this.writes.push(data);
+  }
+  resize(): void {}
+  kill(): void {
+    this.exitCb?.({ exitCode: 0 });
+  }
+  onData(cb: (data: string) => void): void {
+    this.dataCb = cb;
+  }
+  onExit(cb: (info: { exitCode: number }) => void): void {
+    this.exitCb = cb;
+  }
+  emit(text: string): void {
+    this.dataCb?.(text);
+  }
+  exit(code: number): void {
+    this.exitCb?.({ exitCode: code });
+  }
+}
+
+/** Collect SSE data frames until `until` matches one or the stream ends. */
+async function readSse(
+  res: Response,
+  until: (frame: Record<string, unknown>) => boolean,
+  timeoutMs = 5000,
+): Promise<{ frames: Array<Record<string, unknown>>; ended: boolean }> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  const frames: Array<Record<string, unknown>> = [];
+  let buffer = '';
+  let ended = false;
+  const deadline = Date.now() + timeoutMs;
+  outer: while (Date.now() < deadline) {
+    const { value, done } = await reader.read();
+    if (done) {
+      ended = true;
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
+      if (!dataLine) continue;
+      try {
+        const parsed = JSON.parse(dataLine.slice(5).trim()) as Record<string, unknown>;
+        frames.push(parsed);
+        if (until(parsed)) {
+          // Give the server a beat to end the response, then report.
+          const tail = await Promise.race([
+            reader.read().then((r) => r.done),
+            new Promise<boolean>((r) => setTimeout(() => r(false), 1500)),
+          ]);
+          ended = tail;
+          break outer;
+        }
+      } catch {}
+    }
+  }
+  await reader.cancel().catch(() => {});
+  return { frames, ended };
+}
+
+describe('terminal exit and session scoping (DAE-5, DAE-14)', () => {
+  let ptyDaemon: RunningDaemon;
+  let ptyBase: string;
+  let pty: RoutePty;
+
+  beforeEach(async () => {
+    pty = new RoutePty();
+    const spawn: PtyFactory = async () => pty;
+    ptyDaemon = await startOnFreePort({
+      terminals: new TerminalManager({ spawn, exitGraceMs: 60_000 }),
+    });
+    ptyBase = `http://127.0.0.1:${ptyDaemon.port}`;
+  });
+  afterEach(() => ptyDaemon.close());
+
+  async function openTerm(): Promise<{ id: string; termId: string }> {
+    const created = await fetch(`${ptyBase}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const term = await fetch(`${ptyBase}/sessions/${id}/term`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cols: 80, rows: 24 }),
+    });
+    expect(term.status).toBe(201);
+    const { termId } = (await term.json()) as { termId: string };
+    return { id, termId };
+  }
+
+  it('a shell that exits sends a final {exit, offset} frame, ends the stream, and stdin answers 409', async () => {
+    const { id, termId } = await openTerm();
+    const res = await fetch(`${ptyBase}/sessions/${id}/term/${termId}/stream?since=0`, {
+      headers: auth(adminToken),
+    });
+    expect(res.status).toBe(200);
+    pty.emit('bye\n');
+    pty.exit(3);
+    const { frames, ended } = await readSse(res, (f) => typeof f.exit === 'number');
+    const exit = frames.find((f) => typeof f.exit === 'number');
+    expect(exit).toEqual({ exit: 3, offset: 4 });
+    expect(ended).toBe(true);
+
+    const stdin = await fetch(`${ptyBase}/sessions/${id}/term/${termId}/stdin`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ dataBase64: Buffer.from('ls\n').toString('base64') }),
+    });
+    expect(stdin.status).toBe(409);
+    expect(((await stdin.json()) as { error: string }).error).toMatch(/exited/i);
+
+    // A stream opened on the dead shell still replays and ends with the frame.
+    const late = await fetch(`${ptyBase}/sessions/${id}/term/${termId}/stream?since=0`, {
+      headers: auth(adminToken),
+    });
+    const lateRead = await readSse(late, (f) => typeof f.exit === 'number');
+    expect(lateRead.frames.at(-1)).toEqual({ exit: 3, offset: 4 });
+  });
+
+  it("a terminal is reachable only through its own session's routes", async () => {
+    const { termId } = await openTerm();
+    const other = await fetch(`${ptyBase}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id: otherId } = (await other.json()) as { id: string };
+    const stdin = await fetch(`${ptyBase}/sessions/${otherId}/term/${termId}/stdin`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ dataBase64: Buffer.from('x').toString('base64') }),
+    });
+    expect(stdin.status).toBe(404);
+    expect(pty.writes).toEqual([]);
+    const stream = await fetch(`${ptyBase}/sessions/${otherId}/term/${termId}/stream?since=0`, {
+      headers: auth(adminToken),
+    });
+    expect(stream.status).toBe(404);
+    const killed = await fetch(`${ptyBase}/sessions/${otherId}/term/${termId}`, {
+      method: 'DELETE',
+      headers: auth(adminToken),
+    });
+    expect(killed.status).toBe(404);
+  });
+});
+
+describe('request bodies are capped (DAE-8)', () => {
+  it('a 20 MB body is a 413 and the daemon stays up', async () => {
+    const big = JSON.stringify({ cwd: home, instructions: 'x'.repeat(20 * 1024 * 1024) });
+    const res = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: big,
+    });
+    expect(res.status).toBe(413);
+    const health = await fetch(`${base}/health`, { headers: auth(adminToken) });
+    expect(health.status).toBe(200);
+  });
+});
+
+describe('close drops live streams (DAE-11)', () => {
+  it('an open SSE stream ends when the daemon closes', async () => {
+    const own = await startOnFreePort();
+    const ownBase = `http://127.0.0.1:${own.port}`;
+    const created = await fetch(`${ownBase}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const res = await fetch(`${ownBase}/sessions/${id}/events?since=0`, {
+      headers: auth(adminToken),
+    });
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    own.close();
+    // The read settles (done or an error) instead of hanging on a half-open socket.
+    const settled = await Promise.race([
+      reader.read().then(
+        () => 'settled',
+        () => 'settled',
+      ),
+      new Promise<string>((r) => setTimeout(() => r('hung'), 3000)),
+    ]);
+    expect(settled).toBe('settled');
+  });
+});
+
+describe('session lifecycle: eviction and delete (DAE-12)', () => {
+  it('an idle driver with no listeners is evicted and rehydrates on the next touch', async () => {
+    const own = await startOnFreePort({ idleEviction: { afterMs: 50, everyMs: 20 } });
+    const ownBase = `http://127.0.0.1:${own.port}`;
+    try {
+      const created = await fetch(`${ownBase}/sessions`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify({ cwd: home }),
+      });
+      const { id } = (await created.json()) as { id: string };
+      const live = async (): Promise<number> =>
+        (
+          (await (await fetch(`${ownBase}/health`, { headers: auth(adminToken) })).json()) as {
+            sessions: number;
+          }
+        ).sessions;
+      expect(await live()).toBe(1);
+      const deadline = Date.now() + 3000;
+      while ((await live()) !== 0 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(await live()).toBe(0);
+      // Still listed, and reachable: touching it rehydrates from the journal.
+      const stored = (await (
+        await fetch(`${ownBase}/sessions`, { headers: auth(adminToken) })
+      ).json()) as { stored: Array<{ id: string }> };
+      expect(stored.stored.map((s) => s.id)).toContain(id);
+      const files = await fetch(`${ownBase}/sessions/${id}/files?q=`, {
+        headers: auth(adminToken),
+      });
+      expect(files.status).toBe(200);
+      expect(await live()).toBe(1);
+    } finally {
+      own.close();
+    }
+  });
+
+  it('DELETE /sessions/:id removes the stored session for its owner, 403 for another member', async () => {
+    const realHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const provisioned = join(home, 'OSCode', 'repo');
+      mkdirSync(provisioned, { recursive: true });
+      const a = mintCredential({ role: 'member', label: 'A', userId: 'u_del_a' });
+      const b = mintCredential({ role: 'member', label: 'B', userId: 'u_del_b' });
+      const created = await createSessionAs(a.token, provisioned);
+      const { id } = (await created.json()) as { id: string };
+
+      const denied = await fetch(`${base}/sessions/${id}`, {
+        method: 'DELETE',
+        headers: auth(b.token),
+      });
+      expect(denied.status).toBe(403);
+
+      const ok = await fetch(`${base}/sessions/${id}`, {
+        method: 'DELETE',
+        headers: auth(a.token),
+      });
+      expect(ok.status).toBe(200);
+      expect(existsSync(join(home, 'sessions', id))).toBe(false);
+      const gone = await fetch(`${base}/sessions/${id}`, {
+        method: 'DELETE',
+        headers: auth(adminToken),
+      });
+      expect(gone.status).toBe(404);
+      const listed = (await (
+        await fetch(`${base}/sessions`, { headers: auth(a.token) })
+      ).json()) as {
+        live: unknown[];
+        stored: unknown[];
+      };
+      expect(listed.live).toEqual([]);
+      expect(listed.stored).toEqual([]);
+    } finally {
+      process.env.HOME = realHome;
+    }
+  });
+
+  it('DELETE /sessions/:id refuses a path-shaped id', async () => {
+    const res = await fetch(`${base}/sessions/..`, { method: 'DELETE', headers: auth(adminToken) });
+    expect(res.status).toBe(404);
+    expect(existsSync(join(home, 'daemon.token'))).toBe(true);
+  });
+});
+
+describe('clone target names (DAE-16)', () => {
+  it('rejects a url whose basename is . or ..', async () => {
+    for (const url of [
+      'https://github.com/owner/..',
+      'https://github.com/owner/.',
+      'https://github.com/owner/.git',
+    ]) {
+      const res = await fetch(`${base}/workspaces/clone`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify({ url }),
+      });
+      expect(res.status, url).toBe(400);
+    }
+  });
+});
+
+describe('the user command lane is admin-only (P0-1)', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+
+  it('a member gets a distinct 403 restricted on commands, stdin, and kill', async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_cmd' });
+    const created = await createSessionAs(token, provisioned);
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+
+    const run = await fetch(`${base}/sessions/${id}/commands`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ command: 'id' }),
+    });
+    expect(run.status).toBe(403);
+    const body = (await run.json()) as { error: string; message?: string };
+    expect(body.error).toBe('restricted');
+    expect(body.message).toMatch(/admin/i);
+
+    for (const tail of ['stdin', 'kill']) {
+      const res = await fetch(`${base}/sessions/${id}/commands/r1/${tail}`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ data: 'x' }),
+      });
+      expect(res.status, tail).toBe(403);
+      expect(((await res.json()) as { error: string }).error).toBe('restricted');
+    }
+    // The health probe still tells the phone its role, so it can hide the lane.
+    const health = (await (await fetch(`${base}/health`, { headers: auth(token) })).json()) as {
+      role: string;
+    };
+    expect(health.role).toBe('member');
+  });
+});
+
+describe('CORS posture (DAE-15)', () => {
+  it('keeps * for authorized answers, never sends allow-credentials, and stays opaque on 401', async () => {
+    const preflight = await fetch(`${base}/sessions`, { method: 'OPTIONS' });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
+    expect(preflight.headers.get('access-control-allow-credentials')).toBeNull();
+
+    const ok = await fetch(`${base}/health`, { headers: auth(adminToken) });
+    expect(ok.headers.get('access-control-allow-origin')).toBe('*');
+    expect(ok.headers.get('access-control-allow-credentials')).toBeNull();
+
+    const unauthorized = await fetch(`${base}/health`, {
+      headers: { authorization: 'Bearer osc_wrong' },
+    });
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get('access-control-allow-origin')).toBeNull();
+    expect(unauthorized.headers.get('access-control-allow-credentials')).toBeNull();
+  });
+});
+
+describe('daemon settings come from the global config only (DAE-9)', () => {
+  it('a project os-code.config.json in the daemon cwd cannot widen the outbox roots', async () => {
+    const cwdBefore = process.cwd();
+    const repo = join(home, 'project-repo');
+    mkdirSync(repo, { recursive: true });
+    const daemonCwd = join(home, 'daemon-cwd');
+    mkdirSync(daemonCwd, { recursive: true });
+    writeFileSync(
+      join(daemonCwd, 'os-code.config.json'),
+      JSON.stringify({ daemon: { outboxAllowedRoots: [repo] } }),
+    );
+    process.chdir(daemonCwd);
+    try {
+      const res = await fetch(`${base}/outbox/apply`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify({
+          cwd: repo,
+          clientOpId: 'op-9',
+          itemId: 'itm-9',
+          deviceId: 'dev-9',
+          branch: 'main',
+          baseCommit: 'abc123',
+          files: [],
+        }),
+      });
+      expect(res.status).toBe(403);
+      // The same root in the GLOBAL config is honored (fresh read, no restart).
+      writeFileSync(
+        join(home, 'config.json'),
+        JSON.stringify({
+          stack: { orchestrator: { provider: 'ollama', model: 'qwen' } },
+          daemon: { outboxAllowedRoots: [repo] },
+        }),
+      );
+      const allowed = await fetch(`${base}/outbox/apply`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify({
+          cwd: repo,
+          clientOpId: 'op-9',
+          itemId: 'itm-9',
+          deviceId: 'dev-9',
+          branch: 'main',
+          baseCommit: 'abc123',
+          files: [],
+        }),
+      });
+      // Past the allowlist gate now: the repo is not a git repo, so apply says so.
+      expect(allowed.status).not.toBe(403);
+    } finally {
+      process.chdir(cwdBefore);
+    }
+  });
+});
+
+describe('permission mode on a remote-attached session (ENG-1, daemon half)', () => {
+  it('bypassPermissions is downgraded to acceptEdits with an announced note', async () => {
+    const res = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home, permissionMode: 'bypassPermissions' }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { mode: string; warnings: string[] };
+    expect(body.mode).toBe('acceptEdits');
+    expect(body.warnings.join('\n')).toMatch(/bypass permissions is not available/i);
+    const plain = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home, permissionMode: 'plan' }),
+    });
+    expect(((await plain.json()) as { mode: string }).mode).toBe('plan');
+    // The mode-change route answers with the effective mode and the note too.
+    const created = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const changed = await fetch(`${base}/sessions/${id}/mode`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ mode: 'bypassPermissions' }),
+    });
+    expect(changed.status).toBe(200);
+    const change = (await changed.json()) as { mode: string; note?: string };
+    expect(change.mode).toBe('acceptEdits');
+    expect(change.note).toMatch(/bypass permissions is not available/i);
   });
 });

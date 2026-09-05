@@ -173,6 +173,119 @@ describe('polish standards', () => {
     expect(hook).toMatch(/onLostPointerCapture:\s*drawerUp/);
   });
 
+  // UI-8: inline motion in TSX (`style={{ transition: ... }}`, `animation:`)
+  // drifted unchecked because the guards above read only theme.css. Every
+  // string literal on a `transition:` / `animation:` line in a .tsx file is
+  // held to the same bar: tokens only, no `ease` keyword, no raw
+  // cubic-bezier, no ad-hoc milliseconds, and no layout property.
+  const MOTION_EXEMPT: Record<string, string> = {
+    // The boot splash paints before the bundle (and the tokens) can load, so
+    // its curves are literal by necessity; it honors reduced motion inline.
+    'index.html': 'boot splash, pre-bundle; documented and reduced-motion handled',
+  };
+
+  function inlineMotion(): Array<{ where: string; value: string; prop: string }> {
+    const out: Array<{ where: string; value: string; prop: string }> = [];
+    const files = sourceFiles().filter((f) => f.endsWith('.tsx'));
+    files.push(join(process.cwd(), 'index.html'));
+    for (const file of files) {
+      const rel = file.endsWith('index.html') ? 'index.html' : relative(SRC, file);
+      if (MOTION_EXEMPT[rel]) continue;
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(line)) return;
+          const m = line.match(/\b(transition|animation)\s*:\s*(.*)$/);
+          if (!m) return;
+          const literals = [...m[2]!.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g)].map(
+            (x) => x[1] ?? x[2] ?? x[3] ?? '',
+          );
+          for (const value of literals) out.push({ where: `${rel}:${i + 1}`, value, prop: m[1]! });
+        });
+    }
+    return out;
+  }
+
+  it('holds inline TSX motion to the tokens: no raw curve, keyword, or ad-hoc ms', () => {
+    const offenders: string[] = [];
+    for (const { where, value } of inlineMotion()) {
+      if (/(?<![-\w])(ease(?:-in|-out|-in-out)?|cubic-bezier\()/.test(value))
+        offenders.push(`${where}  ${value}`);
+      if (/\binfinite\b/.test(value)) continue;
+      for (const m of value.matchAll(/(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g)) {
+        const ms = m[2] === 's' ? Number(m[1]) * 1000 : Number(m[1]);
+        if (ms > 0 && ms < 1000) offenders.push(`${where}  ${value}`);
+      }
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('never transitions a layout property inline either', () => {
+    const offenders: string[] = [];
+    for (const { where, value, prop } of inlineMotion()) {
+      if (prop !== 'transition') continue;
+      const hit = value.match(
+        /(?<![-\w])(width|height|top|left|right|bottom|inset|margin(?:-\w+)?|padding(?:-\w+)?|max-height|min-height)(?![-\w])/,
+      );
+      if (hit) offenders.push(`${where}  ${hit[1]} in: ${value}`);
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('defers a sheet pick through the exit: no direct onPick( beside useSheetExit (UI-4)', () => {
+    // A sheet that hands its choice straight up is unmounted by the parent
+    // in the same tick, so it snap-closes. The only allowed call is the one
+    // held for the exit: `pending.current = () => onPick(...)` next to a
+    // dismiss(). ApprovalSheet and ModelSheet are the pattern.
+    const offenders: string[] = [];
+    for (const file of sourceFiles()) {
+      if (!file.endsWith('.tsx')) continue;
+      const text = readFileSync(file, 'utf8');
+      if (!text.includes('useSheetExit')) continue;
+      if (!/\bdismiss\b/.test(text)) offenders.push(`${relative(SRC, file)}: no dismiss`);
+      text.split('\n').forEach((line, i) => {
+        if (!/\bonPick\(/.test(line)) return;
+        if (/\.current\s*=\s*\(\)\s*=>\s*onPick\(/.test(line)) return;
+        offenders.push(`${relative(SRC, file)}:${i + 1}  ${line.trim().slice(0, 80)}`);
+      });
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('ticks a tap once: no hapticTick() inside a button onClick (UI-7)', () => {
+    // App.tsx ticks every button, [role="button"], and link on the capture
+    // phase, so a component that ticks in its own onClick makes the finger
+    // feel two. Components mark only what a click cannot: a gesture's lift,
+    // arm, and drop, a keyboard commit, and the streaming pulse.
+    const GESTURE_FILES: Record<string, string> = {
+      'components/Sheet.tsx': 'grabber drag: lift and drop',
+      'components/SwipeRow.tsx': 'swipe: arm and commit',
+      'components/ProfileStatus.tsx': 'grabber drag: lift and drop',
+      'hooks/useDrawerGesture.ts': 'edge drag: arm, drop, and settle',
+    };
+    const app = readFileSync(join(SRC, 'App.tsx'), 'utf8');
+    expect(app).toMatch(/closest\('button:not\(:disabled\), \[role="button"\], a\[href\]'\)/);
+    const offenders: string[] = [];
+    for (const file of sourceFiles()) {
+      if (!/\.tsx?$/.test(file)) continue;
+      const rel = relative(SRC, file);
+      if (GESTURE_FILES[rel]) continue;
+      const text = readFileSync(file, 'utf8');
+      const bad = [
+        /onClick=\{(?:async\s*)?\(\)\s*=>\s*\{\s*hapticTick\(\)/g,
+        /onClick=\{(?:async\s*)?\(\)\s*=>\s*hapticTick\(\)/g,
+        /onClick=\{hapticTick\b/g,
+      ];
+      for (const re of bad) {
+        for (const m of text.matchAll(re)) {
+          const line = text.slice(0, m.index).split('\n').length;
+          offenders.push(`${rel}:${line}`);
+        }
+      }
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
   it('routes haptics through @capacitor/haptics, never navigator.vibrate', () => {
     const src = readFileSync(join(SRC, 'lib', 'haptics.ts'), 'utf8');
     expect(src.includes('@capacitor/haptics')).toBe(true);

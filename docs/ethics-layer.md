@@ -169,11 +169,20 @@ where. A fabricated "reported to NCMEC" would be worse than no hook at all.
 
 ### IP addresses
 
-Addresses are recorded on a violation only. There is no address column on
-anything except a violation record and the ban proposals derived from one, and
-nothing records an address for an ordinary request. This uses the address data
-already collected to operate sync and accounts; it is abuse prevention tied to
-existing collection, not new tracking.
+Nothing records an address for ordinary use: not on sync, not on sign-in, not on
+a request that passes. Migration `0016` is the first IP collection in the
+product, and it is deliberately narrow.
+
+Be precise about what "narrow" means here, because an earlier draft of this
+document was not. `guardrail_events.ip_address` and
+`likeness_consents.ip_address` both default to `request_ip()`, so an address is
+recorded on a **block**, on an **allowed-with-assertion** row, and on a
+**consent assertion**. The first is a violation; the other two are not. Tying
+capture strictly to blocks is an open follow-up in `PROGRESS.md`, and until it
+lands, this paragraph is the accurate description, not the aspiration.
+
+There is no address column on anything except those two tables and the ban
+proposals derived from a termination.
 
 **Nothing auto-bans.** A termination queues a `pending` proposal, and that is
 the only status any code path can create. `enforcement.ts` has no apply

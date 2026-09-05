@@ -17,16 +17,17 @@ your own key.
 
 ## Zero to working in a few minutes
 
-1. Install dependencies and build:
+1. Install dependencies from the repository root (this package is a workspace
+   member; the only lockfile is the root one) and build the engine:
 
    ```
-   cd os-code && pnpm install && pnpm build
+   pnpm install && pnpm --filter os-code build
    ```
 
-2. Put `osc` on your PATH (or use `node dist/bin/osc.js` directly):
+2. Put `osc` on your PATH (or use `node os-code/dist/bin/osc.js` directly):
 
    ```
-   pnpm link --global
+   cd os-code && pnpm link --global
    ```
 
 3. Set up your stack. This detects your GPU and VRAM, guides an Ollama install

@@ -25,7 +25,7 @@
 -- automatic ban is collateral damage against people who did nothing. The review
 -- notes travel with the proposal so the reviewer sees that before the button.
 --
--- Deploy ordering: additive, applies after 0014.
+-- Deploy ordering: additive, applies after 0015 (the 2026-09-05 review migration).
 
 -- ---------------------------------------------------------------------------
 -- The caller's IP, safely.

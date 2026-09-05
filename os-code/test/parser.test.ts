@@ -106,6 +106,22 @@ describe('JSON-in-text extraction', () => {
     expect(calls.map((c) => (c.args as { path: string }).path)).toEqual(['a.ts', 'b.ts']);
   });
 
+  it('leaves a JSON object in a final answer alone unless it is shaped like a call (ENG-2)', () => {
+    const text =
+      'Done. Here is the package.json I created:\n```json\n{"name": "my-app", "version": "1.0.0", "scripts": {"build": "tsc"}}\n```\nRun npm install next.';
+    const { calls, problems, remainder } = extractTextCalls(text, registry());
+    expect(calls).toHaveLength(0);
+    expect(problems).toHaveLength(0);
+    expect(remainder).toContain('"name": "my-app"');
+    expect(remainder).toContain('Run npm install next.');
+    // A real call in the name/arguments spelling still parses.
+    const real = extractTextCalls('{"name":"readFile","arguments":{"path":"x"}}', registry());
+    expect(real.calls[0]?.name).toBe('readFile');
+    // And an unknown tool with call-shaped arguments is still a problem.
+    const bad = extractTextCalls('{"name":"compile","arguments":{"target":"x"}}', registry());
+    expect(bad.problems[0]).toContain('compile');
+  });
+
   it('treats plain prose as no calls and no problems', () => {
     const { calls, problems, remainder } = extractTextCalls(
       'Done. The bug was a typo in main().',

@@ -39,6 +39,10 @@ class FakePty implements TerminalPty {
   emit(text: string): void {
     this.dataCb?.(text);
   }
+  // Test helper: the shell exits on its own (not killed).
+  exitNow(code: number): void {
+    this.exitCb?.({ exitCode: code });
+  }
 }
 
 function managerWith(pty: FakePty, ringBytes?: number): TerminalManager {
@@ -177,5 +181,53 @@ describe('TerminalManager with an injected fake pty', () => {
     });
     expect(again.termId).toBe(first.termId);
     expect(pty.resizes.at(-1)).toEqual({ cols: 120, rows: 40 });
+  });
+});
+
+describe('exit and session scoping (DAE-5, DAE-14)', () => {
+  it('exit notifies subscribers with the code and end offset, then refuses input', async () => {
+    const pty = new FakePty();
+    const mgr = new TerminalManager({ spawn: async () => pty, exitGraceMs: 0 });
+    const { termId } = await mgr.ensure({ sessionId: 's1', cwd: '/tmp' });
+    const exits: Array<{ code: number; offset: number }> = [];
+    mgr.subscribe(
+      termId,
+      0,
+      () => {},
+      (code, offset) => exits.push({ code, offset }),
+    );
+    pty.emit('done\n');
+    pty.exitNow(2);
+    expect(exits).toEqual([{ code: 2, offset: 5 }]);
+    expect(mgr.isExited(termId)).toBe(true);
+    expect(mgr.write(termId, 'x')).toBe(false);
+    // A late subscriber on the dead shell gets the replay and the exit at once.
+    const late: string[] = [];
+    const lateExits: number[] = [];
+    mgr.subscribe(
+      termId,
+      0,
+      (d) => late.push(d.toString()),
+      (code) => lateExits.push(code),
+    );
+    expect(late.join('')).toBe('done\n');
+    expect(lateExits).toEqual([2]);
+    // After the grace the entry is dropped.
+    await new Promise((r) => setTimeout(r, 5));
+    expect(mgr.has(termId)).toBe(false);
+  });
+
+  it('a terminal answers only to its own session', async () => {
+    const pty = new FakePty();
+    const mgr = managerWith(pty);
+    const { termId } = await mgr.ensure({ sessionId: 's1', cwd: '/tmp' });
+    expect(mgr.has(termId, 's1')).toBe(true);
+    expect(mgr.has(termId, 'other')).toBe(false);
+    expect(mgr.write(termId, 'x', 'other')).toBe(false);
+    expect(mgr.resize(termId, 10, 10, 'other')).toBe(false);
+    expect(mgr.subscribe(termId, 0, () => {}, undefined, 'other')).toBeUndefined();
+    expect(mgr.kill(termId, 'other')).toBe(false);
+    expect(pty.writes).toEqual([]);
+    expect(mgr.kill(termId, 's1')).toBe(true);
   });
 });

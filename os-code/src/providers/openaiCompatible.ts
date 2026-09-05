@@ -21,6 +21,7 @@ import {
 } from './capabilities.js';
 import type { CapabilityCategory } from '../router/roles.js';
 import { logger } from '../util/log.js';
+import { idleError, idleGuard, type IdleGuard } from './streamIdle.js';
 
 const log = logger('openai-compatible');
 
@@ -206,13 +207,10 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     if (request.stop?.length) options.stop = request.stop;
     if (Object.keys(options).length) body.options = options;
 
-    const res = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(body),
-      signal: signal ?? null,
-    });
+    const guard = idleGuard(signal);
+    const res = await this.fetchGuarded(`${this.baseUrl}/api/chat`, body, guard);
     if (!res.ok) {
+      guard.stop();
       const text = await res.text();
       if (/does not support tools/i.test(text)) {
         this.noteToolReject(request.model);
@@ -226,7 +224,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
 
     let sawToolCall = false;
     let callSeq = 0;
-    for await (const line of ndjsonLines(res, signal)) {
+    for await (const line of this.ndjsonLines(res, signal, guard)) {
       let chunk: any;
       try {
         chunk = JSON.parse(line);
@@ -294,13 +292,10 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       };
     }
 
-    const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(body),
-      signal: signal ?? null,
-    });
+    const guard = idleGuard(signal);
+    const res = await this.fetchGuarded(`${this.baseUrl}/v1/chat/completions`, body, guard);
     if (!res.ok) {
+      guard.stop();
       const text = await res.text();
       if (/tool|function/i.test(text) && res.status === 400 && request.tools?.length) {
         this.noteToolReject(request.model);
@@ -320,7 +315,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     let sawToolCall = false;
     let finish: string | undefined;
 
-    for await (const data of sseData(res, signal)) {
+    for await (const data of this.sseData(res, signal, guard)) {
       if (data === '[DONE]') break;
       let chunk: any;
       try {
@@ -376,6 +371,93 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
           ? 'tool-calls'
           : 'end';
     yield { type: 'done', stopReason };
+  }
+
+  // -------------------------------------------------------------------------
+  // Stream plumbing: one fetch and two line readers, all under the idle guard
+  // (DAE-3). A stall surfaces as a ProviderError naming this endpoint; the
+  // caller's own abort still reads as an abort (chat() checks its signal).
+  // -------------------------------------------------------------------------
+
+  private async fetchGuarded(url: string, body: unknown, guard: IdleGuard): Promise<Response> {
+    try {
+      return await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(body),
+        signal: guard.signal,
+      });
+    } catch (err) {
+      guard.stop();
+      if (guard.idled) throw idleError(this.id, this.stallLabel(), guard.idleMs);
+      throw err;
+    }
+  }
+
+  private stallLabel(): string {
+    return `${this.label} (${this.baseUrl})`;
+  }
+
+  private async *ndjsonLines(
+    res: Response,
+    signal: AbortSignal | undefined,
+    guard: IdleGuard,
+  ): AsyncGenerator<string> {
+    yield* this.splitStream(res, '\n', signal, guard);
+  }
+
+  private async *sseData(
+    res: Response,
+    signal: AbortSignal | undefined,
+    guard: IdleGuard,
+  ): AsyncGenerator<string> {
+    for await (const line of this.splitStream(res, '\n', signal, guard)) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('data:')) yield trimmed.slice(5).trim();
+    }
+  }
+
+  private async *splitStream(
+    res: Response,
+    sep: string,
+    signal: AbortSignal | undefined,
+    guard: IdleGuard,
+  ): AsyncGenerator<string> {
+    if (!res.body) {
+      guard.stop();
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for (;;) {
+        if (signal?.aborted) break;
+        let step: Awaited<ReturnType<typeof reader.read>>;
+        try {
+          step = await reader.read();
+        } catch (err) {
+          if (guard.idled) throw idleError(this.id, this.stallLabel(), guard.idleMs);
+          throw err;
+        }
+        guard.touch();
+        const { done, value } = step;
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf(sep)) !== -1) {
+          const line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + sep.length);
+          if (line.trim()) yield line;
+        }
+      }
+      if (buffer.trim()) yield buffer;
+    } finally {
+      guard.stop();
+      try {
+        reader.releaseLock();
+      } catch {}
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -472,49 +554,4 @@ function safeParse(text: string): Record<string, unknown> | undefined {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}...` : s;
-}
-
-// ---------------------------------------------------------------------------
-// Stream readers
-// ---------------------------------------------------------------------------
-
-async function* ndjsonLines(res: Response, signal?: AbortSignal): AsyncGenerator<string> {
-  yield* splitStream(res, '\n', signal);
-}
-
-async function* sseData(res: Response, signal?: AbortSignal): AsyncGenerator<string> {
-  for await (const line of splitStream(res, '\n', signal)) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('data:')) yield trimmed.slice(5).trim();
-  }
-}
-
-async function* splitStream(
-  res: Response,
-  sep: string,
-  signal?: AbortSignal,
-): AsyncGenerator<string> {
-  if (!res.body) return;
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  try {
-    for (;;) {
-      if (signal?.aborted) break;
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx: number;
-      while ((idx = buffer.indexOf(sep)) !== -1) {
-        const line = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + sep.length);
-        if (line.trim()) yield line;
-      }
-    }
-    if (buffer.trim()) yield buffer;
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {}
-  }
 }

@@ -29,9 +29,12 @@ const RULES: RedactionRule[] = [
     // closing quote is consumed only via a backreference to it, so a redaction
     // run over serialized JSON (`"...TOKEN=abcd1234"`) never eats the JSON
     // string's own closing quote and corrupts the line (P0-5). A bare,
-    // unquoted value keeps its following delimiter intact.
+    // unquoted value keeps its following delimiter intact. The name may carry
+    // its own closing quote (group 2), so a JSON key (`"GITHUB_TOKEN": "..."`)
+    // is scrubbed the same as an assignment (ENG-9); the replacer re-emits the
+    // quotes it consumed so the surrounding document stays valid.
     pattern:
-      /\b([A-Z0-9_]*(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)[A-Z0-9_]*)\s*[:=]\s*(["'])?([^\s"']{8,})(?:\2)?/gi,
+      /\b([A-Z0-9_]*(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)[A-Z0-9_]*)(["']?)(\s*[:=]\s*)(["'])?([^\s"']{8,})(?:\4)?/gi,
   },
 ];
 
@@ -40,7 +43,15 @@ export function redactSecrets(text: string): string {
   let out = text;
   for (const rule of RULES) {
     if (rule.kind === 'assignment') {
-      out = out.replace(rule.pattern, (_m, name: string) => `${name}=[redacted:${rule.kind}]`);
+      out = out.replace(
+        rule.pattern,
+        (_m, name: string, keyQuote: string, sep: string, valueQuote: string | undefined) => {
+          // A quoted key with a bare value is a JSON number or literal; the
+          // placeholder must be quoted there or the document breaks.
+          const q = valueQuote ?? (keyQuote ? '"' : '');
+          return `${name}${keyQuote}${sep}${q}[redacted:${rule.kind}]${q}`;
+        },
+      );
     } else {
       out = out.replace(rule.pattern, `[redacted:${rule.kind}]`);
     }

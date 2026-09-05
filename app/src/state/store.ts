@@ -42,7 +42,12 @@ import {
   type RepoPlatform,
   type RepoState,
 } from '../lib/repos.js';
-import { firstWorkspace, repoContextLine } from '../lib/chatRepos.js';
+import {
+  clearRepoCache,
+  firstWorkspace,
+  hydrateRepoCache,
+  repoContextLine,
+} from '../lib/chatRepos.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
@@ -94,7 +99,13 @@ import {
   restore as iapRestore,
   PERSONAL_YEARLY_PRODUCT_ID,
 } from '../lib/iap.js';
-import { clearSession, freshSession, loadStoredSession, saveSession } from '../lib/authSession.js';
+import {
+  AuthExpiredError,
+  clearSession,
+  freshSession,
+  loadStoredSession,
+  saveSession,
+} from '../lib/authSession.js';
 import { beatDesktopSession, registerPushForDaemon } from '../lib/push.js';
 import {
   autoProfile,
@@ -188,6 +199,7 @@ import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.j
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
+  dataUnlockState,
   isDesktop,
   isPhone,
   openExternal,
@@ -340,7 +352,20 @@ export interface AppSettings {
    *  token lives in this device's Keychain and only ever executes on this
    *  device, never on a remote hub. Never synced. See codemagicControl.ts. */
   codemagicAccess?: boolean;
+  /** The role each paired hub reported for this device's credential (from the
+   *  hub's /health), keyed by base URL. Read at pair time and refreshed when a
+   *  session attaches. Missing means the hub predates roles and decides per
+   *  request. The active hub's role is mirrored into `hubRole` in state so a
+   *  component can select it directly. Device local. */
+  hubRoles?: Record<string, HubRole>;
+  /** Server orgs the person declined to join on this device ("Not now" on the
+   *  join sheet), so the question is asked once. Device local; cleared on
+   *  sign-out. */
+  declinedOrgIds?: string[];
 }
+
+/** What a hub says this device's pairing credential may do. */
+export type HubRole = 'admin' | 'member';
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
 export interface HarborDownload {
@@ -387,8 +412,84 @@ let lastEntitlementForegroundAt = 0;
 // The email the app most recently sent an auth link to (magic link, reset,
 // confirmation). completeAuthCallback only accepts a callback for that account,
 // which is the CSRF/state binding a custom oscode:// scheme cannot get from a
-// browser origin. Cleared once a callback is accepted.
-let pendingAuthEmail: string | undefined;
+// browser origin. Persisted sealed and device-local with a short TTL (APP-6),
+// because the link usually launches the app cold from Mail, and a binding held
+// only in memory would be gone exactly when it is needed. Cleared once a
+// callback is accepted, and on sign-out.
+const PENDING_AUTH_KEY = 'oscode.auth.pending.v1';
+const PENDING_AUTH_TTL_MS = 15 * 60_000;
+interface PendingAuth {
+  email: string;
+  at: number;
+}
+async function readPendingAuth(): Promise<string | undefined> {
+  const row = await storeGetJson<PendingAuth>(PENDING_AUTH_KEY);
+  if (!row?.email) return undefined;
+  if (Date.now() - row.at > PENDING_AUTH_TTL_MS) {
+    await storeDelete(PENDING_AUTH_KEY);
+    return undefined;
+  }
+  return row.email;
+}
+async function writePendingAuth(email: string): Promise<void> {
+  await storeSetJson(PENDING_AUTH_KEY, { email: email.trim().toLowerCase(), at: Date.now() });
+}
+async function clearPendingAuth(): Promise<void> {
+  await storeDelete(PENDING_AUTH_KEY);
+}
+// A callback that arrived with no request on record waits here for the
+// person's yes on the confirm sheet (AuthConfirmSheet). Memory only: a link
+// nobody confirmed should not survive a relaunch.
+let pendingCallback: { session: Session; recovery: boolean } | undefined;
+
+// An Apple purchase the server has not yet linked (UI-10): Apple finished the
+// transaction, the link call failed (offline, a 401), so the signed receipt is
+// kept sealed on the device and retried on the next foreground or Restore.
+const PENDING_APPLE_LINK_KEY = 'oscode.iap.pendingLink.v1';
+
+// Hub pairing credentials live in the secret store (Keychain, safeStorage),
+// keyed by hub, never in the settings blob (APP-11). In memory the DaemonTarget
+// still carries its token, so every daemon call reads it the same way; only
+// what reaches disk is stripped, and init puts the tokens back.
+export function hubSecretKey(baseUrl: string): string {
+  return `oscode.secret.hub.${baseUrl}`;
+}
+function stripHubTokens(settings: AppSettings): AppSettings {
+  const strip = (d: DaemonTarget): DaemonTarget => ({ ...d, token: '' });
+  return {
+    ...settings,
+    ...(settings.daemon ? { daemon: strip(settings.daemon) } : {}),
+    ...(settings.daemons ? { daemons: settings.daemons.map(strip) } : {}),
+  };
+}
+/** The one door to the persisted settings blob. */
+async function persistSettings(settings: AppSettings): Promise<void> {
+  await storeSetJson(SETTINGS_KEY, stripHubTokens(settings));
+}
+/** The active hub's role, as the hub last reported it. */
+function activeHubRole(settings: AppSettings): HubRole | undefined {
+  return settings.daemon ? settings.hubRoles?.[settings.daemon.baseUrl] : undefined;
+}
+/** Ask a hub what this credential may do. Undefined for an older hub with no
+ *  role field (the daemon then decides per request) or when unreachable. */
+async function readHubRole(daemon: DaemonTarget): Promise<HubRole | undefined> {
+  try {
+    const res = await fetch(`${daemon.baseUrl}/health`, {
+      headers: { authorization: `Bearer ${daemon.token}` },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return undefined;
+    const body = (await res.json()) as { role?: unknown };
+    return body.role === 'admin' || body.role === 'member' ? body.role : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Attachments that ride a message held for a driver that has not attached yet
+// (APP-10). The text lives on the conversation, persisted; attachments are
+// bytes with no durable form, so they wait here for this session only.
+const pendingSends = new Map<string, Attachment[] | undefined>();
 const unsubscribers = new Map<string, () => void>();
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
@@ -459,6 +560,21 @@ interface AppState {
   /** True after a password-reset link signs the user in, so the UI prompts them
    *  to set a new password before doing anything else. Cleared once they do. */
   passwordRecovery?: boolean;
+  /** A sign-in link arrived that nothing here asked for; the confirm sheet
+   *  shows the account it is for and waits for a yes (APP-6). */
+  authConfirm?: { email: string; recovery: boolean };
+  /** A company org someone else added the signed-in person to, waiting for an
+   *  explicit yes before this device adopts it (BE-1). */
+  orgJoin?: { org: Org; ownerUid: string };
+  /** True when the device's sealed data could not be unlocked this launch (the
+   *  key exists but cannot be read). Sealed keys are read-only until it is
+   *  back; nothing has been overwritten. Surfaced once by init. */
+  dataLocked?: boolean;
+  /** The active hub's role for this device's credential, as the hub reported
+   *  it (admin or member). Undefined for an older hub, which decides per
+   *  request. Mirrors settings.hubRoles for the active hub so the composer can
+   *  select it in one read. */
+  hubRole?: HubRole;
   /** The desktop app's own engine status (Electron only): whether a model is
    *  configured on this machine, which the first-answer gate reads so a chat is
    *  never opened against an engine that cannot start. Refreshed on init and
@@ -644,8 +760,18 @@ interface AppState {
   resendConfirmation(email: string): Promise<void>;
   /** Set a new password for the signed-in user and clear the recovery prompt. */
   updateMyPassword(password: string): Promise<void>;
-  /** Finish a magic-link sign-in from the callback URL the app was opened with. */
+  /** Finish a magic-link sign-in from the callback URL the app was opened with.
+   *  Returns true once signed in. False when the link was refused, or when it
+   *  is waiting on the confirm sheet (authConfirm) because nothing asked. */
   completeAuthCallback(url: string): Promise<boolean>;
+  /** The confirm sheet's yes: sign in with the link that arrived unasked. */
+  confirmAuthCallback(): Promise<void>;
+  /** The confirm sheet's no: drop the link. */
+  dismissAuthCallback(): void;
+  /** Adopt the server org waiting in orgJoin on this device. */
+  joinOrg(): Promise<void>;
+  /** Decline it on this device (remembered until sign-out). */
+  declineOrg(): Promise<void>;
   /** Sign out and forget the session. */
   signOutAccount(): Promise<void>;
   /** Re-read the signed-in user's server role into serverRole. */
@@ -832,8 +958,11 @@ interface AppState {
    *  model from the terminal entirely. Scoped to that one target. */
   setTerminalControl(on: boolean): Promise<void>;
   setCodemagicAccess(on: boolean): Promise<void>;
-  /** Save a hub (upsert by base URL) and make it the active one. */
-  saveHub(target: DaemonTarget): Promise<void>;
+  /** Save a hub (upsert by base URL) and make it the active one. The role the
+   *  hub reported at pairing rides along; when absent it is read from the hub. */
+  saveHub(target: DaemonTarget, opts?: { role?: HubRole }): Promise<void>;
+  /** Record what a hub says this device's credential may do. */
+  setHubRole(baseUrl: string, role: HubRole | undefined): Promise<void>;
   /** Switch the active hub to a saved one by base URL. */
   selectHub(baseUrl: string): Promise<void>;
   /** Forget a saved hub; if it was active, fall back to another or none. */
@@ -1043,21 +1172,68 @@ export function selfMember(account?: Account): OrgMember | undefined {
   return account.org?.members.find((m) => m.email === account.selfEmail);
 }
 
+/** A driver that has closed itself for good (a RemoteDriver after its fatal
+ *  answer: the session is gone, or the hub revoked this phone). Read by duck
+ *  type so the store never reaches into a driver's internals by name. */
+function driverClosed(driver: ChatDriver): boolean {
+  const d = driver as unknown as { closed?: boolean; terminated?: boolean };
+  return d.terminated === true || d.closed === true;
+}
+
 export const useApp = create<AppState>((set, get) => {
-  function attachDriver(conversationId: string, driver: ChatDriver): void {
+  /** Detach and release a conversation's driver, if any. */
+  function dropDriver(conversationId: string): void {
     drivers.get(conversationId)?.dispose();
+    drivers.delete(conversationId);
     unsubscribers.get(conversationId)?.();
+    unsubscribers.delete(conversationId);
+  }
+
+  /** APP-10: a message typed before the driver attached goes out now. */
+  function flushPendingFirstMessage(conversationId: string, driver: ChatDriver): void {
+    const text = get().conversations[conversationId]?.pendingFirstMessage;
+    if (!text) return;
+    const attachments = pendingSends.get(conversationId);
+    pendingSends.delete(conversationId);
+    set((state) => {
+      const c = state.conversations[conversationId];
+      if (!c) return state;
+      return {
+        conversations: {
+          ...state.conversations,
+          [conversationId]: { ...c, pendingFirstMessage: undefined },
+        },
+      };
+    });
+    driver.send(text, attachments);
+    void persistConversations(get());
+  }
+
+  function attachDriver(conversationId: string, driver: ChatDriver): void {
+    dropDriver(conversationId);
     drivers.set(conversationId, driver);
-    const off = driver.subscribe((event: DriverEvent, seq: number) => {
+    // APP-13: events fold into ONE state update per tick. A journal replay
+    // hands over hundreds of events synchronously, which used to be hundreds
+    // of renders; live streaming delivers one event per task, so batching
+    // costs it nothing. The side effects below run after the fold, in order.
+    const pending: Array<{ event: DriverEvent; seq: number }> = [];
+    let scheduled = false;
+    const flush = () => {
+      scheduled = false;
+      const batch = pending.splice(0);
+      if (!batch.length) return;
       set((state) => {
         const conv = state.conversations[conversationId];
         if (!conv) return state;
-        const thread = reduceEvent(conv.thread, event, seq);
+        let thread = conv.thread;
         // The first user line names a new chat; the engine's generated title
         // then replaces that placeholder, unless the person named it by hand.
         let title = conv.title;
-        if (event.type === 'title' && !conv.renamed) title = event.title;
-        else if (conv.title === 'New chat') title = titleFrom(thread) ?? conv.title;
+        for (const { event, seq } of batch) {
+          thread = reduceEvent(thread, event, seq);
+          if (event.type === 'title' && !conv.renamed) title = event.title;
+        }
+        if (title === 'New chat') title = titleFrom(thread) ?? title;
         const next: Conversation = {
           ...conv,
           thread,
@@ -1066,6 +1242,26 @@ export const useApp = create<AppState>((set, get) => {
         };
         return { conversations: { ...state.conversations, [conversationId]: next } };
       });
+      let celebrated = false;
+      for (const { event } of batch) {
+        if (event.type === 'task-done' && event.reason === 'complete' && !celebrated) {
+          celebrated = true;
+          hapticSuccess();
+        }
+        afterEvent(event);
+      }
+      // Persist snapshots for phone-local conversations. P2-12: snapshot at
+      // both bookends (task-start captures the user's message immediately;
+      // task-done captures the finished reply) and debounce during streaming
+      // so a mid-turn relaunch does not lose the answer so far. One write per
+      // batch, however many events it folded.
+      if (batch.some(({ event }) => event.type === 'task-start' || event.type === 'task-done')) {
+        void persistConversations(get());
+      } else if (batch.some(({ event }) => event.type === 'text-delta')) {
+        persistConversationsSoon();
+      }
+    };
+    const afterEvent = (event: DriverEvent) => {
       // Permission mode on the CLIENT-side brains (the stack runs its tools in
       // the app): auto-answer the approvals the mode covers. Engine sessions
       // decide inside the loop (it never asks for what the mode allows), so a
@@ -1109,10 +1305,16 @@ export const useApp = create<AppState>((set, get) => {
         // desktop non-shell tool (an always-ask vaultWrite included) is never
         // client-auto-approved; the engine already decided to ask.
       }
-      // The task ended: a message typed mid-run goes out now, in order. A
-      // completed task also gets the success tap Claude Code's bell stands for.
+      // The task ended: a message typed mid-run goes out now, in order. (A
+      // completed task's success tap is fired once per batch by flush.)
       if (event.type === 'task-done') {
-        if (event.reason === 'complete') hapticSuccess();
+        // APP-4: a driver that closed itself with this error (the daemon's
+        // fatal answer) is dead; drop it so the next open rebuilds instead of
+        // queueing every later message behind a run that will never end.
+        if (event.reason === 'error' && driverClosed(driver)) {
+          dropDriver(conversationId);
+          return;
+        }
         const conv = get().conversations[conversationId];
         // Activation: the first time a model produces a working reply on this
         // device (once per model, persisted via logOnce). CX's funnel
@@ -1149,15 +1351,6 @@ export const useApp = create<AppState>((set, get) => {
           drivers.get(conversationId)?.send(head!);
         }
       }
-      // Persist snapshots for phone-local conversations. P2-12: snapshot at both
-      // bookends (task-start captures the user's message immediately; task-done
-      // captures the finished reply) and debounce during streaming so a mid-turn
-      // relaunch does not lose the answer so far.
-      if (event.type === 'task-start' || event.type === 'task-done') {
-        void persistConversations(get());
-      } else if (event.type === 'text-delta') {
-        persistConversationsSoon();
-      }
       // Funnel milestones (opt-in only; no-ops otherwise).
       const srcKind = get().conversations[conversationId]?.source.kind;
       if (event.type === 'text-final' && srcKind && srcKind !== 'mock') {
@@ -1170,8 +1363,33 @@ export const useApp = create<AppState>((set, get) => {
       ) {
         logOnce('first_accepted_edit', { tool: event.call.name });
       }
+    };
+    const off = driver.subscribe((event: DriverEvent, seq: number) => {
+      pending.push({ event, seq });
+      if (!scheduled) {
+        scheduled = true;
+        queueMicrotask(flush);
+      }
     });
     unsubscribers.set(conversationId, off);
+    flushPendingFirstMessage(conversationId, driver);
+  }
+
+  /** APP-5: the daemon's session id is state, written through `set` and
+   *  persisted at once, so a kill before the first message never orphans a
+   *  session on the hub. */
+  async function bindSessionId(conversationId: string, sessionId: string): Promise<void> {
+    set((state) => {
+      const c = state.conversations[conversationId];
+      if (!c || c.source.kind !== 'desktop') return state;
+      return {
+        conversations: {
+          ...state.conversations,
+          [conversationId]: { ...c, source: { ...c.source, sessionId } },
+        },
+      };
+    });
+    await persistConversations(get());
   }
 
   // Register this device for completion push with the connected daemon, once per
@@ -1183,7 +1401,7 @@ export const useApp = create<AppState>((set, get) => {
     const session = s.authSession;
     if (!isPhone() || !daemon || !session) return;
     if ((s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl)) return;
-    const ok = await registerPushForDaemon(daemon, session);
+    const ok = await registerPushForDaemon(daemon, session, s.settings.deviceId);
     if (!ok) return;
     const existing = get().settings.pushRegisteredDaemons ?? [];
     if (!existing.includes(daemon.baseUrl)) {
@@ -1292,7 +1510,7 @@ export const useApp = create<AppState>((set, get) => {
               );
             }
             sessionId = created.id;
-            conv.source.sessionId = sessionId;
+            await bindSessionId(conv.id, sessionId);
           } else {
             // G1: resume returns the journal so the driver can replay it AFTER
             // it has subscribed (IPC does not buffer a pushed replay).
@@ -1316,12 +1534,15 @@ export const useApp = create<AppState>((set, get) => {
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
           });
-          conv.source.sessionId = sessionId;
+          await bindSessionId(conv.id, sessionId);
         }
         // Opening a desktop session is the walk-away-able moment: the run
         // continues on the daemon while the phone is closed. Register for
         // completion push now (contextual, not at launch), once per daemon.
         void ensureDesktopPush();
+        // Refresh what this hub says the credential may do, so the composer's
+        // terminal affordance tracks the role the hub enforces (P0-1).
+        void refreshHubRole(settings.daemon);
         // Replay from zero so the transcript rebuilds exactly.
         return new RemoteDriver(sessionId, settings.daemon, 0);
       }
@@ -1458,14 +1679,20 @@ export const useApp = create<AppState>((set, get) => {
   }
 
   // Rebuild the local org from the server for the signed-in user (any device):
-  // find their active membership, then read the org and its roster.
-  async function pullOrgFromServer(session: Session): Promise<Org | undefined> {
+  // find their active membership, then read the org and its roster. The pick
+  // is deterministic (BE-1): memberships come back in creation order, and the
+  // org this device already references wins over an older one, so a second
+  // membership can never silently swap the account underneath the person.
+  async function pullOrgFromServer(
+    session: Session,
+  ): Promise<{ org: Org; ownerUid: string } | undefined> {
     const mine = await supabaseSelect<{ org_id: string }>(
       'org_members',
       session.accessToken,
-      `select=org_id&user_id=eq.${session.user.id}&status=eq.active&limit=1`,
+      `select=org_id,created_at&user_id=eq.${session.user.id}&status=eq.active&order=created_at.asc`,
     );
-    const orgId = mine[0]?.org_id;
+    const preferred = get().settings.account?.org?.serverId;
+    const orgId = mine.find((m) => m.org_id === preferred)?.org_id ?? mine[0]?.org_id;
     if (!orgId) return undefined;
     const [srv] = await supabaseSelect<ServerOrg>(
       'orgs',
@@ -1478,14 +1705,27 @@ export const useApp = create<AppState>((set, get) => {
       session.accessToken,
       `select=*&org_id=eq.${orgId}&order=created_at.asc`,
     );
-    return serverToLocalOrg(srv, members, new Date().toISOString());
+    return {
+      org: serverToLocalOrg(srv, members, new Date().toISOString()),
+      ownerUid: srv.owner_uid,
+    };
+  }
+
+  /** Make a server org this device's account. */
+  async function adoptOrg(org: Org, selfEmail: string | undefined): Promise<void> {
+    await get().saveSettings({ account: { type: 'commercial', org, selfEmail } });
   }
 
   // Make the org multi-device: an owner who set it up locally pushes it on first
   // sign-in; everyone else (second device, or an invited member) pulls the
-  // server's copy so the roster and role match everywhere.
-  async function reconcileOrg(session: Session): Promise<void> {
-    if (!authConfigured()) return;
+  // server's copy so the roster and role match everywhere. An org the person
+  // owns, or one this device already references, is adopted outright; an org
+  // someone else added them to waits for a yes on the join sheet (BE-1), so a
+  // server row can never silently point this device's team vault and projects
+  // at another org.
+  async function reconcileOrg(): Promise<void> {
+    const session = await freshAuth();
+    if (!session) return;
     const account = get().settings.account;
     try {
       // The only holder of an unsynced local commercial org is the owner who
@@ -1505,14 +1745,92 @@ export const useApp = create<AppState>((set, get) => {
         }
       }
       const pulled = await pullOrgFromServer(session);
-      if (pulled) {
-        await get().saveSettings({
-          account: { type: 'commercial', org: pulled, selfEmail: session.user.email },
-        });
+      if (!pulled) return;
+      const { org, ownerUid } = pulled;
+      const mine = ownerUid === session.user.id || account?.org?.serverId === org.serverId;
+      if (mine) {
+        await adoptOrg(org, session.user.email);
+        return;
       }
+      if (org.serverId && (get().settings.declinedOrgIds ?? []).includes(org.serverId)) return;
+      set({ orgJoin: { org, ownerUid } });
     } catch {
       // Offline or transient: keep the local org as-is.
     }
+  }
+
+  // The one door for every server call (APP-1, APP-2): the signed-in session
+  // with a live access token, refreshed in one flight when it is near expiry.
+  // A dead refresh token signs the device out here, in one place, with one
+  // honest line; the caller then sees undefined and degrades to local-only.
+  // Any other refresh failure (offline) is rethrown with the session intact.
+  async function freshAuth(): Promise<Session | undefined> {
+    const session = get().authSession;
+    if (!session || !authConfigured()) return undefined;
+    try {
+      const fresh = await freshSession(session);
+      if (fresh !== session) set({ authSession: fresh });
+      return fresh;
+    } catch (err) {
+      if (err instanceof AuthExpiredError) {
+        await forgetSession();
+        get().showToast('Your sign-in expired. Sign in again.');
+        logEvent('auth_expired');
+        return undefined;
+      }
+      throw err;
+    }
+  }
+
+  async function accessToken(): Promise<string | undefined> {
+    return (await freshAuth())?.accessToken;
+  }
+
+  // Forget the session on this device: the stored copy, the pending auth
+  // binding, the team vault, the org's shared projects, and (APP-7) a
+  // server-backed org's roster and the signed-in identity, so local admin
+  // authority cannot outlive the sign-in. The org's name and server id stay,
+  // so the next sign-in by a member pulls the same org without asking again.
+  async function forgetSession(): Promise<void> {
+    await clearSession();
+    await clearPendingAuth();
+    pendingCallback = undefined;
+    // Best-effort: signing out of the account also severs any connected
+    // Google Drive access, so a shared or handed-off device does not keep
+    // standing storage access behind. A revoke failure (offline) must
+    // never block sign-out itself.
+    await disconnectGdrive().catch(() => {});
+    // Sever the team vault too: drop its on-screen state and the provider's
+    // base-rev cache, and fall back to the personal scope, so a handed-off
+    // device never shows the previous org's note titles or open note to the
+    // next person who signs in.
+    resetOrgVault();
+    const s = get().settings;
+    const patch: Partial<AppSettings> = {};
+    // Drop the org's shared projects from this device so the next person to
+    // sign in never sees the previous account's team projects. Local projects
+    // stay. (Their chats keep their local link; it simply resolves to nothing
+    // until the project is pulled again on the next sign-in.)
+    const localProjects = (s.projects ?? []).filter((p) => !p.shared);
+    if (localProjects.length !== (s.projects ?? []).length) patch.projects = localProjects;
+    const account = s.account;
+    if (account?.org?.serverId) {
+      patch.account = { type: 'commercial', org: { ...account.org, members: [] } };
+    }
+    if (s.declinedOrgIds?.length) patch.declinedOrgIds = undefined;
+    if (Object.keys(patch).length) await get().saveSettings(patch);
+    set({
+      authSession: undefined,
+      serverRole: undefined,
+      entitlement: undefined,
+      userEntitlement: undefined,
+      passwordRecovery: undefined,
+      authConfirm: undefined,
+      orgJoin: undefined,
+      vaultScope: 'personal',
+      vaultFiles: [],
+      vaultNote: undefined,
+    });
   }
 
   // Best-effort write-through for an admin edit. No-ops (staying local-only)
@@ -1520,12 +1838,11 @@ export const useApp = create<AppState>((set, get) => {
   async function orgWrite(
     fn: (session: Session, serverOrgId: string) => Promise<void>,
   ): Promise<void> {
-    const session = get().authSession;
     const serverId = get().settings.account?.org?.serverId;
-    if (!session || !serverId || !authConfigured()) return;
+    if (!serverId) return;
     try {
-      const fresh = await freshSession(session);
-      if (fresh !== session) set({ authSession: fresh });
+      const fresh = await freshAuth();
+      if (!fresh) return;
       await fn(fresh, serverId);
     } catch (err) {
       get().showToast(err instanceof Error ? err.message : 'Could not sync to your account.');
@@ -1534,13 +1851,34 @@ export const useApp = create<AppState>((set, get) => {
 
   // A fresh access token for an org-projects RPC, or undefined when there is no
   // signed-in session / accounts are not configured (so the caller degrades to
-  // local-only). Refreshes and re-stores the session like orgWrite.
+  // local-only).
   async function orgProjectToken(): Promise<string | undefined> {
-    const session = get().authSession;
-    if (!session || !authConfigured()) return undefined;
-    const fresh = await freshSession(session);
-    if (fresh !== session) set({ authSession: fresh });
-    return fresh.accessToken;
+    return accessToken();
+  }
+
+  /** Ask the hub what this device's credential may do and record it. */
+  async function refreshHubRole(daemon: DaemonTarget | undefined): Promise<void> {
+    if (!daemon) return;
+    const role = await readHubRole(daemon);
+    if (role && role !== get().settings.hubRoles?.[daemon.baseUrl]) {
+      await get().setHubRole(daemon.baseUrl, role);
+    }
+  }
+
+  /** UI-10: link an Apple receipt the server has not seen yet. Returns true
+   *  once the pending receipt is linked (or there was none to link). */
+  async function retryPendingAppleLink(): Promise<boolean> {
+    const pending = await storeGetJson<{ jws: string; at: string }>(PENDING_APPLE_LINK_KEY);
+    if (!pending?.jws) return false;
+    const token = await accessToken();
+    if (!token) return false;
+    try {
+      await supabaseInvoke('link-apple-purchase', token, { jws: pending.jws });
+      await storeDelete(PENDING_APPLE_LINK_KEY);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // Patch a project's locally-stored fields (no server round-trip). The shared
@@ -1638,7 +1976,7 @@ export const useApp = create<AppState>((set, get) => {
     } catch {
       // No invited seat, or offline: role stays whatever the server says next.
     }
-    await reconcileOrg(session);
+    await reconcileOrg();
     await get().refreshOrgRole();
     void get().refreshEntitlement();
     void get().syncOrgProjects();
@@ -1677,18 +2015,20 @@ export const useApp = create<AppState>((set, get) => {
       // authenticate without importing the store (which would be a cycle).
       setOrgVaultAuth(
         async () => {
-          const session = get().authSession;
-          if (!session || !authConfigured()) return undefined;
           try {
-            const fresh = await freshSession(session);
-            if (fresh !== session) set({ authSession: fresh });
-            return fresh.accessToken;
+            return await accessToken();
           } catch {
             return undefined;
           }
         },
         () => get().teamVaultAvailable(),
       );
+
+      // P0-3: the sealed store settles its key first. 'locked' means a key
+      // exists but could not be read this launch; every sealed value reads as
+      // absent and stays untouched, and the person is told below.
+      const unlock = await dataUnlockState();
+      const locked = unlock === 'locked';
 
       const settings = (await storeGetJson<AppSettings>(SETTINGS_KEY)) ?? {
         onboarded: false,
@@ -1762,12 +2102,34 @@ export const useApp = create<AppState>((set, get) => {
             settings.harborReady = harborHere;
             changed = true;
           }
-          if (changed) await storeSetJson(SETTINGS_KEY, settings);
+          if (changed) await persistSettings(settings);
         } catch {
           // Native side unreachable: keep the labels as they are.
         }
       }
       let settingsDirty = false;
+
+      // APP-11: hub credentials live in the secret store, keyed by hub. Put
+      // each saved hub's token back from there; a token still riding the blob
+      // (a device paired before this change) is moved across once and the
+      // blob rewritten without it.
+      const withHubToken = async (d: DaemonTarget): Promise<DaemonTarget> => {
+        if (d.token) {
+          await secretSet(hubSecretKey(d.baseUrl), d.token);
+          settingsDirty = true;
+          return d;
+        }
+        return { ...d, token: (await secretGet(hubSecretKey(d.baseUrl))) ?? '' };
+      };
+      if (settings.daemons) {
+        const hubs: DaemonTarget[] = [];
+        for (const d of settings.daemons) hubs.push(await withHubToken(d));
+        settings.daemons = hubs;
+      }
+      if (settings.daemon) settings.daemon = await withHubToken(settings.daemon);
+
+      // The GitHub repo cache rides the sealed store; warm the picker's mirror.
+      await hydrateRepoCache();
 
       // Per-status stacks (2026-09-03): the stack was one shared config; it now
       // has one per connectivity profile (docked, offshore, offline), chosen
@@ -1864,7 +2226,7 @@ export const useApp = create<AppState>((set, get) => {
         settingsDirty = true;
       }
 
-      if (settingsDirty) await storeSetJson(SETTINGS_KEY, settings);
+      if (settingsDirty) await persistSettings(settings);
 
       // Mirror the persisted reasoning effort into the live value the drivers
       // read at send time (defaults to High on a fresh device).
@@ -1889,9 +2251,19 @@ export const useApp = create<AppState>((set, get) => {
         connectedRepoPlatforms,
         ready: true,
         authSession: stored ?? get().authSession,
-        view: settings.onboarded || stored ? 'chat' : 'onboarding',
+        hubRole: activeHubRole(settings),
+        dataLocked: locked || undefined,
+        // A locked device is not a new one: never route it into onboarding,
+        // whose writes could not land anyway.
+        view: settings.onboarded || stored || locked ? 'chat' : 'onboarding',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
+      if (locked) {
+        get().showToast(
+          'Could not unlock your data on this machine. Nothing was changed. Restart the app, or check your system keychain.',
+        );
+        logEvent('data_locked');
+      }
 
       // A guide download now runs on a background URLSession, so it keeps going
       // while the app is away and can still be mid-flight when the app is
@@ -1933,7 +2305,17 @@ export const useApp = create<AppState>((set, get) => {
             return;
           }
           if (stored) {
-            await reconcileOrg(stored);
+            // APP-2: a restored session is validated before it is trusted; a
+            // dead refresh token signs the device out here, once, with a
+            // toast. An offline launch keeps the session and skips the sync.
+            let fresh: Session | undefined;
+            try {
+              fresh = await freshAuth();
+            } catch {
+              fresh = undefined;
+            }
+            if (!fresh) return;
+            await reconcileOrg();
             await get().refreshOrgRole();
             void get().syncOrgProjects();
             // A pure-web buyer returns from checkout on this origin with
@@ -2159,9 +2541,8 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async buyPersonal() {
-      const session = get().authSession;
       // Buying requires an account to attach the entitlement to.
-      if (!authConfigured() || !session) {
+      if (!authConfigured() || !get().authSession) {
         get().showToast('Sign in first to unlock Personal.');
         return;
       }
@@ -2169,19 +2550,36 @@ export const useApp = create<AppState>((set, get) => {
       // app. The signed StoreKit transaction is verified server-side; the client
       // claim is only a hint.
       if (iapAvailable()) {
+        let result;
         try {
-          const result = await iapPurchase(PERSONAL_YEARLY_PRODUCT_ID);
-          if (result.state === 'cancelled' || result.state === 'pending') return;
-          if (result.state === 'purchased' && result.jws) {
-            await supabaseInvoke('link-apple-purchase', session.accessToken, { jws: result.jws });
-            await get().refreshEntitlement();
-            if (get().personalUnlockedNow()) {
-              set({ paywall: undefined });
-              get().showToast("You're Personal. The agent and Marketplace are unlocked.");
-            }
-          }
+          result = await iapPurchase(PERSONAL_YEARLY_PRODUCT_ID);
         } catch (err) {
           get().showToast(err instanceof Error ? err.message : 'Could not complete the purchase.');
+          return;
+        }
+        if (result.state !== 'purchased' || !result.jws) return;
+        // Apple has charged and finished the transaction by now. If the link
+        // to the server fails here (offline, a dead session), the receipt is
+        // kept and retried on the next foreground or Restore (UI-10); the copy
+        // names that path instead of a raw error.
+        try {
+          const token = await accessToken();
+          if (!token) throw new Error('signed out');
+          await supabaseInvoke('link-apple-purchase', token, { jws: result.jws });
+        } catch {
+          await storeSetJson(PENDING_APPLE_LINK_KEY, {
+            jws: result.jws,
+            at: new Date().toISOString(),
+          });
+          get().showToast(
+            'Apple confirmed your purchase. OpenShore could not reach its server to unlock it. Tap Restore purchases when you are back online.',
+          );
+          return;
+        }
+        await get().refreshEntitlement();
+        if (get().personalUnlockedNow()) {
+          set({ paywall: undefined });
+          get().showToast("You're Personal. The agent and Marketplace are unlocked.");
         }
         return;
       }
@@ -2193,11 +2591,14 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async restorePurchases() {
-      const session = get().authSession;
-      if (!authConfigured() || !session) {
+      if (!authConfigured() || !get().authSession) {
         get().showToast('Sign in first, then restore.');
         return;
       }
+      // A receipt from a purchase the server never saw goes first (UI-10).
+      await retryPendingAppleLink();
+      const session = await freshAuth();
+      if (!session) return;
       if (!iapAvailable()) {
         // Not an Apple device: a web/desktop buyer's entitlement is already on
         // the account, so a refresh is the "restore".
@@ -2360,22 +2761,28 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     sendWhenAttached(conversationId, text, attachments) {
-      // Drivers attach asynchronously after a conversation is created. Poll
-      // briefly for this one, then deliver, instead of guessing a fixed delay.
-      let tries = 0;
-      const trySend = () => {
-        const driver = drivers.get(conversationId);
-        if (driver) {
-          driver.send(text, attachments);
-          return;
-        }
-        if (tries++ > 100) {
-          get().showToast('This chat did not connect. Try sending again.');
-          return;
-        }
-        setTimeout(trySend, 50);
-      };
-      trySend();
+      const driver = drivers.get(conversationId);
+      if (driver) {
+        driver.send(text, attachments);
+        return;
+      }
+      // APP-10: the driver attaches asynchronously (a session still opening on
+      // the hub), or its build failed and the next open rebuilds it. Hold the
+      // message on the chat, persisted, and let the attach deliver it. No
+      // timer, so a slow open or a relaunch mid-open never drops the first
+      // message.
+      pendingSends.set(conversationId, attachments);
+      set((state) => {
+        const c = state.conversations[conversationId];
+        if (!c) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [conversationId]: { ...c, pendingFirstMessage: text },
+          },
+        };
+      });
+      void persistConversations(get());
     },
 
     async createProject(name) {
@@ -2655,8 +3062,7 @@ export const useApp = create<AppState>((set, get) => {
       logEvent('account_setup', { type: 'commercial', tier: tier.id });
       // If already signed in, create the org on the server now; otherwise it is
       // pushed on the owner's next sign-in (reconcileOrg).
-      const session = get().authSession;
-      if (session) await reconcileOrg(session);
+      if (get().authSession) await reconcileOrg();
     },
 
     canGrowTeam() {
@@ -2802,7 +3208,7 @@ export const useApp = create<AppState>((set, get) => {
       }
       // The confirmation link will come back as a callback; bind it to this
       // address so only this account can complete it.
-      pendingAuthEmail = email.trim().toLowerCase();
+      await writePendingAuth(email);
       return { needsConfirmation: true };
     },
 
@@ -2811,26 +3217,26 @@ export const useApp = create<AppState>((set, get) => {
       // Remember who we sent the link to, so the callback only signs in that
       // person (see completeAuthCallback). A custom-scheme link has no
       // browser-enforced origin, so this binding is the CSRF guard.
-      pendingAuthEmail = email.trim().toLowerCase();
+      await writePendingAuth(email);
     },
 
     async sendPasswordReset(email) {
       await supabaseSendPasswordReset(email.trim(), authRedirectTo());
-      pendingAuthEmail = email.trim().toLowerCase();
+      await writePendingAuth(email);
     },
 
     async resendConfirmation(email) {
       await supabaseResendConfirmation(email.trim(), authRedirectTo());
-      pendingAuthEmail = email.trim().toLowerCase();
+      await writePendingAuth(email);
     },
 
     async updateMyPassword(password) {
-      const session = get().authSession;
-      if (!session) {
+      const token = await accessToken();
+      if (!token) {
         get().showToast('Sign in first.');
         return;
       }
-      await supabaseUpdatePassword(session.accessToken, password);
+      await supabaseUpdatePassword(token, password);
       set({ passwordRecovery: false });
       get().showToast('Password updated.');
     },
@@ -2850,61 +3256,89 @@ export const useApp = create<AppState>((set, get) => {
         get().showToast('That sign-in link is not valid anymore. Request a new one.');
         return false;
       }
-      // Bind the callback to the email this app asked for. Anything on the
-      // machine can open an oscode:// link, so a link for a different account
-      // (login CSRF) is refused rather than silently switching accounts.
-      if (pendingAuthEmail && user.email && user.email.toLowerCase() !== pendingAuthEmail) {
-        get().showToast('That link is for a different account. Request a new one from here.');
+      const email = (user.email ?? '').toLowerCase();
+      // Someone else is signed in here: a link must never switch accounts
+      // underneath them.
+      const current = get().authSession?.user.email;
+      if (current && email && current.toLowerCase() !== email) {
+        get().showToast(
+          `You are signed in as ${current}. Sign out first to use a link for ${user.email}.`,
+        );
         return false;
       }
-      pendingAuthEmail = undefined;
       const session: Session = { ...parsed, user };
-      await onSignedIn(session);
-      if (recovery) set({ passwordRecovery: true });
-      return true;
+      // Bind the callback to the email this app asked for. Anything on the
+      // machine can open an oscode:// link, so a link for a different account
+      // (login CSRF) is refused rather than silently switching accounts. The
+      // binding is persisted (APP-6), so it holds across the cold start a link
+      // from Mail usually is.
+      const pending = await readPendingAuth();
+      if (pending) {
+        if (email && email !== pending) {
+          get().showToast('That link is for a different account. Request a new one from here.');
+          return false;
+        }
+        await clearPendingAuth();
+        await onSignedIn(session);
+        if (recovery) set({ passwordRecovery: true });
+        return true;
+      }
+      // Nothing here asked for this link. Show who it is for and wait for a
+      // yes (AuthConfirmSheet) instead of signing in on arrival.
+      pendingCallback = { session, recovery };
+      set({ authConfirm: { email: user.email ?? '', recovery } });
+      return false;
+    },
+
+    async confirmAuthCallback() {
+      const waiting = pendingCallback;
+      pendingCallback = undefined;
+      set({ authConfirm: undefined });
+      if (!waiting) return;
+      await onSignedIn(waiting.session);
+      if (waiting.recovery) set({ passwordRecovery: true });
+      get().showToast('Signed in.');
+    },
+
+    dismissAuthCallback() {
+      pendingCallback = undefined;
+      set({ authConfirm: undefined });
+    },
+
+    async joinOrg() {
+      const waiting = get().orgJoin;
+      if (!waiting) return;
+      set({ orgJoin: undefined });
+      await adoptOrg(waiting.org, get().authSession?.user.email);
+      await get().refreshOrgRole();
+      void get().refreshEntitlement();
+      void get().syncOrgProjects();
+      get().showToast(`You joined ${waiting.org.name}.`);
+      logEvent('org_joined');
+    },
+
+    async declineOrg() {
+      const waiting = get().orgJoin;
+      set({ orgJoin: undefined });
+      const id = waiting?.org.serverId;
+      if (!id) return;
+      const declined = get().settings.declinedOrgIds ?? [];
+      if (!declined.includes(id)) await get().saveSettings({ declinedOrgIds: [...declined, id] });
+      logEvent('org_join_declined');
     },
 
     async signOutAccount() {
       const session = get().authSession;
       if (session) await supabaseSignOut(session.accessToken);
-      await clearSession();
-      // Best-effort: signing out of the account also severs any connected
-      // Google Drive access, so a shared or handed-off device does not keep
-      // standing storage access behind. A revoke failure (offline) must
-      // never block sign-out itself.
-      await disconnectGdrive().catch(() => {});
-      // Sever the team vault too: drop its on-screen state and the provider's
-      // base-rev cache, and fall back to the personal scope, so a handed-off
-      // device never shows the previous org's note titles or open note to the
-      // next person who signs in.
-      resetOrgVault();
-      // Drop the org's shared projects from this device so the next person to
-      // sign in never sees the previous account's team projects. Local projects
-      // stay. (Their chats keep their local link; it simply resolves to nothing
-      // until the project is pulled again on the next sign-in.)
-      const localProjects = (get().settings.projects ?? []).filter((p) => !p.shared);
-      if (localProjects.length !== (get().settings.projects ?? []).length) {
-        await get().saveSettings({ projects: localProjects });
-      }
-      set({
-        authSession: undefined,
-        serverRole: undefined,
-        entitlement: undefined,
-        userEntitlement: undefined,
-        vaultScope: 'personal',
-        vaultFiles: [],
-        vaultNote: undefined,
-      });
+      await forgetSession();
       logEvent('auth_sign_out');
     },
 
     async refreshOrgRole() {
-      const session = get().authSession;
       const account = get().settings.account;
-      if (!session || !authConfigured()) return;
       try {
-        const fresh = await freshSession(session);
-        if (fresh !== session) set({ authSession: fresh });
+        const fresh = await freshAuth();
+        if (!fresh) return;
         const rows = await supabaseSelect<{ role: 'admin' | 'member'; status: string }>(
           'org_members',
           fresh.accessToken,
@@ -2926,8 +3360,14 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async refreshEntitlement() {
-      const session = get().authSession;
-      if (!session || !authConfigured()) return;
+      let session: Session | undefined;
+      try {
+        session = await freshAuth();
+      } catch {
+        // Offline: keep whatever entitlement we last knew.
+        return;
+      }
+      if (!session) return;
       const serverId = get().settings.account?.org?.serverId;
       // Individual (Personal) entitlement: readable whenever signed in, with no
       // org. This is the path a solo Personal buyer needs; the old code gated
@@ -2981,6 +3421,14 @@ export const useApp = create<AppState>((set, get) => {
     async reconcileEntitlementOnForeground() {
       const s = get();
       if (!authConfigured() || !s.authSession) return;
+      // A purchase Apple confirmed while the server was out of reach is linked
+      // first, whatever the gate says (UI-10).
+      if (await retryPendingAppleLink()) {
+        await get().refreshEntitlement();
+        set({ paywall: undefined });
+        get().showToast('Your purchase is linked. Personal is unlocked.');
+        return;
+      }
       // Already unlocked: nothing to reconcile.
       if (s.personalUnlockedNow()) return;
       const now = Date.now();
@@ -3005,9 +3453,14 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async manageBilling() {
-      const session = get().authSession;
       const serverId = get().settings.account?.org?.serverId;
-      if (!authConfigured() || !session) {
+      let session: Session | undefined;
+      try {
+        session = await freshAuth();
+      } catch {
+        session = undefined;
+      }
+      if (!session) {
         // Not signed in: still send them to the web page.
         openExternal(BILLING_URL);
         return;
@@ -3248,6 +3701,8 @@ export const useApp = create<AppState>((set, get) => {
       // The action id is a plain string; a non-repo id no-ops in both stores.
       await disconnectRepoOAuth(id as RepoPlatform);
       await secretDelete(repoSecretKey(id));
+      // The cached repo list came from this token; it leaves with it (APP-12).
+      if (id === 'github') await clearRepoCache();
       set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: false } }));
       logEvent('repo_platform_disconnected', { platform: id });
     },
@@ -3761,10 +4216,18 @@ export const useApp = create<AppState>((set, get) => {
       // Resolve to an existing note case-insensitively: opening "note" when
       // "Note.md" already exists must open the existing note, not fork a second
       // divergent one (storage keys are case-sensitive, resolution is not).
-      const openPath =
-        get().vaultFiles.find((f) => f.path.toLowerCase() === normalized.toLowerCase())?.path ??
-        normalized;
-      const known = get().vaultFiles.some((f) => f.path === openPath);
+      const listed = get().vaultFiles.find(
+        (f) => f.path.toLowerCase() === normalized.toLowerCase(),
+      );
+      const openPath = listed?.path ?? normalized;
+      const known = Boolean(listed);
+      // UI-2: a note whose bytes are evicted from this device (iCloud's
+      // placeholder) is still a note. Never open an empty editor over it,
+      // which a keystroke would then save back as empty over the cloud copy.
+      if (listed?.evicted) {
+        get().showToast('Still downloading this note from your vault storage. Try again shortly.');
+        return;
+      }
       let existing;
       try {
         existing = await target.provider.read(target.resourceId, openPath);
@@ -3790,8 +4253,13 @@ export const useApp = create<AppState>((set, get) => {
       if (!normalized) return;
       const target = vaultTarget();
       if (!target) return;
-      if (get().vaultFiles.some((f) => f.path.toLowerCase() === normalized.toLowerCase())) {
-        await get().vaultOpen(normalized);
+      // An existing note (evicted from this device or not, UI-2) opens; it is
+      // never overwritten with an empty body.
+      const existing = get().vaultFiles.find(
+        (f) => f.path.toLowerCase() === normalized.toLowerCase(),
+      );
+      if (existing) {
+        await get().vaultOpen(existing.path);
         return;
       }
       try {
@@ -4047,10 +4515,8 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     deleteConversation(id) {
-      drivers.get(id)?.dispose();
-      drivers.delete(id);
-      unsubscribers.get(id)?.();
-      unsubscribers.delete(id);
+      dropDriver(id);
+      pendingSends.delete(id);
       set((s) => {
         const conversations = { ...s.conversations };
         delete conversations[id];
@@ -4360,8 +4826,16 @@ export const useApp = create<AppState>((set, get) => {
         return;
       }
       // Output arrives as command-* events on the driver subscription; the
-      // transcript reducer renders the card. Fire and forget.
-      void driver.runCommand(command).then((runId) => {
+      // transcript reducer renders the card. Fire and forget. A hub may refuse
+      // the command lane for this credential (P0-1: members do not get a raw
+      // shell on a shared hub); its message is shown as is.
+      void driver.runCommand(command).then((res) => {
+        const r = res as unknown as string | { runId?: string } | { refused: string } | undefined;
+        if (r && typeof r === 'object' && 'refused' in r) {
+          get().showToast(r.refused);
+          return;
+        }
+        const runId = typeof r === 'string' ? r : r?.runId;
         if (!runId) get().showToast('Could not reach the desktop to run that. Try again.');
       });
     },
@@ -4382,13 +4856,29 @@ export const useApp = create<AppState>((set, get) => {
       await get().saveSettings({ codemagicAccess: on });
     },
 
-    async saveHub(target) {
+    async saveHub(target, opts) {
       const list = hubList(get().settings);
       const prior = list.find((d) => d.baseUrl === target.baseUrl);
       // Keep a name already on file if this save did not carry one.
       const merged: DaemonTarget = { ...target, name: target.name ?? prior?.name };
       const others = list.filter((d) => d.baseUrl !== target.baseUrl);
-      await get().saveSettings({ daemon: merged, daemons: [...others, merged] });
+      // The credential goes to the secret store (APP-11); the settings blob
+      // carries the hub without it (see persistSettings).
+      await secretSet(hubSecretKey(target.baseUrl), target.token);
+      // The hub's role for this credential: what pairing reported, else asked
+      // now. An older hub answers nothing and keeps deciding per request.
+      const role = opts?.role ?? (await readHubRole(merged));
+      const hubRoles = { ...(get().settings.hubRoles ?? {}) };
+      if (role) hubRoles[target.baseUrl] = role;
+      else delete hubRoles[target.baseUrl];
+      await get().saveSettings({ daemon: merged, daemons: [...others, merged], hubRoles });
+    },
+
+    async setHubRole(baseUrl, role) {
+      const hubRoles = { ...(get().settings.hubRoles ?? {}) };
+      if (role) hubRoles[baseUrl] = role;
+      else delete hubRoles[baseUrl];
+      await get().saveSettings({ hubRoles });
     },
 
     async selectHub(baseUrl) {
@@ -4400,7 +4890,11 @@ export const useApp = create<AppState>((set, get) => {
       const s = get().settings;
       const daemons = hubList(s).filter((d) => d.baseUrl !== baseUrl);
       const daemon = s.daemon?.baseUrl === baseUrl ? daemons[0] : s.daemon;
-      await get().saveSettings({ daemons, daemon });
+      const hubRoles = { ...(s.hubRoles ?? {}) };
+      delete hubRoles[baseUrl];
+      await get().saveSettings({ daemons, daemon, hubRoles });
+      // The credential leaves with the hub.
+      await secretDelete(hubSecretKey(baseUrl));
     },
 
     async renameHub(baseUrl, name) {
@@ -4433,10 +4927,10 @@ export const useApp = create<AppState>((set, get) => {
 
     async saveSettings(patch) {
       const settings = { ...get().settings, ...patch };
-      set({ settings });
+      set({ settings, hubRole: activeHubRole(settings) });
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
-      await storeSetJson(SETTINGS_KEY, settings);
+      await persistSettings(settings);
     },
 
     async addDeviceModel(id, name) {

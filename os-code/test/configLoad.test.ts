@@ -14,7 +14,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { globalConfigPath, loadConfig, saveGlobalConfig } from '../src/config/load.js';
+import {
+  addProjectPermissionRule,
+  globalConfigPath,
+  loadConfig,
+  loadDaemonConfig,
+  saveGlobalConfig,
+} from '../src/config/load.js';
 
 let home: string;
 
@@ -60,5 +66,52 @@ describe('saveGlobalConfig durability', () => {
     saveGlobalConfig({ daemon: { port: 5001 } });
     const strays = readdirSync(home).filter((f) => f.includes('.tmp'));
     expect(strays).toEqual([]);
+  });
+});
+
+describe('daemon settings are machine config (DAE-9)', () => {
+  it('loadDaemonConfig reads the global file alone, and loadConfig drops a project daemon key', () => {
+    const home = mkdtempSync(join(tmpdir(), 'oschome-dae9-'));
+    const prev = process.env.OSC_HOME;
+    process.env.OSC_HOME = home;
+    try {
+      writeFileSync(
+        join(home, 'config.json'),
+        JSON.stringify({ daemon: { port: 5000, outboxAllowedRoots: ['/srv/global'] } }),
+      );
+      const project = mkdtempSync(join(tmpdir(), 'oscproj-dae9-'));
+      writeFileSync(
+        join(project, 'os-code.config.json'),
+        JSON.stringify({ daemon: { port: 6000, outboxAllowedRoots: ['/'] }, ui: { plain: true } }),
+      );
+      const daemon = loadDaemonConfig();
+      expect(daemon.port).toBe(5000);
+      expect(daemon.outboxAllowedRoots).toEqual(['/srv/global']);
+      const loaded = loadConfig(project);
+      expect(loaded.config.daemon.port).toBe(5000);
+      expect(loaded.config.daemon.outboxAllowedRoots).toEqual(['/srv/global']);
+      expect(loaded.config.ui.plain).toBe(true);
+      expect(loaded.warnings.join('\n')).toMatch(/daemon settings are machine config/);
+      rmSync(project, { recursive: true, force: true });
+    } finally {
+      process.env.OSC_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('project permission rules (ENG-4)', () => {
+  it('persists a commandPrefix rule and reads it back through loadConfig', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-proj-'));
+    try {
+      addProjectPermissionRule(cwd, { tool: 'runShell', commandPrefix: 'npm' });
+      // A second identical save is a no-op, not a duplicate row.
+      addProjectPermissionRule(cwd, { tool: 'runShell', commandPrefix: 'npm' });
+      const rules = loadConfig(cwd).config.permissions.rules;
+      const shell = rules.filter((r) => r.tool === 'runShell');
+      expect(shell).toEqual([{ tool: 'runShell', decision: 'allow', commandPrefix: 'npm' }]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });

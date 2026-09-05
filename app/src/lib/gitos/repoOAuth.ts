@@ -16,8 +16,13 @@
 //   3. The app posts the code to /exchange; the function trades it for tokens
 //      using the secret, over TLS, and hands them back.
 //
-// Custom scheme, not PKCE: because the exchange is server side with the secret,
-// PKCE is unnecessary. `state` still guards against a forged redirect.
+// PKCE on top of the server-side secret (BE-12): on the desktop another
+// application can register the oscode:// scheme and catch the bounced code,
+// and the exchange function would happily trade that code for tokens. So the
+// app mints a code_verifier per attempt, sends its S256 challenge on
+// authorize, and sends the verifier only to /exchange, which forwards it.
+// Providers that implement PKCE bind the code to this app instance; the rest
+// ignore the parameters. `state` still guards against a forged redirect.
 import { Browser } from '@capacitor/browser';
 import { platform, openExternal, secretGet, secretSet, secretDelete } from '../platform.js';
 import { bridge } from '../electronBridge.js';
@@ -89,11 +94,21 @@ export async function isRepoOAuthConnected(id: RepoPlatform): Promise<boolean> {
   return (await secretGet(modeKey(id))) === 'oauth';
 }
 
-function randomToken(bytes = 24): string {
-  const arr = crypto.getRandomValues(new Uint8Array(bytes));
+function base64Url(bytes: Uint8Array): string {
   let bin = '';
-  for (const b of arr) bin += String.fromCharCode(b);
+  for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function randomToken(bytes = 24): string {
+  return base64Url(crypto.getRandomValues(new Uint8Array(bytes)));
+}
+
+/** The S256 PKCE challenge for a verifier: base64url(sha256(verifier)).
+ *  Exported so the test can check the pairing the app sends. */
+export async function pkceChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return base64Url(new Uint8Array(digest));
 }
 
 interface RedirectResult {
@@ -177,7 +192,9 @@ async function postFunction(route: string, body: unknown): Promise<TokenSet> {
     error?: string;
   };
   if (!res.ok || !data.accessToken) {
-    throw new Error(data.error ?? `Sign-in failed (${res.status}).`);
+    // The function only ever returns fixed error codes (never provider text);
+    // translate them here so nothing from the wire reaches a toast verbatim.
+    throw new Error(data.error ? friendlyError(data.error) : `Sign-in failed (${res.status}).`);
   }
   return {
     accessToken: data.accessToken,
@@ -208,10 +225,15 @@ export async function connectRepoOAuth(
   }
 
   const state = `${id}.${randomToken(16)}`;
+  // PKCE: 32 random bytes gives a 43-character base64url verifier, inside the
+  // 43..128 range RFC 7636 requires. A fresh one per attempt; never stored.
+  const codeVerifier = randomToken(32);
   const authUrl = new URL(cfg.authorizeUrl);
   authUrl.searchParams.set('client_id', cfg.clientId);
   authUrl.searchParams.set('redirect_uri', redirect);
   authUrl.searchParams.set('state', state);
+  authUrl.searchParams.set('code_challenge', await pkceChallenge(codeVerifier));
+  authUrl.searchParams.set('code_challenge_method', 'S256');
   if (cfg.scope) authUrl.searchParams.set('scope', cfg.scope);
   for (const [k, v] of Object.entries(cfg.extraAuthParams ?? {})) authUrl.searchParams.set(k, v);
 
@@ -225,7 +247,11 @@ export async function connectRepoOAuth(
     if (result.error) throw new Error(friendlyError(result.error));
     if (!result.code) throw new Error('The sign-in response was missing its code.');
 
-    const tokens = await postFunction('exchange', { provider: id, code: result.code });
+    const tokens = await postFunction('exchange', {
+      provider: id,
+      code: result.code,
+      codeVerifier,
+    });
     await storeTokens(id, tokens);
     return { ok: true };
   } catch (err) {
@@ -233,10 +259,29 @@ export async function connectRepoOAuth(
   }
 }
 
-function friendlyError(code: string): string {
-  if (code === 'access_denied') return 'Sign-in was cancelled.';
-  if (code === 'no_code') return 'The provider did not return a sign-in code.';
-  return `Sign-in failed (${code}).`;
+// The fixed error codes the function and the deep link can carry, each with
+// its own sentence. Anything unrecognized gets a generic line and never its
+// own text: the wire is not trusted to write copy.
+const FRIENDLY: Record<string, string> = {
+  access_denied: 'Sign-in was cancelled.',
+  no_code: 'The provider did not return a sign-in code.',
+  exchange_failed: 'The provider did not accept the sign-in. Try again.',
+  refresh_failed: 'The provider did not renew the sign-in. Connect again.',
+  provider_error: 'The provider reported a problem. Try again in a moment.',
+  server_error: 'The provider reported a problem. Try again in a moment.',
+  temporarily_unavailable: 'The provider is busy right now. Try again in a moment.',
+  not_configured: 'One-tap sign-in is not set up on this server yet.',
+  invalid_scope: 'This app asked for access the provider does not allow.',
+  unauthorized_client: 'This app is not authorized with the provider.',
+  invalid_request: 'The sign-in request was malformed. Update the app and try again.',
+  unsupported_response_type: 'The sign-in request was malformed. Update the app and try again.',
+  unknown_provider: 'That provider is not supported.',
+  missing_code: 'The sign-in response was missing its code.',
+  missing_refresh: 'There is no saved sign-in to renew. Connect again.',
+};
+
+export function friendlyError(code: string): string {
+  return FRIENDLY[code] ?? 'Sign-in failed. Try again.';
 }
 
 /** A valid access token, refreshing through the function first if the cached

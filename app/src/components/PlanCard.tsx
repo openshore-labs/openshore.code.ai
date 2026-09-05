@@ -3,7 +3,7 @@
 // agent to proceed; "Change something" hands the person the composer with the
 // plan still in view. Nothing runs until the person says so.
 import { Markdown } from './Markdown.js';
-import { hapticApproval, hapticTick } from '../lib/haptics.js';
+import { hapticApproval } from '../lib/haptics.js';
 
 export function PlanCard({
   text,
@@ -48,7 +48,6 @@ export function PlanCard({
               type="button"
               className="btn ghost press-fb"
               onClick={() => {
-                hapticTick();
                 onRevise();
               }}
             >

@@ -3,7 +3,7 @@
 // daemon owns the run, so a dropped connection reattaches with nothing lost.
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { hubList, useApp } from '../state/store.js';
+import { hubList, useApp, type HubRole } from '../state/store.js';
 import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonHealth } from '../drivers/remoteDriver.js';
@@ -255,7 +255,12 @@ function RemoteHubPanel() {
     setTesting(false);
     setState(health.detail);
     if (health.ok) {
-      await saveHub({ baseUrl, token: token.trim() });
+      // The hub's /health names this credential's role (admin or member); an
+      // older hub says nothing and the daemon decides per request.
+      await saveHub(
+        { baseUrl, token: token.trim() },
+        { role: (health as { role?: HubRole }).role },
+      );
       showToast('Hub connected. This computer now runs sessions there.');
     }
   };
@@ -351,7 +356,10 @@ function PhonePair() {
     setTesting(false);
     setState(health.detail);
     if (health.ok) {
-      await saveHub({ baseUrl, token: rawToken.trim() });
+      await saveHub(
+        { baseUrl, token: rawToken.trim() },
+        { role: (health as { role?: HubRole }).role },
+      );
       showToast('Connected. Pick your computer in the model menu to chat or code.');
     }
   };

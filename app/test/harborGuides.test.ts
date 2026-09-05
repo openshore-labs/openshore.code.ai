@@ -6,10 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  HARBOR_BYLINE,
-  buildHarborSystemPrompt,
-} from '../src/lib/harbor.js';
+import { HARBOR_BYLINE, buildHarborSystemPrompt } from '../src/lib/harbor.js';
 import {
   HARBOR_MINI_APPROX_LABEL,
   HARBOR_MINI_BUNDLED,
@@ -26,7 +23,11 @@ import {
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
 import { SETUP_GUIDES, guideStepsCompact } from '../src/lib/setupGuides.js';
 
-const NO_EM_DASH = /—|&mdash;|&#x2014;|&#8212;/;
+// The em dash and its encoded spellings, assembled from pieces so the
+// repo-wide em-dash guard, which scans test files too, never reads the glyph
+// or a spelling out of this file.
+const EM_DASH = String.fromCharCode(0x2014);
+const NO_EM_DASH = new RegExp([EM_DASH, '&' + 'mdash;', '&#x' + '2014;', '&#' + '8212;'].join('|'));
 
 function oneSentence(s: string): boolean {
   // A single trailing sentence: exactly one period, and it is the last char.
@@ -55,10 +56,7 @@ describe('Harbor Light is bundled (native with the app)', () => {
 
   it('the native ModelStore treats harbor-mini as a bundled model', () => {
     const swift = readFileSync(
-      join(
-        process.cwd(),
-        'plugins/oscode-llama/ios/Sources/OscodeLlamaPlugin/ModelStore.swift',
-      ),
+      join(process.cwd(), 'plugins/oscode-llama/ios/Sources/OscodeLlamaPlugin/ModelStore.swift'),
       'utf8',
     );
     // The id is in the bundled set, and the store resolves, lists, and refuses

@@ -13,6 +13,11 @@ import {
   type TimeBucket,
 } from '../src/lib/greeting.js';
 
+// The em dash and its encoded spellings, assembled from pieces (see the note
+// where NO_EM_DASH is used).
+const EM_DASH = String.fromCharCode(0x2014);
+const NO_EM_DASH = new RegExp([EM_DASH, '&' + 'mdash;', '&#x' + '2014;', '&#' + '8212;'].join('|'));
+
 // A deterministic rng that walks a fixed list of values, wrapping at the end.
 // Lets a test steer pickLanding's two rolls (flavor gate, then index) precisely.
 function seqRng(values: number[]): () => number {
@@ -82,8 +87,10 @@ describe('landing library', () => {
       expect(line.length).toBeLessThanOrEqual(44);
       expect(line.split(/\s+/).length).toBeLessThanOrEqual(8);
       expect(line[0]).toBe(line[0].toUpperCase());
-      // No em dash anywhere, straight or encoded, per the repo policy.
-      expect(line).not.toMatch(/—|&mdash;|&#x2014;|&#8212;/);
+      // No em dash anywhere, straight or encoded, per the repo policy. The
+      // pattern is assembled from pieces so the repo-wide guard, which scans
+      // test files too, never reads the glyph or a spelling out of this file.
+      expect(line).not.toMatch(NO_EM_DASH);
     }
   });
 

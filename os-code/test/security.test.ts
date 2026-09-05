@@ -16,7 +16,11 @@ import {
   tokenMatches,
 } from '../src/core/security/daemonAuth.js';
 import { PROFILES } from '../src/core/security/profiles.js';
-import { PermissionEngine, DEFAULT_PERMISSIONS } from '../src/core/permissions/index.js';
+import {
+  PermissionEngine,
+  DEFAULT_PERMISSIONS,
+  commandMatchesPrefix,
+} from '../src/core/permissions/index.js';
 import { minimatch } from '../src/core/util/minimatch.js';
 
 describe('the jail', () => {
@@ -79,6 +83,19 @@ describe('redaction', () => {
     expect(redactSecrets('API_KEY="super-secret-value"')).toContain('[redacted:assignment]');
     expect(redactSecrets('API_KEY="super-secret-value"')).not.toContain('super-secret-value');
   });
+
+  it('scrubs a JSON-quoted key the same as an assignment (ENG-9)', () => {
+    const quoted = '"GITHUB_TOKEN": "abcdefghijklmnop1234"';
+    expect(redactSecrets(quoted)).not.toContain('abcdefghijklmnop1234');
+    expect(redactSecrets(quoted)).toContain('[redacted:assignment]');
+    // And a whole JSON document with such a key still parses afterwards.
+    const doc = JSON.stringify({ env: { GITHUB_TOKEN: 'abcdefghijklmnop1234', PORT: '3000' } });
+    const clean = redactSecrets(doc);
+    expect(clean).not.toContain('abcdefghijklmnop1234');
+    const parsed = JSON.parse(clean) as { env: { GITHUB_TOKEN: string; PORT: string } };
+    expect(parsed.env.PORT).toBe('3000');
+    expect(parsed.env.GITHUB_TOKEN).toContain('[redacted:assignment]');
+  });
 });
 
 describe('egress policy', () => {
@@ -131,6 +148,50 @@ describe('egress policy', () => {
       ).rejects.toBeInstanceOf(EgressBlocked);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('drops credential headers and demotes a POST across a cross-origin redirect (ENG-16)', async () => {
+    // Two listeners on 127.0.0.1 with different ports are different origins.
+    // The first answers 303 to the second; the second records what arrived.
+    let landed: { method?: string; headers: Record<string, string | string[] | undefined> } = {
+      headers: {},
+    };
+    const target = createServer((req, res) => {
+      landed = { method: req.method, headers: req.headers };
+      res.writeHead(200);
+      res.end('ok');
+    });
+    await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+    const targetPort = (target.address() as AddressInfo).port;
+    let firstAuth: string | undefined;
+    const origin = createServer((req, res) => {
+      firstAuth = req.headers.authorization;
+      res.writeHead(303, { location: `http://127.0.0.1:${targetPort}/landing` });
+      res.end();
+    });
+    await new Promise<void>((resolve) => origin.listen(0, '127.0.0.1', resolve));
+    try {
+      const port = (origin.address() as AddressInfo).port;
+      const policy = new EgressPolicy({ webEnabled: true, allowlist: [], blocklist: [] });
+      const res = await policy.fetch(`http://127.0.0.1:${port}/start`, 'web-fetch', {
+        method: 'POST',
+        body: 'payload',
+        headers: {
+          authorization: 'Bearer abcdefghijklmnopqrstuvwxyz',
+          'x-api-token': 'tok-1234567890abcdef',
+          accept: 'text/plain',
+        },
+      });
+      expect(res.status).toBe(200);
+      expect(firstAuth).toBe('Bearer abcdefghijklmnopqrstuvwxyz');
+      expect(landed.headers.authorization).toBeUndefined();
+      expect(landed.headers['x-api-token']).toBeUndefined();
+      expect(landed.headers.accept).toBe('text/plain');
+      expect(landed.method).toBe('GET');
+    } finally {
+      await new Promise<void>((resolve) => origin.close(() => resolve()));
+      await new Promise<void>((resolve) => target.close(() => resolve()));
     }
   });
 });
@@ -188,6 +249,66 @@ describe('profiles and permissions', () => {
     expect(
       engine.decide({ toolName: 'writeFile', risk: 'write', path: 'README.md' }).decision,
     ).toBe('ask');
+  });
+
+  it('a config allow for shell never auto-runs on a restrictive profile (ENG-4)', () => {
+    const rules = [{ tool: 'runShell', decision: 'allow' as const }];
+    const phone = new PermissionEngine(
+      { ...DEFAULT_PERMISSIONS, rules },
+      PROFILES['remote-attached'],
+    );
+    expect(phone.decide({ toolName: 'runShell', risk: 'shell', command: 'ls' }).decision).toBe(
+      'ask',
+    );
+    const desk = new PermissionEngine(
+      { ...DEFAULT_PERMISSIONS, rules },
+      PROFILES['local-interactive'],
+    );
+    expect(desk.decide({ toolName: 'runShell', risk: 'shell', command: 'ls' }).decision).toBe(
+      'allow',
+    );
+    // A deny rule still applies everywhere.
+    const denyRules = [{ tool: 'runShell', decision: 'deny' as const }];
+    const phoneDeny = new PermissionEngine(
+      { ...DEFAULT_PERMISSIONS, rules: denyRules },
+      PROFILES['remote-attached'],
+    );
+    expect(phoneDeny.decide({ toolName: 'runShell', risk: 'shell', command: 'ls' }).decision).toBe(
+      'deny',
+    );
+  });
+
+  it('a commandPrefix rule matches every segment by its first word (ENG-4)', () => {
+    const engine = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      rules: [{ tool: 'runShell', decision: 'allow', commandPrefix: 'npm' }],
+    });
+    const decide = (command: string) =>
+      engine.decide({ toolName: 'runShell', risk: 'shell', command }).decision;
+    expect(decide('npm test')).toBe('allow');
+    expect(decide('npm run build && npm test')).toBe('allow');
+    expect(decide('npm test; rm -rf /')).toBe('ask');
+    expect(decide('npm test | sh')).toBe('ask');
+    expect(decide('npm test $(cat secret)')).toBe('ask');
+    expect(decide('npm test `cat secret`')).toBe('ask');
+    expect(decide('NPM test')).toBe('ask');
+    expect(decide('sudo npm test')).toBe('ask');
+    expect(decide('env npm test')).toBe('ask');
+    expect(decide('npmx test')).toBe('ask');
+    // No command at all never matches a prefix rule.
+    expect(engine.decide({ toolName: 'runShell', risk: 'shell' }).decision).toBe('ask');
+    expect(commandMatchesPrefix('bash -c "npm test"', 'bash')).toBe(false);
+    expect(commandMatchesPrefix('npm test\nnpm run lint', 'npm')).toBe(true);
+  });
+
+  it('a dotted spelling of a path cannot dodge a deny rule (ENG-3)', () => {
+    const engine = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      rules: [{ tool: 'writeFile', decision: 'deny', pathGlob: 'secrets/**' }],
+    });
+    for (const path of ['secrets/k', './secrets/k', 'src/../secrets/k']) {
+      expect(engine.decide({ toolName: 'writeFile', risk: 'write', path }).decision).toBe('deny');
+    }
   });
 
   it('minimatch covers the subset the permission engine needs', () => {

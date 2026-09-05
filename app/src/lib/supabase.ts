@@ -34,6 +34,19 @@ function toSession(g: GoTrueSession): Session {
   };
 }
 
+/** A Supabase request that came back with an HTTP error, carrying the status
+ *  so a caller can tell "this session is dead" (a 400 or 401 on the refresh)
+ *  from a transient failure that should leave the session alone. */
+export class SupabaseRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'SupabaseRequestError';
+  }
+}
+
 function base(): string {
   if (!SUPABASE_URL) throw new Error('Sign-in is not configured on this build.');
   return SUPABASE_URL;
@@ -151,7 +164,7 @@ export async function refreshSession(refreshToken: string): Promise<Session> {
     headers: authHeaders(),
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
   return toSession((await res.json()) as GoTrueSession);
 }
 

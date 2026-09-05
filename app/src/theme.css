@@ -25,6 +25,10 @@
      (warm) for recessed fills and pressed states. */
   --bg: #f6f4ef;
   --bg-raised: #fcfbf7;
+  /* The live terminal's canvas (xterm reads these at mount, UI-12). One dark
+     surface in both themes: a shell is a shell. */
+  --term-bg: #0b0d12;
+  --term-fg: #e6e6e6;
   --surface: #edeae0;
   --surface-hover: #e4e0d4;
   --border: #e5e0d3;
@@ -1693,7 +1697,7 @@ textarea {
 .terminal-host {
   flex: 1 1 auto;
   min-height: 0;
-  background: #0b0d12;
+  background: var(--term-bg);
   padding: 8px 10px;
   overflow: hidden;
 }
@@ -2787,9 +2791,18 @@ textarea {
 /* The greeting line is quietly tappable: each tap rotates on to the next
    language. No pointer cursor, no underline, no tooltip. The only tell is the
    press scale from press-fb and one gentle nudge after landing, so finding it
-   still feels like an Easter egg. Keyboard users get a focus ring. */
+   still feels like an Easter egg. Keyboard users get a focus ring. It is a
+   real button inside the heading (UI-9), so it inherits the heading's type
+   and adds no box of its own. */
 .greeting-line {
   position: relative;
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+  text-align: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-wrap: inherit;
   pointer-events: auto;
   cursor: default;
   user-select: none;
@@ -5541,7 +5554,11 @@ textarea {
   margin: 10px 0;
 }
 
-/* Star track: empty row plus a clipped fill row for exact half-steps. */
+/* Star track: empty row plus a clipped fill row for exact half-steps. The
+   clip window is moved with transforms, never width (UI-8): the fill slides
+   left by the unfilled share while the row inside slides right by the same
+   share, so the stars stay put and only the window moves. Both ride the same
+   token curve, so they cancel exactly at every frame. */
 .stars {
   position: relative;
   display: inline-block;
@@ -5555,8 +5572,14 @@ textarea {
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
   overflow: hidden;
   white-space: nowrap;
+  will-change: transform;
+}
+.stars-fill-inner {
+  display: block;
+  will-change: transform;
 }
 
 /* Capability lanes */

@@ -62,10 +62,7 @@ function footprint(
   };
 }
 
-function diff(
-  a: SustainabilityFootprint,
-  b: SustainabilityFootprint,
-): SustainabilityFootprint {
+function diff(a: SustainabilityFootprint, b: SustainabilityFootprint): SustainabilityFootprint {
   // Floored at zero: a counterfactual can never be smaller than the local draw
   // in practice (a large cloud model costs more per token than a small local
   // one), but the floor keeps a degenerate basis from ever showing negative

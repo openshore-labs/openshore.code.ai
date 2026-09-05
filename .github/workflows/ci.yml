@@ -6,7 +6,9 @@
 # the missing net: a red run here surfaces the break before anyone trusts main.
 #
 # Setup steps (pnpm version, node version, cache) are kept byte-for-byte in sync
-# with catalog.yml so both workflows resolve the same toolchain.
+# with catalog.yml so both workflows resolve the same toolchain. The Node
+# version comes from .nvmrc, the one place it is written down (codemagic.yaml
+# carries the same number by hand, since Codemagic cannot read the file).
 name: CI
 
 on:
@@ -15,28 +17,42 @@ on:
   pull_request:
     branches: [main]
 
+# Nothing here writes to the repo, so the job token is read-only. Every action
+# below is pinned to a commit SHA for the same reason: a moved tag cannot swap
+# the code that runs with that token.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref so a rapid push sequence does not pile
 # up redundant CI.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # CI never launches Electron. Skip the Electron binary download in the
+  # electron package's install script, and skip the electron-rebuild of
+  # node-pty in the app's postinstall (scripts/postinstall.mjs honors this
+  # guard). Both only serve a desktop launch, which no step here performs.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  SKIP_NATIVE_REBUILD: "1"
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install workspace dependencies
@@ -50,6 +66,21 @@ jobs:
       - name: Build the engine
         run: pnpm --filter os-code build
 
+      # Then build every package, which is where the app's `vite build` and the
+      # Electron `tsc` emit run. Until this step existed a bundling break (a bad
+      # `@import` in theme.css, a renderer import of a Node-only module) passed
+      # lint, typecheck, and test, reached main, and was first seen on the
+      # TestFlight pipeline. Runs in workspace order, so the engine dist above
+      # is what the app build links against.
+      - name: Build every package
+        run: pnpm -r build
+
+      # Prettier drift used to be invisible: neither package's formatting was
+      # checked here, so files quietly diverged from .prettierrc. `pnpm format`
+      # in a package fixes what this step reports.
+      - name: Format check
+        run: pnpm -r format:check
+
       - name: Lint
         run: pnpm -r lint
 
@@ -58,3 +89,14 @@ jobs:
 
       - name: Test
         run: pnpm -r test
+
+      # The Supabase edge functions are Deno, not a workspace package, so their
+      # tests (the entitlement gate the checkout and webhook logic leans on)
+      # never ran under `pnpm -r test`. Deno fetches the std imports itself.
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
+      - name: Test the edge-function shared modules
+        run: deno test supabase/functions/_shared

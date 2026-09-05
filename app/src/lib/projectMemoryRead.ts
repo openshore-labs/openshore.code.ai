@@ -15,8 +15,7 @@ import {
 
 /** Where a project's notes are read from. */
 export type RepoSource =
-  | { kind: 'local'; root: string }
-  | { kind: 'github'; owner: string; repo: string };
+  { kind: 'local'; root: string } | { kind: 'github'; owner: string; repo: string };
 
 /** The bridge methods the local reader needs (a subset of OscodeBridge). */
 export interface RepoFileBridge {

@@ -52,7 +52,7 @@ Pipeline, in order:
    not answer contributes nothing; popularity and timestamps degrade to omitted.
    Set `CATALOG_OFFLINE=1` to skip the network entirely (used by local runs and
    tests). NEVER weights.
-2b. Live discovery (`discover.ts`, on by default when online; `CATALOG_DISCOVER=0`
+   2b. Live discovery (`discover.ts`, on by default when online; `CATALOG_DISCOVER=0`
    turns it off): ask Hugging Face for the trending and the newest GGUF repos,
    read each repo's metadata (file list with sizes, license tag, gated flag),
    and turn the ones that clear the honesty bar into entries that join the seed
@@ -189,9 +189,11 @@ To admit or promote a model:
 
 ## CI publishing (built: `.github/workflows/catalog.yml`)
 
-The publish pipeline is wired. `.github/workflows/catalog.yml` runs weekly, on a
-change to the curation inputs / builder / schema, or on demand
-(`workflow_dispatch`). Each run:
+The publish pipeline is wired. `.github/workflows/catalog.yml` runs daily
+(08:17 UTC), on a change to the curation inputs / builder / schema, or on demand
+(`workflow_dispatch`, which takes one input, `allow_large_drop`: tick it to set
+`CATALOG_ALLOW_LARGE_DROP=1` for that run and waive the count-collapse guard
+when a large drop is intended). Each run:
 
 1. Builds the engine and runs the builder + isolation guard tests.
 2. Seeds the regression baseline by fetching the currently live catalog from

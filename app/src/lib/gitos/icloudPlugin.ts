@@ -7,9 +7,12 @@ import { registerPlugin } from '@capacitor/core';
 export interface IcloudPluginContract {
   /** Is the ubiquity container reachable right now (signed in, provisioned)? */
   available(): Promise<{ available: boolean }>;
-  list(options: {
-    resourceId: string;
-  }): Promise<{ files: Array<{ path: string; updatedAt: string; size: number }> }>;
+  list(options: { resourceId: string }): Promise<{
+    // `evicted` marks a note iCloud holds but has not downloaded here (a
+    // placeholder). It exists, so a same-name create must open it, never
+    // overwrite the cloud copy (UI-2); read() materializes it on demand.
+    files: Array<{ path: string; updatedAt: string; size: number; evicted?: boolean }>;
+  }>;
   read(options: {
     resourceId: string;
     path: string;

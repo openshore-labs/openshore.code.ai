@@ -77,14 +77,34 @@ describe('leanerSuggestions', () => {
 
   it('makes no claim about a local model it cannot find in the catalog', () => {
     const lean = model({ id: 'lean', sizeGB: 4, fit: 4.5, caps: ['coding'] });
-    const crew: CrewMemberLite[] = [{ role: 'coding', model: 'some-unlisted-model', kind: 'local' }];
+    const crew: CrewMemberLite[] = [
+      { role: 'coding', model: 'some-unlisted-model', kind: 'local' },
+    ];
     expect(leanerSuggestions(crew, [lean])).toEqual([]);
   });
 
   it('requires orchestrator-capable for the orchestrator role', () => {
-    const orch = model({ id: 'orch', sizeGB: 40, fit: 4.6, caps: ['reasoning'], orchestratorCapable: true });
-    const notOrch = model({ id: 'small', sizeGB: 6, fit: 4.7, caps: ['reasoning'], orchestratorCapable: false });
-    const alsoOrch = model({ id: 'lean-orch', sizeGB: 14, fit: 4.4, caps: ['reasoning'], orchestratorCapable: true });
+    const orch = model({
+      id: 'orch',
+      sizeGB: 40,
+      fit: 4.6,
+      caps: ['reasoning'],
+      orchestratorCapable: true,
+    });
+    const notOrch = model({
+      id: 'small',
+      sizeGB: 6,
+      fit: 4.7,
+      caps: ['reasoning'],
+      orchestratorCapable: false,
+    });
+    const alsoOrch = model({
+      id: 'lean-orch',
+      sizeGB: 14,
+      fit: 4.4,
+      caps: ['reasoning'],
+      orchestratorCapable: true,
+    });
     const crew: CrewMemberLite[] = [{ role: 'orchestrator', model: 'orch', kind: 'local' }];
     const out = leanerSuggestions(crew, [orch, notOrch, alsoOrch]);
     expect(out).toHaveLength(1);

@@ -1,3 +1,5 @@
+> **Archived 2026-09-05. Status: WORKED.** The findings below were built out per `os-code/PROGRESS.md` (the "Nothing here is fixed yet" line further down is the original text); the few still open (TS-P2-1 on the CLI attach path, TS-P2-5, TS-P2-10, TS-P2-11, TS-P2-12, TS-P1-6) are carried in the "Still open from the earlier reviews" section of `CODE-REVIEW-FINDINGS-2026-09-05.md` at the repo root.
+
 # OS Code review 2026-08-25: connectivity, terminal bridge, Marketplace
 
 Findings and build-ready proposals for the implementing session (Opus 4.8).

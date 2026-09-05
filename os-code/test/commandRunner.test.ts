@@ -54,6 +54,48 @@ describe('commandRunner', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('redacts a secret split across two chunks (ENG-10)', async () => {
+    const dir = cwd();
+    const secret = 'sk-abcdefghijklmnopqrstuvwxyz1234567890ABCD';
+    const head = secret.slice(0, 12);
+    const tail = secret.slice(12);
+    let seen = '';
+    const result = await runCommand({
+      // Two writes with a pause between them, so the key arrives in two chunks.
+      command: `printf '%s' 'token ${head}'; sleep 0.05; printf '%s\\n' '${tail} end'`,
+      cwd: dir,
+      onChunk: (_s, text) => (seen += text),
+    }).done;
+    expect(result.exitCode).toBe(0);
+    expect(seen).not.toContain(secret);
+    expect(seen).toContain('[redacted:');
+    expect(seen).toContain('end');
+    expect(result.stdout).not.toContain(secret);
+    expect(result.stdout).toContain('end');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('flushes a held tail while the process waits, so a prompt stays visible', async () => {
+    const dir = cwd();
+    let seen = '';
+    const run = runCommand({
+      command: 'printf "Continue? "; read -r line; echo "got:$line"',
+      cwd: dir,
+      stdin: 'pipe',
+      onChunk: (_s, text) => (seen += text),
+    });
+    // The prompt is shorter than the carry; it must still arrive on its own.
+    const start = Date.now();
+    while (!seen.includes('Continue?')) {
+      if (Date.now() - start > 2000) throw new Error('prompt never arrived');
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    run.write('yes\n');
+    const result = await run.done;
+    expect(result.stdout).toContain('got:yes');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('answers stdin so an interactive read completes', async () => {
     const dir = cwd();
     const run = runCommand({

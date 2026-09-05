@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
+import { effectiveMode } from '../src/core/agent/modes.js';
+import { profileFor } from '../src/core/security/profiles.js';
 
 const askWrites = { permissions: { defaults: { write: 'ask', shell: 'ask' } } };
 
@@ -44,6 +46,39 @@ describe('permission modes', () => {
     const session = makeTestSession(provider, { configOverrides: askWrites });
     await session.agent.run('go');
     expect(session.approvals.map((a) => a.toolName)).toEqual(['writeFile']);
+  });
+
+  it('bypassPermissions downgrades to acceptEdits on a phone-attached session (ENG-1)', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('writeFile', { path: 'd.txt', content: 'x' }, 'c1'),
+      toolTurn('runShell', { command: 'echo ok' }, 'c2'),
+      textTurn('done'),
+    ]);
+    const session = makeTestSession(provider, {
+      configOverrides: askWrites,
+      profile: 'remote-attached',
+    });
+    session.agent.setMode('bypassPermissions');
+    // Announced, never silent: the mode event says what is in force, and a note
+    // explains why.
+    expect(session.agent.permissionMode).toBe('acceptEdits');
+    expect(session.events.some((e) => e.type === 'mode' && e.mode === 'acceptEdits')).toBe(true);
+    const note = session.events.find((e) => e.type === 'note');
+    expect(note && note.type === 'note' && note.message).toMatch(/phone-attached/);
+    await session.agent.run('write then run');
+    // The edit flowed; the shell command asked.
+    expect(session.approvals.map((a) => a.toolName)).toEqual(['runShell']);
+  });
+
+  it('effectiveMode names the headless variant', () => {
+    expect(effectiveMode(profileFor('headless'), 'bypassPermissions')).toEqual({
+      mode: 'acceptEdits',
+      note: expect.stringMatching(/headless session/),
+    });
+    expect(effectiveMode(profileFor('local-interactive'), 'bypassPermissions')).toEqual({
+      mode: 'bypassPermissions',
+    });
+    expect(effectiveMode(profileFor('remote-attached'), 'plan')).toEqual({ mode: 'plan' });
   });
 
   it('announces a mode change as an event', () => {

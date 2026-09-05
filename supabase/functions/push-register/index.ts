@@ -10,6 +10,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
 
+// An APNs device token is 32 bytes, delivered to the app as 64 hex characters.
+const APNS_TOKEN = /^[0-9a-f]{64}$/i;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
   try {
@@ -30,6 +33,13 @@ Deno.serve(async (req) => {
     };
     if (!token || (environment !== 'sandbox' && environment !== 'production')) {
       return json({ error: 'Send {"token": "...", "environment": "sandbox|production"}.' }, 400, req);
+    }
+    // BE-11: device_token is the primary key, so a row for a KNOWN token can be
+    // re-pointed by whoever posts it. Only a well-formed APNs token (32 bytes,
+    // hex) may reach the upsert; an attacker still needs the victim's real
+    // token, which never leaves the device except through this call.
+    if (!APNS_TOKEN.test(token)) {
+      return json({ error: 'That does not look like an APNs device token.' }, 400, req);
     }
 
     const admin = createClient(

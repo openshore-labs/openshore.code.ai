@@ -280,11 +280,7 @@ export function StartingPaths({
               Tailscale network. Your machine does the work, so it does not drain your battery, and
               a long answer keeps going even when you close the app.
             </div>
-            <button
-              className="btn ghost"
-              style={{ width: '100%' }}
-              onClick={() => void go('pair')}
-            >
+            <button className="btn ghost" style={{ width: '100%' }} onClick={() => void go('pair')}>
               Connect your computer
             </button>
           </div>

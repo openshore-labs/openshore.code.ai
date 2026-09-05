@@ -19,6 +19,13 @@
 # MARKETING_DEPLOY_TOKEN, a fine-grained PAT scoped to
 # OpenShore.ai-marketing-site with Contents: read and write. Without it the
 # publish step is skipped and the job just proves the catalog builds.
+#
+# Secrets are scoped to the ONE step that needs each of them (step-level env),
+# never the whole job. A job-level secret is in the environment of
+# `pnpm install` (which runs package build scripts), of the test run, and of
+# the builder's discovery fetches against arbitrary Hugging Face repos; the
+# marketing PAT writes to a site Cloudflare deploys unattended, so none of
+# those should be able to read it.
 name: Publish model catalog
 
 on:
@@ -27,17 +34,34 @@ on:
   # to avoid the scheduler stampede. The no-op stamp guard means an unchanged
   # run does not commit, so a quiet day is close to free.
   schedule:
-    - cron: '17 8 * * *'
+    - cron: "17 8 * * *"
   # Rebuild whenever the curation inputs, the builder, or the schema change.
   push:
     branches: [main]
     paths:
-      - 'os-code/curation/**'
-      - 'os-code/catalog.sample.json'
-      - 'os-code/scripts/build-catalog/**'
-      - 'os-code/src/market/schema.ts'
-      - '.github/workflows/catalog.yml'
-  workflow_dispatch: {}
+      - "os-code/curation/**"
+      - "os-code/catalog.sample.json"
+      - "os-code/scripts/build-catalog/**"
+      - "os-code/src/market/schema.ts"
+      - ".github/workflows/catalog.yml"
+  workflow_dispatch:
+    inputs:
+      # The builder refuses a catalog whose model count collapses against the
+      # live baseline (a broken discovery run must not publish an empty
+      # marketplace). When a large drop is intended, a curation purge for
+      # example, run the workflow by hand with this on; it sets
+      # CATALOG_ALLOW_LARGE_DROP=1 for that one build only.
+      allow_large_drop:
+        description: "Waive the count-collapse guard for this run (CATALOG_ALLOW_LARGE_DROP=1)"
+        type: boolean
+        default: false
+
+# The job only reads this repo. The publish step pushes to the marketing repo
+# with its own PAT, so the workflow token needs no write scope here. Every
+# action is pinned to a commit SHA so a moved tag cannot swap the code that
+# runs with these secrets.
+permissions:
+  contents: read
 
 # One catalog publish at a time; never let two runs race the marketing repo.
 concurrency:
@@ -47,34 +71,28 @@ concurrency:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    # Mapped once so the publish gate can test whether it is configured. An
-    # unset secret resolves to an empty string.
     env:
-      MARKETING_DEPLOY_TOKEN: ${{ secrets.MARKETING_DEPLOY_TOKEN }}
-      # Optional: an authenticated Hugging Face token lifts the anonymous rate
-      # limit on the popularity fetch. Absent, the build stays anonymous.
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      # Optional: the reviews backend, so the builder bakes a community-review
-      # snapshot into the catalog (the scale path: a browse row shows a crowd
-      # star with no per-view request to Supabase). The anon key is enough, the
-      # snapshot RPC returns only aggregates over visible rows. Both unset, the
-      # build ships without the snapshot and the app falls back to the live
-      # browse RPC, exactly as before.
-      CATALOG_REVIEWS_URL: ${{ secrets.CATALOG_REVIEWS_URL }}
-      CATALOG_REVIEWS_ANON_KEY: ${{ secrets.CATALOG_REVIEWS_ANON_KEY }}
+      # Only a yes/no travels at job level, so the publish gate can test
+      # whether the token is configured without the token itself being in
+      # every step's environment. An unset secret resolves to an empty string.
+      MARKETING_DEPLOY_CONFIGURED: ${{ secrets.MARKETING_DEPLOY_TOKEN != '' }}
+      # This job never launches Electron: skip the binary download and the
+      # electron-rebuild of node-pty (the app's postinstall honors this guard).
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      SKIP_NATIVE_REBUILD: "1"
     steps:
       - name: Check out the engine repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install workspace dependencies
@@ -123,10 +141,28 @@ jobs:
           fi
 
       - name: Build the catalog
+        env:
+          # Optional: an authenticated Hugging Face token lifts the anonymous
+          # rate limit on the popularity fetch. Absent, the build stays anonymous.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # Optional: the reviews backend, so the builder bakes a community-review
+          # snapshot into the catalog (the scale path: a browse row shows a crowd
+          # star with no per-view request to Supabase). The anon key is enough,
+          # the snapshot RPC returns only aggregates over visible rows. Both
+          # unset, the build ships without the snapshot and the app falls back
+          # to the live browse RPC, exactly as before.
+          CATALOG_REVIEWS_URL: ${{ secrets.CATALOG_REVIEWS_URL }}
+          CATALOG_REVIEWS_ANON_KEY: ${{ secrets.CATALOG_REVIEWS_ANON_KEY }}
+          # '1' only on a manual run that asked for it; empty (unset) otherwise,
+          # so a scheduled or push-triggered build is always gated.
+          CATALOG_ALLOW_LARGE_DROP: ${{ inputs.allow_large_drop == true && '1' || '' }}
         run: pnpm --filter os-code build:catalog
 
       - name: Publish to the marketing site
-        if: ${{ env.MARKETING_DEPLOY_TOKEN != '' }}
+        if: ${{ env.MARKETING_DEPLOY_CONFIGURED == 'true' }}
+        env:
+          # The only step that sees the marketing PAT.
+          MARKETING_DEPLOY_TOKEN: ${{ secrets.MARKETING_DEPLOY_TOKEN }}
         run: |
           set -euo pipefail
           # --branch main: the clone must start from main itself, whatever the
@@ -149,9 +185,9 @@ jobs:
           git commit -m "Publish model catalog ($(date -u +%Y-%m-%d))"
           # A human commit can land on marketing main between our shallow clone
           # and our push, rejecting it and stranding the catalog until the next
-          # scheduled run (up to a week). Rebase our single-file commit onto the
+          # scheduled run (up to a day). Rebase our single-file commit onto the
           # advanced main and retry a few times so a concurrent commit does not
-          # cost a week of staleness.
+          # cost a day of staleness.
           attempts=3
           n=1
           until git push origin HEAD:main; do
@@ -168,13 +204,13 @@ jobs:
           done
 
       - name: Note when publishing is not configured
-        if: ${{ env.MARKETING_DEPLOY_TOKEN == '' }}
+        if: ${{ env.MARKETING_DEPLOY_CONFIGURED != 'true' }}
         run: |
           echo 'MARKETING_DEPLOY_TOKEN is not set, so the catalog was built and'
           echo 'gated but not published. Add the secret to enable publishing.'
 
       - name: Upload the built catalog as an artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: catalog
           path: os-code/build/catalog.json

@@ -11,7 +11,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useApp } from '../state/store.js';
-import { hapticTick } from '../lib/haptics.js';
 import { copyText } from '../lib/clipboard.js';
 import { DiffBlock } from './ToolCard.js';
 
@@ -56,7 +55,6 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   // fallback for a WebView that lacks it, and an honest "Copy failed" rather
   // than a silent nothing.
   const copy = async (): Promise<void> => {
-    hapticTick();
     const ok = await copyText(code);
     setCopied(ok ? 'done' : 'failed');
     setTimeout(() => setCopied('idle'), 1400);
@@ -72,7 +70,6 @@ function CodeBlock({ children }: { children?: ReactNode }) {
               type="button"
               className="md-code-run press-fb"
               onClick={() => {
-                hapticTick();
                 runCommand(code);
               }}
             >

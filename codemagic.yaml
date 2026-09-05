@@ -15,7 +15,14 @@ workflows:
       # binding and the vite build dies with "Cannot find native binding".
       # Pinned to 22.22.2 to match the version the lockfile was built on.
       node: 22.22.2
-      xcode: latest
+      # Pinned, not `latest`: a new Xcode landing on the build image was the
+      # one thing that could change a green pipeline into a red one with no
+      # commit here. Bump this deliberately, after a green build on the new
+      # version. 26.3 is the newest Xcode 26 release the pin could be verified
+      # against when it was set (2026-09-05; the last green build's log was not
+      # reachable from that session). Deployment target is iOS 16.0, which
+      # every Xcode 26 supports.
+      xcode: 26.3
       # Import the variable group that holds CERTIFICATE_PRIVATE_KEY (the
       # persisted iOS signing key). Without this line the group's secrets are
       # not exposed to the build and the signing step falls back to a one-off
@@ -25,6 +32,13 @@ workflows:
         - Harbor-os-code
       vars:
         BUNDLE_ID: ai.openshore.oscode
+        # An iOS build never launches Electron. Skip the Electron binary
+        # download in the electron package's install script, and skip the
+        # electron-rebuild of node-pty in the app's postinstall
+        # (app/scripts/postinstall.mjs honors this guard). Both only serve the
+        # desktop, and both cost minutes on every TestFlight build.
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        SKIP_NATIVE_REBUILD: "1"
       # Manual signing. No `ios_signing:` block (that is automatic signing,
       # which only FETCHES profiles here and cannot mint the cert on a fresh
       # account, hence "No matching profiles found"). The "Set up code
@@ -66,10 +80,11 @@ workflows:
           pnpm -r lint
           pnpm -r typecheck
           pnpm -r test
-      - name: Build the engine and the web app, sync the iOS project
+      - name: Build the web app, sync the iOS project
         script: |
           set -euo pipefail
-          pnpm --filter os-code build
+          # The engine dist is already built by the gate step above; this step
+          # only bundles the web app against it.
           cd app
           npx vite build
           npx cap sync ios

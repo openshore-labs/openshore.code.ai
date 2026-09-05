@@ -8,6 +8,7 @@ import type { ToolRisk } from '../permissions/index.js';
 import type { OscConfig } from '../../config/schema.js';
 import type { ImageProvider } from '../../providers/types.js';
 import type { ToolSpec } from '../../providers/types.js';
+import type { DelegatedUsage, DelegateOptions } from '../../router/router.js';
 
 export interface Citation {
   title: string;
@@ -44,7 +45,15 @@ export interface ToolContext {
     role: 'coding' | 'writing' | 'analysis' | 'fast' | 'vision',
     task: string,
     images?: Array<{ base64: string; mediaType: string }>,
+    options?: DelegateOptions,
   ) => Promise<string>;
+  /** The running task's abort signal, set by the loop at every task start.
+   *  Slow tool work (a delegated generation, a long fetch) honors it so Stop
+   *  stops the whole task, not just the orchestrator's own stream (DAE-4). */
+  signal?: AbortSignal;
+  /** Report a model call a tool made on its own (a delegated subtask), so the
+   *  loop can count its tokens, price cloud spend, and show it. Set by the loop. */
+  noteUsage?: (usage: DelegatedUsage) => void;
   /** Semantic repo retrieval, provided by the context layer when enabled. */
   searchRepo?: (query: string, k: number) => Promise<string>;
   /** Absolute path to the on-device knowledge vault (markdown files). The vault
@@ -90,6 +99,14 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
    *  session context so a tool whose path is derived from context (not from its
    *  arguments) can still report it; context-free tools ignore the second arg. */
   pathOf?: (args: z.infer<S>, ctx?: ToolContext) => string | undefined;
+  /** Which root pathOf's path is relative to. 'workspace' (the default) has
+   *  the loop resolve it through the workspace jail before any permission
+   *  rule sees it, and deny outright when it leaves the jail; 'own' is for
+   *  tools with their own root (the vault), whose pathOf returns a path that is
+   *  already normalized against that root. */
+  pathJail?: 'workspace' | 'own';
+  /** The shell command a tool runs, for prefix-scoped permission rules. */
+  commandOf?: (args: z.infer<S>) => string | undefined;
   /** Build the approval preview. Called only when the decision is 'ask'. */
   preview?: (args: z.infer<S>, ctx: ToolContext) => Promise<ToolPreview>;
   execute: (args: z.infer<S>, ctx: ToolContext) => Promise<ToolOutput>;

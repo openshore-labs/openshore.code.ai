@@ -3,14 +3,12 @@
 // gives at the end of a job, so the person never has to scroll back to
 // reconstruct what happened.
 import type { ChangedFile } from '../state/types.js';
-import { hapticTick } from '../lib/haptics.js';
 
 export function ChangedFilesCard({ files }: { files: ChangedFile[] }) {
   const added = files.reduce((n, f) => n + f.added, 0);
   const removed = files.reduce((n, f) => n + f.removed, 0);
   const jump = (id?: string) => {
     if (!id) return;
-    hapticTick();
     const el = document.getElementById(`tool-${id}`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el?.classList.add('tool-card-flash');
