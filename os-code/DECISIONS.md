@@ -863,6 +863,15 @@ execution contract. Newest at the bottom.
 - 2026-09-05: Founder: Personal goes to $50/yr when the gates are reinstated;
   the app stays ungated while building, so the command center carries no
   paywall yet.
+- 2026-09-05: Crew routines draw one control distinction on the existing
+  docked/offshore/offline reach (founder): SET UP and CONTROL require being
+  docked (home reachable over Tailscale) or on the machine; VIEW is always on.
+  Away, the command center serves a cached snapshot and refuses every mutation.
+  Enforced purely in the app (pure crewControl in lib/routines.ts, guards in the
+  store): the daemon is physically unreachable when not docked, so being able to
+  reach it IS the gate, and no server-side change was needed. The snapshot is
+  cached at oscode.routines.v1 so the activity dashboards render offshore.
+
 - 2026-09-05: **Tier 2 likeness precision reworked after the CTO/CMO review, and
   the gate made non-countable.** The classifier was over-blocking coding work
   ("Docker image of Ubuntu Server" read as a person) and under-blocking the
