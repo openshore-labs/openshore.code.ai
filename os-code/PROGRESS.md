@@ -70,6 +70,14 @@ is on", never "always on", and "works, then asks", never "unsupervised".
   Prettier; app typecheck (src and electron), lint, 699 tests (93 files), vite
   build, Prettier; the repo-wide em-dash guard and the PROGRESS shape guard.
   Pushed to `main` per the founder.
+- **Polish pass (founder: "do all the polish").** A waiting-for-you row
+  breathes a soft amber halo on the working dot's clock; the results inbox
+  arrives row by row on `--stagger`; a sheet's heading rises in, keyed to the
+  routine it came from; routine cards swipe to delete through `SwipeRow` (the
+  Delete button is gone, the card's own buttons stay); the Next run tile is
+  tabular. Every animation dies under reduced motion. The pause switch keeps
+  the app-wide button tick (a component-level haptic is banned by the polish
+  guard, per the 2026-09-05 ruling).
 - **Not verifiable here:** a real scheduled fire under Ollama on the founder's
   box, the approval push arriving with the app closed, suspend and wake, and
   the room on an iPhone (TestFlight). See What remains.

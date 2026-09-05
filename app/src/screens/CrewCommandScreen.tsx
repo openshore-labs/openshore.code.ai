@@ -9,10 +9,11 @@
 // switch); and the results inbox, newest first, each opening a result sheet
 // with the transcript one tap away. Copy stays honest: "while your computer
 // is on", never "always on"; "works, then asks", never "unsupervised".
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
+import { SwipeRow } from '../components/SwipeRow.js';
 import { Markdown } from '../components/Markdown.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -466,66 +467,68 @@ export function CrewCommandScreen() {
               const tone = presenceTone(r.presence);
               const busy = r.presence === 'working' || r.presence === 'waiting';
               return (
-                <div key={r.id} className={`card cc-routine ${tone}`}>
-                  <div className="cc-routine-head">
-                    <div className="cc-routine-title">
-                      <PresenceDot tone={tone} />
-                      <h3>{r.name}</h3>
+                <SwipeRow
+                  key={r.id}
+                  variant="danger"
+                  label="Delete"
+                  className="cc-routine-swipe"
+                  onTap={() => {}}
+                  onToggle={() => setConfirmDelete(r)}
+                >
+                  <div className={`card cc-routine ${tone}`}>
+                    <div className="cc-routine-head">
+                      <div className="cc-routine-title">
+                        <PresenceDot tone={tone} />
+                        <h3>{r.name}</h3>
+                      </div>
+                      <span className={`pill cc-presence ${tone}`}>{presenceLabel(r, now)}</span>
                     </div>
-                    <span className={`pill cc-presence ${tone}`}>{presenceLabel(r, now)}</span>
-                  </div>
-                  <div className="cc-routine-meta">
-                    {r.agentName} · {scheduleLabel(r.schedule)} · {accessLabel(r.access)} ·{' '}
-                    {workspaceName(r.cwd)}
-                  </div>
-                  {r.lastRun?.summary ? (
-                    <p className="cc-routine-last">{r.lastRun.summary}</p>
-                  ) : null}
-                  <div className="cc-routine-actions">
-                    {busy ? (
-                      <button
-                        className="suggestion press-fb"
-                        onClick={() => void stopRoutine(r.id)}
-                      >
-                        Stop
+                    <div className="cc-routine-meta">
+                      {r.agentName} · {scheduleLabel(r.schedule)} · {accessLabel(r.access)} ·{' '}
+                      {workspaceName(r.cwd)}
+                    </div>
+                    {r.lastRun?.summary ? (
+                      <p className="cc-routine-last">{r.lastRun.summary}</p>
+                    ) : null}
+                    <div className="cc-routine-actions">
+                      {busy ? (
+                        <button
+                          className="suggestion press-fb"
+                          onClick={() => void stopRoutine(r.id)}
+                        >
+                          Stop
+                        </button>
+                      ) : (
+                        <button
+                          className="suggestion suggestion-preferred press-fb"
+                          onClick={() => {
+                            void runRoutineNow(r.id);
+                          }}
+                        >
+                          Run now
+                        </button>
+                      )}
+                      <button className="suggestion press-fb" onClick={() => beginEdit(r)}>
+                        Edit
                       </button>
-                    ) : (
-                      <button
-                        className="suggestion suggestion-preferred press-fb"
-                        onClick={() => {
-                          void runRoutineNow(r.id);
-                        }}
-                      >
-                        Run now
-                      </button>
-                    )}
-                    <button className="suggestion press-fb" onClick={() => beginEdit(r)}>
-                      Edit
-                    </button>
-                    <button
-                      className="suggestion press-fb"
-                      onClick={() => setConfirmDelete(r)}
-                      aria-label={`Delete ${r.name}`}
-                    >
-                      Delete
-                    </button>
-                    <label className="cc-switch-row">
-                      <span className="cc-switch-label">{r.enabled ? 'On' : 'Paused'}</span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={r.enabled}
-                        aria-label={r.enabled ? `Pause ${r.name}` : `Resume ${r.name}`}
-                        className={`switch${r.enabled ? ' on' : ''}`}
-                        onClick={() => {
-                          void updateRoutine(r.id, { enabled: !r.enabled });
-                        }}
-                      >
-                        <span className="switch-knob" />
-                      </button>
-                    </label>
+                      <label className="cc-switch-row">
+                        <span className="cc-switch-label">{r.enabled ? 'On' : 'Paused'}</span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={r.enabled}
+                          aria-label={r.enabled ? `Pause ${r.name}` : `Resume ${r.name}`}
+                          className={`switch${r.enabled ? ' on' : ''}`}
+                          onClick={() => {
+                            void updateRoutine(r.id, { enabled: !r.enabled });
+                          }}
+                        >
+                          <span className="switch-knob" />
+                        </button>
+                      </label>
+                    </div>
                   </div>
-                </div>
+                </SwipeRow>
               );
             })}
           </section>
@@ -535,7 +538,7 @@ export function CrewCommandScreen() {
           <section className="cc-section" aria-label="Results">
             <h2>Results</h2>
             <div className="cc-inbox">
-              {recentRuns.map((run) => {
+              {recentRuns.map((run, index) => {
                 const r = routineById(run.routineId);
                 const tone: PresenceTone =
                   run.state === 'running'
@@ -551,7 +554,8 @@ export function CrewCommandScreen() {
                   <button
                     key={run.id}
                     type="button"
-                    className="cc-row press-fb press-fb--row"
+                    className="cc-row cc-row-arrive press-fb press-fb--row"
+                    style={{ '--i': index } as CSSProperties}
                     onClick={() => setDetail(run)}
                   >
                     <PresenceDot tone={tone} />
@@ -578,7 +582,7 @@ export function CrewCommandScreen() {
       <Sheet open={Boolean(draft)} onClose={() => setDraft(undefined)}>
         {draft ? (
           <>
-            <h2>
+            <h2 className="cc-sheet-title" key={draft.id ?? 'new'}>
               {draft.id ? 'Edit routine' : draft.name === PRESET.name ? PRESET.name : 'New routine'}
             </h2>
             <p className="sheet-sub">
@@ -791,7 +795,9 @@ export function CrewCommandScreen() {
       <Sheet open={Boolean(detail)} onClose={() => setDetail(undefined)}>
         {detail ? (
           <>
-            <h2>{routineById(detail.routineId)?.name ?? 'Routine'}</h2>
+            <h2 className="cc-sheet-title" key={detail.id}>
+              {routineById(detail.routineId)?.name ?? 'Routine'}
+            </h2>
             <p className="sheet-sub">
               {runStateLabel(detail.state)} · {runWhen(detail, now)}
               {detail.steps ? ` · ${detail.steps} ${detail.steps === 1 ? 'step' : 'steps'}` : ''}
