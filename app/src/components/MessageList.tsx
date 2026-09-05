@@ -142,7 +142,6 @@ export function MessageList({
   const jumpToBottom = () => {
     const el = threadRef.current;
     if (!el) return;
-    hapticTick();
     pinnedRef.current = true;
     setUnseen(0);
     setScrolledUp(false);
@@ -260,7 +259,6 @@ export function MessageList({
                         type="button"
                         className="msg-stopped-action ghost press-fb"
                         onClick={() => {
-                          hapticTick();
                           onRetry();
                         }}
                       >
@@ -279,7 +277,6 @@ export function MessageList({
             className="msg-user queued press-fb"
             aria-label="Queued message. Tap to remove it."
             onClick={() => {
-              hapticTick();
               onUnqueue?.(i);
             }}
           >

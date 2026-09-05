@@ -37,6 +37,10 @@ export interface StoredFileMeta {
   updatedAt: string;
   /** Body length in UTF-16 code units; a cheap size signal for lists. */
   size: number;
+  /** True when the provider knows the file exists but its bytes are not on
+   *  this device yet (an iCloud placeholder). Opening it waits; creating a
+   *  file of the same name must never overwrite it. */
+  evicted?: boolean;
 }
 
 /** A lease marks one writer per resource. Cloud folder syncs have no

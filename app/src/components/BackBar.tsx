@@ -9,7 +9,6 @@ import { useApp, type ViewName } from '../state/store.js';
 import { useCompact } from '../hooks/useCompact.js';
 import { ProfileStatus } from './ProfileStatus.js';
 import { MenuIcon } from './MenuIcon.js';
-import { hapticTick } from '../lib/haptics.js';
 
 export const ROOM_NAMES: Record<ViewName, string> = {
   chat: 'Chat',
@@ -63,7 +62,6 @@ export function BackBar({
         <button
           className="icon-btn back-btn press-fb"
           onClick={() => {
-            hapticTick();
             way.onBack();
           }}
           aria-label={`Back to ${way.to}`}
@@ -76,7 +74,6 @@ export function BackBar({
         <button
           className="icon-btn menu-btn press-fb"
           onClick={() => {
-            hapticTick();
             setDrawer(true);
           }}
           aria-label="Menu"

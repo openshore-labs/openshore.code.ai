@@ -1,8 +1,9 @@
 {
   "name": "oscode-iap",
   "version": "0.1.0",
+  "private": true,
   "description": "Native StoreKit 2 In-App Purchase bridge for OpenShore: the auto-renewable Personal subscription.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "files": [
     "ios/Sources",
     "Package.swift"

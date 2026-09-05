@@ -15,7 +15,7 @@ import {
 import type { ImageProvider } from '../src/providers/types.js';
 import type { ConsentAssertion } from '../src/core/ethics/classify.js';
 
-const MIGRATION = join(__dirname, '../../supabase/migrations/0015_guardrail_enforcement.sql');
+const MIGRATION = join(__dirname, '../../supabase/migrations/0016_guardrail_enforcement.sql');
 
 /** A one-pixel PNG the fake image server returns. */
 function tinyPngBase64(): string {

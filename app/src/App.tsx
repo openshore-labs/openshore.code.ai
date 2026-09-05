@@ -9,6 +9,8 @@ import { hapticTick } from './lib/haptics.js';
 import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
+import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
+import { OrgJoinSheet } from './components/OrgJoinSheet.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { ChatsScreen } from './screens/ChatsScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
@@ -130,11 +132,15 @@ export function App() {
   // into every button across the app. The keyboard is exempt on its own: it
   // isn't a <button> and iOS already gives it system haptics. Capture phase
   // so a handler that calls stopPropagation downstream still gets counted.
+  // This is the ONLY tick for a tap (UI-7): a component never ticks inside a
+  // button's onClick, or the finger feels two. Components mark only the
+  // moments a click cannot: a gesture's lift, arm, and drop, a keyboard
+  // commit, and the streaming pulse.
   useEffect(() => {
     if (platform() !== 'ios') return;
     const onTap = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
-      if (e.target.closest('button:not(:disabled)')) hapticTick();
+      if (e.target.closest('button:not(:disabled), [role="button"], a[href]')) hapticTick();
     };
     document.addEventListener('click', onTap, true);
     return () => document.removeEventListener('click', onTap, true);
@@ -256,6 +262,8 @@ export function App() {
         />
       ) : null}
       <Paywall />
+      <AuthConfirmSheet />
+      <OrgJoinSheet />
       {toastPresence.mounted ? (
         <div
           className={`toast${toastPresence.closing ? ' closing' : ''}`}

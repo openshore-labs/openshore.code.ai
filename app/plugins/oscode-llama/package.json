@@ -1,8 +1,9 @@
 {
   "name": "oscode-llama",
   "version": "0.1.0",
+  "private": true,
   "description": "On-device llama.cpp inference for OpenShore: GGUF models on the iPhone's Metal GPU.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "files": [
     "ios/Sources",
     "Package.swift"

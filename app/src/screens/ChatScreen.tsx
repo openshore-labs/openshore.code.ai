@@ -4,7 +4,8 @@
 // header that names the chat.
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
-import { useApp } from '../state/store.js';
+import { useApp, driverFor } from '../state/store.js';
+import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
 import { Composer, SLASH_COMMANDS, type SlashCommand } from '../components/Composer.js';
@@ -319,8 +320,30 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   }, [isEmpty]);
   const greeting = rotation[rotIdx];
 
+  // What the paired hub lets this device do (P0-1). The remote driver reads
+  // it from /health at attach; a member device is never offered a shell.
+  const [hubRole, setHubRole] = useState<HubRole | undefined>();
+  const convId = conv?.id;
+  const convSource = conv?.source;
+  useEffect(() => {
+    const driver = convId ? driverFor(convId) : undefined;
+    const remote = driver as
+      { hubRole?: HubRole; hubRoleReady?: Promise<HubRole | undefined> } | undefined;
+    if (!remote?.hubRoleReady) {
+      setHubRole(undefined);
+      return;
+    }
+    let live = true;
+    setHubRole(remote.hubRole);
+    void remote.hubRoleReady.then((role) => {
+      if (live) setHubRole(role);
+    });
+    return () => {
+      live = false;
+    };
+  }, [convId, convSource]);
+
   const rotate = () => {
-    hapticTick();
     const next = (rotIdx + 1) % rotation.length;
     seq.current += 1;
     setRotIdx(next);
@@ -354,7 +377,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           <button
             className="icon-btn back-btn press-fb"
             onClick={() => {
-              hapticTick();
               goBack();
             }}
             aria-label={`Back to ${backTo}`}
@@ -367,7 +389,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           <button
             className="icon-btn menu-btn press-fb"
             onClick={() => {
-              hapticTick();
               setDrawer(true);
             }}
             aria-label="Menu"
@@ -460,63 +481,61 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         ) : (
           <div className="greeting">
             <BrandMark size={40} />
-            <h1
-              className="greeting-line press-fb"
-              dir="auto"
-              lang={greeting.code}
-              role="button"
-              tabIndex={0}
-              aria-label={greeting.english}
-              onClick={() => {
-                if (longPressFired.current) {
-                  longPressFired.current = false;
-                  return;
-                }
-                rotate();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
+            {/* A heading that stays a heading for assistive tech, with a real
+                button inside for the tap and the keyboard (Enter and Space
+                click a button natively, so no key handler is needed). */}
+            <h1 className="greeting-heading">
+              <button
+                type="button"
+                className="greeting-line press-fb"
+                dir="auto"
+                lang={greeting.code}
+                aria-label={greeting.english}
+                onClick={() => {
+                  if (longPressFired.current) {
+                    longPressFired.current = false;
+                    return;
+                  }
                   rotate();
-                }
-              }}
-              onPointerDown={startLangPress}
-              onPointerUp={endLangPress}
-              onPointerLeave={endLangPress}
-              onPointerCancel={endLangPress}
-            >
-              <span
-                className={`greeting-swap-stack${hint ? ' greeting-hint' : ''}`}
-                onAnimationEnd={(e) => {
-                  if (e.animationName === 'greet-hint') setHint(false);
                 }}
+                onPointerDown={startLangPress}
+                onPointerUp={endLangPress}
+                onPointerLeave={endLangPress}
+                onPointerCancel={endLangPress}
               >
-                {layers.map((layer, i) => {
-                  const current = i === layers.length - 1;
-                  return (
-                    <span
-                      key={layer.id}
-                      className={current ? 'greeting-swap' : 'greeting-swap greeting-swap-out'}
-                      onAnimationEnd={
-                        current
-                          ? undefined
-                          : (e) => {
-                              if (e.animationName === 'greet-swap-out')
-                                setLayers((ls) => ls.filter((l) => l.id !== layer.id));
-                            }
-                      }
-                    >
-                      {layer.g.native}
-                    </span>
-                  );
-                })}
-              </span>
-              <span
-                className={`greeting-lang-bubble${langBubbleVisible ? ' greeting-lang-bubble-visible' : ''}`}
-                aria-hidden={!langBubbleVisible}
-              >
-                {greeting.lang}
-              </span>
+                <span
+                  className={`greeting-swap-stack${hint ? ' greeting-hint' : ''}`}
+                  onAnimationEnd={(e) => {
+                    if (e.animationName === 'greet-hint') setHint(false);
+                  }}
+                >
+                  {layers.map((layer, i) => {
+                    const current = i === layers.length - 1;
+                    return (
+                      <span
+                        key={layer.id}
+                        className={current ? 'greeting-swap' : 'greeting-swap greeting-swap-out'}
+                        onAnimationEnd={
+                          current
+                            ? undefined
+                            : (e) => {
+                                if (e.animationName === 'greet-swap-out')
+                                  setLayers((ls) => ls.filter((l) => l.id !== layer.id));
+                              }
+                        }
+                      >
+                        {layer.g.native}
+                      </span>
+                    );
+                  })}
+                </span>
+                <span
+                  className={`greeting-lang-bubble${langBubbleVisible ? ' greeting-lang-bubble-visible' : ''}`}
+                  aria-hidden={!langBubbleVisible}
+                >
+                  {greeting.lang}
+                </span>
+              </button>
             </h1>
           </div>
         )}
@@ -551,6 +570,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           focusSignal={focusSignal}
           agent={agent}
           history={history}
+          hubRole={hubRole}
           onCommand={onCommand}
           onOpenModelSheet={() => {
             setSheetStage('root');
@@ -599,7 +619,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (conv && renameDraft.trim()) {
-              hapticTick();
               void renameConversation(conv.id, renameDraft);
             }
             setRenameOpen(false);

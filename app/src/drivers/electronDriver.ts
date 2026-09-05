@@ -2,7 +2,7 @@
 // over IPC already in DriverEvent shape, so this is a thin adapter.
 import type { ApprovalAnswer, DriverEvent, PermissionMode } from 'os-code/protocol';
 import { requireBridge } from '../lib/electronBridge.js';
-import type { ChatDriver, DriverEventSink, TerminalOpen } from './types.js';
+import type { ChatDriver, DriverEventSink, RunCommandResult, TerminalOpen } from './types.js';
 
 /** Base64 -> raw bytes, for a terminal output chunk arriving over IPC. */
 function b64ToBytes(b64: string): Uint8Array {
@@ -73,8 +73,9 @@ export class ElectronDriver implements ChatDriver {
   // Output for a started run streams back as command-* events on the same
   // onEvent channel the main process already forwards, so these only kick off /
   // drive a run. runCommand returns the runId the store drives with stdin/kill.
-  async runCommand(command: string): Promise<string | undefined> {
-    return requireBridge().runCommand(this.sessionId, command);
+  async runCommand(command: string): Promise<RunCommandResult> {
+    const runId = await requireBridge().runCommand(this.sessionId, command);
+    return runId ? { runId } : undefined;
   }
 
   sendStdin(runId: string, data: string): void {

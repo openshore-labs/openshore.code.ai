@@ -19,6 +19,17 @@
 // verify_jwt is false (config.toml): the provider redirect cannot carry a
 // Supabase bearer, and a caller of /exchange must already hold a valid,
 // single-use provider code bound to our own app to get anything back.
+//
+// PKCE (BE-12): the app sends a S256 code_challenge on authorize and the
+// matching code_verifier on /exchange, which this function forwards. On the
+// desktop another application can register the oscode:// scheme and catch the
+// bounced code; without PKCE that code plus this function would mint tokens
+// for it. Providers that implement PKCE enforce the pairing; the others ignore
+// both parameters, and `state` still guards the redirect either way.
+//
+// Errors (BE-12): nothing a provider says is echoed to the app. Provider error
+// text used to travel through the deep link and /exchange into a toast; both
+// paths now map to fixed codes the app translates itself.
 import { corsHeaders, json } from '../_shared/cors.ts';
 
 type Provider = 'github' | 'gitlab' | 'bitbucket';
@@ -118,6 +129,35 @@ interface TokenResult {
   expiresAt?: number;
 }
 
+// The only error strings this function ever returns to the app. Anything a
+// provider says is logged here and replaced by one of these.
+const FIXED_ERRORS = new Set([
+  'access_denied',
+  'invalid_request',
+  'unauthorized_client',
+  'unsupported_response_type',
+  'invalid_scope',
+  'server_error',
+  'temporarily_unavailable',
+  'no_code',
+  'provider_error',
+  'exchange_failed',
+  'refresh_failed',
+]);
+
+/** Map a provider's `error` query value to a fixed code. Standard OAuth codes
+ *  pass through by name (they carry no free text); everything else collapses
+ *  to provider_error. */
+function fixedProviderError(raw: string | null): string {
+  return raw && FIXED_ERRORS.has(raw) ? raw : 'provider_error';
+}
+
+class TokenError extends Error {
+  constructor(public readonly code: 'exchange_failed' | 'refresh_failed') {
+    super(code);
+  }
+}
+
 async function callTokenEndpoint(
   cfg: ProviderConfig,
   form: Record<string, string>,
@@ -142,7 +182,16 @@ async function callTokenEndpoint(
     error_description?: string;
   };
   if (!res.ok || !data.access_token) {
-    throw new Error(data.error_description ?? data.error ?? `token exchange failed (${res.status})`);
+    // The provider's words go to the function log only; the caller gets a
+    // fixed code (see FIXED_ERRORS).
+    console.warn('repo-oauth token endpoint refused', {
+      status: res.status,
+      error: data.error ?? null,
+      description: data.error_description ?? null,
+    });
+    throw new TokenError(
+      form.grant_type === 'refresh_token' ? 'refresh_failed' : 'exchange_failed',
+    );
   }
   return {
     accessToken: data.access_token,
@@ -161,10 +210,13 @@ Deno.serve(async (req) => {
 
   // --- GET /callback: bounce the provider's code into the app, no secret used.
   if (path.endsWith('/callback')) {
-    const err = url.searchParams.get('error_description') ?? url.searchParams.get('error');
+    // Only the provider's error CODE travels on, mapped to a fixed set; the
+    // free-text error_description stays here (it would otherwise be rendered
+    // into a toast verbatim).
+    const err = url.searchParams.get('error');
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state') ?? '';
-    if (err) return bounce({ state, error: err });
+    if (err) return bounce({ state, error: fixedProviderError(err) });
     if (!code) return bounce({ state, error: 'no_code' });
     return bounce({ state, code });
   }
@@ -177,6 +229,9 @@ Deno.serve(async (req) => {
   const payload = (await req.json().catch(() => ({}))) as {
     provider?: string;
     code?: string;
+    /** PKCE verifier (camelCase like the rest of this API; snake_case accepted). */
+    codeVerifier?: string;
+    code_verifier?: string;
     refreshToken?: string;
   };
   if (!isProvider(payload.provider ?? null)) {
@@ -185,17 +240,20 @@ Deno.serve(async (req) => {
   const provider = payload.provider as Provider;
   const cfg = providerConfig(provider);
   if (!cfg.clientId || !cfg.clientSecret) {
-    return json({ error: `${provider} is not set up on this server yet.` }, 501, req);
+    return json({ error: 'not_configured' }, 501, req);
   }
 
   try {
     if (path.endsWith('/exchange')) {
       if (!payload.code) return json({ error: 'missing_code' }, 400, req);
-      const tokens = await callTokenEndpoint(cfg, {
+      const form: Record<string, string> = {
         grant_type: 'authorization_code',
         code: payload.code,
         redirect_uri: redirectUri(),
-      });
+      };
+      const verifier = payload.codeVerifier ?? payload.code_verifier;
+      if (typeof verifier === 'string' && verifier) form.code_verifier = verifier;
+      const tokens = await callTokenEndpoint(cfg, form);
       return json(tokens, 200, req);
     }
     if (path.endsWith('/refresh')) {
@@ -208,6 +266,10 @@ Deno.serve(async (req) => {
     }
     return json({ error: 'not_found' }, 404, req);
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : String(e) }, 502, req);
+    // A network failure reaching the provider and a refusal both surface as a
+    // fixed code; the detail is in the log.
+    const code = e instanceof TokenError ? e.code : 'provider_error';
+    if (!(e instanceof TokenError)) console.error('repo-oauth upstream error', e);
+    return json({ error: code }, 502, req);
   }
 });

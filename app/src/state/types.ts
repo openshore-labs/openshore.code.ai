@@ -179,6 +179,11 @@ export interface Conversation {
    *  only text, so a mid-chat model switch cannot carry images forward; this
    *  lets the switch disclose that earlier images are dropped from context. */
   hadVisionInput?: boolean;
+  /** A message typed before the chat's driver attached (a session still
+   *  opening on the hub, or a relaunch mid-open). Held here, persisted, and
+   *  sent by the attach itself, so the first message is never dropped by a
+   *  timer. Cleared the moment it goes out. */
+  pendingFirstMessage?: string;
 }
 
 // A project buckets related chats and keeps their context together. Repos can

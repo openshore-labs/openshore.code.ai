@@ -39,9 +39,13 @@ export class Guardrails {
     private readonly hardStepCeiling?: number,
   ) {}
 
-  /** Reset the per-task counters (a new user turn starts a new task). */
+  /** Reset the per-task counters (a new user turn starts a new task). Every
+   *  rail is per task, tokens and dollars included: a long session must never
+   *  become unable to start its next task (P0-2). */
   startTask(): void {
     this.steps = 0;
+    this.tokens = 0;
+    this.dollars = 0;
     this.startedAt = Date.now();
     this.callCounts.clear();
   }
@@ -83,11 +87,13 @@ export class Guardrails {
     args: unknown;
     repeats: number;
   }): GuardrailViolation | null {
+    // noteStep runs before the check, so the ceiling is exclusive here: step
+    // number `ceiling` still runs and the one after it trips (ENG-12).
     const ceiling = Math.min(this.config.maxSteps, this.hardStepCeiling ?? Infinity);
-    if (this.steps >= ceiling) {
+    if (this.steps > ceiling) {
       return {
         rail: 'steps',
-        message: `Stopped after ${this.steps} steps (limit ${ceiling}). Say "continue" to keep going, or raise guardrails.maxSteps.`,
+        message: `Stopped at the step limit (${ceiling} steps). Say "continue" to keep going, or raise guardrails.maxSteps.`,
       };
     }
     if (lastCall && lastCall.repeats > this.config.maxRepeats) {

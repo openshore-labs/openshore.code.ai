@@ -24,6 +24,7 @@ import {
   type DriverEvent,
   type ModelPath,
   type ScreenResult,
+  type StreamStep,
 } from 'os-code/protocol';
 import type { Attachment } from '../lib/attachments.js';
 import { appGuard, knownConsents, screenPrompt } from '../lib/ethics.js';
@@ -38,8 +39,9 @@ class GuardedDriver {
   private sinks = new Set<DriverEventSink>();
   private seq = 0;
   private unsubscribe?: () => void;
-  /** Serializes the async screening so events keep their order. */
-  private queue: Promise<void> = Promise.resolve();
+  /** True while a screen is in flight; everything behind it waits in backlog. */
+  private busy = false;
+  private backlog: DriverEvent[] = [];
   private screener?: StreamScreener;
   private released = '';
   private blocked = false;
@@ -57,15 +59,47 @@ class GuardedDriver {
   subscribe(sink: DriverEventSink): () => void {
     this.sinks.add(sink);
     if (!this.unsubscribe) {
-      this.unsubscribe = this.inner.subscribe((event) => {
-        // Chain each event onto the previous one's screening, so the order the
-        // inner driver produced is the order the transcript sees.
-        this.queue = this.queue.then(() => this.handle(event)).catch(() => undefined);
-      });
+      this.unsubscribe = this.inner.subscribe((event) => this.accept(event));
     }
     return () => {
       this.sinks.delete(sink);
     };
+  }
+
+  /**
+   * Take one event from the driver underneath, preserving order.
+   *
+   * Most events need no screening, and a text delta usually lands inside the
+   * holdback without triggering one. Those are handled SYNCHRONOUSLY, which
+   * matters: a journal replay arrives as hundreds of events in a single
+   * synchronous burst, and awaiting each one would spread them across hundreds
+   * of ticks and defeat the store's replay batching (APP-13).
+   *
+   * Only an event that actually needs a screen goes async, and while one is in
+   * flight everything behind it waits in `backlog`, so ordering is never at the
+   * mercy of promise scheduling.
+   */
+  private accept(event: DriverEvent): void {
+    if (this.busy) {
+      this.backlog.push(event);
+      return;
+    }
+    const work = this.handle(event);
+    if (!work) return;
+    this.busy = true;
+    void work
+      .catch(() => undefined)
+      .then(() => {
+        this.busy = false;
+        this.drain();
+      });
+  }
+
+  /** Feed the backlog through once a screen has settled. */
+  private drain(): void {
+    while (!this.busy && this.backlog.length) {
+      this.accept(this.backlog.shift()!);
+    }
   }
 
   private newTask(): void {
@@ -78,55 +112,92 @@ class GuardedDriver {
     this.blocked = false;
   }
 
-  private async handle(event: DriverEvent): Promise<void> {
+  /**
+   * Handle one event. Returns a promise ONLY when a screen has to run, so the
+   * common cases stay synchronous. See accept() for why that matters.
+   */
+  private handle(event: DriverEvent): Promise<void> | undefined {
     if (event.type === 'task-start') {
       this.newTask();
       this.emit(event);
-      return;
+      return undefined;
     }
     if (this.blocked) {
       // After a block the rest of this answer is dropped. The lifecycle events
       // still pass so the composer does not sit spinning.
       if (event.type === 'task-done') this.emit(event);
-      return;
+      return undefined;
+    }
+    if (event.type === 'task-done') {
+      // A turn can end WITHOUT a text-final: a journal replay is deltas then
+      // task-done, and so is any driver that streams without a closing final.
+      // Without this the holdback would never drain and the whole answer would
+      // be silently lost, which is a worse failure than the one the holdback
+      // prevents. Screen what is held, release it, then close the turn.
+      if (this.screener?.text && this.screener.text !== this.released) {
+        return this.drainThen(event);
+      }
+      this.emit(event);
+      return undefined;
     }
     if (event.type === 'text-delta') {
       if (!this.screener) this.newTask();
-      const step = await this.screener!.push(event.text);
-      if (step.kind === 'blocked') {
-        this.stopWith(step.result);
-        return;
-      }
-      if (step.kind === 'release' && step.text) {
-        this.released += step.text;
-        this.emit({ type: 'text-delta', text: step.text });
-      }
-      return;
+      // Accept the text synchronously. It is held back either way; only the
+      // delta that fills the holdback triggers a screen, and only that one
+      // costs a tick.
+      if (!this.screener!.offer(event.text)) return undefined;
+      return this.screenStep(() => this.screener!.flush());
     }
     if (event.type === 'text-final') {
       if (!this.screener) this.newTask();
       // Some drivers deliver the whole answer as a final with no deltas. Feed
       // it in so the screen covers it either way.
-      if (event.text && !this.screener!.text) {
-        const step = await this.screener!.push(event.text);
-        if (step.kind === 'blocked') {
-          this.stopWith(step.result);
-          return;
-        }
-      }
-      const last = await this.screener!.finish();
-      if (last.kind === 'blocked') {
-        this.stopWith(last.result);
-        return;
-      }
-      if (last.kind === 'release' && last.text) {
-        this.released += last.text;
-        this.emit({ type: 'text-delta', text: last.text });
-      }
-      this.emit({ type: 'text-final', text: this.released || event.text });
-      return;
+      if (event.text && !this.screener!.text) this.screener!.offer(event.text);
+      return this.finalize(event.text);
     }
     this.emit(event);
+    return undefined;
+  }
+
+  /** Run one screen and release whatever it cleared. */
+  private async screenStep(run: () => Promise<StreamStep>): Promise<void> {
+    const step = await run();
+    if (step.kind === 'blocked') {
+      this.stopWith(step.result);
+      return;
+    }
+    if (step.kind === 'release' && step.text) {
+      this.released += step.text;
+      this.emit({ type: 'text-delta', text: step.text });
+    }
+  }
+
+  /** Release what the holdback still has, then pass the closing event on. */
+  private async drainThen(event: DriverEvent): Promise<void> {
+    const last = await this.screener!.finish();
+    if (last.kind === 'blocked') {
+      this.stopWith(last.result);
+      return;
+    }
+    if (last.kind === 'release' && last.text) {
+      this.released += last.text;
+      this.emit({ type: 'text-delta', text: last.text });
+    }
+    this.emit(event);
+  }
+
+  /** Screen the complete answer, then close the turn out. */
+  private async finalize(finalText: string): Promise<void> {
+    const last = await this.screener!.finish();
+    if (last.kind === 'blocked') {
+      this.stopWith(last.result);
+      return;
+    }
+    if (last.kind === 'release' && last.text) {
+      this.released += last.text;
+      this.emit({ type: 'text-delta', text: last.text });
+    }
+    this.emit({ type: 'text-final', text: this.released || finalText });
   }
 
   /** End the answer here: say what happened, keep what was already cleared. */
@@ -203,6 +274,10 @@ export function guardDriver(inner: ChatDriver): ChatDriver {
   const guarded = new GuardedDriver(inner, pathOfDriver(inner.kind));
   const out: ChatDriver = {
     kind: inner.kind,
+    // The driver underneath, for diagnostics and for tests that need to ask
+    // "is this still the same driver, or was it dropped and rebuilt". Never a
+    // route around the guard: nothing in the app reads this to send.
+    wrapped: inner,
     send: (text, attachments) => guarded.send(text, attachments),
     abort: () => guarded.abort(),
     answerApproval: (id, answer) => guarded.answerApproval(id, answer),
@@ -224,5 +299,15 @@ export function guardDriver(inner: ChatDriver): ChatDriver {
   if (inner.terminalResize)
     out.terminalResize = (id, cols, rows) => inner.terminalResize!(id, cols, rows);
   if (inner.terminalKill) out.terminalKill = (id) => inner.terminalKill!(id);
+  // Runtime flags some drivers set on themselves (a daemon that closed itself,
+  // a terminated session). The store reads them off the driver it holds, which
+  // is now this wrapper, so forward them live rather than copying once.
+  for (const flag of ['closed', 'terminated'] as const) {
+    Object.defineProperty(out, flag, {
+      get: () => (inner as unknown as Record<string, unknown>)[flag],
+      enumerable: false,
+      configurable: true,
+    });
+  }
   return out;
 }

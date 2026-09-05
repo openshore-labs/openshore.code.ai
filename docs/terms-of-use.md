@@ -73,10 +73,11 @@ with an expiry, because addresses are routinely shared by households, offices,
 public networks, and carrier-grade NAT, and a wrong ban falls on people who did
 nothing.
 
-The IP addresses used for this are the ones already collected to operate the
-phone-to-computer sync and account features. Nothing new is collected to enable
-enforcement, and an address is retained in an enforcement context only when a
-request was blocked.
+IP addresses are not logged in ordinary use. Nothing is recorded when you sync,
+when you sign in, or when you send a request that is not blocked. When a
+signed-in request is blocked, that block record carries the address it came
+from, and an authorization assertion carries the address it was made from. Those
+are the only moments an address is collected.
 
 ## 6. What we record when something is blocked
 

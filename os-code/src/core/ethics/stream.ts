@@ -57,9 +57,34 @@ export class StreamScreener {
    */
   async push(delta: string): Promise<StreamStep> {
     if (this.blocked) return { kind: 'hold' };
+    if (!this.offer(delta)) return { kind: 'hold' };
+    return this.screenAndDrain(this.tailWindow());
+  }
+
+  /**
+   * Accept a delta WITHOUT screening, and say whether a screen is now due.
+   *
+   * This is the synchronous half of push(). It exists because a caller that
+   * awaits every delta turns a synchronously delivered burst (a journal replay
+   * is hundreds of events handed over in one go) into hundreds of separate
+   * ticks, which defeats any batching downstream. A caller can offer deltas
+   * synchronously and only go async on the delta that actually triggers a
+   * screen, or at finish().
+   *
+   * Returns false while the text is still inside the holdback, true when
+   * enough has accumulated that it must be screened before any of it is shown.
+   * Nothing is released either way: the holdback rule is unchanged.
+   */
+  offer(delta: string): boolean {
+    if (this.blocked) return false;
     this.full += delta;
     this.pending += delta;
-    if (this.pending.length < SCREEN_BATCH) return { kind: 'hold' };
+    return this.pending.length >= SCREEN_BATCH;
+  }
+
+  /** Screen what has accumulated and release it if it is clean. Pairs with offer(). */
+  async flush(): Promise<StreamStep> {
+    if (this.blocked) return { kind: 'hold' };
     return this.screenAndDrain(this.tailWindow());
   }
 

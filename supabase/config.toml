@@ -1,8 +1,17 @@
 # Supabase project config for OS Code. `project_id` is a local name; the remote
 # project is bound by `supabase link --project-ref <ref>`. Redirect URLs list
 # every origin a magic-link sign-in may return to (also set these in the hosted
-# project's Auth settings). Email confirmations are off for easy testing; turn
-# them on for production.
+# project's Auth settings).
+#
+# Email confirmations are ON and must stay on (review 2026-09-05, P0-4). Every
+# email-keyed grant (claim_membership, project_level, set_org_project_access)
+# trusts the JWT email claim; with confirmations off, anyone who signs up with a
+# victim's address gets a session carrying that email and inherits the victim's
+# invited seats, admin role included. The newer CLI's `supabase config push`
+# mirrors [auth] from this file to the hosted project, so a local "false" here
+# would reach production by one habitual command. Migration 0015 adds a SQL
+# belt-and-braces (email_confirmed_at must be set) so the hole stays closed even
+# if the dashboard toggle drifts.
 project_id = "os-code"
 
 [api]
@@ -34,7 +43,8 @@ enable_signup = true
 
 [auth.email]
 enable_signup = true
-enable_confirmations = false
+# Never set this to false, even locally: see the header note (P0-4).
+enable_confirmations = true
 
 # Note: claim_membership is a Postgres RPC (SECURITY DEFINER function), not an
 # edge function, so it has no [functions.*] entry here.

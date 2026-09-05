@@ -41,7 +41,8 @@ export function* walkFiles(root: string, maxFiles = 20_000): Generator<string> {
         continue;
       }
       if (stat.isDirectory()) {
-        if (!SKIP_DIRS.has(entry) && !entry.startsWith('.git')) stack.push(full);
+        // Exact names only: `.git` is metadata, `.github` is where CI lives.
+        if (!SKIP_DIRS.has(entry)) stack.push(full);
       } else if (stat.isFile()) {
         if (++count > maxFiles) return;
         yield relative(root, full);

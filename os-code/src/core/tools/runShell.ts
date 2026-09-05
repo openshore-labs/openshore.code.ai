@@ -24,6 +24,7 @@ export const runShellTool: ToolDef<typeof schema> = {
     'Run a shell command in the workspace root and return stdout and stderr. Use for builds, tests, and anything the other tools do not cover.',
   schema,
   risk: 'shell',
+  commandOf: (args) => args.command,
   async preview(args) {
     return {
       summary: `Run: ${args.command}`,

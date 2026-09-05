@@ -18,6 +18,21 @@ export interface RouterNote {
   message: string;
 }
 
+/** What a delegated turn cost, reported back so the loop can count it. */
+export interface DelegatedUsage {
+  model: string;
+  kind: 'local' | 'cloud';
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface DelegateOptions {
+  /** The calling task's abort signal: Stop stops the specialist too (DAE-4). */
+  signal?: AbortSignal;
+  /** Receives the delegated turn's usage once its stream ends. */
+  onUsage?: (usage: DelegatedUsage) => void;
+}
+
 export class Router {
   /** Quiet notes ("no vision specialist, the orchestrator answered") for the TUI. */
   readonly notes: RouterNote[] = [];
@@ -83,6 +98,7 @@ export class Router {
     role: DelegableRole,
     task: string,
     images?: Array<{ base64: string; mediaType: string }>,
+    options?: DelegateOptions,
   ): Promise<string> {
     const { resolved, fellBack } = this.roleFor(role);
     if (fellBack) {
@@ -128,14 +144,32 @@ export class Router {
     ];
 
     let answer = '';
-    for await (const event of resolved.provider.chat({
-      model: resolved.ref.model,
-      messages,
-      temperature: adapter.temperature(),
-      keepAlive: this.config.resourceBudget.keepAlive,
-    })) {
+    let promptTokens = 0;
+    let completionTokens = 0;
+    for await (const event of resolved.provider.chat(
+      {
+        model: resolved.ref.model,
+        messages,
+        temperature: adapter.temperature(),
+        keepAlive: this.config.resourceBudget.keepAlive,
+      },
+      options?.signal,
+    )) {
       if (event.type === 'text') answer += event.delta;
+      else if (event.type === 'usage') {
+        // Last-seen-wins per field, the same rule the loop applies.
+        if (event.promptTokens) promptTokens = event.promptTokens;
+        if (event.completionTokens) completionTokens = event.completionTokens;
+      }
     }
+    // A backend that reports no usage still spent something; estimate it
+    // (4 chars per token, erring high) so cloud dollars are never invisible.
+    options?.onUsage?.({
+      model: resolved.ref.model,
+      kind: resolved.provider.kind,
+      promptTokens: promptTokens || Math.ceil((system.length + task.length) / 4),
+      completionTokens: completionTokens || Math.ceil(answer.length / 4),
+    });
     return answer.trim() || '(the specialist returned nothing)';
   }
 }

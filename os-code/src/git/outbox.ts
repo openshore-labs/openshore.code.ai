@@ -86,6 +86,8 @@ async function gitOk(cwd: string, args: string[]): Promise<boolean> {
 export function confinedPath(repoRoot: string, p: string): string {
   if (typeof p !== 'string' || !p) throw new Error('empty path');
   if (isAbsolute(p)) throw new Error(`absolute path rejected: ${p}`);
+  // A leading dash would read as a git option on the command line (DAE-10).
+  if (p.startsWith('-')) throw new Error(`path may not start with a dash: ${p}`);
   if (p.split(/[\\/]/).some((seg) => seg === '..'))
     throw new Error(`parent segment rejected: ${p}`);
   const resolved = resolve(repoRoot, p);
@@ -236,7 +238,7 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
     await git(req.cwd, ['read-tree', seedCommit], idxEnv);
     for (const f of req.files) {
       if (f.mode === 'delete') {
-        await git(req.cwd, ['update-index', '--force-remove', f.path], idxEnv);
+        await git(req.cwd, ['update-index', '--force-remove', '--', f.path], idxEnv);
         continue;
       }
       const blobFile = tmp('oscblob');

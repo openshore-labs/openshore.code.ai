@@ -248,7 +248,13 @@ describe('stack health timeline sums equal the headline (F1)', () => {
     const turn: DriverEvent[] = [
       { type: 'task-start', input: 'x' },
       { type: 'turn-start', turn: 1, model: 'qwen2.5-coder', providerKind: 'local' },
-      { type: 'usage', promptTokens: 500_000, completionTokens: 500_000, dollars: 0, contextPercent: 5 },
+      {
+        type: 'usage',
+        promptTokens: 500_000,
+        completionTokens: 500_000,
+        dollars: 0,
+        contextPercent: 5,
+      },
     ];
     makeSession('s1', ts, turn);
 

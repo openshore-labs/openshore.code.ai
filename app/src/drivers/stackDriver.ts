@@ -16,6 +16,7 @@ import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { uxStandardPrompt, humanizerStandardPrompt } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
+import { ensureDeviceModel, forgetDeviceModel } from './deviceModel.js';
 import { platform, secretGet, storeGetJson } from '../lib/platform.js';
 import {
   CODEMAGIC_TOOL_NAME,
@@ -137,7 +138,6 @@ export class StackDriver implements ChatDriver {
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
   private abortController?: AbortController;
-  private loadedDeviceId?: string;
 
   constructor(
     private readonly stack: AppStack,
@@ -375,9 +375,11 @@ export class StackDriver implements ChatDriver {
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
         if (requestId !== this.activeRequestId) return;
         this.activeRequestId = undefined;
-        if (stopReason === 'error')
+        if (stopReason === 'error') {
+          // Whatever the slot holds after an error is suspect; reload next time.
+          forgetDeviceModel();
           this.finish('error', detail ?? 'The on-device model hit a problem.');
-        else this.finish(stopReason === 'stopped' ? 'aborted' : 'complete');
+        } else this.finish(stopReason === 'stopped' ? 'aborted' : 'complete');
       }),
     );
   }
@@ -387,25 +389,17 @@ export class StackDriver implements ChatDriver {
     placement?: Placement,
   ): Promise<void> {
     await this.listenersReady;
-    if (this.loadedDeviceId !== ref.modelId) {
-      // Materialize an iCloud-stored model before loading it; a device model is
-      // a no-op. Offline with an evicted model is a real, guided stop.
-      const local = await Llama.ensureLocal({ id: ref.modelId }).catch(() => ({ ready: true }));
-      if (!local.ready) {
-        throw new RouteUnavailable(
-          `${ref.modelName} lives in your iCloud and is not on this device yet. Connect to the internet so it can download, then try again.`,
-        );
-      }
-      this.emit({ type: 'status', message: `Warming up ${ref.modelName} on this device.` });
-      const load = await Llama.load({
+    // The phone's one model slot is shared with every device chat (APP-3):
+    // confirm the slot holds this model before every reply, never assume it.
+    const ready = await ensureDeviceModel(
+      {
         id: ref.modelId,
+        name: ref.modelName,
         contextSize: isHarborMini(ref.modelId) ? 2048 : 4096,
-      });
-      if (!load.ok) {
-        throw new RouteUnavailable(load.detail ?? `${ref.modelName} would not load.`);
-      }
-      this.loadedDeviceId = ref.modelId;
-    }
+      },
+      (message) => this.emit({ type: 'status', message }),
+    );
+    if (!ready.ok) throw new RouteUnavailable(ready.detail);
     this.activeRequestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
     await Llama.generate({
       requestId: this.activeRequestId,

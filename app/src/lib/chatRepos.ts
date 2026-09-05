@@ -11,6 +11,7 @@
 // selected workspace is where the agent works and every selected repo rides
 // into the chat's context by name. A GitHub repo with no clone is context
 // until it is cloned onto the computer.
+import { storeDelete, storeGetJson, storeSetJson } from './platform.js';
 
 export type RepoKind = 'workspace' | 'github';
 
@@ -109,27 +110,55 @@ export async function listGitHubRepos(
 }
 
 // A device-local cache so the picker opens with the list it had, then
-// refreshes. A cache, not a preference: never synced.
+// refreshes. A cache, not a preference: never synced. It rides the sealed
+// store like everything else the app keeps (APP-12): a list of private repo
+// names is account data, not scratch. The store hydrates it at boot and drops
+// it when GitHub is disconnected; the picker reads the in-memory mirror.
 const CACHE_KEY = 'oscode.githubRepos';
 export const CACHE_TTL_MS = 10 * 60 * 1000;
 
-export function readRepoCache(now = Date.now()): RepoOption[] | undefined {
+interface RepoCacheRow {
+  at: number;
+  repos: RepoOption[];
+}
+
+let repoCache: RepoCacheRow | undefined;
+
+function liveCache(row: RepoCacheRow | undefined, now: number): RepoOption[] | undefined {
+  if (!row || !Array.isArray(row.repos) || now - row.at > CACHE_TTL_MS) return undefined;
+  return row.repos;
+}
+
+/** Load the sealed cache into memory (called once at boot by the store). */
+export async function hydrateRepoCache(now = Date.now()): Promise<RepoOption[] | undefined> {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { at: number; repos: RepoOption[] };
-    if (!Array.isArray(parsed.repos) || now - parsed.at > CACHE_TTL_MS) return undefined;
-    return parsed.repos;
+    const row = await storeGetJson<RepoCacheRow>(CACHE_KEY);
+    if (row) repoCache = row;
   } catch {
-    return undefined;
+    // Unreadable cache: the next open fetches again.
   }
+  return liveCache(repoCache, now);
+}
+
+/** The cached list, if it is fresh. Synchronous: it reads the hydrated mirror. */
+export function readRepoCache(now = Date.now()): RepoOption[] | undefined {
+  return liveCache(repoCache, now);
 }
 
 export function writeRepoCache(repos: RepoOption[], now = Date.now()): void {
+  repoCache = { at: now, repos };
+  void storeSetJson(CACHE_KEY, repoCache).catch(() => {
+    // No storage: the mirror still serves this session.
+  });
+}
+
+/** Forget the cached list, in memory and on disk (GitHub disconnected). */
+export async function clearRepoCache(): Promise<void> {
+  repoCache = undefined;
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ at: now, repos }));
+    await storeDelete(CACHE_KEY);
   } catch {
-    // no storage; the next open fetches again
+    // Nothing stored.
   }
 }
 

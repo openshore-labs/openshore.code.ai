@@ -651,6 +651,92 @@ execution contract. Newest at the bottom.
   the Stack Health green card, co-located with the crew data it reads, with a
   "Browse lean models" link; the CMO's Stack-screen placement + per-suggestion
   Apply is the fast-follow that pairs with the mutation path.
+- 2026-09-05: Full-codebase review remediation (`CODE-REVIEW-FINDINGS-2026-09-05.md`).
+  The CTO ruled the technical calls, the CFO the money and license calls; the
+  founder asked that every finding be addressed. The calls, one line each:
+- 2026-09-05: Member command lane is ADMIN-ONLY (CTO). `POST /sessions/:id/commands`,
+  its stdin and kill routes require admin; a member's tap answers a distinct 403
+  `restricted` the phone renders as its own toast, and the Composer hides
+  terminal mode for a member (role read from `GET /health` at attach). A
+  `daemon.memberCommandLane` switch was rejected: an ON state silently voids
+  every other member gate, with no customer behind it. Both workspace path
+  predicates realpath both sides.
+- 2026-09-05: `bypassPermissions` on a phone-attached or headless session
+  DOWNGRADES to `acceptEdits`, announced with a note, never silently and never
+  refused (CTO): the person asked to be asked less, and a mode chip that says
+  Bypass while shell asks would be a dishonest state.
+- 2026-09-05: "Always allow in this project" for `runShell` scopes to the
+  command's first word via a `commandPrefix` rule (CTO), matching every
+  pipeline segment's first token exactly and never matching a shell wrapper
+  (`sudo`, `bash`, `env`, `eval`, `xargs`, and kin) or a command substitution.
+  Config-rule allows for shell and cloud-spend risk respect the profile's
+  `allowShellAutoApprove`, not just session grants.
+- 2026-09-05: A jail violation at permission-match time DENIES outright (CTO),
+  never falls back to tool-only rules: the tool would throw on execute anyway,
+  so an approval prompt for it is a wasted tap. Vault tools declare
+  `pathJail: 'own'` because they resolve against a different root.
+- 2026-09-05: The whole `daemon` config block is machine config, read from the
+  global file only (CTO): a member could otherwise commit a project
+  `os-code.config.json` with `daemon.outboxAllowedRoots: ["/"]` through the
+  outbox into the repo the daemon runs from. A project file's `daemon` key is
+  dropped with one warning.
+- 2026-09-05: CORS `*` on the daemon is deliberate (CTO): bearer-gated, no
+  cookies, and Electron's origin is `null` so an allowlist would be strictly
+  worse. One tightening: no CORS headers on the 401 branch, so a probing page
+  gets an opaque error instead of a readable fingerprint.
+- 2026-09-05: Seat ceilings are enforced in Postgres by two security-definer
+  triggers reading the entitlement's tier (CTO), and the bands live in one SQL
+  function pinned to the TypeScript copies by a drift test. An org with NO
+  entitlement row has NO ceiling today, expressed as one constant function so a
+  one-line migration can change it. CFO dissent, disagreed and committed: the
+  CFO recommends the Micro band (5) for entitlement-less orgs so beta teams
+  never face a cliff when pay gates flip; the CTO's reasoning is that the
+  roster grants nothing without an entitlement and the checkout's band check
+  already forces a covering plan at purchase. The founder decides the constant.
+  Per-seat Stripe quantity is DEFERRED (CFO): the SKU is flat per band, so a
+  quantity change is a pricing change and a Board gate.
+- 2026-09-05: Apple purchase linking keeps subscription state on `apple_links`
+  and refuses a stale JWS (not newer than the last notification, or older than
+  48 hours) (CTO). Live status from the App Store Server API is the follow-up
+  once the `.p8` key exists; it was not made a blocker because the founder's
+  Apple ops queue is already the critical path.
+- 2026-09-05: An unmapped Stripe price still fails the webhook (CTO): a silent
+  200 strands a paid buyer, while a 500 keeps Stripe retrying and emails the
+  owner. Only prices listed in `STRIPE_IGNORED_PRICES` get log-and-200.
+- 2026-09-05: Checkout treats `active, trialing, past_due, unpaid, paused` as a
+  live subscription and routes to the portal; an `incomplete` subscription is
+  canceled and a fresh checkout proceeds (CFO), since an abandoned 3DS
+  otherwise traps the buyer.
+- 2026-09-05: A magic link that arrives cold with no pending request gets a
+  confirm sheet naming the address (CTO); a pending match is silent, a pending
+  mismatch is refused, and a link for another account while signed in is
+  refused. Refusing every unsolicited link would break the real cross-device
+  flow; the sheet defeats login-CSRF because a stranger's address is visible.
+- 2026-09-05: A server-pulled org membership the local account did not create
+  is adopted only through an explicit "Join" sheet (CTO), never a toast, because
+  adoption rewires the Team Vault target and local admin authority.
+- 2026-09-05: Haptics: the global capture listener in `App.tsx` is the one
+  source of press feedback for buttons, role=button, and links (CTO);
+  component-level ticks inside button handlers were the drift and are removed.
+  Ticks that mark gesture lift, drop, and arm stay.
+- 2026-09-05: The em-dash guard is repo-wide (`git rev-parse --show-toplevel`),
+  covers yml, sql, swift, toml, html, and css, and no longer exempts test files
+  wholesale; only the two guard files and an archived historical review record
+  carry reasoned exemptions.
+- 2026-09-05: License: until the founder signs, the repo carries a
+  "no license granted" notice at the root and in `os-code/`, and the four
+  native plugins declare `UNLICENSED` (CTO and CFO). The CFO recommends
+  Business Source License 1.1 with an Additional Use Grant mirroring the tier
+  ladder (individual use free, organizational use needs a commercial plan) and
+  Apache-2.0 as the Change License four years after each release; the
+  founder's call, with a lawyer pass before public launch.
+- 2026-09-05: ESLint 9 with typescript-eslint 8 is DEFERRED to its own commit
+  after this wave (CTO), superseding the ESLint 8 line above: a lint-config
+  swap changes every file's lint output and must not land under parallel edits.
+- 2026-09-05: `PROGRESS.md` is restructured to one Current state, one What
+  remains, and the last five log entries (CTO); older state sections live in
+  `docs/progress-archive.md`, parked prompts in `docs/parked-ideas.md`, and a
+  shape test keeps it under a thousand lines.
 - 2026-09-05: **Ethics layer installed at the registry and the driver factory,
   not at call sites.** The brief asked for one chokepoint with no bypass. Five
   engine call sites reach a model (`loop.run`, `loop.summarize`,

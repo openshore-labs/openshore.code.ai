@@ -26,7 +26,9 @@ export function derivePresets(
   const embedding = desktop.find((m) => m.categories.includes('embedding'));
   const vision = desktop.filter((m) => m.categories.includes('vision')).sort(smallestFirst)[0];
   const fast = desktop
-    .filter((m) => m.categories.includes('fast') || (m.categories.includes('coding') && m.sizeGB <= 2))
+    .filter(
+      (m) => m.categories.includes('fast') || (m.categories.includes('coding') && m.sizeGB <= 2),
+    )
     .sort(smallestFirst)[0];
 
   const presets: CatalogPreset[] = [];

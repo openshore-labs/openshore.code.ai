@@ -95,8 +95,8 @@ describe('ElectronDriver chat-to-terminal lane', () => {
   it('runCommand forwards the sessionId and returns the runId', async () => {
     const bridge = installBridge('run-42');
     const driver = new ElectronDriver('s1');
-    const runId = await driver.runCommand('npm test');
-    expect(runId).toBe('run-42');
+    const started = await driver.runCommand('npm test');
+    expect(started).toEqual({ runId: 'run-42' });
     expect(bridge.calls).toEqual([{ method: 'runCommand', args: ['s1', 'npm test'] }]);
     driver.dispose();
   });

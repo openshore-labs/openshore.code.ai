@@ -10,7 +10,6 @@ import { createPortal } from 'react-dom';
 import { Sheet } from './Sheet.js';
 import { CloseGlyph } from './SheetGlyphs.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
-import { hapticTick } from '../lib/haptics.js';
 import { repoLabel, summarizeRepos, toggleRepo, type RepoOption } from '../lib/chatRepos.js';
 
 function RepoGlyph() {
@@ -119,7 +118,6 @@ export function RepoPicker({
 
   const close = () => setOpen(false);
   const toggle = (id: string) => {
-    hapticTick();
     onChange(toggleRepo(selected, id));
   };
 
@@ -225,7 +223,6 @@ export function RepoPicker({
         type="button"
         className="repo-picker-btn press-fb"
         onClick={() => {
-          hapticTick();
           setOpen(true);
         }}
         aria-expanded={open}

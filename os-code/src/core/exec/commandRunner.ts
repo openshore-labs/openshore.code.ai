@@ -37,6 +37,23 @@ export interface CommandResult {
   startError?: string;
 }
 
+/**
+ * Chunk-boundary redaction (ENG-10). A secret split across two chunks would
+ * pass both per-chunk scans, so the last CARRY_CHARS of every chunk are held
+ * back and re-scanned together with the next one. The hold is flushed after a
+ * short silence so an interactive prompt ("Continue? ") that never gets a
+ * next chunk still reaches the person, and again on exit.
+ */
+const CARRY_CHARS = 64;
+const CARRY_FLUSH_MS = 200;
+
+type StreamName = 'stdout' | 'stderr';
+
+interface StreamState {
+  carry: string;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 /** A running command: write to its stdin, kill it, or await its result. */
 export class CommandRun {
   private child?: ChildProcess;
@@ -46,6 +63,10 @@ export class CommandRun {
   private settled = false;
   private timer?: ReturnType<typeof setTimeout>;
   private killTimer?: ReturnType<typeof setTimeout>;
+  private readonly streams: Record<StreamName, StreamState> = {
+    stdout: { carry: '' },
+    stderr: { carry: '' },
+  };
   readonly done: Promise<CommandResult>;
 
   constructor(private readonly opts: CommandRunOptions) {
@@ -70,12 +91,15 @@ export class CommandRun {
       }
       this.child = child;
 
-      const settle = (result: CommandResult): void => {
+      const settle = (result: Omit<CommandResult, 'stdout' | 'stderr'>): void => {
         if (this.settled) return;
         this.settled = true;
         if (this.timer) clearTimeout(this.timer);
         if (this.killTimer) clearTimeout(this.killTimer);
-        resolve(result);
+        // Every data event has fired by now: release the held tails.
+        this.flush('stdout');
+        this.flush('stderr');
+        resolve({ ...result, stdout: this.stdout, stderr: this.stderr });
       };
 
       if (opts.timeoutMs && opts.timeoutMs > 0) {
@@ -85,36 +109,55 @@ export class CommandRun {
         }, opts.timeoutMs);
       }
 
-      child.stdout?.on('data', (d: Buffer) => {
-        const text = redactSecrets(d.toString());
-        this.stdout += text;
-        opts.onChunk?.('stdout', text);
-      });
-      child.stderr?.on('data', (d: Buffer) => {
-        const text = redactSecrets(d.toString());
-        this.stderr += text;
-        opts.onChunk?.('stderr', text);
-      });
+      child.stdout?.on('data', (d: Buffer) => this.ingest('stdout', d.toString()));
+      child.stderr?.on('data', (d: Buffer) => this.ingest('stderr', d.toString()));
       child.on('error', (e) => {
         settle({
           exitCode: null,
           signal: null,
-          stdout: this.stdout,
-          stderr: this.stderr,
           timedOut: this.timedOut,
           startError: e.message,
         });
       });
       child.on('close', (code, signal) => {
-        settle({
-          exitCode: code,
-          signal,
-          stdout: this.stdout,
-          stderr: this.stderr,
-          timedOut: this.timedOut,
-        });
+        settle({ exitCode: code, signal, timedOut: this.timedOut });
       });
     });
+  }
+
+  /** Scan the held tail together with the new chunk, deliver all but the new
+   *  tail, and arm the silence flush for what is held. */
+  private ingest(stream: StreamName, raw: string): void {
+    const state = this.streams[stream];
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = undefined;
+    }
+    const merged = redactSecrets(state.carry + raw);
+    const hold = Math.min(CARRY_CHARS, merged.length);
+    const ready = merged.slice(0, merged.length - hold);
+    state.carry = merged.slice(merged.length - hold);
+    if (ready) this.deliver(stream, ready);
+    if (state.carry) state.timer = setTimeout(() => this.flush(stream), CARRY_FLUSH_MS);
+  }
+
+  /** Deliver whatever is held for the stream, now. */
+  private flush(stream: StreamName): void {
+    const state = this.streams[stream];
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = undefined;
+    }
+    if (!state.carry) return;
+    const text = state.carry;
+    state.carry = '';
+    this.deliver(stream, text);
+  }
+
+  private deliver(stream: StreamName, text: string): void {
+    if (stream === 'stdout') this.stdout += text;
+    else this.stderr += text;
+    this.opts.onChunk?.(stream, text);
   }
 
   /** Feed the process stdin (answers a y/N or a prompt). No-op once settled. */

@@ -152,7 +152,7 @@ describe('outbox apply', () => {
     expect(newTip).toBe(result.resultCommit);
     expect(await simpleGit(repo).raw(['show', `main:new.txt`])).toContain('hello from offshore');
 
-    // The meanwhile desktop edit SURVIVES at the new tip — the core P0-6 assert.
+    // The meanwhile desktop edit SURVIVES at the new tip, the core P0-6 assert.
     expect(await simpleGit(repo).raw(['show', `main:server.ts`])).toContain(
       'desktop edit landed after the phone composed',
     );
@@ -191,5 +191,14 @@ describe('path confinement', () => {
   it('rejects parent-directory escapes', () => {
     expect(() => confinedPath('/repo', '../../.ssh/authorized_keys')).toThrow();
     expect(() => confinedPath('/repo', 'a/../../b')).toThrow();
+  });
+});
+
+describe('path confinement (DAE-10)', () => {
+  it('rejects a path that starts with a dash, which git would read as an option', () => {
+    expect(() => confinedPath('/repo', '-rf')).toThrow();
+    expect(() => confinedPath('/repo', '--force-remove')).toThrow();
+    // A dash later in the path is an ordinary file name.
+    expect(confinedPath('/repo', 'src/-x.ts')).toBe('/repo/src/-x.ts');
   });
 });
