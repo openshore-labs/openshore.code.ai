@@ -233,6 +233,10 @@ log entry). Migration is now `0016`.
 - [x] **Ethics layer, IP capture removed from the product entirely (founder
       call, 2026-09-05, supersedes the earlier block-only compromise).** No
       address column, no header-reading function, no ban queue, anywhere.
+- [ ] **Apply `0017_reconcile_stale_0016.sql` to production (founder, next
+      `db push`).** `0016` was already live from its stale first draft (see
+      the 2026-09-05 log entry); the file edits above describe intent, not
+      what production actually runs, until this migration is pushed.
 - [x] **Ethics layer, provenance drop paths (CTO M5).** Keyword match not
       substring grep; bounded reader; a non-PNG Tier 2 output is refused.
 - [x] **Ethics layer, the ladder is server-side now.** `record_enforcement()`
@@ -529,6 +533,23 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-05: `0016` had already been applied to production, from its
+  stale first draft, before every edit made to it since.** Discovered by
+  querying the live schema directly (prompted by the founder asking what to
+  check before running `db push`), rather than trusting the file's edit
+  history: production had unconditional IP capture on every row of
+  `guardrail_events` and `likeness_consents`, the full `ip_ban_proposals`
+  queue, `request_ip()`, and a three-argument `record_enforcement` the app
+  no longer calls (the app calls the zero-argument version, so enforcement
+  recording has been silently broken in production). Confirmed empty first
+  (0 rows in all three tables), so nothing real was at stake. Fixed with a
+  new migration rather than more edits to `0016`:
+  `0017_reconcile_stale_0016.sql` drops every stale IP object and the
+  stale `record_enforcement` signature, then recreates the zero-argument
+  version the app expects. 3 new tests in `ethicsEnforcement.test.ts`
+  (86 total, up from 83). Full write-up in `DECISIONS.md`. Not yet applied;
+  the founder runs `supabase db push` when ready.
+
 - **2026-09-05: run a bigger model on the iPhone, the CTO + CMO consensus,
   built and pushed to main.** The founder asked whether we could smooth a
   larger on-device model on an iPhone and asked the CTO and CMO to converge
@@ -598,13 +619,3 @@ log entry). Migration is now `0016`.
   moved to the 4B. Rulings in `DECISIONS.md`; the doc is
   `docs/MARKETPLACE.md`, "The phone storefront". Gates: app typecheck, lint,
   tests, Prettier; os-code builder and isolation tests; both em-dash guards.
-
-- **2026-09-05: Crew routines, the botOS clone brief, built and pushed to
-  main.** Go-with-conditions from the CMO, CTO, CFO, and CX; the founder signed
-  off on all four decision points (ship as Crew with routines; Personal to $50
-  when gates return; build v1 directly and measure the preset; push to main).
-  Engine scheduler and store, headless permission hardening, daemon routes,
-  Electron IPC, the app client and store slice, the Crew command room, the
-  Morning review preset, and a gitLog read tool. 25 new engine tests, 9 new
-  app tests. Gates: see the Current state above. The superseded
-  persona-chatbot stab from earlier in the day was dropped, not merged.
