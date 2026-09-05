@@ -5834,6 +5834,247 @@ textarea {
   margin-bottom: 16px;
 }
 
+/* ---- The line between "installs here" and "installs on a desktop" ---- */
+.store-divider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 26px 0 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.store-divider-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.store-divider-sub {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---- Phone packs: one card per connection status ---- */
+.pack-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+}
+.pack-card {
+  scroll-snap-align: start;
+  flex: 0 0 82%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(28, 42, 51, 0.04);
+  transition:
+    border-color var(--dur-3) var(--ease-standard),
+    box-shadow var(--dur-3) var(--ease-standard);
+}
+.pack-card.ready {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 1px var(--ok-soft);
+}
+.pack-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pack-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.pack-status .profile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.pack-headline {
+  font-family: var(--font-display);
+  font-size: 21px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin-top: 8px;
+}
+.pack-tagline {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+.pack-meta {
+  margin-top: 10px;
+  flex: 1;
+}
+.pack-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pack-actions .btn {
+  width: 100%;
+}
+
+/* ---- Browse by family ---- */
+.family-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 4px;
+}
+.family-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  min-width: 128px;
+  text-align: left;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  transition:
+    background var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard);
+}
+.family-chip:active {
+  background: var(--surface);
+}
+.family-chip-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.family-chip-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* A family page: the maker, then its sizes in two groups. */
+.family-page {
+  animation: fade-in var(--dur-3) var(--ease-standard);
+}
+.family-hero {
+  margin-bottom: 18px;
+}
+.family-hero-name {
+  font-family: var(--font-display);
+  font-size: 30px;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.family-hero-maker {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.family-hero-blurb {
+  font-size: 15px;
+  color: var(--ink-soft);
+  margin: 8px 0 4px;
+}
+.family-group {
+  margin-bottom: 22px;
+}
+.family-group-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 2px 6px;
+}
+.family-group-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.family-group-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.family-list .store-row:last-child {
+  border-bottom: none;
+}
+
+/* ---- Where it runs: the three homes, on a product page ---- */
+.runs-on {
+  margin: 4px 0 12px;
+}
+.runs-on-label {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.runs-on-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.runs-on-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--surface);
+}
+.runs-on-pill.yes {
+  color: var(--local);
+  background: var(--local-soft);
+  border-color: transparent;
+}
+.runs-on-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.runs-on-dot.yes {
+  background: var(--local);
+}
+.runs-on-family {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--local);
+  padding: 4px 0;
+}
+
+/* A desktop model on a phone: the control says where it goes, quietly, so it
+   never reads as a Get this phone cannot honor. */
+.store-get.desktop-only,
+.market-get.desktop-only {
+  color: var(--muted);
+  background: var(--surface);
+  font-weight: 600;
+}
+
 /* Featured hero row: big cards that page horizontally with snap. Narrower than
    the viewport on purpose (82vw, not 100) so the next card's edge peeks in,
    the visual cue that there's more to scroll to. scroll-padding-left keeps the

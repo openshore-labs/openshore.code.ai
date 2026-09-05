@@ -8,7 +8,16 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-05, full-codebase review remediation)
+## Current state (2026-09-05, the phone storefront, after the review remediation)
+
+The newest change is the phone storefront (log entry at the top of the Log):
+on an iPhone the Marketplace now leads with three one-tap packs keyed to the
+connection status (Offline, Offshore, Docked), a browse-by-family rail with a
+family page split by where each size installs, the pocket shelf retitled "Runs
+on this iPhone" with the 4B-beats-7B line, and a "Desktop and home servers"
+divider below which no control ever says "Get" on a phone. The seed carries
+the phone-class pick `qwen3-4b-phone`; it reaches the live feed only once
+`osc eval` scores it (see What remains).
 
 The review in `CODE-REVIEW-FINDINGS-2026-09-05.md` (root; six parallel senior
 passes over HEAD `e14b0a7`, 82 commits and about 90k changed lines since the
@@ -68,6 +77,29 @@ read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Run `osc eval` on `qwen3-4b-phone` and commit its average to
+      `curation/eval.json` (founder, needs a machine with the model).** Until
+      then the curated gate drops the 4B from the live feed (an orchestrator
+      needs a real eval, and no star is invented), so the packs and the Pocket
+      bundle fall back to `qwen2.5-1.5b-phone` on a live catalog. The bundled
+      seed and the family page show the 4B either way. Same step for
+      `qwen2.5-coder-1.5b-phone` is NOT needed: it is a specialist and clears
+      on its published benchmarks.
+- [ ] **On-device verification of the phone storefront (needs a phone).**
+      TestFlight: tap Set up Offline on the Marketplace (both downloads land,
+      the Offline stack's Reasoning is the 4B, the coder sits under Coding),
+      flip the header pill to Offline and chat; then Set up Offshore, connect
+      a key, confirm the card reads Ready; open Qwen from the family rail,
+      open a size, confirm the back chevron says Qwen.
+- [ ] **Smooth a larger model on the iPhone (founder asked 2026-09-05, not
+      yet built).** In order of leverage: the
+      `com.apple.developer.kernel.increased-memory-limit` entitlement (one line
+      in `App.entitlements` plus the capability on the App ID, CTO review
+      before a distribution build); llama.cpp tuning through the C API the
+      xcframework already links (mmap, flash attention, 8-bit KV cache, all
+      layers on Metal, a 2048 context for big models); unload on a memory
+      warning and slow generation on a hot thermal state; prompt-cache reuse
+      across turns. MLX Swift is the bigger swap and is not the first step.
 - [ ] **ESLint 9 + typescript-eslint 8 upgrade (INF-9).** Deferred by the
       CTO to its own commit after the 2026-09-05 wave: flat config in both
       packages, the unsupported-TypeScript warning gone. DECISIONS.md records it.
@@ -349,6 +381,25 @@ read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
 
 ## Log
 
+- **2026-09-05: the phone storefront: packs by status, families, and an
+  honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that
+  only toasted: make it super clear what installs on this phone versus a
+  desktop or home server, browse by model name then size, say plainly that a
+  new 4B beats the old 7B class here, and be package-ready on the phone where
+  choices are few. Built: `app/src/lib/packs.ts` (Offline, Offshore, Docked
+  packs, one per connection status, filling that status's own stack, resolved
+  by preference list against the loaded catalog); `modelFamilies.ts` (client
+  derived families, a rail, a family page split by where each size installs);
+  `runsOn` and `installLabel` in `marketplace.ts` (a "Where it runs" row on
+  every product page; "On <hub>" or "Desktop" instead of a Get the phone cannot
+  honor); the pocket shelf retitled "Runs on this iPhone" with the 4B-beats-7B
+  line; a "Desktop and home servers" divider. Seed: `qwen3-4b-phone` (Qwen3 4B
+  Instruct 2507, 2.5 GB, published GPQA / LiveCodeBench / AIME) and
+  `qwen2.5-coder-1.5b-phone` (the Offline pack's coder), the Pocket bundle
+  moved to the 4B. Rulings in `DECISIONS.md`; the doc is
+  `docs/MARKETPLACE.md`, "The phone storefront". Gates: app typecheck, lint,
+  tests, Prettier; os-code builder and isolation tests; both em-dash guards.
+
 - **2026-09-05: full-codebase review remediation, one wave.** Every finding
   in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
   P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
@@ -481,24 +532,3 @@ attach` reaches it; a daemon restart seeds the agent's history from the
     fix on a real iPhone (streaming); the Swift `downloadModel` host check and
     any native change compile on TestFlight; wire an optional `HF_TOKEN` repo
     secret if you want the authenticated popularity fetch.
-- **2026-08-26: Chat-surface refinements + polish (bigger menu, anchored
-  greeting, guide-as-reasoning, a Chats room).** Founder asks over four
-  screenshots. (1) Menu button: a drawn SVG glyph (`components/MenuIcon.tsx`),
-  fuller weight in the primary ink on a 40px target, in the chat top bar and the
-  room BackBar. (2) Empty-state greeting: `.greeting` switched to
-  `justify-content: flex-end` so the mark + line sit just above the composer and
-  ride up with it under the keyboard, instead of centering and colliding with
-  the status bar. (3) Downloaded guide becomes the Reasoning anchor:
-  `reasoningPromotion` in `state/store.ts` promotes a just-downloaded Harbor /
-  Harbor Mini when there is no anchor or the anchor is a guide not on the device
-  (Harbor also upgrades a ready Mini); a matching init reconcile heals the seeded
-  Mini anchor a Harbor-only user hit ("download it first"). Cloud/BYOM/user
-  device anchors untouched. (4) Chats room: new `chats` view +
-  `screens/ChatsScreen.tsx` lists the active project's chats with an easy new
-  chat; the recent-chats list left the drawer, New chat + Quick chat stayed.
-  Polish: capped row stagger, opacity room cross-fade (keyed on view),
-  menu-glyph press spring, grouped flat rows that swipe to delete behind a
-  confirm (SwipeRow gained an optional label + danger variant + style, pin
-  behavior unchanged). Dead `.conv-list`/`.conv-empty` pruned. Animations use
-  `backwards` per the polish-standards rule. Green: 209 app tests, typecheck,
-  lint, build, em-dash. Not iOS-verified here.

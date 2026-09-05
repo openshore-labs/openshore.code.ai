@@ -737,3 +737,25 @@ execution contract. Newest at the bottom.
   remains, and the last five log entries (CTO); older state sections live in
   `docs/progress-archive.md`, parked prompts in `docs/parked-ideas.md`, and a
   shape test keeps it under a thousand lines.
+- 2026-09-05: **Model families are derived on the client, not a schema field.**
+  The founder wants the store browsed by maker, then size. A `family` field on
+  the catalog would need the builder to emit it and every old feed to lack it;
+  a pure derivation from id, name, and source ref (`modelFamilies.ts`, ordered
+  table plus a first-word fallback) groups today's feed and the bundled seed
+  identically, with no schema change. If the builder ever emits a family, the
+  client prefers it and keeps this as the fallback.
+- 2026-09-05: **Phone packs are a layer over the stack, keyed by status, and
+  name models as preference lists.** One pack per connection status (Offline,
+  Offshore, Docked) fills that status's own stack through `setReasoning` and
+  `placeSpecialist`, so "build your docked, offshore, and offline models" is
+  literally what the packs do. A pack resolves `qwen3-4b-phone` first and
+  `qwen2.5-1.5b-phone` second against the LOADED catalog, because the 4B has
+  no eval yet and the curated gate keeps it out of the live feed until it does;
+  a hard-pinned id would have dead-ended on the phone today. No star is
+  invented: the 4B is recommended on its published benchmarks and its curation
+  note, and the gate still decides whether the feed carries it.
+- 2026-09-05: **"Get" never appears on a phone for a model the phone cannot
+  take.** The founder's screenshot was a Get that ended in a toast. The
+  control now reads "On <hub>" (the existing tailnet install) or a quiet
+  "Desktop", decided by one pure helper (`installLabel`) so the hero, the row,
+  and the product page cannot drift.

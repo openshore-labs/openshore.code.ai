@@ -27,8 +27,14 @@
   },
   "qwen2.5-1.5b-phone": {
     "isRecommended": true,
+    "rank": 5,
+    "note": "The lightest iPhone pick. Quick, coherent, and fully private on the phone.",
+    "licenseNote": "Commercial use is fine. Attribution required."
+  },
+  "qwen3-4b-phone": {
+    "isRecommended": true,
     "rank": 4,
-    "note": "The iPhone starter. Quick, coherent, and fully private on the phone.",
+    "note": "The iPhone pick. A newer 4B beats the 2024 7B class at half the memory, so this is the one to carry.",
     "licenseNote": "Commercial use is fine. Attribution required."
   }
 }
