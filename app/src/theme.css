@@ -9225,3 +9225,104 @@ button.settings-row:active {
     animation: none;
   }
 }
+
+/* Crew command: the docked/away/unpaired control distinction (founder,
+   2026-09-05: setup and control only while harnessed to the machine; view
+   always). The hero badge names the state; away wears the amber "needs you"
+   family, in control the teal local family. */
+.cc-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cc-control-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.cc-control-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wave);
+}
+.cc-control-badge.desktop .cc-control-dot,
+.cc-control-badge.docked .cc-control-dot {
+  background: #7fd1a1;
+}
+.cc-control-badge.away {
+  background: rgba(224, 144, 47, 0.28);
+}
+.cc-control-badge.away .cc-control-dot {
+  background: var(--cloud-bright);
+}
+.cc-control-badge.unpaired {
+  background: rgba(255, 255, 255, 0.12);
+}
+.cc-control-badge.unpaired .cc-control-dot {
+  background: rgba(255, 255, 255, 0.5);
+}
+.cc-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.cc-hero-actions .btn.primary {
+  background: #fff;
+  color: var(--local-deep);
+}
+.cc-hero-actions .btn.ghost {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.cc-away-note {
+  margin: -8px 0 16px;
+  color: var(--muted);
+}
+
+/* Dormant capability preview, shown before any machine is set up. */
+.cc-dormant {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+}
+.cc-dormant-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+}
+.cc-dormant-item + .cc-dormant-item {
+  border-top: 1px solid var(--border);
+}
+.cc-dormant-item .cc-dot {
+  margin-top: 5px;
+}
+.cc-dormant-title {
+  font-weight: 650;
+  font-size: 14.5px;
+}
+.cc-dormant-sub {
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin-top: 2px;
+  text-wrap: pretty;
+}
+
+/* A routine card that is view-only (away from the machine) reads calmer: no
+   action row, a hair more transparent, so control-vs-watch is legible. */
+.cc-routine.view-only {
+  opacity: 0.92;
+}

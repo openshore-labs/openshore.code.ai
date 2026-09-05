@@ -27,6 +27,74 @@ export interface RoutinesSnapshot {
   runs: RoutineRun[];
 }
 
+// The one distinction the founder drew (2026-09-05): a routine is a continuous
+// deployment that lives on the person's own machine. You set it up and control
+// it only while you are HARNESSED to that machine, the same "docked" reach the
+// big models need over Tailscale. Away from home you still see everything, the
+// roster, the dormant capabilities, the activity dashboards, from a cached
+// snapshot, but you cannot change anything until you reconnect. On the machine
+// itself you are always in control.
+//
+//   desktop  - you are on the main machine (the engine is in-process).
+//   docked   - a phone (or a laptop) that can reach home over Tailscale now.
+//   away     - a paired device whose home is out of reach (offshore/offline):
+//              view only, from cache, with a reconnect prompt.
+//   unpaired - no machine set up yet: dormant capabilities plus setup steps.
+export type ControlWhere = 'desktop' | 'docked' | 'away' | 'unpaired';
+
+export interface CrewControl {
+  /** May this device set up, change, run, or stop routines right now? */
+  can: boolean;
+  where: ControlWhere;
+}
+
+export function crewControl(input: {
+  /** On the main machine with the engine in-process (Electron bridge present). */
+  onDesktop: boolean;
+  /** A hub credential is on file (this device paired to a machine). */
+  hasDaemon: boolean;
+  /** Home is reachable over Tailscale right now (the docked signal). */
+  homeReachable: boolean;
+  /** A desktop deliberately pointed at a remote hub runs routines there, so it
+   *  is gated on reach like a phone rather than treated as the machine. */
+  preferRemoteHub?: boolean;
+}): CrewControl {
+  if (input.onDesktop && !input.preferRemoteHub) return { can: true, where: 'desktop' };
+  if (input.hasDaemon) {
+    return input.homeReachable ? { can: true, where: 'docked' } : { can: false, where: 'away' };
+  }
+  return { can: false, where: 'unpaired' };
+}
+
+/** The line that names the control state at the top of the command center. */
+export function controlLabel(where: ControlWhere): string {
+  switch (where) {
+    case 'desktop':
+    case 'docked':
+      return 'In control';
+    case 'away':
+      return 'View only';
+    case 'unpaired':
+      return 'Not set up';
+  }
+}
+
+/** The one sentence under an away or unpaired header. */
+export function controlBlurb(where: ControlWhere, machine: string): string {
+  switch (where) {
+    case 'away':
+      return `You are away from ${machine}. Your crew keeps working there. Reconnect over Tailscale to take control.`;
+    case 'unpaired':
+      return 'Routines run on your own computer, while it is on. Pair this device with your machine to set your crew to work.';
+    default:
+      return `Connected to ${machine}. Set up, run, and stop your crew from here.`;
+  }
+}
+
+/** The reason a control action is refused when a device is not docked. */
+export const CONTROL_REQUIRES_DOCK =
+  'Reconnect to your main machine over Tailscale to control your crew.';
+
 export interface RoutinesClient {
   /** Where the scheduler lives, for the copy ("this computer" or the hub). */
   readonly where: 'desktop' | 'daemon';

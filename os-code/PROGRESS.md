@@ -84,6 +84,19 @@ is on", never "always on", and "works, then asks", never "unsupervised".
   Prettier; app typecheck (src and electron), lint, 699 tests (93 files), vite
   build, Prettier; the repo-wide em-dash guard and the PROGRESS shape guard.
   Pushed to `main` per the founder.
+- **Cross-device control model (founder, 2026-09-05: "it should all operate
+  seamlessly cross-device").** One clear distinction, on the same "docked"
+  reach the big models use: you SET UP and CONTROL routines only while
+  harnessed to the machine (docked over Tailscale, or on the machine itself);
+  you can always VIEW. Away from home the command center shows the last-known
+  dashboards from a cached snapshot (persisted at `oscode.routines.v1`), the
+  roster and dormant capabilities, and a Reconnect prompt; every control button
+  is hidden and the store refuses a mutation with "Reconnect to your main
+  machine over Tailscale to control your crew." Three header states, In control
+  / View only / Not set up, named by a badge. A `set-up-crew` guide walks the
+  mobile setup. Pure `crewControl()` in `app/src/lib/routines.ts` decides, and
+  both the screen (live, off connectivity) and the store guards call it. App
+  only: the daemon is already unreachable when not docked, so no server change.
 - **Polish pass (founder: "do all the polish").** A waiting-for-you row
   breathes a soft amber halo on the working dot's clock; the results inbox
   arrives row by row on `--stagger`; a sheet's heading rises in, keyed to the
@@ -533,6 +546,14 @@ What remains. Migration is now `0016`.
   guards and the PROGRESS shape guard. App ID capability and a TestFlight
   device test are in What remains.
 
+- **2026-09-05: Crew routines cross-device control model.** Setup and control
+  require being docked to the machine (or on it); viewing is always on, from a
+  cached snapshot when away. Three states in the command center (In control /
+  View only / Not set up), a Reconnect prompt, a dormant-capabilities preview,
+  a set-up-crew guide, and mutation guards in the store. Pure crewControl() with
+  tests. App-only. Gates: app 714 tests, typecheck, lint, build, Prettier;
+  os-code unchanged and green.
+
 - **2026-09-05: the phone storefront: packs by status, families, and an
   honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that
   only toasted: make it super clear what installs on this phone versus a
@@ -567,20 +588,3 @@ What remains. Migration is now `0016`.
   P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
   `DECISIONS.md`, this file restructured to its own contract. Gates: see the
   Current state above.
-
-- **2026-08-26: Desktop (Electron) interactive PTY terminal wired (the one
-  documented Phase 2 follow-up).** The interactive terminal already ran
-  phone-to-desktop over the daemon; this wires the same TerminalManager into
-  the Electron desktop app, so a desktop-backed chat opens a real local PTY
-  over IPC (not only remotely). EngineHost holds a TerminalManager and forwards
-  output on a new channel; six osc:terminal\* IPC handlers + preload/bridge
-  methods + onTerminalData; ElectronDriver implements the ChatDriver terminal
-  methods (the output listener registers before subscribing so ring replay is
-  never missed, and tears down on abort). A terminalReader is also passed into
-  both bootstrapSession calls so read_terminal sees PTY scrollback on desktop.
-  Owner is the local user on desktop, so no cross-user gate is needed here; PTY
-  output rides its own forwarder and is never journaled; stdin is never logged.
-  3 new ElectronDriver tests. Gates green (os-code 36 files, app 41 files,
-  typecheck incl. electron tsconfig, lint --max-warnings 0, vite build).
-  Still needs the machine: electron-rebuild of node-pty for the Electron ABI to
-  run a real PTY (absent, openTerminal reports unavailable and chat is unaffected).

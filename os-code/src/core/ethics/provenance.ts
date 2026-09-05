@@ -228,7 +228,10 @@ export function hasProvenance(bytes: Uint8Array): boolean {
  * spread into String.fromCharCode, could throw on a crafted multi-megabyte
  * chunk).
  */
-function chunkKeyword(bytes: Uint8Array, chunk: { start: number; end: number }): string | undefined {
+function chunkKeyword(
+  bytes: Uint8Array,
+  chunk: { start: number; end: number },
+): string | undefined {
   const dataStart = chunk.start + 8;
   const dataEnd = chunk.end - 4;
   const limit = Math.min(dataEnd, dataStart + 80);
