@@ -64,7 +64,9 @@ attempt flags the account for termination and prepares a report; the removal is
 carried out by the operator, and where the law requires or permits it the matter
 is reported to the appropriate authority. In the United States, child sexual
 abuse material is reported to the National Center for Missing and Exploited
-Children.
+Children. Account termination and, where required, a report are the entire
+enforcement scope. We do not collect, log, or act on an IP address for any
+reason.
 
 We take this seriously and we want to be direct about why. Deepfakes,
 non-consensual intimate imagery, and synthetic child sexual abuse material are
@@ -72,24 +74,7 @@ spreading because the tools to make them became easy to get. This product exists
 in part to be one of the tools that does not help, and enforcement is how that
 promise is kept rather than merely stated.
 
-## 5. Enforcement scope
-
-We may terminate accounts used for prohibited purposes.
-
-We may also ban IP addresses associated with prohibited use, subject to human
-review. IP address bans are never automatic. An address is proposed for a ban
-only after an account is terminated, and a person reviews and decides each one,
-with an expiry, because addresses are routinely shared by households, offices,
-public networks, and carrier-grade NAT, and a wrong ban falls on people who did
-nothing.
-
-IP addresses are not logged in ordinary use. Nothing is recorded when you sync,
-when you sign in, when you send a request that is not blocked, or when you assert
-an authorization. The one moment an address is collected is when a signed-in
-request is blocked: that block record, and only that record, carries the address
-it came from.
-
-## 6. What we record when something is blocked
+## 5. What we record when something is blocked
 
 When the guardrail blocks a request, we record the category, the tier, the time,
 which model path served it (local or cloud), and a one-way SHA-256 hash of the
@@ -100,7 +85,7 @@ enough to recognize a repeat and to identify the same content in a lawful
 report, and retaining harmful material in order to police harmful material is
 its own harm.
 
-## 7. Honest limits
+## 6. Honest limits
 
 OpenShore enforces these boundaries as shipped, and does not help you remove
 them. There is no setting, configuration file, or environment variable in the
@@ -113,7 +98,7 @@ impossible. What we guarantee is narrower and real: this app, as shipped, does
 not assist the uses in section 2 and does not help you strip these protections
 out.
 
-## 8. Standards alignment
+## 7. Standards alignment
 
 OpenShore aligns its risk practices with the NIST AI Risk Management Framework
 and ISO/IEC 42001, and attaches content provenance using the C2PA assertion
@@ -125,19 +110,19 @@ otherwise. Provenance records written by this product are unsigned, because
 signing requires a certificate from a C2PA-recognized authority that OpenShore
 does not currently hold.
 
-## 9. Your content and your models
+## 8. Your content and your models
 
 Your prompts, code, and generated work are yours. Local model work stays on your
 machine. Cloud model work goes to the provider you connected, on your account,
 under that provider's terms. A cloud provider's own policies apply in addition
 to these terms, never instead of them.
 
-## 10. Changes
+## 9. Changes
 
 We will update these terms as the product changes. Material changes to section 2
-or section 5 will be surfaced in the app.
+or section 4 will be surfaced in the app.
 
-## 11. Contact
+## 10. Contact
 
 Questions, appeals of an enforcement decision, and reports of misuse:
 support@openshore.ai

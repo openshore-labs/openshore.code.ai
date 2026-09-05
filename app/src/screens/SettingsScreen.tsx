@@ -353,10 +353,10 @@ export function SettingsScreen() {
             <p>
               Local models run on your hardware and nothing leaves it. Cloud models run on your own
               keys and only with your approval. Web search leaves your machine when the agent uses
-              it. No telemetry, no analytics, no advertising. There is one exception, stated plainly
-              under Ethical boundaries below: when the guardrail blocks a request and you are signed
-              in, a record of that block reaches your account. It carries a category, a time, and a
-              one-way hash, never your prompt.
+              it. No telemetry, no analytics, no advertising, no IP address, ever. There is one
+              exception, stated plainly under Ethical boundaries below: when the guardrail blocks a
+              request and you are signed in, a record of that block reaches your account. It carries
+              a category, a time, and a one-way hash, never your prompt.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>
@@ -430,10 +430,9 @@ export function SettingsScreen() {
             <h3 className="settings-sheet-head">What is recorded</h3>
             <p>
               A block records a category, a timestamp, and a one-way hash of the request. Your
-              prompt is never stored and never sent. An IP address is recorded only when a request
-              is blocked and you are signed in, never in ordinary use. When you are signed in, block
-              records reach your account so enforcement holds across a reinstall. Signed out, they
-              stay on this device.
+              prompt is never stored and never sent, and no IP address is recorded, ever. When you
+              are signed in, block records reach your account so enforcement holds across a
+              reinstall. Signed out, they stay on this device.
             </p>
           </InfoSheet>
         </SettingsGroup>

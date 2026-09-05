@@ -61,10 +61,10 @@ pnpm -r build && pnpm -r typecheck && pnpm -r lint && pnpm -r test
 The daemon binds Tailscale or loopback, never `0.0.0.0`, behind a bearer
 token. Shell access is default-deny with approvals. API keys live in the
 OS credential store (or an encrypted file) and go only to the provider they
-belong to. No product analytics and no tracking. The one thing sent to an
-account is an enforcement record when the guardrail blocks a request (a
-category, a hash, no prompt); see Ethical boundaries below for exactly what and
-when. The phone profile is stricter than the desktop.
+belong to. No product analytics, no tracking, no IP address, ever. The one
+thing sent to an account is an enforcement record when the guardrail blocks a
+request (a category, a hash, no prompt); see Ethical boundaries below for
+exactly what and when. The phone profile is stricter than the desktop.
 
 ## Ethical boundaries
 
@@ -129,11 +129,10 @@ to a local model is never sent anywhere to be checked, and "local stays local"
 stays true of the guardrail itself.
 
 A block records a category, a tier, a timestamp, a SHA-256 of the request, and
-the model path. It never records the prompt or the completion. On the desktop
-that record stays in `~/.os-code/ethics/`. In the app it also reaches the
-account when the person is signed in, so enforcement survives a reinstall;
-signed out, nothing is sent. IP addresses are recorded only on a violation, and
-an IP ban is always a proposal a human reviews, never an automatic action.
+the model path. It never records the prompt or the completion, and it never
+records an IP address, full stop. On the desktop that record stays in
+`~/.os-code/ethics/`. In the app it also reaches the account when the person is
+signed in, so enforcement survives a reinstall; signed out, nothing is sent.
 
 ## Brand note
 

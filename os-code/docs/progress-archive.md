@@ -2398,6 +2398,12 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-08-26)
 
+- **2026-09-05: full-codebase review remediation, one wave.** Every finding
+  in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
+  P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
+  `DECISIONS.md`, PROGRESS.md restructured to its own contract (see the
+  2026-09-05 Current state sections archived above).
+
 - **2026-08-26: Desktop (Electron) interactive PTY terminal wired (the one
   documented Phase 2 follow-up).** The interactive terminal already ran
   phone-to-desktop over the daemon; this wires the same TerminalManager into
@@ -2443,7 +2449,7 @@ Layer status:
     opened/closed markers); stdin is never journaled or logged. Ring buffer with
     absolute byte offsets for lossless reattach. Electron terminal wiring was
     the one documented follow-up; it is now DONE (see the 2026-08-26 desktop
-    PTY entry at the top of the Log).
+    PTY entry above).
   - **MP-F2:** a paired phone installs a desktop model over the tailnet (daemon
     /models/install + progress polling).
   - **MP-F4:** pocket models that finished downloading while the app was closed

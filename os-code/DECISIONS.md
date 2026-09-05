@@ -932,3 +932,16 @@ execution contract. Newest at the bottom.
   CTO-verified). The entitlements need the App ID capability enabled before the
   next distribution build, and the native memory path needs a TestFlight device
   test; both are in PROGRESS What remains.
+- 2026-09-05: **Full IP removal, decided: the founder took the CMO's original
+  recommendation over the block-only compromise.** "Get rid of the IP capture."
+  This supersedes the 2026-09-05 "IP captured on a BLOCK only" entry above:
+  `request_ip()`, both `ip_address` columns and their fill trigger, the
+  `ip_ban_proposals` table, and both admin RPCs over it are deleted from
+  migration `0016` (never applied to a live database, so a plain edit-in-place
+  was safe); `enforcement.ts` loses `proposeIpBan`, `IpBanProposal`, and
+  `IP_REVIEW_NOTES` outright. Enforcement is account termination plus a lawful
+  report, full stop, no address anywhere. Read as authorization to remove the
+  entire ban-queue mechanism, not just stop populating a column, since the CMO's
+  stated reasoning was "cut IP from the product story and the copy entirely."
+  CMO copy applied verbatim to every affected surface (Settings, README, both
+  Terms of Use, `docs/ethics-layer.md`, marketing `ethics.njk`).

@@ -141,9 +141,12 @@ while staying out of the way of legitimate edgy work.
   for the day there is a certificate.
 - **Enforcement.** Migration `0016_guardrail_enforcement.sql` adds
   `guardrail_events`, `likeness_consents`, `enforcement_actions`,
-  `ip_ban_proposals`, `abuse_reports`, and an `abuse_reviewers` allowlist. An IP
-  ban is only ever a PENDING proposal a human decides with an expiry; there is
-  no apply function in the module or the migration.
+  `abuse_reports`, and an `abuse_reviewers` allowlist. There is no IP address
+  anywhere in the product: no column, no header-reading function, and no
+  address-ban queue, because banning a network location is not a capability
+  this product has (founder call, 2026-09-05, superseding the earlier
+  block-only compromise). Enforcement is account termination plus a lawful
+  report, full stop.
 - Gates green: os-code and app typecheck, lint, test, build.
 
 **Reviewed by the CTO and CMO on 2026-09-05, then their findings worked to
@@ -152,14 +155,15 @@ the Terms asserted a data practice the product does not have (corrected before
 publish). The founder then asked to finish the thread per both advisors. Done in
 this pass: Tier 2 likeness precision (coding vocabulary no longer reads as a
 person, generation verbs and photoreal deepfake shapes now caught) and the gate
-made non-countable so a false gate never penalizes; IP captured on a block only
-(a trigger, never on an assertion or a consent) with the enforcement ladder
+made non-countable so a false gate never penalizes; the enforcement ladder
 moved server-side so it survives a reinstall and cannot be talked down by the
 client; provenance no longer dropped silently (keyword match, not a substring
 grep; a non-PNG Tier 2 output is refused rather than shipped unlabeled); and the
 honesty copy pass across Settings, README, and the ToU, plus the media-vs-text
-satire seam stated publicly. Two pure-positioning calls stay the founder's, in
-What remains. Migration is now `0016`.
+satire seam stated publicly. The founder then took the CMO's original
+recommendation on the IP question rather than the block-only compromise: IP
+capture is now removed from the product entirely (see the 2026-09-05 IP-removal
+log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
@@ -226,22 +230,22 @@ What remains. Migration is now `0016`.
       a lowercase name with no photoreal cue and no other signal is not caught
       (a public-figure gazetteer is out of scope; the intent path and the
       person's own consent flow are the backstop).
-- [x] **Ethics layer, capture is now block-only (CTO M4).** A trigger fills the
-      address only on `action='blocked'`; `likeness_consents` carries no address.
+- [x] **Ethics layer, IP capture removed from the product entirely (founder
+      call, 2026-09-05, supersedes the earlier block-only compromise).** No
+      address column, no header-reading function, no ban queue, anywhere.
 - [x] **Ethics layer, provenance drop paths (CTO M5).** Keyword match not
       substring grep; bounded reader; a non-PNG Tier 2 output is refused.
 - [x] **Ethics layer, the ladder is server-side now.** `record_enforcement()`
       computes from `guardrail_events`, so a reinstall does not reset it and the
       client cannot under-report. The device cache is a local view only.
-- [ ] **Ethics layer, privacy label (CTO M6, before next submission).** IP is
-      collected on a block and linked to a user id. `PrivacyInfo.xcprivacy` does
-      not exist; the App Store Connect privacy answers must be updated before the
-      next submission. Process, not code.
-- [ ] **Ethics layer, two positioning calls the founder deferred.** Whether IP
-      capture stays at all (the CMO recommends removing it outright; it is now
-      the strongest honest keep, block-only), and whether the C2PA name leaves
-      the trust statement's top line (the CMO recommends it; the CTO is neutral).
-      Both are taste calls, not correctness; the honesty-critical parts are done.
+- [x] **Ethics layer, privacy label (CTO M6).** Moot: IP capture is removed
+      entirely (2026-09-05), so there is no address to disclose. Still open,
+      process not code: `PrivacyInfo.xcprivacy` does not exist yet and the App
+      Store Connect privacy answers should be reviewed before the next
+      submission for accuracy generally.
+- [ ] **Ethics layer, one positioning call the founder deferred.** Whether the
+      C2PA name leaves the trust statement's top line (the CMO recommends it;
+      the CTO is neutral). A taste call, not correctness.
 - [ ] **Ethics layer, re-enable "repeated Tier 2 -> warning" once precision is
       field-proven.** Suspended while likeness is non-countable.
 - [ ] **ESLint 9 + typescript-eslint 8 upgrade (INF-9).** Deferred by the
@@ -546,6 +550,28 @@ What remains. Migration is now `0016`.
   guards and the PROGRESS shape guard. App ID capability and a TestFlight
   device test are in What remains.
 
+- **2026-09-05: IP capture removed from the product entirely (founder call,
+  taking the CMO's original recommendation over the earlier block-only
+  compromise).** The founder: "Get rid of the IP capture. Whatever the CMO
+  thinks for the trust/privacy copy lines." OpenShore now collects, stores, or
+  acts on no IP address anywhere, for enforcement or anything else.
+  `enforcement.ts` lost `proposeIpBan`, `IpBanProposal`, and `IP_REVIEW_NOTES`
+  outright; migration `0016_guardrail_enforcement.sql` lost `request_ip()`,
+  the `ip_address` columns and their fill trigger, the `ip_ban_proposals`
+  table, and both admin RPCs over it (edited in place, never applied to a live
+  database). `app/src/lib/abuseReview.ts` lost `listIpBanProposals`,
+  `decideIpBan`, and `expiryFromNow`; `EnforcementReview.tsx` lost the entire
+  proposed-bans card. Enforcement is now account termination plus a lawful
+  report, full stop. CMO copy applied verbatim across Settings, README, both
+  Terms of Use (app doc and marketing `terms.njk`, both renumbered from 11
+  sections to 10/9), `docs/ethics-layer.md`, and marketing `ethics.njk`; the
+  trust statement and `oscode.js` needed no change (neither ever claimed an IP
+  exception). Tests updated to assert absence rather than shape:
+  `ethicsEnforcement.test.ts`'s five IP-queue tests collapsed into one grep
+  that the migration text contains no IP identifier at all; `ethics.test.ts`
+  and `ethicsEnforcement.test.ts` both assert `outcome` never gains an
+  `ip`-named property. 83 ethics tests green after the pass.
+
 - **2026-09-05: Crew routines cross-device control model.** Setup and control
   require being docked to the machine (or on it); viewing is always on, from a
   cached snapshot when away. Three states in the command center (In control /
@@ -583,8 +609,3 @@ What remains. Migration is now `0016`.
   app tests. Gates: see the Current state above. The superseded
   persona-chatbot stab from earlier in the day was dropped, not merged.
 
-- **2026-09-05: full-codebase review remediation, one wave.** Every finding
-  in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
-  P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
-  `DECISIONS.md`, this file restructured to its own contract. Gates: see the
-  Current state above.

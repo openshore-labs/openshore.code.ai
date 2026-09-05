@@ -11,7 +11,6 @@ import { detectSignals } from '../src/core/ethics/signals.js';
 import {
   evaluateEnforcement,
   prepareReport,
-  proposeIpBan,
   TIER2_WARN_AT,
 } from '../src/core/ethics/enforcement.js';
 import {
@@ -285,7 +284,8 @@ describe('enforcement ladder', () => {
     expect(outcome.level).toBe(2);
     expect(outcome.action).toBe('terminate');
     expect(outcome.reportRequired).toBe(true);
-    expect(outcome.proposeIpBan).toBe(true);
+    // No IP anything. Termination plus a report is the entire consequence.
+    expect(outcome).not.toHaveProperty('proposeIpBan');
   });
 
   it('does not accrue a restriction from likeness blocks (non-countable)', () => {
@@ -304,16 +304,6 @@ describe('enforcement ladder', () => {
     const outcome = evaluateEnforcement(history);
     expect(outcome.level).toBe(0);
     expect(outcome.action).toBe('log-only');
-  });
-
-  it('proposes an IP ban rather than applying one', () => {
-    const proposal = proposeIpBan({
-      ipAddress: '203.0.113.7',
-      accountId: 'acct_1',
-      reason: 'terminated for a tier 1 attempt',
-    });
-    expect(proposal.status).toBe('pending');
-    expect(proposal.reviewNotes.join(' ')).toContain('Shared addresses are the norm');
   });
 
   it('prepares a report and says plainly that nothing was submitted', async () => {

@@ -102,12 +102,12 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
  * Send one record to the account, then let the server run the enforcement
  * ladder.
  *
- * The record is inserted; the server captures an IP only when the record is a
- * block (a trigger, not this code). Then `record_enforcement` evaluates the
- * ladder FROM THE ACCOUNT'S OWN HISTORY, so the outcome cannot be under-reported
- * by the client and does not reset on a reinstall. A termination is where the
- * IP-ban PROPOSAL and the prepared report are created, both server-side, both
- * only ever a proposal or a queued (never submitted) report.
+ * `record_enforcement` evaluates the ladder FROM THE ACCOUNT'S OWN HISTORY, so
+ * the outcome cannot be under-reported by the client and does not reset on a
+ * reinstall. A termination is where the prepared report is created,
+ * server-side, always a queued (never submitted) report. There is no IP
+ * address anywhere in this path: OpenShore does not collect, store, or act on
+ * one, for enforcement or anything else.
  *
  * Silent no-op when signed out or when the account backend is not configured on
  * this build. In that case the block still happened and the record still lives
