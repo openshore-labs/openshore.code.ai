@@ -1,11 +1,36 @@
 # OpenShore full-codebase review, 2026-09-05
 
+> ## STATUS (2026-09-05): ADDRESSED
+>
+> Every finding below was implemented on `main` in one remediation wave the
+> same day, each fix test-first where a harness exists. Design calls were
+> ruled by the CTO (technical) and the CFO (money and license) and are
+> recorded one line each in `os-code/DECISIONS.md` under 2026-09-05. Gates at
+> close: os-code typecheck, lint, 493 tests, build, format; app typecheck,
+> lint, 692 tests, vite build, format; repo-wide em-dash guard.
+>
+> **Not code. These need the founder (ops):** the list under "Still needs the
+> founder" below is current, plus the ship steps in `supabase/README.md`
+> (migration `0015`, six function redeploys, the `APPLE_PRODUCT_IDS` secret,
+> pg_cron). Three things could not be verified in this session and are
+> called out in `os-code/PROGRESS.md` What remains: the Swift changes need an
+> on-device pass, the sealed-store key repro needs the Linux desktop, and the
+> Deno and pgTAP suites were written but not executed here.
+>
+> **Deferred by ruling, not dropped:** ESLint 9 (own commit after this wave),
+> the App Store Server API for live Apple subscription status (needs the
+> `.p8` key), per-seat Stripe quantity (a pricing change, Board gate), and
+> the seat ceiling for entitlement-less orgs (one SQL constant, null today,
+> CFO recommends 5).
+>
+> The three older review docs this document cites now live in `docs/archive/`.
+
 Findings only. Nothing here is fixed yet. Produced by six parallel senior-review
 passes (engine core, engine daemon and providers, app state and drivers, app
 screens and native shell, Supabase backend and money path, infrastructure and
 docs) over HEAD `e14b0a7` on `main`, plus a run of every quality gate. Every P0
 was re-read by the coordinating reviewer against the live code before it was
-kept. Items marked *repro-confirmed* were executed in a throwaway vitest file
+kept. Items marked _repro-confirmed_ were executed in a throwaway vitest file
 against the real modules. Items marked UNCONFIRMED are read-confirmed but need a
 deploy, a device, or a console to settle; the `Verify` line says how.
 
@@ -31,18 +56,18 @@ list is hygiene with teeth.
 
 ## Quality gates, run on this tree
 
-| Gate                         | os-code                     | app                          |
-| ---------------------------- | --------------------------- | ---------------------------- |
-| typecheck                    | green                       | green (src and electron)     |
-| lint (`--max-warnings 0`)    | green                       | green                        |
-| tests                        | 48 files, 420 passed        | 83 files, 604 passed         |
-| build                        | green (`tsc`)               | green (`vite build`)         |
-| prettier `--check`           | 7 files drift               | 10 files drift, no script    |
-| em-dash guard (in scope)     | green                       | green                        |
-| em-dash grep, whole repo     | 46 hits outside guard scope | (see INF-2)                  |
-| `.skip` / `.only` in tests   | none                        | none                         |
-| TODO / FIXME in source       | none                        | none                         |
-| committed secrets            | none found                  | none found                   |
+| Gate                       | os-code                     | app                       |
+| -------------------------- | --------------------------- | ------------------------- |
+| typecheck                  | green                       | green (src and electron)  |
+| lint (`--max-warnings 0`)  | green                       | green                     |
+| tests                      | 48 files, 420 passed        | 83 files, 604 passed      |
+| build                      | green (`tsc`)               | green (`vite build`)      |
+| prettier `--check`         | 7 files drift               | 10 files drift, no script |
+| em-dash guard (in scope)   | green                       | green                     |
+| em-dash grep, whole repo   | 46 hits outside guard scope | (see INF-2)               |
+| `.skip` / `.only` in tests | none                        | none                      |
+| TODO / FIXME in source     | none                        | none                      |
+| committed secrets          | none found                  | none found                |
 
 Note that CI runs typecheck, lint, and test, but never `vite build`, never a
 format check, and never the Deno entitlement test (INF-1, INF-8, INF-13).
@@ -64,6 +89,7 @@ format check, and never the Deno entitlement test (INF-1, INF-8, INF-13).
 ## P0, fix first
 
 ### P0-1 (DAE). A member token gets an unjailed shell through the user command lane, so every admin gate on a shared hub is decorative
+
 - **Files:** `os-code/src/daemon/serve.ts:606-613` (`ownedBy` is the only check),
   `:698-707` (`POST /sessions/:id/commands` calls `driver.runCommand`),
   `os-code/src/daemon/session.ts:426-451`, `os-code/src/core/exec/commandRunner.ts:55`
@@ -92,7 +118,8 @@ format check, and never the Deno entitlement test (INF-1, INF-8, INF-13).
   `isOutboxAllowedPath` with a symlink inside `~/OSCode` pointing outside,
   expect false.
 
-### P0-2 (ENG). Guardrail token and dollar counters never reset, so a long session becomes permanently unable to start a task *(repro-confirmed)*
+### P0-2 (ENG). Guardrail token and dollar counters never reset, so a long session becomes permanently unable to start a task _(repro-confirmed)_
+
 - **Files:** `os-code/src/core/guardrails/index.ts:43-47` (`startTask()` resets
   `steps`, `startedAt`, `callCounts` only), `os-code/src/core/agent/loop.ts:304`
   (`guardrails.check()` before the first model call of every task), `:424`
@@ -114,6 +141,7 @@ format check, and never the Deno entitlement test (INF-1, INF-8, INF-13).
   called (today it is not).
 
 ### P0-3 (APP). A missing or unreadable data-encryption key is silently replaced, which orphans all sealed data on the device
+
 - **Files:** `app/src/lib/platform.ts:123-140` (`getDek`: on a null read it
   mints a fresh key and writes it over the old one), `app/electron/main.ts:633-641`
   (`osc:secureGet` returns `null` both when the key is absent and when
@@ -152,6 +180,7 @@ format check, and never the Deno entitlement test (INF-1, INF-8, INF-13).
   store being overwritten on the next `storeSet`.
 
 ### P0-4 (BE). Every email-keyed grant trusts `auth.email()`, and the checked-in config turns email confirmation OFF [UNCONFIRMED for the hosted project]
+
 - **Files:** `supabase/config.toml:34-37` (`enable_confirmations = false`; the
   header at `:4-5` says "turn them on for production"),
   `supabase/migrations/0003_claim.sql:15-19` (binds any `invited` seat where
@@ -196,7 +225,7 @@ and have `setMode` refuse or downgrade with an announcement. Verify:
 `agentModes.test.ts` with `profileFor('remote-attached')`, `setMode('bypassPermissions')`,
 a `runShell` turn; assert one approval was raised.
 
-**ENG-2. Text bridge rejects a final answer containing any JSON object with a `name` or `function` key** *(repro-confirmed)*.
+**ENG-2. Text bridge rejects a final answer containing any JSON object with a `name` or `function` key** _(repro-confirmed)_.
 `os-code/src/core/tools/parser.ts:88-98` treats every balanced object as a
 candidate and flags an unknown tool. `Done. Here is the package.json I created:`
 followed by a `{"name": "my-app", ...}` block yields `problems: ['There is no
@@ -206,7 +235,7 @@ object also carries an args-shaped key (`args`, `arguments`, `parameters`,
 `input`). Verify: `test/parser.test.ts` with that string expects zero problems;
 `{"name":"readFile","arguments":{"path":"x"}}` still parses.
 
-**ENG-3. Permission path globs match the raw model-supplied path** *(repro-confirmed)*.
+**ENG-3. Permission path globs match the raw model-supplied path** _(repro-confirmed)_.
 `loop.ts:572` passes `tool.pathOf(call.args)` unnormalized; `permissions/index.ts:111`
 runs `minimatch` on it. A deny rule on `secrets/**` gives `deny` for `secrets/k`
 but `ask` for `./secrets/k` and `src/../secrets/k`, and under `acceptEdits` that
@@ -231,11 +260,11 @@ for path-less tools or add a `commandPrefix` rule field; apply
 second, different command still asks; `security.test.ts` a `runShell allow` rule
 under `remote-attached` yields `ask`.
 
-**ENG-5. The workspace walker skips `.github`** *(repro-confirmed)*.
+**ENG-5. The workspace walker skips `.github`** _(repro-confirmed)_.
 `os-code/src/core/tools/walk.ts:44` uses `!entry.startsWith('.git')`, which
 drops `.github` and `.gitlab`. Callers: `glob.ts:19`, `grep.ts:63` (JS
 fallback), `context/codeMap.ts:87`, `context/index.ts:83,204`, `listFiles`.
-"Fix my CI workflow" gets "Nothing matches .github/**" unless ripgrep is
+"Fix my CI workflow" gets "Nothing matches .github/\*\*" unless ripgrep is
 installed. Fix: `entry !== '.git'`. Verify: walker test lists
 `.github/workflows/ci.yml` and not `.git/HEAD`.
 
@@ -565,16 +594,18 @@ decision (CFO and CTO); until then set the plugins to `UNLICENSED` or
 ## P2, robustness and hygiene
 
 ### Engine
-- **ENG-9.** Redaction misses JSON-quoted keys: `redaction.ts:34` needs the colon right after the name, so `"GITHUB_TOKEN": "..."` passes untouched while `GITHUB_TOKEN=...` is scrubbed *(repro-confirmed)*. Fix: `\b(NAME)["']?\s*[:=]`. Verify: `security.test.ts` JSON-key case.
+
+- **ENG-9.** Redaction misses JSON-quoted keys: `redaction.ts:34` needs the colon right after the name, so `"GITHUB_TOKEN": "..."` passes untouched while `GITHUB_TOKEN=...` is scrubbed _(repro-confirmed)_. Fix: `\b(NAME)["']?\s*[:=]`. Verify: `security.test.ts` JSON-key case.
 - **ENG-10.** Chunk-boundary leak in the streamed command lane: `commandRunner.ts:88-97` redacts each chunk independently; a secret split across two chunks reaches the phone's `command-output` events and the journal. Fix: a 64-char carry per stream. Verify: `commandRunner.test.ts` with a `sleep` between the two halves.
 - **ENG-11.** A native batch with one valid and one invalid call drops the problems silently (`loop.ts:447-460`); the model retries identically. Fix: a synthetic observation per rejected native call. Verify: `agentLoop.test.ts`.
 - **ENG-12.** Steps rail trips one call early (`guardrails/index.ts:49,86-87` with `loop.ts:564-566`: `steps >= ceiling` after `noteStep`), so `headless` gets 39 runs and the message says 40. Fix: `steps > ceiling`. Verify: exactly `maxSteps` tool-end events.
-- **ENG-13.** Compaction stage 1 is dead for text-bridge models *(repro-confirmed)*: `compaction.ts:33` trims only `role:'tool'`, but text-bridge observations are `role:'user'` with a `[name result]` prefix (`loop.ts:706`). Fix: also trim those, or tag observations with `meta.observation`. Verify: unit test on `trimOldObservations`.
+- **ENG-13.** Compaction stage 1 is dead for text-bridge models _(repro-confirmed)_: `compaction.ts:33` trims only `role:'tool'`, but text-bridge observations are `role:'user'` with a `[name result]` prefix (`loop.ts:706`). Fix: also trim those, or tag observations with `meta.observation`. Verify: unit test on `trimOldObservations`.
 - **ENG-14.** `summarize()` cloud spend bypasses the dollar rail and the transcript (`loop.ts:882-884`, fixed 600-token guess, no `noteDollars`, no `usage` event). Fix: read the provider's usage events. Verify: `guardrails.spentDollars > 0` after `compactNow()` on a cloud mock.
 - **ENG-15.** Pending approvals leak after an abort: `session.ts:301-316` keeps the resolver forever and a late `answerApproval` emits a phantom `approval-resolved`. Fix: `LocalDriver.abort()` settles and deletes every pending approval. Verify: `pendingApprovals.size === 0` after abort.
 - **ENG-16.** Egress `fetch` replays the full `init` (auth headers, body) across cross-host redirects (`egress.ts:140`); `readability.ts:33` passes a dead `redirect:'follow'`. Fix: drop `authorization` and `x-*-token` on an origin change, convert 301/302/303 POST to GET. Verify: D2 case with a cross-origin 302 asserts the header is absent.
 
 ### Daemon
+
 - **DAE-8.** Request bodies are unbounded (`serve.ts:1049-1063`); `/outbox/apply` writes each `contentBase64` to a temp file. Fix: cap (8 MB general, larger for outbox), answer 413. Verify: a 20 MB post expects 413 and a live daemon after.
 - **DAE-9.** Stack Health visibility can be silently overridden by a project config in the daemon's cwd: `serve.ts:441,463` call `loadConfig()` (merges the cwd project file) while the POST writes only the global file (`:475`). Fix: read daemon-owned settings from the global file only. Verify: project config in cwd, POSTed value wins.
 - **DAE-10.** Outbox: `update-index --force-remove f.path` has no `--` and `confinedPath` (`outbox.ts:86-96`) accepts a leading `-`; `serve.ts:371` keys the lock on the raw request `cwd` while the receipt is keyed on the toplevel, so `repo` and `repo/` bypass serialization. Fix: `--`, reject `^-`, lock on `realpathSync(cwd)`.
@@ -586,6 +617,7 @@ decision (CFO and CTO); until then set the plugins to `UNLICENSED` or
 - **DAE-16.** Clone target name from `basename(url)` can resolve to `.` or `..` (`serve.ts:259-265`), landing on `~` or `~/OSCode`. Admin-only. Fix: require `^[A-Za-z0-9._-]+$`.
 
 ### App
+
 - **APP-5.** Conversation `source.sessionId` is mutated outside `set` and not persisted until the next event (`store.ts:1281, 1305, 4012-4025, 1155-1159`); a kill between `POST /sessions` and the first message orphans a daemon session. Fix: `buildDriver` returns the id; write through `set` and persist. Verify: persisted blob carries `sessionId` before any event.
 - **APP-6.** The login-CSRF binding is lost on a cold start (`store.ts:390, 2842`, `useAuthDeepLink.ts:64-66`): the "same account we asked for" check is skipped exactly when a magic link launches the app from Mail. Fix: persist `pendingAuthEmail` with a 15-minute TTL; refuse an unsolicited callback. Verify: `vi.resetModules` between `sendMagicLink` and `completeAuthCallback` with a mismatched email.
 - **APP-7.** Sign-out leaves the org roster and local admin authority on the device (`store.ts:2853-2885` clears session and roles but not `settings.account`, `pendingAuthEmail`, `passwordRecovery`; `:929-933`, `:3025-3035` fall back to the local roster). Fix: drop `account` when `org.serverId` is set; clear the other two. Verify: `authorizeAdmin()` is false after sign-out.
@@ -597,6 +629,7 @@ decision (CFO and CTO); until then set the plugins to `UNLICENSED` or
 - **APP-13.** Journal replay is one `set` per event and in-memory transcripts are never trimmed (`store.ts:1050-1067`, `transcript.ts:94-97`, trim only at persist `:4635`). Fix: buffer replay into one `set`; cap in-memory items.
 
 ### UI, Electron, native
+
 - **UI-6.** IPC handlers accept unvalidated arguments and never check the sender (`electron/main.ts:403-423, 457-459, 571-576`). Defense in depth today (CSP `'self'`, pinned navigation); one future XSS in markdown turns it into RCE. Fix: a `guarded(channel, fn)` wrapper checking `event.senderFrame.url === appEntry.href` plus `typeof` and `statSync(cwd).isDirectory()`. Verify: read-test that every `ipcMain.handle(` goes through the wrapper.
 - **UI-7.** Double haptic on iOS for most tapped buttons: `App.tsx:133-141` fires `hapticTick()` on capture for every enabled button, and components fire it again (`BackBar.tsx:63,72`, `ChatScreen.tsx:357,370`, `MessageList.tsx:263,282`, `Markdown.tsx:60,73`, `EmbeddedSite.tsx:86,95,111`, `Composer.tsx:337,365`). Fix: remove the component-level ticks on button handlers or honor a `data-haptic="own"` attribute. Verify: a polish-standards assertion.
 - **UI-8.** The motion guards read only `theme.css`; inline TSX motion drifts unchecked. `Stars.tsx:71` is the exact foreign curve the token test bans, an ad-hoc 260ms, and a `width` transition in one line. `index.html:66-68, 130-131, 174, 225, 273` carry raw curves and `fill-mode: both` (documented, reduced-motion handled; treat as a stated exemption). Fix: `transform: scaleX()` on a `.stars-fill` with tokens; extend the guard to scan `style={{ transition:` in `.tsx`. Verify: the extended guard fails on `Stars.tsx` then passes.
@@ -607,6 +640,7 @@ decision (CFO and CTO); until then set the plugins to `UNLICENSED` or
 - **UI-13.** `SourcePicker.tsx` is imported by nothing (TS-P1-6 follow-up left open). Fix: delete it or wire it; add a one-line test that every component is imported somewhere.
 
 ### Backend
+
 - **BE-8.** The `last_event_at` ordering guard is read-then-write (`stripe-webhook:62-69, 84-93`; `apple-notifications:73-81, 102-111`); parallel deliveries can let the older event win. Fix: a `security definer` `apply_entitlement_event(...)` with the comparison in the `where`.
 - **BE-9.** Neither Apple function checks `productId` or transaction `type` (`link-apple-purchase:64-73`, `apple-notifications:158-182`); any future IAP for this bundle becomes lifetime Personal (a non-subscription has no `expiresDate`). Fix: an `APPLE_PRODUCT_IDS` secret and reject non-subscription types.
 - **BE-10.** `org_vault_put` accepts any `p_path` and any body size (`0010:82-84`); `vaultExport.ts:31-37` writes `Documents/Vault/<path>` recursively, so a teammate can store `../../x.md`. Fix: reject `..`, leading `/`, and bodies over 1 MB in the RPC; skip `..` on export.
@@ -615,6 +649,7 @@ decision (CFO and CTO); until then set the plugins to `UNLICENSED` or
 - **BE-13.** Ledgers grow forever (`apple_notifications_seen`, `push_sends`) and one unmapped price wedges the whole Stripe endpoint (`stripe-webhook:57, 117-119` throw, so Stripe retries for days and eventually disables the endpoint for every org). Fix: pg_cron retention; log and 200 for prices in an explicit ignore list.
 
 ### Infrastructure
+
 - **INF-7.** Node version drift: CI Node 20 (`ci.yml:39`), Codemagic 22.22.2, `os-code` engines `>=20`, README "Node 20+", while `@capacitor/cli` 8.5 requires `>=22`. Fix: root `engines`, `.nvmrc`, `node-version-file` in both workflows.
 - **INF-8.** No format check in CI and no app-side format script; 17 files drift today. Fix: `format:check` in app and a CI step.
 - **INF-9.** ESLint 8.57 (EOL 2024-10) and typescript-eslint 7.18 (declares TS `<5.6`) against TS 5.9.3; every lint prints the unsupported-version warning. Fix: ESLint 9 flat config and typescript-eslint 8; record the supersession in DECISIONS.md.

@@ -59,7 +59,12 @@ read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
   license is a "no license granted" placeholder at the root and in
   `os-code/LICENSE` (CFO ruling; the plugins are `UNLICENSED`, `private`).
   ESLint 9 is deferred to its own commit.
-- Gates: (filled at close)
+- Gates at close: os-code typecheck, lint, 493 tests (54 files), tsc build,
+  Prettier check; app typecheck (src and electron), lint (now covering .cjs and
+  .mjs), 692 tests (92 files), vite build, Prettier check; the repo-wide
+  em-dash guard and the PROGRESS shape guard. Deno and pgTAP suites are
+  written but not executed here (no Deno or Postgres in the session); CI now
+  runs the Deno suite.
 
 ## What remains (known follow-ups, none blocking)
 
@@ -74,7 +79,7 @@ read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
       trigger since 0015; billing `quantity = seats` on Stripe is the follow-up
       so a team above its band pays for it rather than being refused.
 - [ ] **P0-3 on Linux, repro still UNCONFIRMED.** How often Electron's
-      `safeStorage.decryptString` throws on the founder's Pop!_OS desktop:
+      `safeStorage.decryptString` throws on the founder's Pop!\_OS desktop:
       launch the desktop app with `--password-store=basic` after a run that used
       the default backend and check whether `oscode-secrets.json`'s key entry is
       rewritten. The code now refuses to mint a new key over sealed data either

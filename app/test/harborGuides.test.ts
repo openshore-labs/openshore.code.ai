@@ -6,10 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  HARBOR_BYLINE,
-  buildHarborSystemPrompt,
-} from '../src/lib/harbor.js';
+import { HARBOR_BYLINE, buildHarborSystemPrompt } from '../src/lib/harbor.js';
 import {
   HARBOR_MINI_APPROX_LABEL,
   HARBOR_MINI_BUNDLED,
@@ -59,10 +56,7 @@ describe('Harbor Light is bundled (native with the app)', () => {
 
   it('the native ModelStore treats harbor-mini as a bundled model', () => {
     const swift = readFileSync(
-      join(
-        process.cwd(),
-        'plugins/oscode-llama/ios/Sources/OscodeLlamaPlugin/ModelStore.swift',
-      ),
+      join(process.cwd(), 'plugins/oscode-llama/ios/Sources/OscodeLlamaPlugin/ModelStore.swift'),
       'utf8',
     );
     // The id is in the bundled set, and the store resolves, lists, and refuses

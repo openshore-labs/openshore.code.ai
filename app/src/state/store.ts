@@ -1400,7 +1400,7 @@ export const useApp = create<AppState>((set, get) => {
     const session = s.authSession;
     if (!isPhone() || !daemon || !session) return;
     if ((s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl)) return;
-    const ok = await registerPushForDaemon(daemon, session);
+    const ok = await registerPushForDaemon(daemon, session, s.settings.deviceId);
     if (!ok) return;
     const existing = get().settings.pushRegisteredDaemons ?? [];
     if (!existing.includes(daemon.baseUrl)) {
@@ -4210,7 +4210,7 @@ export const useApp = create<AppState>((set, get) => {
       // UI-2: a note whose bytes are evicted from this device (iCloud's
       // placeholder) is still a note. Never open an empty editor over it,
       // which a keystroke would then save back as empty over the cloud copy.
-      if ((listed as { evicted?: boolean } | undefined)?.evicted) {
+      if (listed?.evicted) {
         get().showToast('Still downloading this note from your vault storage. Try again shortly.');
         return;
       }
