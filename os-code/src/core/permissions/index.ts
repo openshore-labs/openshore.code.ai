@@ -138,12 +138,13 @@ export class PermissionEngine {
     return true;
   }
 
-  /** On a restrictive profile, no allow (session grant or rule) may make a
-   *  shell or cloud-spend step silent. */
+  /** On a restrictive profile, no allow (session grant, rule, or configured
+   *  default) may make a shell, push, or cloud-spend step silent. */
   private autoAllowBlocked(risk: ToolRisk): boolean {
     if (!this.profile) return false;
     if (risk === 'shell') return !this.profile.allowShellAutoApprove;
     if (risk === 'cloud-spend') return !this.profile.allowCloudAutoApprove;
+    if (risk === 'push') return !this.profile.allowPushAutoApprove;
     return false;
   }
 
@@ -194,6 +195,17 @@ export class PermissionEngine {
     }
 
     const decision = this.config.defaults[q.risk];
+    // The configured default is no louder than a rule: a config that sets
+    // shell (or push, or cloud spend) to allow cannot make it silent on the
+    // phone or headless profile. A routine running at 3am asks, or is denied
+    // when no one answers; it never runs a shell command unattended (the CTO's
+    // must-fix for unattended crew).
+    if (decision === 'allow' && this.autoAllowBlocked(q.risk)) {
+      return {
+        decision: 'ask',
+        reason: `${q.risk} never runs silently on the ${this.profile?.name ?? 'restricted'} profile`,
+      };
+    }
     return { decision, reason: `default for ${q.risk} tools` };
   }
 }

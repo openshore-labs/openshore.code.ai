@@ -14,6 +14,9 @@ export interface SecurityProfile {
   maxStepsCeiling: number;
   /** May a cloud-spend step be pre-approved for the whole session? */
   allowCloudAutoApprove: boolean;
+  /** May a push (a commit leaving the machine) ever run without asking? Off
+   *  on the headless profile: an unattended routine never pushes silently. */
+  allowPushAutoApprove: boolean;
 }
 
 export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
@@ -23,6 +26,7 @@ export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
     allowShellAutoApprove: true,
     maxStepsCeiling: 100,
     allowCloudAutoApprove: true,
+    allowPushAutoApprove: true,
   },
   'remote-attached': {
     name: 'remote-attached',
@@ -30,6 +34,7 @@ export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
     allowShellAutoApprove: false,
     maxStepsCeiling: 60,
     allowCloudAutoApprove: false,
+    allowPushAutoApprove: true,
   },
   headless: {
     name: 'headless',
@@ -37,6 +42,7 @@ export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
     allowShellAutoApprove: false,
     maxStepsCeiling: 40,
     allowCloudAutoApprove: false,
+    allowPushAutoApprove: false,
   },
 };
 

@@ -23,6 +23,7 @@ import { ProjectsScreen } from './screens/ProjectsScreen.js';
 import { ProjectDetailScreen } from './screens/ProjectDetailScreen.js';
 import { ProjectMemoryScreen } from './screens/ProjectMemoryScreen.js';
 import { CrewScreen } from './screens/CrewScreen.js';
+import { CrewCommandScreen } from './screens/CrewCommandScreen.js';
 import { AdminScreen } from './screens/AdminScreen.js';
 import { LaunchScreen } from './screens/LaunchScreen.js';
 import { PairScreen } from './screens/PairScreen.js';
@@ -215,6 +216,8 @@ export function App() {
       <ProjectMemoryScreen />
     ) : view === 'crew' ? (
       <CrewScreen />
+    ) : view === 'crewcommand' ? (
+      <CrewCommandScreen />
     ) : view === 'admin' ? (
       <AdminScreen />
     ) : view === 'launch' ? (
