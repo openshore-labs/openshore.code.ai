@@ -3,13 +3,20 @@
 // review every build before it ships, let the Reasoning LLM bring it in on its
 // own, or stay dormant until you ask for it by name. Scope each to specific
 // projects, or let it work across all of them.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
 import type { CrewActivityLevel, CrewAgent } from '../state/types.js';
 import { ADVISOR_TEAM } from '../lib/crewPresets.js';
 import { Sheet } from '../components/Sheet.js';
+import {
+  agentPresenceLine,
+  busiestFirst,
+  crewHeadline,
+  presenceTone,
+  routinesForAgent,
+} from '../lib/routines.js';
 
 const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   {
@@ -40,9 +47,25 @@ function levelLabel(level: CrewActivityLevel): string {
 }
 
 export function CrewScreen() {
-  const { settings, createCrewAgent, updateCrewAgent, deleteCrewAgent, showToast } = useApp();
+  const {
+    settings,
+    createCrewAgent,
+    updateCrewAgent,
+    deleteCrewAgent,
+    showToast,
+    routines: routinesState,
+    refreshRoutines,
+    openCrewCommand,
+  } = useApp();
   const crew = settings.crew ?? [];
   const projects = settings.projects ?? [];
+  const routines = routinesState.routines;
+
+  // The roster shows each member's presence, so the room asks the computer
+  // once on arrival (the command center keeps it live).
+  useEffect(() => {
+    void refreshRoutines();
+  }, [refreshRoutines]);
 
   const [draft, setDraft] = useState<Draft | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<string | undefined>();
@@ -105,6 +128,27 @@ export function CrewScreen() {
           called. Point them at specific projects, or let them work across all of them.
         </p>
 
+        {/* The door to the command center: the crew's unattended work, with
+            a live line so the roster reads as a team, not a list. */}
+        <button
+          type="button"
+          className="crew-command-door press-fb press-fb--row"
+          onClick={openCrewCommand}
+        >
+          <span className="crew-command-door-body">
+            <span className="crew-command-door-kicker">Crew command</span>
+            <span className="crew-command-door-title">
+              {routines.length ? 'Your crew at work' : 'Put your crew to work'}
+            </span>
+            <span className="crew-command-door-sub">
+              {routinesState.loaded && !routinesState.available
+                ? 'Pair your desktop, then routines run while you are away.'
+                : crewHeadline(routines, routinesState.runs)}
+            </span>
+          </span>
+          <span className="cc-row-chevron" aria-hidden="true" />
+        </button>
+
         <button
           className="btn primary"
           style={{ width: '100%' }}
@@ -149,6 +193,21 @@ export function CrewScreen() {
               <p className="sub" style={{ marginTop: 6 }}>
                 {a.persona.length > 120 ? `${a.persona.slice(0, 120)}...` : a.persona}
               </p>
+              {(() => {
+                const mine = routinesForAgent(routines, a);
+                const line = agentPresenceLine(mine);
+                if (!line) return null;
+                const busiest = busiestFirst(mine)[0]!;
+                return (
+                  <div className="crew-presence">
+                    <span
+                      className={`cc-dot ${presenceTone(busiest.presence)}`}
+                      aria-hidden="true"
+                    />
+                    {line}
+                  </div>
+                );
+              })()}
               <div
                 className="suggestion-row"
                 style={{ justifyContent: 'flex-start', marginTop: 4 }}

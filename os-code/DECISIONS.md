@@ -799,6 +799,48 @@ execution contract. Newest at the bottom.
   horror, political satire, exploit analysis, legal adult fiction, dissenting
   opinion, plus ordinary coding work containing vocabulary words) must pass
   clean, with no refusal and no note added.
+- 2026-09-05: The botOS brief ("clone grokbot, local-first") ships as **Crew
+  routines inside My Crew** (CMO; founder agreed): "bot" reads as chatbot, and
+  the roster with activity levels already existed. botOS stays the codename,
+  the way gitOS ships as Repositories. Grok Bot, not the @grok chatbot, is the
+  reference: always-on agents with their own computer; ours run on the
+  person's own desktop and models.
+- 2026-09-05: The first stab at botOS this session (a witty persona chatbot,
+  `ca6f12b` on the feature branch) was built on the wrong reading of the brief
+  and was DROPPED, not conflict-resolved onto main (CTO must-fix; the founder's
+  "push it all to main" is honored with the real build). It stays reachable on
+  the branch's history only.
+- 2026-09-05: Routines run on the headless profile, and a configured
+  permissions DEFAULT of allow can no longer make shell, push, or cloud spend
+  silent on a restrictive profile (CTO). Headless gains
+  `allowPushAutoApprove: false`; remote-attached keeps push allowed so a
+  phone-attached session's behavior does not change.
+- 2026-09-05: Scheduler contract (CTO): one run on the box at a time and one
+  per routine; a slot the machine slept through is recorded as skipped once,
+  never replayed; an unanswered approval times out to a DENIAL with a reason
+  after 15 minutes; a wall-clock cap per routine (5 to 60 min, default 20) on
+  top of the engine guardrails; read-only maps to plan mode, edit to
+  acceptEdits; only admin-provisioned workspaces and outbox roots, for every
+  caller. The workspace predicates moved to `core/security/workspaces.ts` so
+  the scheduler and the daemon share one gate (re-exported from serve.ts).
+- 2026-09-05: The result note is written by the scheduler itself to
+  `Vault/Crew/<routine>/<stamp>.md`, not through the agent's always-ask
+  vaultWrite tool: it is the run's own record, like a session journal, and an
+  unattended run could never approve its own note.
+- 2026-09-05: A read-risk `gitLog` tool was added so a read-only (plan mode)
+  routine can review history; without it the Morning review preset would have
+  needed a shell it can never get.
+- 2026-09-05: One preset (Morning review, weekdays 06:00, read-only) and custom
+  routines unlock after the first run finishes (CX: results must be
+  reviewable in under a minute with zero mid-run prompts before anyone builds
+  their own). The preset adds a Reviewer to the crew on setup so the roster
+  and the routine agree on who did the work.
+- 2026-09-05: A missed slot shows in the results inbox but does not push: the
+  push-send function takes the approval and done kinds only, and the backend
+  was left untouched in this wave.
+- 2026-09-05: Founder: Personal goes to $50/yr when the gates are reinstated;
+  the app stays ungated while building, so the command center carries no
+  paywall yet.
 - 2026-09-05: **Tier 2 likeness precision reworked after the CTO/CMO review, and
   the gate made non-countable.** The classifier was over-blocking coding work
   ("Docker image of Ubuntu Server" read as a person) and under-blocking the

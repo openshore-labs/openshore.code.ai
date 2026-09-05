@@ -138,6 +138,31 @@ export type {
   SustainabilityFootprint,
 } from './insights/stackHealthTypes.js';
 
+// Crew routines (the botOS clone brief, shipped inside My Crew): the pure model
+// and schedule math the phone and desktop render with. The scheduler that
+// fires them lives in routines/scheduler.ts and is NOT imported here.
+export type {
+  Routine,
+  RoutineAccess,
+  RoutineInput,
+  RoutinePresence,
+  RoutineRun,
+  RoutineRunState,
+  RoutineSchedule,
+  RoutineView,
+} from './routines/model.js';
+export {
+  PRESET_ROUTINE,
+  ROUTINE_LIMITS,
+  nextSlotAfter,
+  presenceOf,
+  scheduleDaysLabel,
+  scheduleLabel,
+  scheduleTimeLabel,
+  validateRoutineInput,
+  validateSchedule,
+} from './routines/model.js';
+
 /** Wire shapes the daemon serves that are not agent events. */
 export interface DaemonSessionInfo {
   id: string;

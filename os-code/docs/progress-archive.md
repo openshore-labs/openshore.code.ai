@@ -5,7 +5,65 @@ on 2026-09-05 so that file stays lean (one Current state, one What remains,
 the last five log entries). Newest first, kept as written; this is history,
 not a source of current truth. `PROGRESS.md` is.
 
-## Current state sections (2026-08-20 to 2026-09-04)
+## Current state sections (2026-08-20 to 2026-09-05)
+
+### Current state (2026-09-05, full-codebase review remediation)
+
+The review in `CODE-REVIEW-FINDINGS-2026-09-05.md` (root; six parallel senior
+passes over HEAD `e14b0a7`, 82 commits and about 90k changed lines since the
+2026-08-25 reviews) was worked as one wave, batched by subsystem so each file
+was edited once, with the `Verify` test written first. Rulings during the wave
+are one line each in `DECISIONS.md`.
+
+- **The four P0s.** P0-1: the daemon's user command lane is no longer an
+  unjailed shell for a member token (admin-gated, and both path predicates
+  resolve real paths on both sides). P0-2: the guardrail token and dollar
+  counters reset per task, so a long session can start its next task. P0-3: the
+  sealed-store key is never minted over existing sealed data; an unreadable key
+  surfaces a "could not unlock your data on this machine" state instead of
+  orphaning every sealed byte. P0-4: email confirmation is on in
+  `supabase/config.toml`, and the email-keyed grants require a confirmed
+  address in SQL as well (migration `0015`).
+- **P1 and P2, by batch.** Trust boundaries (owner-filtered session listings,
+  profile-aware permission overrides, normalized permission globs). Session
+  lifecycle (idle work no longer inherits the task's abort signal, compaction
+  never cuts between a tool call and its result, steps rail off-by-one, native
+  batch problems reported, approvals settled on abort). Streams and timeouts
+  (Anthropic in-stream errors surface, an idle deadline on every provider
+  stream, Stop reaches a delegated specialist, a terminal exit frame). App auth
+  and the sealed store (one refreshed token helper for every Supabase call, a
+  typed sign-out on a dead refresh token, persisted pending email for the
+  magic-link binding, sign-out clears the roster, per-key write chain). On-device
+  model ownership (one `loadedModelId` owner; a load during generation ends the
+  old chat honestly). Backend (`members_write` WITH CHECK, seat ceilings by
+  trigger, the Stripe cross-rail guard, Apple link state, review column grants,
+  vault path guard, checkout filter on live statuses, entitlement decisions in
+  `_shared/entitlement.ts` with Deno tests).
+- **Guards and CI (INF).** CI now builds every package, checks formatting,
+  and runs the Deno tests; both workflows are least-privilege (`contents:
+read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
+  `>=22.12`); the catalog workflow scopes each secret to its one step and takes
+  an `allow_large_drop` input. The em-dash guard is repo-wide (git toplevel,
+  every text extension, test files included, one reasoned exemption for the
+  archived 2026-08-20 review). The desktop preflight refuses to launch with a
+  node-pty that is missing or built for the wrong ABI; the app postinstall
+  honors `SKIP_NATIVE_REBUILD=1` and CI and Codemagic skip the Electron binary.
+  Codemagic pins Xcode and builds the engine once. `.cjs` and `.mjs` are linted.
+  The nested `os-code/pnpm-lock.yaml` is gone. The addressed review docs live in
+  `docs/archive/` with status banners.
+- **Docs and license.** This file is lean again (one Current state, one What
+  remains, the last five log entries); the history is in
+  `docs/progress-archive.md` and the parked build prompts in
+  `docs/parked-ideas.md`, both guarded by `test/progressShape.test.ts`. The
+  license is a "no license granted" placeholder at the root and in
+  `os-code/LICENSE` (CFO ruling; the plugins are `UNLICENSED`, `private`).
+  ESLint 9 is deferred to its own commit.
+- Gates at close: os-code typecheck, lint, 493 tests (54 files), tsc build,
+  Prettier check; app typecheck (src and electron), lint (now covering .cjs and
+  .mjs), 692 tests (92 files), vite build, Prettier check; the repo-wide
+  em-dash guard and the PROGRESS shape guard. Deno and pgTAP suites are
+  written but not executed here (no Deno or Postgres in the session); CI now
+  runs the Deno suite.
 
 ### Current state (2026-09-04, Stack Health: daily cadence, admin-gated visibility, Run leaner)
 
@@ -2338,7 +2396,29 @@ Layer status:
   search in both the TUI and plain renderers. All covered by
   `test/polish.test.ts`.
 
-## Log entries (2026-08-18 to 2026-08-25)
+## Log entries (2026-08-18 to 2026-08-26)
+
+- **2026-08-26: Chat-surface refinements + polish (bigger menu, anchored
+  greeting, guide-as-reasoning, a Chats room).** Founder asks over four
+  screenshots. (1) Menu button: a drawn SVG glyph (`components/MenuIcon.tsx`),
+  fuller weight in the primary ink on a 40px target, in the chat top bar and the
+  room BackBar. (2) Empty-state greeting: `.greeting` switched to
+  `justify-content: flex-end` so the mark + line sit just above the composer and
+  ride up with it under the keyboard, instead of centering and colliding with
+  the status bar. (3) Downloaded guide becomes the Reasoning anchor:
+  `reasoningPromotion` in `state/store.ts` promotes a just-downloaded Harbor /
+  Harbor Mini when there is no anchor or the anchor is a guide not on the device
+  (Harbor also upgrades a ready Mini); a matching init reconcile heals the seeded
+  Mini anchor a Harbor-only user hit ("download it first"). Cloud/BYOM/user
+  device anchors untouched. (4) Chats room: new `chats` view +
+  `screens/ChatsScreen.tsx` lists the active project's chats with an easy new
+  chat; the recent-chats list left the drawer, New chat + Quick chat stayed.
+  Polish: capped row stagger, opacity room cross-fade (keyed on view),
+  menu-glyph press spring, grouped flat rows that swipe to delete behind a
+  confirm (SwipeRow gained an optional label + danger variant + style, pin
+  behavior unchanged). Dead `.conv-list`/`.conv-empty` pruned. Animations use
+  `backwards` per the polish-standards rule. Green: 209 app tests, typecheck,
+  lint, build, em-dash. Not iOS-verified here.
 
 - **2026-08-25: App Vault opens the on-disk folder (file-backed provider).** The
   paired follow-up to agent vault writes: the app's Vault can now live in the
