@@ -233,10 +233,12 @@ log entry). Migration is now `0016`.
 - [x] **Ethics layer, IP capture removed from the product entirely (founder
       call, 2026-09-05, supersedes the earlier block-only compromise).** No
       address column, no header-reading function, no ban queue, anywhere.
-- [ ] **Apply `0017_reconcile_stale_0016.sql` to production (founder, next
-      `db push`).** `0016` was already live from its stale first draft (see
-      the 2026-09-05 log entry); the file edits above describe intent, not
-      what production actually runs, until this migration is pushed.
+- [x] **`0017_reconcile_stale_0016.sql` applied to production (2026-09-05).**
+      Verified live: all four stale IP objects gone (schema query returned
+      false/false/false/false), `record_enforcement()` is the only signature
+      left, founder seeded into `abuse_reviewers`. Founder's own smoke test
+      of a live guardrail block (confirming `enforcement_actions` actually
+      gets a row) is still pending, deferred to when they get to it.
 - [x] **Ethics layer, provenance drop paths (CTO M5).** Keyword match not
       substring grep; bounded reader; a non-PNG Tier 2 output is refused.
 - [x] **Ethics layer, the ladder is server-side now.** `record_enforcement()`
@@ -547,8 +549,11 @@ log entry). Migration is now `0016`.
   `0017_reconcile_stale_0016.sql` drops every stale IP object and the
   stale `record_enforcement` signature, then recreates the zero-argument
   version the app expects. 3 new tests in `ethicsEnforcement.test.ts`
-  (86 total, up from 83). Full write-up in `DECISIONS.md`. Not yet applied;
-  the founder runs `supabase db push` when ready.
+  (86 total, up from 83). Full write-up in `DECISIONS.md`. Applied to
+  production the same day and verified live (all four stale objects gone,
+  `record_enforcement()` the only signature, founder seeded into
+  `abuse_reviewers`). The founder's own smoke test of a live guardrail
+  block is the one thing still pending.
 
 - **2026-09-05: run a bigger model on the iPhone, the CTO + CMO consensus,
   built and pushed to main.** The founder asked whether we could smooth a
