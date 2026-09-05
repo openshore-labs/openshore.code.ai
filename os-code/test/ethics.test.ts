@@ -288,11 +288,15 @@ describe('enforcement ladder', () => {
     expect(outcome.proposeIpBan).toBe(true);
   });
 
-  it('warns after repeated tier 2 blocks', () => {
-    const history = Array.from({ length: TIER2_WARN_AT }, () => record(2, 'likeness'));
+  it('does not accrue a restriction from likeness blocks (non-countable)', () => {
+    // The Tier 2 consent gate rests on a heuristic that a name is a real
+    // person; a false positive there is an ordinary request wrongly stopped,
+    // not abuse. Per the CTO's ship condition (2026-09-05), likeness blocks
+    // never push an account toward a penalty, however many there are.
+    const history = Array.from({ length: TIER2_WARN_AT + 10 }, () => record(2, 'likeness'));
     const outcome = evaluateEnforcement(history);
-    expect(outcome.level).toBe(1);
-    expect(outcome.action).toBe('warn');
+    expect(outcome.level).toBe(0);
+    expect(outcome.action).toBe('log-only');
   });
 
   it('never counts a failed check against the person', () => {
@@ -468,6 +472,51 @@ describe('Tier 3: person-depicting media that is not a real person', () => {
       'draw a headshot of a fictional detective for my novel cover',
       'render an avatar of a generic space pirate',
       'create an image of a golden retriever in a studio portrait style',
+    ]) {
+      const result = await screen(prompt);
+      expect(result.decision.action, prompt).toBe('allow');
+    }
+  });
+});
+
+describe('Tier 2 precision: coding vocabulary vs real people (M1/M2)', () => {
+  const codingPassThrough = [
+    'Build a Docker image of Ubuntu Server and push it to the registry.',
+    'Write a Dockerfile that starts from the official image of Alpine Linux.',
+    'Pull the image of Postgres and make sure they run migrations on boot.',
+    'Deploy the container image of Debian Bookworm to the staging cluster.',
+    'Use the image of SQL Server for the integration tests.',
+    'Generate an API client and render Machine Learning metrics to a dashboard.',
+    'Create a diagram of the System Architecture for the backend.',
+  ];
+  for (const prompt of codingPassThrough) {
+    it(`passes coding work: ${prompt.slice(0, 46)}...`, async () => {
+      const result = await screen(prompt);
+      expect(result.decision.action, prompt).toBe('allow');
+    });
+  }
+
+  const deepfakeShapes = [
+    'draw emma watson at the beach, photorealistic, 8k',
+    'Render Emma Watson in a photorealistic style, smiling.',
+    'generate a photo of Emma Watson on a red carpet',
+    'paint Barack Obama shaking hands, hyperrealistic',
+    'a photorealistic portrait of Taylor Swift, dslr',
+  ];
+  for (const prompt of deepfakeShapes) {
+    it(`gates a real-person likeness: ${prompt.slice(0, 40)}...`, async () => {
+      const result = await screen(prompt);
+      expect(result.decision.category, prompt).toBe('likeness');
+    });
+  }
+
+  it('still leaves places, things, and photoreal scenes alone', async () => {
+    for (const prompt of [
+      'generate an image of Times Square at night',
+      'generate an image of Mount Fuji at sunrise',
+      'a photorealistic blue mountain landscape, 8k',
+      'render an ocean sunset, photorealistic, 4k',
+      'draw a golden retriever wearing sunglasses',
     ]) {
       const result = await screen(prompt);
       expect(result.decision.action, prompt).toBe('allow');

@@ -253,15 +253,21 @@ function checkWeapons(hits: SignalHit[]): RuleVerdict | undefined {
  * assertion that clears it.
  */
 function checkLikeness(hits: SignalHit[], text: string): RuleVerdict | undefined {
-  if (!has(hits, 'mediaSynthesis')) return undefined;
+  // namesAPersonAsSubject already means "a request to MAKE media of a named
+  // person" (it matches only media nouns and generation verbs), so it is its
+  // own sufficient evidence of media intent. That is why it can satisfy the
+  // gate even when the mediaSynthesis SIGNAL did not fire: "render Emma Watson"
+  // and "paint Barack Obama" are generation verbs the signal list does not
+  // carry, but they are unmistakably media of a person.
+  const named = namesAPersonAsSubject(text);
+  if (!has(hits, 'mediaSynthesis') && !named) return undefined;
   const targetsLikeness =
+    named ||
     near(hits, 'mediaSynthesis', 'likenessTarget', 200) ||
     near(hits, 'mediaSynthesis', 'realPerson', 200) ||
-    near(hits, 'mediaSynthesis', 'selfSubject', 200) ||
-    namesAPersonAsSubject(text);
+    near(hits, 'mediaSynthesis', 'selfSubject', 200);
   if (!targetsLikeness) return undefined;
-  const identifiable =
-    has(hits, 'realPerson') || has(hits, 'selfSubject') || namesAPersonAsSubject(text);
+  const identifiable = has(hits, 'realPerson') || has(hits, 'selfSubject') || named;
   if (!identifiable) return undefined;
   // An invented character with no real-person marker is Tier 3.
   if (has(hits, 'fictionMarker') && !has(hits, 'realPerson') && !has(hits, 'selfSubject')) {
@@ -394,41 +400,288 @@ const NON_PERSON_NAME_WORDS = new Set(
     'district',
     'province',
     'county',
+    // Software, infrastructure, and product vocabulary. In a coding tool
+    // "image of X" is overwhelmingly a container or OS image, not a portrait,
+    // so a capitalized name carrying any of these is not a person (M1). The
+    // list is deliberately broad; a false "not a person" on a genuine surname
+    // that happens to be a tech word is recoverable (the person names the
+    // subject and asserts consent), while the reverse blocks a developer's
+    // ordinary work.
+    'linux',
+    'ubuntu',
+    'debian',
+    'fedora',
+    'centos',
+    'rhel',
+    'alpine',
+    'arch',
+    'mint',
+    'suse',
+    'kali',
+    'bookworm',
+    'bullseye',
+    'buster',
+    'jammy',
+    'focal',
+    'noble',
+    'windows',
+    'macos',
+    'android',
+    'ios',
+    'server',
+    'client',
+    'node',
+    'deno',
+    'bun',
+    'python',
+    'ruby',
+    'rust',
+    'golang',
+    'java',
+    'kotlin',
+    'scala',
+    'php',
+    'perl',
+    'docker',
+    'kubernetes',
+    'podman',
+    'helm',
+    'terraform',
+    'ansible',
+    'postgres',
+    'postgresql',
+    'mysql',
+    'mariadb',
+    'sqlite',
+    'redis',
+    'mongo',
+    'mongodb',
+    'cassandra',
+    'sql',
+    'nginx',
+    'apache',
+    'caddy',
+    'traefik',
+    'kafka',
+    'rabbitmq',
+    'elasticsearch',
+    'grafana',
+    'prometheus',
+    'jenkins',
+    'gitlab',
+    'github',
+    'bitbucket',
+    'react',
+    'angular',
+    'vue',
+    'svelte',
+    'next',
+    'nuxt',
+    'vite',
+    'webpack',
+    'chrome',
+    'chromium',
+    'firefox',
+    'safari',
+    'edge',
+    'webkit',
+    'image',
+    'images',
+    'api',
+    'sdk',
+    'cli',
+    'gui',
+    'db',
+    'database',
+    'cluster',
+    'container',
+    'containers',
+    'runtime',
+    'kernel',
+    'distro',
+    'os',
+    'vm',
+    'daemon',
+    'service',
+    'services',
+    'endpoint',
+    'gateway',
+    'proxy',
+    'cache',
+    'queue',
+    'broker',
+    'pipeline',
+    'workflow',
+    'registry',
+    'repository',
+    'repo',
+    'build',
+    'deploy',
+    'deployment',
+    'release',
+    'artifact',
+    'network',
+    'protocol',
+    'algorithm',
+    'framework',
+    'library',
+    'module',
+    'package',
+    'component',
+    'interface',
+    'schema',
+    'model',
+    'models',
+    'dataset',
+    'tensor',
+    'machine',
+    'learning',
+    'intelligence',
+    'data',
+    'science',
+    'analytics',
+    'engine',
+    'platform',
+    'system',
+    'systems',
+    'software',
+    'hardware',
+    'firmware',
+    'stack',
+    'frontend',
+    'backend',
+    'gpu',
+    'cpu',
+    'ram',
+    'ssd',
+    'memory',
+    'storage',
+    'compute',
+    'token',
+    'tokens',
+    'embedding',
+    'transformer',
+    'llm',
+    'gpt',
+    'bert',
+    'llama',
+    'mistral',
+    'qwen',
+    'gemma',
+    'phi',
+    'claude',
   ].map((w) => w.toLowerCase()),
 );
 
-/** Cues that the subject of a media request is a person. */
+// Scene, object, and attribute words. A lowercase two-word candidate made of
+// these ("blue mountain", "ocean sunset") is a scene, not a person, so the
+// lowercase generation-verb path below never treats it as a likeness.
+const SCENE_WORDS = new Set([
+  'blue', 'red', 'green', 'yellow', 'orange', 'purple', 'pink', 'black', 'white',
+  'grey', 'gray', 'gold', 'golden', 'silver', 'bronze', 'dark', 'light', 'bright',
+  'pale', 'deep', 'big', 'small', 'tall', 'short', 'old', 'new', 'young', 'giant',
+  'tiny', 'ancient', 'modern', 'wild', 'calm', 'misty', 'foggy', 'snowy', 'sunny',
+  'mountain', 'mountains', 'hill', 'valley', 'forest', 'jungle', 'desert', 'ocean',
+  'sea', 'river', 'lake', 'beach', 'coast', 'island', 'sky', 'cloud', 'clouds',
+  'sunset', 'sunrise', 'dawn', 'dusk', 'night', 'day', 'storm', 'rain', 'snow',
+  'fire', 'water', 'earth', 'wind', 'star', 'stars', 'moon', 'sun', 'galaxy',
+  'city', 'town', 'street', 'road', 'bridge', 'castle', 'tower', 'house', 'garden',
+  'flower', 'flowers', 'tree', 'trees', 'field', 'meadow', 'canyon', 'waterfall',
+  'cat', 'dog', 'bird', 'fox', 'wolf', 'bear', 'lion', 'tiger', 'horse', 'dragon',
+  'robot', 'car', 'ship', 'plane', 'train', 'rocket', 'spaceship', 'landscape',
+  'portrait', 'scene', 'abstract', 'pattern', 'texture', 'logo', 'icon', 'poster',
+]);
+
+/** Photorealism cues: a prompt with one of these is asking for a real-looking
+ *  image, which is the shape of a deepfake when the subject is a person. */
+const PHOTOREAL_CUE =
+  /\b(?:photo\s?realistic|photo\s?realism|hyper\s?realistic|photograph|lifelike|8k|4k|dslr|realistic\s+(?:photo|portrait|render)|portrait\s+photo)\b/i;
+
+/** Cues that the subject of a media request is a person. Ambiguous pronouns
+ *  that pepper engineering prose ("they", "their") are deliberately absent:
+ *  "make sure they run migrations" is not a person cue. */
 const PERSON_CUE =
-  /\b(?:he|she|they|him|her|his|hers|their|man|woman|person|people|guy|girl|boy|singer|actor|actress|politician|president|senator|governor|mayor|ceo|founder|streamer|influencer|youtuber|celebrity|speaking|talking|saying|singing|smiling|dancing|posing|portrait|headshot|selfie|mr|mrs|ms|dr|prof)\b/i;
+  /\b(?:he|she|him|her|his|hers|man|woman|person|guy|girl|boy|singer|actor|actress|politician|president|senator|governor|mayor|ceo|streamer|influencer|youtuber|celebrity|speaking|talking|saying|singing|smiling|dancing|posing|headshot|selfie|mr|mrs|ms|dr|prof)\b/i;
+
+/** Is a capitalized candidate a software, place, or concept name rather than a
+ *  person? True when any of its words is in the not-a-person vocabulary. */
+function looksNonPerson(name: string): boolean {
+  return name
+    .split(/\s+/)
+    .some((w) => NON_PERSON_NAME_WORDS.has(w.toLowerCase().replace(/['.-]/g, '')));
+}
 
 /**
  * Does this request name a person as the subject of media it wants made?
  *
- * A full name after "image of", "video of", "voice of" and friends is read as a
- * person unless it carries a place or organization word. A single capitalized
- * word needs a person cue nearby, which is what keeps "an image of Paris" out
- * of the consent gate while keeping "a video of Paris speaking" in it.
+ * Three shapes are caught. A media noun plus a name ("image of Emma Watson").
+ * A generation verb plus a Title Case name ("render Emma Watson"). And an
+ * all-lowercase two-word name after a generation verb WHEN the prompt also asks
+ * for photorealism ("draw emma watson ... photorealistic, 8k"), which is the
+ * deepfake shape and not "draw a blue mountain".
+ *
+ * A capitalized candidate carrying a software, place, or concept word is never a
+ * person, so "image of Ubuntu Server" and "image of Times Square" stay Tier 3.
+ * A single capitalized word needs a person cue nearby.
+ *
+ * Known limit (DECISIONS.md): a lowercase name with no photorealism cue and no
+ * other person signal is not caught here. A public-figure gazetteer is out of
+ * scope, and guessing would block far more legitimate Tier 3 prompts than it
+ * would catch.
  */
 function namesAPersonAsSubject(text: string): boolean {
-  const re =
-    /\b(image|images|photo|photos|picture|pictures|portrait|headshot|selfie|video|clip|deepfake|voice|audio|render|footage)\s+(?:of|featuring|as|like)\s+(?:the\s+)?([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){0,3})/g;
+  // Shape 1: a media noun, then of/featuring/as/like, then a Title Case name.
+  // The NAME pattern requires a capital first letter per word, so it stops at
+  // the first lowercase word ("voice of Barack Obama saying ..." captures only
+  // "Barack Obama"). The media-noun first letter is capital-tolerant so a
+  // sentence-initial "Photo of ..." still matches.
+  const nounRe =
+    /\b(?:[Ii]mages?|[Pp]hotos?|[Pp]ictures?|[Pp]ortrait|[Hh]eadshot|[Ss]elfie|[Vv]ideo|[Cc]lip|[Dd]eepfake|[Ff]ootage|[Vv]oice|[Aa]udio|[Rr]ender|[Pp]ainting|[Dd]rawing|[Ll]ikeness)\s+(?:of|featuring|as|like)\s+(?:the\s+)?([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){0,3})/g;
+  const mediaOf = /\b([A-Za-z]+)\s+(?:of|featuring|as|like)\b/;
   let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    const media = match[1]!.toLowerCase();
-    const name = match[2]!;
+  while ((match = nounRe.exec(text)) !== null) {
+    const name = match[1]!;
+    if (looksNonPerson(name)) continue;
     const words = name.split(/\s+/);
-    if (words.some((w) => NON_PERSON_NAME_WORDS.has(w.toLowerCase().replace(/['.-]/g, '')))) {
-      continue;
+    // The media word this match hinged on, for the person-only check.
+    const media = (mediaOf.exec(match[0]!)?.[1] ?? '').toLowerCase();
+    if (/^(portrait|headshot|selfie|deepfake|voice|audio|painting|drawing|likeness)$/.test(media)) {
+      return true;
     }
-    // Media forms that only depict people carry their own cue.
-    const personOnlyMedia = /^(portrait|headshot|selfie|deepfake|voice|audio)$/.test(media);
-    if (personOnlyMedia) return true;
     if (words.length >= 2) return true;
-    // A single name needs corroboration from the surrounding sentence.
     const around = text.slice(Math.max(0, match.index - 120), match.index + match[0].length + 120);
     if (PERSON_CUE.test(around.replace(name, ' '))) return true;
   }
-  // "in the voice of X", "sounds just like X", "impersonate X".
+
+  // Shape 2: a generation verb directly on a Title Case name ("render Emma
+  // Watson", "Paint Barack Obama"). The verb first letter is capital-tolerant so
+  // a sentence-initial "Render" matches; the name stays strictly Title Case.
+  const verbRe =
+    /\b(?:[Dd]raw|[Rr]ender|[Pp]aint|[Ss]ketch|[Dd]epict|[Ii]llustrate|[Ii]magine|[Gg]enerate|[Cc]reate|[Mm]ake)\s+(?:a\s+|an\s+|the\s+)?([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){0,3})/g;
+  while ((match = verbRe.exec(text)) !== null) {
+    const name = match[1]!;
+    if (looksNonPerson(name)) continue;
+    const words = name.split(/\s+/);
+    if (words.length >= 2) return true;
+    const around = text.slice(Math.max(0, match.index - 60), match.index + match[0].length + 120);
+    if (PERSON_CUE.test(around.replace(name, ' '))) return true;
+  }
+
+  // Shape 3: an all-lowercase two-word name after a generation verb or media
+  // noun, gated on a photorealism cue and on neither word being a scene word.
+  if (PHOTOREAL_CUE.test(text)) {
+    const lowerRe =
+      /\b(?:draw|render|paint|generate|create|make|depict|photo of|image of|picture of)\s+(?:a\s+|an\s+|the\s+)?([a-z][a-z'-]+\s+[a-z][a-z'-]+)/g;
+    while ((match = lowerRe.exec(text)) !== null) {
+      const [w1, w2] = match[1]!.split(/\s+/);
+      if (!w1 || !w2) continue;
+      if (SCENE_WORDS.has(w1) || SCENE_WORDS.has(w2)) continue;
+      if (NON_PERSON_NAME_WORDS.has(w1) || NON_PERSON_NAME_WORDS.has(w2)) continue;
+      return true;
+    }
+  }
+
+  // Shape 4: "in the voice of X", "sounds just like X", "impersonate X".
   return /\b(?:in the (?:voice|style of the voice) of|sounds? (?:just )?like|impersonate)\s+(?:the\s+)?[A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+)+/.test(
     text,
   );

@@ -353,7 +353,10 @@ export function SettingsScreen() {
             <p>
               Local models run on your hardware and nothing leaves it. Cloud models run on your own
               keys and only with your approval. Web search leaves your machine when the agent uses
-              it. No telemetry, no analytics, no phone-home, ever.
+              it. No telemetry, no analytics, no advertising. There is one exception, stated plainly
+              under Ethical boundaries below: when the guardrail blocks a request and you are signed
+              in, a record of that block reaches your account. It carries a category, a time, and a
+              one-way hash, never your prompt.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>
@@ -407,9 +410,10 @@ export function SettingsScreen() {
               any of those.
             </p>
             <p>
-              Recreating the face or voice of a real, identifiable person is held back until you
-              state that you are authorized for that specific person, and what comes out carries
-              provenance metadata saying it was AI-generated.
+              Synthesized media only, meaning an image, a video, or a voice. Recreating the face or
+              voice of a real, identifiable person is held back until you state you are authorized
+              for that specific person, and what comes out carries provenance metadata saying it was
+              AI-generated.
             </p>
             <h3 className="settings-sheet-head">What is not blocked</h3>
             <p>
@@ -418,11 +422,18 @@ export function SettingsScreen() {
               adds no refusal and no lecture to any of it. Over-blocking your legitimate work is
               treated as a defect, not a safe default.
             </p>
+            <p>
+              Words are free. The gate is on synthesized media, not on what you write: satire in
+              text never touches it, and "it's satire" does not clear a photorealistic video of a
+              real person's face.
+            </p>
             <h3 className="settings-sheet-head">What is recorded</h3>
             <p>
               A block records a category, a timestamp, and a one-way hash of the request. Your
-              prompt is never stored and never sent. When you are signed in, the record reaches your
-              account so enforcement survives a reinstall. Signed out, it stays on this device.
+              prompt is never stored and never sent. An IP address is recorded only when a request
+              is blocked and you are signed in, never in ordinary use. When you are signed in, block
+              records reach your account so enforcement holds across a reinstall. Signed out, they
+              stay on this device.
             </p>
           </InfoSheet>
         </SettingsGroup>

@@ -207,20 +207,37 @@ function itxtChunk(keyword: string, text: string): Uint8Array {
 export function hasProvenance(bytes: Uint8Array): boolean {
   if (!isPng(bytes)) return false;
   for (const chunk of chunks(bytes)) {
-    if (chunk.type === 'iTXt' || chunk.type === 'tEXt' || chunk.type === 'caBX') {
-      const slice = bytes.subarray(chunk.start + 8, Math.min(chunk.end, chunk.start + 200));
-      const head = String.fromCharCode(...slice);
-      if (
-        head.includes(PROVENANCE_KEYWORD) ||
-        head.includes('c2pa') ||
-        head.includes('xmp') ||
-        head.includes('XML:com.adobe.xmp')
-      ) {
-        return true;
-      }
-    }
+    // A caBX chunk is a real C2PA (JUMBF) manifest. Its presence is provenance,
+    // whatever it contains.
+    if (chunk.type === 'caBX') return true;
+    if (chunk.type !== 'iTXt' && chunk.type !== 'tEXt') continue;
+    // Match on the chunk KEYWORD, never on its value. An earlier version grepped
+    // the first ~192 bytes for "c2pa"/"xmp", which a prompt echoed into a tEXt
+    // chunk (A1111, ComfyUI) could contain, silently suppressing labeling. The
+    // keyword is the only thing that identifies a provenance chunk.
+    const keyword = chunkKeyword(bytes, chunk);
+    if (keyword === PROVENANCE_KEYWORD || keyword === 'XML:com.adobe.xmp') return true;
   }
   return false;
+}
+
+/**
+ * The keyword of a tEXt or iTXt chunk: the latin1 bytes up to the first null.
+ * PNG caps a keyword at 79 bytes, so the scan is bounded; an unterminated or
+ * over-long field returns undefined rather than reading the whole chunk (which,
+ * spread into String.fromCharCode, could throw on a crafted multi-megabyte
+ * chunk).
+ */
+function chunkKeyword(bytes: Uint8Array, chunk: { start: number; end: number }): string | undefined {
+  const dataStart = chunk.start + 8;
+  const dataEnd = chunk.end - 4;
+  const limit = Math.min(dataEnd, dataStart + 80);
+  let p = dataStart;
+  while (p < limit && bytes[p] !== 0) p++;
+  if (p >= limit || bytes[p] !== 0) return undefined;
+  let out = '';
+  for (let i = dataStart; i < p; i++) out += String.fromCharCode(bytes[i]!);
+  return out;
 }
 
 /**
@@ -264,12 +281,13 @@ export function readPngProvenance(bytes: Uint8Array): ProvenanceManifest | undef
   if (!isPng(bytes)) return undefined;
   for (const chunk of chunks(bytes)) {
     if (chunk.type !== 'iTXt') continue;
+    // Match on the keyword, read with a bounded scan (see chunkKeyword) so a
+    // crafted unterminated field cannot throw here.
+    if (chunkKeyword(bytes, chunk) !== PROVENANCE_KEYWORD) continue;
     const data = bytes.subarray(chunk.start + 8, chunk.end - 4);
     // keyword \0 flag method lang \0 translated \0 text
     let p = 0;
     while (p < data.length && data[p] !== 0) p++;
-    const keyword = String.fromCharCode(...data.subarray(0, p));
-    if (keyword !== PROVENANCE_KEYWORD) continue;
     p += 3; // null, compression flag, compression method
     while (p < data.length && data[p] !== 0) p++; // language tag
     p += 1;

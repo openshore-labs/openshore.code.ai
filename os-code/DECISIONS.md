@@ -799,3 +799,47 @@ execution contract. Newest at the bottom.
   horror, political satire, exploit analysis, legal adult fiction, dissenting
   opinion, plus ordinary coding work containing vocabulary words) must pass
   clean, with no refusal and no note added.
+- 2026-09-05: **Tier 2 likeness precision reworked after the CTO/CMO review, and
+  the gate made non-countable.** The classifier was over-blocking coding work
+  ("Docker image of Ubuntu Server" read as a person) and under-blocking the
+  canonical deepfake ("draw emma watson ... photorealistic"). Fix:
+  `NON_PERSON_NAME_WORDS` gained a software/infra/product/concept vocabulary; the
+  two-word auto-pass now defers to that vocabulary; generation verbs (draw,
+  render, paint) are caught, case-tolerant at a sentence start; and an
+  all-lowercase two-word name after a generation verb is caught only with a
+  photorealism cue and no scene word. Ambiguous pronouns ("they", "their") left
+  PERSON_CUE (they pepper engineering prose). Per the CTO's ship condition,
+  `likeness` is now NON-COUNTABLE in `countableViolations`: a false gate is a
+  recoverable one-sentence speed bump, never an enforcement accrual. The brief's
+  "repeated Tier 2 -> warning" is suspended until precision is field-proven
+  (tracked in PROGRESS What remains). Known limit: a lowercase name with no
+  photoreal cue and no other signal is not caught; a public-figure gazetteer is
+  out of scope and would over-block Tier 3 more than it would catch.
+- 2026-09-05: **IP captured on a BLOCK only; enforcement evaluated server-side.**
+  Reconciling the CMO (cut IP entirely) and the CTO (keep violation-only) under
+  their own disagree-and-commit: the CTO made the repeat-abuser safety case, so
+  the resolution is keep-but-minimal. A trigger fills `guardrail_events.ip_address`
+  only when `action='blocked'`; `likeness_consents` no longer carries an address
+  at all (an authorization assertion is not a violation). `record_enforcement()`
+  now takes no arguments and computes the ladder from `guardrail_events`
+  server-side, which fixes both the reinstall-reset and the client-resettable
+  ladder the CTO flagged. The "cut IP entirely" option remains the founder's to
+  take later; this is the strongest honest keep.
+- 2026-09-05: **ToU/Settings/README honesty pass.** "No telemetry, ever" in app
+  Settings and README stated an absolute that a signed-in block record breaks;
+  reworded to name the one exception plainly. ToU section 4 "immediate and
+  permanent removal" softened to what the code does (flag + operator-executed
+  termination + prepared report). The media-vs-text satire seam ("words are
+  free, faces and voices need permission") is now stated on the app, the ethics
+  page, and the ToU, per both advisors, rather than left for someone to discover.
+- 2026-09-05: **Provenance no longer drops silently.** `hasProvenance` matches on
+  the chunk KEYWORD (or a caBX chunk), not a substring grep of the first bytes,
+  so a prompt echoed into a tEXt chunk no longer suppresses labeling; the keyword
+  read is bounded so a crafted unterminated iTXt cannot throw. A Tier 2 output
+  that could not be provenance-labeled (a non-PNG format) is now refused rather
+  than shipped unlabeled, since the whole point of the consent gate is that the
+  output carries provenance. Ordinary images stay best-effort.
+- 2026-09-05: **C2PA top-line naming and full IP removal LEFT to the founder.**
+  Both are pure-positioning calls the founder deferred ("refine later"). The
+  honesty-critical parts (no false collection claim, unsigned stated plainly)
+  are done; the taste calls are logged in PROGRESS What remains, not decided here.

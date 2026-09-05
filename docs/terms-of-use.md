@@ -28,11 +28,13 @@ has not consented.
 or deploying biological, chemical, nuclear, or high-yield explosive weapons, or
 with materially increasing the harm such a weapon would cause.
 
-**Cloning a real person's face or voice without authorization.** Recreating the
-likeness or voice of a real, identifiable person is permitted only when you are
-authorized for that specific person: they are you, they gave you permission, or
-they licensed the likeness to you. You assert that authorization in the product,
-and the assertion is recorded against your account.
+**Cloning a real person's face or voice without authorization.** Synthesizing
+the likeness or voice of a real, identifiable person, as an image, a video, or
+an audio clip, is permitted only when you are authorized for that specific
+person: they are you, they gave you permission, or they licensed the likeness to
+you. You assert that authorization in the product, and the assertion is recorded
+against your account. This is about synthesized media, not about words: writing
+about, satirizing, or criticizing a person in text is not covered here.
 
 The first three have no exception and no consent option. The fourth is gated
 behind your authorization, not forbidden.
@@ -47,14 +49,22 @@ permitted. Security research, red teaming, exploit analysis, and vulnerability
 work for defensive purposes are permitted. Controversial, unpopular, and
 dissenting opinions are permitted.
 
+Words are free here. The consent gate in section 2 is on synthesized media, not
+on what you write: satire and parody in text never touch it. "It's satire" does
+not, however, clear a photorealistic image or video of a real person's face,
+because a synthesized face is taken as real until proven otherwise and that
+asymmetry is the whole problem.
+
 OpenShore does not add refusals or commentary to any of this.
 
 ## 4. Consequences of misuse
 
-Misuse under section 2 results in immediate and permanent removal from the
-platform, and will be reported to the appropriate authorities where the law
-requires or permits it. In the United States, child sexual abuse material is
-reported to the National Center for Missing and Exploited Children.
+Misuse under section 2 leads to permanent removal from the platform. A Tier 1
+attempt flags the account for termination and prepares a report; the removal is
+carried out by the operator, and where the law requires or permits it the matter
+is reported to the appropriate authority. In the United States, child sexual
+abuse material is reported to the National Center for Missing and Exploited
+Children.
 
 We take this seriously and we want to be direct about why. Deepfakes,
 non-consensual intimate imagery, and synthetic child sexual abuse material are
@@ -74,10 +84,10 @@ public networks, and carrier-grade NAT, and a wrong ban falls on people who did
 nothing.
 
 IP addresses are not logged in ordinary use. Nothing is recorded when you sync,
-when you sign in, or when you send a request that is not blocked. When a
-signed-in request is blocked, that block record carries the address it came
-from, and an authorization assertion carries the address it was made from. Those
-are the only moments an address is collected.
+when you sign in, when you send a request that is not blocked, or when you assert
+an authorization. The one moment an address is collected is when a signed-in
+request is blocked: that block record, and only that record, carries the address
+it came from.
 
 ## 6. What we record when something is blocked
 
