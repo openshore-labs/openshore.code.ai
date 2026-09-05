@@ -862,6 +862,7 @@ describe('an evicted vault note is an existing note (UI-2)', () => {
   it('routes a same-name create to open, and never writes', async () => {
     await useApp.getState().vaultRefresh();
     useApp.setState({
+      vaultNote: undefined,
       vaultFiles: [{ path: 'Note.md', updatedAt: 't', size: 0, evicted: true } as StoredFileMeta],
     });
     await useApp.getState().vaultCreate('note');

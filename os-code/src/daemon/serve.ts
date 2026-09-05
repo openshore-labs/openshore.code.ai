@@ -779,8 +779,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           });
           return;
         }
-        driver.setMode(body.mode);
-        sendJson(res, 200, { mode: driver.mode });
+        // Same downgrade as POST /sessions (ENG-1): the loop refuses on its own
+        // too, but the response must say what mode the session actually runs.
+        const effective = effectiveRemoteMode(body.mode);
+        driver.setMode(effective.mode ?? body.mode);
+        sendJson(res, 200, {
+          mode: driver.mode,
+          ...(effective.note ? { note: effective.note } : {}),
+        });
         return;
       }
       if (req.method === 'POST' && parts[2] === 'instructions') {

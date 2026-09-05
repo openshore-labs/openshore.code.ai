@@ -130,6 +130,23 @@ function resetAll() {
   sb.select.mockImplementation(async (table: string, _token: string, query: string) => {
     if (table === 'org_members' && query.includes('select=org_id')) return memberships;
     if (table === 'orgs') return [orgRow(/id=eq\.([^&]+)/.exec(query)![1]!)];
+    if (table === 'org_members' && query.includes('select=*&org_id=')) {
+      // The roster: the owner holds the admin seat, the signed-in user is a
+      // member unless they are the owner.
+      const orgId = /org_id=eq\.([^&]+)/.exec(query)![1]!;
+      const owner = ownerOf[orgId] ?? 'boss';
+      const row = (id: string, uid: string, email: string, role: string) => ({
+        id,
+        org_id: orgId,
+        user_id: uid,
+        email,
+        role,
+        status: 'active',
+      });
+      return owner === 'u1'
+        ? [row('m1', 'u1', 'a@b.c', 'admin')]
+        : [row('m0', owner, 'boss@co.com', 'admin'), row('m1', 'u1', 'a@b.c', 'member')];
+    }
     return [];
   });
   useApp.setState({
