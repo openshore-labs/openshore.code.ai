@@ -24,6 +24,9 @@ import {
   accessLabel,
   agentPresenceLine,
   busiestFirst,
+  controlBlurb,
+  controlLabel,
+  crewControl,
   crewHeadline,
   customRoutinesUnlocked,
   presenceLabel,
@@ -75,8 +78,10 @@ function pad(n: number): string {
 export function CrewCommandScreen() {
   const {
     settings,
+    connectivity,
     routines: state,
     refreshRoutines,
+    refreshConnectivity,
     createRoutine,
     updateRoutine,
     deleteRoutine,
@@ -85,12 +90,26 @@ export function CrewCommandScreen() {
     readRoutineNote,
     openRoutineRun,
     createCrewAgent,
+    startGuideChat,
     setView,
     showToast,
   } = useApp();
   const crewList = settings.crew;
   const crew = useMemo(() => crewList ?? [], [crewList]);
   const { routines, runs } = state;
+
+  // The control distinction (founder, 2026-09-05): set up and control only
+  // while docked to the machine (or on it); view always. Computed live from
+  // connectivity so a reconnect flips the room from view-only to in-control
+  // without a reload.
+  const control = crewControl({
+    onDesktop: isDesktop() && Boolean(bridge()),
+    hasDaemon: Boolean(settings.daemon),
+    homeReachable: connectivity.homeReachable,
+    preferRemoteHub: settings.preferRemoteHub,
+  });
+  const canControl = control.can;
+  const where = control.where;
 
   const [draft, setDraft] = useState<Draft | undefined>();
   const [saving, setSaving] = useState(false);
@@ -99,12 +118,18 @@ export function CrewCommandScreen() {
   const [note, setNote] = useState<{ path: string; markdown: string } | null | undefined>();
   const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
 
-  // Live while open: the first answer lands at once, then a calm poll.
+  // Live while open: the first answer lands at once, then a calm poll. Also
+  // re-probe home reachability so an away room flips to in-control the moment
+  // Tailscale reconnects, without waiting for the app-wide 20s tick.
   useEffect(() => {
+    void refreshConnectivity();
     void refreshRoutines();
-    const timer = window.setInterval(() => void refreshRoutines(), REFRESH_MS);
+    const timer = window.setInterval(() => {
+      void refreshConnectivity();
+      void refreshRoutines();
+    }, REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [refreshRoutines]);
+  }, [refreshRoutines, refreshConnectivity]);
 
   // The workspaces a routine may run in, from the computer that runs them.
   const daemon = settings.daemon;
@@ -160,7 +185,7 @@ export function CrewCommandScreen() {
     .sort()[0];
   const unlocked = customRoutinesUnlocked(runs);
   const hasPreset = routines.some((r) => r.name === PRESET.name);
-  const machine = state.where === 'daemon' ? (daemon?.name ?? 'your desktop') : 'this computer';
+  const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your main machine');
 
   // The roster: every crew member, plus a member a routine names that is not
   // on the crew any more (a deleted card must not hide a live routine).
@@ -304,19 +329,26 @@ export function CrewCommandScreen() {
   const setupPreset = hasPreset ? undefined : beginPreset;
 
   // ---- render ------------------------------------------------------------------
-
-  const unavailable = state.loaded && !state.available;
+  // Three states, one distinction: docked or on the machine is IN CONTROL;
+  // paired but away is VIEW ONLY (cached dashboards, a reconnect prompt); never
+  // paired is NOT SET UP (dormant capabilities plus the way in).
+  const unpaired = where === 'unpaired';
+  const away = where === 'away';
 
   return (
     <div className="screen crew-command">
       <BackBar title="Crew command" />
       <div className="screen-inner">
-        <section className="cc-hero" aria-label="Crew status">
-          <div className="cc-kicker">Crew command · {machine}</div>
-          <h1 className="cc-headline">
-            {unavailable ? 'Routines run on your computer.' : headline}
-          </h1>
-          {!unavailable ? (
+        <section className={`cc-hero ${where}`} aria-label="Crew status">
+          <div className="cc-hero-top">
+            <div className="cc-kicker">Crew command · {machine}</div>
+            <span className={`cc-control-badge ${where}`}>
+              <span className="cc-control-dot" aria-hidden="true" />
+              {controlLabel(where)}
+            </span>
+          </div>
+          <h1 className="cc-headline">{unpaired ? 'Put your crew to work.' : headline}</h1>
+          {!unpaired ? (
             <div className="cc-stats" role="list">
               <div className={`cc-stat${working.length ? ' live' : ''}`} role="listitem">
                 <span className="cc-stat-num">{working.length}</span>
@@ -344,18 +376,82 @@ export function CrewCommandScreen() {
             </div>
           ) : null}
           <p className="cc-hero-note">
-            {unavailable
-              ? 'Pair this phone with your desktop and your crew can work while you are away, on your own models. Nothing runs in a cloud.'
-              : 'Every routine runs on your own models, while your computer is on. It works, then asks: anything risky waits for you.'}
+            {canControl
+              ? 'Every routine runs on your own models, while your computer is on. It works, then asks: anything risky waits for you.'
+              : controlBlurb(where, machine)}
           </p>
-          {unavailable ? (
-            <button className="btn primary press-fb" onClick={() => setView('pair')}>
-              Pair your desktop
+          {away ? (
+            <button
+              className="btn primary press-fb"
+              onClick={() => {
+                void refreshConnectivity();
+                void refreshRoutines();
+              }}
+            >
+              Reconnect over Tailscale
             </button>
+          ) : null}
+          {unpaired ? (
+            <div className="cc-hero-actions">
+              <button className="btn primary press-fb" onClick={() => setView('pair')}>
+                Pair your machine
+              </button>
+              <button
+                className="btn ghost press-fb"
+                onClick={() => void startGuideChat('set-up-crew')}
+              >
+                Walk me through it
+              </button>
+            </div>
           ) : null}
         </section>
 
-        {state.error ? <p className="hint cc-error">{state.error}</p> : null}
+        {unpaired ? (
+          <section className="cc-section" aria-label="What your crew can do">
+            <h2>What your crew can do</h2>
+            <p className="lead" style={{ marginBottom: 14 }}>
+              These run on your own computer, on the models you hold. You set them up while
+              connected to your machine. After that you can watch and steer them from here,
+              anywhere, and take control whenever you are back in reach over Tailscale.
+            </p>
+            <div className="cc-dormant">
+              <div className="cc-dormant-item">
+                <span className="cc-dot muted" aria-hidden="true" />
+                <div>
+                  <div className="cc-dormant-title">Scheduled routines</div>
+                  <div className="cc-dormant-sub">
+                    A crew member works a task on a clock, like a review every weekday morning.
+                  </div>
+                </div>
+              </div>
+              <div className="cc-dormant-item">
+                <span className="cc-dot muted" aria-hidden="true" />
+                <div>
+                  <div className="cc-dormant-title">Results waiting for you</div>
+                  <div className="cc-dormant-sub">
+                    Each run leaves a note in your vault, with the full transcript a tap away.
+                  </div>
+                </div>
+              </div>
+              <div className="cc-dormant-item">
+                <span className="cc-dot muted" aria-hidden="true" />
+                <div>
+                  <div className="cc-dormant-title">Works, then asks</div>
+                  <div className="cc-dormant-sub">
+                    Nothing risky happens unwatched. Anything that needs you waits, and pings you.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {away ? (
+          <p className="hint cc-away-note">
+            Showing the last picture from {machine}. Reconnect to load live and take control.
+          </p>
+        ) : null}
+        {state.error && canControl ? <p className="hint cc-error">{state.error}</p> : null}
 
         {waiting.length ? (
           <section className="cc-section" aria-label="Waiting for you">
@@ -382,7 +478,7 @@ export function CrewCommandScreen() {
           </section>
         ) : null}
 
-        {!unavailable ? (
+        {!unpaired ? (
           <section className="cc-section" aria-label="Crew">
             <div className="cc-section-head">
               <h2>Crew</h2>
@@ -424,22 +520,24 @@ export function CrewCommandScreen() {
           </section>
         ) : null}
 
-        {!unavailable ? (
+        {!unpaired ? (
           <section className="cc-section" aria-label="Routines">
             <div className="cc-section-head">
               <h2>Routines</h2>
-              {unlocked ? (
-                <button className="cc-link press-fb" onClick={beginNew}>
-                  + New routine
-                </button>
-              ) : (
-                <span className="pill muted" title="Unlocks after the first routine finishes">
-                  More after the first run
-                </span>
-              )}
+              {canControl ? (
+                unlocked ? (
+                  <button className="cc-link press-fb" onClick={beginNew}>
+                    + New routine
+                  </button>
+                ) : (
+                  <span className="pill muted" title="Unlocks after the first routine finishes">
+                    More after the first run
+                  </span>
+                )
+              ) : null}
             </div>
 
-            {setupPreset ? (
+            {setupPreset && canControl ? (
               <div className="cc-preset">
                 <div className="cc-preset-kicker">Start here</div>
                 <h3>{PRESET.name}</h3>
@@ -466,30 +564,23 @@ export function CrewCommandScreen() {
             {orderedRoutines.map((r) => {
               const tone = presenceTone(r.presence);
               const busy = r.presence === 'working' || r.presence === 'waiting';
-              return (
-                <SwipeRow
-                  key={r.id}
-                  variant="danger"
-                  label="Delete"
-                  className="cc-routine-swipe"
-                  onTap={() => {}}
-                  onToggle={() => setConfirmDelete(r)}
-                >
-                  <div className={`card cc-routine ${tone}`}>
-                    <div className="cc-routine-head">
-                      <div className="cc-routine-title">
-                        <PresenceDot tone={tone} />
-                        <h3>{r.name}</h3>
-                      </div>
-                      <span className={`pill cc-presence ${tone}`}>{presenceLabel(r, now)}</span>
+              const card = (
+                <div className={`card cc-routine ${tone}${canControl ? '' : ' view-only'}`}>
+                  <div className="cc-routine-head">
+                    <div className="cc-routine-title">
+                      <PresenceDot tone={tone} />
+                      <h3>{r.name}</h3>
                     </div>
-                    <div className="cc-routine-meta">
-                      {r.agentName} · {scheduleLabel(r.schedule)} · {accessLabel(r.access)} ·{' '}
-                      {workspaceName(r.cwd)}
-                    </div>
-                    {r.lastRun?.summary ? (
-                      <p className="cc-routine-last">{r.lastRun.summary}</p>
-                    ) : null}
+                    <span className={`pill cc-presence ${tone}`}>{presenceLabel(r, now)}</span>
+                  </div>
+                  <div className="cc-routine-meta">
+                    {r.agentName} · {scheduleLabel(r.schedule)} · {accessLabel(r.access)} ·{' '}
+                    {workspaceName(r.cwd)}
+                  </div>
+                  {r.lastRun?.summary ? (
+                    <p className="cc-routine-last">{r.lastRun.summary}</p>
+                  ) : null}
+                  {canControl ? (
                     <div className="cc-routine-actions">
                       {busy ? (
                         <button
@@ -527,14 +618,40 @@ export function CrewCommandScreen() {
                         </button>
                       </label>
                     </div>
-                  </div>
+                  ) : r.lastRun?.sessionId ? (
+                    <button
+                      className="suggestion press-fb"
+                      style={{ marginTop: 10 }}
+                      onClick={() => r.lastRun && void openRoutineRun(r.lastRun)}
+                    >
+                      View last result
+                    </button>
+                  ) : null}
+                </div>
+              );
+              // Swipe-to-delete only where control is allowed; away, the card
+              // is a read-only tile.
+              return canControl ? (
+                <SwipeRow
+                  key={r.id}
+                  variant="danger"
+                  label="Delete"
+                  className="cc-routine-swipe"
+                  onTap={() => {}}
+                  onToggle={() => setConfirmDelete(r)}
+                >
+                  {card}
                 </SwipeRow>
+              ) : (
+                <div key={r.id} className="cc-routine-swipe">
+                  {card}
+                </div>
               );
             })}
           </section>
         ) : null}
 
-        {!unavailable && recentRuns.length ? (
+        {!unpaired && recentRuns.length ? (
           <section className="cc-section" aria-label="Results">
             <h2>Results</h2>
             <div className="cc-inbox">

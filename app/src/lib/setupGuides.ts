@@ -12,7 +12,8 @@ export type SetupGuideId =
   | 'pick-a-model'
   | 'open-a-repo'
   | 'install-tailscale'
-  | 'connect-codemagic';
+  | 'connect-codemagic'
+  | 'set-up-crew';
 
 export interface SetupGuide {
   id: SetupGuideId;
@@ -124,6 +125,19 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
       'Tap Start a build. Progress and the build log stream in here, and a failure is explained in plain words.',
     ],
     done: 'A build reaches TestFlight or Google Play and OpenShore shows it as delivered.',
+  },
+  'set-up-crew': {
+    id: 'set-up-crew',
+    title: 'Set up your crew',
+    goal: 'Have a crew member work on a schedule on my own computer, so results are waiting when I come back.',
+    steps: [
+      'Routines run on your main computer, on your own models, while it is on. You set one up while connected to that machine, then watch and steer it from anywhere.',
+      'If you have not paired yet, open Desktop and phone and pair this device. Tailscale must be on for both, the same connection the big models use.',
+      'Make sure the work lives on the machine: open Repositories and clone the repo you want the crew to work in, if it is not there already.',
+      'Open My Crew, then Crew command, and set up the Morning review routine. It reads what changed overnight and leaves a checklist, read-only, so it never needs an approval.',
+      'Away from home you can always watch your crew and read its results here. To change or run a routine, reconnect to your machine over Tailscale first.',
+    ],
+    done: 'A routine shows in Crew command with its next run time, and its first report lands in your vault.',
   },
 };
 

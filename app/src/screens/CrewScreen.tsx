@@ -13,10 +13,13 @@ import { Sheet } from '../components/Sheet.js';
 import {
   agentPresenceLine,
   busiestFirst,
+  crewControl,
   crewHeadline,
   presenceTone,
   routinesForAgent,
 } from '../lib/routines.js';
+import { bridge } from '../lib/electronBridge.js';
+import { isDesktop } from '../lib/platform.js';
 
 const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   {
@@ -49,6 +52,7 @@ function levelLabel(level: CrewActivityLevel): string {
 export function CrewScreen() {
   const {
     settings,
+    connectivity,
     createCrewAgent,
     updateCrewAgent,
     deleteCrewAgent,
@@ -57,6 +61,12 @@ export function CrewScreen() {
     refreshRoutines,
     openCrewCommand,
   } = useApp();
+  const control = crewControl({
+    onDesktop: isDesktop() && Boolean(bridge()),
+    hasDaemon: Boolean(settings.daemon),
+    homeReachable: connectivity.homeReachable,
+    preferRemoteHub: settings.preferRemoteHub,
+  });
   const crew = settings.crew ?? [];
   const projects = settings.projects ?? [];
   const routines = routinesState.routines;
@@ -136,14 +146,19 @@ export function CrewScreen() {
           onClick={openCrewCommand}
         >
           <span className="crew-command-door-body">
-            <span className="crew-command-door-kicker">Crew command</span>
+            <span className="crew-command-door-kicker">
+              Crew command
+              {control.where === 'away' ? ' · View only' : control.can ? ' · In control' : ''}
+            </span>
             <span className="crew-command-door-title">
               {routines.length ? 'Your crew at work' : 'Put your crew to work'}
             </span>
             <span className="crew-command-door-sub">
-              {routinesState.loaded && !routinesState.available
-                ? 'Pair your desktop, then routines run while you are away.'
-                : crewHeadline(routines, routinesState.runs)}
+              {control.where === 'unpaired'
+                ? 'Pair your machine, then routines run while you are away.'
+                : control.where === 'away'
+                  ? 'Away from your machine. Watch here, reconnect to take control.'
+                  : crewHeadline(routines, routinesState.runs)}
             </span>
           </span>
           <span className="cc-row-chevron" aria-hidden="true" />

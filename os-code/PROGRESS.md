@@ -84,6 +84,19 @@ is on", never "always on", and "works, then asks", never "unsupervised".
   Prettier; app typecheck (src and electron), lint, 699 tests (93 files), vite
   build, Prettier; the repo-wide em-dash guard and the PROGRESS shape guard.
   Pushed to `main` per the founder.
+- **Cross-device control model (founder, 2026-09-05: "it should all operate
+  seamlessly cross-device").** One clear distinction, on the same "docked"
+  reach the big models use: you SET UP and CONTROL routines only while
+  harnessed to the machine (docked over Tailscale, or on the machine itself);
+  you can always VIEW. Away from home the command center shows the last-known
+  dashboards from a cached snapshot (persisted at `oscode.routines.v1`), the
+  roster and dormant capabilities, and a Reconnect prompt; every control button
+  is hidden and the store refuses a mutation with "Reconnect to your main
+  machine over Tailscale to control your crew." Three header states, In control
+  / View only / Not set up, named by a badge. A `set-up-crew` guide walks the
+  mobile setup. Pure `crewControl()` in `app/src/lib/routines.ts` decides, and
+  both the screen (live, off connectivity) and the store guards call it. App
+  only: the daemon is already unreachable when not docked, so no server change.
 - **Polish pass (founder: "do all the polish").** A waiting-for-you row
   breathes a soft amber halo on the working dot's clock; the results inbox
   arrives row by row on `--stagger`; a sheet's heading rises in, keyed to the
@@ -496,6 +509,14 @@ What remains. Migration is now `0016`.
       `/find` is the genuinely additive capability.
 
 ## Log
+
+- **2026-09-05: Crew routines cross-device control model.** Setup and control
+  require being docked to the machine (or on it); viewing is always on, from a
+  cached snapshot when away. Three states in the command center (In control /
+  View only / Not set up), a Reconnect prompt, a dormant-capabilities preview,
+  a set-up-crew guide, and mutation guards in the store. Pure crewControl() with
+  tests. App-only. Gates: app 714 tests, typecheck, lint, build, Prettier;
+  os-code unchanged and green.
 
 - **2026-09-05: the phone storefront: packs by status, families, and an
   honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that

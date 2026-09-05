@@ -14,6 +14,9 @@ vi.mock('../src/lib/platform.js', () => ({
 
 const {
   agentPresenceLine,
+  controlBlurb,
+  controlLabel,
+  crewControl,
   crewHeadline,
   customRoutinesUnlocked,
   presenceLabel,
@@ -132,6 +135,52 @@ describe('the preset', () => {
     expect(input.schedule).toEqual({ hour: 6, minute: 0, days: [1, 2, 3, 4, 5] });
     expect(input.agentId).toBe('a1');
     expect(input.task).toContain('gitLog');
+  });
+});
+
+describe('the control distinction: set up and control only while docked', () => {
+  it('is in control on the machine itself, always', () => {
+    expect(crewControl({ onDesktop: true, hasDaemon: false, homeReachable: false })).toEqual({
+      can: true,
+      where: 'desktop',
+    });
+    // A desktop pointed at a remote hub is gated on reach like a phone.
+    expect(
+      crewControl({
+        onDesktop: true,
+        hasDaemon: true,
+        homeReachable: false,
+        preferRemoteHub: true,
+      }),
+    ).toEqual({ can: false, where: 'away' });
+  });
+
+  it('is in control when a paired device can reach home (docked), view-only when away', () => {
+    expect(crewControl({ onDesktop: false, hasDaemon: true, homeReachable: true })).toEqual({
+      can: true,
+      where: 'docked',
+    });
+    expect(crewControl({ onDesktop: false, hasDaemon: true, homeReachable: false })).toEqual({
+      can: false,
+      where: 'away',
+    });
+  });
+
+  it('is unpaired when no machine is set up at all', () => {
+    expect(crewControl({ onDesktop: false, hasDaemon: false, homeReachable: true })).toEqual({
+      can: false,
+      where: 'unpaired',
+    });
+  });
+
+  it('labels the state and names the away and unpaired blurbs', () => {
+    expect(controlLabel('docked')).toBe('In control');
+    expect(controlLabel('desktop')).toBe('In control');
+    expect(controlLabel('away')).toBe('View only');
+    expect(controlLabel('unpaired')).toBe('Not set up');
+    expect(controlBlurb('away', 'the Mac mini')).toContain('Reconnect over Tailscale');
+    expect(controlBlurb('away', 'the Mac mini')).toContain('the Mac mini');
+    expect(controlBlurb('unpaired', 'your main machine')).toContain('Pair this device');
   });
 });
 
