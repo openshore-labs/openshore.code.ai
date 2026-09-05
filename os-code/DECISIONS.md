@@ -907,3 +907,19 @@ execution contract. Newest at the bottom.
   Both are pure-positioning calls the founder deferred ("refine later"). The
   honesty-critical parts (no false collection claim, unsigned stated plainly)
   are done; the taste calls are logged in PROGRESS What remains, not decided here.
+- 2026-09-05: **A great 4B is the phone ceiling; we do not chase a 7B on the
+  iPhone (CTO + CMO consensus, founder asked).** The honest, more premium line
+  is that the newest 4B beats the old 7B class at half the memory here, and
+  bigger models run on your computer. What shipped: a RAM-aware honest verdict
+  (`runsWellOnDevice` in `modelStorage.ts`) that flips the product page "Where
+  it runs" phone pill to an amber "better on your computer" when a model is
+  larger than this phone's memory keeps free (guidance for copy, never a gate,
+  the module still never returns "blocked"); the Increased Memory Limit and
+  Extended Virtual Addressing entitlements as invisible reliability; and a
+  memory-warning unload in the llama plugin that emits `deviceModelUnloaded` so
+  the JS slot recovers. NOT built, on purpose: a "force run anyway" toggle or a
+  "7B on iPhone (beta)" pack (both end in a crash we cannot stand behind), and
+  llama.cpp runtime tuning (the pinned LLM.swift 3.0.3 exposes no memory knobs,
+  CTO-verified). The entitlements need the App ID capability enabled before the
+  next distribution build, and the native memory path needs a TestFlight device
+  test; both are in PROGRESS What remains.

@@ -124,6 +124,18 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         if let token = Self.cachedPushToken {
             self.notifyListeners("pushToken", data: ["token": token, "environment": Self.apsEnvironment])
         }
+        // Memory is the real ceiling for an on-device model. When iOS says it is
+        // low, drop the loaded weights at once rather than let the system end
+        // the whole app. The runner's unload already stops any reply in flight
+        // and reports it "stopped" exactly once; the "deviceModelUnloaded" event
+        // lets the JS slot owner forget its claim so the next send reloads
+        // cleanly. Self removes with the plugin instance.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.onMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
         store.setHandlers(
             progress: { [weak self] id, completed, total in
                 self?.notifyListeners("downloadProgress", data: [
@@ -312,6 +324,15 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             activity.end()
             call.resolve(payload)
         }
+    }
+
+    // iOS is low on memory: unload the model before the system ends the app,
+    // and tell the JS side so its slot is forgotten. Only fires work when a
+    // model is actually loaded, so an idle app pays nothing.
+    @objc private func onMemoryWarning() {
+        guard runner.isLoaded else { return }
+        runner.unload(reason: "This iPhone ran low on memory, so the model was unloaded. Send again to reload it.")
+        notifyListeners("deviceModelUnloaded", data: ["reason": "memory"])
     }
 
     @objc func unload(_ call: CAPPluginCall) {

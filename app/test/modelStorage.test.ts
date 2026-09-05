@@ -14,6 +14,7 @@ import {
   formatBytes,
   gbToBytes,
   recommendMachine,
+  runsWellOnDevice,
   storageFit,
 } from '../src/lib/modelStorage.js';
 
@@ -120,6 +121,25 @@ describe('deviceRunsComfortably', () => {
 
   it('is false when device RAM is unknown', () => {
     expect(deviceRunsComfortably(4, 0)).toBe(false);
+  });
+});
+
+describe('runsWellOnDevice', () => {
+  it('a phone-class model runs well on a high memory phone', () => {
+    // A 4B pocket model (~6 GB wanted) on a 12 GB iPhone: 6 <= 12 * 0.6 = 7.2.
+    expect(runsWellOnDevice(6, 12)).toBe(true);
+  });
+
+  it('a bigger model does not run well on a small memory phone', () => {
+    // A 7B (~9 GB wanted) on a 6 GB phone: 9 > 3.6.
+    expect(runsWellOnDevice(9, 6)).toBe(false);
+    // Even a 12 GB phone is over budget for a 9 GB model: 9 > 7.2.
+    expect(runsWellOnDevice(9, 12)).toBe(false);
+  });
+
+  it('reads as runs-well when device memory is unknown, so we never wrongly say no', () => {
+    // The web stub and older native builds report 0; stay silent, do not warn.
+    expect(runsWellOnDevice(9, 0)).toBe(true);
   });
 });
 

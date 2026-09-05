@@ -39,6 +39,7 @@ import {
   formatBytes,
   gbToBytes,
   recommendMachine,
+  runsWellOnDevice,
   storageFit,
   type StorageFit,
 } from '../lib/modelStorage.js';
@@ -1009,20 +1010,37 @@ export function MarketplaceScreen() {
   // row that answers "can I run this here" before anything else on the page.
   const renderRunsOn = (model: CatalogModel) => {
     const homes = runsOn(model);
-    const items: { key: keyof typeof homes; label: string; note: string }[] = [
-      {
-        key: 'phone',
-        label: isPhone() ? 'This iPhone' : 'iPhone and iPad',
-        note: homes.phone ? 'Downloads in the app. Works with no signal.' : 'No on-device build.',
-      },
+    // The phone verdict is not just "does the catalog ship an on-device build"
+    // but "will it run WELL on the memory THIS phone has": storage is not the
+    // limit on a phone, memory is, so a big pocket model on a low memory phone
+    // reads "better on your computer", not a green "runs here". Unknown device
+    // memory (no capacity read) leaves the catalog answer as is.
+    const deviceRamGB = capacity?.ramBytes ? Math.round(capacity.ramBytes / 1e9) : 0;
+    const phoneOverMemory =
+      Boolean(model.onDevice) && !runsWellOnDevice(estimatedRamGB(model), deviceRamGB);
+    const phone: { state: 'yes' | 'over' | 'no'; note: string } = !model.onDevice
+      ? { state: 'no', note: 'No on-device build.' }
+      : phoneOverMemory
+        ? {
+            state: 'over',
+            note: 'Better on your computer. This one wants more memory than an iPhone keeps free. It shines on a desktop or home server.',
+          }
+        : {
+            state: 'yes',
+            note: 'Runs on this iPhone. Sized to stay smooth, even on a busy day.',
+          };
+    const items: { key: string; label: string; state: 'yes' | 'over' | 'no'; note: string }[] = [
+      { key: 'phone', label: isPhone() ? 'This iPhone' : 'iPhone and iPad', ...phone },
       {
         key: 'laptop',
         label: 'A laptop',
+        state: homes.laptop ? 'yes' : 'no',
         note: homes.laptop ? 'Fits a 16 GB machine.' : 'Needs more than a laptop has.',
       },
       {
         key: 'workstation',
         label: 'A home server',
+        state: homes.workstation ? 'yes' : 'no',
         note: homes.workstation ? 'Fits a 48 GB workstation.' : 'Needs a very large machine.',
       },
     ];
@@ -1036,15 +1054,16 @@ export function MarketplaceScreen() {
             <span
               key={it.key}
               role="listitem"
-              className={`runs-on-pill${homes[it.key] ? ' yes' : ''}`}
+              className={`runs-on-pill ${it.state}`}
               title={it.note}
               aria-label={`${it.label}: ${it.note}`}
             >
-              <i className={`runs-on-dot${homes[it.key] ? ' yes' : ''}`} aria-hidden="true" />
+              <i className={`runs-on-dot ${it.state}`} aria-hidden="true" />
               {it.label}
             </span>
           ))}
         </div>
+        {phone.state === 'over' ? <p className="runs-on-note">{phone.note}</p> : null}
         {siblings > 1 ? (
           <button className="runs-on-family press-fb" onClick={() => openFamily(fam.id)}>
             See every {fam.name} size ({siblings})
@@ -2275,7 +2294,8 @@ export function MarketplaceScreen() {
         {rec ? (
           <div className="dl-machine">
             <p className="dl-machine-lead">
-              This is a large model. It likes about {requiredRam} GB of memory to stretch out.
+              This one wants about {requiredRam} GB of memory, more than this iPhone keeps free.
+              Storage is not the limit here, memory is, so it runs better on a bigger machine.
             </p>
             <p className="dl-machine-path">
               Keep it in your iCloud and draw from it whenever you are online.

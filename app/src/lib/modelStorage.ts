@@ -126,6 +126,23 @@ export function deviceRunsComfortably(requiredRamGB: number, deviceRamGB: number
   return requiredRamGB <= deviceRamGB * COMFORT_FRACTION;
 }
 
+/** Does an on-device model run WELL on THIS phone right now, given its physical
+ *  memory? Storage is not the limit on a phone; memory is, and iOS ends an app
+ *  that reaches for too much of it. So a phone with plenty of free space can
+ *  still be short on the memory a big model wants. Composes the RAM estimate
+ *  with the comfortable budget so the marketplace can say "runs here" or
+ *  "better on your computer" honestly, before a download or a load.
+ *
+ *  This is guidance for copy, never a gate: like everything in this module it
+ *  returns an honest read, and the caller still lets the person have the model
+ *  (foundation rule: nothing here is ever "blocked"). Unknown device memory (0,
+ *  the web stub or an older native build) reads as runs-well, so a device we
+ *  cannot measure is never wrongly told no. */
+export function runsWellOnDevice(requiredRamGB: number, deviceRamGB: number): boolean {
+  if (!deviceRamGB) return true;
+  return deviceRunsComfortably(requiredRamGB, deviceRamGB);
+}
+
 // ---------------------------------------------------------- download target
 
 // Where a downloaded model's bytes live. 'device' is this phone's own storage;

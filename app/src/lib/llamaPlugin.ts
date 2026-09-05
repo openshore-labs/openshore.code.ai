@@ -103,6 +103,13 @@ export interface LlamaPluginContract {
     eventName: 'pushToken',
     listener: (data: { token: string; environment: 'sandbox' | 'production' }) => void,
   ): Promise<PluginListenerHandle>;
+  /** The native side unloaded the loaded model on its own, e.g. after an iOS
+   *  memory warning. The JS slot owner listens and forgets its claim so the
+   *  next send reloads instead of generating against an empty slot. */
+  addListener(
+    eventName: 'deviceModelUnloaded',
+    listener: (data: { reason: string }) => void,
+  ): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;
 }
 

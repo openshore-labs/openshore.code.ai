@@ -184,6 +184,39 @@ curated gate as an orchestrator only once `osc eval` has scored it into
 `curation/eval.json`, so until then the live feed carries it as nothing and the
 packs fall back to Qwen 2.5 1.5B. The bundled seed shows it either way.
 
+### Where it runs, and the phone memory ceiling (2026-09-05, CTO + CMO consensus)
+
+The founder asked whether we could smooth a LARGER on-device model on an
+iPhone. The CTO and CMO agreed on one line: a great 4B is the phone ceiling,
+and bigger models run on your computer. We do not chase a 7B on the phone (it
+swaps, throttles, and gets memory-killed mid-reply, and we cannot verify it off
+a device). Instead the store is honest and smart about the device.
+
+- **The limit is memory, not storage.** A phone with 90 GB free can still be
+  short on the memory a big model needs, because iOS ends an app that reaches
+  past its ceiling. `runsWellOnDevice` in `marketplace`'s sibling
+  `app/src/lib/modelStorage.ts` composes `estimatedRamGB` with the comfortable
+  budget so the store can say "runs here" or "better on your computer" before a
+  download. Unknown device memory reads as runs-well, so a device we cannot
+  measure is never wrongly told no. It is guidance for copy, never a gate: the
+  module still never returns "blocked" (foundation rule).
+- **The product page "Where it runs" row** shows a third state for the phone,
+  `over` (amber), when an on-device model is larger than this phone's memory
+  keeps free: "Better on your computer. This one wants more memory than an
+  iPhone keeps free." The download-moment machine block makes the same point
+  ("Storage is not the limit here, memory is").
+- **Invisible reliability, shipped, unverifiable off a device.** The iOS
+  Increased Memory Limit and Extended Virtual Addressing entitlements
+  (`app/ios/App/App/App.entitlements`, self-served, App ID capability required
+  before a distribution build) let a high memory iPhone hold a larger model,
+  and a memory-warning observer in `OscodeLlamaPlugin` unloads the model when
+  iOS is low, emitting `deviceModelUnloaded` so the JS slot owner
+  (`deviceModel.ts`) forgets its claim and the next send reloads. No copy
+  claims these; they make the honest 4B ceiling more reliable, not a 7B
+  promise. The pinned LLM.swift 3.0.3 exposes no llama.cpp memory knobs
+  (n_gpu_layers, flash attention, KV quant), so there is no runtime-tuning
+  lever to build against that wrapper.
+
 ### Sorts (`app/src/components/marketplace.ts`)
 
 - **OpenShore Recommended** (DEFAULT): recommended first, then `curation.rank`.

@@ -164,15 +164,30 @@ What remains. Migration is now `0016`.
       flip the header pill to Offline and chat; then Set up Offshore, connect
       a key, confirm the card reads Ready; open Qwen from the family rail,
       open a size, confirm the back chevron says Qwen.
-- [ ] **Smooth a larger model on the iPhone (founder asked 2026-09-05, not
-      yet built).** In order of leverage: the
-      `com.apple.developer.kernel.increased-memory-limit` entitlement (one line
-      in `App.entitlements` plus the capability on the App ID, CTO review
-      before a distribution build); llama.cpp tuning through the C API the
-      xcframework already links (mmap, flash attention, 8-bit KV cache, all
-      layers on Metal, a 2048 context for big models); unload on a memory
-      warning and slow generation on a hot thermal state; prompt-cache reuse
-      across turns. MLX Swift is the bigger swap and is not the first step.
+- [ ] **Enable the iOS memory entitlements on the App ID (founder, before the
+      next distribution build).** `App.entitlements` now declares Increased
+      Memory Limit and Extended Virtual Addressing; the `ai.openshore.oscode`
+      App ID must carry both capabilities (developer.apple.com, Identifiers)
+      and Xcode must regenerate the provisioning profile, or signing fails,
+      exactly like Push and iCloud. Self-served, no Apple review.
+- [x] **Smooth a larger model on the iPhone (CTO + CMO consensus, built
+      2026-09-05).** The direction: a great 4B is the phone ceiling, bigger
+      runs on your computer, and the store is honest about the memory limit
+      (not storage). Shipped: `runsWellOnDevice` in `modelStorage.ts` and the
+      product page "Where it runs" phone verdict (amber "better on your
+      computer" when a model is larger than this phone's memory keeps free,
+      guidance not a gate); the Increased Memory Limit + Extended Virtual
+      Addressing entitlements; a memory-warning unload in `OscodeLlamaPlugin`
+      that emits `deviceModelUnloaded` so `deviceModel.ts` forgets the slot and
+      the next send reloads. NOT built on purpose: a force-run toggle, a 7B
+      beta pack, and llama.cpp memory tuning (the pinned LLM.swift 3.0.3 exposes
+      no such knobs). Device verification below.
+- [ ] **On-device verification of the iPhone memory path (needs a phone).**
+      TestFlight on a high-memory iPhone: a 4B loads and sustains a full reply
+      without a jetsam kill; the memory-warning unload recovers (reply ends,
+      next send reloads cleanly); the control group is unregressed (bundled
+      Harbor Light still loads and streams, and the memory-warning observer
+      does not fire spuriously on memory-tight phones).
 - [ ] **Crew routines on the founder's machine and TestFlight (built
       2026-09-05, unverified off the sandbox).** Set up Morning review on the
       Pop!_OS desktop against a cloned repo, let it fire at 06:00 (or Run now),
@@ -497,6 +512,27 @@ What remains. Migration is now `0016`.
 
 ## Log
 
+- **2026-09-05: run a bigger model on the iPhone, the CTO + CMO consensus,
+  built and pushed to main.** The founder asked whether we could smooth a
+  larger on-device model on an iPhone and asked the CTO and CMO to converge
+  and build it. Consensus: a great 4B is the phone ceiling, bigger runs on
+  your computer, and the store is honest about the real limit (memory, not
+  storage). Built: `runsWellOnDevice` in `app/src/lib/modelStorage.ts` and the
+  product page "Where it runs" phone verdict that flips to an amber "better on
+  your computer" when a model is larger than this phone's memory keeps free
+  (guidance for copy, never a gate, the module still never returns "blocked");
+  the download-moment machine block reworded to the memory-not-storage point;
+  the iOS Increased Memory Limit and Extended Virtual Addressing entitlements
+  (App ID capability required before a distribution build); a memory-warning
+  unload in `OscodeLlamaPlugin` that emits `deviceModelUnloaded` so
+  `deviceModel.ts` forgets the slot and the next send reloads. NOT built on
+  purpose: a force-run toggle, a 7B beta pack, and llama.cpp runtime tuning
+  (LLM.swift 3.0.3 exposes no memory knobs, CTO-verified). Rulings in
+  `DECISIONS.md`; doc in `docs/MARKETPLACE.md`. Gates: app typecheck (src and
+  electron), lint, tests, Vite build; os-code tests and build; both em-dash
+  guards and the PROGRESS shape guard. App ID capability and a TestFlight
+  device test are in What remains.
+
 - **2026-09-05: the phone storefront: packs by status, families, and an
   honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that
   only toasted: make it super clear what installs on this phone versus a
@@ -548,45 +584,3 @@ What remains. Migration is now `0016`.
   typecheck incl. electron tsconfig, lint --max-warnings 0, vite build).
   Still needs the machine: electron-rebuild of node-pty for the Electron ABI to
   run a real PTY (absent, openTerminal reports unavailable and chat is unaffected).
-
-- **2026-08-26: Second round, founder-approved builds + all scoped follow-ups.**
-  The founder approved both team recommendations and asked for every "left for
-  their own scoping" item. All built, test-backed, merged to main. Gates green
-  (os-code 302 tests, app 239, typecheck, lint, vite build).
-  - **Free desktop chat (paywall change, C-suite approved, CTO-designed).** Chat
-    with a paired desktop's own local models is now FREE; the coding agent,
-    Marketplace, and repo writes stay Personal. The CTO rejected a
-    "zero-tools session" (the command lane would have bypassed the tool registry
-    and let a free session run shell) and specced a stateless daemon route POST
-    /chat that builds only a provider and streams one completion: no
-    AgentSession, no LocalDriver, no ToolRegistry, no command lane, no journal,
-    pinned to the local orchestrator (no cloud spend). It cannot act by
-    construction. A distinct source.kind 'desktop-chat' (not a flag on
-    'desktop') keeps the free path off the session-creating branch; the gate is
-    unchanged. New DesktopChatDriver; a free-chat picker row beside the merged
-    "My computer" agent entry. Honest limit (CTO): the $20 wall is not
-    server-enforceable against a user's own daemon; this confines the free
-    surface, it does not police entitlement. Logged in DECISIONS.md.
-  - **Terminal bridge Phase 2: a full interactive PTY.** xterm.js on the phone
-    driving a live PTY on the desktop over new daemon term routes; agent reads it
-    with a new readTerminal tool (no writeTerminal). node-pty is an OPTIONAL dep,
-    lazy-imported: absent, the create route returns 503 and the daemon keeps
-    serving (the whole tree stays green with no native module). Security
-    reviewed: the terminal surface is ADMIN-only and owner-only; PTY output
-    rides its own SSE endpoint, never the journal (only content-free
-    opened/closed markers); stdin is never journaled or logged. Ring buffer with
-    absolute byte offsets for lossless reattach. Electron terminal wiring was
-    the one documented follow-up; it is now DONE (see the 2026-08-26 desktop
-    PTY entry at the top of the Log).
-  - **MP-F2:** a paired phone installs a desktop model over the tailnet (daemon
-    /models/install + progress polling).
-  - **MP-F4:** pocket models that finished downloading while the app was closed
-    are adopted instead of re-downloaded (app adoption + a native guard).
-  - **TS-P2-4:** per-device, revocable pairing credentials; the QR no longer
-    hands out the shared admin token (mint-once, cached, revoke rotates the QR).
-  - **TS-P1-5:** the home-repo path writer, so "Sync now" stops being
-    enabled-but-doomed (pick an on-desktop cloned workspace).
-  - **Still needs founder / device:** confirm the free-chat and P0 streaming on a
-    real iPhone; node-pty built for the machine's ABI to run the real PTY (and
-    electron-rebuild for the Electron terminal follow-up); the Swift changes
-    compile on TestFlight.
