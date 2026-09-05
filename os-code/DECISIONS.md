@@ -651,3 +651,65 @@ execution contract. Newest at the bottom.
   the Stack Health green card, co-located with the crew data it reads, with a
   "Browse lean models" link; the CMO's Stack-screen placement + per-suggestion
   Apply is the fast-follow that pairs with the mutation path.
+- 2026-09-05: **Ethics layer installed at the registry and the driver factory,
+  not at call sites.** The brief asked for one chokepoint with no bypass. Five
+  engine call sites reach a model (`loop.run`, `loop.summarize`,
+  `Router.delegate`, the daemon `/chat`, the eval harness) and eight app ones
+  across four drivers. Wrapping each would be eight chances to forget, so the
+  guard is applied where the object is HANDED OUT: `ProviderRegistry` returns
+  only `GuardedProvider`, and `buildDriver` returns only `guardDriver(...)`.
+  Adding a call site cannot miss the layer, because there is no unguarded object
+  to call. `register()` wraps too, so a test double is screened like a real one.
+- 2026-09-05: **Fail-closed applies to the whole screen, but the intent check
+  only runs on a candidate.** Running a classifier on every benign request and
+  blocking on its failure would break Tier 3 far more often than it would catch
+  harm. So deterministic rules run first; only an unresolved candidate reaches
+  the intent check, and there a throw or a timeout blocks. Every other failure
+  path in the screen (a bad regex, a throwing sink) also blocks, via one outer
+  catch. Recorded as `check-failed` and excluded from enforcement: blocking
+  because our checks broke must not terminate a person's account.
+- 2026-09-05: **Tier 2 reads satire as text-vs-media.** The brief says satire and
+  parody are Tier 3 and must never route through Tier 2, and also that
+  synthesizing a real person's face or voice IS Tier 2. Read literally together,
+  "make a photorealistic video of the president saying X, it's satire" would be
+  exempt, which is the exact deepfake the product exists to reduce. The call:
+  the consent gate fires only on MEDIA synthesis (image, video, voice). Writing
+  satire, parody, criticism, or a written impression never reaches it, which is
+  what keeps political parody out of the gate.
+- 2026-09-05: **A proper name alone never means a real person, except for media
+  of a person.** Treating any capitalized pair as identifiable would block
+  "erotica about Sarah Connor" (fiction, Tier 3). So NCII needs a relation, an
+  attached photo, or an explicit real-person marker. The one place a bare name
+  counts is a request to MAKE an image, video, or voice OF that name, filtered by
+  a place/organization word list so "an image of Times Square" stays Tier 3. This
+  errs slightly toward the consent gate for ambiguous proper nouns in image
+  generation, which is recoverable in one sentence; the reverse error is a
+  deepfake.
+- 2026-09-05: **Provenance is C2PA-vocabulary but UNSIGNED, and says so.** A
+  signed manifest needs an X.509 certificate from a C2PA-recognized authority,
+  which OpenShore does not hold. Writing a JUMBF box with no valid signature
+  would produce something that reads as a real manifest and fails validation, so
+  instead the record is a PNG `iTXt` chunk carrying the C2PA assertion
+  vocabulary, with `signature: null` present on purpose (so a reader can tell
+  "unsigned" from "field missing") and a `note` stating it is not
+  cryptographically verifiable. `ProvenanceInput.signer` is the seam for the day
+  a certificate exists.
+- 2026-09-05: **IP bans are a proposal type, not an action.** The brief asked for
+  the ability and for human review. Rather than build an apply path and gate it,
+  there is NO apply function in `enforcement.ts` and none in the migration: the
+  only thing the code can produce is a `pending` row, and a test fails the build
+  if an apply function or an `ip_bans` table appears. Applying an approved ban is
+  an operator action at the edge. Approval requires an expiry, because a
+  permanent address ban outlives the person who earned it.
+- 2026-09-05: **The brief said the app already logs account IP addresses for
+  sync. It does not.** A grep across `supabase/` and the connect path found no IP
+  logging anywhere; pairing is a local bearer token with no server-side record.
+  Rather than claim collection that does not exist, `request_ip()` captures the
+  address at the moment a violation is recorded, and only then. No address is
+  stored for an ordinary request, and the ToU and the docs say exactly that.
+- 2026-09-05: **Refusal copy is held short by test.** Two sentences maximum, no
+  "unethical", no "inappropriate", no apology, no "as an AI". The over-blocking
+  half of the brief is enforced the same way: a Tier 3 control set (violent
+  horror, political satire, exploit analysis, legal adult fiction, dissenting
+  opinion, plus ordinary coding work containing vocabulary words) must pass
+  clean, with no refusal and no note added.

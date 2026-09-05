@@ -47,6 +47,69 @@ export {
 export type { HumanizerSign } from './core/agent/humanizerStandard.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
+// The always-on ethics layer. Pure modules only: the tier logic, the
+// chokepoint, the streamed-output screener, the enforcement ladder, the
+// provenance writer, and the trust statement. The app imports these and screens
+// with the EXACT SAME code the desktop engine runs, so the two can never drift
+// into enforcing different rules. The Node-side pieces (the on-disk journal and
+// the engine host wiring) are deliberately not here.
+export {
+  EthicsGuard,
+  ethicsGuard,
+  configureEthicsGuard,
+  failedCheck,
+  classifyRules,
+  consentCovers,
+  extractSubject,
+  localIntentCheck,
+  normalizeSubject,
+  readAssertion,
+  tierOf,
+  REFUSALS,
+  detectSignals,
+  signalNames,
+  StreamScreener,
+  countableViolations,
+  evaluateEnforcement,
+  prepareReport,
+  proposeIpBan,
+  IP_REVIEW_NOTES,
+  TIER2_RESTRICT_AT,
+  TIER2_WARN_AT,
+  buildProvenanceManifest,
+  embedPngProvenance,
+  hasProvenance,
+  labelGeneratedImage,
+  readPngProvenance,
+  PROVENANCE_KEYWORD,
+  UNSIGNED_NOTE,
+  sha256,
+  TRUST_STATEMENT,
+  TRUST_STATEMENT_LINES,
+} from './core/ethics/index.js';
+export type {
+  AbuseReport,
+  ConsentAssertion,
+  EnforcementAction,
+  EnforcementLevel,
+  EnforcementOutcome,
+  EthicsAction,
+  EthicsCategory,
+  EthicsDecision,
+  EthicsRecord,
+  EthicsTier,
+  IntentCheck,
+  IpBanProposal,
+  ModelPath,
+  ProvenanceManifest,
+  ReportOutcome,
+  ReportStatus,
+  ScreenRequest,
+  ScreenResult,
+  SignalName,
+  StreamStep,
+} from './core/ethics/index.js';
+
 // Codemagic build-log safety (pure: redact then extract). Shared so the app's
 // Launch flow and the engine's codemagic tool apply the exact same guarantee
 // before any log text reaches a model. The REST client (fetch + token) stays on

@@ -37,7 +37,7 @@ import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { SheetHead } from '../components/SheetHead.js';
 import type { SearchBackend } from '../lib/webSearch.js';
-import type { StackHealthSealFact } from 'os-code/protocol';
+import { TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -370,10 +370,61 @@ export function SettingsScreen() {
             <h3 className="settings-sheet-head">Local models, honestly</h3>
             <p>
               Harbor and Harbor Light, and any model you run on this device, are AI. They can be
-              confidently wrong, and OpenShore does not filter what a local model says. Neither is a
-              coder. For real work, connect a bigger model. What you type to a local model stays on
-              this device. Harbor is Qwen3-1.7B and Harbor Light is SmolLM2-135M-Instruct, both used
-              under the Apache License 2.0.
+              confidently wrong, and neither is a coder. For real work, connect a bigger model. What
+              you type to a local model stays on this device. Harbor is Qwen3-1.7B and Harbor Light
+              is SmolLM2-135M-Instruct, both used under the Apache License 2.0.
+            </p>
+            <p>
+              OpenShore does not editorialize what a model says. Three narrow limits are enforced on
+              every path, local included, and they are the only ones: see Ethical boundaries below.
+              The screening itself runs on this device and sends nothing anywhere, so a local chat
+              stays local even though it is screened.
+            </p>
+          </InfoSheet>
+        </SettingsGroup>
+
+        {/* The trust statement. One source (os-code/protocol), shown here and on
+            the marketing site, so the two can never say different things. */}
+        <SettingsGroup title="Ethical boundaries" index={group++}>
+          <InfoSheet
+            title="Ethical boundaries"
+            renderTrigger={(open) => (
+              <SettingsRow
+                label="Ethical boundaries"
+                sub="Enforced by default, on every model, with no switch"
+                value="Always on"
+                onClick={open}
+              />
+            )}
+          >
+            <h3 className="settings-sheet-head">What this app will not do</h3>
+            {TRUST_STATEMENT_LINES.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+            <h3 className="settings-sheet-head">What is blocked</h3>
+            <p>
+              Child sexual abuse material, and sexual or nude imagery of a real, identifiable
+              person, are refused outright. So is concrete help building or deploying biological,
+              chemical, nuclear, or high-yield explosive weapons. There is no consent option for
+              any of those.
+            </p>
+            <p>
+              Recreating the face or voice of a real, identifiable person is held back until you
+              state that you are authorized for that specific person, and what comes out carries
+              provenance metadata saying it was AI-generated.
+            </p>
+            <h3 className="settings-sheet-head">What is not blocked</h3>
+            <p>
+              Legal adult content, dark and violent fiction, horror, edgy humor, satire and
+              political parody, security research and red teaming, and unpopular opinions. The layer
+              adds no refusal and no lecture to any of it. Over-blocking your legitimate work is
+              treated as a defect, not a safe default.
+            </p>
+            <h3 className="settings-sheet-head">What is recorded</h3>
+            <p>
+              A block records a category, a timestamp, and a one-way hash of the request. Your
+              prompt is never stored and never sent. When you are signed in, the record reaches your
+              account so enforcement survives a reinstall. Signed out, it stays on this device.
             </p>
           </InfoSheet>
         </SettingsGroup>
