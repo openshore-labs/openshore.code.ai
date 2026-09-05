@@ -60,11 +60,14 @@ import {
   EMPTY_FACETS,
   activeFacetCount,
   buildShelves,
+  deviceSplit,
   featuredModels,
   fitFor,
   filterModels,
+  installLabel,
   licenseLabel,
   popularityLabel,
+  runsOn,
   sortModels,
   usageTurns,
   type Facets,
@@ -72,6 +75,21 @@ import {
   type Shelf,
   type SortKey,
 } from '../components/marketplace.js';
+import {
+  bySizeAscending,
+  familyOf,
+  groupByFamily,
+  type FamilyGroup,
+} from '../components/modelFamilies.js';
+import {
+  DEVICE_PACKS,
+  packDownload,
+  packState,
+  resolvePack,
+  type ResolvedPack,
+} from '../lib/packs.js';
+import { PROFILES, type ProfileId } from '../lib/profiles.js';
+import { stackForProfile } from '../lib/stack.js';
 import { Sheet } from '../components/Sheet.js';
 
 interface DownloadState {
@@ -166,6 +184,14 @@ export function MarketplaceScreen() {
     authSession,
   } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
+  // A family page: one maker's sizes, split by where each installs from here.
+  // Its own focus, like a product page, and a product page opened from it
+  // remembers the way back (`familyReturn`).
+  const [focusedFamilyId, setFocusedFamilyId] = useState<string | undefined>();
+  const [familyReturn, setFamilyReturn] = useState<string | undefined>();
+  // The phone pack being installed (one at a time), so its card shows progress
+  // and the others wait.
+  const [packBusy, setPackBusy] = useState<ProfileId | undefined>();
   // The frontier shelf: cloud-hosted models derived from the BYOK providers.
   // Their product page is its own focus, distinct from a catalog model's.
   const hosted = useMemo(() => hostedModels(), []);
@@ -684,14 +710,28 @@ export function MarketplaceScreen() {
   // or filtered: a featured row and themed shelves to browse. The moment a
   // search term or any facet is set, we fall back to the full sortable list.
   const browsing =
-    !focusedId && !focusedHostedId && !facets.query.trim() && activeFacetCount(facets) === 0;
+    !focusedId &&
+    !focusedHostedId &&
+    !focusedFamilyId &&
+    !facets.query.trim() &&
+    activeFacetCount(facets) === 0;
   const focusedModel = focusedId ? catalog?.models.find((m) => m.id === focusedId) : undefined;
   const focusedHosted = focusedHostedId ? hosted.find((m) => m.id === focusedHostedId) : undefined;
 
   const featured = useMemo(() => (catalog ? featuredModels(catalog.models) : []), [catalog]);
   const shelves = useMemo(
-    () => (catalog ? buildShelves(catalog.models, memoryGB) : []),
+    () => (catalog ? buildShelves(catalog.models, memoryGB, { phone: isPhone() }) : []),
     [catalog, memoryGB],
+  );
+  // Families: the browse axis a person thinks in. Built once per catalog.
+  const families = useMemo(() => (catalog ? groupByFamily(catalog.models) : []), [catalog]);
+  const focusedFamily = focusedFamilyId
+    ? families.find((f) => f.id === focusedFamilyId)
+    : undefined;
+  // The three phone packs, resolved against whatever catalog is loaded.
+  const packs = useMemo(
+    () => (catalog ? DEVICE_PACKS.map((p) => resolvePack(p, catalog.models)) : []),
+    [catalog],
   );
 
   // The catalog model ids currently on screen: the store front (featured plus
@@ -964,6 +1004,311 @@ export function MarketplaceScreen() {
       (p) => p.stack.orchestrator === id || Object.values(p.stack.specialists).includes(id),
     );
 
+  // ---- where it runs: the three homes, on the product page --------------
+  // Phone / laptop / workstation, filled when the model fits there. The one
+  // row that answers "can I run this here" before anything else on the page.
+  const renderRunsOn = (model: CatalogModel) => {
+    const homes = runsOn(model);
+    const items: { key: keyof typeof homes; label: string; note: string }[] = [
+      {
+        key: 'phone',
+        label: isPhone() ? 'This iPhone' : 'iPhone and iPad',
+        note: homes.phone ? 'Downloads in the app. Works with no signal.' : 'No on-device build.',
+      },
+      {
+        key: 'laptop',
+        label: 'A laptop',
+        note: homes.laptop ? 'Fits a 16 GB machine.' : 'Needs more than a laptop has.',
+      },
+      {
+        key: 'workstation',
+        label: 'A home server',
+        note: homes.workstation ? 'Fits a 48 GB workstation.' : 'Needs a very large machine.',
+      },
+    ];
+    const fam = familyOf(model);
+    const siblings = families.find((f) => f.id === fam.id)?.models.length ?? 0;
+    return (
+      <div className="runs-on">
+        <div className="runs-on-label">Where it runs</div>
+        <div className="runs-on-row" role="list">
+          {items.map((it) => (
+            <span
+              key={it.key}
+              role="listitem"
+              className={`runs-on-pill${homes[it.key] ? ' yes' : ''}`}
+              title={it.note}
+              aria-label={`${it.label}: ${it.note}`}
+            >
+              <i className={`runs-on-dot${homes[it.key] ? ' yes' : ''}`} aria-hidden="true" />
+              {it.label}
+            </span>
+          ))}
+        </div>
+        {siblings > 1 ? (
+          <button className="runs-on-family press-fb" onClick={() => openFamily(fam.id)}>
+            See every {fam.name} size ({siblings})
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+
+  // ---- phone packs: one tap per connection status ------------------------
+  // Offline and Offshore download the phone's pocket models and place them in
+  // that status's stack; Docked is a pairing step. Each pack resolves against
+  // the loaded catalog, so it always installs something the feed can deliver.
+  const ownedId = (id: string) => {
+    const m = catalog?.models.find((x) => x.id === id);
+    return m ? isOwned(m) : false;
+  };
+
+  const packNextStepDone = (p: ResolvedPack) =>
+    p.pack.nextStep?.view === 'connections'
+      ? Object.values(connectedProviders).some(Boolean)
+      : p.pack.nextStep?.view === 'pair'
+        ? Boolean(settings.daemon)
+        : true;
+
+  const packReasoningId = (profile: ProfileId) => {
+    const r = stackForProfile(settings.stacks, profile).reasoning;
+    return r?.kind === 'device' ? r.modelId : undefined;
+  };
+
+  const installPack = async (p: ResolvedPack) => {
+    if (packBusy || !p.anchor) return;
+    setPackBusy(p.pack.id);
+    try {
+      for (const m of p.models) {
+        if (!isOwned(m)) await pullToDevice(m);
+      }
+      const store = useApp.getState();
+      await store.setReasoning(
+        { kind: 'device', modelId: p.anchor.id, modelName: p.anchor.name },
+        p.pack.id,
+      );
+      for (const h of p.helpers) {
+        await store.placeSpecialist(
+          { kind: 'device', modelId: h.model.id, modelName: h.model.name },
+          { category: h.category },
+          p.pack.id,
+        );
+      }
+      hapticSuccess();
+      logEvent('pack_installed', { id: p.pack.id, anchor: p.anchor.id });
+      const step = p.pack.nextStep;
+      showToast(
+        step
+          ? `${p.pack.name} is set up on this iPhone. Next: ${step.label.toLowerCase()}.`
+          : `${p.pack.name} is set up. This iPhone answers with no signal.`,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not set up that pack.');
+    } finally {
+      setPackBusy(undefined);
+    }
+  };
+
+  const goToStep = (view: 'connections' | 'pair') => {
+    if (view === 'connections') setView('connections');
+    else setView('pair');
+  };
+
+  const renderPackCard = (p: ResolvedPack) => {
+    const { pack } = p;
+    const info = PROFILES[pack.id];
+    const { totalGB, ownedGB } = packDownload(p, ownedId);
+    const stepDone = packNextStepDone(p);
+    const state = packState(p, {
+      owned: ownedId,
+      reasoningDeviceId: packReasoningId(pack.id),
+      nextStepDone: stepDone,
+    });
+    const busy = packBusy === pack.id;
+    const progressLine = busy
+      ? p.models.map((m) => downloads[m.id]?.label).find(Boolean)
+      : undefined;
+    const wantsDownload = pack.anchor.length > 0;
+    const names = p.models.map((m) => m.name).join(' · ');
+    const hubName = settings.daemon?.name ?? 'your hub';
+    return (
+      <div
+        className={`pack-card pack-${pack.id}${state === 'ready' ? ' ready' : ''}`}
+        key={pack.id}
+      >
+        <div className="pack-head">
+          <span className="pack-status">
+            <i className="profile-dot" style={{ background: info.dot }} aria-hidden="true" />
+            {pack.name}
+          </span>
+          {state === 'ready' ? (
+            <span className="pill ok">Ready</span>
+          ) : state === 'partial' ? (
+            <span className="pill muted">Partly set up</span>
+          ) : null}
+        </div>
+        <div className="pack-headline">{pack.headline}</div>
+        <div className="pack-tagline">{pack.tagline}</div>
+        {wantsDownload ? (
+          p.anchorMissing ? (
+            <p className="hint pack-meta">
+              The catalog has no phone model for this yet. Reconnect to refresh it.
+            </p>
+          ) : (
+            <p className="hint pack-meta">
+              {names} · {totalGB} GB
+              {ownedGB > 0 ? ` (${ownedGB} GB already here)` : ''}
+            </p>
+          )
+        ) : (
+          <p className="hint pack-meta">
+            {settings.daemon
+              ? `Paired with ${hubName}. Its models are yours when you are home.`
+              : 'No download. Pair once over Tailscale and the phone drives your computer.'}
+          </p>
+        )}
+        <div className="pack-actions">
+          {wantsDownload && !p.anchorMissing && state !== 'ready' ? (
+            <button
+              className="btn primary press-fb"
+              disabled={Boolean(packBusy)}
+              onClick={() => void installPack(p)}
+            >
+              {busy
+                ? (progressLine ?? 'Setting up...')
+                : state === 'partial'
+                  ? `Finish ${pack.name}`
+                  : `Set up ${pack.name}`}
+            </button>
+          ) : null}
+          {pack.nextStep ? (
+            <button
+              className={`btn ${wantsDownload && state !== 'ready' ? 'ghost' : 'primary'} press-fb`}
+              onClick={() => goToStep(pack.nextStep!.view)}
+            >
+              {stepDone
+                ? pack.nextStep.view === 'pair'
+                  ? 'Manage hubs'
+                  : 'Cloud connections'
+                : pack.nextStep.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPackShelf = () => {
+    if (!isPhone() || !packs.length) return null;
+    return (
+      <section className="shelf pack-shelf" key="packs">
+        <div className="shelf-head static">
+          <span className="shelf-head-text">
+            <span className="shelf-title">Set up this iPhone</span>
+            <span className="shelf-sub">
+              One tap per connection status. The header pill tells you which one you are in.
+            </span>
+          </span>
+        </div>
+        <div className="shelf-scroll pack-scroll">{packs.map(renderPackCard)}</div>
+      </section>
+    );
+  };
+
+  // ---- browse by family ---------------------------------------------------
+  // A rail of makers. Each chip carries how many sizes the family has and how
+  // many of those run on this phone, so a phone shopper can see at a glance
+  // which families have anything for them.
+  const renderFamilyRail = () => {
+    if (!families.length) return null;
+    return (
+      <section className="shelf family-shelf" key="families">
+        <div className="shelf-head static">
+          <span className="shelf-head-text">
+            <span className="shelf-title">Browse by family</span>
+            <span className="shelf-sub">
+              Pick a maker, then the size that fits where you want it to run.
+            </span>
+          </span>
+        </div>
+        <div className="family-rail" role="list">
+          {families.map((f) => (
+            <button
+              key={f.id}
+              role="listitem"
+              className="family-chip press-fb"
+              onClick={() => openFamily(f.id)}
+              aria-label={`${f.name}, ${f.models.length} sizes, ${f.phoneCount} on this phone`}
+            >
+              <span className="family-chip-name">{f.name}</span>
+              <span className="family-chip-meta">
+                {f.models.length} {f.models.length === 1 ? 'size' : 'sizes'}
+                {f.phoneCount ? ` · ${f.phoneCount} on iPhone` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
+  const renderFamilyPage = (fam: FamilyGroup) => {
+    const split = deviceSplit(bySizeAscending(fam.models));
+    const group = (title: string, sub: string, list: CatalogModel[]) =>
+      list.length ? (
+        <section className="family-group" key={title}>
+          <div className="family-group-head">
+            <span className="family-group-title">{title}</span>
+            <span className="family-group-sub">{sub}</span>
+          </div>
+          <div className="family-list">{list.map(renderRow)}</div>
+        </section>
+      ) : null;
+    return (
+      <div className="family-page">
+        <div className="family-hero">
+          <div className="family-hero-name">{fam.name}</div>
+          {fam.maker ? <div className="family-hero-maker">by {fam.maker}</div> : null}
+          {fam.blurb ? <p className="family-hero-blurb">{fam.blurb}</p> : null}
+          <p className="hint">
+            {fam.models.length} {fam.models.length === 1 ? 'size' : 'sizes'}, smallest first.
+            {fam.phoneCount
+              ? ` ${fam.phoneCount} ${fam.phoneCount === 1 ? 'runs' : 'run'} on an iPhone.`
+              : ' None run on a phone yet.'}
+          </p>
+        </div>
+        {group(
+          isPhone() ? 'On this iPhone' : 'On an iPhone or iPad',
+          'Downloads in the app. Works with no signal.',
+          split.phone,
+        )}
+        {group(
+          'Desktop and home servers',
+          isPhone()
+            ? settings.daemon
+              ? `Installs on ${settings.daemon.name ?? 'your hub'} from here.`
+              : 'Installs from the desktop app, or onto a paired computer.'
+            : 'Installs on this machine through Ollama.',
+          split.desktop,
+        )}
+      </div>
+    );
+  };
+
+  // The line between what this phone can take and what it can only browse. On
+  // a phone the store front puts everything above it that installs here, and
+  // everything below it that installs on a desktop or a home server.
+  const renderDesktopDivider = () => (
+    <div className="store-divider" key="desktop-divider">
+      <span className="store-divider-title">Desktop and home servers</span>
+      <span className="store-divider-sub">
+        {settings.daemon
+          ? `Browse here, install on ${settings.daemon.name ?? 'your hub'}. This phone uses them over Tailscale.`
+          : 'Browse here; these install from the desktop app, or onto a computer you pair. This phone uses them over Tailscale.'}
+      </span>
+    </div>
+  );
+
   // A soft crossfade for a view that changes shape with no tile to carry it:
   // the store front giving way to the list on the first typed character or
   // the first facet, the list handing the front back when the last one
@@ -981,17 +1326,43 @@ export function MarketplaceScreen() {
   };
 
   // Every search or filter change lands here. Any of them leaves a product
-  // page; crossing between the store front and the list crossfades.
+  // page or a family page; crossing between the store front and the list
+  // crossfades.
   const applyFacets = (next: Facets) => {
     const toFront = !next.query.trim() && activeFacetCount(next) === 0;
-    const crossing = Boolean(focusedId || focusedHostedId) || toFront !== browsing;
+    const crossing =
+      Boolean(focusedId || focusedHostedId || focusedFamilyId) || toFront !== browsing;
     const update = () => {
       setFocusedId(undefined);
       setFocusedHostedId(undefined);
+      setFocusedFamilyId(undefined);
+      setFamilyReturn(undefined);
       setFacets(next);
     };
     if (crossing) fade(update);
     else update();
+  };
+
+  // A family page is a page inside the room, like a product page: the top bar
+  // carries its name and a chevron back to the Marketplace. It crossfades in
+  // (no tile to carry it) and remembers itself as the way back from any model
+  // opened inside it.
+  const openFamily = (id: string) => {
+    fade(() => {
+      setFacets(EMPTY_FACETS);
+      setFocusedId(undefined);
+      setFocusedHostedId(undefined);
+      setFamilyReturn(undefined);
+      setFocusedFamilyId(id);
+    });
+    scrollToTop();
+  };
+
+  const closeFamily = () => {
+    fade(() => {
+      setFocusedFamilyId(undefined);
+      setFamilyReturn(undefined);
+    });
   };
 
   const setFacet = <K extends keyof Facets>(key: K, value: Facets[K]) =>
@@ -1033,15 +1404,17 @@ export function MarketplaceScreen() {
             <span className="pill local">{ownedLabel(model)}</span>
           ) : dl && !dl.failed ? null : (
             <button
-              className="btn ghost market-get"
+              className={`btn ghost market-get${labelFor(model, dl?.failed).kind === 'desktop-only' ? ' desktop-only' : ''}`}
               onClick={() =>
                 target === 'device' ? void pullToDevice(model) : void pullToDesktop(model)
               }
             >
-              {dl?.failed ? 'Retry' : 'Get'}
+              {labelFor(model, dl?.failed).text}
             </button>
           )}
         </div>
+
+        {focused ? renderRunsOn(model) : null}
 
         <div className="badge-row">
           {isRecommended ? (
@@ -1250,6 +1623,9 @@ export function MarketplaceScreen() {
     hop(() => {
       setFacets(EMPTY_FACETS);
       setFocusedHostedId(undefined);
+      // A model opened from a family page goes back to that family.
+      if (focusedFamilyId) setFamilyReturn(focusedFamilyId);
+      setFocusedFamilyId(undefined);
       setFocusedId(model.id);
       setDetailOpen(model.id);
     }, origin);
@@ -1261,6 +1637,10 @@ export function MarketplaceScreen() {
       () => {
         setFocusedId(undefined);
         setDetailOpen(undefined);
+        if (familyReturn) {
+          setFocusedFamilyId(familyReturn);
+          setFamilyReturn(undefined);
+        }
       },
       screenRef.current?.querySelector('.product-page') ?? null,
       () => setTileHome(undefined),
@@ -1912,6 +2292,19 @@ export function MarketplaceScreen() {
 
   // The compact download control shared by hero cards and shelf rows: a Get
   // button, its in-flight percent, a Retry on failure, or the owned state.
+  // What the install control says for this model, here: Get only when this
+  // device can actually take it (an on-device build, or a desktop with its own
+  // engine); the hub's name when a paired computer will take it; a quiet
+  // "Desktop" when this phone can only browse it. Honest states, never a Get
+  // that ends in a toast.
+  const labelFor = (model: CatalogModel, failed?: boolean) =>
+    installLabel({
+      onDevice: Boolean(model.onDevice),
+      hasBridge: Boolean(bridge()),
+      hubName: settings.daemon ? (settings.daemon.name ?? 'your hub') : undefined,
+      failed,
+    });
+
   const getControl = (model: CatalogModel) => {
     const dl = downloads[model.id];
     const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
@@ -1926,16 +2319,24 @@ export function MarketplaceScreen() {
         </span>
       );
     }
+    const label = labelFor(model, dl?.failed);
     return (
       <button
-        className="store-get"
+        className={`store-get${label.kind === 'desktop-only' ? ' desktop-only' : ''}`}
+        aria-label={
+          label.kind === 'desktop-only'
+            ? `${model.name} installs from the desktop app`
+            : label.kind === 'hub'
+              ? `Install ${model.name} on ${settings.daemon?.name ?? 'your hub'}`
+              : undefined
+        }
         onClick={(e) => {
           e.stopPropagation();
           if (target === 'device') void pullToDevice(model);
           else void pullToDesktop(model);
         }}
       >
-        {dl?.failed ? 'Retry' : 'Get'}
+        {label.text}
       </button>
     );
   };
@@ -2306,11 +2707,17 @@ export function MarketplaceScreen() {
   // A product page is a page inside the room, so the top bar shows its name
   // and a chevron back to the Marketplace (the same hop as "All models"),
   // not the menu. Founder, 2026-09-03, from the Kimi page.
+  const returnFamily = familyReturn ? families.find((f) => f.id === familyReturn) : undefined;
   const page = focusedHosted
     ? { title: focusedHosted.name, back: { to: 'Marketplace', onBack: closeHosted } }
     : focusedModel
-      ? { title: focusedModel.name, back: { to: 'Marketplace', onBack: closeModel } }
-      : undefined;
+      ? {
+          title: focusedModel.name,
+          back: { to: returnFamily ? returnFamily.name : 'Marketplace', onBack: closeModel },
+        }
+      : focusedFamily
+        ? { title: focusedFamily.name, back: { to: 'Marketplace', onBack: closeFamily } }
+        : undefined;
 
   return (
     <>
@@ -2407,21 +2814,36 @@ export function MarketplaceScreen() {
               ) : null}
 
               {isPhone() ? (
-                <p className="hint store-note">
-                  Browse here; desktop models install from the OpenShore desktop app, and this phone
-                  uses them over Tailscale.
-                </p>
-              ) : null}
-
-              {renderHostedShelf()}
-
-              {renderBundleShelf()}
-
-              {renderInstallByName()}
-
-              {shelves.map(renderShelf)}
-
-              {catalog.presets.length ? renderPresetShelf() : null}
+                // The phone's store front reads top to bottom as "what this
+                // iPhone can take, then what it can only browse": the packs,
+                // the families, the pocket shelf, then a divider, then the
+                // desktop world.
+                <>
+                  {renderPackShelf()}
+                  {renderFamilyRail()}
+                  {shelves.filter((s) => s.key === 'pocket').map(renderShelf)}
+                  {renderDesktopDivider()}
+                  {renderHostedShelf()}
+                  {shelves.filter((s) => s.key !== 'pocket').map(renderShelf)}
+                  {catalog.presets.length ? renderPresetShelf() : null}
+                </>
+              ) : (
+                <>
+                  {renderHostedShelf()}
+                  {renderBundleShelf()}
+                  {renderInstallByName()}
+                  {renderFamilyRail()}
+                  {shelves.map(renderShelf)}
+                  {catalog.presets.length ? renderPresetShelf() : null}
+                </>
+              )}
+            </div>
+          ) : focusedFamily ? (
+            <div className="focused-view" key={`family-${focusedFamily.id}`}>
+              <button className="btn quiet market-back" onClick={closeFamily}>
+                All models
+              </button>
+              {renderFamilyPage(focusedFamily)}
             </div>
           ) : focusedHosted ? (
             <div className="focused-view">

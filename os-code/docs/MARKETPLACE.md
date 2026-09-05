@@ -140,6 +140,50 @@ compare. The download and install flows are unchanged: pocket models pull
 straight to the device, desktop models pull through Ollama, weights always come
 from the source.
 
+### The phone storefront (2026-09-05)
+
+On an iPhone the store front reads top to bottom as "what this phone can take,
+then what it can only browse." The founder's brief: the phone has few choices,
+so be package-ready there; the desktop has the luxury of choice.
+
+1. **Set up this iPhone**: three packs, one per connection status the header
+   pill can show (`app/src/lib/packs.ts`). Offline and Offshore download the
+   phone's pocket models and place them in that status's own stack (the anchor
+   as Reasoning, the coder under Coding); Offshore then hands off to Cloud
+   Connections for a key, Docked is the pairing step. A pack names its models
+   as PREFERENCE LISTS of catalog ids (`qwen3-4b-phone`, then
+   `qwen2.5-1.5b-phone`), so it installs the best model the loaded feed
+   carries and never dead-ends on one the gate has not passed yet. Each card
+   shows the real total, what is already here, and an honest state (ready,
+   partly set up, not set up).
+2. **Browse by family** (`app/src/components/modelFamilies.ts`): a rail of
+   makers, each chip with its size count and how many run on this phone. A
+   family page lists the sizes smallest first in two groups, "On this iPhone"
+   and "Desktop and home servers", and a product page opened from it goes back
+   to it. The family is DERIVED client-side from id, name, and source ref
+   against an ordered table with a first-word fallback; the catalog carries no
+   family field, so an old feed groups the same way.
+3. **Runs on this iPhone**: the pocket shelf, retitled on the phone, with the
+   one fact that reorders a phone shopper's instincts in its subtitle: the
+   newest small models beat the old 7B class at half the memory, so bigger is
+   not better here. Disk space was never the limit; RAM under the iOS cap is.
+4. **Desktop and home servers**: a divider, then the frontier shelf and every
+   other shelf. The install control on those rows never says "Get" on a phone:
+   `installLabel` in `marketplace.ts` reads "On <hub>" when a computer is
+   paired (the existing tailnet install), or a quiet "Desktop" that explains
+   itself on tap.
+
+A product page carries a "Where it runs" row (this iPhone, a laptop, a home
+server; `runsOn` in `marketplace.ts` reads the laptop and workstation homes off
+the same budget fractions the engine uses) and a link to every size in the
+family. The desktop store front keeps its order and gains the family rail.
+
+The phone-class pick, `qwen3-4b-phone` (Qwen3 4B Instruct 2507, 2.5 GB, needs a
+6 GB phone), is in the seed with its published benchmarks; it clears the
+curated gate as an orchestrator only once `osc eval` has scored it into
+`curation/eval.json`, so until then the live feed carries it as nothing and the
+packs fall back to Qwen 2.5 1.5B. The bundled seed shows it either way.
+
 ### Sorts (`app/src/components/marketplace.ts`)
 
 - **OpenShore Recommended** (DEFAULT): recommended first, then `curation.rank`.

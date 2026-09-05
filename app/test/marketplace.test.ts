@@ -8,12 +8,15 @@ import {
   EMPTY_FACETS,
   buildShelves,
   capabilityShelfTitle,
+  deviceSplit,
   featuredModels,
   filterModels,
   fitFor,
   fuzzyMatch,
+  installLabel,
   licensePosture,
   modelMonogram,
+  runsOn,
   sortModels,
 } from '../src/components/marketplace.js';
 
@@ -270,5 +273,78 @@ describe('buildShelves', () => {
       model({ id: 'v2', rank: 2, categories: ['vision'] }),
     ];
     expect(buildShelves(models, 16).some((s) => s.key === 'cap-vision')).toBe(false);
+  });
+
+  it('on a phone the pocket shelf names the device and says bigger is not better', () => {
+    const models = [
+      model({
+        id: 'phone1',
+        rank: 1,
+        onDevice: { url: 'https://x/y.gguf', sizeGB: 1, minRamGB: 4 },
+      }),
+    ];
+    const pocket = buildShelves(models, 16, { phone: true }).find((s) => s.key === 'pocket')!;
+    expect(pocket.title).toBe('Runs on this iPhone');
+    expect(pocket.subtitle).toMatch(/bigger is not better/);
+    expect(buildShelves(models, 16).find((s) => s.key === 'pocket')!.title).toBe(
+      'Runs on your phone',
+    );
+  });
+});
+
+describe('where it runs', () => {
+  it('a phone home needs an on-device build; laptop and workstation read off the size', () => {
+    const pocket = model({
+      id: 'p',
+      rank: 1,
+      sizeGB: 2.5,
+      onDevice: { url: 'https://x/y.gguf', sizeGB: 2.5, minRamGB: 6 },
+    });
+    expect(runsOn(pocket)).toEqual({ phone: true, laptop: true, workstation: true });
+    expect(runsOn(model({ id: 'l', rank: 1, sizeGB: 4.7 }))).toEqual({
+      phone: false,
+      laptop: true,
+      workstation: true,
+    });
+    expect(runsOn(model({ id: 'w', rank: 1, sizeGB: 20 }))).toEqual({
+      phone: false,
+      laptop: false,
+      workstation: true,
+    });
+    expect(runsOn(model({ id: 'x', rank: 1, sizeGB: 140 })).workstation).toBe(false);
+  });
+
+  it('deviceSplit puts every model in exactly one list', () => {
+    const a = model({
+      id: 'a',
+      rank: 1,
+      onDevice: { url: 'https://x/y.gguf', sizeGB: 1, minRamGB: 4 },
+    });
+    const b = model({ id: 'b', rank: 2 });
+    const split = deviceSplit([a, b]);
+    expect(split.phone.map((m) => m.id)).toEqual(['a']);
+    expect(split.desktop.map((m) => m.id)).toEqual(['b']);
+  });
+});
+
+describe('installLabel', () => {
+  it('a phone never shows Get on a model it cannot get', () => {
+    expect(installLabel({ onDevice: false, hasBridge: false })).toEqual({
+      text: 'Desktop',
+      kind: 'desktop-only',
+    });
+    expect(installLabel({ onDevice: false, hasBridge: false, hubName: 'Studio' })).toEqual({
+      text: 'On Studio',
+      kind: 'hub',
+    });
+  });
+
+  it('Get stays for on-device models and for a desktop with its own engine', () => {
+    expect(installLabel({ onDevice: true, hasBridge: false }).text).toBe('Get');
+    expect(installLabel({ onDevice: false, hasBridge: true }).text).toBe('Get');
+  });
+
+  it('Retry wins after a failure, whatever the home', () => {
+    expect(installLabel({ onDevice: false, hasBridge: false, failed: true }).text).toBe('Retry');
   });
 });

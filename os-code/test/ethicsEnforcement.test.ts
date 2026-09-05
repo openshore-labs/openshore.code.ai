@@ -195,6 +195,8 @@ describe('the enforcement migration', () => {
     // record_enforcement takes no arguments and computes from guardrail_events,
     // so a reinstall cannot reset the ladder and a client cannot under-report.
     expect(sql).toMatch(/create or replace function public\.record_enforcement \(\)/);
-    expect(sql).toMatch(/from public\.guardrail_events\s*\n\s*where user_id = v_uid and action = 'blocked'/);
+    expect(sql).toMatch(
+      /from public\.guardrail_events\s*\n\s*where user_id = v_uid and action = 'blocked'/,
+    );
   });
 });

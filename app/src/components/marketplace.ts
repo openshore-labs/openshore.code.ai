@@ -73,6 +73,56 @@ export function fitFor(sizeGB: number, memoryGB: number): FitLabel {
   return 'too-big';
 }
 
+// ------------------------------------------------------------ where it runs
+
+/** The three homes a model can have. A phone home means the catalog ships a
+ *  direct on-device build; the other two are read off the file size against
+ *  the same budget the engine uses (a 16 GB laptop, a 48 GB workstation). */
+export interface RunsOn {
+  phone: boolean;
+  laptop: boolean;
+  workstation: boolean;
+}
+
+export const LAPTOP_MEMORY_GB = 16;
+export const WORKSTATION_MEMORY_GB = 48;
+
+export function runsOn(model: CatalogModel): RunsOn {
+  return {
+    phone: Boolean(model.onDevice),
+    laptop: fitFor(model.sizeGB, LAPTOP_MEMORY_GB) !== 'too-big',
+    workstation: fitFor(model.sizeGB, WORKSTATION_MEMORY_GB) !== 'too-big',
+  };
+}
+
+/** Split a catalog by where it installs from a phone: on this device, or on a
+ *  desktop and home server. The same model never sits in both lists. */
+export function deviceSplit(models: CatalogModel[]): {
+  phone: CatalogModel[];
+  desktop: CatalogModel[];
+} {
+  const phone: CatalogModel[] = [];
+  const desktop: CatalogModel[] = [];
+  for (const m of models) (m.onDevice ? phone : desktop).push(m);
+  return { phone, desktop };
+}
+
+/** What the compact install control should say, so a phone never shows a
+ *  "Get" it cannot honor. A desktop model on a phone reads as where it goes:
+ *  the paired hub by name when there is one, otherwise a plain "Desktop" that
+ *  explains itself on tap. Retry always wins after a failure. */
+export function installLabel(input: {
+  onDevice: boolean;
+  hasBridge: boolean;
+  hubName?: string;
+  failed?: boolean;
+}): { text: string; kind: 'get' | 'hub' | 'desktop-only' } {
+  if (input.failed) return { text: 'Retry', kind: 'get' };
+  if (input.onDevice || input.hasBridge) return { text: 'Get', kind: 'get' };
+  if (input.hubName) return { text: `On ${input.hubName}`, kind: 'hub' };
+  return { text: 'Desktop', kind: 'desktop-only' };
+}
+
 // -------------------------------------------------------------------- search
 
 /** A light subsequence fuzzy match: every query character appears in order.
@@ -351,7 +401,11 @@ const SHELF_MAX = 12; // and never scrolls past this many
  *  exist), then the world's popular picks, then one shelf per capability that
  *  has enough models to fill a row. Overlap across shelves is intended, exactly
  *  as an app can sit in several App Store collections. */
-export function buildShelves(models: CatalogModel[], memoryGB: number): Shelf[] {
+export function buildShelves(
+  models: CatalogModel[],
+  memoryGB: number,
+  opts: { phone?: boolean } = {},
+): Shelf[] {
   const shelves: Shelf[] = [];
 
   const pocket = sortModels(
@@ -362,8 +416,13 @@ export function buildShelves(models: CatalogModel[], memoryGB: number): Shelf[] 
   if (pocket.length) {
     shelves.push({
       key: 'pocket',
-      title: 'Runs on your phone',
-      subtitle: 'Fully on-device, no desktop needed.',
+      // On the phone this shelf IS the store, so it says so and carries the
+      // one fact that reorders a phone shopper's instincts: a new 4B beats
+      // the old 7B class here, and disk space was never the limit.
+      title: opts.phone ? 'Runs on this iPhone' : 'Runs on your phone',
+      subtitle: opts.phone
+        ? 'Fully on-device. The newest small models beat the old 7B class at half the memory, so bigger is not better here.'
+        : 'Fully on-device, no desktop needed.',
       sort: 'recommended',
       models: pocket.slice(0, SHELF_MAX),
     });

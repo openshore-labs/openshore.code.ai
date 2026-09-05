@@ -737,6 +737,28 @@ execution contract. Newest at the bottom.
   remains, and the last five log entries (CTO); older state sections live in
   `docs/progress-archive.md`, parked prompts in `docs/parked-ideas.md`, and a
   shape test keeps it under a thousand lines.
+- 2026-09-05: **Model families are derived on the client, not a schema field.**
+  The founder wants the store browsed by maker, then size. A `family` field on
+  the catalog would need the builder to emit it and every old feed to lack it;
+  a pure derivation from id, name, and source ref (`modelFamilies.ts`, ordered
+  table plus a first-word fallback) groups today's feed and the bundled seed
+  identically, with no schema change. If the builder ever emits a family, the
+  client prefers it and keeps this as the fallback.
+- 2026-09-05: **Phone packs are a layer over the stack, keyed by status, and
+  name models as preference lists.** One pack per connection status (Offline,
+  Offshore, Docked) fills that status's own stack through `setReasoning` and
+  `placeSpecialist`, so "build your docked, offshore, and offline models" is
+  literally what the packs do. A pack resolves `qwen3-4b-phone` first and
+  `qwen2.5-1.5b-phone` second against the LOADED catalog, because the 4B has
+  no eval yet and the curated gate keeps it out of the live feed until it does;
+  a hard-pinned id would have dead-ended on the phone today. No star is
+  invented: the 4B is recommended on its published benchmarks and its curation
+  note, and the gate still decides whether the feed carries it.
+- 2026-09-05: **"Get" never appears on a phone for a model the phone cannot
+  take.** The founder's screenshot was a Get that ended in a toast. The
+  control now reads "On <hub>" (the existing tailnet install) or a quiet
+  "Desktop", decided by one pure helper (`installLabel`) so the hero, the row,
+  and the product page cannot drift.
 - 2026-09-05: **Ethics layer installed at the registry and the driver factory,
   not at call sites.** The brief asked for one chokepoint with no bypass. Five
   engine call sites reach a model (`loop.run`, `loop.summarize`,
@@ -841,6 +863,15 @@ execution contract. Newest at the bottom.
 - 2026-09-05: Founder: Personal goes to $50/yr when the gates are reinstated;
   the app stays ungated while building, so the command center carries no
   paywall yet.
+- 2026-09-05: Crew routines draw one control distinction on the existing
+  docked/offshore/offline reach (founder): SET UP and CONTROL require being
+  docked (home reachable over Tailscale) or on the machine; VIEW is always on.
+  Away, the command center serves a cached snapshot and refuses every mutation.
+  Enforced purely in the app (pure crewControl in lib/routines.ts, guards in the
+  store): the daemon is physically unreachable when not docked, so being able to
+  reach it IS the gate, and no server-side change was needed. The snapshot is
+  cached at oscode.routines.v1 so the activity dashboards render offshore.
+
 - 2026-09-05: **Tier 2 likeness precision reworked after the CTO/CMO review, and
   the gate made non-countable.** The classifier was over-blocking coding work
   ("Docker image of Ubuntu Server" read as a person) and under-blocking the
