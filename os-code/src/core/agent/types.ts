@@ -88,7 +88,18 @@ export type AgentEvent =
   // bookends of each task so the chat can show it and mark uncommitted work.
   | { type: 'repo-info'; cwd: string; branch?: string; dirty?: boolean }
   // A short generated title after the first completed exchange.
-  | { type: 'title'; title: string };
+  | { type: 'title'; title: string }
+  // The always-on ethics layer stopped this request or this answer. Carried as
+  // its own event, not folded into an error, so every client can show the
+  // plain refusal and a reviewer can see that the layer acted. The category and
+  // tier travel; the content never does.
+  | {
+      type: 'ethics-block';
+      category: string;
+      tier: 1 | 2 | 3;
+      side: 'input' | 'output';
+      message: string;
+    };
 
 export type EventSink = (event: AgentEvent) => void;
 

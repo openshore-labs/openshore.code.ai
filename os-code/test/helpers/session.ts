@@ -18,6 +18,7 @@ import { Jail } from '../../src/core/security/jail.js';
 import type { ToolContext, ToolRegistry } from '../../src/core/tools/index.js';
 import type { AgentEvent, ApprovalAnswer, ApprovalRequest } from '../../src/core/agent/types.js';
 import type { MockProvider } from './mockProvider.js';
+import type { ConsentAssertion } from '../../src/core/ethics/classify.js';
 
 export interface TestSession {
   agent: AgentSession;
@@ -45,6 +46,8 @@ export interface TestSessionOptions {
   vaultRoot?: string;
   /** The project's secrets, for tests of the local-only secrets path. */
   projectSecrets?: string;
+  /** Authorization assertions on file, for the ethics layer's consent gate. */
+  consents?: ConsentAssertion[];
   /** The security profile to run under (default: sitting at the desk). */
   profile?: SecurityProfileName;
 }
@@ -64,7 +67,24 @@ export function makeTestSession(
     ...options.configOverrides,
   });
 
-  const registry = new ProviderRegistry(config, () => undefined);
+  const events: AgentEvent[] = [];
+  const approvals: ApprovalRequest[] = [];
+
+  // The ethics layer is wired exactly as bootstrapSession wires it, so a test
+  // session behaves like the real thing: every provider is guarded, and a block
+  // surfaces as an ethics-block event in the transcript.
+  const registry = new ProviderRegistry(config, () => undefined, {
+    consents: () => options.consents,
+    onBlock: (result) => {
+      events.push({
+        type: 'ethics-block',
+        category: result.decision.category,
+        tier: result.decision.tier,
+        side: result.record?.side ?? 'input',
+        message: result.decision.message ?? 'This request was not sent.',
+      });
+    },
+  });
   registry.register(provider.id, provider);
   if (options.escalation) registry.register(options.escalation.id, options.escalation);
 
@@ -76,8 +96,8 @@ export function makeTestSession(
     stackHasSpecialists: false,
   });
 
-  const events: AgentEvent[] = [];
-  const approvals: ApprovalRequest[] = [];
+  // events and approvals are declared above, because the ethics onBlock closure
+  // handed to the provider registry pushes into events before this point.
   const persistedRules: Array<{ tool: string; pathGlob?: string }> = [];
   const toolContext: ToolContext = {
     cwd,

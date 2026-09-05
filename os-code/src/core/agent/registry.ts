@@ -12,7 +12,7 @@ import { readTerminalTool } from '../tools/readTerminal.js';
 import { codemagicTool } from '../tools/codemagic.js';
 import { grepTool } from '../tools/grep.js';
 import { globTool } from '../tools/glob.js';
-import { gitCommitTool, gitDiffTool, gitStatusTool } from '../tools/git.js';
+import { gitCommitTool, gitDiffTool, gitLogTool, gitStatusTool } from '../tools/git.js';
 import { webSearchTool } from '../tools/webSearch.js';
 import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
@@ -56,6 +56,7 @@ export function buildToolRegistry(options: {
   registry.register(todoWriteTool);
   registry.register(gitStatusTool);
   registry.register(gitDiffTool);
+  registry.register(gitLogTool);
   registry.register(gitCommitTool);
   // Web tools reach the internet, so they are the one outbound path a secret
   // could leak through. Under egress lockdown they are not registered at all.

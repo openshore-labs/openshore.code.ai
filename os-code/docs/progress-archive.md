@@ -5,7 +5,65 @@ on 2026-09-05 so that file stays lean (one Current state, one What remains,
 the last five log entries). Newest first, kept as written; this is history,
 not a source of current truth. `PROGRESS.md` is.
 
-## Current state sections (2026-08-20 to 2026-09-04)
+## Current state sections (2026-08-20 to 2026-09-05)
+
+### Current state (2026-09-05, full-codebase review remediation)
+
+The review in `CODE-REVIEW-FINDINGS-2026-09-05.md` (root; six parallel senior
+passes over HEAD `e14b0a7`, 82 commits and about 90k changed lines since the
+2026-08-25 reviews) was worked as one wave, batched by subsystem so each file
+was edited once, with the `Verify` test written first. Rulings during the wave
+are one line each in `DECISIONS.md`.
+
+- **The four P0s.** P0-1: the daemon's user command lane is no longer an
+  unjailed shell for a member token (admin-gated, and both path predicates
+  resolve real paths on both sides). P0-2: the guardrail token and dollar
+  counters reset per task, so a long session can start its next task. P0-3: the
+  sealed-store key is never minted over existing sealed data; an unreadable key
+  surfaces a "could not unlock your data on this machine" state instead of
+  orphaning every sealed byte. P0-4: email confirmation is on in
+  `supabase/config.toml`, and the email-keyed grants require a confirmed
+  address in SQL as well (migration `0015`).
+- **P1 and P2, by batch.** Trust boundaries (owner-filtered session listings,
+  profile-aware permission overrides, normalized permission globs). Session
+  lifecycle (idle work no longer inherits the task's abort signal, compaction
+  never cuts between a tool call and its result, steps rail off-by-one, native
+  batch problems reported, approvals settled on abort). Streams and timeouts
+  (Anthropic in-stream errors surface, an idle deadline on every provider
+  stream, Stop reaches a delegated specialist, a terminal exit frame). App auth
+  and the sealed store (one refreshed token helper for every Supabase call, a
+  typed sign-out on a dead refresh token, persisted pending email for the
+  magic-link binding, sign-out clears the roster, per-key write chain). On-device
+  model ownership (one `loadedModelId` owner; a load during generation ends the
+  old chat honestly). Backend (`members_write` WITH CHECK, seat ceilings by
+  trigger, the Stripe cross-rail guard, Apple link state, review column grants,
+  vault path guard, checkout filter on live statuses, entitlement decisions in
+  `_shared/entitlement.ts` with Deno tests).
+- **Guards and CI (INF).** CI now builds every package, checks formatting,
+  and runs the Deno tests; both workflows are least-privilege (`contents:
+read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
+  `>=22.12`); the catalog workflow scopes each secret to its one step and takes
+  an `allow_large_drop` input. The em-dash guard is repo-wide (git toplevel,
+  every text extension, test files included, one reasoned exemption for the
+  archived 2026-08-20 review). The desktop preflight refuses to launch with a
+  node-pty that is missing or built for the wrong ABI; the app postinstall
+  honors `SKIP_NATIVE_REBUILD=1` and CI and Codemagic skip the Electron binary.
+  Codemagic pins Xcode and builds the engine once. `.cjs` and `.mjs` are linted.
+  The nested `os-code/pnpm-lock.yaml` is gone. The addressed review docs live in
+  `docs/archive/` with status banners.
+- **Docs and license.** This file is lean again (one Current state, one What
+  remains, the last five log entries); the history is in
+  `docs/progress-archive.md` and the parked build prompts in
+  `docs/parked-ideas.md`, both guarded by `test/progressShape.test.ts`. The
+  license is a "no license granted" placeholder at the root and in
+  `os-code/LICENSE` (CFO ruling; the plugins are `UNLICENSED`, `private`).
+  ESLint 9 is deferred to its own commit.
+- Gates at close: os-code typecheck, lint, 493 tests (54 files), tsc build,
+  Prettier check; app typecheck (src and electron), lint (now covering .cjs and
+  .mjs), 692 tests (92 files), vite build, Prettier check; the repo-wide
+  em-dash guard and the PROGRESS shape guard. Deno and pgTAP suites are
+  written but not executed here (no Deno or Postgres in the session); CI now
+  runs the Deno suite.
 
 ### Current state (2026-09-04, Stack Health: daily cadence, admin-gated visibility, Run leaner)
 
@@ -2339,6 +2397,74 @@ Layer status:
   `test/polish.test.ts`.
 
 ## Log entries (2026-08-18 to 2026-08-26)
+
+- **2026-08-26: Review remediation, full pass, merged to main.** Acted on the
+  2026-08-25 review (`CODE-REVIEW-FINDINGS-2026-08-25.md`) across the three
+  focus areas, closing out the substantive findings and a full premium-polish
+  pass, each fix test-backed; gates green (os-code 275 tests, app 192,
+  typecheck, lint, vite build). Founder directed the push to main.
+  Additions beyond the first pass below: the chat-to-terminal bridge now works
+  on the DESKTOP app too (Electron command lane over IPC) and gains a composer
+  Terminal mode ($) for typing your own command; the Marketplace got a premium
+  pass (a real single-model product page replacing the fuzzy-search stand-in, a
+  browsable Starter-stacks preset shelf, a shimmer skeleton loader, an installed
+  state for desktop models, a quantization gloss, brand-safe hero variety, a
+  button-in-button a11y fix, a filter-clear empty state); macOS Tailscale
+  detection and CGNAT alignment; honest loopback pairing state (no unreachable
+  QR); SSE write backpressure; a cached Tailscale probe so the Pair poll never
+  freezes the desktop; and polish haptics on the terminal commits. Still a
+  founder decision, deliberately NOT built: the desktop-chat paywall change
+  (C-suite recommended opening free desktop chat, a monetization-foundation
+  change needing explicit approval) and terminal-bridge Phase 2 (full PTY tab).
+  Still needs founder/device verification: the P0 streaming fix on a real
+  iPhone, and the native Swift changes compile on TestFlight. Larger follow-ups
+  left for their own scoping: the daemon model-install endpoint (MP-F2),
+  background-download adoption (MP-F4), per-device pairing credentials (TS-P2-4),
+  and the home-repo path writer (TS-P1-5).
+  - **Tailscale / phone (P0 + P1s).** Fixed the flagship phone bug: the daemon
+    SSE stream and Anthropic SDK were routed through Capacitor's native-HTTP
+    fetch (buffers, cannot stream), so a paired phone rendered nothing during a
+    run. New `streamingFetch` reaches the unpatched WebView fetch
+    (`window.CapacitorWebFetch`); the global patch stays on so web search / Drive
+    / Supabase are untouched (safe failure mode). Also: `/outbox/apply|verify`
+    now admin/workspace-gated (a member token could push to any repo, security
+    must-fix); the tailscale-bound daemon also listens on loopback so `osc
+attach` reaches it; a daemon restart seeds the agent's history from the
+    journal (no more amnesia) and clears zombie approvals; the reconnect loop
+    stops on 401/persistent-404 with actionable copy instead of retrying forever;
+    phone POSTs get a 10s timeout.
+  - **Chat-to-terminal bridge, Phase 1 (the founder's game-changer).** A
+    first-class command lane: run a command on the paired desktop from chat,
+    watch output stream live, answer prompts, kill it, and the model reads the
+    result on its next turn (no screenshot loop). New
+    `core/exec/commandRunner.ts` (shared with runShell), three `command-*`
+    driver events, `LocalDriver.runCommand/writeCommandStdin/killCommand`, daemon
+    routes under the owned-session block (owner's tap is the approval, audited in
+    the journal), a `contextPreamble` seam into `AgentSession.run`, and the app
+    side (command ThreadItem + reducer, `CommandCard`, RemoteDriver methods,
+    store actions, a Run/Copy button on shell code blocks). Also fixed the tiny
+    high-leverage bug: the app discarded all shell output past its first line.
+    Follow-ups: desktop (Electron) command lane, a composer terminal-mode
+    toggle, and Phase 2 (full PTY tab) which is a founder decision.
+  - **Marketplace (premium + functional + HF automation).** A standalone iPhone
+    now fetches the published catalog directly (Preferences-cached, graceful
+    fallback) so ratings/popularity/staff-picks appear without a paired desktop;
+    the Staff axis hides when empty; copy fixed (popularity is HF-only; the "over
+    Tailscale" note is phone-only). Builder: an HF outage no longer strips
+    popularity (carry-forward + coverage gate); HF_TOKEN + bounded concurrency +
+    retry; a license-drift warning; a published commercial-posture flag; a gate
+    that rejects any non-huggingface.co `onDevice.url` (plus the native client
+    check), closing a redirect-to-anywhere download vector.
+  - **Advisor ruling captured (founder decision needed).** The C-suite (CFO lead,
+    CMO weighed) recommends opening FREE desktop CHAT (route it like `stack`,
+    read-only) while keeping the $20 Personal gate on the coding agent,
+    Marketplace, and repo writes. This is a monetization-FOUNDATION change, so it
+    was deliberately NOT built; it needs the founder's explicit yes. Gate lives at
+    `app/src/state/store.ts` around the desktop-conversation check.
+  - **Needs founder / device (cannot verify in a web session):** confirm the P0
+    fix on a real iPhone (streaming); the Swift `downloadModel` host check and
+    any native change compile on TestFlight; wire an optional `HF_TOKEN` repo
+    secret if you want the authenticated popularity fetch.
 
 - **2026-08-26: Chat-surface refinements + polish (bigger menu, anchored
   greeting, guide-as-reasoning, a Chats room).** Founder asks over four
