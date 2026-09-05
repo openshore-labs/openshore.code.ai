@@ -6,7 +6,10 @@
 state first, then "What remains," then the log. Read it at the start of every
 session before other work, so a fresh session picks up where the last one left
 off. `os-code/DECISIONS.md` records one line per ambiguous call; skim it when a
-design choice looks already settled.
+design choice looks already settled. PROGRESS keeps one Current state, one What
+remains, and the last five log entries (`os-code/test/progressShape.test.ts`
+enforces it); older sections live in `os-code/docs/progress-archive.md` and are
+not session-start reading.
 
 ## gitOS, BYOM, and Vault are BUILT (reminder retired 2026-08-25)
 
@@ -26,7 +29,7 @@ condition (each checkbox checked off in `os-code/PROGRESS.md`) is now met.
 Do NOT re-surface these as unbuilt or re-scope them from scratch. The one open
 follow-up is Vault's ORGANIZATION tier (a real multi-writer backend), tracked
 as its own item in `os-code/PROGRESS.md`. The original build prompts are kept
-in that file as historical reference only.
+in `os-code/docs/parked-ideas.md` as historical reference only.
 
 ## Premium UX out of the box (standing rule, founder 2026-09-02)
 

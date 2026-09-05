@@ -1,7 +1,15 @@
 // The Electron main process: one window, one EngineHost, and an IPC surface
 // that mirrors OscodeBridge method for method. The renderer stays Node-free;
 // everything engine-shaped happens here.
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  safeStorage,
+  shell,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import { dirname, join, relative, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -30,6 +38,65 @@ const here = dirname(fileURLToPath(import.meta.url));
 // The only page the shell is ever allowed to navigate to: the app's own bundled
 // entry point. Anything else (a stray file:, an http link) is denied below.
 const appEntry = pathToFileURL(join(here, '..', 'dist', 'index.html'));
+
+// ------------------------------------------------------------------ IPC guard
+// The renderer is untrusted input (UI-6). Every handler is registered through
+// `guarded`, which refuses any call whose sender is not the app's own bundled
+// page, and every argument is checked by the small validators below before it
+// reaches the engine. Defense in depth over the CSP and the pinned navigation:
+// a future XSS in rendered markdown must not turn into code execution here.
+function trustedSender(event: IpcMainInvokeEvent): boolean {
+  const url = event.senderFrame?.url;
+  return typeof url === 'string' && url.split('#')[0] === appEntry.href;
+}
+
+function guarded<A extends unknown[], R>(channel: string, fn: (...args: A) => R): void {
+  ipcMain.handle(channel, (event, ...args: unknown[]) => {
+    if (!trustedSender(event)) throw new Error(`blocked: untrusted sender on ${channel}`);
+    return fn(...(args as A));
+  });
+}
+
+function str(v: unknown, name: string): string {
+  if (typeof v !== 'string') throw new Error(`blocked: ${name} must be a string`);
+  return v;
+}
+function optStr(v: unknown, name: string): string | undefined {
+  return v === undefined || v === null ? undefined : str(v, name);
+}
+function num(v: unknown, name: string): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    throw new Error(`blocked: ${name} must be a number`);
+  }
+  return v;
+}
+function bool(v: unknown): boolean {
+  return v === true;
+}
+function optBool(v: unknown, name: string): boolean | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'boolean') throw new Error(`blocked: ${name} must be a boolean`);
+  return v;
+}
+function obj(v: unknown, name: string): Record<string, unknown> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+    throw new Error(`blocked: ${name} must be an object`);
+  }
+  return v as Record<string, unknown>;
+}
+function strList(v: unknown, name: string): string[] {
+  if (!Array.isArray(v)) throw new Error(`blocked: ${name} must be a list`);
+  return v.map((x, i) => str(x, `${name}[${i}]`));
+}
+/** An existing directory, or undefined when none was given. */
+function dir(v: unknown, name: string): string | undefined {
+  const s = optStr(v, name);
+  if (s === undefined) return undefined;
+  if (!existsSync(s) || !statSync(s).isDirectory()) {
+    throw new Error(`blocked: ${name} is not a directory`);
+  }
+  return s;
+}
 
 // ------------------------------------------------------------ outbound HTTP
 // The renderer cannot reach CORS-hostile third-party APIs directly, so it asks
@@ -162,6 +229,23 @@ interface HttpFetchReq {
   body?: string;
 }
 
+/** The renderer's fetch request, field by field. */
+function httpFetchReq(v: unknown): HttpFetchReq {
+  const o = obj(v, 'request');
+  const headers: Record<string, string> = {};
+  if (o.headers !== undefined) {
+    for (const [k, val] of Object.entries(obj(o.headers, 'headers'))) {
+      headers[k] = str(val, `headers.${k}`);
+    }
+  }
+  return {
+    url: str(o.url, 'url'),
+    method: optStr(o.method, 'method'),
+    headers,
+    body: optStr(o.body, 'body'),
+  };
+}
+
 function stripHeaders(headers: Record<string, string>, drop: (lower: string) => boolean): void {
   for (const name of Object.keys(headers)) {
     if (drop(name.toLowerCase())) delete headers[name];
@@ -233,7 +317,7 @@ function closeGdriveServer(): void {
   gdriveServer = undefined;
 }
 
-ipcMain.handle('osc:gdriveOAuthListen', () => {
+guarded('osc:gdriveOAuthListen', () => {
   return new Promise<{ port: number }>((resolve, reject) => {
     closeGdriveServer();
     const server = createServer();
@@ -251,7 +335,7 @@ ipcMain.handle('osc:gdriveOAuthListen', () => {
   });
 });
 
-ipcMain.handle('osc:gdriveOAuthWait', () => {
+guarded('osc:gdriveOAuthWait', () => {
   return new Promise<{ code: string; state: string } | { error: string }>((resolve) => {
     const server = gdriveServer;
     if (!server) {
@@ -281,7 +365,7 @@ ipcMain.handle('osc:gdriveOAuthWait', () => {
   });
 });
 
-ipcMain.handle('osc:gdriveOAuthCancel', () => {
+guarded('osc:gdriveOAuthCancel', () => {
   closeGdriveServer();
 });
 
@@ -300,18 +384,26 @@ const embedded = new EmbeddedWeb(
   (state) => win?.webContents.send('osc:embedded-state', state),
 );
 
-ipcMain.handle('osc:embeddedOpen', (_e, name: string, bounds: EmbeddedBounds) =>
-  embedded.open(String(name), bounds),
+function bounds(v: unknown): EmbeddedBounds {
+  const o = obj(v, 'bounds');
+  return {
+    x: num(o.x, 'bounds.x'),
+    y: num(o.y, 'bounds.y'),
+    width: num(o.width, 'bounds.width'),
+    height: num(o.height, 'bounds.height'),
+  };
+}
+
+guarded('osc:embeddedOpen', (name: unknown, b: unknown) =>
+  embedded.open(str(name, 'name'), bounds(b)),
 );
-ipcMain.handle('osc:embeddedBounds', (_e, bounds: EmbeddedBounds) => embedded.setBounds(bounds));
-ipcMain.handle('osc:embeddedVisible', (_e, visible: boolean) =>
-  embedded.setVisible(Boolean(visible)),
-);
-ipcMain.handle('osc:embeddedBack', () => embedded.back());
-ipcMain.handle('osc:embeddedReload', () => embedded.reload());
-ipcMain.handle('osc:embeddedHome', () => embedded.home());
-ipcMain.handle('osc:embeddedSignOut', () => embedded.signOut());
-ipcMain.handle('osc:embeddedClose', () => embedded.close());
+guarded('osc:embeddedBounds', (b: unknown) => embedded.setBounds(bounds(b)));
+guarded('osc:embeddedVisible', (visible: unknown) => embedded.setVisible(bool(visible)));
+guarded('osc:embeddedBack', () => embedded.back());
+guarded('osc:embeddedReload', () => embedded.reload());
+guarded('osc:embeddedHome', () => embedded.home());
+guarded('osc:embeddedSignOut', () => embedded.signOut());
+guarded('osc:embeddedClose', () => embedded.close());
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -399,111 +491,123 @@ function deepLinkFromArgv(argv: string[]): string | undefined {
 
 // ------------------------------------------------------------------ IPC map
 // Keep in lockstep with src/lib/electronBridge.ts and electron/preload.cjs.
+// Every argument arrives as `unknown` and is validated before use.
 
-ipcMain.handle('osc:createSession', (_e, cwd?: string, opts?: Record<string, unknown>) =>
-  host.createSession(
-    cwd,
-    opts as
-      | {
-          instructions?: string;
-          permissionMode?: never;
-          projectName?: string;
-          projectSecrets?: string;
-          humanize?: boolean;
-          codemagicToken?: string;
-          codemagicTarget?: {
-            appId: string;
-            workflowId: string;
-            branch: string;
-            platform?: string;
-          };
-        }
-      | undefined,
-  ),
+function sessionOpts(v: unknown) {
+  if (v === undefined || v === null) return undefined;
+  const o = obj(v, 'opts');
+  let codemagicTarget:
+    { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
+  if (o.codemagicTarget !== undefined && o.codemagicTarget !== null) {
+    const t = obj(o.codemagicTarget, 'codemagicTarget');
+    codemagicTarget = {
+      appId: str(t.appId, 'codemagicTarget.appId'),
+      workflowId: str(t.workflowId, 'codemagicTarget.workflowId'),
+      branch: str(t.branch, 'codemagicTarget.branch'),
+      platform: optStr(t.platform, 'codemagicTarget.platform'),
+    };
+  }
+  return {
+    instructions: optStr(o.instructions, 'instructions'),
+    // The permission mode is validated by the engine's own schema on entry.
+    permissionMode: optStr(o.permissionMode, 'permissionMode') as never,
+    projectName: optStr(o.projectName, 'projectName'),
+    projectSecrets: optStr(o.projectSecrets, 'projectSecrets'),
+    humanize: optBool(o.humanize, 'humanize'),
+    codemagicToken: optStr(o.codemagicToken, 'codemagicToken'),
+    codemagicTarget,
+  };
+}
+
+guarded('osc:createSession', (cwd: unknown, opts: unknown) =>
+  host.createSession(dir(cwd, 'cwd'), sessionOpts(opts)),
 );
-ipcMain.handle('osc:setMode', (_e, sessionId: string, mode: string) =>
-  host.setMode(sessionId, mode as never),
+guarded('osc:setMode', (sessionId: unknown, mode: unknown) =>
+  host.setMode(str(sessionId, 'sessionId'), str(mode, 'mode') as never),
 );
-ipcMain.handle('osc:setInstructions', (_e, sessionId: string, text?: string) =>
-  host.setInstructions(sessionId, text),
+guarded('osc:setInstructions', (sessionId: unknown, text: unknown) =>
+  host.setInstructions(str(sessionId, 'sessionId'), optStr(text, 'text')),
 );
-ipcMain.handle('osc:compact', (_e, sessionId: string, focus?: string) =>
-  host.compact(sessionId, focus),
+guarded('osc:compact', (sessionId: unknown, focus: unknown) =>
+  host.compact(str(sessionId, 'sessionId'), optStr(focus, 'focus')),
 );
-ipcMain.handle('osc:listFiles', (_e, sessionId: string, query: string) =>
-  host.listFiles(sessionId, query),
+guarded('osc:listFiles', (sessionId: unknown, query: unknown) =>
+  host.listFiles(str(sessionId, 'sessionId'), str(query, 'query')),
 );
-ipcMain.handle('osc:resumeSession', (_e, id: string) => host.resumeSession(id));
-ipcMain.handle('osc:listSessions', () => host.listStoredSessions());
-ipcMain.handle('osc:send', (_e, sessionId: string, text: string) => host.send(sessionId, text));
-ipcMain.handle('osc:abort', (_e, sessionId: string) => host.abort(sessionId));
-ipcMain.handle(
-  'osc:answerApproval',
-  (
-    _e,
-    sessionId: string,
-    approvalId: string,
-    answer: {
-      approve: boolean;
-      alwaysThisSession?: boolean;
-      alwaysInProject?: boolean;
-      reason?: string;
-    },
-  ) => host.answerApproval(sessionId, approvalId, answer),
+guarded('osc:resumeSession', (id: unknown) => host.resumeSession(str(id, 'id')));
+guarded('osc:listSessions', () => host.listStoredSessions());
+guarded('osc:send', (sessionId: unknown, text: unknown) =>
+  host.send(str(sessionId, 'sessionId'), str(text, 'text')),
 );
+guarded('osc:abort', (sessionId: unknown) => host.abort(str(sessionId, 'sessionId')));
+guarded('osc:answerApproval', (sessionId: unknown, approvalId: unknown, answer: unknown) => {
+  const a = obj(answer, 'answer');
+  return host.answerApproval(str(sessionId, 'sessionId'), str(approvalId, 'approvalId'), {
+    approve: bool(a.approve),
+    alwaysThisSession: optBool(a.alwaysThisSession, 'alwaysThisSession'),
+    alwaysInProject: optBool(a.alwaysInProject, 'alwaysInProject'),
+    reason: optStr(a.reason, 'reason'),
+  });
+});
 
 // Chat-to-terminal lane. runCommand returns the runId the renderer drives with
 // stdin/kill; command output arrives as command-* events on osc:event.
-ipcMain.handle('osc:runCommand', (_e, sessionId: string, command: string) =>
-  host.runCommand(sessionId, command),
+guarded('osc:runCommand', (sessionId: unknown, command: unknown) =>
+  host.runCommand(str(sessionId, 'sessionId'), str(command, 'command')),
 );
-ipcMain.handle('osc:sendCommandStdin', (_e, sessionId: string, runId: string, data: string) =>
-  host.sendCommandStdin(sessionId, runId, data),
+guarded('osc:sendCommandStdin', (sessionId: unknown, runId: unknown, data: unknown) =>
+  host.sendCommandStdin(str(sessionId, 'sessionId'), str(runId, 'runId'), str(data, 'data')),
 );
-ipcMain.handle('osc:killCommand', (_e, sessionId: string, runId: string) =>
-  host.killCommand(sessionId, runId),
+guarded('osc:killCommand', (sessionId: unknown, runId: unknown) =>
+  host.killCommand(str(sessionId, 'sessionId'), str(runId, 'runId')),
 );
 
 // Interactive terminal (Phase 2). Output streams as osc:terminal-data events;
 // stdin/resize/kill drive the live PTY.
-ipcMain.handle('osc:openTerminal', (_e, sessionId: string, cols: number, rows: number) =>
-  host.openTerminal(sessionId, cols, rows),
+guarded('osc:openTerminal', (sessionId: unknown, cols: unknown, rows: unknown) =>
+  host.openTerminal(str(sessionId, 'sessionId'), num(cols, 'cols'), num(rows, 'rows')),
 );
-ipcMain.handle('osc:terminalSubscribe', (_e, termId: string, sinceOffset: number) =>
-  host.terminalSubscribe(termId, sinceOffset),
+guarded('osc:terminalSubscribe', (termId: unknown, sinceOffset: unknown) =>
+  host.terminalSubscribe(str(termId, 'termId'), num(sinceOffset, 'sinceOffset')),
 );
-ipcMain.handle('osc:terminalUnsubscribe', (_e, termId: string) => host.terminalUnsubscribe(termId));
-ipcMain.handle('osc:terminalStdin', (_e, termId: string, data: string) =>
-  host.terminalStdin(termId, data),
+guarded('osc:terminalUnsubscribe', (termId: unknown) =>
+  host.terminalUnsubscribe(str(termId, 'termId')),
 );
-ipcMain.handle('osc:terminalResize', (_e, termId: string, cols: number, rows: number) =>
-  host.terminalResize(termId, cols, rows),
+guarded('osc:terminalStdin', (termId: unknown, data: unknown) =>
+  host.terminalStdin(str(termId, 'termId'), str(data, 'data')),
 );
-ipcMain.handle('osc:terminalKill', (_e, termId: string) => host.terminalKill(termId));
+guarded('osc:terminalResize', (termId: unknown, cols: unknown, rows: unknown) =>
+  host.terminalResize(str(termId, 'termId'), num(cols, 'cols'), num(rows, 'rows')),
+);
+guarded('osc:terminalKill', (termId: unknown) => host.terminalKill(str(termId, 'termId')));
 
-ipcMain.handle('osc:status', () => host.status());
-ipcMain.handle('osc:catalog', () => host.catalog());
-ipcMain.handle('osc:stackHealth', (_e, range?: string) =>
-  host.stackHealth(range as Parameters<typeof host.stackHealth>[0]),
+guarded('osc:status', () => host.status());
+guarded('osc:catalog', () => host.catalog());
+guarded('osc:stackHealth', (range: unknown) =>
+  host.stackHealth(optStr(range, 'range') as Parameters<typeof host.stackHealth>[0]),
 );
-ipcMain.handle('osc:installModel', (_e, modelId: string) => host.installModel(modelId));
-ipcMain.handle('osc:installOllamaRef', (_e, ref: string) => host.installOllamaRef(ref));
-ipcMain.handle('osc:setOrchestrator', (_e, model: string) => host.setOrchestrator(model));
-ipcMain.handle('osc:enableSpecialist', (_e, role: string, model: string) =>
-  host.enableSpecialist(role, model),
+guarded('osc:installModel', (modelId: unknown) => host.installModel(str(modelId, 'modelId')));
+guarded('osc:installOllamaRef', (ref: unknown) => host.installOllamaRef(str(ref, 'ref')));
+guarded('osc:setOrchestrator', (model: unknown) => host.setOrchestrator(str(model, 'model')));
+guarded('osc:enableSpecialist', (role: unknown, model: unknown) =>
+  host.enableSpecialist(str(role, 'role'), str(model, 'model')),
 );
-ipcMain.handle('osc:disableSpecialist', (_e, role: string) => host.disableSpecialist(role));
+guarded('osc:disableSpecialist', (role: unknown) => host.disableSpecialist(str(role, 'role')));
 
-ipcMain.handle('osc:setAnthropicKey', (_e, key: string, workspaceId?: string) =>
-  host.setAnthropicKey(key, workspaceId),
+guarded('osc:setAnthropicKey', (key: unknown, workspaceId: unknown) =>
+  host.setAnthropicKey(str(key, 'key'), optStr(workspaceId, 'workspaceId')),
 );
-ipcMain.handle('osc:setOpenAIKey', (_e, key: string) => host.setOpenAIKey(key));
-ipcMain.handle('osc:setGithubToken', (_e, token: string) => host.setGithubToken(token));
-ipcMain.handle('osc:disconnect', (_e, connector: 'anthropic' | 'openai' | 'github') =>
-  host.disconnect(connector),
-);
+guarded('osc:setOpenAIKey', (key: unknown) => host.setOpenAIKey(str(key, 'key')));
+guarded('osc:setGithubToken', (token: unknown) => host.setGithubToken(str(token, 'token')));
+guarded('osc:disconnect', (connector: unknown) => {
+  const c = str(connector, 'connector');
+  if (c !== 'anthropic' && c !== 'openai' && c !== 'github') {
+    throw new Error('blocked: unknown connector');
+  }
+  return host.disconnect(c);
+});
 
-ipcMain.handle('osc:pickFolder', async () => {
+guarded('osc:pickFolder', async () => {
   if (!win) return null;
   const result = await dialog.showOpenDialog(win, {
     properties: ['openDirectory'],
@@ -511,17 +615,17 @@ ipcMain.handle('osc:pickFolder', async () => {
   });
   return result.canceled ? null : (result.filePaths[0] ?? null);
 });
-ipcMain.handle('osc:cloneRepo', (_e, url: string) => host.cloneRepo(url));
-ipcMain.handle('osc:recentWorkspaces', () => host.recentWorkspaces());
-ipcMain.handle('osc:reconcileRepos', (_e, roots: string[]) =>
-  host.reconcileRepos(Array.isArray(roots) ? roots : []),
+guarded('osc:cloneRepo', (url: unknown) => host.cloneRepo(str(url, 'url')));
+guarded('osc:recentWorkspaces', () => host.recentWorkspaces());
+guarded('osc:reconcileRepos', (roots: unknown) =>
+  host.reconcileRepos(Array.isArray(roots) ? strList(roots, 'roots') : []),
 );
 
-ipcMain.handle('osc:daemonInfo', () => host.daemonInfo());
-ipcMain.handle('osc:daemonStart', () => host.daemonStart());
-ipcMain.handle('osc:daemonStop', () => host.daemonStop());
-ipcMain.handle('osc:listDeviceCredentials', () => host.listDeviceCredentials());
-ipcMain.handle('osc:revokeDeviceCredential', (_e, id: string) => host.revokeDeviceCredential(id));
+guarded('osc:daemonInfo', () => host.daemonInfo());
+guarded('osc:daemonStart', () => host.daemonStart());
+guarded('osc:daemonStop', () => host.daemonStop());
+guarded('osc:listDeviceCredentials', () => host.listDeviceCredentials());
+guarded('osc:revokeDeviceCredential', (id: unknown) => host.revokeDeviceCredential(str(id, 'id')));
 
 // On-disk vault: the SAME markdown folder the agent's daemon tools write
 // (~/OSCode/Vault, or config vault.dir), so the app's Vault and the agent share
@@ -540,7 +644,7 @@ function vaultJail(): Jail {
   return new Jail(dir);
 }
 
-ipcMain.handle('osc:vaultList', () => {
+guarded('osc:vaultList', () => {
   const root = vaultDir();
   if (!existsSync(root)) return [];
   const out: Array<{ path: string; updatedAt: string; size: number }> = [];
@@ -563,19 +667,22 @@ ipcMain.handle('osc:vaultList', () => {
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 });
-ipcMain.handle('osc:vaultRead', (_e, path: string) => {
+guarded('osc:vaultRead', (p: unknown) => {
+  const path = str(p, 'path');
   const abs = vaultJail().resolve(path);
   if (!existsSync(abs)) return null;
   return { path, text: readFileSync(abs, 'utf8'), updatedAt: statSync(abs).mtime.toISOString() };
 });
-ipcMain.handle('osc:vaultWrite', (_e, path: string, text: string) => {
+guarded('osc:vaultWrite', (p: unknown, t: unknown) => {
+  const path = str(p, 'path');
+  const text = str(t, 'text');
   const abs = vaultJail().resolve(path);
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, text);
   return { path, text, updatedAt: statSync(abs).mtime.toISOString() };
 });
-ipcMain.handle('osc:vaultRemove', (_e, path: string) => {
-  const abs = vaultJail().resolve(path);
+guarded('osc:vaultRemove', (p: unknown) => {
+  const abs = vaultJail().resolve(str(p, 'path'));
   if (existsSync(abs)) rmSync(abs);
 });
 
@@ -597,10 +704,11 @@ function isMemoryFolderSegment(seg: string): boolean {
   const inner = seg.slice(MEM_FOLDER_PREFIX.length, seg.length - MEM_FOLDER_SUFFIX.length);
   return inner.length > 0 && !/^\.+$/.test(inner);
 }
-ipcMain.handle('osc:repoReadDir', (_e, root: string, subdir: string): string[] | null => {
+guarded('osc:repoReadDir', (root: unknown, subdir: unknown): string[] | null => {
   try {
     // Only a single memory folder may be listed, never an arbitrary directory.
-    if (!root || typeof subdir !== 'string' || !isMemoryFolderSegment(subdir)) return null;
+    if (typeof root !== 'string' || !root || typeof subdir !== 'string') return null;
+    if (!isMemoryFolderSegment(subdir)) return null;
     if (!existsSync(root) || !statSync(root).isDirectory()) return null;
     const abs = new Jail(root).resolve(subdir);
     if (!existsSync(abs) || !statSync(abs).isDirectory()) return null;
@@ -611,10 +719,10 @@ ipcMain.handle('osc:repoReadDir', (_e, root: string, subdir: string): string[] |
     return null;
   }
 });
-ipcMain.handle('osc:repoReadFile', (_e, root: string, relPath: string): string | null => {
+guarded('osc:repoReadFile', (root: unknown, relPath: unknown): string | null => {
   try {
     // Only an .md file directly inside a memory folder may be read.
-    if (!root || typeof relPath !== 'string') return null;
+    if (typeof root !== 'string' || !root || typeof relPath !== 'string') return null;
     const parts = relPath.split('/');
     if (parts.length !== 2 || !isMemoryFolderSegment(parts[0]!) || !/\.md$/i.test(parts[1]!)) {
       return null;
@@ -629,9 +737,13 @@ ipcMain.handle('osc:repoReadFile', (_e, root: string, relPath: string): string |
   }
 });
 
-// OS-encrypted secret store (used for the app's data-encryption key).
-ipcMain.handle('osc:secureGet', (_e, key: string): string | null => {
-  const sealed = readSecrets()[key];
+// OS-encrypted secret store (used for the app's data-encryption key). secureHas
+// tells "no entry" from "an entry this launch cannot decrypt" (P0-3): secureGet
+// answers null for both, and the renderer must never mint a new key over the
+// second case, because every sealed byte on the device dies with the old one.
+guarded('osc:secureHas', (k: unknown): boolean => Boolean(readSecrets()[str(k, 'key')]));
+guarded('osc:secureGet', (k: unknown): string | null => {
+  const sealed = readSecrets()[str(k, 'key')];
   if (!sealed) return null;
   try {
     if (!safeStorage.isEncryptionAvailable()) return null;
@@ -640,22 +752,24 @@ ipcMain.handle('osc:secureGet', (_e, key: string): string | null => {
     return null;
   }
 });
-ipcMain.handle('osc:secureSet', (_e, key: string, value: string): boolean => {
+guarded('osc:secureSet', (k: unknown, v: unknown): boolean => {
+  const key = str(k, 'key');
+  const value = str(v, 'value');
   if (!safeStorage.isEncryptionAvailable()) return false;
   const all = readSecrets();
   all[key] = safeStorage.encryptString(value).toString('base64');
   writeSecrets(all);
   return true;
 });
-ipcMain.handle('osc:secureDelete', (_e, key: string): void => {
+guarded('osc:secureDelete', (k: unknown): void => {
   const all = readSecrets();
-  delete all[key];
+  delete all[str(k, 'key')];
   writeSecrets(all);
 });
 
-ipcMain.handle('osc:httpFetch', async (_e, req: HttpFetchReq) => {
+guarded('osc:httpFetch', async (req: unknown) => {
   try {
-    return await handleHttpFetch(req);
+    return await handleHttpFetch(httpFetchReq(req));
   } catch (err) {
     return { ok: false, status: 0, body: err instanceof Error ? err.message : String(err) };
   }

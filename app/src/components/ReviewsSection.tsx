@@ -33,7 +33,7 @@ import {
 } from '../lib/reviews.js';
 import { CommunityStars, Stars } from './Stars.js';
 import { Sheet } from './Sheet.js';
-import { hapticSuccess, hapticTick } from '../lib/haptics.js';
+import { hapticSuccess } from '../lib/haptics.js';
 
 type Speed = 'snappy' | 'usable' | 'slow';
 
@@ -104,7 +104,6 @@ export function ReviewsSection({
       onNeedSignIn();
       return;
     }
-    hapticTick();
     setSheetOpen(true);
   };
 
@@ -403,7 +402,6 @@ function WriteReview({
             aria-checked={n === rating}
             aria-label={`${n} star${n === 1 ? '' : 's'}`}
             onClick={() => {
-              hapticTick();
               setRating(n);
             }}
           >

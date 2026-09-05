@@ -6,22 +6,33 @@
 // This is called by APPLE, not a signed-in user, so verify_jwt=false (like the
 // Stripe webhook). Trust comes only from the JWS signature, never from a bearer.
 //
-// Correctness rules (mirroring stripe-webhook):
+// Correctness rules (mirroring stripe-webhook, plus the 2026-09-05 review):
 //   - The signed payload is verified before anything is trusted.
+//   - Only the Personal auto-renewable product grants anything (BE-9): a
+//     transaction for any other product id or type is acked and ignored.
 //   - status is authoritative; on expire/refund/revoke the row is written
 //     'canceled' and access ends (isEntitled gates on status + validUntil).
-//   - Ordering guard: last_event_at (by the transaction's signedDate) drops a
-//     stale or duplicate delivery so a late renewal cannot resurrect a canceled
-//     sub, and idempotency by notificationUUID drops exact re-deliveries.
+//   - The link row (apple_links) records the subscription's live state, so
+//     link-apple-purchase can refuse a replayed purchase-time JWS after a
+//     refund (BE-4).
+//   - Ordering guard (BE-8): the apply_user_entitlement_event RPC compares
+//     last_event_at inside the write, and idempotency by notificationUUID
+//     drops exact re-deliveries. Cross-rail guard (BE-3): shouldApplyRailWrite.
 //   - Every DB write error THROWS -> 500 so Apple retries.
 //   - An unknown original_transaction_id returns 200 (nothing to do) so Apple
 //     stops retrying, like stripe-webhook's unmatched-customer case.
 //
 // Env (Supabase function secrets):
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APPLE_BUNDLE_ID,
-//   APPLE_APP_APPLE_ID (see _shared/apple.ts).
+//   APPLE_APP_APPLE_ID (see _shared/apple.ts), APPLE_PRODUCT_IDS.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { isEntitled } from '../_shared/entitlement.ts';
+import {
+  appleTransactionAccepted,
+  isEntitled,
+  parseProductIds,
+  shouldApplyRailWrite,
+  statusFromTransaction,
+} from '../_shared/entitlement.ts';
 import { verifyNotification, verifyTransaction } from '../_shared/apple.ts';
 
 const supabase = createClient(
@@ -29,22 +40,13 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
 );
 
+// The Personal product ids this backend grants for (BE-9). Unset = nothing.
+const PRODUCT_IDS = parseProductIds(Deno.env.get('APPLE_PRODUCT_IDS'));
+
 // Notification types that grant access.
 const ACTIVE_TYPES = new Set(['SUBSCRIBED', 'DID_RENEW', 'OFFER_REDEEMED']);
 // Notification types that revoke access now.
 const REVOKE_TYPES = new Set(['EXPIRED', 'GRACE_PERIOD_EXPIRED', 'REFUND', 'REVOKE']);
-
-// Derive an entitlement status from a decoded transaction (refund/revocation or
-// a lapsed expiry ends access; else active). Apple's 'expired' maps to
-// 'canceled' because the 0006 CHECK has no 'expired' status.
-function statusFromTransaction(txn: {
-  expiresDate?: number;
-  revocationDate?: number;
-}): string {
-  if (txn.revocationDate) return 'canceled';
-  if (txn.expiresDate && txn.expiresDate <= Date.now()) return 'canceled';
-  return 'active';
-}
 
 // Map original_transaction_id -> user_id via apple_links (written by
 // link-apple-purchase after the user linked the sub). Unmatched -> undefined
@@ -61,8 +63,26 @@ async function userIdForOriginalTransaction(
   return data?.user_id;
 }
 
-// Upsert the user's Apple entitlement with the ordering guard. Throws on any
-// write error so the caller returns 500 and Apple retries.
+// The link's own state (BE-4): what Apple last told us about this
+// subscription. Written with the same ordering rule as the entitlement, so a
+// late notification cannot roll the link back to 'active' after a refund.
+async function recordLinkState(
+  originalTransactionId: string,
+  linkStatus: string,
+  validUntil: string | null,
+  eventMs: number,
+): Promise<void> {
+  const eventAt = new Date(eventMs).toISOString();
+  const { error } = await supabase
+    .from('apple_links')
+    .update({ status: linkStatus, valid_until: validUntil, last_event_at: eventAt })
+    .eq('original_transaction_id', originalTransactionId)
+    .or(`last_event_at.is.null,last_event_at.lt.${eventAt}`);
+  if (error) throw new Error(`apple_links state update failed: ${error.message}`);
+}
+
+// Apply the user's Apple entitlement. Throws on any write error so the caller
+// returns 500 and Apple retries.
 async function upsertUserEntitlement(
   userId: string,
   originalTransactionId: string,
@@ -76,40 +96,27 @@ async function upsertUserEntitlement(
     .eq('user_id', userId)
     .maybeSingle();
   if (readErr) throw new Error(`user entitlement read failed: ${readErr.message}`);
-  if (existing?.last_event_at && new Date(existing.last_event_at).getTime() >= eventMs) {
-    return; // stale or duplicate delivery; the current state is newer.
-  }
 
-  // Cross-rail safety (F1): never let an Apple notification clobber a
-  // Stripe-sourced ACTIVE entitlement whose window runs at least as long. A
-  // customer who paid on the web/desktop rail must not be revoked or shortened
-  // by an Apple event for a parallel sub. Mirrors the guard in
-  // link-apple-purchase; an Apple-sourced row (the normal case) is unaffected.
-  if (
-    existing &&
-    existing.source === 'stripe' &&
-    isEntitled({ status: existing.status, validUntil: existing.valid_until })
-  ) {
-    const stripeUntil = existing.valid_until ? new Date(existing.valid_until).getTime() : Infinity;
-    const appleUntil = validUntil ? new Date(validUntil).getTime() : Infinity;
-    if (stripeUntil >= appleUntil) return; // keep the longer paid coverage.
-  }
+  // BE-3 and BE-8 pre-check: a stale delivery, or a live Stripe row whose paid
+  // window runs at least as long, is left alone. The RPC re-checks ordering
+  // atomically.
+  if (!shouldApplyRailWrite(existing, { source: 'apple', validUntil, eventMs })) return;
 
-  // Only the columns we own are written, so an existing Stripe row keeps its
-  // stripe_customer_id / stripe_subscription_id (ON CONFLICT DO UPDATE touches
-  // only provided columns). source flips to 'apple' because a live Apple
-  // notification is now the authority for this user's individual entitlement.
-  const { error: upErr } = await supabase.from('user_entitlements').upsert({
-    user_id: userId,
-    tier_id: 'personal',
-    status,
-    source: 'apple',
-    valid_until: validUntil,
-    apple_original_transaction_id: originalTransactionId,
-    last_event_at: new Date(eventMs).toISOString(),
-    issued_at: new Date().toISOString(),
+  // Only the columns this rail owns move; the RPC keeps an existing row's
+  // stripe_customer_id / stripe_subscription_id. source flips to 'apple'
+  // because a live Apple notification is now the authority for this user.
+  const { data: applied, error: upErr } = await supabase.rpc('apply_user_entitlement_event', {
+    p_user: userId,
+    p_status: status,
+    p_source: 'apple',
+    p_valid_until: validUntil,
+    p_event_at: new Date(eventMs).toISOString(),
+    p_stripe_customer_id: null,
+    p_stripe_subscription_id: null,
+    p_apple_original_transaction_id: originalTransactionId,
   });
-  if (upErr) throw new Error(`user entitlement upsert failed: ${upErr.message}`);
+  if (upErr) throw new Error(`user entitlement apply failed: ${upErr.message}`);
+  if (!applied) console.log('apple-notifications: stale event dropped', { userId, eventMs });
 }
 
 Deno.serve(async (req) => {
@@ -157,6 +164,18 @@ Deno.serve(async (req) => {
     }
     const txn = await verifyTransaction(signedTxn);
 
+    // BE-9: only the Personal auto-renewable product is ours to act on. Any
+    // other product (a future consumable, a mistaken price) is acked, logged,
+    // and never turned into an entitlement.
+    if (!appleTransactionAccepted(txn, PRODUCT_IDS)) {
+      console.warn('apple-notifications: ignoring transaction for an unlisted product', {
+        productId: txn.productId ?? null,
+        type: txn.type ?? null,
+        configured: PRODUCT_IDS.size > 0,
+      });
+      return new Response('ok', { status: 200 });
+    }
+
     const originalTransactionId = txn.originalTransactionId;
     if (!originalTransactionId) return new Response('ok', { status: 200 });
 
@@ -175,15 +194,26 @@ Deno.serve(async (req) => {
     //     entitled until its expiry, so derive from the transaction (validUntil
     //     gates the natural end). Same for any other type we do not special-case.
     let status: string;
-    if (ACTIVE_TYPES.has(type)) status = 'active';
-    else if (REVOKE_TYPES.has(type)) status = 'canceled';
-    else status = statusFromTransaction(txn);
+    let linkStatus: string;
+    if (ACTIVE_TYPES.has(type)) {
+      status = 'active';
+      linkStatus = 'active';
+    } else if (REVOKE_TYPES.has(type)) {
+      status = 'canceled';
+      linkStatus = type === 'REFUND' ? 'refunded' : type === 'REVOKE' ? 'revoked' : 'expired';
+    } else {
+      status = statusFromTransaction(txn);
+      linkStatus = txn.revocationDate ? 'revoked' : status === 'active' ? 'active' : 'expired';
+    }
 
     const validUntil = txn.expiresDate ? new Date(txn.expiresDate).toISOString() : null;
     // Ordering guard time: the notification's signedDate (when Apple emitted the
     // event), falling back to the transaction's signedDate. Both UNIX ms.
     const eventMs = notification.signedDate ?? txn.signedDate ?? Date.now();
 
+    // The link state first (BE-4), then the entitlement. Both are ordered
+    // writes, so a retry after a failure below is harmless.
+    await recordLinkState(originalTransactionId, linkStatus, validUntil, eventMs);
     await upsertUserEntitlement(userId, originalTransactionId, status, validUntil, eventMs);
 
     // A harmless log to confirm the resolved state during sandbox validation.

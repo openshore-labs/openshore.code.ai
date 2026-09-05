@@ -17,6 +17,7 @@ import type {
 import { ProviderError } from './types.js';
 import type { AnthropicEndpoint } from '../config/schema.js';
 import { anthropicAuthHeaders, needsWorkspaceId, WORKSPACE_HINT } from '../auth/claude.js';
+import { idleError, idleGuard } from './streamIdle.js';
 
 export class AnthropicProvider implements Provider {
   readonly kind = 'cloud' as const;
@@ -131,15 +132,25 @@ export class AnthropicProvider implements Provider {
       }));
     }
 
-    const res = await fetch(`${this.baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(body),
-      signal: signal ?? null,
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new ProviderError(this.id, anthropicErrorHint(res.status, text));
+    // The idle guard (DAE-3) aborts the fetch when no bytes arrive for the
+    // window; every chunk below resets it. The caller's signal still aborts.
+    const guard = idleGuard(signal);
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(body),
+        signal: guard.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new ProviderError(this.id, anthropicErrorHint(res.status, text));
+      }
+    } catch (err) {
+      guard.stop();
+      if (guard.idled) throw idleError(this.id, this.label, guard.idleMs);
+      throw err;
     }
 
     // Streamed content blocks; tool_use inputs arrive as JSON fragments.
@@ -148,6 +159,7 @@ export class AnthropicProvider implements Provider {
     let sawToolUse = false;
 
     if (!res.body) {
+      guard.stop();
       yield { type: 'done', stopReason: 'end' };
       return;
     }
@@ -157,7 +169,15 @@ export class AnthropicProvider implements Provider {
     try {
       for (;;) {
         if (signal?.aborted) break;
-        const { done, value } = await reader.read();
+        let step: Awaited<ReturnType<typeof reader.read>>;
+        try {
+          step = await reader.read();
+        } catch (err) {
+          if (guard.idled) throw idleError(this.id, this.label, guard.idleMs);
+          throw err;
+        }
+        guard.touch();
+        const { done, value } = step;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         let idx: number;
@@ -213,10 +233,23 @@ export class AnthropicProvider implements Provider {
                 };
               }
               break;
+            case 'error':
+              // An in-stream error (overloaded, rate limited) ends the
+              // message; the API sends it as an event, not a status (DAE-2).
+              // Throw the same hint the status would carry so the loop's
+              // transient retry runs, instead of ending as a complete answer.
+              throw new ProviderError(
+                this.id,
+                anthropicStreamErrorHint(
+                  String(evt.error?.type ?? 'error'),
+                  String(evt.error?.message ?? ''),
+                ),
+              );
           }
         }
       }
     } finally {
+      guard.stop();
       try {
         reader.releaseLock();
       } catch {}
@@ -244,6 +277,17 @@ export class AnthropicProvider implements Provider {
             : 'end',
     };
   }
+}
+
+/** The hint for an error delivered inside the SSE stream, keyed on its type.
+ *  The wording matches the HTTP hints so the loop's transient matcher (which
+ *  looks for "overloaded" and "rate limit" as words) treats both the same. */
+function anthropicStreamErrorHint(type: string, message: string): string {
+  if (type === 'overloaded_error') return anthropicErrorHint(529, message);
+  if (type === 'rate_limit_error')
+    return 'The Anthropic API hit a rate limit for this key mid-stream. Give it a moment, or check your plan limits at console.anthropic.com.';
+  if (type === 'authentication_error') return anthropicErrorHint(401, message);
+  return `Anthropic API stream error (${type}): ${message.slice(0, 300) || 'no detail'}`;
 }
 
 function anthropicErrorHint(status: number, text: string): string {

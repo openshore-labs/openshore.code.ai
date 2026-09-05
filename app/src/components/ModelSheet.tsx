@@ -5,7 +5,7 @@
 // state that routes to setup. When no stack exists yet, My Stack is greyed with a
 // link to build one. Models in the category sheets swipe left to pin; a pinned
 // model rides under My Stack for one-tap use and swipes there to unpin.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
@@ -136,7 +136,20 @@ export function ModelSheet({
 }) {
   const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView } = useApp();
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
-  const { closing, dismiss } = useSheetExit(onClose);
+  // Play the exit before a pick propagates (UI-4): the parent unmounts this
+  // sheet the moment it learns the choice, so the choice is held until the
+  // slide-down has landed. ApprovalSheet does the same.
+  const pending = useRef<(() => void) | null>(null);
+  const { closing, dismiss } = useSheetExit(() => {
+    const run = pending.current;
+    pending.current = null;
+    if (run) run();
+    else onClose();
+  });
+  const pick = (source: ConversationSource) => {
+    pending.current = () => onPick(source);
+    dismiss();
+  };
   const effort = settings.effort ?? DEFAULT_EFFORT;
 
   // Your paired computer's stack: the model(s) your machine runs, reachable
@@ -230,7 +243,7 @@ export function ModelSheet({
                     main="This computer"
                     sub={`${engineModel}, running on this machine`}
                     highlight
-                    onClick={() => onPick({ kind: 'desktop' })}
+                    onClick={() => pick({ kind: 'desktop' })}
                   />
                 ) : (
                   <div className="ms-row ms-row-disabled">
@@ -269,7 +282,7 @@ export function ModelSheet({
                     main="My computer"
                     sub={`${boxModel}, running on your machine`}
                     highlight
-                    onClick={() => onPick({ kind: 'desktop' })}
+                    onClick={() => pick({ kind: 'desktop' })}
                   />
                 ) : (
                   <div className="ms-row ms-row-disabled">
@@ -285,7 +298,7 @@ export function ModelSheet({
                   <Row
                     main="Chat with your computer"
                     sub="Free. Read-only, no repo or edits."
-                    onClick={() => onPick({ kind: 'desktop-chat' })}
+                    onClick={() => pick({ kind: 'desktop-chat' })}
                   />
                 ) : null}
               </div>
@@ -296,7 +309,7 @@ export function ModelSheet({
                   main="My Stack"
                   sub="Your Reasoning LLM routes each task"
                   highlight
-                  onClick={() => onPick({ kind: 'stack' })}
+                  onClick={() => pick({ kind: 'stack' })}
                 />
               ) : (
                 <div className="ms-row ms-row-disabled">
@@ -312,7 +325,7 @@ export function ModelSheet({
                 <SwipeRow
                   key={pinKey(src)}
                   pinned
-                  onTap={() => onPick(src)}
+                  onTap={() => pick(src)}
                   onToggle={() => setPin(src)}
                 >
                   <div className="ms-row">
@@ -381,7 +394,7 @@ export function ModelSheet({
                           <SwipeRow
                             key={m.id}
                             pinned={isPinned(pins, src)}
-                            onTap={() => onPick(src)}
+                            onTap={() => pick(src)}
                             onToggle={() => setPin(src)}
                           >
                             <div className="ms-row">
@@ -409,7 +422,7 @@ export function ModelSheet({
                           <SwipeRow
                             key={m.id}
                             pinned={isPinned(pins, src)}
-                            onTap={() => onPick(src)}
+                            onTap={() => pick(src)}
                             onToggle={() => setPin(src)}
                           >
                             <div className="ms-row">
@@ -442,7 +455,7 @@ export function ModelSheet({
                   <SwipeRow
                     key={m.id}
                     pinned={isPinned(pins, src)}
-                    onTap={() => onPick(src)}
+                    onTap={() => pick(src)}
                     onToggle={() => setPin(src)}
                   >
                     <div className="ms-row">
@@ -471,7 +484,7 @@ export function ModelSheet({
                     <SwipeRow
                       key={id}
                       pinned={isPinned(pins, src)}
-                      onTap={() => onPick(src)}
+                      onTap={() => pick(src)}
                       onToggle={() => setPin(src)}
                     >
                       <div className="ms-row">

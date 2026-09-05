@@ -136,8 +136,9 @@ export function statusFromTransaction(
  *  Personal. */
 export const APPLE_SUBSCRIPTION_TYPE = 'Auto-Renewable Subscription';
 
-/** Parse the APPLE_PRODUCT_IDS secret (comma-separated product ids). */
-export function parseProductIds(raw: string | undefined | null): Set<string> {
+/** Parse a comma-separated id list secret (APPLE_PRODUCT_IDS,
+ *  STRIPE_IGNORED_PRICES). Blank entries are dropped; unset is empty. */
+export function parseIdList(raw: string | undefined | null): Set<string> {
   return new Set(
     (raw ?? '')
       .split(',')
@@ -145,6 +146,9 @@ export function parseProductIds(raw: string | undefined | null): Set<string> {
       .filter(Boolean),
   );
 }
+
+/** The APPLE_PRODUCT_IDS secret, parsed. */
+export const parseProductIds = parseIdList;
 
 /** May this transaction grant Personal? Fail closed: an empty allowlist (the
  *  secret unset) accepts nothing, so a deploy that forgot the secret cannot

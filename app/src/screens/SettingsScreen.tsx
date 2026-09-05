@@ -28,7 +28,7 @@ import {
 } from '../lib/stackHealth.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
-import { hapticApproval, hapticTick } from '../lib/haptics.js';
+import { hapticApproval } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { InfoSheet } from '../components/InfoSheet.js';
@@ -233,7 +233,6 @@ export function SettingsScreen() {
   const close = () => setSheet(undefined);
 
   const installHarbor = async () => {
-    hapticTick();
     // Harbor Light's voice on the handoff: the guide stays beside you while the
     // bigger model comes down. Only when a download actually starts (not when
     // Harbor is already here and ensureHarbor is an instant no-op).
@@ -242,7 +241,6 @@ export function SettingsScreen() {
     if (ok) showToast('Harbor is installed and ready on this device.');
   };
   const uninstallHarbor = async () => {
-    hapticTick();
     await removeHarbor();
     showToast('Harbor removed. You can reinstall it any time.');
   };
@@ -393,7 +391,6 @@ export function SettingsScreen() {
                       aria-selected={active}
                       className={`seg press-fb${active ? ' active' : ''}`}
                       onClick={() => {
-                        hapticTick();
                         void saveSettings({ theme: t });
                       }}
                     >

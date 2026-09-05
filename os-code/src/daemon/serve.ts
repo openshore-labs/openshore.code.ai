@@ -11,7 +11,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { basename, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import {
   assertSafeBind,
   bearerFrom,
@@ -19,12 +19,20 @@ import {
   loadOrCreateToken,
   resolveAuth,
 } from '../core/security/daemonAuth.js';
-import { oscHome, loadConfig, saveGlobalConfig } from '../config/load.js';
+import {
+  oscHome,
+  loadConfig,
+  loadDaemonConfig,
+  saveGlobalConfig,
+  type DaemonConfig,
+} from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
+import { profileFor } from '../core/security/profiles.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
-import { LocalDriver, listSessions, sealSessionsAtRest } from './session.js';
+import { effectiveMode } from '../core/agent/modes.js';
+import { LocalDriver, deleteSession, listSessions, sealSessionsAtRest } from './session.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { PushNotifier, savePushConfig } from './push.js';
 import { clone } from '../git/index.js';
@@ -44,6 +52,10 @@ import { logger } from '../util/log.js';
 // The phone app runs in a WebView, so the daemon must speak CORS: a
 // capacitor://localhost origin preflights every authorized request. The
 // bearer token still gates everything; CORS is transport manners, not auth.
+// `*` stays by decision (DAE-15, CTO): no cookies ride this API, and the
+// desktop's Electron origin is null, so an allowlist would be worse. Never
+// allow-credentials. The one tightening: a 401 carries NO CORS headers, so a
+// web page probing the port sees an opaque error, not a readable fingerprint.
 const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
@@ -65,10 +77,23 @@ const CHAT_SYSTEM = [
   'Never use em dashes. Use a period or a comma instead.',
 ].join('\n');
 
+// Request bodies are bounded (DAE-8): a JSON body over the cap is answered 413
+// and never buffered. The outbox carries file contents, so it gets more room.
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_OUTBOX_BODY_BYTES = 64 * 1024 * 1024;
+
+// Idle eviction (DAE-12): a rehydratable driver that no client is attached to
+// and that has run nothing for this long is dropped from memory. Its journal
+// is on disk; the next touch rehydrates it.
+const DEFAULT_IDLE_EVICT_AFTER_MS = 30 * 60_000;
+const DEFAULT_IDLE_EVICT_EVERY_MS = 60_000;
+
 export interface DaemonOptions {
   config: OscConfig;
   bind: 'loopback' | 'tailscale';
   port: number;
+  /** Override the idle-eviction clock (tests shorten it). */
+  idleEviction?: { afterMs?: number; everyMs?: number };
   /** The PTY host to use. Defaults to a real TerminalManager (node-pty). Tests
    *  pass one with an injected spawn so "node-pty not installed" and fake
    *  terminals are reproducible on any machine, built natives or not. */
@@ -123,6 +148,25 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     drivers.set(driver.id, driver);
     notifier.watch(driver);
   };
+  // Forget a driver: drop it from the map, release the push watcher (so a
+  // rehydrated driver is watched afresh), and let it free its journal copy.
+  const forgetDriver = (driver: LocalDriver): void => {
+    drivers.delete(driver.id);
+    notifier.unwatch(driver.id);
+    driver.dispose();
+  };
+  const evictAfterMs = options.idleEviction?.afterMs ?? DEFAULT_IDLE_EVICT_AFTER_MS;
+  const evictEveryMs = options.idleEviction?.everyMs ?? DEFAULT_IDLE_EVICT_EVERY_MS;
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const driver of [...drivers.values()]) {
+      if (driver.evictable && now - driver.lastActivityAt >= evictAfterMs) {
+        log.info('evicting idle session', { id: driver.id });
+        forgetDriver(driver);
+      }
+    }
+  }, evictEveryMs);
+  sweep.unref();
 
   // Reseal any pre-encryption sessions before serving. Off the startup path
   // (setImmediate) and failure-tolerant: sealing is protection, never an
@@ -157,6 +201,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 400, { error: err.message });
         return;
       }
+      if (err instanceof BodyTooLarge) {
+        sendJson(res, 413, { error: err.message });
+        return;
+      }
       throw err;
     }
   }
@@ -172,10 +220,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     const presented = bearerFrom(req.headers.authorization);
     const auth = resolveAuth(presented, token);
     if (!auth) {
-      sendJson(res, 401, {
-        error:
-          'Missing or wrong daemon credential. The shared token lives in ~/.os-code/daemon.token; per-user tokens come from `osc token mint`.',
-      });
+      sendJson(
+        res,
+        401,
+        {
+          error:
+            'Missing or wrong daemon credential. The shared token lives in ~/.os-code/daemon.token; per-user tokens come from `osc token mint`.',
+        },
+        { cors: false },
+      );
       return;
     }
     // requireAdmin gates a mutating admin route (403 for a member). Read routes
@@ -220,7 +273,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 400, { error: 'Send {"grant": "...", "sendUrl": "https://..."}.' });
         return;
       }
-      savePushConfig(auth.userId, { grant, sendUrl });
+      // One grant per device (DAE-7): a second phone on the same credential
+      // must not overwrite the first. The phone sends its deviceId; without
+      // one the grant itself keys the slot.
+      const deviceId = typeof body.deviceId === 'string' ? body.deviceId : undefined;
+      savePushConfig(auth.userId, { grant, sendUrl }, deviceId);
       sendJson(res, 200, { registered: true });
       return;
     }
@@ -242,7 +299,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
 
     // ---- Phone-app surfaces: workspaces, the stack, the catalog. ----
     if (req.method === 'GET' && url.pathname === '/workspaces') {
-      sendJson(res, 200, { workspaces: recentWorkspaces() });
+      // Owner-scoped for members (DAE-1): a member sees the cwds of its own
+      // sessions plus the admin-provisioned workspaces it may open, never
+      // another user's session paths. Admins see every recent workspace.
+      const own = hasRole(auth, 'admin') ? undefined : auth.userId;
+      sendJson(res, 200, { workspaces: recentWorkspaces(own) });
       return;
     }
     if (req.method === 'POST' && url.pathname === '/workspaces/clone') {
@@ -256,7 +317,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 400, { error: 'Send {"url": "https://github.com/owner/repo"}.' });
         return;
       }
-      const name = basename(gitUrl.replace(/\.git$/, '')) || 'repo';
+      // The target name comes from the url's last segment; `.` or `..` would
+      // land the clone on ~/OSCode or ~ itself (DAE-16).
+      const name = basename(gitUrl.replace(/\.git$/, ''));
+      if (!/^[A-Za-z0-9._-]+$/.test(name) || name === '.' || name === '..') {
+        sendJson(res, 400, {
+          error: 'The repository name in that url is not usable as a folder name.',
+        });
+        return;
+      }
       const parent = join(homedir(), 'OSCode');
       mkdirSync(parent, { recursive: true });
       const target = join(parent, name);
@@ -337,7 +406,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // Serialized per repo so the temp-index build is atomic; idempotent on
     // clientOpId; a conflict lands on a rescue branch (never a force-push).
     if (req.method === 'POST' && url.pathname === '/outbox/apply') {
-      const body = await readJson(req);
+      const body = await readJson(req, MAX_OUTBOX_BODY_BYTES);
       const cwd = typeof body.cwd === 'string' ? body.cwd : '';
       if (!cwd || !existsSync(cwd)) {
         sendJson(res, 400, { ok: false, error: 'Send a valid repo cwd.' });
@@ -346,7 +415,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // An apply creates a commit and pushes it with the desktop's credentials,
       // a stronger capability than opening a session, so it is gated to an
       // allowed outbox target on this machine, never an arbitrary repo path.
-      if (!isOutboxAllowedPath(cwd, options.config)) {
+      // The roots are read fresh from the GLOBAL config only (DAE-9).
+      if (!isOutboxAllowedPath(cwd)) {
         sendJson(res, 403, {
           ok: false,
           error: 'This repo is not an allowed outbox target on this machine.',
@@ -368,7 +438,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       try {
-        const result = await withKeyLock(cwd, () => applyOutboxItem(request));
+        // Lock on the real path (DAE-10): `repo` and `repo/` (or a symlink to
+        // it) must serialize on the same key, like the receipt they share.
+        const result = await withKeyLock(realpathSync(cwd), () => applyOutboxItem(request));
         const status = result.ok ? 200 : 'conflict' in result && result.conflict ? 409 : 400;
         sendJson(res, status, result);
       } catch (err) {
@@ -388,7 +460,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       // Same allowlist gate as apply: never probe an arbitrary repo path.
-      if (!isOutboxAllowedPath(cwd, options.config)) {
+      if (!isOutboxAllowedPath(cwd)) {
         sendJson(res, 403, { error: 'This repo is not an allowed outbox target on this machine.' });
         return;
       }
@@ -438,7 +510,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // a minted multi-user credential sees a 'machine' aggregate, the legacy solo
     // token sees 'personal'.
     if (req.method === 'GET' && url.pathname === '/stack-health') {
-      const visibility = loadConfig().config.daemon.stackHealthVisibility;
+      const visibility = loadDaemonConfig().stackHealthVisibility;
       if (visibility === 'admins' && !hasRole(auth, 'admin')) {
         sendJson(res, 403, {
           error: 'restricted',
@@ -460,7 +532,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // Read the current Stack Health visibility (any member, so the app can show
     // the right state and, for an admin, the current setting).
     if (req.method === 'GET' && url.pathname === '/stack-health/visibility') {
-      sendJson(res, 200, { visibility: loadConfig().config.daemon.stackHealthVisibility });
+      sendJson(res, 200, { visibility: loadDaemonConfig().stackHealthVisibility });
       return;
     }
     // Set it. Admin-only, persisted to the machine's global config.
@@ -558,13 +630,20 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       return;
     }
     if (req.method === 'GET' && url.pathname === '/sessions') {
-      const live = [...drivers.values()].map((d) => ({
-        id: d.id,
-        cwd: d.cwd,
-        busy: d.busy,
-        model: d.describeModel(),
-      }));
-      sendJson(res, 200, { live, stored: listSessions() });
+      // Owner-scoped (DAE-1): titles are the user's own prompt text, so a
+      // member sees exactly its own sessions. Admins (and the legacy shared
+      // token) see all; a session with no recorded owner is admin-only.
+      const admin = hasRole(auth, 'admin');
+      const live = [...drivers.values()]
+        .filter((d) => admin || d.owner === auth.userId)
+        .map((d) => ({
+          id: d.id,
+          cwd: d.cwd,
+          busy: d.busy,
+          model: d.describeModel(),
+        }));
+      const stored = listSessions().filter((s) => admin || s.ownerUserId === auth.userId);
+      sendJson(res, 200, { live, stored });
       return;
     }
     if (req.method === 'POST' && url.pathname === '/sessions') {
@@ -572,9 +651,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : process.cwd();
       const instructions = typeof body.instructions === 'string' ? body.instructions : undefined;
       const projectName = typeof body.projectName === 'string' ? body.projectName : undefined;
-      const permissionMode = isPermissionMode(body.permissionMode)
-        ? body.permissionMode
-        : undefined;
+      const requestedMode = isPermissionMode(body.permissionMode) ? body.permissionMode : undefined;
+      // Remote sessions run on the remote-attached profile, whose guarantee is
+      // that shell never auto-runs (ENG-1). bypassPermissions would override
+      // it, so it is downgraded here, announced in the response and the
+      // transcript, rather than accepted and silently ignored.
+      const { mode: permissionMode, note: modeNote } = effectiveRemoteMode(requestedMode);
       // The app's Humanize Writing setting for this session (only ever an off).
       const humanize = typeof body.humanize === 'boolean' ? body.humanize : undefined;
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
@@ -596,7 +678,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);
-        sendJson(res, 201, { id: driver.id, cwd, warnings });
+        if (modeNote) {
+          warnings.push(modeNote);
+          driver.emit({ type: 'status', message: modeNote });
+        }
+        sendJson(res, 201, { id: driver.id, cwd, warnings, mode: driver.mode });
       } catch (err) {
         sendJson(res, 400, { error: (err as Error).message });
       }
@@ -611,6 +697,31 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // admin-only, so a member cannot reach a legacy or another user's session.
       const ownedBy = (owner: string | undefined): boolean =>
         hasRole(auth, 'admin') || owner === auth.userId;
+
+      // DELETE /sessions/:id -> remove the stored session (DAE-12). Owner or
+      // admin. Answered before any rehydrate: deleting must never boot an
+      // agent, and a session whose cwd is gone must still be deletable.
+      if (req.method === 'DELETE' && !parts[2]) {
+        const live = drivers.get(id);
+        const stored = live ? undefined : listSessions().find((s) => s.id === id);
+        if (!live && !stored) {
+          sendJson(res, 404, { error: `No session ${id}.` });
+          return;
+        }
+        if (!ownedBy(live ? live.owner : stored?.ownerUserId)) {
+          sendJson(res, 403, { error: `Session ${id} belongs to another user.` });
+          return;
+        }
+        if (live) {
+          live.abort();
+          forgetDriver(live);
+        }
+        terminals.killSession(id);
+        const deleted = deleteSession(id);
+        sendJson(res, deleted || live ? 200 : 404, { deleted: deleted || Boolean(live) });
+        return;
+      }
+
       let driver = drivers.get(id);
       if (!driver) {
         const stored = listSessions().find((s) => s.id === id);
@@ -692,9 +803,22 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       // ---- user-initiated command lane (chat-to-terminal bridge) ----
-      // The owner is already established above (ownedBy). Their explicit tap is
-      // the approval, so no model approval is raised; the run is audited in the
-      // sealed journal (command-start records the exact command and cwd).
+      // ADMIN-only (P0-1, CTO ruling): this lane is `bash -c` in the workspace
+      // with no jail and no model approval, which is a raw shell however it is
+      // dressed. On a shared hub a member with it could read the admin token
+      // and push with the admin's git credentials, so members keep only the
+      // approval-gated agent lane (ask the model, approve the step). The 403 is
+      // distinct so the phone can render it. The owner is established above;
+      // an admin's explicit tap is the approval, and every run is audited in
+      // the sealed journal (command-start records the exact command and cwd).
+      if (parts[2] === 'commands' && !hasRole(auth, 'admin')) {
+        sendJson(res, 403, {
+          error: 'restricted',
+          message:
+            'Running commands on this hub is for admins. Ask the model to run it and approve the step, or ask a company admin.',
+        });
+        return;
+      }
       if (req.method === 'POST' && parts[2] === 'commands' && !parts[3]) {
         const body = await readJson(req);
         if (typeof body.command !== 'string' || !body.command.trim()) {
@@ -730,14 +854,16 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
 
       // ---- interactive PTY terminal (Phase 2 chat-to-terminal bridge) ----
-      // A PTY is an UNJAILED interactive shell (unlike the command lane, which
-      // is still a shell but every run is journaled and content-capped). So the
-      // whole terminal surface is ADMIN-only, owner already established above via
-      // ownedBy. Members keep the approval-gated agent lane and the user command
-      // lane; they never get a raw shell. The raw byte stream rides its OWN SSE
-      // endpoint with offset replay, entirely separate from the event journal:
-      // only content-free terminal-opened/terminal-closed markers are journaled,
-      // and stdin (where sudo passwords live) is never journaled or logged.
+      // A PTY is an UNJAILED interactive shell, and so is the command lane
+      // above (journaled and content-capped, but still `bash -c`). Both are
+      // ADMIN-only, owner already established above via ownedBy. Members keep
+      // the approval-gated agent lane only; they never get a raw shell. The
+      // raw byte stream rides its OWN SSE endpoint with offset replay, entirely
+      // separate from the event journal: only content-free terminal-opened/
+      // terminal-closed markers are journaled, and stdin (where sudo passwords
+      // live) is never journaled or logged. Every terminal route resolves the
+      // termId WITHIN this session (DAE-14), so a terminal cannot be driven,
+      // or its audit marker journaled, through another session's routes.
       if (parts[2] === 'term') {
         if (!requireAdmin()) return;
 
@@ -768,7 +894,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // from the ring buffer then live. Same backpressure/cleanup discipline
           // as the /events route.
           if (req.method === 'GET' && parts[4] === 'stream') {
-            if (!terminals.has(termId)) {
+            if (!terminals.has(termId, id)) {
               sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
               return;
             }
@@ -801,11 +927,24 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
                 res.destroy();
               }
             };
-            const unsubscribe = terminals.subscribe(termId, since, (data, endOffset) => {
-              safeWrite(
-                `data: ${JSON.stringify({ b64: data.toString('base64'), offset: endOffset })}\n\n`,
-              );
-            });
+            // The final frame is {exit, offset} (DAE-5): the shell's exit code
+            // and the end offset, so the client knows the stream is over and
+            // whether it saw every byte. The response ends right after it.
+            const unsubscribe = terminals.subscribe(
+              termId,
+              since,
+              (data, endOffset) => {
+                safeWrite(
+                  `data: ${JSON.stringify({ b64: data.toString('base64'), offset: endOffset })}\n\n`,
+                );
+              },
+              (exit, offset) => {
+                safeWrite(`data: ${JSON.stringify({ exit, offset })}\n\n`);
+                cleanup();
+                if (!res.writableEnded) res.end();
+              },
+              id,
+            );
             // has() passed with no await since, so subscribe finds it; guard
             // regardless, and stop if the synchronous replay tripped teardown.
             if (!unsubscribe || closed) {
@@ -834,9 +973,17 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               return;
             }
             const data = Buffer.from(body.dataBase64, 'base64').toString('utf8');
-            const ok = terminals.write(termId, data);
-            if (!ok) {
+            if (!terminals.has(termId, id)) {
               sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
+              return;
+            }
+            if (terminals.isExited(termId, id)) {
+              sendJson(res, 409, { error: 'The shell exited. Open a new terminal.' });
+              return;
+            }
+            const ok = terminals.write(termId, data, id);
+            if (!ok) {
+              sendJson(res, 409, { error: 'The shell exited. Open a new terminal.' });
               return;
             }
             sendJson(res, 200, { wrote: true });
@@ -852,7 +999,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               sendJson(res, 400, { error: 'Send {"cols": N, "rows": N}.' });
               return;
             }
-            const ok = terminals.resize(termId, cols, rows);
+            const ok = terminals.resize(termId, cols, rows, id);
             if (!ok) {
               sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
               return;
@@ -863,7 +1010,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
 
           // DELETE /sessions/:id/term/:termId -> kill.
           if (req.method === 'DELETE' && !parts[4]) {
-            const ok = terminals.kill(termId);
+            const ok = terminals.kill(termId, id);
             if (!ok) {
               sendJson(res, 404, { error: `No terminal ${termId} on session ${id}.` });
               return;
@@ -960,8 +1107,13 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     const closeAll = (): void => {
+      clearInterval(sweep);
+      // close() alone leaves live SSE sockets open and the port busy until they
+      // drain (DAE-11); drop them so a restart never hits EADDRINUSE.
       server.close();
+      server.closeAllConnections();
       loopbackServer?.close();
+      loopbackServer?.closeAllConnections();
     };
     server.listen(options.port, host, () => {
       log.info('daemon up', { host, port: options.port });
@@ -985,14 +1137,56 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   });
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
+function sendJson(
+  res: ServerResponse,
+  status: number,
+  body: unknown,
+  opts: { cors?: boolean } = {},
+): void {
   const text = JSON.stringify(body);
   res.writeHead(status, {
     'content-type': 'application/json',
     'content-length': Buffer.byteLength(text),
-    ...CORS_HEADERS,
+    ...(opts.cors === false ? {} : CORS_HEADERS),
   });
   res.end(text);
+}
+
+/**
+ * The permission mode a remote session actually runs in (ENG-1, daemon half).
+ * The remote-attached profile forbids shell auto-approval; bypassPermissions
+ * would override that, so it is downgraded to acceptEdits with a note the
+ * caller announces. Every other mode passes through.
+ */
+function effectiveRemoteMode(requested: PermissionMode | undefined): {
+  mode: PermissionMode | undefined;
+  note?: string;
+} {
+  if (requested === undefined) return { mode: undefined };
+  // One helper shared with the loop's setMode, so the daemon's answer and the
+  // session's own downgrade never drift apart.
+  return effectiveMode(profileFor('remote-attached'), requested);
+}
+
+/** Resolve a path to its real location when it exists (symlinks followed),
+ *  else to its lexical absolute form. Both sides of a containment check go
+ *  through this, so a symlink planted inside a managed root that points
+ *  outside it can never pass as inside (P0-1), and a managed root that is
+ *  itself a symlink still contains its real children. */
+function realOrResolve(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+
+function within(target: string, root: string): boolean {
+  return target === root || target.startsWith(root + sep);
+}
+
+function managedRoot(): string {
+  return realOrResolve(join(homedir(), 'OSCode'));
 }
 
 /**
@@ -1003,9 +1197,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
  * the legacy shared token, which resolves as admin) are unrestricted.
  */
 export function isAdminProvisionedWorkspace(cwd: string): boolean {
-  const managed = resolve(join(homedir(), 'OSCode'));
-  const target = resolve(cwd);
-  return target === managed || target.startsWith(managed + sep);
+  return within(realOrResolve(cwd), managedRoot());
 }
 
 /**
@@ -1018,25 +1210,51 @@ export function isAdminProvisionedWorkspace(cwd: string): boolean {
  * every caller, admins included: there is no legitimate apply/verify to a repo
  * outside the configured set.
  */
-export function isOutboxAllowedPath(cwd: string, config: OscConfig): boolean {
+export function isOutboxAllowedPath(
+  cwd: string,
+  // The roots come from the GLOBAL config alone (DAE-9); a whole OscConfig is
+  // accepted for callers that already hold one.
+  config: OscConfig | DaemonConfig = loadDaemonConfig(),
+): boolean {
   if (isAdminProvisionedWorkspace(cwd)) return true;
-  const target = resolve(cwd);
-  for (const root of config.daemon.outboxAllowedRoots ?? []) {
-    const allowed = resolve(root);
-    if (target === allowed || target.startsWith(allowed + sep)) return true;
+  const daemon = 'daemon' in config ? config.daemon : config;
+  const target = realOrResolve(cwd);
+  for (const root of daemon.outboxAllowedRoots ?? []) {
+    if (within(target, realOrResolve(root))) return true;
   }
   return false;
 }
 
-/** Recent workspaces: session cwds, newest first, deduped, existing only. */
-function recentWorkspaces(): Array<{ cwd: string; name: string; lastUsed?: string }> {
+/** Recent workspaces: session cwds, newest first, deduped, existing only.
+ *  With an owner, only that user's sessions count (DAE-1), followed by the
+ *  admin-provisioned workspaces the member may open. */
+function recentWorkspaces(
+  ownerUserId?: string,
+): Array<{ cwd: string; name: string; lastUsed?: string }> {
   const seen = new Set<string>();
   const out: Array<{ cwd: string; name: string; lastUsed?: string }> = [];
   for (const session of listSessions()) {
+    if (ownerUserId !== undefined && session.ownerUserId !== ownerUserId) continue;
     if (seen.has(session.cwd) || !existsSync(session.cwd)) continue;
     seen.add(session.cwd);
     out.push({ cwd: session.cwd, name: basename(session.cwd), lastUsed: session.updatedAt });
     if (out.length >= 12) break;
+  }
+  if (ownerUserId !== undefined) {
+    const managed = join(homedir(), 'OSCode');
+    try {
+      for (const name of readdirSync(managed)) {
+        const cwd = join(managed, name);
+        if (seen.has(cwd) || name.startsWith('.')) continue;
+        let isDir = false;
+        try {
+          isDir = statSync(cwd).isDirectory();
+        } catch {}
+        if (!isDir || !isAdminProvisionedWorkspace(cwd)) continue;
+        seen.add(cwd);
+        out.push({ cwd, name });
+      }
+    } catch {}
   }
   return out;
 }
@@ -1046,9 +1264,41 @@ function recentWorkspaces(): Array<{ cwd: string; name: string; lastUsed?: strin
  *  (which, on an approval, resolved as a denial and returned 200) (P2-7). */
 class BadJson extends Error {}
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+/** A request body over the cap (DAE-8). Answered 413; the daemon stays up. */
+class BodyTooLarge extends Error {
+  constructor(readonly limit: number) {
+    super(`The request body is too large (limit ${Math.round(limit / (1024 * 1024))} MB).`);
+  }
+}
+
+async function readJson(
+  req: IncomingMessage,
+  maxBytes = MAX_BODY_BYTES,
+): Promise<Record<string, unknown>> {
+  const declared = Number(req.headers['content-length'] ?? 0);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    // Drain what the client sends so the response reaches it cleanly, but
+    // never keep any of it; a body far past the cap is cut off instead.
+    let seen = 0;
+    for await (const chunk of req) {
+      seen += (chunk as Buffer).length;
+      if (seen > maxBytes * 4) {
+        req.destroy();
+        break;
+      }
+    }
+    throw new BodyTooLarge(maxBytes);
+  }
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > maxBytes) {
+      req.destroy();
+      throw new BodyTooLarge(maxBytes);
+    }
+    chunks.push(chunk as Buffer);
+  }
   if (!chunks.length) return {};
   let parsed: unknown;
   try {

@@ -14,6 +14,10 @@ export interface EmbeddedRule {
    *  sign-in provider to its sign-in pages, so the view never becomes a way
    *  to browse GitHub or Google. */
   paths?: string[];
+  /** Exact path shapes, for a page that sits under a prefix too wide to
+   *  allow whole (an org's SAML prompt lives under /orgs/, which is also
+   *  every org's home page). */
+  pathPatterns?: RegExp[];
 }
 
 export interface EmbeddedSite {
@@ -38,7 +42,9 @@ export const EMBEDDED_SITES: Record<string, EmbeddedSite> = {
       // SAML prompt. Still never a way to browse GitHub itself.
       {
         host: 'github.com',
-        paths: ['/login', '/sessions', '/session', '/apps/', '/settings/installations', '/orgs/'],
+        paths: ['/login', '/sessions', '/session', '/apps/', '/settings/installations'],
+        // Only an org's SSO prompt, never its home or repositories (UI-5).
+        pathPatterns: [/^\/orgs\/[^/]+\/sso(?:\/|$)/],
       },
       { host: 'gitlab.com', paths: ['/oauth', '/users/sign_in', '/-/'] },
       { host: 'bitbucket.org', paths: ['/site/oauth2', '/account'] },
@@ -66,7 +72,7 @@ export interface EmbeddedState {
   canGoBack: boolean;
 }
 
-function hostAllowed(url: string, site: EmbeddedSite): boolean {
+export function hostAllowed(url: string, site: EmbeddedSite): boolean {
   let u: URL;
   try {
     u = new URL(url);
@@ -79,7 +85,11 @@ function hostAllowed(url: string, site: EmbeddedSite): boolean {
     const h = rule.host;
     const hostOk = h.startsWith('.') ? host === h.slice(1) || host.endsWith(h) : host === h;
     if (!hostOk) return false;
-    return !rule.paths || rule.paths.some((p) => u.pathname.startsWith(p));
+    if (!rule.paths && !rule.pathPatterns) return true;
+    return (
+      Boolean(rule.paths?.some((p) => u.pathname.startsWith(p))) ||
+      Boolean(rule.pathPatterns?.some((re) => re.test(u.pathname)))
+    );
   });
 }
 
@@ -95,6 +105,12 @@ function fence(contents: WebContents, site: EmbeddedSite, parent?: BrowserWindow
   contents.on('will-redirect', (event, url) => {
     if (hostAllowed(url, site)) return;
     event.preventDefault();
+  });
+  // Sub-frames are fenced the same way (UI-5): an iframe inside the page must
+  // not become a way to load a host the main frame could not.
+  contents.on('will-frame-navigate', (event) => {
+    if (event.isMainFrame) return;
+    if (!hostAllowed(event.url, site)) event.preventDefault();
   });
   contents.setWindowOpenHandler(({ url }) => {
     if (!hostAllowed(url, site)) {
@@ -153,14 +169,16 @@ export class EmbeddedWeb {
     });
     this.view = view;
     this.siteName = name;
+    const part = session.fromPartition(site.partition);
+    // Nothing inside the fence gets a device (UI-5). Electron's default would
+    // approve camera, microphone, and location for any host here without a
+    // prompt; a sign-in page needs none of them, so every request is denied,
+    // and the check-time answer matches so a site never sees "granted".
+    part.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    part.setPermissionCheckHandler(() => false);
     // A plain browser identity so sites treat it as a normal Chrome, not an
     // app shell. Ends the "unsupported browser" walls some dashboards show.
-    view.webContents.setUserAgent(
-      session
-        .fromPartition(site.partition)
-        .getUserAgent()
-        .replace(/ Electron\/\S+/, ''),
-    );
+    view.webContents.setUserAgent(part.getUserAgent().replace(/ Electron\/\S+/, ''));
     fence(view.webContents, site, win);
     const emit = () => {
       if (this.view !== view) return;

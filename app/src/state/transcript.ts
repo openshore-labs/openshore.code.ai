@@ -17,8 +17,16 @@ type ItemDraft = ThreadItem extends infer T
     : never
   : never;
 
+// The in-memory ceiling on a thread's items. A long desktop session's journal
+// replays in full; past this many rows the oldest fall away from memory (the
+// engine journal keeps the whole record), so a marathon session never grows
+// the renderable state without bound. Above the persisted trim (200) so a
+// reopened chat still shows generous history.
+const MAX_ITEMS = 600;
+
 function push(state: ThreadState, item: ItemDraft): ThreadState {
-  return { ...state, items: [...state.items, { id: uid(), ...item } as ThreadItem] };
+  const items = [...state.items, { id: uid(), ...item } as ThreadItem];
+  return { ...state, items: items.length > MAX_ITEMS ? items.slice(-MAX_ITEMS) : items };
 }
 
 function currentStreaming(state: ThreadState): number {

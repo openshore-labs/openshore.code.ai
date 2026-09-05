@@ -21,6 +21,7 @@ import {
 } from 'react';
 import { sourceLabel, type ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
+import type { HubRole } from '../drivers/types.js';
 import { hapticTick } from '../lib/haptics.js';
 import {
   DEFAULT_PERMISSION_MODE,
@@ -196,6 +197,7 @@ export function Composer({
   onOpenModelSheet,
   onOpenModeSheet,
   onCommand,
+  hubRole,
 }: {
   busy: boolean;
   source?: ConversationSource;
@@ -219,6 +221,9 @@ export function Composer({
   onOpenModeSheet: () => void;
   /** A slash command, with whatever followed it. */
   onCommand?: (command: SlashCommand, arg: string) => void;
+  /** What the paired hub lets this device do (P0-1). A member device never
+   *  gets a shell, so terminal mode is not offered; absent on an old hub. */
+  hubRole?: HubRole;
 }) {
   const { settings, showToast } = useApp();
   const runCommand = useApp((s) => s.runCommand);
@@ -231,7 +236,7 @@ export function Composer({
   // Terminal mode: on a desktop-backed chat, the composer can send its text to
   // the connected machine as a command instead of a prompt (the "type ls from
   // the couch" path of the chat-to-terminal bridge).
-  const canRunCommands = source?.kind === 'desktop';
+  const canRunCommands = source?.kind === 'desktop' && hubRole !== 'member';
   const [termMode, setTermMode] = useState(false);
   const terminal = canRunCommands && termMode;
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -334,7 +339,6 @@ export function Composer({
   };
 
   const runSlash = (name: SlashCommand, arg: string) => {
-    hapticTick();
     resetField();
     onCommand?.(name, arg.trim());
   };
@@ -345,7 +349,6 @@ export function Composer({
     const next = `${value.slice(0, mention.start)}@${path} ${value.slice(caret)}`;
     setValue(next);
     setMention(null);
-    hapticTick();
     requestAnimationFrame(() => {
       const el = areaRef.current;
       if (!el) return;
@@ -362,7 +365,6 @@ export function Composer({
     if (terminal) {
       if (!text) return;
       runCommand(text);
-      hapticTick();
       resetField();
       return;
     }
@@ -382,7 +384,6 @@ export function Composer({
     // The # shortcut: a standing instruction for the project, not a message.
     const memory = /^#\s*([\s\S]+)$/.exec(text);
     if (memory && !pasted.length && !attachments.length) {
-      hapticTick();
       resetField();
       void addMemory(memory[1]!);
       return;
@@ -404,7 +405,6 @@ export function Composer({
       return;
     }
     onSend(body, outgoing);
-    if (busy) hapticTick();
     resetField();
     setAttachments([]);
     setPasted([]);
@@ -529,6 +529,7 @@ export function Composer({
           setValue(`/${cmd.name} `);
           return;
         }
+        hapticTick();
         runSlash(cmd.name, '');
         return;
       }
@@ -552,6 +553,7 @@ export function Composer({
       }
       if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
         e.preventDefault();
+        hapticTick();
         insertFile(files[fileIdx] ?? files[0]!);
         return;
       }
@@ -563,6 +565,9 @@ export function Composer({
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // The keyboard has no click for the global tap haptic to catch, so the
+      // decisive Enter is marked here; the send button is covered by App.tsx.
+      hapticTick();
       submit();
       return;
     }
@@ -715,6 +720,7 @@ export function Composer({
           ref={areaRef}
           rows={1}
           value={value}
+          aria-label={terminal ? 'Command to run on your desktop' : 'Message'}
           placeholder={
             terminal
               ? 'Run a command on your desktop'

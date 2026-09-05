@@ -96,6 +96,10 @@ export class RingBuffer {
   }
 }
 
+/** Told once when the shell exits: the exit code and the ring's end offset, so
+ *  a client can tell whether it saw every byte before the end (DAE-5). */
+export type ExitListener = (exitCode: number, endOffset: number) => void;
+
 interface TerminalEntry {
   termId: string;
   sessionId: string;
@@ -104,10 +108,17 @@ interface TerminalEntry {
   cols: number;
   rows: number;
   exited: boolean;
+  exitCode?: number;
   listeners: Set<(data: Buffer, endOffset: number) => void>;
+  exitListeners: Set<ExitListener>;
+  dropTimer?: NodeJS.Timeout;
 }
 
 const DEFAULT_RING_BYTES = 200 * 1024;
+// How long an exited terminal stays addressable, so a client that was
+// disconnected at the moment of exit can still replay the tail and read the
+// exit frame; after that the entry is dropped and the routes answer 404.
+const DEFAULT_EXIT_GRACE_MS = 30_000;
 
 function clampDim(value: number | undefined, fallback: number): number {
   if (!value || !Number.isFinite(value)) return fallback;
@@ -126,10 +137,34 @@ export class TerminalManager {
   private bySession = new Map<string, string[]>();
   private readonly spawnFactory: PtyFactory;
   private readonly ringCap: number;
+  private readonly exitGraceMs: number;
 
-  constructor(opts: { spawn?: PtyFactory; ringBytes?: number } = {}) {
+  constructor(opts: { spawn?: PtyFactory; ringBytes?: number; exitGraceMs?: number } = {}) {
     this.spawnFactory = opts.spawn ?? lazyNodePtyFactory;
     this.ringCap = opts.ringBytes ?? DEFAULT_RING_BYTES;
+    this.exitGraceMs = opts.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS;
+  }
+
+  /** The entry for termId, and only when it belongs to sessionId if one is
+   *  given: a terminal is addressable through its own session's routes alone
+   *  (DAE-14), so the audit markers land on the right journal. */
+  private lookup(termId: string, sessionId?: string): TerminalEntry | undefined {
+    const entry = this.terminals.get(termId);
+    if (!entry) return undefined;
+    if (sessionId !== undefined && entry.sessionId !== sessionId) return undefined;
+    return entry;
+  }
+
+  private drop(entry: TerminalEntry): void {
+    if (entry.dropTimer) clearTimeout(entry.dropTimer);
+    entry.dropTimer = undefined;
+    this.terminals.delete(entry.termId);
+    const list = this.bySession.get(entry.sessionId);
+    if (list)
+      this.bySession.set(
+        entry.sessionId,
+        list.filter((t) => t !== entry.termId),
+      );
   }
 
   /**
@@ -169,6 +204,7 @@ export class TerminalManager {
       rows,
       exited: false,
       listeners: new Set(),
+      exitListeners: new Set(),
     };
     pty.onData((data) => {
       const buf = Buffer.from(data, 'utf8');
@@ -176,8 +212,16 @@ export class TerminalManager {
       const endOffset = entry.ring.end;
       for (const listener of entry.listeners) listener(buf, endOffset);
     });
-    pty.onExit(() => {
+    pty.onExit((info) => {
+      if (entry.exited) return;
       entry.exited = true;
+      entry.exitCode = info.exitCode;
+      // Tell every attached stream, then keep the entry for a grace so a
+      // client that reattaches right after still gets the tail and the frame.
+      for (const listener of entry.exitListeners) listener(info.exitCode, entry.ring.end);
+      entry.exitListeners.clear();
+      entry.dropTimer = setTimeout(() => this.drop(entry), this.exitGraceMs);
+      entry.dropTimer.unref?.();
     });
 
     this.terminals.set(termId, entry);
@@ -187,39 +231,58 @@ export class TerminalManager {
     return { termId, cols, rows };
   }
 
-  has(termId: string): boolean {
-    return this.terminals.has(termId);
+  has(termId: string, sessionId?: string): boolean {
+    return this.lookup(termId, sessionId) !== undefined;
+  }
+
+  /** True when the terminal exists but its shell has exited (DAE-5): the
+   *  routes answer 409 "exited" rather than 404 "no terminal". */
+  isExited(termId: string, sessionId?: string): boolean {
+    return this.lookup(termId, sessionId)?.exited === true;
   }
 
   /**
    * Replay the ring buffer from `sinceOffset`, then stream live output. Returns
    * an unsubscribe function, or undefined when there is no such terminal. Each
-   * call to onChunk carries the raw bytes and the new absolute end offset.
+   * call to onChunk carries the raw bytes and the new absolute end offset. The
+   * optional onExit fires once with the exit code and end offset; on a shell
+   * that already exited it fires right after the replay, so a stream opened on
+   * a dead shell ends instead of looking frozen.
    */
   subscribe(
     termId: string,
     sinceOffset: number,
     onChunk: (data: Buffer, endOffset: number) => void,
+    onExit?: ExitListener,
+    sessionId?: string,
   ): (() => void) | undefined {
-    const entry = this.terminals.get(termId);
+    const entry = this.lookup(termId, sessionId);
     if (!entry) return undefined;
     const replay = entry.ring.since(sinceOffset);
     if (replay.data.length) onChunk(replay.data, replay.endOffset);
+    if (entry.exited) {
+      onExit?.(entry.exitCode ?? 0, entry.ring.end);
+      return () => {};
+    }
     entry.listeners.add(onChunk);
-    return () => entry.listeners.delete(onChunk);
+    if (onExit) entry.exitListeners.add(onExit);
+    return () => {
+      entry.listeners.delete(onChunk);
+      if (onExit) entry.exitListeners.delete(onExit);
+    };
   }
 
   /** Feed keystrokes to a terminal. Never journaled or logged: sudo passwords
    *  and other secrets flow through here. */
-  write(termId: string, data: string): boolean {
-    const entry = this.terminals.get(termId);
+  write(termId: string, data: string, sessionId?: string): boolean {
+    const entry = this.lookup(termId, sessionId);
     if (!entry || entry.exited) return false;
     entry.pty.write(data);
     return true;
   }
 
-  resize(termId: string, cols: number, rows: number): boolean {
-    const entry = this.terminals.get(termId);
+  resize(termId: string, cols: number, rows: number, sessionId?: string): boolean {
+    const entry = this.lookup(termId, sessionId);
     if (!entry || entry.exited) return false;
     entry.cols = clampDim(cols, entry.cols);
     entry.rows = clampDim(rows, entry.rows);
@@ -229,21 +292,27 @@ export class TerminalManager {
     return true;
   }
 
-  kill(termId: string): boolean {
-    const entry = this.terminals.get(termId);
+  kill(termId: string, sessionId?: string): boolean {
+    const entry = this.lookup(termId, sessionId);
     if (!entry) return false;
     try {
       entry.pty.kill();
     } catch {}
-    entry.exited = true;
-    this.terminals.delete(termId);
-    const list = this.bySession.get(entry.sessionId);
-    if (list)
-      this.bySession.set(
-        entry.sessionId,
-        list.filter((t) => t !== termId),
-      );
+    if (!entry.exited) {
+      // The pty did not report an exit synchronously: settle the streams now.
+      entry.exited = true;
+      for (const listener of entry.exitListeners) listener(entry.exitCode ?? 0, entry.ring.end);
+      entry.exitListeners.clear();
+    }
+    this.drop(entry);
     return true;
+  }
+
+  /** Kill every terminal of a session (the session is being deleted). */
+  killSession(sessionId: string): number {
+    const ids = [...(this.bySession.get(sessionId) ?? [])];
+    for (const termId of ids) this.kill(termId, sessionId);
+    return ids.length;
   }
 
   /**

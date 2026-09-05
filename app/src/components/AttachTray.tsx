@@ -5,7 +5,6 @@
 // the chat box too"). Three ways in, each a real picker: the camera, the
 // photo library, and any file. On the desktop the + goes straight to the
 // file picker and this never renders.
-import { hapticTick } from '../lib/haptics.js';
 
 export type AttachSource = 'camera' | 'photos' | 'files';
 
@@ -91,7 +90,6 @@ export function AttachTray({
           type="button"
           className="attach-tile press-fb press-fb--tile"
           onClick={() => {
-            hapticTick();
             onPick(source);
           }}
         >

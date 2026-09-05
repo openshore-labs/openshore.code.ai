@@ -11,7 +11,10 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ConfigSchema, type OscConfig } from './schema.js';
+import { ConfigSchema, DaemonSchema, type OscConfig } from './schema.js';
+import type { z } from 'zod';
+
+export type DaemonConfig = z.infer<typeof DaemonSchema>;
 
 export interface LoadedConfig {
   config: OscConfig;
@@ -65,14 +68,27 @@ export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
   const warnings: string[] = [];
   let merged: unknown = {};
 
-  for (const path of [globalConfigPath(), projectConfigPath(cwd)]) {
+  const projectPath = projectConfigPath(cwd);
+  for (const path of [globalConfigPath(), projectPath]) {
     const { value, error } = readJson(path);
     if (error) {
       warnings.push(`Could not read ${error}. Using defaults for it.`);
       continue;
     }
     if (value !== undefined) {
-      merged = deepMerge(merged, value);
+      // The daemon block is machine config and never comes from a project file
+      // (DAE-9): a repo the daemon runs from can be written by a member through
+      // the outbox, so honoring daemon.* there would let a commit widen the
+      // outbox roots or move the bind. Dropped with one warning, never merged.
+      let contribution = value;
+      if (path === projectPath && isPlainObject(value) && 'daemon' in value) {
+        const { daemon: _ignored, ...rest } = value;
+        contribution = rest;
+        warnings.push(
+          `daemon settings are machine config; ignored from os-code.config.json (${path}). Set them in ${globalConfigPath()}.`,
+        );
+      }
+      merged = deepMerge(merged, contribution);
       sources.push(path);
     }
   }
@@ -88,6 +104,20 @@ export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
   }
 
   return { config: parsed.data, sources, warnings };
+}
+
+/**
+ * The daemon's own settings (bind, port, outbox roots, Stack Health
+ * visibility), parsed from the GLOBAL file alone. The daemon reads every
+ * daemon.* value through this so no project file, in its cwd or anywhere else,
+ * can steer machine config (DAE-9). An unreadable or invalid global file falls
+ * back to the schema defaults: the daemon must keep serving on a bad edit.
+ */
+export function loadDaemonConfig(): DaemonConfig {
+  const { value } = readJson(globalConfigPath());
+  const raw = isPlainObject(value) && isPlainObject(value.daemon) ? value.daemon : {};
+  const parsed = DaemonSchema.safeParse(raw);
+  return parsed.success ? parsed.data : DaemonSchema.parse({});
 }
 
 /** Write the global config, creating ~/.os-code on first run. The read-modify-
@@ -142,7 +172,12 @@ function writeFileAtomic(path: string, data: string): void {
  */
 export function addProjectPermissionRule(
   cwd: string,
-  rule: { tool: string; pathGlob?: string; decision?: 'allow' | 'ask' | 'deny' },
+  rule: {
+    tool: string;
+    pathGlob?: string;
+    commandPrefix?: string;
+    decision?: 'allow' | 'ask' | 'deny';
+  },
 ): string {
   const path = projectConfigPath(cwd);
   let current: Record<string, unknown> = {};
@@ -155,12 +190,16 @@ export function addProjectPermissionRule(
   const rules = Array.isArray(permissions.rules) ? [...permissions.rules] : [];
   const entry: Record<string, unknown> = { tool: rule.tool, decision: rule.decision ?? 'allow' };
   if (rule.pathGlob) entry.pathGlob = rule.pathGlob;
+  // A shell rule is scoped to the command's first word (ENG-4); without the
+  // prefix it would land as a blanket allow, so the field always travels.
+  if (rule.commandPrefix) entry.commandPrefix = rule.commandPrefix;
   const duplicate = rules.some(
     (r) =>
       isPlainObject(r) &&
       r.tool === entry.tool &&
       r.decision === entry.decision &&
-      (r.pathGlob ?? undefined) === (entry.pathGlob ?? undefined),
+      (r.pathGlob ?? undefined) === (entry.pathGlob ?? undefined) &&
+      (r.commandPrefix ?? undefined) === (entry.commandPrefix ?? undefined),
   );
   if (!duplicate) rules.push(entry);
   const next = { ...current, permissions: { ...permissions, rules } };

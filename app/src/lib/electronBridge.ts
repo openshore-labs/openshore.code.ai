@@ -198,6 +198,9 @@ export interface OscodeBridge {
   repoReadFile(root: string, relPath: string): Promise<string | null>;
 
   // OS-encrypted secret store (safeStorage), for the data-encryption key.
+  // secureHas tells "no entry" from "an entry this launch cannot decrypt", so
+  // the renderer never mints a new key over data sealed with the old one.
+  secureHas(key: string): Promise<boolean>;
   secureGet(key: string): Promise<string | null>;
   secureSet(key: string, value: string): Promise<boolean>;
   secureDelete(key: string): Promise<void>;

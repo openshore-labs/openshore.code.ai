@@ -42,7 +42,12 @@ import {
   type RepoPlatform,
   type RepoState,
 } from '../lib/repos.js';
-import { firstWorkspace, repoContextLine } from '../lib/chatRepos.js';
+import {
+  clearRepoCache,
+  firstWorkspace,
+  hydrateRepoCache,
+  repoContextLine,
+} from '../lib/chatRepos.js';
 import { reduceEvent, titleFrom } from './transcript.js';
 import type { ChatDriver } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
@@ -94,7 +99,13 @@ import {
   restore as iapRestore,
   PERSONAL_YEARLY_PRODUCT_ID,
 } from '../lib/iap.js';
-import { clearSession, freshSession, loadStoredSession, saveSession } from '../lib/authSession.js';
+import {
+  AuthExpiredError,
+  clearSession,
+  freshSession,
+  loadStoredSession,
+  saveSession,
+} from '../lib/authSession.js';
 import { beatDesktopSession, registerPushForDaemon } from '../lib/push.js';
 import {
   autoProfile,
@@ -187,6 +198,7 @@ import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.j
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
+  dataUnlockState,
   isDesktop,
   isPhone,
   openExternal,
@@ -339,7 +351,20 @@ export interface AppSettings {
    *  token lives in this device's Keychain and only ever executes on this
    *  device, never on a remote hub. Never synced. See codemagicControl.ts. */
   codemagicAccess?: boolean;
+  /** The role each paired hub reported for this device's credential (from the
+   *  hub's /health), keyed by base URL. Read at pair time and refreshed when a
+   *  session attaches. Missing means the hub predates roles and decides per
+   *  request. The active hub's role is mirrored into `hubRole` in state so a
+   *  component can select it directly. Device local. */
+  hubRoles?: Record<string, HubRole>;
+  /** Server orgs the person declined to join on this device ("Not now" on the
+   *  join sheet), so the question is asked once. Device local; cleared on
+   *  sign-out. */
+  declinedOrgIds?: string[];
 }
+
+/** What a hub says this device's pairing credential may do. */
+export type HubRole = 'admin' | 'member';
 
 /** Progress of the one-time Harbor download, surfaced to onboarding + chat. */
 export interface HarborDownload {
@@ -386,8 +411,84 @@ let lastEntitlementForegroundAt = 0;
 // The email the app most recently sent an auth link to (magic link, reset,
 // confirmation). completeAuthCallback only accepts a callback for that account,
 // which is the CSRF/state binding a custom oscode:// scheme cannot get from a
-// browser origin. Cleared once a callback is accepted.
-let pendingAuthEmail: string | undefined;
+// browser origin. Persisted sealed and device-local with a short TTL (APP-6),
+// because the link usually launches the app cold from Mail, and a binding held
+// only in memory would be gone exactly when it is needed. Cleared once a
+// callback is accepted, and on sign-out.
+const PENDING_AUTH_KEY = 'oscode.auth.pending.v1';
+const PENDING_AUTH_TTL_MS = 15 * 60_000;
+interface PendingAuth {
+  email: string;
+  at: number;
+}
+async function readPendingAuth(): Promise<string | undefined> {
+  const row = await storeGetJson<PendingAuth>(PENDING_AUTH_KEY);
+  if (!row?.email) return undefined;
+  if (Date.now() - row.at > PENDING_AUTH_TTL_MS) {
+    await storeDelete(PENDING_AUTH_KEY);
+    return undefined;
+  }
+  return row.email;
+}
+async function writePendingAuth(email: string): Promise<void> {
+  await storeSetJson(PENDING_AUTH_KEY, { email: email.trim().toLowerCase(), at: Date.now() });
+}
+async function clearPendingAuth(): Promise<void> {
+  await storeDelete(PENDING_AUTH_KEY);
+}
+// A callback that arrived with no request on record waits here for the
+// person's yes on the confirm sheet (AuthConfirmSheet). Memory only: a link
+// nobody confirmed should not survive a relaunch.
+let pendingCallback: { session: Session; recovery: boolean } | undefined;
+
+// An Apple purchase the server has not yet linked (UI-10): Apple finished the
+// transaction, the link call failed (offline, a 401), so the signed receipt is
+// kept sealed on the device and retried on the next foreground or Restore.
+const PENDING_APPLE_LINK_KEY = 'oscode.iap.pendingLink.v1';
+
+// Hub pairing credentials live in the secret store (Keychain, safeStorage),
+// keyed by hub, never in the settings blob (APP-11). In memory the DaemonTarget
+// still carries its token, so every daemon call reads it the same way; only
+// what reaches disk is stripped, and init puts the tokens back.
+export function hubSecretKey(baseUrl: string): string {
+  return `oscode.secret.hub.${baseUrl}`;
+}
+function stripHubTokens(settings: AppSettings): AppSettings {
+  const strip = (d: DaemonTarget): DaemonTarget => ({ ...d, token: '' });
+  return {
+    ...settings,
+    ...(settings.daemon ? { daemon: strip(settings.daemon) } : {}),
+    ...(settings.daemons ? { daemons: settings.daemons.map(strip) } : {}),
+  };
+}
+/** The one door to the persisted settings blob. */
+async function persistSettings(settings: AppSettings): Promise<void> {
+  await storeSetJson(SETTINGS_KEY, stripHubTokens(settings));
+}
+/** The active hub's role, as the hub last reported it. */
+function activeHubRole(settings: AppSettings): HubRole | undefined {
+  return settings.daemon ? settings.hubRoles?.[settings.daemon.baseUrl] : undefined;
+}
+/** Ask a hub what this credential may do. Undefined for an older hub with no
+ *  role field (the daemon then decides per request) or when unreachable. */
+async function readHubRole(daemon: DaemonTarget): Promise<HubRole | undefined> {
+  try {
+    const res = await fetch(`${daemon.baseUrl}/health`, {
+      headers: { authorization: `Bearer ${daemon.token}` },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return undefined;
+    const body = (await res.json()) as { role?: unknown };
+    return body.role === 'admin' || body.role === 'member' ? body.role : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Attachments that ride a message held for a driver that has not attached yet
+// (APP-10). The text lives on the conversation, persisted; attachments are
+// bytes with no durable form, so they wait here for this session only.
+const pendingSends = new Map<string, Attachment[] | undefined>();
 const unsubscribers = new Map<string, () => void>();
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
@@ -458,6 +559,21 @@ interface AppState {
   /** True after a password-reset link signs the user in, so the UI prompts them
    *  to set a new password before doing anything else. Cleared once they do. */
   passwordRecovery?: boolean;
+  /** A sign-in link arrived that nothing here asked for; the confirm sheet
+   *  shows the account it is for and waits for a yes (APP-6). */
+  authConfirm?: { email: string; recovery: boolean };
+  /** A company org someone else added the signed-in person to, waiting for an
+   *  explicit yes before this device adopts it (BE-1). */
+  orgJoin?: { org: Org; ownerUid: string };
+  /** True when the device's sealed data could not be unlocked this launch (the
+   *  key exists but cannot be read). Sealed keys are read-only until it is
+   *  back; nothing has been overwritten. Surfaced once by init. */
+  dataLocked?: boolean;
+  /** The active hub's role for this device's credential, as the hub reported
+   *  it (admin or member). Undefined for an older hub, which decides per
+   *  request. Mirrors settings.hubRoles for the active hub so the composer can
+   *  select it in one read. */
+  hubRole?: HubRole;
   /** The desktop app's own engine status (Electron only): whether a model is
    *  configured on this machine, which the first-answer gate reads so a chat is
    *  never opened against an engine that cannot start. Refreshed on init and

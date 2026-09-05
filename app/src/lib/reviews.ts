@@ -127,31 +127,39 @@ export interface ReviewDraft {
   feltSpeed?: 'snappy' | 'usable' | 'slow';
 }
 
+/** The row a review submit sends. Exactly the columns the server grants an
+ *  author (migration 0015, BE-6): never `status`, `flag_count`, or
+ *  `created_at`, which moderation owns. A payload carrying one of those is
+ *  refused by the column grant, so this shape is pinned by a test. */
+export function reviewPayload(
+  userId: string,
+  draft: ReviewDraft,
+  now: Date = new Date(),
+): Record<string, unknown> {
+  return {
+    user_id: userId,
+    model_id: draft.modelId,
+    rating: draft.rating,
+    body: draft.body?.trim() || null,
+    use_cases: draft.useCases ?? [],
+    hardware: draft.hardware?.trim() || null,
+    ram_gb: draft.ramGB ?? null,
+    tokens_per_sec: draft.tokensPerSec ?? null,
+    quant: draft.quant?.trim() || null,
+    felt_speed: draft.feltSpeed ?? null,
+    updated_at: now.toISOString(),
+  };
+}
+
 /** Submit (or update) the signed-in user's review for a model. One row per user
  *  per model: a second submit merges onto the same row (the unique constraint).
- *  The reviewer's own id comes from the session, never the client's claim. */
+ *  The reviewer's own id comes from the session, never the client's claim. A
+ *  review that moderation has hidden cannot be re-submitted: the server's
+ *  update policy refuses it, and the error surfaces to the caller. */
 export async function submitReview(session: Session, draft: ReviewDraft): Promise<void> {
   const token = await tokenFor(session);
   if (!token) throw new Error('Sign in to write a review.');
-  await upsert(
-    REVIEWS,
-    token,
-    {
-      user_id: session.user.id,
-      model_id: draft.modelId,
-      rating: draft.rating,
-      body: draft.body?.trim() || null,
-      use_cases: draft.useCases ?? [],
-      hardware: draft.hardware?.trim() || null,
-      ram_gb: draft.ramGB ?? null,
-      tokens_per_sec: draft.tokensPerSec ?? null,
-      quant: draft.quant?.trim() || null,
-      felt_speed: draft.feltSpeed ?? null,
-      status: 'visible',
-      updated_at: new Date().toISOString(),
-    },
-    'user_id,model_id',
-  );
+  await upsert(REVIEWS, token, reviewPayload(session.user.id, draft), 'user_id,model_id');
 }
 
 /** Remove the signed-in user's own review for a model. */

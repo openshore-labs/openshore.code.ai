@@ -272,9 +272,12 @@ begin
   if new.status = 'revoked' then
     return new;
   end if;
-  if tg_op = 'UPDATE' and old.status <> 'revoked' and old.org_id = new.org_id then
-    -- Already counted; a role or email change never trips the ceiling.
-    return new;
+  if tg_op = 'UPDATE' then
+    -- Already counted; a role, email, or invited-to-active change never trips
+    -- the ceiling. Only a revoked row coming back is a new seat.
+    if old.status <> 'revoked' and old.org_id = new.org_id then
+      return new;
+    end if;
   end if;
   v_max := public.org_seat_ceiling(new.org_id);
   if v_max is null then

@@ -196,7 +196,6 @@ export function ChatsScreen() {
       aria-label="New chat"
       title="New chat"
       onClick={() => {
-        hapticTick();
         startNewChat();
       }}
     >
@@ -223,7 +222,6 @@ export function ChatsScreen() {
             type="button"
             className="chat-row chat-row-new press-fb press-fb--row"
             onClick={() => {
-              hapticTick();
               startNewChat();
             }}
           >
@@ -249,7 +247,6 @@ export function ChatsScreen() {
                     type="button"
                     className="chat-row press-fb press-fb--row"
                     onClick={() => {
-                      hapticTick();
                       void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title }).catch(
                         (err: unknown) =>
                           showToast(err instanceof Error ? err.message : String(err)),

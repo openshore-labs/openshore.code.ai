@@ -14,6 +14,7 @@ import { CAPABILITIES } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { daemonInstallModel, daemonInstallProgress } from '../drivers/remoteDriver.js';
+import { pollInstall } from '../drivers/installPoll.js';
 import { bundleModelIds, bundleTotalGB, bundlesFor, type StackBundle } from '../lib/bundles.js';
 import {
   HOSTED_SHELF,
@@ -191,6 +192,16 @@ export function MarketplaceScreen() {
   const [refLine, setRefLine] = useState<string | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
+  // One live poll per model for a phone-to-hub install (UI-3). A re-tap
+  // replaces the earlier loop, and leaving the screen ends them all.
+  const installPolls = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const polls = installPolls.current;
+    return () => {
+      for (const ac of polls.values()) ac.abort();
+      polls.clear();
+    };
+  }, []);
   const [detailOpen, setDetailOpen] = useState<string | undefined>();
   const [provOpen, setProvOpen] = useState<Record<string, boolean>>({});
   const [sort, setSort] = useState<SortKey>('recommended');
@@ -520,6 +531,9 @@ export function MarketplaceScreen() {
   const installViaDaemon = async (model: CatalogModel) => {
     const daemon = settings.daemon;
     if (!daemon) return;
+    installPolls.current.get(model.id)?.abort();
+    const ac = new AbortController();
+    installPolls.current.set(model.id, ac);
     setDownloads((d) => ({
       ...d,
       [model.id]: { percent: 0, label: 'Connecting', indeterminate: true },
@@ -527,6 +541,7 @@ export function MarketplaceScreen() {
     try {
       await daemonInstallModel(daemon, model.id);
     } catch (err) {
+      if (ac.signal.aborted) return;
       setDownloads((d) => ({
         ...d,
         [model.id]: {
@@ -537,37 +552,48 @@ export function MarketplaceScreen() {
       }));
       return;
     }
-    // Poll until the desktop reports the install done.
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 1200));
-      let p;
-      try {
-        p = await daemonInstallProgress(daemon, model.id);
-      } catch {
-        continue; // a transient blip; keep polling
-      }
-      if (!p) break; // no longer tracked
-      if (p.done) {
-        clearDownload(model.id);
-        if (p.ok) {
-          hapticSuccess();
-          setInstalledRefs((s) => new Set(s).add(model.source.ref));
-        }
-        showToast(p.detail ?? (p.ok ? 'Installed on your desktop.' : 'Install failed.'));
-        break;
-      }
+    // Poll until the desktop reports the install done, the screen leaves, or
+    // the hub stops answering.
+    const outcome = await pollInstall(
+      () => daemonInstallProgress(daemon, model.id),
+      (p) =>
+        setDownloads((d) => ({
+          ...d,
+          [model.id]: {
+            percent: p.percent ?? 0,
+            label:
+              p.total && p.completed !== undefined
+                ? `${Math.round(p.percent ?? 0)}% · ${gb(p.completed)} of ${gb(p.total)}`
+                : p.line,
+            indeterminate: p.percent === undefined,
+          },
+        })),
+      (ms) => new Promise((r) => setTimeout(r, ms)),
+      ac.signal,
+    );
+    if (installPolls.current.get(model.id) === ac) installPolls.current.delete(model.id);
+    if (outcome.kind === 'cancelled') return;
+    if (outcome.kind === 'unreachable') {
       setDownloads((d) => ({
         ...d,
         [model.id]: {
-          percent: p.percent ?? 0,
-          label:
-            p.total && p.completed !== undefined
-              ? `${Math.round(p.percent ?? 0)}% · ${gb(p.completed)} of ${gb(p.total)}`
-              : p.line,
-          indeterminate: p.percent === undefined,
+          percent: d[model.id]?.percent ?? 0,
+          label: 'Your hub stopped answering. Check the install on the desktop.',
+          failed: true,
         },
       }));
+      return;
     }
+    if (outcome.kind === 'untracked') {
+      clearDownload(model.id);
+      return;
+    }
+    clearDownload(model.id);
+    if (outcome.ok) {
+      hapticSuccess();
+      setInstalledRefs((s) => new Set(s).add(model.source.ref));
+    }
+    showToast(outcome.detail ?? (outcome.ok ? 'Installed on your desktop.' : 'Install failed.'));
   };
 
   // The internal axis only exists when the user has real local usage that maps

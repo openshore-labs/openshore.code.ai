@@ -5,12 +5,14 @@
 // bounded repair, optional grammar-constrained retries, and cloud escalation
 // as a last resort that always asks before spending.
 import { randomUUID } from 'node:crypto';
+import { relative } from 'node:path';
 import type { OscConfig } from '../../config/schema.js';
 import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../providers/types.js';
 import { ProviderError } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
-import type { Router } from '../../router/router.js';
-import type { ToolContext, ToolRegistry } from '../tools/index.js';
+import type { DelegatedUsage, Router } from '../../router/router.js';
+import type { ToolContext, ToolDef, ToolRegistry } from '../tools/index.js';
+import { effectiveMode } from './modes.js';
 import { uxStandardPrompt } from './uxStandard.js';
 import { humanizerStandardPrompt } from './humanizerStandard.js';
 import { memorySegment, projectMemoryPrompt } from './projectMemory.js';
@@ -22,12 +24,12 @@ import {
   validateNativeCall,
   type ParsedToolCall,
 } from '../tools/parser.js';
-import { PermissionEngine } from '../permissions/index.js';
+import { PermissionEngine, SHELL_WRAPPERS } from '../permissions/index.js';
 import { Guardrails } from '../guardrails/index.js';
+import { JailViolation } from '../security/jail.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
-import { compactHistory } from '../../context/compaction.js';
-import { estimateMessages } from '../../context/compaction.js';
+import { compactHistory, estimateMessages, estimateTokens } from '../../context/compaction.js';
 import { UsageTracker } from '../../auth/usage.js';
 import type {
   AgentEvent,
@@ -68,7 +70,14 @@ export interface AgentDeps {
   permissionMode?: PermissionMode;
   /** Persist an allow rule for this tool in the workspace ("don't ask again
    *  for this in this project"). Returns false when nothing could be written. */
-  persistRule?: (rule: { tool: string; pathGlob?: string }) => boolean;
+  persistRule?: (rule: ProjectRule) => boolean;
+}
+
+/** The shape of a rule the loop asks to persist for a project. */
+export interface ProjectRule {
+  tool: string;
+  pathGlob?: string;
+  commandPrefix?: string;
 }
 
 /** Tools a plan may use: nothing that changes the workspace or runs a shell. */
@@ -97,6 +106,8 @@ export class AgentSession {
   private instructions?: string;
   private todos: TodoItem[] = [];
   private transientRetries = 0;
+  /** The active model's window, from the last turn's capabilities; 0 until then. */
+  private contextTokens = 0;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -105,8 +116,21 @@ export class AgentSession {
       model: orchestrator.ref.model,
       adapter: adapterFor(orchestrator.ref.model),
     };
-    this.mode = deps.permissionMode ?? 'default';
+    // The requested mode passes through the profile (ENG-1): a phone or
+    // headless session never starts in bypassPermissions, and the downgrade is
+    // said out loud.
+    const requested = effectiveMode(deps.profile, deps.permissionMode ?? 'default');
+    this.mode = requested.mode;
+    if (requested.note) {
+      this.emit({ type: 'mode', mode: this.mode });
+      this.emit({ type: 'note', message: requested.note });
+    }
     this.instructions = deps.instructions;
+    // A tool that runs a model of its own (a delegated subtask) reports its
+    // usage here, so its tokens hit the rails and its dollars are visible.
+    deps.toolContext.noteUsage = (usage: DelegatedUsage) => {
+      this.recordUsage(usage.model, usage.kind, usage.promptTokens, usage.completionTokens);
+    };
   }
 
   get activeModel(): { model: string; kind: 'local' | 'cloud' } {
@@ -120,9 +144,12 @@ export class AgentSession {
   /** Change the permission mode between (or during) tasks. Announced as an
    *  event so every attached client shows the truth. */
   setMode(mode: PermissionMode): void {
-    if (this.mode === mode) return;
-    this.mode = mode;
-    this.emit({ type: 'mode', mode });
+    const { mode: next, note } = effectiveMode(this.deps.profile, mode);
+    if (this.mode !== next) {
+      this.mode = next;
+      this.emit({ type: 'mode', mode: next });
+    }
+    if (note) this.emit({ type: 'note', message: note });
   }
 
   /** Replace the person's standing instructions for this project. */
@@ -272,6 +299,9 @@ export class AgentSession {
     this.cloudApprovedForTask = false;
     this.transientRetries = 0;
     this.abortController = new AbortController();
+    // Tools see the task's signal, so Stop reaches a delegated generation or
+    // a long fetch as well as the orchestrator's own stream (DAE-4).
+    this.deps.toolContext.signal = this.abortController.signal;
     // The visible task-start is the user's own words. A context preamble (the
     // results of commands the user ran between turns) rides into the model's
     // message so it sees them, but never shows in the transcript as user text.
@@ -281,13 +311,11 @@ export class AgentSession {
     const content: string | ContentPart[] = images?.length
       ? [
           { type: 'text', text: modelText },
-          ...images.map(
-            (i): ContentPart => ({
-              type: 'image',
-              imageBase64: i.base64,
-              mediaType: i.mediaType,
-            }),
-          ),
+          ...images.map((i): ContentPart => ({
+            type: 'image',
+            imageBase64: i.base64,
+            mediaType: i.mediaType,
+          })),
         ]
       : modelText;
     this.history.push({ role: 'user', content });
@@ -323,6 +351,7 @@ export class AgentSession {
 
       turn += 1;
       const caps = await this.active.provider.capabilities(this.active.model);
+      this.contextTokens = caps.contextTokens;
       const toolMode: 'native' | 'text' =
         caps.supportsTools && this.active.adapter.toolFormat() === 'native' ? 'native' : 'text';
 
@@ -332,9 +361,11 @@ export class AgentSession {
         ...this.history.filter((m) => m.role !== 'system'),
       ];
 
-      // Compaction keeps small local windows honest.
+      // Compaction keeps small local windows honest. Mid-task, the summary
+      // rides the task's signal so Stop cancels it too; the idle paths
+      // (compactNow, generateTitle) deliberately pass none (ENG-7).
       const compacted = await compactHistory(this.history, caps.contextTokens, (text) =>
-        this.summarize(text),
+        this.summarize(text, this.abortController?.signal),
       );
       if (compacted.compacted) {
         this.history = compacted.messages;
@@ -421,34 +452,31 @@ export class AgentSession {
       }
 
       // Account usage and surface the context meter.
-      guardrails.noteTokens(promptTokens + completionTokens);
-      let dollars = 0;
-      if (this.active.provider.kind === 'cloud') {
-        dollars = this.deps.usage.noteCloud(this.active.model, promptTokens, completionTokens);
-        guardrails.noteDollars(dollars);
-      }
-      this.emit({
-        type: 'usage',
+      this.recordUsage(
+        this.active.model,
+        this.active.provider.kind,
         promptTokens,
         completionTokens,
-        dollars,
-        contextPercent: Math.min(
-          100,
-          Math.round((estimateMessages(this.history) / caps.contextTokens) * 100),
-        ),
-      });
+      );
 
       // ------------------------------------------------------------------
       // Turn resolution: tool calls, a final answer, or a repair pass.
       // ------------------------------------------------------------------
       let calls: ParsedToolCall[] = [];
       const problems: string[] = [];
+      // Native calls that failed validation. When the batch also carries a
+      // valid call, each of these gets its own observation instead of being
+      // dropped on the floor, so the model does not retry it verbatim (ENG-11).
+      const rejected: Array<{ raw: ToolCallRequest; problem: string }> = [];
 
       if (nativeCalls.length) {
         for (const raw of nativeCalls) {
           const validated = validateNativeCall(raw, this.deps.tools);
           if (validated.ok) calls.push(validated.call);
-          else problems.push(validated.problem);
+          else {
+            problems.push(validated.problem);
+            rejected.push({ raw, problem: validated.problem });
+          }
         }
       }
       let displayText = streamedText;
@@ -501,22 +529,40 @@ export class AgentSession {
       // Successful parse: reset the repair counters.
       repairAttempts = 0;
 
-      // Record the assistant turn (with its calls) before observations.
+      // Record the assistant turn (with its calls) before observations. A
+      // rejected call is recorded as the model made it, so the observation
+      // that refuses it has a tool_use to answer.
       if (toolMode === 'native') {
         this.history.push({
           role: 'assistant',
           content: streamedText,
-          toolCalls: calls.map((c) => ({
-            id: c.id,
-            name: c.name,
-            argsText: JSON.stringify(c.args),
-            args: c.args,
-          })),
+          toolCalls: [
+            ...calls.map((c) => ({
+              id: c.id,
+              name: c.name,
+              argsText: JSON.stringify(c.args),
+              args: c.args,
+            })),
+            ...rejected.map((r) => r.raw),
+          ],
         });
         if (displayText.trim()) this.emit({ type: 'text-final', text: displayText.trim() });
+        for (const { raw, problem } of rejected) {
+          this.pushObservation(
+            { id: raw.id, name: raw.name, args: raw.args ?? {} },
+            `Not run: ${problem}`,
+            toolMode,
+          );
+        }
       } else {
         this.history.push({ role: 'assistant', content: streamedText });
         if (displayText.trim()) this.emit({ type: 'text-final', text: displayText.trim() });
+        if (problems.length) {
+          this.history.push({
+            role: 'user',
+            content: `[tool-call problems]\nSome of your calls were not run:\n${problems.map((p) => `- ${p}`).join('\n')}`,
+          });
+        }
       }
 
       // Execute the calls in order.
@@ -569,11 +615,38 @@ export class AgentSession {
       return 'aborted';
     }
 
-    const path = tool.pathOf?.(call.args, toolContext);
+    // The path a permission rule sees is the workspace-relative one the jail
+    // agrees on, never the model's raw spelling (`./secrets/k`,
+    // `src/../secrets/k`, an absolute path), so a glob cannot be dodged. A path
+    // that leaves the jail is denied here, before any approval (ENG-3). Tools
+    // with their own root (the vault) hand over a path already normalized
+    // against it.
+    const rawPath = tool.pathOf?.(call.args, toolContext);
+    let path: string | undefined;
+    if (rawPath !== undefined) {
+      if (tool.pathJail === 'own') {
+        path = rawPath;
+      } else {
+        try {
+          path = relative(toolContext.jail.root, toolContext.jail.resolve(rawPath));
+        } catch (err) {
+          if (!(err instanceof JailViolation)) throw err;
+          this.emit({ type: 'tool-denied', call, reason: err.message });
+          this.pushObservation(
+            call,
+            `Denied: ${err.message} Use a path inside the workspace.`,
+            toolMode,
+          );
+          return 'failed';
+        }
+      }
+    }
+    const command = tool.commandOf?.(call.args);
     let decision = permissions.decide({
       toolName: call.name,
       risk: tool.risk,
       path,
+      command,
       cwd: toolContext.cwd,
       alwaysAsk: tool.alwaysAsk,
     });
@@ -581,7 +654,9 @@ export class AgentSession {
     // The permission mode sits on top of the policy, the way Claude Code's
     // does. Plan mode never mutates. Bypass and acceptEdits turn an "ask" into
     // an allow for their class, but never for cloud spend and never for an
-    // always-ask tool (those two stay loud in every mode).
+    // always-ask tool (those two stay loud in every mode). Bypass also never
+    // makes shell silent on a profile that forbids it (ENG-1, belt and braces
+    // under the setMode downgrade).
     if (this.mode === 'plan' && !PLAN_SAFE_RISKS.has(tool.risk)) {
       const reason = 'Plan mode: read only until the plan is approved.';
       this.emit({ type: 'tool-denied', call, reason });
@@ -593,7 +668,8 @@ export class AgentSession {
       return 'failed';
     }
     if (decision.decision === 'ask' && !tool.alwaysAsk && tool.risk !== 'cloud-spend') {
-      if (this.mode === 'bypassPermissions') {
+      const shellStaysLoud = tool.risk === 'shell' && !profile.allowShellAutoApprove;
+      if (this.mode === 'bypassPermissions' && !shellStaysLoud) {
         decision = { decision: 'allow', reason: 'bypass permissions mode' };
       } else if (this.mode === 'acceptEdits' && tool.risk === 'write') {
         decision = { decision: 'allow', reason: 'accept edits mode' };
@@ -647,15 +723,7 @@ export class AgentSession {
         }
       }
       if (answer.alwaysInProject && answer.approve && !tool.alwaysAsk) {
-        const pathGlob = path ? `${dirnameOf(path)}/**` : undefined;
-        const saved = this.deps.persistRule?.({ tool: call.name, pathGlob }) ?? false;
-        this.emit({
-          type: 'note',
-          message: saved
-            ? `${call.name} is allowed from now on${pathGlob ? ` under ${dirnameOf(path!) || '.'}` : ''} in this project. Change it in os-code.config.json.`
-            : `Could not save that rule for this project; ${call.name} will ask again.`,
-        });
-        if (saved) permissions.allowForSession(call.name);
+        this.persistProjectAllow(call, tool, path, command);
       }
       if (!answer.approve) {
         // A caller-supplied reason (e.g. Terminal Control is off) tells the
@@ -693,6 +761,55 @@ export class AgentSession {
     if (result.citations?.length) this.emit({ type: 'citations', citations: result.citations });
     this.pushObservation(call, redactSecrets(result.content), toolMode);
     return result.ok ? 'ok' : 'failed';
+  }
+
+  /**
+   * "Always allow in this project" (ENG-3, ENG-4). The saved rule is scoped as
+   * narrowly as the tool allows: a path tool to its directory (`**` at the
+   * root, never the dead `/**`), a shell tool to the command's first word, and
+   * anything else to the tool itself, said plainly. A shell wrapper (sudo,
+   * env, bash, ...) would allow anything, so it is refused; cloud spend is
+   * never saved. The same rule applies for the rest of this session.
+   */
+  private persistProjectAllow(
+    call: ParsedToolCall,
+    tool: ToolDef,
+    path: string | undefined,
+    command: string | undefined,
+  ): void {
+    if (tool.risk === 'cloud-spend') {
+      this.emit({
+        type: 'note',
+        message: `${call.name} spends cloud quota, so it asks every time; that cannot be saved for the project.`,
+      });
+      return;
+    }
+    const rule: ProjectRule = { tool: call.name };
+    let scope = ' for every call';
+    if (path !== undefined) {
+      const dir = dirnameOf(path);
+      rule.pathGlob = dir ? `${dir}/**` : '**';
+      scope = ` under ${dir || '.'}`;
+    } else if (command !== undefined) {
+      const first = command.trim().split(/\s+/)[0] ?? '';
+      if (!first || SHELL_WRAPPERS.has(first)) {
+        this.emit({
+          type: 'note',
+          message: 'That command starts with a shell wrapper, so it will keep asking.',
+        });
+        return;
+      }
+      rule.commandPrefix = first;
+      scope = ` for commands starting with ${first}`;
+    }
+    const saved = this.deps.persistRule?.(rule) ?? false;
+    this.emit({
+      type: 'note',
+      message: saved
+        ? `${call.name} is allowed from now on${scope} in this project. Change it in os-code.config.json.`
+        : `Could not save that rule for this project; ${call.name} will ask again.`,
+    });
+    if (saved) this.deps.permissions.addSessionRule({ ...rule, decision: 'allow' });
   }
 
   private pushObservation(
@@ -865,9 +982,43 @@ export class AgentSession {
     return 'fail';
   }
 
-  /** Cheap one-shot completion on the active model (compaction uses this). */
-  private async summarize(text: string): Promise<string> {
+  /**
+   * Count a model call against the rails and show it (ENG-14, DAE-4). Every
+   * call lands here: the turn itself, a compaction summary, a delegated
+   * subtask. Cloud calls are priced and hit the dollar rail; local ones cost
+   * nothing but still count toward the token rail.
+   */
+  private recordUsage(
+    model: string,
+    kind: 'local' | 'cloud',
+    promptTokens: number,
+    completionTokens: number,
+  ): number {
+    this.deps.guardrails.noteTokens(promptTokens + completionTokens);
+    let dollars = 0;
+    if (kind === 'cloud') {
+      dollars = this.deps.usage.noteCloud(model, promptTokens, completionTokens);
+      this.deps.guardrails.noteDollars(dollars);
+    }
+    const contextPercent = this.contextTokens
+      ? Math.min(100, Math.round((estimateMessages(this.history) / this.contextTokens) * 100))
+      : 0;
+    this.emit({ type: 'usage', promptTokens, completionTokens, dollars, contextPercent });
+    return dollars;
+  }
+
+  /**
+   * Cheap one-shot completion on the active model (compaction and titles use
+   * this). The signal is the caller's: a mid-task summary rides the task's,
+   * idle work passes none, so a Stop from the last task never turns a later
+   * /compact into a silent drop (ENG-7). Usage is read from the stream, with
+   * a 4-chars-per-token estimate only when the backend reports nothing, so
+   * the spend reaches the dollar rail and the transcript (ENG-14).
+   */
+  private async summarize(text: string, signal?: AbortSignal): Promise<string> {
     let out = '';
+    let promptTokens = 0;
+    let completionTokens = 0;
     for await (const event of this.active.provider.chat(
       {
         model: this.active.model,
@@ -875,13 +1026,24 @@ export class AgentSession {
         maxTokens: 600,
         temperature: 0.1,
       },
-      this.abortController?.signal,
+      signal,
     )) {
       if (event.type === 'text') out += event.delta;
+      else if (event.type === 'usage') {
+        if (event.promptTokens) promptTokens = event.promptTokens;
+        if (event.completionTokens) completionTokens = event.completionTokens;
+      }
     }
-    if (this.active.provider.kind === 'cloud') {
-      this.deps.usage.noteCloud(this.active.model, Math.ceil(text.length / 4), 600);
+    if (!this.contextTokens) {
+      const caps = await this.active.provider.capabilities(this.active.model);
+      this.contextTokens = caps.contextTokens;
     }
+    this.recordUsage(
+      this.active.model,
+      this.active.provider.kind,
+      promptTokens || estimateTokens(text),
+      completionTokens || estimateTokens(out),
+    );
     return out.trim();
   }
 }

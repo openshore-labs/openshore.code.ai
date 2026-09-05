@@ -1,12 +1,17 @@
 // Star rendering with true half-steps. Two stacked rows: an empty track and a
 // filled overlay clipped to (value / 5) of the width, so a 4.5 reads as four
 // full stars and one exact half, never a rounded full star. On first paint the
-// fill wipes left to right; prefers-reduced-motion paints it instantly.
+// fill wipes left to right; prefers-reduced-motion paints it instantly. The
+// wipe moves the clip window with transforms only (UI-8): the fill slides left
+// by the unfilled share and the row inside slides right by the same share, so
+// the stars never stretch or reflow, and both ride the house tokens.
 import { useEffect, useRef, useState } from 'react';
 import { ranItLabel, type CommunityScore } from '../lib/reviewsMath.js';
 
 const STAR_PATH =
   'M12 2.2l2.9 6.26 6.85.72-5.1 4.62 1.42 6.74L12 17.6l-6.08 3.94 1.42-6.74-5.1-4.62 6.85-.72z';
+
+const WIPE = 'transform var(--dur-4) var(--ease-arrive)';
 
 function prefersReducedMotion(): boolean {
   return (
@@ -41,20 +46,24 @@ export function Stars({
   empty?: string;
   label?: string;
 }) {
-  const target = Math.max(0, Math.min(100, (value / 5) * 100));
+  const target = Math.max(0, Math.min(1, value / 5));
   const reduced = prefersReducedMotion();
-  const [width, setWidth] = useState(reduced ? target : 0);
+  const [fraction, setFraction] = useState(reduced ? target : 0);
   const painted = useRef(false);
 
   useEffect(() => {
     if (painted.current || reduced) {
-      setWidth(target);
+      setFraction(target);
       return;
     }
     painted.current = true;
-    const raf = requestAnimationFrame(() => setWidth(target));
+    const raf = requestAnimationFrame(() => setFraction(target));
     return () => cancelAnimationFrame(raf);
   }, [target, reduced]);
+
+  // The unfilled share, as the distance the clip window slides.
+  const hidden = (1 - fraction) * 100;
+  const motion = reduced ? 'none' : WIPE;
 
   return (
     <span
@@ -66,12 +75,14 @@ export function Stars({
       <Row color={empty} size={size} />
       <span
         className="stars-fill"
-        style={{
-          width: `${width}%`,
-          transition: reduced ? 'none' : 'width 260ms cubic-bezier(0.2, 0.8, 0.2, 1)',
-        }}
+        style={{ transform: `translateX(${-hidden}%)`, transition: motion }}
       >
-        <Row color={fill} size={size} />
+        <span
+          className="stars-fill-inner"
+          style={{ transform: `translateX(${hidden}%)`, transition: motion }}
+        >
+          <Row color={fill} size={size} />
+        </span>
       </span>
     </span>
   );

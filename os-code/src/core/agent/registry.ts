@@ -136,7 +136,7 @@ export function buildToolContext(options: {
     egress,
     config,
     imageProvider: providers.imageProvider(),
-    delegate: (role, task, images) => router.delegate(role, task, images),
+    delegate: (role, task, images, options) => router.delegate(role, task, images, options),
     searchRepo,
     vaultRoot,
     projectName,

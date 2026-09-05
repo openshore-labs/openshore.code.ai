@@ -17,7 +17,7 @@
 import Stripe from 'https://esm.sh/stripe@14?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
-import { isEntitled, tierCoversSeats } from '../_shared/entitlement.ts';
+import { checkoutDecision, isEntitled, tierCoversSeats } from '../_shared/entitlement.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', { apiVersion: '2024-06-20' });
 
@@ -43,6 +43,34 @@ const SUCCESS_URL =
   `${FUNCTIONS_BASE}/checkout-return?session_id={CHECKOUT_SESSION_ID}`;
 const CANCEL_URL = Deno.env.get('CHECKOUT_CANCEL_URL') ?? 'https://openshore.ai/os-code/';
 const PORTAL_RETURN = Deno.env.get('PORTAL_RETURN_URL') ?? 'https://openshore.ai/os-code/';
+
+// A3 and BE-7: never create a second subscription. Lists EVERY subscription
+// for the customer (status 'all', not 'active': a failed card leaves the sub
+// past_due, and a second checkout would double-bill while Smart Retries keep
+// the first alive). A live sub routes to the billing portal; an abandoned
+// `incomplete` one is canceled so the buyer is not trapped by a 3DS challenge
+// they never finished; anything dead lets checkout proceed. Returns the portal
+// response, or undefined when checkout may go ahead.
+async function routeExistingSubscription(
+  customer: string,
+  req: Request,
+): Promise<Response | undefined> {
+  const subs = await stripe.subscriptions.list({ customer, status: 'all', limit: 100 });
+  const decision = checkoutDecision(subs.data);
+  if (decision.action === 'portal') {
+    const portal = await stripe.billingPortal.sessions.create({
+      customer,
+      return_url: PORTAL_RETURN,
+    });
+    return json({ url: portal.url, alreadySubscribed: true }, 200, req);
+  }
+  if (decision.action === 'cancel-then-checkout') {
+    for (const stuck of decision.cancel) {
+      await stripe.subscriptions.cancel(stuck.id);
+    }
+  }
+  return undefined;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
@@ -115,16 +143,9 @@ Deno.serve(async (req) => {
       if (custErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
     }
 
-    // A3: never create a second subscription. If one is already active, send the
-    // admin to the billing portal instead of double-charging.
-    const active = await stripe.subscriptions.list({ customer, status: 'active', limit: 1 });
-    if (active.data.length > 0) {
-      const portal = await stripe.billingPortal.sessions.create({
-        customer,
-        return_url: PORTAL_RETURN,
-      });
-      return json({ url: portal.url, alreadySubscribed: true }, 200, req);
-    }
+    // A3 and BE-7: a live subscription goes to the portal, never a second sub.
+    const routed = await routeExistingSubscription(customer, req);
+    if (routed) return routed;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -206,15 +227,9 @@ async function checkoutIndividual(
     if (upErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
   }
 
-  // A3: never double-charge. An already-active sub goes to the portal.
-  const active = await stripe.subscriptions.list({ customer, status: 'active', limit: 1 });
-  if (active.data.length > 0) {
-    const portal = await stripe.billingPortal.sessions.create({
-      customer,
-      return_url: PORTAL_RETURN,
-    });
-    return json({ url: portal.url, alreadySubscribed: true }, 200, req);
-  }
+  // A3 and BE-7: a live subscription goes to the portal, never a second sub.
+  const routed = await routeExistingSubscription(customer, req);
+  if (routed) return routed;
 
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',

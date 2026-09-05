@@ -55,13 +55,16 @@ export class RemoteDriver implements SessionDriver {
   private closed = false;
   private model = { model: '(remote)', kind: 'local' as 'local' | 'cloud' };
   private busyFlag = false;
+  private readonly initialBackoffMs: number;
 
   constructor(
     readonly id: string,
     private readonly target: RemoteTarget,
     cwd = '(remote workspace)',
+    options: { initialBackoffMs?: number } = {},
   ) {
     this.cwd = cwd;
+    this.initialBackoffMs = options.initialBackoffMs ?? 500;
     void this.streamLoop();
   }
 
@@ -69,16 +72,48 @@ export class RemoteDriver implements SessionDriver {
     return this.busyFlag;
   }
 
+  /** True once the loop has stopped: closed by the caller, or given up on a
+   *  credential the daemon rejects or a session that is gone (DAE-13). */
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
+  private status(message: string): void {
+    for (const sink of this.sinks) sink({ type: 'status', message }, this.lastSeq);
+  }
+
   private async streamLoop(): Promise<void> {
-    let backoffMs = 500;
+    let backoffMs = this.initialBackoffMs;
+    // A 404 can be a daemon mid-restart (the session rehydrates on the next
+    // touch), so it gets a few tries; a 401 never gets better on its own.
+    let notFound = 0;
     while (!this.closed) {
       try {
         const res = await fetch(
           `${this.target.baseUrl}/sessions/${this.id}/events?since=${this.lastSeq}`,
           { headers: { authorization: `Bearer ${this.target.token}` } },
         );
+        if (res.status === 401) {
+          this.closed = true;
+          this.status(
+            'The daemon rejected this credential. Re-pair, or check ~/.os-code/daemon.token, then attach again.',
+          );
+          return;
+        }
+        if (res.status === 404) {
+          notFound += 1;
+          if (notFound >= 3) {
+            this.closed = true;
+            this.status(
+              `Session ${this.id} no longer exists on the daemon. osc attach lists what does.`,
+            );
+            return;
+          }
+          throw new Error('daemon answered 404');
+        }
         if (!res.ok || !res.body) throw new Error(`daemon answered ${res.status}`);
-        backoffMs = 500;
+        backoffMs = this.initialBackoffMs;
+        notFound = 0;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -96,12 +131,7 @@ export class RemoteDriver implements SessionDriver {
       } catch (err) {
         if (this.closed) return;
         log.debug('stream dropped, reconnecting', { err: String(err), backoffMs });
-        for (const sink of this.sinks) {
-          sink(
-            { type: 'status', message: 'Connection blipped; reattaching to the run.' },
-            this.lastSeq,
-          );
-        }
+        this.status('Connection blipped; reattaching to the run.');
         await new Promise((r) => setTimeout(r, backoffMs));
         backoffMs = Math.min(backoffMs * 2, 10_000);
       }
@@ -155,9 +185,13 @@ export class RemoteDriver implements SessionDriver {
     void fetch(`${this.target.baseUrl}/sessions/${this.id}/approvals/${id}`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.target.token}`, 'content-type': 'application/json' },
+      // Every field the daemon accepts (DAE-13): the project-scoped allow and
+      // the denial reason used to be dropped on this path.
       body: JSON.stringify({
         approve: answer.approve,
         alwaysThisSession: answer.alwaysThisSession,
+        alwaysInProject: answer.alwaysInProject,
+        reason: answer.reason,
       }),
     }).catch(() => {});
   }

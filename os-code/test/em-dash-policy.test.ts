@@ -49,7 +49,10 @@ const ENCODED = /&mdash;|&#8212;|&#x2014;|&#151;|\\u2014|\\u\{2014\}/gi;
 
 // The guards define the dash in order to find it. Nothing else is skipped by
 // name; everything else goes through EXEMPT_FILES with a reason.
-const GUARD_FILES = new Set(['os-code/test/em-dash-policy.test.ts', 'app/test/em-dash-policy.test.ts']);
+const GUARD_FILES = new Set([
+  'os-code/test/em-dash-policy.test.ts',
+  'app/test/em-dash-policy.test.ts',
+]);
 
 // Every exemption is a decision with a reason, never a reflex.
 const EXEMPT_FILES = new Map<string, string>([

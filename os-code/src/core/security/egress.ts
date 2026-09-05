@@ -132,12 +132,13 @@ export class EgressPolicy {
   async fetch(url: string, purpose: EgressPurpose, init?: RequestInit): Promise<Response> {
     const maxHops = 10;
     let current = url;
+    let currentInit: RequestInit = { ...init, redirect: 'manual' };
     for (let hop = 0; hop <= maxHops; hop++) {
       const decision = this.check(current, purpose);
       if (!decision.allowed) {
         throw new EgressBlocked(current, decision.reason);
       }
-      const res = await fetch(current, { ...init, redirect: 'manual' });
+      const res = await fetch(current, currentInit);
       const location = res.headers.get('location');
       if (res.status >= 300 && res.status < 400 && location) {
         let next: string;
@@ -146,6 +147,7 @@ export class EgressPolicy {
         } catch {
           return res; // Unparseable Location: hand the raw redirect back.
         }
+        currentInit = redirectInit(currentInit, current, next, res.status);
         current = next;
         continue;
       }
@@ -153,6 +155,40 @@ export class EgressPolicy {
     }
     throw new EgressBlocked(current, `Too many redirects following ${url} (over ${maxHops} hops).`);
   }
+}
+
+/** Headers that carry a credential and must not follow a request off-origin. */
+const CREDENTIAL_HEADER = /^(authorization|proxy-authorization|cookie|x-.*-token)$/i;
+const BODY_HEADER = /^content-(type|length|encoding)$/i;
+
+/**
+ * The request to send on a redirect hop (ENG-16). A browser-grade `fetch`
+ * does this itself; with manual redirects we must: drop credential headers
+ * when the origin changes, and turn a POST into a GET with no body on 301,
+ * 302, and 303 the way every client does.
+ */
+function redirectInit(init: RequestInit, from: string, to: string, status: number): RequestInit {
+  const out: RequestInit = { ...init };
+  const headers = new Headers(init.headers ?? undefined);
+  if (new URL(from).origin !== new URL(to).origin) {
+    for (const name of [...headers.keys()]) {
+      if (CREDENTIAL_HEADER.test(name)) headers.delete(name);
+    }
+  }
+  const method = (init.method ?? 'GET').toUpperCase();
+  const demote =
+    status === 303
+      ? method !== 'GET' && method !== 'HEAD'
+      : (status === 301 || status === 302) && method === 'POST';
+  if (demote) {
+    out.method = 'GET';
+    delete out.body;
+    for (const name of [...headers.keys()]) {
+      if (BODY_HEADER.test(name)) headers.delete(name);
+    }
+  }
+  out.headers = headers;
+  return out;
 }
 
 export class EgressBlocked extends Error {

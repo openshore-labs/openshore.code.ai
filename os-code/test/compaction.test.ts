@@ -59,11 +59,12 @@ describe('compaction cut point (ENG-6)', () => {
       ...exchange(5),
       ...exchange(6),
       ...exchange(7),
+      { role: 'assistant', content: 'ok' }, // puts a tool result at index -8
     ];
     const result = await compactHistory(messages, 1000, async () => 'summary');
     const rest = result.messages.filter((m) => m.role !== 'system');
     expect(rest.length).toBeGreaterThan(1);
-    expect(rest[1]!.role).not.toBe('tool');
+    expect(rest[1]!.role).toBe('assistant');
     const useIds = new Set(rest.flatMap((m) => m.toolCalls?.map((c) => c.id) ?? []));
     for (const m of rest) {
       if (m.role === 'tool') expect(useIds.has(m.toolCallId!)).toBe(true);

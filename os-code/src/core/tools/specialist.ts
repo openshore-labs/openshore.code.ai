@@ -33,7 +33,10 @@ export const delegateTool: ToolDef<typeof delegateSchema> = {
       };
     }
     try {
-      const answer = await ctx.delegate(args.role, args.task);
+      const answer = await ctx.delegate(args.role, args.task, undefined, {
+        signal: ctx.signal,
+        onUsage: ctx.noteUsage,
+      });
       return { ok: true, content: answer };
     } catch (err) {
       return {
@@ -85,7 +88,10 @@ export const analyzeImageTool: ToolDef<typeof analyzeSchema> = {
       return { ok: false, content: `Could not read ${args.path}: ${(err as Error).message}` };
     }
     try {
-      const answer = await ctx.delegate('vision', args.question, [{ base64, mediaType }]);
+      const answer = await ctx.delegate('vision', args.question, [{ base64, mediaType }], {
+        signal: ctx.signal,
+        onUsage: ctx.noteUsage,
+      });
       return { ok: true, content: answer };
     } catch (err) {
       return { ok: false, content: `Vision analysis failed: ${(err as Error).message}` };
