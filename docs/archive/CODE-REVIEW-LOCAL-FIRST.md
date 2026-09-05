@@ -1,3 +1,5 @@
+> **Archived 2026-09-05. Status: WORKED.** The findings below were built out per `os-code/PROGRESS.md` (the "nothing here is fixed yet" line further down is the original text); the one item still open from it (P2-9, engine-side header forwarding across redirects, now ENG-16) is carried in `CODE-REVIEW-FINDINGS-2026-09-05.md` at the repo root.
+
 # OS Code review: local-first modulation, UI/UX vs the Uki bar, and the model stack
 
 Full review, 2026-08-25, on branch `claude/openshore-review-local-first-9q1ja9`

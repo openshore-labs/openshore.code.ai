@@ -1,3 +1,5 @@
+> **Archived 2026-09-05. Status: ADDRESSED (2026-08-20).** Historical review record, kept verbatim under `docs/archive/`; the repo-wide em-dash guard exempts this one file for that reason. The current review is `CODE-REVIEW-FINDINGS-2026-09-05.md` at the repo root.
+
 # OS Code platform code review — findings for remediation
 
 > ## STATUS (2026-08-20): ADDRESSED

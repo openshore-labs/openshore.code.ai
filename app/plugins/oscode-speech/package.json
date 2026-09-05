@@ -1,8 +1,9 @@
 {
   "name": "oscode-speech",
   "version": "0.1.0",
+  "private": true,
   "description": "Native on-device voice-to-text for OpenShore, via SFSpeechRecognizer. Audio never leaves the phone.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "files": [
     "ios/Sources",
     "Package.swift"

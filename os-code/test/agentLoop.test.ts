@@ -7,7 +7,10 @@ import { join } from 'node:path';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 import { toAnthropicMessages } from '../src/providers/anthropic.js';
+import type { ChatMessage } from '../src/providers/types.js';
 import type { ApprovalAnswer } from '../src/core/agent/types.js';
+import { PermissionEngine, DEFAULT_PERMISSIONS } from '../src/core/permissions/index.js';
+import { z } from 'zod';
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
   const start = Date.now();
@@ -285,6 +288,274 @@ describe('usage accounting (P2-1)', () => {
     expect(usage && usage.type === 'usage' && usage.promptTokens).toBe(100);
     // Summing would give 52; last-seen-wins keeps the cumulative 50.
     expect(usage && usage.type === 'usage' && usage.completionTokens).toBe(50);
+  });
+});
+
+describe('guardrail counters reset per task (P0-2)', () => {
+  // The token and dollar rails say "in one task", so they must start from zero
+  // on every run(). Before the fix they accumulated for the life of the session
+  // and a long conversation could never start another task.
+  it('a task that spent past maxTokens does not block the next task', async () => {
+    const provider = new MockProvider('mock', [
+      [
+        { type: 'text', delta: 'first' },
+        { type: 'usage', promptTokens: 900, completionTokens: 300 },
+        { type: 'done', stopReason: 'end' },
+      ],
+      textTurn('second'),
+    ]);
+    const session = makeTestSession(provider, {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+        guardrails: { maxTokens: 1000 },
+      },
+    });
+    await session.agent.run('one');
+    await session.agent.run('two');
+    expect(provider.requests).toHaveLength(2);
+    const done = session.events.at(-1);
+    expect(done && done.type === 'task-done' && done.reason).toBe('complete');
+  });
+});
+
+describe('permission paths are normalized (ENG-3)', () => {
+  const denySecrets = {
+    stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+    permissions: {
+      defaults: { write: 'ask', shell: 'ask' },
+      rules: [{ tool: 'writeFile', decision: 'deny', pathGlob: 'secrets/**' }],
+    },
+  };
+
+  it('a dotted spelling of a denied path is still denied, never asked', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('writeFile', { path: './secrets/k', content: 'x' }, 'c1'),
+      toolTurn('writeFile', { path: 'src/../secrets/k', content: 'x' }, 'c2'),
+      textTurn('ok'),
+    ]);
+    const session = makeTestSession(provider, { configOverrides: denySecrets });
+    await session.agent.run('write the key');
+    expect(session.approvals).toEqual([]);
+    const denied = session.events.filter((e) => e.type === 'tool-denied');
+    expect(denied).toHaveLength(2);
+  });
+
+  it('always allow in this project on a root file persists a rule that matches', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('writeFile', { path: 'README.md', content: 'x' }, 'c1'),
+      textTurn('ok'),
+    ]);
+    const session = makeTestSession(provider, {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+        permissions: { defaults: { write: 'ask', shell: 'ask' } },
+      },
+      approve: () => ({ approve: true, alwaysInProject: true }),
+    });
+    await session.agent.run('write the readme');
+    expect(session.persistedRules).toHaveLength(1);
+    const rule = session.persistedRules[0]!;
+    // A fresh engine loaded with exactly that rule allows the next root write.
+    const engine = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      defaults: { ...DEFAULT_PERMISSIONS.defaults, write: 'ask' },
+      rules: [{ tool: rule.tool, decision: 'allow', pathGlob: rule.pathGlob }],
+    });
+    expect(
+      engine.decide({ toolName: 'writeFile', risk: 'write', path: 'README.md' }).decision,
+    ).toBe('allow');
+    expect(
+      engine.decide({ toolName: 'writeFile', risk: 'write', path: 'CHANGELOG.md' }).decision,
+    ).toBe('allow');
+  });
+});
+
+describe('a path that leaves the workspace is denied outright (ENG-3)', () => {
+  it('never raises an approval for a jail violation', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('writeFile', { path: '../outside.txt', content: 'x' }, 'c1'),
+      textTurn('ok'),
+    ]);
+    const session = makeTestSession(provider, {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+        permissions: { defaults: { write: 'ask', shell: 'ask' } },
+      },
+    });
+    await session.agent.run('write outside');
+    expect(session.approvals).toEqual([]);
+    const denied = session.events.find((e) => e.type === 'tool-denied');
+    expect(denied && denied.type === 'tool-denied' && denied.reason).toMatch(/workspace/i);
+    expect(session.events.some((e) => e.type === 'tool-start')).toBe(false);
+  });
+});
+
+describe('always allow in this project for shell (ENG-4)', () => {
+  const askAll = {
+    stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+    permissions: { defaults: { write: 'ask', shell: 'ask' } },
+  };
+
+  it('scopes the saved rule to the first word, so a different command still asks', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('runShell', { command: 'npm test' }, 'c1'),
+      toolTurn('runShell', { command: 'npm run build' }, 'c2'),
+      toolTurn('runShell', { command: 'rm -rf dist' }, 'c3'),
+      textTurn('ok'),
+    ]);
+    const session = makeTestSession(provider, {
+      configOverrides: askAll,
+      approve: () => ({ approve: true, alwaysInProject: true }),
+    });
+    await session.agent.run('build it');
+    expect(session.persistedRules).toEqual([{ tool: 'runShell', commandPrefix: 'npm' }]);
+    // npm test asked (and saved), npm run build flowed, rm asked again.
+    expect(session.approvals.map((a) => a.summary)).toEqual([
+      'Run: npm test',
+      'Run: rm -rf dist',
+    ]);
+    expect(session.events.filter((e) => e.type === 'tool-end')).toHaveLength(3);
+  });
+
+  it('refuses to save a rule for a shell wrapper and says so', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('runShell', { command: 'sudo npm test' }, 'c1'),
+      textTurn('ok'),
+    ]);
+    const session = makeTestSession(provider, {
+      configOverrides: askAll,
+      approve: () => ({ approve: true, alwaysInProject: true }),
+    });
+    await session.agent.run('build it');
+    expect(session.persistedRules).toEqual([]);
+    const note = session.events.find((e) => e.type === 'note');
+    expect(note && note.type === 'note' && note.message).toMatch(/shell wrapper/);
+  });
+});
+
+describe('idle work after an abort (ENG-7)', () => {
+  it('compactNow after an aborted task still summarizes through the provider', async () => {
+    const provider = new MockProvider('mock', [textTurn('first'), textTurn('a summary')]);
+    // The scripted provider ignores signals; make it refuse like a real one.
+    const original = provider.chat.bind(provider);
+    provider.chat = async function* (req, signal) {
+      if (signal?.aborted) throw new Error('This operation was aborted');
+      yield* original(req, signal);
+    } as typeof provider.chat;
+    const session = makeTestSession(provider);
+    await session.agent.run('hello');
+    session.agent.abort(); // the task signal now stays aborted until the next run()
+    session.agent.history = [
+      ...session.agent.history,
+      ...Array.from({ length: 12 }, (_, i): ChatMessage => ({
+        role: i % 2 ? 'assistant' : 'user',
+        content: `turn ${i} ${'x'.repeat(2000)}`,
+      })),
+    ];
+    await session.agent.compactNow();
+    expect(provider.requests).toHaveLength(2);
+    const summary = session.agent.history.find(
+      (m) => typeof m.content === 'string' && m.content.includes('summarized to fit'),
+    );
+    expect(summary && String(summary.content)).toContain('a summary');
+    expect(summary && String(summary.content)).not.toContain('were dropped');
+  });
+});
+
+describe('a rejected call in a native batch (ENG-11)', () => {
+  it('tells the model which call was refused instead of dropping the problem', async () => {
+    const provider = new MockProvider('mock', [
+      [
+        {
+          type: 'tool-call',
+          call: { id: 'c1', name: 'readFile', argsText: '{"path":"a.txt"}', args: { path: 'a.txt' } },
+        },
+        { type: 'tool-call', call: { id: 'c2', name: 'compile', argsText: '{}', args: {} } },
+        { type: 'done', stopReason: 'tool-calls' },
+      ],
+      textTurn('ok'),
+    ]);
+    const session = makeTestSession(provider, { files: { 'a.txt': 'alpha' } });
+    await session.agent.run('read and compile');
+    // The valid call ran.
+    expect(session.events.some((e) => e.type === 'tool-end')).toBe(true);
+    // The refused call has its own observation naming the problem.
+    const second = provider.requests[1]!;
+    const refused = second.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c2');
+    expect(refused && String(refused.content)).toContain('no tool named "compile"');
+    // And the transcript still pairs every tool_use with a tool_result.
+    const { messages } = toAnthropicMessages(session.agent.history);
+    expect(unpairedToolUses(messages)).toEqual([]);
+  });
+});
+
+describe('the steps rail counts exactly (ENG-12)', () => {
+  it('runs exactly maxSteps tools before stopping', async () => {
+    const turns = Array.from({ length: 6 }, (_, i) => toolTurn('readFile', { path: `f${i}.txt` }));
+    const provider = new MockProvider('mock', turns);
+    const files = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`f${i}.txt`, 'x']));
+    const session = makeTestSession(provider, {
+      files,
+      configOverrides: {
+        stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+        guardrails: { maxSteps: 4 },
+      },
+    });
+    await session.agent.run('read everything');
+    expect(session.events.filter((e) => e.type === 'tool-end')).toHaveLength(4);
+    const done = session.events.at(-1);
+    expect(done && done.type === 'task-done' && done.reason).toBe('guardrail');
+    expect(done && done.type === 'task-done' && done.message).toContain('4');
+  });
+});
+
+describe('summaries are priced (ENG-14)', () => {
+  it('compactNow on a cloud model notes the dollars and emits usage', async () => {
+    const cloud = new MockProvider('anthropic', [textTurn('a summary')], { kind: 'cloud' });
+    const session = makeTestSession(cloud, {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'anthropic', model: 'claude-sonnet-5' } },
+      },
+    });
+    session.agent.history = Array.from({ length: 12 }, (_, i): ChatMessage => ({
+      role: i % 2 ? 'assistant' : 'user',
+      content: `turn ${i} ${'x'.repeat(2000)}`,
+    }));
+    await session.agent.compactNow();
+    expect(session.guardrails.spentDollars).toBeGreaterThan(0);
+    expect(session.usage.session.dollars).toBeGreaterThan(0);
+    const usage = session.events.find((e) => e.type === 'usage');
+    expect(usage && usage.type === 'usage' && usage.dollars).toBeGreaterThan(0);
+  });
+});
+
+describe('the task signal reaches tools (DAE-4)', () => {
+  it('a tool can see the abort through its context and the run settles aborted', async () => {
+    const provider = new MockProvider('mock', [toolTurn('slowTool', {}), textTurn('unreached')]);
+    const session = makeTestSession(provider);
+    let sawSignal: AbortSignal | undefined;
+    session.tools.register({
+      name: 'slowTool',
+      description: 'waits until the task is aborted',
+      schema: z.object({}),
+      risk: 'read',
+      async execute(_args, ctx) {
+        sawSignal = ctx.signal;
+        await new Promise<void>((resolve) => {
+          if (!ctx.signal || ctx.signal.aborted) return resolve();
+          ctx.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return { ok: true, content: 'stopped' };
+      },
+    });
+    const runPromise = session.agent.run('wait');
+    await waitUntil(() => session.events.some((e) => e.type === 'tool-start'));
+    session.agent.abort();
+    await runPromise;
+    expect(sawSignal).toBeInstanceOf(AbortSignal);
+    expect(sawSignal?.aborted).toBe(true);
+    const done = session.events.at(-1);
+    expect(done && done.type === 'task-done' && done.reason).toBe('aborted');
   });
 });
 

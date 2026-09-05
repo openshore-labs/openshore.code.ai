@@ -1,0 +1,19 @@
+# Build output and installed packages.
+node_modules/
+dist/
+dist-electron/
+release/
+
+# The Xcode project and the Capacitor sync target (ios/App/App/public is the
+# copied web build). Xcode owns the formatting of what lives here.
+ios/
+
+# Native plugin build products and their Xcode-managed sources.
+plugins/*/ios/
+plugins/*/build/
+plugins/*/.build/
+plugins/*/node_modules/
+
+# Generated brand assets (the scripts that emit them are formatted; their
+# output is not source).
+public/

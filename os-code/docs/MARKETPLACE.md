@@ -189,9 +189,11 @@ To admit or promote a model:
 
 ## CI publishing (built: `.github/workflows/catalog.yml`)
 
-The publish pipeline is wired. `.github/workflows/catalog.yml` runs weekly, on a
-change to the curation inputs / builder / schema, or on demand
-(`workflow_dispatch`). Each run:
+The publish pipeline is wired. `.github/workflows/catalog.yml` runs daily
+(08:17 UTC), on a change to the curation inputs / builder / schema, or on demand
+(`workflow_dispatch`, which takes one input, `allow_large_drop`: tick it to set
+`CATALOG_ALLOW_LARGE_DROP=1` for that run and waive the count-collapse guard
+when a large drop is intended). Each run:
 
 1. Builds the engine and runs the builder + isolation guard tests.
 2. Seeds the regression baseline by fetching the currently live catalog from

@@ -36,12 +36,40 @@
       }
     ]
   },
+  "overrides": [
+    {
+      "files": ["*.cjs"],
+      "parser": "espree",
+      "parserOptions": {
+        "ecmaVersion": 2022,
+        "sourceType": "script"
+      },
+      "env": {
+        "node": true,
+        "browser": false
+      },
+      "rules": {
+        "@typescript-eslint/no-var-requires": "off"
+      }
+    },
+    {
+      "files": ["*.mjs"],
+      "parser": "espree",
+      "parserOptions": {
+        "ecmaVersion": 2022,
+        "sourceType": "module"
+      },
+      "env": {
+        "node": true,
+        "browser": false
+      }
+    }
+  ],
   "ignorePatterns": [
     "dist/",
     "dist-electron/",
     "node_modules/",
     "ios/",
-    "*.js",
-    "*.cjs"
+    "*.js"
   ]
 }

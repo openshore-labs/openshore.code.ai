@@ -8,6 +8,10 @@ import {
   setActiveEffort,
 } from '../src/lib/effort.js';
 
+// Built from the char code so the repo-wide em-dash guard, which scans test
+// files too, never reads the glyph out of this file.
+const EM_DASH = String.fromCharCode(0x2014);
+
 describe('effort', () => {
   it('defaults to high', () => {
     expect(DEFAULT_EFFORT).toBe('high');
@@ -34,7 +38,7 @@ describe('effort', () => {
     for (const e of EFFORTS) {
       const d = effortDirective(e);
       expect(d).toContain(effortLabel(e).toLowerCase());
-      expect(d).not.toContain('—');
+      expect(d).not.toContain(EM_DASH);
     }
     expect(effortDirective('high')).not.toBe(effortDirective('low'));
   });

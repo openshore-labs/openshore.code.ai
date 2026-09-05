@@ -1,8 +1,9 @@
 # OS Code P0 Beta: Action Items (founder step-by-step)
 
 This is the checklist we work through together, one step at a time. The code is
-built and gate-green on branch `claude/openshore-audit-p0-roadmap-o1e3vj`
-(app + engine tests, lint, typecheck all pass). What is left is the work only
+built, gate-green, and merged to `main` (it was developed on the branch
+`claude/openshore-audit-p0-roadmap-o1e3vj`, since merged; app + engine tests,
+lint, typecheck all pass). What is left is the work only
 you can do (secrets, App Store Connect, OAuth consoles) plus on-device
 verification of the native pieces I cannot run in a headless session.
 
@@ -225,6 +226,6 @@ Say the word and I will build any of these:
 
 The P0 beta bar is met: a non-founder can get the app, sign in, recover a
 password, pay $20 on either rail and see it unlock, and always get a real first
-answer or an honest next step. At that point we decide whether to merge the
-branch to `main` (it currently carries only this remediation) and cut the first
-external beta.
+answer or an honest next step. The remediation branch is already on `main`
+(TestFlight builds ship from it); at that point we decide whether to cut the
+first external beta.
