@@ -1,5 +1,4 @@
-// Enforcement: what happens to an account after a block, and what happens to
-// an IP address, which is a different question with a different answer.
+// Enforcement: what happens to an account after a block.
 //
 // The ladder
 //   Level 0  Block and log. Every violation, always. Most stop here.
@@ -8,18 +7,18 @@
 //   Level 2  Any Tier 1 attempt, or abuse that persists past level 1:
 //            permanent termination.
 //
-// Two things this file is careful about.
+// One thing this file is careful about: a failed check is not a violation.
+// When the layer blocks because its own checks could not complete, that is the
+// layer failing closed, and counting it against the person would punish them
+// for our bug. `check-failed` records are filtered out before the ladder ever
+// sees them.
 //
-// A failed check is not a violation. When the layer blocks because its own
-// checks could not complete, that is the layer failing closed, and counting it
-// against the person would punish them for our bug. `check-failed` records are
-// filtered out before the ladder ever sees them.
-//
-// An IP ban is proposed, never applied. Addresses are shared: households,
-// offices, cafes, university networks, and carrier-grade NAT put thousands of
-// unrelated people behind one address. An automatic ban is collateral damage
-// with no appeal, so this file can only ever produce a PROPOSAL that a human
-// confirms. There is no function here that applies one.
+// There is no IP address anywhere in this file, on purpose. An earlier version
+// proposed banning the address a violation came from; the founder cut it
+// (2026-09-05, after CTO and CMO review) because addresses are shared
+// (households, offices, cafes, university networks, carrier-grade NAT) and a
+// ban collateral-damages people who did nothing. Enforcement here is account
+// termination plus a lawful report, and nothing else.
 
 import type { EthicsRecord } from './chokepoint.js';
 
@@ -34,8 +33,6 @@ export interface EnforcementOutcome {
   reason: string;
   /** Tier 1: a report is owed to the appropriate authority or hotline. */
   reportRequired: boolean;
-  /** Termination: an IP ban may be proposed for human review. */
-  proposeIpBan: boolean;
 }
 
 /** How many Tier 2 blocks before a warning, and before a restriction. */
@@ -84,7 +81,6 @@ export function evaluateEnforcement(history: EthicsRecord[]): EnforcementOutcome
           ? 'A prohibited request in a hard-blocked category.'
           : `${tier1.length} prohibited requests in hard-blocked categories.`,
       reportRequired: true,
-      proposeIpBan: true,
     };
   }
 
@@ -98,7 +94,6 @@ export function evaluateEnforcement(history: EthicsRecord[]): EnforcementOutcome
       action: 'restrict',
       reason: `${tier2.length} blocked requests to recreate a real person without authorization.`,
       reportRequired: false,
-      proposeIpBan: false,
     };
   }
 
@@ -108,7 +103,6 @@ export function evaluateEnforcement(history: EthicsRecord[]): EnforcementOutcome
       action: 'warn',
       reason: `${tier2.length} blocked requests to recreate a real person without authorization.`,
       reportRequired: false,
-      proposeIpBan: false,
     };
   }
 
@@ -119,57 +113,6 @@ export function evaluateEnforcement(history: EthicsRecord[]): EnforcementOutcome
       ? `${violations.length} blocked request${violations.length === 1 ? '' : 's'} on this account.`
       : 'No blocked requests on this account.',
     reportRequired: false,
-    proposeIpBan: false,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// The IP ban queue
-// ---------------------------------------------------------------------------
-
-export interface IpBanProposal {
-  /** The address, exactly as the enforcement event carried it. */
-  ipAddress: string;
-  /** The account the termination applies to. */
-  accountId: string;
-  reason: string;
-  proposedAt: string;
-  /** Always 'pending'. This module cannot produce any other status. */
-  status: 'pending';
-  /**
-   * The reviewer's checklist, carried with the proposal so the person deciding
-   * sees the collateral-damage question before they see the Approve button.
-   */
-  reviewNotes: string[];
-}
-
-export const IP_REVIEW_NOTES: string[] = [
-  'Shared addresses are the norm. Households, offices, cafes, schools, and carrier-grade NAT put unrelated people behind one address.',
-  'A ban here does not reach the account holder if they move networks, and it does reach everyone else who does not.',
-  'Prefer the account termination alone unless this address shows a pattern across several terminated accounts.',
-  'Set an expiry. A permanent address ban outlives the person who earned it.',
-];
-
-/**
- * Build a proposal for human review. This is the ONLY thing the code can do
- * with an IP address in an enforcement context: there is deliberately no
- * applyIpBan function in this module, so an automatic ban cannot be written by
- * accident later. Applying a confirmed ban is an operator action, taken through
- * the admin review surface.
- */
-export function proposeIpBan(input: {
-  ipAddress: string;
-  accountId: string;
-  reason: string;
-  now?: () => Date;
-}): IpBanProposal {
-  return {
-    ipAddress: input.ipAddress,
-    accountId: input.accountId,
-    reason: input.reason,
-    proposedAt: (input.now ?? (() => new Date()))().toISOString(),
-    status: 'pending',
-    reviewNotes: IP_REVIEW_NOTES,
   };
 }
 

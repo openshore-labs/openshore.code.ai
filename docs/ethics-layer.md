@@ -169,32 +169,11 @@ where. A fabricated "reported to NCMEC" would be worse than no hook at all.
 
 ### IP addresses
 
-Nothing records an address for ordinary use: not on sync, not on sign-in, not on
-a request that passes. Migration `0016` is the first IP collection in the
-product, and it is deliberately narrow.
-
-Be precise about what "narrow" means here, because an earlier draft of this
-document was not. `guardrail_events.ip_address` and
-`likeness_consents.ip_address` both default to `request_ip()`, so an address is
-recorded on a **block**, on an **allowed-with-assertion** row, and on a
-**consent assertion**. The first is a violation; the other two are not. Tying
-capture strictly to blocks is an open follow-up in `PROGRESS.md`, and until it
-lands, this paragraph is the accurate description, not the aspiration.
-
-There is no address column on anything except those two tables and the ban
-proposals derived from a termination.
-
-**Nothing auto-bans.** A termination queues a `pending` proposal, and that is
-the only status any code path can create. `enforcement.ts` has no apply
-function, and the migration has no function that bans an address. A person in
-the `abuse_reviewers` allowlist decides each one, and an approval requires an
-expiry.
-
-The reason is collateral damage. Households, offices, cafes, campuses, and
-carrier-grade NAT put large numbers of unrelated people behind one address. A
-ban does not reach an account holder who changes networks, and it does reach
-everyone else who does not. The proposal carries its review notes so the person
-deciding reads that before they see the buttons.
+OpenShore does not collect, store, or use an IP address anywhere in the
+product, for enforcement or for anything else. There is no address column, no
+ban proposal, and no reviewer queue for one, because there is nothing to ban.
+Enforcement is account termination, full stop, plus a report where the law
+requires or permits it (see Enforcement above).
 
 ## Provenance
 
@@ -240,9 +219,8 @@ control set that fails the build on over-blocking.
 `os-code/test/ethicsNoBypass.test.ts` measures the property that matters most,
 that no path reaches a model unscreened.
 
-**Manage.** Blocks are logged, the ladder escalates, terminations queue a
-human-reviewed IP proposal, and Tier 1 prepares a report. Degraded states fail
-closed.
+**Manage.** Blocks are logged, the ladder escalates, terminations are carried
+out, and Tier 1 prepares a report. Degraded states fail closed.
 
 ### ISO/IEC 42001
 

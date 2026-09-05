@@ -1,6 +1,6 @@
 -- The ethics layer's account-side record: what was blocked, what authorization
--- a person asserted, what enforcement followed, and the two queues a human has
--- to work through (proposed IP bans, and reports prepared for an authority).
+-- a person asserted, what enforcement followed, and the one queue a human has
+-- to work through (reports prepared for an authority).
 --
 -- WHAT IS STORED, AND WHAT IS DELIBERATELY NOT
 --
@@ -12,53 +12,19 @@
 -- column here that could hold them. Retaining harmful material in order to
 -- police harmful material is its own harm, and the hash does the job.
 --
--- ON IP ADDRESSES
+-- NO NETWORK ADDRESSES, ANYWHERE, EVER.
 --
--- request_ip() records the caller's address ON A BLOCK ONLY. This is not a new
--- tracking surface: nothing here records an address for an ordinary request,
--- and there is no address column on anything except a violation record and the
--- ban proposals derived from one.
---
--- Nothing auto-bans. ip_ban_proposals can only ever be created 'pending', and
--- only a human in the abuse_reviewers allowlist can decide one. Addresses are
--- shared (households, offices, cafes, campuses, carrier-grade NAT), so an
--- automatic ban is collateral damage against people who did nothing. The review
--- notes travel with the proposal so the reviewer sees that before the button.
+-- An earlier draft of this migration captured the caller's network location on
+-- a block (and, before that, on every row). The founder cut it (2026-09-05,
+-- after CTO and CMO review): enforcement is account termination plus a lawful
+-- report, full stop, and nothing here collects, stores, or reasons about where
+-- a request came from. There is no header-reading function, no column for it
+-- on anything, and no address-ban queue, because banning a network location is
+-- not a capability this product has. `test/ethicsEnforcement.test.ts` greps
+-- this file for the identifiers that draft used, so they can never come back
+-- quietly.
 --
 -- Deploy ordering: additive, applies after 0015 (the 2026-09-05 review migration).
-
--- ---------------------------------------------------------------------------
--- The caller's IP, safely.
--- ---------------------------------------------------------------------------
-
--- PostgREST exposes the request headers as a setting. A missing header, a
--- malformed list, or a value that is not an address must never fail an insert,
--- so every failure path returns null.
-create or replace function public.request_ip ()
-returns inet
-language plpgsql
-stable
-as $$
-declare
-  raw text;
-begin
-  begin
-    raw := current_setting('request.headers', true)::json ->> 'x-forwarded-for';
-  exception when others then
-    return null;
-  end;
-  if raw is null or btrim(raw) = '' then
-    return null;
-  end if;
-  -- x-forwarded-for is a list; the client is the first entry.
-  raw := btrim(split_part(raw, ',', 1));
-  begin
-    return raw::inet;
-  exception when others then
-    return null;
-  end;
-end;
-$$;
 
 -- ---------------------------------------------------------------------------
 -- Blocked requests
@@ -82,44 +48,12 @@ create table if not exists public.guardrail_events (
   signals text[] not null default '{}',
   -- Tier 2 only: the subject named, so an assertion can be audited.
   subject text,
-  -- Set by a trigger on a BLOCK only (action = 'blocked'), never on an
-  -- allowed-with-assertion row. See guardrail_events_set_ip below. No column
-  -- default, so the trigger is the single place an address is written.
-  ip_address inet,
   created_at timestamptz not null default now()
 );
-
--- Fill ip_address ONLY when a request was actually blocked. An
--- allowed-with-assertion row is a permitted request and carries no address.
--- Server-enforced, so the promise ("we log an address only when we block a
--- request") holds no matter what the client sends.
-create or replace function public.guardrail_events_set_ip ()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if new.action = 'blocked' then
-    new.ip_address := public.request_ip();
-  else
-    new.ip_address := null;
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists guardrail_events_ip on public.guardrail_events;
-create trigger guardrail_events_ip
-  before insert on public.guardrail_events
-  for each row
-  execute function public.guardrail_events_set_ip();
 create index if not exists guardrail_events_user_time_idx
   on public.guardrail_events (user_id, occurred_at desc);
 create index if not exists guardrail_events_tier_idx
   on public.guardrail_events (tier, occurred_at desc);
-create index if not exists guardrail_events_ip_idx
-  on public.guardrail_events (ip_address) where ip_address is not null;
 
 -- ---------------------------------------------------------------------------
 -- Authorization assertions (the Tier 2 accountability record)
@@ -131,9 +65,6 @@ create table if not exists public.likeness_consents (
   -- The subject as the person named them, normalized lowercase for matching.
   subject text not null check (length(btrim(subject)) > 0),
   asserted_at timestamptz not null default now(),
-  -- No IP. An authorization assertion is a person doing a permitted thing
-  -- (stating they are cleared for a subject), not a violation, so no address is
-  -- captured here. Capture is confined to actual blocks (CTO + CMO, 2026-09-05).
   unique (user_id, subject)
 );
 create index if not exists likeness_consents_user_idx on public.likeness_consents (user_id);
@@ -154,31 +85,6 @@ create table if not exists public.enforcement_actions (
 );
 create index if not exists enforcement_actions_user_idx
   on public.enforcement_actions (user_id, created_at desc);
-
--- ---------------------------------------------------------------------------
--- Proposed IP bans, for human review
--- ---------------------------------------------------------------------------
-
-create table if not exists public.ip_ban_proposals (
-  id uuid primary key default gen_random_uuid(),
-  ip_address inet not null,
-  -- The account whose termination prompted this proposal.
-  user_id uuid references auth.users (id) on delete set null,
-  reason text not null,
-  proposed_at timestamptz not null default now(),
-  -- A proposal starts pending and can only be moved by a reviewer through the
-  -- RPC below. There is no code path anywhere that inserts a non-pending row.
-  status text not null default 'pending'
-    check (status in ('pending', 'approved', 'rejected', 'expired')),
-  reviewed_by uuid references auth.users (id) on delete set null,
-  reviewed_at timestamptz,
-  -- An approved ban carries an expiry. A permanent address ban outlives the
-  -- person who earned it and lands on whoever holds the address next.
-  expires_at timestamptz,
-  review_notes text[] not null default '{}'
-);
-create index if not exists ip_ban_proposals_status_idx
-  on public.ip_ban_proposals (status, proposed_at desc);
 
 -- ---------------------------------------------------------------------------
 -- Reports prepared for an authority or hotline
@@ -238,7 +144,6 @@ $$;
 alter table public.guardrail_events enable row level security;
 alter table public.likeness_consents enable row level security;
 alter table public.enforcement_actions enable row level security;
-alter table public.ip_ban_proposals enable row level security;
 alter table public.abuse_reports enable row level security;
 alter table public.abuse_reviewers enable row level security;
 
@@ -272,13 +177,9 @@ drop policy if exists enforcement_actions_select_own on public.enforcement_actio
 create policy enforcement_actions_select_own on public.enforcement_actions for select
   using (user_id = auth.uid() or public.is_abuse_reviewer());
 
--- The two queues and the reviewer allowlist are reviewer-only, through the RPCs
--- below. With RLS on and no insert/update/delete policy, every client write is
--- denied by default, including a write that tried to set status = 'approved'.
-drop policy if exists ip_ban_proposals_select_reviewer on public.ip_ban_proposals;
-create policy ip_ban_proposals_select_reviewer on public.ip_ban_proposals for select
-  using (public.is_abuse_reviewer());
-
+-- The report queue and the reviewer allowlist are reviewer-only, through the
+-- RPCs below. With RLS on and no insert/update/delete policy, every client
+-- write is denied by default.
 drop policy if exists abuse_reports_select_reviewer on public.abuse_reports;
 create policy abuse_reports_select_reviewer on public.abuse_reports for select
   using (public.is_abuse_reviewer());
@@ -292,19 +193,19 @@ create policy abuse_reviewers_select_self on public.abuse_reviewers for select
 -- ---------------------------------------------------------------------------
 
 -- Evaluate the enforcement ladder for the calling account FROM SERVER TRUTH,
--- and, on a termination, queue an IP ban PROPOSAL and a report for review.
+-- and, on a termination, prepare a report for review.
 --
 -- The level is computed here from guardrail_events, not passed by the client.
--- That fixes two things the earlier client-driven version got wrong: a
--- reinstall no longer resets the ladder (the history lives on the server), and
--- a client cannot under-report its own standing. The app calls this with no
--- arguments after a block and reads back the outcome.
+-- That fixes two things a client-driven version would get wrong: a reinstall
+-- cannot reset the ladder (the history lives on the server), and a client
+-- cannot under-report its own standing. The app calls this with no arguments
+-- after a block and reads back the outcome.
 --
 -- The ladder matches the engine's evaluateEnforcement: any Tier 1 block is
--- termination; check-failed and likeness are non-countable. This function is
--- the only way an ip_ban_proposals row is created, and it can only create a
--- pending one. There is no apply step, and deliberately no function anywhere in
--- this migration that bans an address.
+-- termination; check-failed and likeness are non-countable. Termination here
+-- means the account is flagged for the operator to remove; this function does
+-- not delete the account itself, and it does not touch, request, or reason
+-- about any network address.
 create or replace function public.record_enforcement ()
 returns table (level smallint, action text, reason text)
 language plpgsql
@@ -318,7 +219,6 @@ declare
   v_level smallint;
   v_action text;
   v_reason text;
-  v_ip inet;
 begin
   if v_uid is null then
     raise exception 'not signed in';
@@ -350,32 +250,6 @@ begin
   values (v_uid, v_level, v_action, v_reason, 'system');
 
   if v_action = 'terminate' then
-    -- The address for the proposal is the one on the latest Tier 1 block. A
-    -- pending proposal for the same address is not duplicated.
-    select ip_address
-      into v_ip
-      from public.guardrail_events
-     where user_id = v_uid and action = 'blocked' and tier = 1 and category <> 'check-failed'
-     order by occurred_at desc
-     limit 1;
-    if v_ip is not null and not exists (
-      select 1 from public.ip_ban_proposals
-       where ip_address = v_ip and user_id = v_uid and status = 'pending'
-    ) then
-      insert into public.ip_ban_proposals (ip_address, user_id, reason, review_notes)
-      values (
-        v_ip,
-        v_uid,
-        v_reason,
-        array[
-          'Shared addresses are the norm. Households, offices, cafes, schools, and carrier-grade NAT put unrelated people behind one address.',
-          'A ban here does not reach the account holder if they move networks, and it does reach everyone else who does not.',
-          'Prefer the account termination alone unless this address shows a pattern across several terminated accounts.',
-          'Set an expiry. A permanent address ban outlives the person who earned it.'
-        ]
-      );
-    end if;
-
     -- Prepare (do not submit) a report for the latest Tier 1 block, deduped by
     -- request hash so re-running does not re-report the same content.
     insert into public.abuse_reports (user_id, category, request_hash, occurred_at, status, detail)
@@ -423,59 +297,6 @@ begin
     'queued',
     'Prepared and stored for the operator. No submission integration is configured, so nothing has been sent.'
   );
-end;
-$$;
-
--- The reviewer's queue: proposals waiting on a person, newest first.
-create or replace function public.admin_list_ip_ban_proposals (p_limit int default 100)
-returns setof public.ip_ban_proposals
-language plpgsql
-stable
-security definer
-set search_path = public
-as $$
-begin
-  if not public.is_abuse_reviewer () then
-    raise exception 'not an abuse reviewer';
-  end if;
-  return query
-    select *
-    from public.ip_ban_proposals
-    where status = 'pending'
-    order by proposed_at desc
-    limit greatest(1, least(p_limit, 500));
-end;
-$$;
-
--- A human decides one proposal. Approving requires an expiry, so a decision to
--- ban an address is always a decision about how long.
-create or replace function public.admin_decide_ip_ban (
-  p_proposal_id uuid,
-  p_decision text,
-  p_expires_at timestamptz default null
-)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if not public.is_abuse_reviewer () then
-    raise exception 'not an abuse reviewer';
-  end if;
-  if p_decision not in ('approved', 'rejected') then
-    raise exception 'decision must be approved or rejected';
-  end if;
-  if p_decision = 'approved' and p_expires_at is null then
-    raise exception 'an approved IP ban needs an expiry';
-  end if;
-  update public.ip_ban_proposals
-     set status = p_decision,
-         reviewed_by = auth.uid(),
-         reviewed_at = now(),
-         expires_at = case when p_decision = 'approved' then p_expires_at else null end
-   where id = p_proposal_id
-     and status = 'pending';
 end;
 $$;
 
@@ -530,15 +351,11 @@ $$;
 grant select, insert on public.guardrail_events to authenticated;
 grant select, insert, delete on public.likeness_consents to authenticated;
 grant select on public.enforcement_actions to authenticated;
-grant select on public.ip_ban_proposals to authenticated;
 grant select on public.abuse_reports to authenticated;
 grant select on public.abuse_reviewers to authenticated;
 
-grant execute on function public.request_ip () to authenticated;
 grant execute on function public.is_abuse_reviewer () to authenticated;
 grant execute on function public.record_enforcement () to authenticated;
 grant execute on function public.queue_abuse_report (text, text, timestamptz) to authenticated;
-grant execute on function public.admin_list_ip_ban_proposals (int) to authenticated;
-grant execute on function public.admin_decide_ip_ban (uuid, text, timestamptz) to authenticated;
 grant execute on function public.admin_list_abuse_reports (int) to authenticated;
 grant execute on function public.admin_mark_report_submitted (uuid, text, text) to authenticated;
