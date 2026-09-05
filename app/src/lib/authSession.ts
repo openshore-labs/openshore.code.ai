@@ -47,7 +47,11 @@ let inflight: { refreshToken: string; promise: Promise<Session> } | undefined;
 export async function freshSession(session: Session): Promise<Session> {
   if (Date.now() < session.expiresAt - 60_000) return session;
   if (inflight?.refreshToken === session.refreshToken) return inflight.promise;
-  const promise = (async () => {
+  const flight = {
+    refreshToken: session.refreshToken,
+    promise: undefined as Promise<Session> | undefined,
+  };
+  flight.promise = (async () => {
     try {
       const next = await refreshSession(session.refreshToken);
       await saveSession(next);
@@ -59,9 +63,9 @@ export async function freshSession(session: Session): Promise<Session> {
       }
       throw err;
     } finally {
-      if (inflight?.promise === promise) inflight = undefined;
+      if (inflight?.promise === flight.promise) inflight = undefined;
     }
   })();
-  inflight = { refreshToken: session.refreshToken, promise };
-  return promise;
+  inflight = { refreshToken: session.refreshToken, promise: flight.promise };
+  return flight.promise;
 }

@@ -9,6 +9,8 @@ import { hapticTick } from './lib/haptics.js';
 import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
+import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
+import { OrgJoinSheet } from './components/OrgJoinSheet.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { ChatsScreen } from './screens/ChatsScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
@@ -260,6 +262,8 @@ export function App() {
         />
       ) : null}
       <Paywall />
+      <AuthConfirmSheet />
+      <OrgJoinSheet />
       {toastPresence.mounted ? (
         <div
           className={`toast${toastPresence.closing ? ' closing' : ''}`}

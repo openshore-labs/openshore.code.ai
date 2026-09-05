@@ -1005,5 +1005,21 @@ describe('permission mode on a remote-attached session (ENG-1, daemon half)', ()
       body: JSON.stringify({ cwd: home, permissionMode: 'plan' }),
     });
     expect(((await plain.json()) as { mode: string }).mode).toBe('plan');
+    // The mode-change route answers with the effective mode and the note too.
+    const created = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const changed = await fetch(`${base}/sessions/${id}/mode`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ mode: 'bypassPermissions' }),
+    });
+    expect(changed.status).toBe(200);
+    const change = (await changed.json()) as { mode: string; note?: string };
+    expect(change.mode).toBe('acceptEdits');
+    expect(change.note).toMatch(/bypass permissions is not available/i);
   });
 });

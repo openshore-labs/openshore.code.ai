@@ -47,6 +47,7 @@ async function tokenWithWait(): Promise<{
 export async function registerPushForDaemon(
   daemon: DaemonTarget,
   session: Session,
+  deviceId?: string,
 ): Promise<boolean> {
   if (!isPhone()) return false;
   const sendUrl = functionUrl('push-send');
@@ -69,7 +70,9 @@ export async function registerPushForDaemon(
     const res = await fetch(`${daemon.baseUrl}/push/register`, {
       method: 'POST',
       headers: { authorization: `Bearer ${daemon.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ grant, sendUrl }),
+      // The daemon keys registrations by user and device (DAE-7), so two
+      // phones on one account both get the push instead of the last one only.
+      body: JSON.stringify({ grant, sendUrl, ...(deviceId ? { deviceId } : {}) }),
     });
     return res.ok;
   } catch {

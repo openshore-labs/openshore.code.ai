@@ -112,10 +112,13 @@ export async function daemonHealth(
     const role = roleOf(await res.json().catch(() => ({})));
     return { ok: true, detail: 'Connected to your desktop.', ...(role ? { role } : {}) };
   } catch {
+    // A rejected credential answers 401 with no CORS headers (DAE-15), which a
+    // WebView reports as a failed fetch, the same as an unreachable hub. Name
+    // both causes rather than blame the network for a wrong token.
     return {
       ok: false,
       detail:
-        'Could not reach the desktop. Check that Tailscale is on for both devices and the desktop app is open.',
+        'Could not reach the desktop, or it rejected the pairing token. Check that Tailscale is on for both devices and the desktop app is open, then re-copy the token.',
     };
   }
 }
