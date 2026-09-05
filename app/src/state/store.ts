@@ -127,6 +127,7 @@ import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
 import { StackDriver } from '../drivers/stackDriver.js';
 import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
+import { guardDriver } from '../drivers/guardedDriver.js';
 import {
   HARBOR_MINI_GREETING,
   HARBOR_MINI_MODEL_ID,
@@ -1190,7 +1191,20 @@ export const useApp = create<AppState>((set, get) => {
     }
   }
 
+  /**
+   * The one place a conversation brain is built, and therefore the one place
+   * the ethics layer has to be attached. Every driver leaves here wrapped in
+   * guardDriver, so no chat surface in the app can reach a model without
+   * screening on the way in and on the way out. See drivers/guardedDriver.ts.
+   */
   async function buildDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
+    return guardDriver(await buildUnguardedDriver(conv, seed));
+  }
+
+  async function buildUnguardedDriver(
+    conv: Conversation,
+    seed?: SeedTurn[],
+  ): Promise<ChatDriver> {
     const { settings } = get();
     switch (conv.source.kind) {
       case 'desktop': {

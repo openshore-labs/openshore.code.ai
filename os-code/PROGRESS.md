@@ -3,6 +3,65 @@
 The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
+## Current state (2026-09-05, always-on ethical guardrail layer)
+
+Founder brief: a safety-critical filter layer that wraps every model
+interaction, always on, not disableable in the app, blocking a narrow set of
+serious harms while staying out of the way of legitimate edgy work. Branch
+`claude/openshore-guardrail-layer-kl4bvr`.
+
+- **One chokepoint, two install points.** `os-code/src/core/ethics/` holds the
+  whole layer (read `index.ts` first, it names the reading order). It is
+  installed by construction, not by remembered call sites: `ProviderRegistry`
+  wraps every provider in `GuardedProvider` before anything can hold one, so the
+  agent loop, `Router.delegate`, `summarize`, the daemon's free `/chat`, and the
+  eval harness are all covered; in the app, `buildDriver` wraps every
+  `ChatDriver` in `guardDriver`, covering cloud Claude, every OpenAI-compatible
+  provider, BYOM, the on-device models, the paired desktop, and the demo driver.
+  `register()` wraps too, so a test double is screened like a real endpoint.
+- **Both sides, and streaming is not an excuse.** Input is screened before a
+  model sees it; output before a person does. `StreamScreener` releases text only
+  after a screen that covered it came back clean, so a blocked answer is never
+  partially shown and streaming survives.
+- **Fail closed.** Any throw or timeout is a block. A check failure is recorded
+  as `check-failed` and never counts toward enforcement: that is the layer
+  failing safe, not the person misbehaving.
+- **The tiers.** Tier 1 (CSAM, non-consensual intimate imagery of a real person,
+  concrete CBRN and high-yield explosive uplift) is a hard block with no consent
+  override. Tier 2 (synthesizing a real person's face or voice) is gated behind
+  an authorization assertion the person can make in one sentence, recorded, with
+  provenance on the output. Tier 3 is protected: legal adult content, dark
+  fiction, horror, satire and parody, security research, dissenting opinion. No
+  block rests on a single keyword; every one needs a co-occurrence in a proximity
+  window, and suppressors (stated adult age, fiction marker, defensive framing)
+  are first-class evidence.
+- **No toggle exists.** No config key, no env var, no setting. The layer reads
+  no configuration at all, and `test/ethicsNoBypass.test.ts` greps the tracked
+  source to keep it that way.
+- **Provenance.** Generated images carry a C2PA-vocabulary record (`c2pa.actions`
+  with `trainedAlgorithmicMedia`) as a PNG `iTXt` chunk, leaving every other
+  chunk byte-identical. It is unsigned and says so in its own text: there is no
+  signing certificate, and claiming a signed manifest would be the overclaim this
+  work refuses. Provenance on an input is never stripped or overwritten.
+- **Enforcement, and the part that is deliberately not automatic.** Migration
+  `0015_guardrail_enforcement.sql` adds `guardrail_events`, `likeness_consents`,
+  `enforcement_actions`, `ip_ban_proposals`, `abuse_reports`, and a separate
+  `abuse_reviewers` allowlist. Any Tier 1 attempt is termination plus a prepared
+  report. An IP ban is only ever a PENDING proposal a human decides with an
+  expiry: there is no apply function in the module or the migration, and a test
+  fails the build if one appears. The report hook prepares and stores; it never
+  claims a submission that did not happen.
+- **Honesty fix owed regardless.** Settings said "OpenShore does not filter what
+  a local model says," which is no longer true. Corrected, and the trust
+  statement now ships in Settings from one source shared with the marketing site.
+- Gates green: os-code typecheck + lint + 493 tests + build; app typecheck +
+  lint + 613 tests + vite build; marketing site builds and passes its copy gate.
+
+**What remains (this arc):** the C2PA signer seam is real but unwired (needs a
+certificate). The report hook has no submission integration by design; an
+operator wires a destination. Approved IP bans are applied at the edge by an
+operator, not by this code.
+
 ## Current state (2026-09-04, Stack Health: daily cadence, admin-gated visibility, Run leaner)
 
 Founder: update Stack Health on a daily basis (no on-demand refresh), and build

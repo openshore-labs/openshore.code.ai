@@ -4,6 +4,7 @@ import { t, GLYPHS } from '../brand/theme.js';
 import { loadConfig } from '../config/load.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { getAnthropicKey } from '../auth/claude.js';
+import { engineEthicsContext } from '../core/ethics/host.js';
 import { runEval } from '../eval/harness.js';
 import { header, okLine, out, warnLine } from './util.js';
 
@@ -14,7 +15,7 @@ export interface EvalOptions {
 
 export async function evalCommand(options: EvalOptions): Promise<void> {
   const { config } = loadConfig();
-  const providers = new ProviderRegistry(config, getAnthropicKey);
+  const providers = new ProviderRegistry(config, getAnthropicKey, engineEthicsContext());
   const providerId = options.provider ?? config.stack.orchestrator?.provider ?? 'ollama';
   const model = options.model ?? config.stack.orchestrator?.model;
   if (!model) {

@@ -37,6 +37,7 @@ import { resolveStack } from '../router/stack.js';
 import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
+import { engineEthicsContext } from '../core/ethics/host.js';
 import type { ChatMessage } from '../providers/types.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
@@ -501,7 +502,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // Load the config fresh (like bootstrapSession) so this reflects the
       // user's actual stack, not the snapshot the daemon started with.
       const chatConfig = loadConfig().config;
-      const providers = new ProviderRegistry(chatConfig, getAnthropicKey);
+      // Guarded like every other path: the registry hands out ethics-wrapped
+      // providers, and blocks here are journaled on this machine.
+      const providers = new ProviderRegistry(chatConfig, getAnthropicKey, engineEthicsContext());
       let orchestrator;
       try {
         orchestrator = resolveStack(chatConfig, providers).orchestrator;
