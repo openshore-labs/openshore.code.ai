@@ -8914,3 +8914,57 @@ button.settings-row:active {
     animation: none;
   }
 }
+
+/* Crew command polish (founder, 2026-09-05: "do all the polish"). */
+/* A row that needs the person breathes a soft amber halo on the same clock as
+   the working dot, so the eye lands there first. */
+.cc-row-needs {
+  animation: cc-needs-halo var(--loop-3) var(--ease-loop) infinite;
+}
+@keyframes cc-needs-halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(163, 95, 10, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(163, 95, 10, 0);
+  }
+}
+/* The results inbox arrives one row after another, the drawer's step. */
+.cc-row-arrive {
+  animation: cc-row-in var(--dur-5) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+@keyframes cc-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* A sheet's heading rises in as the card it came from lets go. */
+.cc-sheet-title {
+  animation: cc-row-in var(--dur-4) var(--ease-arrive) backwards;
+}
+/* Swipe-to-delete on a routine card: the row hosts the card, the card keeps
+   its own buttons. */
+.cc-routine-swipe {
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+}
+.cc-routine-swipe .cc-routine {
+  margin-bottom: 0;
+}
+.cc-stat-num.small {
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-row-needs,
+  .cc-row-arrive,
+  .cc-sheet-title {
+    animation: none;
+  }
+}
