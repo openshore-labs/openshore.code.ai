@@ -8,72 +8,145 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-05, the phone storefront, after the review remediation)
+## Current state (2026-09-05, the phone storefront, Crew routines, the ethics layer, and the review remediation)
 
-The newest change is the phone storefront (log entry at the top of the Log):
-on an iPhone the Marketplace now leads with three one-tap packs keyed to the
+Four pieces of work landed on 2026-09-05, built in parallel sessions and merged
+here: the phone storefront (newest, first below), Crew routines, the always-on
+ethical guardrail layer, and the full-codebase review remediation (its state
+section moved to `docs/progress-archive.md`; its open items stay in What
+remains).
+
+### The phone storefront (Marketplace, on iPhone)
+
+On an iPhone the Marketplace now leads with three one-tap packs keyed to the
 connection status (Offline, Offshore, Docked), a browse-by-family rail with a
 family page split by where each size installs, the pocket shelf retitled "Runs
-on this iPhone" with the 4B-beats-7B line, and a "Desktop and home servers"
-divider below which no control ever says "Get" on a phone. The seed carries
-the phone-class pick `qwen3-4b-phone`; it reaches the live feed only once
-`osc eval` scores it (see What remains).
+on this iPhone" with the line that a new 4B beats the old 7B class at half the
+memory, and a "Desktop and home servers" divider below which no control ever
+says "Get" on a phone. The seed carries the phone-class pick `qwen3-4b-phone`;
+it reaches the live feed only once `osc eval` scores it (see What remains).
+Code: `app/src/lib/packs.ts`, `app/src/components/modelFamilies.ts`, `runsOn`
+and `installLabel` in `app/src/components/marketplace.ts`; the doc is
+`docs/MARKETPLACE.md`, "The phone storefront".
 
-The review in `CODE-REVIEW-FINDINGS-2026-09-05.md` (root; six parallel senior
-passes over HEAD `e14b0a7`, 82 commits and about 90k changed lines since the
-2026-08-25 reviews) was worked as one wave, batched by subsystem so each file
-was edited once, with the `Verify` test written first. Rulings during the wave
-are one line each in `DECISIONS.md`.
+### Crew routines (the botOS brief, shipped inside My Crew)
 
-- **The four P0s.** P0-1: the daemon's user command lane is no longer an
-  unjailed shell for a member token (admin-gated, and both path predicates
-  resolve real paths on both sides). P0-2: the guardrail token and dollar
-  counters reset per task, so a long session can start its next task. P0-3: the
-  sealed-store key is never minted over existing sealed data; an unreadable key
-  surfaces a "could not unlock your data on this machine" state instead of
-  orphaning every sealed byte. P0-4: email confirmation is on in
-  `supabase/config.toml`, and the email-keyed grants require a confirmed
-  address in SQL as well (migration `0015`).
-- **P1 and P2, by batch.** Trust boundaries (owner-filtered session listings,
-  profile-aware permission overrides, normalized permission globs). Session
-  lifecycle (idle work no longer inherits the task's abort signal, compaction
-  never cuts between a tool call and its result, steps rail off-by-one, native
-  batch problems reported, approvals settled on abort). Streams and timeouts
-  (Anthropic in-stream errors surface, an idle deadline on every provider
-  stream, Stop reaches a delegated specialist, a terminal exit frame). App auth
-  and the sealed store (one refreshed token helper for every Supabase call, a
-  typed sign-out on a dead refresh token, persisted pending email for the
-  magic-link binding, sign-out clears the roster, per-key write chain). On-device
-  model ownership (one `loadedModelId` owner; a load during generation ends the
-  old chat honestly). Backend (`members_write` WITH CHECK, seat ceilings by
-  trigger, the Stripe cross-rail guard, Apple link state, review column grants,
-  vault path guard, checkout filter on live statuses, entitlement decisions in
-  `_shared/entitlement.ts` with Deno tests).
-- **Guards and CI (INF).** CI now builds every package, checks formatting,
-  and runs the Deno tests; both workflows are least-privilege (`contents:
-read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
-  `>=22.12`); the catalog workflow scopes each secret to its one step and takes
-  an `allow_large_drop` input. The em-dash guard is repo-wide (git toplevel,
-  every text extension, test files included, one reasoned exemption for the
-  archived 2026-08-20 review). The desktop preflight refuses to launch with a
-  node-pty that is missing or built for the wrong ABI; the app postinstall
-  honors `SKIP_NATIVE_REBUILD=1` and CI and Codemagic skip the Electron binary.
-  Codemagic pins Xcode and builds the engine once. `.cjs` and `.mjs` are linted.
-  The nested `os-code/pnpm-lock.yaml` is gone. The addressed review docs live in
-  `docs/archive/` with status banners.
-- **Docs and license.** This file is lean again (one Current state, one What
-  remains, the last five log entries); the history is in
-  `docs/progress-archive.md` and the parked build prompts in
-  `docs/parked-ideas.md`, both guarded by `test/progressShape.test.ts`. The
-  license is a "no license granted" placeholder at the root and in
-  `os-code/LICENSE` (CFO ruling; the plugins are `UNLICENSED`, `private`).
-  ESLint 9 is deferred to its own commit.
-- Gates at close: os-code typecheck, lint, 493 tests (54 files), tsc build,
-  Prettier check; app typecheck (src and electron), lint (now covering .cjs and
-  .mjs), 692 tests (92 files), vite build, Prettier check; the repo-wide
-  em-dash guard and the PROGRESS shape guard. Deno and pgTAP suites are
-  written but not executed here (no Deno or Postgres in the session); CI now
-  runs the Deno suite.
+**Crew routines are BUILT.** The founder's brief was "clone grokbot, call it
+botOS, local-first." Research corrected the premise: Grok Bot (xAI, beta
+2026-08-11) is always-on agent teammates with their own cloud computers, a bot
+roster with presence, routines that start without a prompt, results waiting
+when you return. The local-first version ships as **routines inside My Crew**
+(CMO ruling, founder agreed: botOS stays the codename, the way gitOS ships as
+Repositories): a crew member, a task, a workspace, and a clock; the daemon
+opens a normal journaled session on the headless profile when the clock
+strikes and the computer is on; the result lands as a dated markdown note in
+the vault with the transcript one tap away. The copy says "while your computer
+is on", never "always on", and "works, then asks", never "unsupervised".
+
+- **Engine.** `src/routines/model.ts` (pure model, schedule math, validation,
+  the preset; exported through `os-code/protocol`), `src/routines/store.ts`
+  (sealed `~/.os-code/routines.json`, atomic writes), `src/routines/scheduler.ts`
+  (a process singleton the daemon and the desktop shell share, so a routine
+  fires exactly once whichever surface is up). Contract as the CTO ruled it:
+  one run on the box at a time and one per routine; a slot the machine slept
+  through is recorded as skipped once and never replayed; an approval nobody
+  answers pauses the run (the existing approval push fires) and times out to a
+  denial with a reason after 15 minutes, never to an approval; a wall-clock cap
+  per routine (5 to 60 min) on top of the guardrails; read-only routines run in
+  plan mode, edit routines in acceptEdits; a routine runs only in an
+  admin-provisioned workspace or an outbox root (`core/security/workspaces.ts`,
+  shared with the daemon's own gates). New read-risk `gitLog` tool so a
+  read-only routine can review history without a shell.
+- **Headless hardening (CTO must-fix).** A configured permissions DEFAULT of
+  allow (not just a rule) can no longer make shell, push, or cloud spend silent
+  on the remote or headless profile; headless also blocks push auto-allow
+  (`allowPushAutoApprove` on the profile). Pinned by
+  `test/headlessPermissions.test.ts`.
+- **Daemon and desktop.** `/routines` routes (GET open to members scoped to
+  what they own, every change admin-only, workspace-gated for all); the same
+  surface over Electron IPC (`engineHost.routines*`, seven guarded handlers,
+  preload and bridge types). A run's live driver is adopted by whichever
+  surface attaches, never rehydrated twice.
+- **App.** `app/src/lib/routines.ts` (one client over the bridge or the paired
+  daemon, presence and copy helpers, the preset builder), a `routines` store
+  slice with the actions, and the **Crew command** room (`CrewCommandScreen`,
+  view `crewcommand`, a sub-page of My Crew): the live headline and four
+  counts, a Waiting-for-you list, the roster with each member's presence dot
+  (teal pulse working, amber waiting, green done), the routines with Run now,
+  Stop, Edit, and a pause switch, and the results inbox opening a result sheet
+  (the vault note rendered, Open transcript). The one preset, Morning review
+  (weekdays 06:00, read-only, so its first unattended run can never need an
+  approval), adds a Reviewer to the crew on setup; custom routines unlock after
+  the first run finishes (CX). Each Crew card shows its busiest routine's
+  presence line, and the room opens through a door card at the top of My Crew.
+  Copy for a phone with no paired desktop says so and offers pairing.
+- Gates at close: os-code typecheck, lint, 518 tests (57 files), tsc build,
+  Prettier; app typecheck (src and electron), lint, 699 tests (93 files), vite
+  build, Prettier; the repo-wide em-dash guard and the PROGRESS shape guard.
+  Pushed to `main` per the founder.
+- **Polish pass (founder: "do all the polish").** A waiting-for-you row
+  breathes a soft amber halo on the working dot's clock; the results inbox
+  arrives row by row on `--stagger`; a sheet's heading rises in, keyed to the
+  routine it came from; routine cards swipe to delete through `SwipeRow` (the
+  Delete button is gone, the card's own buttons stay); the Next run tile is
+  tabular. Every animation dies under reduced motion. The pause switch keeps
+  the app-wide button tick (a component-level haptic is banned by the polish
+  guard, per the 2026-09-05 ruling).
+- **Not verifiable here:** a real scheduled fire under Ollama on the founder's
+  box, the approval push arriving with the app closed, suspend and wake, and
+  the room on an iPhone (TestFlight). See What remains.
+
+### The always-on ethical guardrail layer
+
+Founder brief: a safety-critical filter that wraps every model interaction,
+always on, not disableable in the app, blocking a narrow set of serious harms
+while staying out of the way of legitimate edgy work.
+
+- **One chokepoint, two install points.** `os-code/src/core/ethics/` holds the
+  layer (read `index.ts` first, it names the reading order). It is installed by
+  construction: `ProviderRegistry` wraps every provider in `GuardedProvider`
+  before anything can hold one, so the agent loop, `Router.delegate`,
+  `summarize`, the daemon `/chat`, and the eval harness are all covered; in the
+  app, `buildDriver` wraps every `ChatDriver` in `guardDriver`, covering cloud
+  Claude, every OpenAI-compatible provider, BYOM, the on-device models, the
+  paired desktop, and the demo. `register()` wraps too.
+- **Both sides.** Input screened before a model sees it, output before a person
+  does. `StreamScreener` releases text only after a screen that covered it came
+  back clean, so a blocked answer is never partially shown.
+- **Fail closed.** Any throw or timeout blocks. A check failure is recorded as
+  `check-failed` and never counts toward enforcement.
+- **The tiers.** Tier 1 (CSAM, non-consensual intimate imagery, concrete CBRN
+  and high-yield explosive uplift) is a hard block with no consent override.
+  Tier 2 (synthesizing a real person's face or voice) is gated behind an
+  authorization assertion, recorded, with provenance on the output. Tier 3 is
+  protected: legal adult content, dark fiction, horror, satire, security
+  research, dissenting opinion.
+- **No toggle exists.** The layer reads no configuration at all, and
+  `test/ethicsNoBypass.test.ts` greps the tracked source to keep it that way.
+- **Provenance.** Generated images carry a C2PA-vocabulary record as a PNG
+  `iTXt` chunk. It is unsigned and says so in its own text; a signer seam exists
+  for the day there is a certificate.
+- **Enforcement.** Migration `0016_guardrail_enforcement.sql` adds
+  `guardrail_events`, `likeness_consents`, `enforcement_actions`,
+  `ip_ban_proposals`, `abuse_reports`, and an `abuse_reviewers` allowlist. An IP
+  ban is only ever a PENDING proposal a human decides with an expiry; there is
+  no apply function in the module or the migration.
+- Gates green: os-code and app typecheck, lint, test, build.
+
+**Reviewed by the CTO and CMO on 2026-09-05, then their findings worked to
+close.** Both ruled the layer safe to land and flagged the same top item first:
+the Terms asserted a data practice the product does not have (corrected before
+publish). The founder then asked to finish the thread per both advisors. Done in
+this pass: Tier 2 likeness precision (coding vocabulary no longer reads as a
+person, generation verbs and photoreal deepfake shapes now caught) and the gate
+made non-countable so a false gate never penalizes; IP captured on a block only
+(a trigger, never on an assertion or a consent) with the enforcement ladder
+moved server-side so it survives a reinstall and cannot be talked down by the
+client; provenance no longer dropped silently (keyword match, not a substring
+grep; a non-PNG Tier 2 output is refused rather than shipped unlabeled); and the
+honesty copy pass across Settings, README, and the ToU, plus the media-vs-text
+satire seam stated publicly. Two pure-positioning calls stay the founder's, in
+What remains. Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
@@ -100,6 +173,49 @@ read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
       layers on Metal, a 2048 context for big models); unload on a memory
       warning and slow generation on a hot thermal state; prompt-cache reuse
       across turns. MLX Swift is the bigger swap and is not the first step.
+- [ ] **Crew routines on the founder's machine and TestFlight (built
+      2026-09-05, unverified off the sandbox).** Set up Morning review on the
+      Pop!_OS desktop against a cloned repo, let it fire at 06:00 (or Run now),
+      confirm the note lands in `~/OSCode/Vault/Crew/Morning review/`, open the
+      transcript from the command center, and on the phone confirm the
+      approval push arrives with the app closed for an edit routine. Also
+      confirm a slot slept through shows as Missed, not as a late run.
+- [ ] **A push for a missed slot.** The push-send function takes the approval
+      and done kinds only; a missed slot shows in the results inbox today and
+      does not push. Adding a stale kind is the follow-up.
+- [ ] **Personal at $50/yr with the gates reinstated (founder, 2026-09-05).**
+      Routines sit inside Personal (CFO); gating is off while the founder
+      builds. When it returns, the command center and Run now go behind
+      `personalUnlockedNow()` like the coding agent.
+- [ ] **Measure the preset (CFO and CX conditions).** Free-to-Personal
+      conversion within 60 days with routines credited; share of payers with a
+      routine that ran unattended three times in month one; tap-through on the
+      preset card. Insights events exist (`routine_created`, `routine_run_now`,
+      `crew_command_open`, `routine_transcript_open`).
+- [x] **Ethics layer, Tier 2 likeness precision (CTO M1/M2).** Fixed: coding
+      vocabulary in `NON_PERSON_NAME_WORDS`, generation verbs and photoreal
+      deepfake shapes caught, likeness made non-countable. Known residual limit:
+      a lowercase name with no photoreal cue and no other signal is not caught
+      (a public-figure gazetteer is out of scope; the intent path and the
+      person's own consent flow are the backstop).
+- [x] **Ethics layer, capture is now block-only (CTO M4).** A trigger fills the
+      address only on `action='blocked'`; `likeness_consents` carries no address.
+- [x] **Ethics layer, provenance drop paths (CTO M5).** Keyword match not
+      substring grep; bounded reader; a non-PNG Tier 2 output is refused.
+- [x] **Ethics layer, the ladder is server-side now.** `record_enforcement()`
+      computes from `guardrail_events`, so a reinstall does not reset it and the
+      client cannot under-report. The device cache is a local view only.
+- [ ] **Ethics layer, privacy label (CTO M6, before next submission).** IP is
+      collected on a block and linked to a user id. `PrivacyInfo.xcprivacy` does
+      not exist; the App Store Connect privacy answers must be updated before the
+      next submission. Process, not code.
+- [ ] **Ethics layer, two positioning calls the founder deferred.** Whether IP
+      capture stays at all (the CMO recommends removing it outright; it is now
+      the strongest honest keep, block-only), and whether the C2PA name leaves
+      the trust statement's top line (the CMO recommends it; the CTO is neutral).
+      Both are taste calls, not correctness; the honesty-critical parts are done.
+- [ ] **Ethics layer, re-enable "repeated Tier 2 -> warning" once precision is
+      field-proven.** Suspended while likeness is non-countable.
 - [ ] **ESLint 9 + typescript-eslint 8 upgrade (INF-9).** Deferred by the
       CTO to its own commit after the 2026-09-05 wave: flat config in both
       packages, the unsupported-TypeScript warning gone. DECISIONS.md records it.
@@ -400,6 +516,16 @@ read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
   `docs/MARKETPLACE.md`, "The phone storefront". Gates: app typecheck, lint,
   tests, Prettier; os-code builder and isolation tests; both em-dash guards.
 
+- **2026-09-05: Crew routines, the botOS clone brief, built and pushed to
+  main.** Go-with-conditions from the CMO, CTO, CFO, and CX; the founder signed
+  off on all four decision points (ship as Crew with routines; Personal to $50
+  when gates return; build v1 directly and measure the preset; push to main).
+  Engine scheduler and store, headless permission hardening, daemon routes,
+  Electron IPC, the app client and store slice, the Crew command room, the
+  Morning review preset, and a gitLog read tool. 25 new engine tests, 9 new
+  app tests. Gates: see the Current state above. The superseded
+  persona-chatbot stab from earlier in the day was dropped, not merged.
+
 - **2026-09-05: full-codebase review remediation, one wave.** Every finding
   in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
   P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
@@ -464,71 +590,3 @@ read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
     real iPhone; node-pty built for the machine's ABI to run the real PTY (and
     electron-rebuild for the Electron terminal follow-up); the Swift changes
     compile on TestFlight.
-
-- **2026-08-26: Review remediation, full pass, merged to main.** Acted on the
-  2026-08-25 review (`CODE-REVIEW-FINDINGS-2026-08-25.md`) across the three
-  focus areas, closing out the substantive findings and a full premium-polish
-  pass, each fix test-backed; gates green (os-code 275 tests, app 192,
-  typecheck, lint, vite build). Founder directed the push to main.
-  Additions beyond the first pass below: the chat-to-terminal bridge now works
-  on the DESKTOP app too (Electron command lane over IPC) and gains a composer
-  Terminal mode ($) for typing your own command; the Marketplace got a premium
-  pass (a real single-model product page replacing the fuzzy-search stand-in, a
-  browsable Starter-stacks preset shelf, a shimmer skeleton loader, an installed
-  state for desktop models, a quantization gloss, brand-safe hero variety, a
-  button-in-button a11y fix, a filter-clear empty state); macOS Tailscale
-  detection and CGNAT alignment; honest loopback pairing state (no unreachable
-  QR); SSE write backpressure; a cached Tailscale probe so the Pair poll never
-  freezes the desktop; and polish haptics on the terminal commits. Still a
-  founder decision, deliberately NOT built: the desktop-chat paywall change
-  (C-suite recommended opening free desktop chat, a monetization-foundation
-  change needing explicit approval) and terminal-bridge Phase 2 (full PTY tab).
-  Still needs founder/device verification: the P0 streaming fix on a real
-  iPhone, and the native Swift changes compile on TestFlight. Larger follow-ups
-  left for their own scoping: the daemon model-install endpoint (MP-F2),
-  background-download adoption (MP-F4), per-device pairing credentials (TS-P2-4),
-  and the home-repo path writer (TS-P1-5).
-  - **Tailscale / phone (P0 + P1s).** Fixed the flagship phone bug: the daemon
-    SSE stream and Anthropic SDK were routed through Capacitor's native-HTTP
-    fetch (buffers, cannot stream), so a paired phone rendered nothing during a
-    run. New `streamingFetch` reaches the unpatched WebView fetch
-    (`window.CapacitorWebFetch`); the global patch stays on so web search / Drive
-    / Supabase are untouched (safe failure mode). Also: `/outbox/apply|verify`
-    now admin/workspace-gated (a member token could push to any repo, security
-    must-fix); the tailscale-bound daemon also listens on loopback so `osc
-attach` reaches it; a daemon restart seeds the agent's history from the
-    journal (no more amnesia) and clears zombie approvals; the reconnect loop
-    stops on 401/persistent-404 with actionable copy instead of retrying forever;
-    phone POSTs get a 10s timeout.
-  - **Chat-to-terminal bridge, Phase 1 (the founder's game-changer).** A
-    first-class command lane: run a command on the paired desktop from chat,
-    watch output stream live, answer prompts, kill it, and the model reads the
-    result on its next turn (no screenshot loop). New
-    `core/exec/commandRunner.ts` (shared with runShell), three `command-*`
-    driver events, `LocalDriver.runCommand/writeCommandStdin/killCommand`, daemon
-    routes under the owned-session block (owner's tap is the approval, audited in
-    the journal), a `contextPreamble` seam into `AgentSession.run`, and the app
-    side (command ThreadItem + reducer, `CommandCard`, RemoteDriver methods,
-    store actions, a Run/Copy button on shell code blocks). Also fixed the tiny
-    high-leverage bug: the app discarded all shell output past its first line.
-    Follow-ups: desktop (Electron) command lane, a composer terminal-mode
-    toggle, and Phase 2 (full PTY tab) which is a founder decision.
-  - **Marketplace (premium + functional + HF automation).** A standalone iPhone
-    now fetches the published catalog directly (Preferences-cached, graceful
-    fallback) so ratings/popularity/staff-picks appear without a paired desktop;
-    the Staff axis hides when empty; copy fixed (popularity is HF-only; the "over
-    Tailscale" note is phone-only). Builder: an HF outage no longer strips
-    popularity (carry-forward + coverage gate); HF_TOKEN + bounded concurrency +
-    retry; a license-drift warning; a published commercial-posture flag; a gate
-    that rejects any non-huggingface.co `onDevice.url` (plus the native client
-    check), closing a redirect-to-anywhere download vector.
-  - **Advisor ruling captured (founder decision needed).** The C-suite (CFO lead,
-    CMO weighed) recommends opening FREE desktop CHAT (route it like `stack`,
-    read-only) while keeping the $20 Personal gate on the coding agent,
-    Marketplace, and repo writes. This is a monetization-FOUNDATION change, so it
-    was deliberately NOT built; it needs the founder's explicit yes. Gate lives at
-    `app/src/state/store.ts` around the desktop-conversation check.
-  - **Needs founder / device (cannot verify in a web session):** confirm the P0
-    fix on a real iPhone (streaming); the Swift `downloadModel` host check and
-    any native change compile on TestFlight; wire an optional `HF_TOKEN` repo
-    secret if you want the authenticated popularity fetch.

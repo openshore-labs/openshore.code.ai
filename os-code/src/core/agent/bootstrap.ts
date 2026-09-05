@@ -19,7 +19,8 @@ import { buildCodeMap } from '../../context/codeMap.js';
 import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
-import type { PermissionMode } from './types.js';
+import { engineEthicsContext } from '../ethics/host.js';
+import type { AgentEvent, PermissionMode } from './types.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -93,7 +94,26 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     config = { ...config, humanizer: { ...config.humanizer, standard: 'off' } };
   }
 
-  const providers = new ProviderRegistry(config, getAnthropicKey);
+  // The ethics layer, wired before any provider exists. Every provider the
+  // registry hands out is guarded by it, so the agent loop, the router's
+  // specialist delegation, and the summarizer are covered by construction. The
+  // driver does not exist yet, so blocks land in a holder the driver drains
+  // once it is built (a block during construction is impossible: nothing has
+  // run a prompt yet).
+  const ethicsSink: { emit?: (event: AgentEvent) => void } = {};
+  const ethics = engineEthicsContext({
+    onBlock: (result) => {
+      ethicsSink.emit?.({
+        type: 'ethics-block',
+        category: result.decision.category,
+        tier: result.decision.tier,
+        side: result.record?.side ?? 'input',
+        message: result.decision.message ?? 'This request was not sent.',
+      });
+    },
+  });
+
+  const providers = new ProviderRegistry(config, getAnthropicKey, ethics);
   const stack = resolveStack(config, providers);
   warnings.push(...stack.notes);
   const router = new Router(config, providers, stack);
@@ -146,6 +166,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   }
 
   const driver = new LocalDriver(options.cwd, { id: options.sessionId, persist: options.persist });
+  // From here on, an ethics block shows up in the transcript of this session.
+  ethicsSink.emit = (event) => driver.emit(event);
 
   // Wire the readTerminal accessor to this driver's id, if the daemon provided
   // a terminal reader. Keyed by session id so the tool only ever sees this

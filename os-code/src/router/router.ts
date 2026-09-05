@@ -80,7 +80,11 @@ export class Router {
     // P2-3: a cloud target with no key connected is not a real escalation path.
     // Consult the injected key getter (via the provider) so escalation reads as
     // off, and the user is never asked to approve spend that would then error.
-    if (target.provider instanceof AnthropicProvider && !target.provider.hasApiKey()) {
+    // The registry hands out ethics-guarded providers, so the key question goes
+    // to the raw endpoint underneath; the guarded wrapper is what actually runs
+    // the completion, and that is still the only object anything here calls.
+    const endpoint = this.registry.rawProvider(target.provider.id) ?? target.provider;
+    if (endpoint instanceof AnthropicProvider && !endpoint.hasApiKey()) {
       return false;
     }
     return true;

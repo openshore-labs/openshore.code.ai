@@ -9,6 +9,13 @@ export type DriverEventSink = (event: DriverEvent, seq: number) => void;
 
 export interface ChatDriver {
   readonly kind: 'desktop' | 'desktop-chat' | 'device' | 'cloud' | 'mock' | 'stack';
+  /**
+   * Set on a driver returned by guardDriver: the driver underneath the ethics
+   * wrapper. Present for diagnostics and for a test asking whether this is the
+   * same underlying driver or a rebuilt one. It is NOT a way to send around the
+   * guard, and nothing in the app uses it to send.
+   */
+  readonly wrapped?: ChatDriver;
   /** Attachments are optional and only used by vision-capable drivers (cloud
    *  Claude today). Drivers that cannot use them ignore the argument, so a
    *  plain `send(text)` implementation still satisfies the contract. */

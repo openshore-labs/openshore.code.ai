@@ -18,15 +18,16 @@ import { BrandMark } from './BrandMark.js';
 // 'projectmemory' is the read-only notes view reached from the Vault.
 type NavIconName = Exclude<
   ViewName,
-  'chat' | 'onboarding' | 'terminal' | 'project' | 'projectmemory'
+  'chat' | 'onboarding' | 'terminal' | 'project' | 'projectmemory' | 'crewcommand'
 >;
 
 // The nav is split so a first-week user is not met with a dozen destinations
 // at once (CMO ruling). PRIMARY is the day-one set, pinned to the top: chat,
 // its project bucket, the coding surface (Repositories), where a model is
 // attached (Your stack), and the Vault. Everything else is real but
-// second-session, grouped at the bottom under an honest "More rooms" so it
-// reads as depth, not clutter, with Settings as the last item.
+// second-session, grouped quietly at the bottom so it reads as depth, not
+// clutter: Admin leads that group (when the account carries it) and Settings
+// closes it.
 const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = [
   { view: 'chats', label: 'Chats' },
   { view: 'projects', label: 'Projects' },
@@ -275,21 +276,7 @@ export function Sidebar({
       </div>
 
       {/* The day-one rooms, pinned to the top where the hand lands first. */}
-      <nav className="sidebar-nav sidebar-nav--primary">
-        {isOrgAdmin(settings.account) && settings.account?.type === 'commercial' ? (
-          <button
-            className={`nav-item press-fb press-fb--row${view === 'admin' ? ' active' : ''}`}
-            style={stagger(1)}
-            onClick={() => setView('admin', { root: true })}
-          >
-            <span className="glyph">
-              <NavIcon name="admin" />
-            </span>
-            Admin
-          </button>
-        ) : null}
-        {PRIMARY_NAV.map(item)}
-      </nav>
+      <nav className="sidebar-nav sidebar-nav--primary">{PRIMARY_NAV.map(item)}</nav>
 
       <div className="sidebar-spacer" />
 
@@ -325,10 +312,13 @@ export function Sidebar({
         </button>
       ) : null}
 
-      {/* The second-session rooms stay at the bottom, Settings last. */}
+      {/* The second-session rooms stay at the bottom, Settings last. Admin,
+          when the account carries it, leads the group. */}
       <nav className="sidebar-nav">
-        <div className="nav-section-label">More rooms</div>
-        {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 1 + i))}
+        {isOrgAdmin(settings.account) && settings.account?.type === 'commercial'
+          ? item({ view: 'admin', label: 'Admin' }, PRIMARY_NAV.length + 1)
+          : null}
+        {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 2 + i))}
       </nav>
     </aside>
   );

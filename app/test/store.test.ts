@@ -678,7 +678,7 @@ describe('a terminal daemon answer (APP-4)', () => {
     drv.emit({ type: 'task-start', input: 'hello' }, 1);
     await tick();
     expect(useApp.getState().conversations[id]!.thread.busy).toBe(true);
-    expect(driverFor(id)).toBe(drv);
+    expect(driverFor(id)?.wrapped).toBe(drv);
 
     drv.terminal('This session no longer exists on the desktop. Start a new one.');
     await tick();
@@ -690,7 +690,7 @@ describe('a terminal daemon answer (APP-4)', () => {
     const drv2 = remoteInstances.at(-1)!;
     drv2.emit({ type: 'task-done', reason: 'error', message: 'The model timed out.' }, 2);
     await tick();
-    expect(driverFor(id2)).toBe(drv2);
+    expect(driverFor(id2)?.wrapped).toBe(drv2);
   });
 });
 
@@ -719,12 +719,20 @@ describe('journal replay and transcript cap (APP-13)', () => {
       }
     });
     const id = await useApp.getState().newConversation({ kind: 'desktop', cwd: '/repo' });
+    // The ethics layer screens the held text before releasing it, which costs
+    // one tick at the end of the replay. The batching this test guards is
+    // unchanged: the whole replay still folds into a single thread update.
+    await tick();
     off();
     const thread = useApp.getState().conversations[id]!.thread;
     expect(thread.busy).toBe(false);
     expect(thread.items.map((i) => i.kind)).toEqual(['user', 'assistant']);
-    // One set to create the chat, one for the whole replay.
-    expect(threadSets).toBeLessThanOrEqual(2);
+    // One set to create the chat, then the replay. The replay costs two sets
+    // rather than one because the ethics layer screens the held text before
+    // releasing it, and that screen is async, so the tail lands a tick after
+    // the synchronous burst. The property this guards is intact: forty events
+    // still fold into a constant number of updates, not one update per event.
+    expect(threadSets).toBeLessThanOrEqual(3);
   });
 
   it('caps the in-memory transcript', () => {

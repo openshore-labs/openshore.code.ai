@@ -759,3 +759,151 @@ execution contract. Newest at the bottom.
   control now reads "On <hub>" (the existing tailnet install) or a quiet
   "Desktop", decided by one pure helper (`installLabel`) so the hero, the row,
   and the product page cannot drift.
+- 2026-09-05: **Ethics layer installed at the registry and the driver factory,
+  not at call sites.** The brief asked for one chokepoint with no bypass. Five
+  engine call sites reach a model (`loop.run`, `loop.summarize`,
+  `Router.delegate`, the daemon `/chat`, the eval harness) and eight app ones
+  across four drivers. Wrapping each would be eight chances to forget, so the
+  guard is applied where the object is HANDED OUT: `ProviderRegistry` returns
+  only `GuardedProvider`, and `buildDriver` returns only `guardDriver(...)`.
+  Adding a call site cannot miss the layer, because there is no unguarded object
+  to call. `register()` wraps too, so a test double is screened like a real one.
+- 2026-09-05: **Fail-closed applies to the whole screen, but the intent check
+  only runs on a candidate.** Running a classifier on every benign request and
+  blocking on its failure would break Tier 3 far more often than it would catch
+  harm. So deterministic rules run first; only an unresolved candidate reaches
+  the intent check, and there a throw or a timeout blocks. Every other failure
+  path in the screen (a bad regex, a throwing sink) also blocks, via one outer
+  catch. Recorded as `check-failed` and excluded from enforcement: blocking
+  because our checks broke must not terminate a person's account.
+- 2026-09-05: **Tier 2 reads satire as text-vs-media.** The brief says satire and
+  parody are Tier 3 and must never route through Tier 2, and also that
+  synthesizing a real person's face or voice IS Tier 2. Read literally together,
+  "make a photorealistic video of the president saying X, it's satire" would be
+  exempt, which is the exact deepfake the product exists to reduce. The call:
+  the consent gate fires only on MEDIA synthesis (image, video, voice). Writing
+  satire, parody, criticism, or a written impression never reaches it, which is
+  what keeps political parody out of the gate.
+- 2026-09-05: **A proper name alone never means a real person, except for media
+  of a person.** Treating any capitalized pair as identifiable would block
+  "erotica about Sarah Connor" (fiction, Tier 3). So NCII needs a relation, an
+  attached photo, or an explicit real-person marker. The one place a bare name
+  counts is a request to MAKE an image, video, or voice OF that name, filtered by
+  a place/organization word list so "an image of Times Square" stays Tier 3. This
+  errs slightly toward the consent gate for ambiguous proper nouns in image
+  generation, which is recoverable in one sentence; the reverse error is a
+  deepfake.
+- 2026-09-05: **Provenance is C2PA-vocabulary but UNSIGNED, and says so.** A
+  signed manifest needs an X.509 certificate from a C2PA-recognized authority,
+  which OpenShore does not hold. Writing a JUMBF box with no valid signature
+  would produce something that reads as a real manifest and fails validation, so
+  instead the record is a PNG `iTXt` chunk carrying the C2PA assertion
+  vocabulary, with `signature: null` present on purpose (so a reader can tell
+  "unsigned" from "field missing") and a `note` stating it is not
+  cryptographically verifiable. `ProvenanceInput.signer` is the seam for the day
+  a certificate exists.
+- 2026-09-05: **IP bans are a proposal type, not an action.** The brief asked for
+  the ability and for human review. Rather than build an apply path and gate it,
+  there is NO apply function in `enforcement.ts` and none in the migration: the
+  only thing the code can produce is a `pending` row, and a test fails the build
+  if an apply function or an `ip_bans` table appears. Applying an approved ban is
+  an operator action at the edge. Approval requires an expiry, because a
+  permanent address ban outlives the person who earned it.
+- 2026-09-05: **The brief said the app already logs account IP addresses for
+  sync. It does not.** A grep across `supabase/` and the connect path found no IP
+  logging anywhere; pairing is a local bearer token with no server-side record.
+  Rather than claim collection that does not exist, `request_ip()` captures the
+  address at the moment a violation is recorded, and only then. No address is
+  stored for an ordinary request, and the ToU and the docs say exactly that.
+- 2026-09-05: **Refusal copy is held short by test.** Two sentences maximum, no
+  "unethical", no "inappropriate", no apology, no "as an AI". The over-blocking
+  half of the brief is enforced the same way: a Tier 3 control set (violent
+  horror, political satire, exploit analysis, legal adult fiction, dissenting
+  opinion, plus ordinary coding work containing vocabulary words) must pass
+  clean, with no refusal and no note added.
+- 2026-09-05: The botOS brief ("clone grokbot, local-first") ships as **Crew
+  routines inside My Crew** (CMO; founder agreed): "bot" reads as chatbot, and
+  the roster with activity levels already existed. botOS stays the codename,
+  the way gitOS ships as Repositories. Grok Bot, not the @grok chatbot, is the
+  reference: always-on agents with their own computer; ours run on the
+  person's own desktop and models.
+- 2026-09-05: The first stab at botOS this session (a witty persona chatbot,
+  `ca6f12b` on the feature branch) was built on the wrong reading of the brief
+  and was DROPPED, not conflict-resolved onto main (CTO must-fix; the founder's
+  "push it all to main" is honored with the real build). It stays reachable on
+  the branch's history only.
+- 2026-09-05: Routines run on the headless profile, and a configured
+  permissions DEFAULT of allow can no longer make shell, push, or cloud spend
+  silent on a restrictive profile (CTO). Headless gains
+  `allowPushAutoApprove: false`; remote-attached keeps push allowed so a
+  phone-attached session's behavior does not change.
+- 2026-09-05: Scheduler contract (CTO): one run on the box at a time and one
+  per routine; a slot the machine slept through is recorded as skipped once,
+  never replayed; an unanswered approval times out to a DENIAL with a reason
+  after 15 minutes; a wall-clock cap per routine (5 to 60 min, default 20) on
+  top of the engine guardrails; read-only maps to plan mode, edit to
+  acceptEdits; only admin-provisioned workspaces and outbox roots, for every
+  caller. The workspace predicates moved to `core/security/workspaces.ts` so
+  the scheduler and the daemon share one gate (re-exported from serve.ts).
+- 2026-09-05: The result note is written by the scheduler itself to
+  `Vault/Crew/<routine>/<stamp>.md`, not through the agent's always-ask
+  vaultWrite tool: it is the run's own record, like a session journal, and an
+  unattended run could never approve its own note.
+- 2026-09-05: A read-risk `gitLog` tool was added so a read-only (plan mode)
+  routine can review history; without it the Morning review preset would have
+  needed a shell it can never get.
+- 2026-09-05: One preset (Morning review, weekdays 06:00, read-only) and custom
+  routines unlock after the first run finishes (CX: results must be
+  reviewable in under a minute with zero mid-run prompts before anyone builds
+  their own). The preset adds a Reviewer to the crew on setup so the roster
+  and the routine agree on who did the work.
+- 2026-09-05: A missed slot shows in the results inbox but does not push: the
+  push-send function takes the approval and done kinds only, and the backend
+  was left untouched in this wave.
+- 2026-09-05: Founder: Personal goes to $50/yr when the gates are reinstated;
+  the app stays ungated while building, so the command center carries no
+  paywall yet.
+- 2026-09-05: **Tier 2 likeness precision reworked after the CTO/CMO review, and
+  the gate made non-countable.** The classifier was over-blocking coding work
+  ("Docker image of Ubuntu Server" read as a person) and under-blocking the
+  canonical deepfake ("draw emma watson ... photorealistic"). Fix:
+  `NON_PERSON_NAME_WORDS` gained a software/infra/product/concept vocabulary; the
+  two-word auto-pass now defers to that vocabulary; generation verbs (draw,
+  render, paint) are caught, case-tolerant at a sentence start; and an
+  all-lowercase two-word name after a generation verb is caught only with a
+  photorealism cue and no scene word. Ambiguous pronouns ("they", "their") left
+  PERSON_CUE (they pepper engineering prose). Per the CTO's ship condition,
+  `likeness` is now NON-COUNTABLE in `countableViolations`: a false gate is a
+  recoverable one-sentence speed bump, never an enforcement accrual. The brief's
+  "repeated Tier 2 -> warning" is suspended until precision is field-proven
+  (tracked in PROGRESS What remains). Known limit: a lowercase name with no
+  photoreal cue and no other signal is not caught; a public-figure gazetteer is
+  out of scope and would over-block Tier 3 more than it would catch.
+- 2026-09-05: **IP captured on a BLOCK only; enforcement evaluated server-side.**
+  Reconciling the CMO (cut IP entirely) and the CTO (keep violation-only) under
+  their own disagree-and-commit: the CTO made the repeat-abuser safety case, so
+  the resolution is keep-but-minimal. A trigger fills `guardrail_events.ip_address`
+  only when `action='blocked'`; `likeness_consents` no longer carries an address
+  at all (an authorization assertion is not a violation). `record_enforcement()`
+  now takes no arguments and computes the ladder from `guardrail_events`
+  server-side, which fixes both the reinstall-reset and the client-resettable
+  ladder the CTO flagged. The "cut IP entirely" option remains the founder's to
+  take later; this is the strongest honest keep.
+- 2026-09-05: **ToU/Settings/README honesty pass.** "No telemetry, ever" in app
+  Settings and README stated an absolute that a signed-in block record breaks;
+  reworded to name the one exception plainly. ToU section 4 "immediate and
+  permanent removal" softened to what the code does (flag + operator-executed
+  termination + prepared report). The media-vs-text satire seam ("words are
+  free, faces and voices need permission") is now stated on the app, the ethics
+  page, and the ToU, per both advisors, rather than left for someone to discover.
+- 2026-09-05: **Provenance no longer drops silently.** `hasProvenance` matches on
+  the chunk KEYWORD (or a caBX chunk), not a substring grep of the first bytes,
+  so a prompt echoed into a tEXt chunk no longer suppresses labeling; the keyword
+  read is bounded so a crafted unterminated iTXt cannot throw. A Tier 2 output
+  that could not be provenance-labeled (a non-PNG format) is now refused rather
+  than shipped unlabeled, since the whole point of the consent gate is that the
+  output carries provenance. Ordinary images stay best-effort.
+- 2026-09-05: **C2PA top-line naming and full IP removal LEFT to the founder.**
+  Both are pure-positioning calls the founder deferred ("refine later"). The
+  honesty-critical parts (no false collection claim, unsigned stated plainly)
+  are done; the taste calls are logged in PROGRESS What remains, not decided here.

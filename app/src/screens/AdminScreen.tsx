@@ -8,6 +8,7 @@ import { useApp } from '../state/store.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { BackBar } from '../components/BackBar.js';
 import { ReviewModeration } from '../components/ReviewModeration.js';
+import { EnforcementReview } from '../components/EnforcementReview.js';
 
 export function AdminScreen() {
   const {
@@ -41,6 +42,7 @@ export function AdminScreen() {
           {/* A review moderator may be a personal account; the panel shows for
               them and renders nothing for everyone else. */}
           <ReviewModeration />
+          <EnforcementReview />
         </div>
       </div>
     );
@@ -249,6 +251,7 @@ export function AdminScreen() {
         </p>
 
         <ReviewModeration />
+        <EnforcementReview />
       </div>
     </div>
   );

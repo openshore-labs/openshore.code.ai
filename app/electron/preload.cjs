@@ -71,6 +71,14 @@ contextBridge.exposeInMainWorld('oscode', {
   listDeviceCredentials: invoke('osc:listDeviceCredentials'),
   revokeDeviceCredential: invoke('osc:revokeDeviceCredential'),
 
+  routinesList: invoke('osc:routinesList'),
+  routineCreate: invoke('osc:routineCreate'),
+  routineUpdate: invoke('osc:routineUpdate'),
+  routineDelete: invoke('osc:routineDelete'),
+  routineRun: invoke('osc:routineRun'),
+  routineStop: invoke('osc:routineStop'),
+  routineNote: invoke('osc:routineNote'),
+
   vaultList: invoke('osc:vaultList'),
   vaultRead: invoke('osc:vaultRead'),
   vaultWrite: invoke('osc:vaultWrite'),

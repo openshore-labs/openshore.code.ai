@@ -9,7 +9,7 @@
 //   - Sessions run on the remote-attached profile: stricter than sitting at
 //     the desk, never looser.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { basename, join, resolve, sep } from 'node:path';
+import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import {
@@ -19,15 +19,12 @@ import {
   loadOrCreateToken,
   resolveAuth,
 } from '../core/security/daemonAuth.js';
-import {
-  oscHome,
-  loadConfig,
-  loadDaemonConfig,
-  saveGlobalConfig,
-  type DaemonConfig,
-} from '../config/load.js';
+import { oscHome, loadConfig, loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { profileFor } from '../core/security/profiles.js';
+import { isAdminProvisionedWorkspace, isOutboxAllowedPath } from '../core/security/workspaces.js';
+import { getRoutineScheduler } from '../routines/scheduler.js';
+import { validateRoutineInput, type RoutineInput } from '../routines/model.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
@@ -45,6 +42,7 @@ import { resolveStack } from '../router/stack.js';
 import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
+import { engineEthicsContext } from '../core/ethics/host.js';
 import type { ChatMessage } from '../providers/types.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
@@ -155,6 +153,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     notifier.unwatch(driver.id);
     driver.dispose();
   };
+  // Crew routines: the process-wide scheduler (shared with the desktop shell
+  // when the daemon runs inside it). Every session a run opens is tracked
+  // here like any other, so a phone can attach to a routine's transcript and
+  // the completion push fires when it needs the person.
+  const scheduler = getRoutineScheduler();
+  const offRoutineDriver = scheduler.onDriver((driver) => trackDriver(driver as LocalDriver));
   const evictAfterMs = options.idleEviction?.afterMs ?? DEFAULT_IDLE_EVICT_AFTER_MS;
   const evictEveryMs = options.idleEviction?.everyMs ?? DEFAULT_IDLE_EVICT_EVERY_MS;
   const sweep = setInterval(() => {
@@ -573,7 +577,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // Load the config fresh (like bootstrapSession) so this reflects the
       // user's actual stack, not the snapshot the daemon started with.
       const chatConfig = loadConfig().config;
-      const providers = new ProviderRegistry(chatConfig, getAnthropicKey);
+      // Guarded like every other path: the registry hands out ethics-wrapped
+      // providers, and blocks here are journaled on this machine.
+      const providers = new ProviderRegistry(chatConfig, getAnthropicKey, engineEthicsContext());
       let orchestrator;
       try {
         orchestrator = resolveStack(chatConfig, providers).orchestrator;
@@ -629,6 +635,116 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       res.end();
       return;
     }
+    // ---- Crew routines: the roster of unattended jobs and their runs. ----
+    // Reading is open to any member (scoped to the routines it owns; admins
+    // see all). Creating, changing, running, or stopping a routine provisions
+    // unattended work on this machine, so it is admin-only, and the workspace
+    // is gated to the allowed roots for every caller inside the scheduler.
+    if (parts[0] === 'routines') {
+      const admin = hasRole(auth, 'admin');
+      const visible = (routineId: string): boolean =>
+        admin || scheduler.get(routineId)?.ownerUserId === auth.userId;
+      if (req.method === 'GET' && !parts[1]) {
+        const routines = scheduler.list(admin ? undefined : auth.userId);
+        const runs = scheduler.runs(60).filter((r) => visible(r.routineId));
+        sendJson(res, 200, { routines, runs });
+        return;
+      }
+      if (req.method === 'GET' && parts[1] === 'runs' && parts[2] && parts[3] === 'note') {
+        const note = scheduler.readNote(parts[2]);
+        const run = scheduler.runs(200).find((r) => r.id === parts[2]);
+        if (!note || !run || !visible(run.routineId)) {
+          sendJson(res, 404, { error: 'No result note for that run.' });
+          return;
+        }
+        sendJson(res, 200, note);
+        return;
+      }
+      if (req.method === 'POST' && !parts[1]) {
+        if (!requireAdmin()) return;
+        const parsed = validateRoutineInput(await readJson(req));
+        if (!parsed.ok) {
+          sendJson(res, 400, { error: parsed.error });
+          return;
+        }
+        const created = scheduler.create(parsed.value, auth.userId);
+        if ('error' in created) {
+          sendJson(res, 400, { error: created.error });
+          return;
+        }
+        sendJson(res, 201, { routine: created });
+        return;
+      }
+      if (parts[1]) {
+        const id = parts[1];
+        const existing = scheduler.get(id);
+        if (!existing || !visible(id)) {
+          sendJson(res, 404, { error: 'No such routine.' });
+          return;
+        }
+        if (req.method === 'DELETE' && !parts[2]) {
+          if (!requireAdmin()) return;
+          sendJson(res, 200, { deleted: scheduler.remove(id) });
+          return;
+        }
+        if (req.method === 'POST' && !parts[2]) {
+          if (!requireAdmin()) return;
+          // A patch is validated as the whole routine it would produce, so a
+          // partial update can never leave a field the create path refuses.
+          const body = await readJson(req);
+          const merged: Record<string, unknown> = {
+            name: existing.name,
+            agentId: existing.agentId,
+            agentName: existing.agentName,
+            persona: existing.persona,
+            task: existing.task,
+            cwd: existing.cwd,
+            projectName: existing.projectName,
+            schedule: existing.schedule,
+            enabled: existing.enabled,
+            access: existing.access,
+            maxMinutes: existing.maxMinutes,
+            ...body,
+          };
+          const parsed = validateRoutineInput(merged);
+          if (!parsed.ok) {
+            sendJson(res, 400, { error: parsed.error });
+            return;
+          }
+          // Only the keys the caller sent move, so the schedule's slot
+          // bookkeeping resets only when the schedule itself changed.
+          const patch: Partial<RoutineInput> = {};
+          for (const key of Object.keys(body) as Array<keyof RoutineInput>) {
+            if (key in parsed.value) (patch as Record<string, unknown>)[key] = parsed.value[key];
+          }
+          const updated = scheduler.update(id, patch);
+          if ('error' in updated) {
+            sendJson(res, 400, { error: updated.error });
+            return;
+          }
+          sendJson(res, 200, { routine: updated });
+          return;
+        }
+        if (req.method === 'POST' && parts[2] === 'run') {
+          if (!requireAdmin()) return;
+          const result = scheduler.runNow(id);
+          if ('error' in result) {
+            sendJson(res, 409, { error: result.error });
+            return;
+          }
+          sendJson(res, 202, result);
+          return;
+        }
+        if (req.method === 'POST' && parts[2] === 'stop') {
+          if (!requireAdmin()) return;
+          sendJson(res, 200, { stopped: scheduler.stopRun(id) });
+          return;
+        }
+      }
+      sendJson(res, 404, { error: `No route ${req.method} ${url.pathname}.` });
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/sessions') {
       // Owner-scoped (DAE-1): titles are the user's own prompt text, so a
       // member sees exactly its own sessions. Admins (and the legacy shared
@@ -723,6 +839,17 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
 
       let driver = drivers.get(id);
+      if (!driver) {
+        // A routine run that started before this daemon did (the desktop
+        // shell's scheduler opened it) is live in the scheduler, not in this
+        // map yet: adopt that driver rather than rehydrate a second copy of
+        // the same session underneath a run in flight.
+        const inFlight = scheduler.liveDriver(id) as LocalDriver | undefined;
+        if (inFlight) {
+          trackDriver(inFlight);
+          driver = inFlight;
+        }
+      }
       if (!driver) {
         const stored = listSessions().find((s) => s.id === id);
         if (stored) {
@@ -1114,6 +1241,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     server.once('error', reject);
     const closeAll = (): void => {
       clearInterval(sweep);
+      // The scheduler outlives the daemon (the desktop shell may still be up);
+      // only this daemon's tracking of its runs ends here.
+      offRoutineDriver();
       // close() alone leaves live SSE sockets open and the port busy until they
       // drain (DAE-11); drop them so a restart never hits EADDRINUSE.
       server.close();
@@ -1174,62 +1304,10 @@ function effectiveRemoteMode(requested: PermissionMode | undefined): {
   return effectiveMode(profileFor('remote-attached'), requested);
 }
 
-/** Resolve a path to its real location when it exists (symlinks followed),
- *  else to its lexical absolute form. Both sides of a containment check go
- *  through this, so a symlink planted inside a managed root that points
- *  outside it can never pass as inside (P0-1), and a managed root that is
- *  itself a symlink still contains its real children. */
-function realOrResolve(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return resolve(p);
-  }
-}
-
-function within(target: string, root: string): boolean {
-  return target === root || target.startsWith(root + sep);
-}
-
-function managedRoot(): string {
-  return realOrResolve(join(homedir(), 'OSCode'));
-}
-
-/**
- * Admin-provisioned workspaces are the repos an admin cloned onto the home
- * machine (under ~/OSCode, via POST /workspaces/clone). A member may only open
- * sessions inside one of these: without this a member token could point a
- * session at any path on disk as its jail root and drive it (D1). Admins (and
- * the legacy shared token, which resolves as admin) are unrestricted.
- */
-export function isAdminProvisionedWorkspace(cwd: string): boolean {
-  return within(realOrResolve(cwd), managedRoot());
-}
-
-/**
- * The outbox apply/verify endpoints take a repo path from the request body.
- * Without a gate, any member token can commit and push to ANY repo on the
- * admin's machine using the admin's ambient git credentials (a cross-repo
- * escalation and an exfil path). Restrict both endpoints to the same
- * admin-provisioned workspaces sessions use, plus any explicit
- * daemon.outboxAllowedRoots (for a home repo outside ~/OSCode). Enforced for
- * every caller, admins included: there is no legitimate apply/verify to a repo
- * outside the configured set.
- */
-export function isOutboxAllowedPath(
-  cwd: string,
-  // The roots come from the GLOBAL config alone (DAE-9); a whole OscConfig is
-  // accepted for callers that already hold one.
-  config: OscConfig | DaemonConfig = loadDaemonConfig(),
-): boolean {
-  if (isAdminProvisionedWorkspace(cwd)) return true;
-  const daemon = 'daemon' in config ? config.daemon : config;
-  const target = realOrResolve(cwd);
-  for (const root of daemon.outboxAllowedRoots ?? []) {
-    if (within(target, realOrResolve(root))) return true;
-  }
-  return false;
-}
+// The workspace gates (admin-provisioned workspaces, outbox roots) live in
+// core/security/workspaces.ts so the routine scheduler shares the exact same
+// predicates; re-exported here for the existing importers and tests.
+export { isAdminProvisionedWorkspace, isOutboxAllowedPath };
 
 /** Recent workspaces: session cwds, newest first, deduped, existing only.
  *  With an owner, only that user's sessions count (DAE-1), followed by the
