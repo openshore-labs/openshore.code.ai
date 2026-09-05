@@ -608,4 +608,3 @@ log entry). Migration is now `0016`.
   Morning review preset, and a gitLog read tool. 25 new engine tests, 9 new
   app tests. Gates: see the Current state above. The superseded
   persona-chatbot stab from earlier in the day was dropped, not merged.
-
