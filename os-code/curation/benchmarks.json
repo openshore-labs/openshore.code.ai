@@ -25,5 +25,7 @@
   "deepseek-r1-7b": { "MMLU": 66, "MATH-500": 80 },
   "yi-coder-9b": { "HumanEval": 85, "MBPP": 73 },
   "granite3.1-8b": { "MMLU": 65, "HumanEval": 72 },
-  "deepseek-r1-llama-8b": { "MMLU": 68, "MATH-500": 85 }
+  "deepseek-r1-llama-8b": { "MMLU": 68, "MATH-500": 85 },
+  "qwen3-4b-phone": { "GPQA": 62, "LiveCodeBench": 35, "AIME": 47 },
+  "qwen2.5-coder-1.5b-phone": { "HumanEval": 55, "tokens per second": 100 }
 }

@@ -26,8 +26,13 @@ describe('the way back', () => {
     expect(store).toMatch(
       /\{ title: focusedHosted\.name, back: \{ to: 'Marketplace', onBack: closeHosted \} \}/,
     );
+    // A catalog model's page goes back to the Marketplace, or to the family
+    // page it was opened from, and a family page goes back to the Marketplace.
     expect(store).toMatch(
-      /\{ title: focusedModel\.name, back: \{ to: 'Marketplace', onBack: closeModel \} \}/,
+      /title: focusedModel\.name,\s*back: \{ to: returnFamily \? returnFamily\.name : 'Marketplace', onBack: closeModel \}/,
+    );
+    expect(store).toMatch(
+      /\{ title: focusedFamily\.name, back: \{ to: 'Marketplace', onBack: closeFamily \} \}/,
     );
     expect(store).toMatch(
       /<BackBar title=\{page\?\.title \?\? 'Marketplace'\} back=\{page\?\.back\} \/>/,

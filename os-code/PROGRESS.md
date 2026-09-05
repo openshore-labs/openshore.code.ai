@@ -8,12 +8,26 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-05, Crew routines, the ethics layer, and the review remediation)
+## Current state (2026-09-05, the phone storefront, Crew routines, the ethics layer, and the review remediation)
 
-Three pieces of work landed on 2026-09-05, built in parallel sessions and
-merged here: Crew routines (newest, first below), the always-on ethical
-guardrail layer, and the full-codebase review remediation (its state section
-moved to `docs/progress-archive.md`; its open items stay in What remains).
+Four pieces of work landed on 2026-09-05, built in parallel sessions and merged
+here: the phone storefront (newest, first below), Crew routines, the always-on
+ethical guardrail layer, and the full-codebase review remediation (its state
+section moved to `docs/progress-archive.md`; its open items stay in What
+remains).
+
+### The phone storefront (Marketplace, on iPhone)
+
+On an iPhone the Marketplace now leads with three one-tap packs keyed to the
+connection status (Offline, Offshore, Docked), a browse-by-family rail with a
+family page split by where each size installs, the pocket shelf retitled "Runs
+on this iPhone" with the line that a new 4B beats the old 7B class at half the
+memory, and a "Desktop and home servers" divider below which no control ever
+says "Get" on a phone. The seed carries the phone-class pick `qwen3-4b-phone`;
+it reaches the live feed only once `osc eval` scores it (see What remains).
+Code: `app/src/lib/packs.ts`, `app/src/components/modelFamilies.ts`, `runsOn`
+and `installLabel` in `app/src/components/marketplace.ts`; the doc is
+`docs/MARKETPLACE.md`, "The phone storefront".
 
 ### Crew routines (the botOS brief, shipped inside My Crew)
 
@@ -70,6 +84,19 @@ is on", never "always on", and "works, then asks", never "unsupervised".
   Prettier; app typecheck (src and electron), lint, 699 tests (93 files), vite
   build, Prettier; the repo-wide em-dash guard and the PROGRESS shape guard.
   Pushed to `main` per the founder.
+- **Cross-device control model (founder, 2026-09-05: "it should all operate
+  seamlessly cross-device").** One clear distinction, on the same "docked"
+  reach the big models use: you SET UP and CONTROL routines only while
+  harnessed to the machine (docked over Tailscale, or on the machine itself);
+  you can always VIEW. Away from home the command center shows the last-known
+  dashboards from a cached snapshot (persisted at `oscode.routines.v1`), the
+  roster and dormant capabilities, and a Reconnect prompt; every control button
+  is hidden and the store refuses a mutation with "Reconnect to your main
+  machine over Tailscale to control your crew." Three header states, In control
+  / View only / Not set up, named by a badge. A `set-up-crew` guide walks the
+  mobile setup. Pure `crewControl()` in `app/src/lib/routines.ts` decides, and
+  both the screen (live, off connectivity) and the store guards call it. App
+  only: the daemon is already unreachable when not docked, so no server change.
 - **Polish pass (founder: "do all the polish").** A waiting-for-you row
   breathes a soft amber halo on the working dot's clock; the results inbox
   arrives row by row on `--stagger`; a sheet's heading rises in, keyed to the
@@ -140,6 +167,29 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Run `osc eval` on `qwen3-4b-phone` and commit its average to
+      `curation/eval.json` (founder, needs a machine with the model).** Until
+      then the curated gate drops the 4B from the live feed (an orchestrator
+      needs a real eval, and no star is invented), so the packs and the Pocket
+      bundle fall back to `qwen2.5-1.5b-phone` on a live catalog. The bundled
+      seed and the family page show the 4B either way. Same step for
+      `qwen2.5-coder-1.5b-phone` is NOT needed: it is a specialist and clears
+      on its published benchmarks.
+- [ ] **On-device verification of the phone storefront (needs a phone).**
+      TestFlight: tap Set up Offline on the Marketplace (both downloads land,
+      the Offline stack's Reasoning is the 4B, the coder sits under Coding),
+      flip the header pill to Offline and chat; then Set up Offshore, connect
+      a key, confirm the card reads Ready; open Qwen from the family rail,
+      open a size, confirm the back chevron says Qwen.
+- [ ] **Smooth a larger model on the iPhone (founder asked 2026-09-05, not
+      yet built).** In order of leverage: the
+      `com.apple.developer.kernel.increased-memory-limit` entitlement (one line
+      in `App.entitlements` plus the capability on the App ID, CTO review
+      before a distribution build); llama.cpp tuning through the C API the
+      xcframework already links (mmap, flash attention, 8-bit KV cache, all
+      layers on Metal, a 2048 context for big models); unload on a memory
+      warning and slow generation on a hot thermal state; prompt-cache reuse
+      across turns. MLX Swift is the bigger swap and is not the first step.
 - [ ] **Crew routines on the founder's machine and TestFlight (built
       2026-09-05, unverified off the sandbox).** Set up Morning review on the
       Pop!_OS desktop against a cloned repo, let it fire at 06:00 (or Run now),
@@ -464,81 +514,6 @@ log entry). Migration is now `0016`.
 
 ## Log
 
-- **2026-09-05: Crew routines, the botOS clone brief, built and pushed to
-  main.** Go-with-conditions from the CMO, CTO, CFO, and CX; the founder signed
-  off on all four decision points (ship as Crew with routines; Personal to $50
-  when gates return; build v1 directly and measure the preset; push to main).
-  Engine scheduler and store, headless permission hardening, daemon routes,
-  Electron IPC, the app client and store slice, the Crew command room, the
-  Morning review preset, and a gitLog read tool. 25 new engine tests, 9 new
-  app tests. Gates: see the Current state above. The superseded
-  persona-chatbot stab from earlier in the day was dropped, not merged.
-
-- **2026-09-05: full-codebase review remediation, one wave.** Every finding
-  in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
-  P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
-  `DECISIONS.md`, this file restructured to its own contract. Gates: see the
-  Current state above.
-
-- **2026-08-26: Desktop (Electron) interactive PTY terminal wired (the one
-  documented Phase 2 follow-up).** The interactive terminal already ran
-  phone-to-desktop over the daemon; this wires the same TerminalManager into
-  the Electron desktop app, so a desktop-backed chat opens a real local PTY
-  over IPC (not only remotely). EngineHost holds a TerminalManager and forwards
-  output on a new channel; six osc:terminal\* IPC handlers + preload/bridge
-  methods + onTerminalData; ElectronDriver implements the ChatDriver terminal
-  methods (the output listener registers before subscribing so ring replay is
-  never missed, and tears down on abort). A terminalReader is also passed into
-  both bootstrapSession calls so read_terminal sees PTY scrollback on desktop.
-  Owner is the local user on desktop, so no cross-user gate is needed here; PTY
-  output rides its own forwarder and is never journaled; stdin is never logged.
-  3 new ElectronDriver tests. Gates green (os-code 36 files, app 41 files,
-  typecheck incl. electron tsconfig, lint --max-warnings 0, vite build).
-  Still needs the machine: electron-rebuild of node-pty for the Electron ABI to
-  run a real PTY (absent, openTerminal reports unavailable and chat is unaffected).
-
-- **2026-08-26: Second round, founder-approved builds + all scoped follow-ups.**
-  The founder approved both team recommendations and asked for every "left for
-  their own scoping" item. All built, test-backed, merged to main. Gates green
-  (os-code 302 tests, app 239, typecheck, lint, vite build).
-  - **Free desktop chat (paywall change, C-suite approved, CTO-designed).** Chat
-    with a paired desktop's own local models is now FREE; the coding agent,
-    Marketplace, and repo writes stay Personal. The CTO rejected a
-    "zero-tools session" (the command lane would have bypassed the tool registry
-    and let a free session run shell) and specced a stateless daemon route POST
-    /chat that builds only a provider and streams one completion: no
-    AgentSession, no LocalDriver, no ToolRegistry, no command lane, no journal,
-    pinned to the local orchestrator (no cloud spend). It cannot act by
-    construction. A distinct source.kind 'desktop-chat' (not a flag on
-    'desktop') keeps the free path off the session-creating branch; the gate is
-    unchanged. New DesktopChatDriver; a free-chat picker row beside the merged
-    "My computer" agent entry. Honest limit (CTO): the $20 wall is not
-    server-enforceable against a user's own daemon; this confines the free
-    surface, it does not police entitlement. Logged in DECISIONS.md.
-  - **Terminal bridge Phase 2: a full interactive PTY.** xterm.js on the phone
-    driving a live PTY on the desktop over new daemon term routes; agent reads it
-    with a new readTerminal tool (no writeTerminal). node-pty is an OPTIONAL dep,
-    lazy-imported: absent, the create route returns 503 and the daemon keeps
-    serving (the whole tree stays green with no native module). Security
-    reviewed: the terminal surface is ADMIN-only and owner-only; PTY output
-    rides its own SSE endpoint, never the journal (only content-free
-    opened/closed markers); stdin is never journaled or logged. Ring buffer with
-    absolute byte offsets for lossless reattach. Electron terminal wiring was
-    the one documented follow-up; it is now DONE (see the 2026-08-26 desktop
-    PTY entry at the top of the Log).
-  - **MP-F2:** a paired phone installs a desktop model over the tailnet (daemon
-    /models/install + progress polling).
-  - **MP-F4:** pocket models that finished downloading while the app was closed
-    are adopted instead of re-downloaded (app adoption + a native guard).
-  - **TS-P2-4:** per-device, revocable pairing credentials; the QR no longer
-    hands out the shared admin token (mint-once, cached, revoke rotates the QR).
-  - **TS-P1-5:** the home-repo path writer, so "Sync now" stops being
-    enabled-but-doomed (pick an on-desktop cloned workspace).
-  - **Still needs founder / device:** confirm the free-chat and P0 streaming on a
-    real iPhone; node-pty built for the machine's ABI to run the real PTY (and
-    electron-rebuild for the Electron terminal follow-up); the Swift changes
-    compile on TestFlight.
-
 - **2026-09-05: IP capture removed from the product entirely (founder call,
   taking the CMO's original recommendation over the earlier block-only
   compromise).** The founder: "Get rid of the IP capture. Whatever the CMO
@@ -560,47 +535,47 @@ log entry). Migration is now `0016`.
   that the migration text contains no IP identifier at all; `ethics.test.ts`
   and `ethicsEnforcement.test.ts` both assert `outcome` never gains an
   `ip`-named property. 83 ethics tests green after the pass.
-  - **Tailscale / phone (P0 + P1s).** Fixed the flagship phone bug: the daemon
-    SSE stream and Anthropic SDK were routed through Capacitor's native-HTTP
-    fetch (buffers, cannot stream), so a paired phone rendered nothing during a
-    run. New `streamingFetch` reaches the unpatched WebView fetch
-    (`window.CapacitorWebFetch`); the global patch stays on so web search / Drive
-    / Supabase are untouched (safe failure mode). Also: `/outbox/apply|verify`
-    now admin/workspace-gated (a member token could push to any repo, security
-    must-fix); the tailscale-bound daemon also listens on loopback so `osc
-attach` reaches it; a daemon restart seeds the agent's history from the
-    journal (no more amnesia) and clears zombie approvals; the reconnect loop
-    stops on 401/persistent-404 with actionable copy instead of retrying forever;
-    phone POSTs get a 10s timeout.
-  - **Chat-to-terminal bridge, Phase 1 (the founder's game-changer).** A
-    first-class command lane: run a command on the paired desktop from chat,
-    watch output stream live, answer prompts, kill it, and the model reads the
-    result on its next turn (no screenshot loop). New
-    `core/exec/commandRunner.ts` (shared with runShell), three `command-*`
-    driver events, `LocalDriver.runCommand/writeCommandStdin/killCommand`, daemon
-    routes under the owned-session block (owner's tap is the approval, audited in
-    the journal), a `contextPreamble` seam into `AgentSession.run`, and the app
-    side (command ThreadItem + reducer, `CommandCard`, RemoteDriver methods,
-    store actions, a Run/Copy button on shell code blocks). Also fixed the tiny
-    high-leverage bug: the app discarded all shell output past its first line.
-    Follow-ups: desktop (Electron) command lane, a composer terminal-mode
-    toggle, and Phase 2 (full PTY tab) which is a founder decision.
-  - **Marketplace (premium + functional + HF automation).** A standalone iPhone
-    now fetches the published catalog directly (Preferences-cached, graceful
-    fallback) so ratings/popularity/staff-picks appear without a paired desktop;
-    the Staff axis hides when empty; copy fixed (popularity is HF-only; the "over
-    Tailscale" note is phone-only). Builder: an HF outage no longer strips
-    popularity (carry-forward + coverage gate); HF_TOKEN + bounded concurrency +
-    retry; a license-drift warning; a published commercial-posture flag; a gate
-    that rejects any non-huggingface.co `onDevice.url` (plus the native client
-    check), closing a redirect-to-anywhere download vector.
-  - **Advisor ruling captured (founder decision needed).** The C-suite (CFO lead,
-    CMO weighed) recommends opening FREE desktop CHAT (route it like `stack`,
-    read-only) while keeping the $20 Personal gate on the coding agent,
-    Marketplace, and repo writes. This is a monetization-FOUNDATION change, so it
-    was deliberately NOT built; it needs the founder's explicit yes. Gate lives at
-    `app/src/state/store.ts` around the desktop-conversation check.
-  - **Needs founder / device (cannot verify in a web session):** confirm the P0
-    fix on a real iPhone (streaming); the Swift `downloadModel` host check and
-    any native change compile on TestFlight; wire an optional `HF_TOKEN` repo
-    secret if you want the authenticated popularity fetch.
+
+- **2026-09-05: Crew routines cross-device control model.** Setup and control
+  require being docked to the machine (or on it); viewing is always on, from a
+  cached snapshot when away. Three states in the command center (In control /
+  View only / Not set up), a Reconnect prompt, a dormant-capabilities preview,
+  a set-up-crew guide, and mutation guards in the store. Pure crewControl() with
+  tests. App-only. Gates: app 714 tests, typecheck, lint, build, Prettier;
+  os-code unchanged and green.
+
+- **2026-09-05: the phone storefront: packs by status, families, and an
+  honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that
+  only toasted: make it super clear what installs on this phone versus a
+  desktop or home server, browse by model name then size, say plainly that a
+  new 4B beats the old 7B class here, and be package-ready on the phone where
+  choices are few. Built: `app/src/lib/packs.ts` (Offline, Offshore, Docked
+  packs, one per connection status, filling that status's own stack, resolved
+  by preference list against the loaded catalog); `modelFamilies.ts` (client
+  derived families, a rail, a family page split by where each size installs);
+  `runsOn` and `installLabel` in `marketplace.ts` (a "Where it runs" row on
+  every product page; "On <hub>" or "Desktop" instead of a Get the phone cannot
+  honor); the pocket shelf retitled "Runs on this iPhone" with the 4B-beats-7B
+  line; a "Desktop and home servers" divider. Seed: `qwen3-4b-phone` (Qwen3 4B
+  Instruct 2507, 2.5 GB, published GPQA / LiveCodeBench / AIME) and
+  `qwen2.5-coder-1.5b-phone` (the Offline pack's coder), the Pocket bundle
+  moved to the 4B. Rulings in `DECISIONS.md`; the doc is
+  `docs/MARKETPLACE.md`, "The phone storefront". Gates: app typecheck, lint,
+  tests, Prettier; os-code builder and isolation tests; both em-dash guards.
+
+- **2026-09-05: Crew routines, the botOS clone brief, built and pushed to
+  main.** Go-with-conditions from the CMO, CTO, CFO, and CX; the founder signed
+  off on all four decision points (ship as Crew with routines; Personal to $50
+  when gates return; build v1 directly and measure the preset; push to main).
+  Engine scheduler and store, headless permission hardening, daemon routes,
+  Electron IPC, the app client and store slice, the Crew command room, the
+  Morning review preset, and a gitLog read tool. 25 new engine tests, 9 new
+  app tests. Gates: see the Current state above. The superseded
+  persona-chatbot stab from earlier in the day was dropped, not merged.
+
+- **2026-09-05: full-codebase review remediation, one wave.** Every finding
+  in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
+  P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
+  `DECISIONS.md`, this file restructured to its own contract. Gates: see the
+  Current state above.
+
