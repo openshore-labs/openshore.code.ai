@@ -33,5 +33,20 @@
 	<array>
 		<string>iCloud.ai.openshore.oscode</string>
 	</array>
+	<!--
+	  Increased Memory Limit, so a high memory iPhone (the iPhone Air and its
+	  peers) may hold a larger on-device model without iOS ending the app at the
+	  default ceiling. The real limit on a phone is memory, not storage, and this
+	  raises the ceiling on devices that have the room. It is self served: no
+	  Apple review, but the App ID must carry the capability or signing fails, so
+	  enable Increased Memory Limit on the ai.openshore.oscode App ID BEFORE the
+	  next distribution build, the same as Push and iCloud above. Extended
+	  Virtual Address Space is the companion for the large memory mapped weights
+	  file; it carries the same App ID requirement.
+	-->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
+	<true/>
 </dict>
 </plist>

@@ -6037,6 +6037,14 @@ textarea {
   background: var(--local-soft);
   border-color: transparent;
 }
+/* Runs, but not here: the model is larger than this phone's memory keeps free.
+   Amber, the spend/caution family, never red: it is a nudge to the right
+   machine, not a failure. */
+.runs-on-pill.over {
+  color: var(--cloud);
+  background: var(--cloud-soft);
+  border-color: transparent;
+}
 .runs-on-dot {
   width: 7px;
   height: 7px;
@@ -6045,6 +6053,14 @@ textarea {
 }
 .runs-on-dot.yes {
   background: var(--local);
+}
+.runs-on-dot.over {
+  background: var(--cloud);
+}
+.runs-on-note {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
 }
 .runs-on-family {
   margin-top: 8px;

@@ -34,6 +34,23 @@ export function forgetDeviceModel(): void {
   slot = undefined;
 }
 
+// The native side can unload the model on its own, e.g. when iOS raises a
+// memory warning and the plugin drops the weights to keep the app alive. When
+// that happens the slot no longer reflects reality, so forget it here and the
+// next send reloads. Subscribed once, lazily, the first time a device model is
+// ensured, so importing this module has no side effect and the web stub (which
+// never emits the event) costs nothing.
+let unloadWatchStarted = false;
+function watchNativeUnload(): void {
+  if (unloadWatchStarted) return;
+  unloadWatchStarted = true;
+  void Llama.addListener('deviceModelUnloaded', () => forgetDeviceModel()).catch(() => {
+    // A build without the event (older native) simply never fires it; the
+    // error/watchdog recovery path in onDeviceDriver still heals the slot.
+    unloadWatchStarted = false;
+  });
+}
+
 /** Make `id` the model in the slot at `contextSize`, loading it if it is not
  *  already. `onStatus` carries the human "warming up" line so the chat can
  *  show it only when a load actually happens. */
@@ -41,6 +58,7 @@ export async function ensureDeviceModel(
   model: { id: string; name: string; contextSize: number },
   onStatus?: (message: string) => void,
 ): Promise<EnsureDeviceModel> {
+  watchNativeUnload();
   if (slot && slot.id === model.id && slot.contextSize === model.contextSize) return { ok: true };
   // A model kept in iCloud may be evicted (placeholder only). Pull its bytes
   // down first; a device-stored model is a no-op. If it cannot be fetched
