@@ -51,9 +51,7 @@ export function SettingsRow({
     <>
       <span className="settings-row-text">
         <span className="settings-row-label">{label}</span>
-        {sub ? (
-          <span className={`settings-row-sub${subWrap ? ' wrap' : ''}`}>{sub}</span>
-        ) : null}
+        {sub ? <span className={`settings-row-sub${subWrap ? ' wrap' : ''}`}>{sub}</span> : null}
       </span>
       {value !== undefined ? <span className="settings-row-value">{value}</span> : null}
       {trailing ?? (onClick ? <span className="disclosure-chevron" aria-hidden="true" /> : null)}

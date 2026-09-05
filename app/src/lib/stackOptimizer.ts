@@ -62,9 +62,7 @@ function roleCap(role: string): CapabilityCategory | undefined {
 function findInCatalog(model: string, models: CatalogModel[]): CatalogModel | undefined {
   const m = model.trim();
   if (!m) return undefined;
-  return models.find(
-    (c) => c.id === m || c.name === m || c.source.ref === m,
-  );
+  return models.find((c) => c.id === m || c.name === m || c.source.ref === m);
 }
 
 /** Does the candidate preserve what the role needs and clear the quality floor?
@@ -101,7 +99,10 @@ function eligible(
     if (cap) {
       const curStar = starIn(current, cap);
       const candStar = starIn(candidate, cap);
-      if (curStar !== undefined && (candStar === undefined || candStar < curStar - QUALITY_TOLERANCE))
+      if (
+        curStar !== undefined &&
+        (candStar === undefined || candStar < curStar - QUALITY_TOLERANCE)
+      )
         return false;
     }
   } else {
@@ -114,9 +115,7 @@ function eligible(
 /** The single best eligible candidate for a role: the most capable (highest
  *  osCodeFit), then the leanest, then curated order, so we never trade capability
  *  away for a marginal energy win. */
-function bestCandidate(
-  candidates: CatalogModel[],
-): CatalogModel | undefined {
+function bestCandidate(candidates: CatalogModel[]): CatalogModel | undefined {
   if (!candidates.length) return undefined;
   return [...candidates].sort((a, b) => {
     const fa = osCodeFit(a) ?? 0;

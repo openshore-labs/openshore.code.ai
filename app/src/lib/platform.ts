@@ -6,7 +6,6 @@ import { Preferences } from '@capacitor/preferences';
 import { Llama } from './llamaPlugin.js';
 import { bridge } from './electronBridge.js';
 import { generateRawDek, importDek, isSealed, open, seal } from './crypto.js';
-import { hapticTick } from './haptics.js';
 
 export type Platform = 'electron' | 'ios' | 'web';
 
@@ -34,10 +33,10 @@ export function openExternal(url: string): void {
  *  signing in and copying a key never leaves OpenShore, with the standard
  *  Capacitor "Done" button to dismiss back to exactly where you were.
  *  Electron and web have no in-app browser surface, so they fall back to
- *  the system browser via openExternal. Leaving for the sheet is a decisive
- *  commit, so it is marked with a haptic (a silent no-op off the phone). */
+ *  the system browser via openExternal. */
 export function openInAppBrowser(url: string): void {
-  hapticTick();
+  // No tick here: every caller is a button, and the global press listener in
+  // App.tsx already marks the tap (UI-7), so a second tick reads as a stutter.
   if (platform() === 'ios') {
     void Browser.open({ url });
     return;

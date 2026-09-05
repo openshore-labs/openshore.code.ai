@@ -13,14 +13,7 @@ import { CAPABILITIES } from 'os-code/protocol';
 // default, 'newest' and 'fit' are utility, and 'greenest' orders by the energy a
 // model is estimated to draw per token so a team can optimize a stack for
 // sustainability.
-export type SortKey =
-  | 'recommended'
-  | 'staff'
-  | 'popular'
-  | 'used'
-  | 'newest'
-  | 'fit'
-  | 'greenest';
+export type SortKey = 'recommended' | 'staff' | 'popular' | 'used' | 'newest' | 'fit' | 'greenest';
 
 export type FitLabel = 'fits' | 'tight' | 'too-big';
 

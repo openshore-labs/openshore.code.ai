@@ -84,7 +84,8 @@ function equivalent(f: SustainabilityFootprint): string {
   const g = glasses(f.liters);
   const km = kmDriven(f.grams);
   const parts: string[] = [];
-  if (charges >= 1) parts.push(`${Math.round(charges)} phone ${Math.round(charges) === 1 ? 'charge' : 'charges'}`);
+  if (charges >= 1)
+    parts.push(`${Math.round(charges)} phone ${Math.round(charges) === 1 ? 'charge' : 'charges'}`);
   if (g >= 1) parts.push(`${Math.round(g)} ${Math.round(g) === 1 ? 'glass' : 'glasses'} of water`);
   if (km >= 1) parts.push(`${Math.round(km)} km not driven`);
   return parts.join(' · ');

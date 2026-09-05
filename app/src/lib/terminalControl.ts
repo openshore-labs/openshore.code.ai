@@ -113,9 +113,7 @@ export function terminalControlDenyReason(opts: { label: string; canControl: boo
  *  non-shell tool (e.g. an always-ask vaultWrite) can never be auto-approved by
  *  the client: an engine session already decided to ask, so the sheet stands. */
 export type ApprovalDecision =
-  | { action: 'auto-approve' }
-  | { action: 'auto-deny'; reason: string }
-  | { action: 'sheet' };
+  { action: 'auto-approve' } | { action: 'auto-deny'; reason: string } | { action: 'sheet' };
 
 export function decideApproval(
   req: Pick<ApprovalRequest, 'kind' | 'toolName'>,

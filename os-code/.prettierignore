@@ -1,0 +1,4 @@
+
+# Historical reference moved out of PROGRESS.md verbatim; Prettier is not
+# idempotent on its nested blockquote lists, so it is left as written.
+docs/parked-ideas.md
