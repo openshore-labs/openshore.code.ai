@@ -232,7 +232,7 @@ describe('abort correctness (C1, C2, C3)', () => {
     const session = makeTestSession(provider, {
       configOverrides: {
         stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
-        guardrails: { maxSteps: 1 }, // trips on the first call in the batch
+        guardrails: { maxSteps: 1 }, // step 1 runs; the second call in the batch trips
       },
     });
     await session.agent.run('read two files');
@@ -405,15 +405,13 @@ describe('always allow in this project for shell (ENG-4)', () => {
     ]);
     const session = makeTestSession(provider, {
       configOverrides: askAll,
-      approve: () => ({ approve: true, alwaysInProject: true }),
+      // "Always in this project" on the first prompt only.
+      approve: (r) => ({ approve: true, alwaysInProject: r.summary.includes('npm test') }),
     });
     await session.agent.run('build it');
     expect(session.persistedRules).toEqual([{ tool: 'runShell', commandPrefix: 'npm' }]);
     // npm test asked (and saved), npm run build flowed, rm asked again.
-    expect(session.approvals.map((a) => a.summary)).toEqual([
-      'Run: npm test',
-      'Run: rm -rf dist',
-    ]);
+    expect(session.approvals.map((a) => a.summary)).toEqual(['Run: npm test', 'Run: rm -rf dist']);
     expect(session.events.filter((e) => e.type === 'tool-end')).toHaveLength(3);
   });
 
@@ -468,7 +466,12 @@ describe('a rejected call in a native batch (ENG-11)', () => {
       [
         {
           type: 'tool-call',
-          call: { id: 'c1', name: 'readFile', argsText: '{"path":"a.txt"}', args: { path: 'a.txt' } },
+          call: {
+            id: 'c1',
+            name: 'readFile',
+            argsText: '{"path":"a.txt"}',
+            args: { path: 'a.txt' },
+          },
         },
         { type: 'tool-call', call: { id: 'c2', name: 'compile', argsText: '{}', args: {} } },
         { type: 'done', stopReason: 'tool-calls' },

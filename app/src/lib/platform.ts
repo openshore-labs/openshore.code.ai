@@ -67,12 +67,35 @@ async function storeSetRaw(key: string, value: string): Promise<void> {
   localStorage.setItem(key, value);
 }
 
-export async function storeDelete(key: string): Promise<void> {
+async function storeDeleteRaw(key: string): Promise<void> {
   if (platform() === 'ios') {
     await Preferences.remove({ key });
     return;
   }
   localStorage.removeItem(key);
+}
+
+// Writes to one key run in the order they were asked for. saveSettings is
+// fire-and-forget from many actions, and a sealed write is several awaits
+// long, so without this an older snapshot could land last and a setting would
+// "revert after relaunch" (APP-8). Reads are not serialized: they see whatever
+// is on disk, which is what a reader expects.
+const writeChains = new Map<string, Promise<void>>();
+
+function serialized(key: string, fn: () => Promise<void>): Promise<void> {
+  const prev = writeChains.get(key) ?? Promise.resolve();
+  const run = prev.catch(() => {}).then(fn);
+  writeChains.set(key, run);
+  run
+    .finally(() => {
+      if (writeChains.get(key) === run) writeChains.delete(key);
+    })
+    .catch(() => {});
+  return run;
+}
+
+export function storeDelete(key: string): Promise<void> {
+  return serialized(key, () => storeDeleteRaw(key));
 }
 
 // ---------------------------------------------------------------------------
@@ -83,22 +106,78 @@ export async function storeDelete(key: string): Promise<void> {
 // platform without WebCrypto, say), the app degrades to a plaintext store
 // rather than failing to boot. Data written before encryption reads back fine
 // and is resealed the next time it is written (or by sealExistingKeys).
+//
+// The one thing this module must never do is replace a key that exists
+// (P0-3). A keychain that answers nothing for a moment (a Linux keyring
+// change, a safeStorage decrypt failure, a Keychain read before first unlock)
+// looks exactly like "no key yet"; minting a new key then would orphan every
+// sealed byte on the device with no visible cause. So a key is minted only
+// when there is no evidence one ever existed: no key entry, no fingerprint,
+// and no sealed value under any of the keys the app writes first. Otherwise
+// the store goes read-only for sealed keys and init surfaces a locked state.
 // ---------------------------------------------------------------------------
 
 const DEK_STORE_KEY = 'oscode.dek.v1';
-let dekPromise: Promise<CryptoKey | undefined> | undefined;
+/** SHA-256 of the key, kept in the plain store next to the sealed data, so a
+ *  key that is readable but not the one the data was sealed with is caught
+ *  before it silently reads everything as null. */
+const DEK_FINGERPRINT_KEY = 'oscode.dek.fp.v1';
+/** Keys whose sealed value proves a key once existed on this device. */
+const SEALED_EVIDENCE_KEYS = [
+  'oscode.settings.v1',
+  'oscode.conversations.v1',
+  'oscode.auth.session.v1',
+];
 
-async function dekSecretGet(): Promise<string | null> {
+/** ok: sealing with the device key. locked: a key exists but cannot be read
+ *  or does not match the data, so sealed keys are read-only until it is back.
+ *  plaintext: no WebCrypto here, nothing is sealed (a dev browser). */
+export type UnlockState = 'ok' | 'locked' | 'plaintext';
+
+let dekPromise: Promise<CryptoKey | undefined> | undefined;
+let unlockState: UnlockState = 'ok';
+
+/** The device's unlock state, settled once the key has been looked up. init
+ *  reads this to tell the person their data could not be unlocked. */
+export async function dataUnlockState(): Promise<UnlockState> {
+  await getDek();
+  return unlockState;
+}
+
+/** The key entry as the platform sees it: `present` when an entry exists at
+ *  all, `value` only when it could be read right now. */
+async function dekSecretRead(): Promise<{ present: boolean; value: string | null }> {
   switch (platform()) {
-    case 'ios':
-      return (await Llama.secureGet({ key: DEK_STORE_KEY })).value ?? null;
+    case 'ios': {
+      // The Keychain plugin answers nil for absent and for unreadable alike;
+      // the fingerprint and sealed-evidence checks in getDek cover the gap.
+      const v = (await Llama.secureGet({ key: DEK_STORE_KEY })).value ?? null;
+      return { present: v != null, value: v };
+    }
     case 'electron': {
       const b = bridge();
-      if (b) return b.secureGet(DEK_STORE_KEY);
-      return localStorage.getItem(DEK_STORE_KEY);
+      if (!b) {
+        const v = localStorage.getItem(DEK_STORE_KEY);
+        return { present: v != null, value: v };
+      }
+      const present = typeof b.secureHas === 'function' ? await b.secureHas(DEK_STORE_KEY) : false;
+      const value = await b.secureGet(DEK_STORE_KEY);
+      if (value) return { present: true, value };
+      if (present) return { present: true, value: null };
+      // No OS entry. A launch without OS encryption keeps the key in
+      // localStorage (see dekSecretSet); read it here too, and move it into
+      // the OS store now that encryption is back, so there is one home.
+      const fallback = localStorage.getItem(DEK_STORE_KEY);
+      if (fallback) {
+        if (await b.secureSet(DEK_STORE_KEY, fallback)) localStorage.removeItem(DEK_STORE_KEY);
+        return { present: true, value: fallback };
+      }
+      return { present: false, value: null };
     }
-    default:
-      return localStorage.getItem(DEK_STORE_KEY);
+    default: {
+      const v = localStorage.getItem(DEK_STORE_KEY);
+      return { present: v != null, value: v };
+    }
   }
 }
 
@@ -118,20 +197,65 @@ async function dekSecretSet(value: string): Promise<void> {
   }
 }
 
+async function fingerprint(raw: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** True when anything on the device says a key once existed. */
+async function keyEvidence(): Promise<boolean> {
+  if (await storeGetRaw(DEK_FINGERPRINT_KEY)) return true;
+  for (const key of SEALED_EVIDENCE_KEYS) {
+    const raw = await storeGetRaw(key);
+    if (raw != null && isSealed(raw)) return true;
+  }
+  return false;
+}
+
 /** The device's data-encryption key, generated once and cached. Undefined if
- *  crypto is unavailable, so callers fall back to a plaintext store. */
+ *  crypto is unavailable or the key cannot be used right now; callers then
+ *  read plaintext through and never overwrite a sealed value. */
 async function getDek(): Promise<CryptoKey | undefined> {
   if (!dekPromise) {
     dekPromise = (async () => {
       try {
-        if (typeof crypto === 'undefined' || !crypto.subtle) return undefined;
-        let raw = await dekSecretGet();
-        if (!raw) {
-          raw = generateRawDek();
-          await dekSecretSet(raw);
+        if (typeof crypto === 'undefined' || !crypto.subtle) {
+          unlockState = 'plaintext';
+          return undefined;
         }
+        const read = await dekSecretRead();
+        if (read.value) {
+          const mine = await fingerprint(read.value);
+          const stored = await storeGetRaw(DEK_FINGERPRINT_KEY);
+          if (stored && stored !== mine) {
+            // A readable key that is not the one this data was sealed with.
+            unlockState = 'locked';
+            return undefined;
+          }
+          if (!stored) await storeSetRaw(DEK_FINGERPRINT_KEY, mine);
+          unlockState = 'ok';
+          return await importDek(read.value);
+        }
+        if (read.present || (await keyEvidence())) {
+          // A key exists (or did) and cannot be read right now. Never mint
+          // over it: that is the one irreversible move this module can make.
+          unlockState = 'locked';
+          return undefined;
+        }
+        const raw = generateRawDek();
+        await dekSecretSet(raw);
+        await storeSetRaw(DEK_FINGERPRINT_KEY, await fingerprint(raw));
+        unlockState = 'ok';
         return await importDek(raw);
       } catch {
+        // The secure store itself failed. Treat any sign of an earlier key as
+        // locked (read-only for sealed data); only a device with nothing
+        // sealed degrades to plaintext.
+        try {
+          unlockState = (await keyEvidence()) ? 'locked' : 'plaintext';
+        } catch {
+          unlockState = 'locked';
+        }
         return undefined;
       }
     })();
@@ -149,18 +273,25 @@ export async function storeGet(key: string): Promise<string | null> {
   return open(dek, raw);
 }
 
-export async function storeSet(key: string, value: string): Promise<void> {
+async function writeSealed(key: string, value: string): Promise<void> {
   const dek = await getDek();
-  // Never silently overwrite sealed data we cannot read: if the stored value is
-  // sealed but the current key fails to open it (a rotated or lost DEK), copy it
-  // aside first so the ciphertext is recoverable rather than lost forever.
-  if (dek && !key.includes('.recovery.')) {
-    const existing = await storeGetRaw(key);
-    if (existing && isSealed(existing) && (await open(dek, existing)) === null) {
+  const existing = await storeGetRaw(key);
+  if (existing && isSealed(existing)) {
+    // No usable key: a sealed value is read-only. Overwriting it with
+    // plaintext would destroy data the key could still open later.
+    if (!dek) return;
+    // Never silently overwrite sealed data we cannot read: if the current key
+    // fails to open it (a rotated or lost DEK), copy it aside first so the
+    // ciphertext is recoverable rather than lost forever.
+    if (!key.includes('.recovery.') && (await open(dek, existing)) === null) {
       await storeSetRaw(`${key}.recovery.${Date.now()}`, existing);
     }
   }
   await storeSetRaw(key, dek ? await seal(dek, value) : value);
+}
+
+export function storeSet(key: string, value: string): Promise<void> {
+  return serialized(key, () => writeSealed(key, value));
 }
 
 /** Reseal any plaintext values left from before encryption. Best-effort: a key
@@ -170,8 +301,10 @@ export async function sealExistingKeys(keys: string[]): Promise<void> {
   if (!dek) return;
   for (const key of keys) {
     try {
-      const raw = await storeGetRaw(key);
-      if (raw != null && !isSealed(raw)) await storeSetRaw(key, await seal(dek, raw));
+      await serialized(key, async () => {
+        const raw = await storeGetRaw(key);
+        if (raw != null && !isSealed(raw)) await storeSetRaw(key, await seal(dek, raw));
+      });
     } catch {
       // Leave this key as-is; a resealing hiccup must never lose data.
     }

@@ -52,7 +52,7 @@ Pipeline, in order:
    not answer contributes nothing; popularity and timestamps degrade to omitted.
    Set `CATALOG_OFFLINE=1` to skip the network entirely (used by local runs and
    tests). NEVER weights.
-2b. Live discovery (`discover.ts`, on by default when online; `CATALOG_DISCOVER=0`
+   2b. Live discovery (`discover.ts`, on by default when online; `CATALOG_DISCOVER=0`
    turns it off): ask Hugging Face for the trending and the newest GGUF repos,
    read each repo's metadata (file list with sizes, license tag, gated flag),
    and turn the ones that clear the honesty bar into entries that join the seed

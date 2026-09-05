@@ -76,19 +76,143 @@ function sealTitle(title: string): string {
   return dk ? sealString(dk.key, title) : title;
 }
 
+/**
+ * info.json is written through a temp file and a rename (DAE-6), so a crash
+ * mid-write never leaves a torn file that hides the whole session. Every
+ * in-process write also drops the cached index below.
+ */
+function writeInfoAtomic(path: string, info: SessionInfo): void {
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(info, null, 2), { mode: 0o600 });
+  renameSync(tmp, path);
+  invalidateSessionIndex();
+}
+
+// The session index (DAE-12): listSessions used to re-read and re-open every
+// info.json on every call, and the daemon calls it on every listing, every
+// rehydrate, and every workspace scan. The parsed list is cached per sessions
+// dir; any in-process write invalidates it, and two cheap checks catch other
+// writers (the CLI's own sessions): the dir mtime moves on a create or delete,
+// and a short TTL bounds how stale a title or updatedAt can be.
+interface SessionIndex {
+  dir: string;
+  dirMtimeMs: number;
+  readAt: number;
+  entries: SessionInfo[];
+}
+const INDEX_TTL_MS = 5_000;
+let sessionIndex: SessionIndex | undefined;
+
+export function invalidateSessionIndex(): void {
+  sessionIndex = undefined;
+}
+
+// Session ids are short hex; a path-shaped id must never reach rmSync (DAE-12).
+const SAFE_SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Remove a stored session (its journal and info) from disk. */
+export function deleteSession(id: string): boolean {
+  if (!SAFE_SESSION_ID.test(id)) return false;
+  const dir = join(sessionsDir(), id);
+  if (!existsSync(dir)) return false;
+  rmSync(dir, { recursive: true, force: true });
+  invalidateSessionIndex();
+  return true;
+}
+
 export function listSessions(): SessionInfo[] {
   const dir = sessionsDir();
   if (!existsSync(dir)) return [];
+  let dirMtimeMs = 0;
+  try {
+    dirMtimeMs = statSync(dir).mtimeMs;
+  } catch {}
+  const now = Date.now();
+  if (
+    sessionIndex &&
+    sessionIndex.dir === dir &&
+    sessionIndex.dirMtimeMs === dirMtimeMs &&
+    now - sessionIndex.readAt < INDEX_TTL_MS
+  ) {
+    return sessionIndex.entries.map((e) => ({ ...e }));
+  }
   const out: SessionInfo[] = [];
   for (const id of readdirSync(dir)) {
-    try {
-      const info = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfo;
-      info.title = openTitle(info.title);
-      out.push(info);
-    } catch {}
+    const info = readSessionInfo(dir, id);
+    if (info) out.push(info);
   }
-  return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  sessionIndex = { dir, dirMtimeMs, readAt: now, entries: out };
+  return out.map((e) => ({ ...e }));
 }
+
+function readSessionInfo(dir: string, id: string): SessionInfo | undefined {
+  try {
+    const info = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfo;
+    if (!info || typeof info.cwd !== 'string') return repairSessionInfo(dir, id);
+    info.title = openTitle(info.title);
+    return info;
+  } catch {
+    return repairSessionInfo(dir, id);
+  }
+}
+
+/**
+ * A torn or missing info.json next to a valid journal (DAE-6): rebuild the
+ * info from the journal instead of hiding the session. The first repo-info
+ * event carries the cwd; the first task-start (or the last title) gives the
+ * title; the file times stand in for the stamps. The owner cannot be
+ * recovered, so the repaired session is admin-only until it is re-owned. The
+ * repair is written back atomically so the next list is a plain read.
+ */
+function repairSessionInfo(dir: string, id: string): SessionInfo | undefined {
+  const journalPath = join(dir, id, 'events.jsonl');
+  if (!SAFE_SESSION_ID.test(id) || !existsSync(journalPath)) return undefined;
+  try {
+    const raw = readFileSync(journalPath, 'utf8');
+    const dk = loadOrCreateDataKey();
+    let cwd: string | undefined;
+    let title: string | undefined;
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      const clear = isSealed(line) ? (dk ? openString(dk.key, line) : null) : line;
+      if (!clear) continue;
+      let event: DriverEvent | undefined;
+      try {
+        event = (JSON.parse(clear) as { event?: DriverEvent }).event;
+      } catch {
+        continue;
+      }
+      if (!event) continue;
+      if (event.type === 'repo-info' && !cwd) cwd = event.cwd;
+      if (event.type === 'task-start' && !title) title = event.input.slice(0, 60);
+      if (event.type === 'title') title = event.title;
+    }
+    if (!cwd) return undefined;
+    const st = statSync(journalPath);
+    const info: SessionInfo = {
+      id,
+      cwd,
+      title: title ?? `Session ${id}`,
+      createdAt: new Date(st.birthtimeMs || st.mtimeMs).toISOString(),
+      updatedAt: new Date(st.mtimeMs).toISOString(),
+    };
+    writeInfoAtomic(join(dir, id, 'info.json'), { ...info, title: sealTitle(info.title) });
+    return info;
+  } catch {
+    return undefined;
+  }
+}
+
+// The events that move info.json (title, updatedAt): task boundaries, a
+// generated title, and the content-free terminal markers.
+const INFO_MILESTONES = new Set<DriverEvent['type']>([
+  'task-start',
+  'task-done',
+  'title',
+  'terminal-opened',
+  'terminal-closed',
+]);
 
 /**
  * LocalDriver: owns one AgentSession, an event journal, and the approval
@@ -99,6 +223,12 @@ export class LocalDriver implements SessionDriver {
   private events: Array<{ seq: number; event: DriverEvent }> = [];
   private seq = 0;
   private sinks = new Set<(event: DriverEvent, seq: number) => void>();
+  // The subset of sinks that are attached clients (subscribe), as opposed to
+  // the daemon's own observers (onEvent, the push watcher): eviction counts
+  // only clients (DAE-12).
+  private viewers = new Set<(event: DriverEvent, seq: number) => void>();
+  /** Last moment a client touched this driver, for idle eviction. */
+  lastActivityAt = Date.now();
   private pendingApprovals = new Map<string, (answer: ApprovalAnswer) => void>();
   private queue: Array<{ text: string; images?: Array<{ base64: string; mediaType: string }> }> =
     [];
@@ -134,7 +264,7 @@ export class LocalDriver implements SessionDriver {
         updatedAt: new Date().toISOString(),
       };
       if (!existsSync(infoPath)) {
-        writeFileSync(infoPath, JSON.stringify(info, null, 2));
+        writeInfoAtomic(infoPath, info);
       } else {
         // Rehydrating a stored session: carry its recorded owner forward so the
         // daemon can enforce ownership after a restart (D1).
@@ -160,8 +290,37 @@ export class LocalDriver implements SessionDriver {
       const infoPath = join(this.dir(), 'info.json');
       const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
       info.ownerUserId = userId;
-      writeFileSync(infoPath, JSON.stringify(info, null, 2));
+      writeInfoAtomic(infoPath, info);
     } catch {}
+  }
+
+  /** Attached clients (not the daemon's own observers). */
+  get viewerCount(): number {
+    return this.viewers.size;
+  }
+
+  /**
+   * True when dropping this driver from memory loses nothing: it is stored on
+   * disk (rehydratable), no task is running or queued, no command is live, no
+   * approval is pending, and no client is attached (DAE-12).
+   */
+  get evictable(): boolean {
+    return (
+      this.persist &&
+      !this.running &&
+      this.queue.length === 0 &&
+      this.commands.size === 0 &&
+      this.pendingApprovals.size === 0 &&
+      this.viewers.size === 0
+    );
+  }
+
+  /** Release what an evicted driver holds: its listeners and its in-memory
+   *  journal copy. The journal on disk is the source of truth from here. */
+  dispose(): void {
+    this.sinks.clear();
+    this.viewers.clear();
+    this.events = [];
   }
 
   /** The agent is attached after construction so the deps can reference the driver's approver. */
@@ -269,19 +428,24 @@ export class LocalDriver implements SessionDriver {
         const journalPath = join(this.dir(), 'events.jsonl');
         this.ensureTrailingNewline(journalPath);
         appendFileSync(journalPath, `${dk ? sealString(dk.key, line) : line}\n`);
-        const infoPath = join(this.dir(), 'info.json');
-        const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
-        info.updatedAt = new Date().toISOString();
-        if (event.type === 'task-start' && !this.titled) {
-          // The title is the user's own words until a generated one lands; it
-          // seals like the journal.
-          info.title = sealTitle(event.input.slice(0, 60));
+        // info.json moves only on milestones, never per text delta (DAE-6):
+        // it carries a title and a stamp, and rewriting it per token was a
+        // torn-file race on every crash.
+        if (INFO_MILESTONES.has(event.type)) {
+          const infoPath = join(this.dir(), 'info.json');
+          const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
+          info.updatedAt = new Date().toISOString();
+          if (event.type === 'task-start' && !this.titled) {
+            // The title is the user's own words until a generated one lands;
+            // it seals like the journal.
+            info.title = sealTitle(event.input.slice(0, 60));
+          }
+          if (event.type === 'title') {
+            this.titled = true;
+            info.title = sealTitle(event.title);
+          }
+          writeInfoAtomic(infoPath, info);
         }
-        if (event.type === 'title') {
-          this.titled = true;
-          info.title = sealTitle(event.title);
-        }
-        writeFileSync(infoPath, JSON.stringify(info, null, 2));
       } catch {}
     }
     for (const sink of this.sinks) sink(event, seq);
@@ -299,6 +463,7 @@ export class LocalDriver implements SessionDriver {
   };
 
   answerApproval(id: string, answer: ApprovalAnswer): void {
+    this.lastActivityAt = Date.now();
     const resolve = this.pendingApprovals.get(id);
     if (resolve) {
       this.pendingApprovals.delete(id);
@@ -307,6 +472,7 @@ export class LocalDriver implements SessionDriver {
   }
 
   send(text: string, images?: Array<{ base64: string; mediaType: string }>): void {
+    this.lastActivityAt = Date.now();
     this.queue.push({ text, images });
     void this.pump();
   }
@@ -424,6 +590,7 @@ export class LocalDriver implements SessionDriver {
    * owner's tap IS the approval; this raises no model approval.
    */
   runCommand(command: string, opts: { source?: 'user' | 'agent' } = {}): { runId: string } {
+    this.lastActivityAt = Date.now();
     const runId = randomUUID().slice(0, 8);
     const source = opts.source ?? 'user';
     const startedAt = Date.now();
@@ -518,11 +685,17 @@ export class LocalDriver implements SessionDriver {
   }
 
   subscribe(sink: (event: DriverEvent, seq: number) => void, sinceSeq = 0): () => void {
+    this.lastActivityAt = Date.now();
     for (const entry of this.events) {
       if (entry.seq > sinceSeq) sink(entry.event, entry.seq);
     }
     this.sinks.add(sink);
-    return () => this.sinks.delete(sink);
+    this.viewers.add(sink);
+    return () => {
+      this.lastActivityAt = Date.now();
+      this.sinks.delete(sink);
+      this.viewers.delete(sink);
+    };
   }
 
   describeModel(): { model: string; kind: 'local' | 'cloud' } {

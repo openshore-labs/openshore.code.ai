@@ -8,7 +8,15 @@ import type {
   DriverEvent,
   PermissionMode,
 } from 'os-code/protocol';
-import type { ChatDriver, DriverEventSink, TerminalOpen } from './types.js';
+import type {
+  ChatDriver,
+  DriverEventSink,
+  HubRole,
+  RunCommandResult,
+  TerminalExit,
+  TerminalOpen,
+  TerminalWrite,
+} from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 
 /** Base64 -> raw bytes, for a terminal stream frame. atob exists in the WebView
@@ -80,7 +88,16 @@ export async function daemonInstallProgress(
   return (await res.json()) as DaemonInstallProgress;
 }
 
-export async function daemonHealth(target: DaemonTarget): Promise<{ ok: boolean; detail: string }> {
+/** What the hub says this device's token may do. Absent on a daemon that
+ *  predates roles, which the app treats as "nothing hidden". */
+function roleOf(body: unknown): HubRole | undefined {
+  const role = (body as { role?: unknown } | null)?.role;
+  return role === 'admin' || role === 'member' ? role : undefined;
+}
+
+export async function daemonHealth(
+  target: DaemonTarget,
+): Promise<{ ok: boolean; detail: string; role?: HubRole }> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {
       headers: headers(target),
@@ -92,7 +109,8 @@ export async function daemonHealth(target: DaemonTarget): Promise<{ ok: boolean;
         detail: 'The desktop rejected the pairing token. Re-copy it from the desktop app.',
       };
     if (!res.ok) return { ok: false, detail: `The desktop answered ${res.status}.` };
-    return { ok: true, detail: 'Connected to your desktop.' };
+    const role = roleOf(await res.json().catch(() => ({})));
+    return { ok: true, detail: 'Connected to your desktop.', ...(role ? { role } : {}) };
   } catch {
     return {
       ok: false,
@@ -124,7 +142,10 @@ export async function daemonCreateSession(
 }
 
 export async function daemonListSessions(target: DaemonTarget): Promise<DaemonSessionInfo[]> {
-  const res = await fetch(`${target.baseUrl}/sessions`, { headers: headers(target) });
+  const res = await fetch(`${target.baseUrl}/sessions`, {
+    headers: headers(target),
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
   const body = (await res.json()) as {
     live: Array<{ id: string; cwd: string; busy: boolean }>;
@@ -144,7 +165,10 @@ export async function daemonListSessions(target: DaemonTarget): Promise<DaemonSe
 }
 
 export async function daemonWorkspaces(target: DaemonTarget) {
-  const res = await fetch(`${target.baseUrl}/workspaces`, { headers: headers(target) });
+  const res = await fetch(`${target.baseUrl}/workspaces`, {
+    headers: headers(target),
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
   return ((await res.json()) as { workspaces: Array<{ cwd: string; name: string }> }).workspaces;
 }
@@ -154,6 +178,8 @@ export async function daemonCloneRepo(target: DaemonTarget, url: string) {
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
     body: JSON.stringify({ url }),
+    // A clone is real work; give it a minute before calling the desktop gone.
+    signal: AbortSignal.timeout(60_000),
   });
   const body = (await res.json().catch(() => ({}))) as {
     cwd?: string;
@@ -165,7 +191,10 @@ export async function daemonCloneRepo(target: DaemonTarget, url: string) {
 }
 
 export async function daemonStack(target: DaemonTarget) {
-  const res = await fetch(`${target.baseUrl}/stack`, { headers: headers(target) });
+  const res = await fetch(`${target.baseUrl}/stack`, {
+    headers: headers(target),
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
   return (await res.json()) as import('os-code/protocol').DaemonStackInfo;
 }
@@ -197,6 +226,8 @@ export async function daemonApplyOutbox(
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
     body: JSON.stringify(req),
+    // Applying carries file bodies and runs git; a minute, not the OS default.
+    signal: AbortSignal.timeout(60_000),
   });
   const body = (await res
     .json()
@@ -214,6 +245,7 @@ export async function daemonVerifyCommit(
   const qs = new URLSearchParams({ cwd, commit, ...(branch ? { branch } : {}) });
   const res = await fetch(`${target.baseUrl}/outbox/verify?${qs.toString()}`, {
     headers: headers(target),
+    signal: AbortSignal.timeout(10_000),
   });
   // A non-OK response is not proof the commit is missing (the lookup itself
   // failed, or the path is not yet allowed). Throw so the caller keeps the item
@@ -245,12 +277,25 @@ export class RemoteDriver implements ChatDriver {
   private closed = false;
   private abortStream?: AbortController;
 
+  /** The hub's answer to "what may this device do", read from /health at
+   *  attach (P0-1). Undefined until it answers, and stays undefined on a daemon
+   *  that predates roles, so nothing is hidden for an old hub. */
+  hubRole?: HubRole;
+  /** Resolves once /health has answered (or failed), with the role. */
+  readonly hubRoleReady: Promise<HubRole | undefined>;
+
   constructor(
     readonly sessionId: string,
     private readonly target: DaemonTarget,
     resumeFromSeq = 0,
   ) {
     this.lastSeq = resumeFromSeq;
+    this.hubRoleReady = daemonHealth(target)
+      .then((h) => {
+        this.hubRole = h.role;
+        return h.role;
+      })
+      .catch(() => undefined);
     void this.streamLoop();
   }
 
@@ -265,10 +310,16 @@ export class RemoteDriver implements ChatDriver {
 
   // A fatal answer is not a network blip: stop retrying and tell the user what
   // to do, instead of "Connection blipped" forever on a revoked token or a
-  // deleted session.
+  // deleted session. It also ends any run the replayed journal left open, so
+  // the thread is not stuck busy with every later message quietly queued
+  // behind a driver that will never answer (APP-4). The store drops the
+  // driver on the same event.
   private emitTerminal(message: string): void {
     this.closed = true;
-    for (const sink of [...this.sinks]) sink({ type: 'status', message }, this.lastSeq);
+    for (const sink of [...this.sinks]) {
+      sink({ type: 'status', message }, this.lastSeq);
+      sink({ type: 'task-done', reason: 'error', message }, this.lastSeq);
+    }
   }
 
   private async streamLoop(): Promise<void> {
@@ -442,7 +493,7 @@ export class RemoteDriver implements ChatDriver {
   // Output for a started run streams back as command-* events on the same SSE
   // subscription, so these methods only kick off / drive a run. A short timeout
   // keeps a blackholed tailnet from hanging the tap.
-  async runCommand(command: string): Promise<string | undefined> {
+  async runCommand(command: string): Promise<RunCommandResult> {
     try {
       const res = await fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/commands`, {
         method: 'POST',
@@ -450,9 +501,18 @@ export class RemoteDriver implements ChatDriver {
         body: JSON.stringify({ command }),
         signal: AbortSignal.timeout(10_000),
       });
+      // P0-1: a member's shell is refused on purpose, with the hub's own words.
+      // Carry them through; every other failure stays "no terminal here".
+      if (res.status === 403) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        if (body.error === 'restricted') {
+          return { refused: body.message ?? 'The hub does not allow commands for this device.' };
+        }
+        return undefined;
+      }
       if (!res.ok) return undefined;
       const body = (await res.json()) as { runId?: string };
-      return body.runId;
+      return body.runId ? { runId: body.runId } : undefined;
     } catch {
       return undefined;
     }
@@ -516,6 +576,7 @@ export class RemoteDriver implements ChatDriver {
     sinceOffset: number,
     onChunk: (bytes: Uint8Array, endOffset: number) => void,
     signal: AbortSignal,
+    onExit?: (info: TerminalExit) => void,
   ): Promise<void> {
     const res = await streamingFetch(
       `${this.target.baseUrl}/sessions/${this.sessionId}/term/${termId}/stream?since=${sinceOffset}`,
@@ -536,20 +597,48 @@ export class RemoteDriver implements ChatDriver {
         const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
         if (!dataLine) continue;
         try {
-          const payload = JSON.parse(dataLine.slice(5).trim()) as { b64?: string; offset?: number };
+          const payload = JSON.parse(dataLine.slice(5).trim()) as {
+            b64?: string;
+            offset?: number;
+            exit?: number;
+          };
           if (payload.b64) onChunk(b64ToBytes(payload.b64), payload.offset ?? sinceOffset);
+          // The shell's last word (DAE-5): a final {exit, offset} frame. The
+          // stream is over; do not reconnect into a dead terminal.
+          if (typeof payload.exit === 'number') {
+            onExit?.({ exit: payload.exit, offset: payload.offset ?? sinceOffset });
+            return;
+          }
         } catch {}
       }
     }
   }
 
-  terminalStdin(termId: string, data: string): void {
-    void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/term/${termId}/stdin`, {
-      method: 'POST',
-      headers: { ...headers(this.target), 'content-type': 'application/json' },
-      body: JSON.stringify({ dataBase64: textToB64(data) }),
-      signal: AbortSignal.timeout(10_000),
-    }).catch(() => {});
+  async terminalStdin(termId: string, data: string): Promise<TerminalWrite> {
+    try {
+      const res = await fetch(
+        `${this.target.baseUrl}/sessions/${this.sessionId}/term/${termId}/stdin`,
+        {
+          method: 'POST',
+          headers: { ...headers(this.target), 'content-type': 'application/json' },
+          body: JSON.stringify({ dataBase64: textToB64(data) }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (res.ok) return { ok: true };
+      // 409 is the daemon's "shell exited" (DAE-5): the terminal is real, it is
+      // just over. Anything else is a missing terminal or a hub problem.
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const exited = res.status === 409;
+      return {
+        ok: false,
+        exited,
+        error:
+          body.error ?? (exited ? 'The shell has exited.' : `The desktop answered ${res.status}.`),
+      };
+    } catch {
+      return { ok: false, exited: false, error: 'Could not reach the desktop.' };
+    }
   }
 
   terminalResize(termId: string, cols: number, rows: number): void {

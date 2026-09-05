@@ -71,7 +71,10 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
     // with the copy the AppDelegate reconnects on a background relaunch.
     private let store = ModelStore.shared
     private let runner = LlamaRunner()
-    private var pendingDownloads = [String: CAPPluginCall]()
+    // Every kept-alive call waiting on a download, per model id. A second
+    // downloadModel for the same id used to overwrite the first and leave its
+    // JS promise hanging forever (UI-11); now all of them settle together.
+    private var pendingDownloads = [String: [CAPPluginCall]]()
     private let downloadsLock = NSLock()
 
     // APNs device token plumbing. The AppDelegate's
@@ -132,13 +135,15 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             completion: { [weak self] id, location, result in
                 guard let self else { return }
                 self.downloadsLock.lock()
-                let call = self.pendingDownloads.removeValue(forKey: id)
+                let calls = self.pendingDownloads.removeValue(forKey: id) ?? []
                 self.downloadsLock.unlock()
-                switch result {
-                case .success(let url):
-                    call?.resolve(["path": url.path, "location": location])
-                case .failure(let error):
-                    call?.reject("The download did not finish: \(error.localizedDescription)")
+                for call in calls {
+                    switch result {
+                    case .success(let url):
+                        call.resolve(["path": url.path, "location": location])
+                    case .failure(let error):
+                        call.reject("The download did not finish: \(error.localizedDescription)")
+                    }
                 }
             }
         )
@@ -227,7 +232,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         call.keepAlive = true
         downloadsLock.lock()
-        pendingDownloads[id] = call
+        pendingDownloads[id, default: []].append(call)
         downloadsLock.unlock()
         store.download(id: id, from: url, target: target)
     }
@@ -262,9 +267,9 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         store.cancel(id: id)
         downloadsLock.lock()
-        let pending = pendingDownloads.removeValue(forKey: id)
+        let pending = pendingDownloads.removeValue(forKey: id) ?? []
         downloadsLock.unlock()
-        pending?.reject("Download cancelled.")
+        for waiting in pending { waiting.reject("Download cancelled.") }
         call.resolve()
     }
 
@@ -273,7 +278,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("deleteModel needs an id.")
             return
         }
-        if runner.loadedId == id { runner.unload() }
+        if runner.loadedId == id { runner.unload(reason: "The model was deleted.") }
         store.delete(id: id)
         call.resolve()
     }

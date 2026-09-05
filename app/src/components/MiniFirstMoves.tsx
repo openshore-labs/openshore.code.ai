@@ -6,7 +6,6 @@
 // it as the person's first message.
 import type { CSSProperties } from 'react';
 import { HARBOR_MINI_FIRST_MOVES } from '../lib/harborMini.js';
-import { hapticTick } from '../lib/haptics.js';
 
 export function MiniFirstMoves({ onPick }: { onPick: (text: string) => void }) {
   return (
@@ -18,7 +17,6 @@ export function MiniFirstMoves({ onPick }: { onPick: (text: string) => void }) {
           className="first-move press-fb"
           style={{ '--i': i } as CSSProperties}
           onClick={() => {
-            hapticTick();
             onPick(move);
           }}
         >

@@ -3,6 +3,7 @@
 // call); the agent's commit never pushes.
 import { simpleGit } from 'simple-git';
 import { z } from 'zod';
+import { JailViolation } from '../security/jail.js';
 import { capContent, type ToolDef } from './index.js';
 
 const statusSchema = z.object({});
@@ -73,9 +74,20 @@ export const gitCommitTool: ToolDef<typeof commitSchema> = {
     return { summary: `git commit (${scope})`, detail: `Message: ${args.message}` };
   },
   async execute(args, ctx) {
+    // Explicit paths go through the jail first, so a path that leaves the
+    // workspace is refused here and never handed to git (ENG-8).
+    let pathspec: string[] = [];
+    try {
+      pathspec = (args.paths ?? []).map((p) => ctx.jail.resolve(p));
+    } catch (err) {
+      if (err instanceof JailViolation) return { ok: false, content: `Not staged: ${err.message}` };
+      throw err;
+    }
     try {
       const git = simpleGit(ctx.cwd);
-      await git.add(args.paths?.length ? args.paths : ['-A']);
+      // `git add -A` with no pathspec stages the whole repository since Git
+      // 2.0, not just the workspace; `.` pins it to the working directory.
+      await git.add(pathspec.length ? ['--', ...pathspec] : ['-A', '--', '.']);
       const result = await git.commit(args.message);
       if (!result.commit) {
         return { ok: false, content: 'Nothing to commit. The working tree is clean.' };

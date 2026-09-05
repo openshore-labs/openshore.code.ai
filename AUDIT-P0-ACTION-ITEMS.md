@@ -37,42 +37,49 @@ only if you want to sell commercial team plans during the beta.
 ## Group A: Turn on Personal (Apple subscription), do first
 
 ### A1. [CONFIG] Create the subscription product
+
 - In App Store Connect, create the auto-renewable subscription
   `ai.openshore.oscode.personal.yearly` at $20/yr.
 - Enable the In-App Purchase capability on the App ID.
 - Confirm `cap sync ios` links the `oscode-iap` plugin.
 
 ### A2. [CONFIG] Apply migrations + deploy the functions
+
 - Run `supabase db push` (applies through `0010`, including `user_entitlements`
   and the Apple-notification dedupe table).
 - Deploy: `supabase functions deploy link-apple-purchase apple-notifications checkout-return`
-Why: `link-apple-purchase` verifies the StoreKit transaction and writes the
-entitlement; `apple-notifications` keeps it in sync on renew/cancel/refund.
-(`checkout-return` is only used by commercial Stripe purchases; deploying it now
-is harmless and keeps the set complete.)
+  Why: `link-apple-purchase` verifies the StoreKit transaction and writes the
+  entitlement; `apple-notifications` keeps it in sync on renew/cancel/refund.
+  (`checkout-return` is only used by commercial Stripe purchases; deploying it now
+  is harmless and keeps the set complete.)
 
 ### A3. [CONFIG] Apple verification secrets (the current hard blocker)
+
 The four Apple Root CA constants in `supabase/functions/_shared/apple.ts` are
 still placeholder strings, so every Apple purchase verification throws today.
+
 - Set `APPLE_ROOT_CA_G3_DER_BASE64` (real base64 DER of Apple's root CA) as a
   function secret, OR paste the real DER into `apple.ts`.
 - Set `APPLE_BUNDLE_ID` and `APPLE_APP_APPLE_ID`.
 - Register the `apple-notifications` function URL as the App Store Server
   Notifications V2 endpoint.
-Why: without a real root cert, a real iOS buyer is charged and stays locked.
+  Why: without a real root cert, a real iOS buyer is charged and stays locked.
 
 ### A4. [CONFIG] Sandbox toggle, only during review
+
 - Set `APPLE_ALLOW_SANDBOX=1` ONLY while Apple is reviewing the build, and
   clear it afterward. Leaving it on in production accepts $0 sandbox purchases
   as real unlocks.
 
 ### A5. [VERIFY] Sandbox purchase + restore on a real device
+
 - On a TestFlight/sandbox device, buy Personal, confirm the app unlocks and an
   App Store Server Notification is received, then restore on the same device
   and (optionally) sign in on desktop and use "I bought it" to confirm the
   entitlement unlocks that computer too.
 
 ### A6. [DONE 2026-09-02, then purge] Public pricing page updated
+
 - The live page is `OpenShore.ai-marketing-site` (the old homepage subpage was
   retired). On `main` now, per the CMO: headline "Free to chat. Free to build,
   for now.", Personal shows Free with an early-access CTA and no Stripe
@@ -88,6 +95,7 @@ Why: without a real root cert, a real iOS buyer is charged and stays locked.
 
 Skip this entirely unless you want to sell commercial (team, seat-based) plans
 during the beta. Personal does NOT use any of it.
+
 - [CONFIG] Confirm `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are the real
   live values (a past incident had them blank, which 401'd checkout), the four
   commercial price ids are set, and the webhook endpoint is live.
@@ -103,25 +111,29 @@ during the beta. Personal does NOT use any of it.
 ## Group C: Get the app onto testers' devices
 
 ### C1. [CONFIG] Persist the iOS signing certificate
+
 - Paste `CERTIFICATE_PRIVATE_KEY` into the Codemagic `Harbor-os-code` variable
   group so builds reuse one distribution cert instead of minting a new one
   each run (which eventually hits Apple's cert cap).
 
 ### C2. [VERIFY] Run the first TestFlight build
+
 - Trigger the `ios-testflight` Codemagic workflow. Expect one round of Swift
   fixes on the first-ever native compile; tell me the errors and I will fix
   them. Note the pipeline now runs the full test suite first and will stop on a
   red test.
-Verify: a build reaches TestFlight and installs on your device.
+  Verify: a build reaches TestFlight and installs on your device.
 
 ### C3. [CONFIG] Enable external TestFlight (when ready for non-founder testers)
+
 - Fill in Beta App Information and Beta App Review contact info in App Store
   Connect, flip `submit_to_testflight: true` in `codemagic.yaml`, and add an
   external test group (see `docs/TESTFLIGHT.md` section 6).
-Why: today only internal testers you add manually can receive a build.
+  Why: today only internal testers you add manually can receive a build.
 
 ### C4. [VERIFY] First desktop run + closed-beta artifacts
-- On your Pop!_OS machine: `cd ~/openshore.code.ai && pnpm install`. This now
+
+- On your Pop!\_OS machine: `cd ~/openshore.code.ai && pnpm install`. This now
   builds Electron and node-pty automatically (the allowlist in the root
   package.json) and rebuilds node-pty for Electron's ABI in the app's
   postinstall; if that last step prints "electron-rebuild skipped", run
@@ -135,7 +147,7 @@ Why: today only internal testers you add manually can receive a build.
   Electron exits with "Missing X server or $DISPLAY". On this machine the
   live X display is `:1` (the socket is `/tmp/.X11-unix/X1`), so launch
   with the display and Xauthority named explicitly; the window opens on the
-  Pop!_OS monitor, not in the phone terminal:
+  Pop!\_OS monitor, not in the phone terminal:
   `cd ~/openshore.code.ai/app && DISPLAY=:1 XAUTHORITY=/home/openshore/.Xauthority npx electron .`
   `pnpm desktop` now prints this hint itself when no display is set. (Status
   2026-09-02: launched with no error; the screen is not yet confirmed.)
@@ -150,27 +162,32 @@ Why: today only internal testers you add manually can receive a build.
 ## Group D: Capabilities that block the next distribution build
 
 ### D1. [CONFIG] iCloud capability
+
 - Enable the iCloud capability with container `iCloud.ai.openshore.oscode` on
   the App ID before the next distribution build, or signing fails.
 
 ### D2. [CONFIG] Push Notifications capability + APNs
+
 - Enable Push on the App ID. When you want push live, create the APNs key and
   set the `APNS_*` secrets per `docs/PUSH-SETUP.md`, then deploy the push
   functions. Not P0-blocking; the client ships dormant.
 
 ### D3. [CONFIG] Google Drive OAuth (only if you want Drive storage in P0)
+
 - Register an iOS and a Desktop OAuth client in Google Cloud Console and set
   `VITE_GDRIVE_IOS_CLIENT_ID`, `VITE_GDRIVE_DESKTOP_CLIENT_ID`,
   `VITE_GDRIVE_DESKTOP_CLIENT_SECRET`. Until then, Drive stays hidden and the
   vault storage sheet shows Local (and This folder on desktop) only.
 
 ### D4. [CONFIG] Supabase Auth redirect URLs
+
 - In the Supabase Auth dashboard, add every redirect URL to the allow list:
   the web origin's `/auth-callback`, `oscode://auth-callback`, and
   `oscode://checkout-success`. Confirm the Site URL fallback is sane.
-Why: the new desktop auth + checkout deep links use `oscode://`.
+  Why: the new desktop auth + checkout deep links use `oscode://`.
 
 ### D5. [PROCESS] App Store review notes
+
 - Before submitting, paste the ATS justification from
   `docs/app-review-notes.md` into the App Store Connect review-notes field
   (the daemon is reached over plain HTTP inside the Tailscale tunnel, so
@@ -182,6 +199,7 @@ Why: the new desktop auth + checkout deep links use `oscode://`.
 
 These are things I built but cannot run headlessly. Please confirm on a real
 build:
+
 - [VERIFY] Empty-state first message with no model/computer/key opens the model
   chooser and sends the held message once a working brain is picked (iOS and
   desktop).
@@ -198,6 +216,7 @@ build:
 ## Group F: Scoped follow-ups I can build next (not P0-blocking)
 
 Say the word and I will build any of these:
+
 - [CODE-LATER] QR-scan pairing on the phone (a camera/barcode plugin), so a
   user never hand-types a Tailscale IP and token. Native, so it needs a
   TestFlight verify after.

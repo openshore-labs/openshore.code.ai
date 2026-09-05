@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('oscode', {
   vaultWrite: invoke('osc:vaultWrite'),
   vaultRemove: invoke('osc:vaultRemove'),
 
+  secureHas: invoke('osc:secureHas'),
   secureGet: invoke('osc:secureGet'),
   secureSet: invoke('osc:secureSet'),
   secureDelete: invoke('osc:secureDelete'),

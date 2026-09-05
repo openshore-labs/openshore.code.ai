@@ -1,7 +1,7 @@
 // osc serve: run the daemon. It owns the generation so phones can come and
 // go; it binds loopback or the tailnet interface only.
 import { banner, t } from '../brand/theme.js';
-import { loadConfig } from '../config/load.js';
+import { loadConfig, loadDaemonConfig } from '../config/load.js';
 import { startDaemon } from '../daemon/serve.js';
 import { okLine, out, warnLine } from './util.js';
 
@@ -12,8 +12,11 @@ export interface ServeOptions {
 
 export async function serveCommand(options: ServeOptions): Promise<void> {
   const { config } = loadConfig();
-  const bind = options.bind ?? config.daemon.bind;
-  const port = options.port ?? config.daemon.port;
+  // The daemon's own bind and port are machine config, read from the global
+  // file alone (DAE-9): a project file in the cwd cannot move the listener.
+  const daemon = loadDaemonConfig();
+  const bind = options.bind ?? daemon.bind;
+  const port = options.port ?? daemon.port;
 
   out(banner('osc serve'));
   try {

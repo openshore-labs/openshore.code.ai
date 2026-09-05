@@ -25,12 +25,23 @@ export function estimateMessages(messages: ChatMessage[]): number {
 const TRIMMED_NOTE =
   '[an earlier tool output was trimmed to save context; re-run the tool if it is needed again]';
 
+/** The JSON-in-text bridge feeds observations back as user messages with this
+ *  prefix (loop.ts pushObservation), so stage 1 must recognize them too. */
+const TEXT_BRIDGE_OBSERVATION = /^\[[^\]\n]+ result\]\n/;
+
+function isObservation(m: ChatMessage): boolean {
+  if (m.role === 'tool') return true;
+  return (
+    m.role === 'user' && typeof m.content === 'string' && TEXT_BRIDGE_OBSERVATION.test(m.content)
+  );
+}
+
 /** Stage 1: replace old, large tool observations with a stub. */
 export function trimOldObservations(messages: ChatMessage[], keepRecent = 6): ChatMessage[] {
   const cutoff = Math.max(0, messages.length - keepRecent);
   return messages.map((m, i) => {
     if (i >= cutoff) return m;
-    if (m.role !== 'tool') return m;
+    if (!isObservation(m)) return m;
     const text = typeof m.content === 'string' ? m.content : '';
     if (text.length <= 800) return m;
     return { ...m, content: `${text.slice(0, 400)}\n${TRIMMED_NOTE}` };
@@ -63,8 +74,16 @@ export async function compactHistory(
   const rest = out.filter((m) => m.role !== 'system');
   const keepTail = 8;
   if (rest.length <= keepTail) return { messages: out, compacted: true };
-  const toSummarize = rest.slice(0, rest.length - keepTail);
-  const tail = rest.slice(rest.length - keepTail);
+  // The cut must never separate a tool result from the assistant call it
+  // answers: an orphaned tool_result 400s the next Anthropic turn (ENG-6).
+  // Start the tail on the next user message when one is near; failing that,
+  // at least step past any leading tool results.
+  let cut = rest.length - keepTail;
+  const nextUser = rest.findIndex((m, i) => i >= cut && m.role === 'user');
+  if (nextUser !== -1) cut = nextUser;
+  else while (cut < rest.length && rest[cut]!.role === 'tool') cut += 1;
+  const toSummarize = rest.slice(0, cut);
+  const tail = rest.slice(cut);
 
   const transcript = toSummarize
     .map((m) => {

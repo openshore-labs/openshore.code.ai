@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { exitLine, terminalTheme } from '../components/terminalTheme.js';
 import { useApp, driverFor } from '../state/store.js';
 import { sourceLabel } from '../state/types.js';
 
@@ -33,7 +34,7 @@ const ACCESSORY_KEYS: Array<{ label: string; send: string }> = [
   { label: 'right', send: '\x1b[C' },
 ];
 
-type Status = 'connecting' | 'ready' | 'unavailable';
+type Status = 'connecting' | 'ready' | 'unavailable' | 'exited';
 
 export function TerminalScreen() {
   const activeId = useApp((s) => s.activeId);
@@ -63,6 +64,7 @@ export function TerminalScreen() {
     let disposed = false;
     let lastOffset = 0;
     let streamAbort: AbortController | undefined;
+    let exited = false;
     // Batch keystrokes into stdin POSTs so a fast typist does not fire one
     // request per character over the tailnet.
     let pending = '';
@@ -74,7 +76,7 @@ export function TerminalScreen() {
       cursorBlink: true,
       fontFamily:
         'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", "Roboto Mono", monospace',
-      theme: { background: '#0b0d12', foreground: '#e6e6e6' },
+      theme: terminalTheme(),
     });
     termRef.current = term;
     const fit = new FitAddon();
@@ -84,11 +86,29 @@ export function TerminalScreen() {
       fit.fit();
     } catch {}
 
+    // The shell's end (DAE-5): stop reattaching, say so in the terminal, and
+    // let the header offer the way out.
+    const markExited = (code: number): void => {
+      if (exited) return;
+      exited = true;
+      termIdRef.current = '';
+      streamAbort?.abort();
+      term.write(`\r\n\x1b[2m${exitLine(code)}\x1b[0m\r\n`);
+      setMessage(exitLine(code));
+      setStatus('exited');
+    };
     const flush = (): void => {
       const termId = termIdRef.current;
       if (!termId || !pending) return;
-      driver.terminalStdin?.(termId, pending);
+      const data = pending;
       pending = '';
+      const res = driver.terminalStdin?.(termId, data);
+      // A hub answers whether the bytes landed; a 409 means the shell is over.
+      if (res && typeof res === 'object' && 'then' in res) {
+        void res.then((r) => {
+          if (!r.ok && r.exited) markExited(0);
+        });
+      }
     };
     term.onData((data) => {
       let out = data;
@@ -122,6 +142,7 @@ export function TerminalScreen() {
               lastOffset = Math.max(lastOffset, endOffset);
             },
             ac.signal,
+            (info) => markExited(info.exit),
           );
         } catch {}
         if (disposed) break;
@@ -170,7 +191,10 @@ export function TerminalScreen() {
       disposed = true;
       window.removeEventListener('resize', onResize);
       removeAppListener?.();
+      // Send anything typed in the last few ms before the batch timer fired,
+      // so a `y` right before Back is not dropped (UI-12).
       if (flushTimer) clearTimeout(flushTimer);
+      flush();
       streamAbort?.abort();
       // Leave the PTY alive on the desktop (the tmux property): only tear down
       // the local view. The End button kills the remote PTY explicitly.
@@ -210,6 +234,10 @@ export function TerminalScreen() {
           <button className="icon-btn" onClick={endTerminal} aria-label="End terminal">
             End
           </button>
+        ) : status === 'exited' ? (
+          <button className="icon-btn" onClick={endTerminal} aria-label="Close terminal">
+            Close
+          </button>
         ) : (
           <div className="topbar-spacer" />
         )}
@@ -221,6 +249,8 @@ export function TerminalScreen() {
         <>
           {status === 'connecting' ? (
             <div className="terminal-message">Connecting to your desktop terminal...</div>
+          ) : status === 'exited' ? (
+            <div className="terminal-message">{message} Close to go back to the chat.</div>
           ) : null}
           <div className="terminal-host" ref={containerRef} />
           {status === 'ready' ? (

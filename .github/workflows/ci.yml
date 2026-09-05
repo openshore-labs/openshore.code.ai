@@ -34,8 +34,8 @@ env:
   # electron package's install script, and skip the electron-rebuild of
   # node-pty in the app's postinstall (scripts/postinstall.mjs honors this
   # guard). Both only serve a desktop launch, which no step here performs.
-  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-  SKIP_NATIVE_REBUILD: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  SKIP_NATIVE_REBUILD: "1"
 
 jobs:
   check:

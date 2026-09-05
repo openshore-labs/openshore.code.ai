@@ -260,7 +260,10 @@ describe('profiles and permissions', () => {
     expect(phone.decide({ toolName: 'runShell', risk: 'shell', command: 'ls' }).decision).toBe(
       'ask',
     );
-    const desk = new PermissionEngine({ ...DEFAULT_PERMISSIONS, rules }, PROFILES['local-interactive']);
+    const desk = new PermissionEngine(
+      { ...DEFAULT_PERMISSIONS, rules },
+      PROFILES['local-interactive'],
+    );
     expect(desk.decide({ toolName: 'runShell', risk: 'shell', command: 'ls' }).decision).toBe(
       'allow',
     );

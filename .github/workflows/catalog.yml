@@ -34,16 +34,16 @@ on:
   # to avoid the scheduler stampede. The no-op stamp guard means an unchanged
   # run does not commit, so a quiet day is close to free.
   schedule:
-    - cron: '17 8 * * *'
+    - cron: "17 8 * * *"
   # Rebuild whenever the curation inputs, the builder, or the schema change.
   push:
     branches: [main]
     paths:
-      - 'os-code/curation/**'
-      - 'os-code/catalog.sample.json'
-      - 'os-code/scripts/build-catalog/**'
-      - 'os-code/src/market/schema.ts'
-      - '.github/workflows/catalog.yml'
+      - "os-code/curation/**"
+      - "os-code/catalog.sample.json"
+      - "os-code/scripts/build-catalog/**"
+      - "os-code/src/market/schema.ts"
+      - ".github/workflows/catalog.yml"
   workflow_dispatch:
     inputs:
       # The builder refuses a catalog whose model count collapses against the
@@ -52,7 +52,7 @@ on:
       # example, run the workflow by hand with this on; it sets
       # CATALOG_ALLOW_LARGE_DROP=1 for that one build only.
       allow_large_drop:
-        description: 'Waive the count-collapse guard for this run (CATALOG_ALLOW_LARGE_DROP=1)'
+        description: "Waive the count-collapse guard for this run (CATALOG_ALLOW_LARGE_DROP=1)"
         type: boolean
         default: false
 
@@ -78,8 +78,8 @@ jobs:
       MARKETING_DEPLOY_CONFIGURED: ${{ secrets.MARKETING_DEPLOY_TOKEN != '' }}
       # This job never launches Electron: skip the binary download and the
       # electron-rebuild of node-pty (the app's postinstall honors this guard).
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-      SKIP_NATIVE_REBUILD: '1'
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      SKIP_NATIVE_REBUILD: "1"
     steps:
       - name: Check out the engine repo
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

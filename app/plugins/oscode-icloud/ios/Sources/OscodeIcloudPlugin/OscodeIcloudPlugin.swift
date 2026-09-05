@@ -79,11 +79,26 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
                 for case let url as URL in e {
                     let vals = try? url.resourceValues(forKeys: Set(keys))
                     guard vals?.isRegularFile == true else { continue }
-                    // The ".icloud" placeholder name is how a not-yet-downloaded
-                    // file shows up; skip it, read() materializes on demand.
                     let rel = url.path.replacingOccurrences(of: root.path + "/", with: "")
-                    if rel.hasSuffix(".icloud") { continue }
                     let mtime = (vals?.contentModificationDate ?? Date()).iso8601
+                    // A not-yet-downloaded file shows up as a ".<name>.icloud"
+                    // placeholder in its directory. It still EXISTS: report it
+                    // under its real name, flagged evicted, so a same-name
+                    // create opens it instead of writing over the cloud copy
+                    // (UI-2). read() materializes it on demand. The size is 0
+                    // because the bytes are not here, not the placeholder's.
+                    let name = url.lastPathComponent
+                    if name.hasPrefix(".") && name.hasSuffix(".icloud") {
+                        let real = String(name.dropFirst().dropLast(".icloud".count))
+                        let dir = String(rel.dropLast(name.count))
+                        files.append([
+                            "path": dir + real,
+                            "updatedAt": mtime,
+                            "size": 0,
+                            "evicted": true
+                        ])
+                        continue
+                    }
                     files.append([
                         "path": rel,
                         "updatedAt": mtime,

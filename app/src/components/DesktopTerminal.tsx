@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { exitLine, terminalTheme } from './terminalTheme.js';
 import type { ChatDriver } from '../drivers/types.js';
 
 // Keys a soft keyboard cannot send. A separate Ctrl toggle arms the next letter
@@ -30,7 +31,7 @@ const ACCESSORY_KEYS: Array<{ label: string; send: string }> = [
   { label: 'right', send: '\x1b[C' },
 ];
 
-type Status = 'connecting' | 'ready' | 'unavailable';
+type Status = 'connecting' | 'ready' | 'unavailable' | 'exited';
 
 export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,6 +57,7 @@ export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
     let disposed = false;
     let lastOffset = 0;
     let streamAbort: AbortController | undefined;
+    let exited = false;
     // Batch keystrokes into stdin POSTs so a fast typist does not fire one
     // request per character over the tailnet.
     let pending = '';
@@ -67,7 +69,7 @@ export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
       cursorBlink: true,
       fontFamily:
         'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", "Roboto Mono", monospace',
-      theme: { background: '#0b0d12', foreground: '#e6e6e6' },
+      theme: terminalTheme(),
     });
     termRef.current = term;
     const fit = new FitAddon();
@@ -77,11 +79,29 @@ export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
       fit.fit();
     } catch {}
 
+    // The shell's end (DAE-5): stop reattaching, say so in the terminal, and
+    // let the header offer the way out.
+    const markExited = (code: number): void => {
+      if (exited) return;
+      exited = true;
+      termIdRef.current = '';
+      streamAbort?.abort();
+      term.write(`\r\n\x1b[2m${exitLine(code)}\x1b[0m\r\n`);
+      setMessage(exitLine(code));
+      setStatus('exited');
+    };
     const flush = (): void => {
       const termId = termIdRef.current;
       if (!termId || !pending) return;
-      driver.terminalStdin?.(termId, pending);
+      const data = pending;
       pending = '';
+      const res = driver.terminalStdin?.(termId, data);
+      // A hub answers whether the bytes landed; a 409 means the shell is over.
+      if (res && typeof res === 'object' && 'then' in res) {
+        void res.then((r) => {
+          if (!r.ok && r.exited) markExited(0);
+        });
+      }
     };
     term.onData((data) => {
       let out = data;
@@ -115,6 +135,7 @@ export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
               lastOffset = Math.max(lastOffset, endOffset);
             },
             ac.signal,
+            (info) => markExited(info.exit),
           );
         } catch {}
         if (disposed) break;
@@ -193,6 +214,8 @@ export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
     <>
       {status === 'connecting' ? (
         <div className="terminal-message">Connecting to your terminal...</div>
+      ) : status === 'exited' ? (
+        <div className="terminal-message">{message}</div>
       ) : null}
       <div className="terminal-host" ref={containerRef} />
       {status === 'ready' ? (

@@ -30,7 +30,7 @@ export async function fetchReadable(
       'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) os-code/0.1',
       accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8',
     },
-    redirect: 'follow',
+    // Redirects are followed by the egress wrapper itself, hop by hop.
     signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) {

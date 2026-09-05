@@ -22,7 +22,6 @@ import {
   projectPermissionFor,
 } from '../lib/projectAccess.js';
 import { relativeTime, sourceShort } from './ChatsScreen.js';
-import { hapticTick } from '../lib/haptics.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 
@@ -129,7 +128,6 @@ export function ProjectDetailScreen() {
       aria-label="New chat in this project"
       title="New chat in this project"
       onClick={() => {
-        hapticTick();
         startProjectChat(project.id);
       }}
     >
@@ -265,7 +263,6 @@ export function ProjectDetailScreen() {
                 type="button"
                 className="chat-row chat-row-new press-fb press-fb--row"
                 onClick={() => {
-                  hapticTick();
                   startProjectChat(project.id);
                 }}
               >

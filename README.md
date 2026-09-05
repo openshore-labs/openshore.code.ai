@@ -23,14 +23,14 @@ agent, running on models you download and keys you hold.
 
 ## The pieces
 
-| Path | What it is |
-| --- | --- |
-| `os-code/` | The engine: agent loop, tools, edit engine, router, daemon, security. Also a parked terminal UI. |
-| `app/` | The one React codebase both shells ship. |
-| `app/electron/` | Linux desktop shell; the engine runs in-process. |
-| `app/ios/` | Capacitor iOS project (SPM mode, iOS 16+). |
-| `app/plugins/oscode-llama/` | Swift plugin: on-device GGUF inference via llama.cpp. |
-| `codemagic.yaml` | CI to TestFlight. Setup walkthrough in `docs/TESTFLIGHT.md`. |
+| Path                        | What it is                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `os-code/`                  | The engine: agent loop, tools, edit engine, router, daemon, security. Also a parked terminal UI. |
+| `app/`                      | The one React codebase both shells ship.                                                         |
+| `app/electron/`             | Linux desktop shell; the engine runs in-process.                                                 |
+| `app/ios/`                  | Capacitor iOS project (SPM mode, iOS 16+).                                                       |
+| `app/plugins/oscode-llama/` | Swift plugin: on-device GGUF inference via llama.cpp.                                            |
+| `codemagic.yaml`            | CI to TestFlight. Setup walkthrough in `docs/TESTFLIGHT.md`.                                     |
 
 ## Running it
 

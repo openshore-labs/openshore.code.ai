@@ -37,7 +37,7 @@ export interface ChatDriver {
    * command-* events on the same subscription. Returns the runId, or undefined
    * if this driver has no terminal. sendStdin/killCommand drive a live run.
    */
-  runCommand?(command: string): Promise<string | undefined>;
+  runCommand?(command: string): Promise<RunCommandResult>;
   sendStdin?(runId: string, data: string): void;
   killCommand?(runId: string): void;
   /**
@@ -55,8 +55,11 @@ export interface ChatDriver {
     sinceOffset: number,
     onChunk: (bytes: Uint8Array, endOffset: number) => void,
     signal: AbortSignal,
+    onExit?: (info: TerminalExit) => void,
   ): Promise<void>;
-  terminalStdin?(termId: string, data: string): void;
+  /** Fire-and-forget on hosts that cannot answer; a hub answers with whether
+   *  the bytes landed, and in particular whether the shell has exited. */
+  terminalStdin?(termId: string, data: string): void | Promise<TerminalWrite>;
   terminalResize?(termId: string, cols: number, rows: number): void;
   terminalKill?(termId: string): void;
 }
@@ -65,6 +68,24 @@ export interface ChatDriver {
  *  "no PTY on this machine" marker the UI shows instead of a blank panel. */
 export type TerminalOpen =
   { termId: string; cols: number; rows: number } | { unavailable: true; error: string };
+
+/** The shell's final frame: its exit code and the byte offset it ended at. */
+export interface TerminalExit {
+  exit: number;
+  offset: number;
+}
+
+/** What became of a stdin write. `exited` is the daemon's 409: the shell is
+ *  over, which is different from a terminal that does not exist. */
+export type TerminalWrite = { ok: true } | { ok: false; exited: boolean; error: string };
+
+/** Starting a command on the connected machine: the run to follow, the hub's
+ *  own refusal (P0-1, a member device on a shared hub), or undefined when
+ *  this host has no terminal or did not answer. */
+export type RunCommandResult = { runId: string } | { refused: string } | undefined;
+
+/** What a shared hub lets this device do. Absent on a hub that predates roles. */
+export type HubRole = 'admin' | 'member';
 
 /** Shared helper: a tiny fan-out emitter drivers can compose. */
 export class DriverEmitter {

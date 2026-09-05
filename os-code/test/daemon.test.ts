@@ -518,7 +518,11 @@ describe('daemon request hygiene (P2-7)', () => {
 
 describe('Stack Health visibility (admin-gated on a shared hub)', () => {
   it('defaults to admins: a member is refused with a distinct reason, an admin is served', async () => {
-    const { token: memberToken } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_shm' });
+    const { token: memberToken } = mintCredential({
+      role: 'member',
+      label: 'Phone',
+      userId: 'u_shm',
+    });
     const mres = await fetch(`${base}/stack-health?range=week`, { headers: auth(memberToken) });
     expect(mres.status).toBe(403);
     expect(((await mres.json()) as { error?: string }).error).toBe('restricted');
@@ -536,7 +540,11 @@ describe('Stack Health visibility (admin-gated on a shared hub)', () => {
   });
 
   it('an admin opens it to everyone and the change takes effect with no restart', async () => {
-    const { token: memberToken } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_shm2' });
+    const { token: memberToken } = mintCredential({
+      role: 'member',
+      label: 'Phone',
+      userId: 'u_shm2',
+    });
     expect((await fetch(`${base}/stack-health`, { headers: auth(memberToken) })).status).toBe(403);
     // A member cannot change the setting.
     const denied = await fetch(`${base}/stack-health/visibility`, {
@@ -771,9 +779,11 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
       });
       const { id } = (await created.json()) as { id: string };
       const live = async (): Promise<number> =>
-        ((await (await fetch(`${ownBase}/health`, { headers: auth(adminToken) })).json()) as {
-          sessions: number;
-        }).sessions;
+        (
+          (await (await fetch(`${ownBase}/health`, { headers: auth(adminToken) })).json()) as {
+            sessions: number;
+          }
+        ).sessions;
       expect(await live()).toBe(1);
       const deadline = Date.now() + 3000;
       while ((await live()) !== 0 && Date.now() < deadline) {
@@ -823,7 +833,9 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
         headers: auth(adminToken),
       });
       expect(gone.status).toBe(404);
-      const listed = (await (await fetch(`${base}/sessions`, { headers: auth(a.token) })).json()) as {
+      const listed = (await (
+        await fetch(`${base}/sessions`, { headers: auth(a.token) })
+      ).json()) as {
         live: unknown[];
         stored: unknown[];
       };
@@ -843,7 +855,11 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
 
 describe('clone target names (DAE-16)', () => {
   it('rejects a url whose basename is . or ..', async () => {
-    for (const url of ['https://github.com/owner/..', 'https://github.com/owner/.', 'https://github.com/owner/.git']) {
+    for (const url of [
+      'https://github.com/owner/..',
+      'https://github.com/owner/.',
+      'https://github.com/owner/.git',
+    ]) {
       const res = await fetch(`${base}/workspaces/clone`, {
         method: 'POST',
         headers: auth(adminToken),
@@ -982,7 +998,7 @@ describe('permission mode on a remote-attached session (ENG-1, daemon half)', ()
     expect(res.status).toBe(201);
     const body = (await res.json()) as { mode: string; warnings: string[] };
     expect(body.mode).toBe('acceptEdits');
-    expect(body.warnings.join('\n')).toMatch(/bypassPermissions/);
+    expect(body.warnings.join('\n')).toMatch(/bypass permissions is not available/i);
     const plain = await fetch(`${base}/sessions`, {
       method: 'POST',
       headers: auth(adminToken),
