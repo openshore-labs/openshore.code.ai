@@ -31,6 +31,19 @@ follow-up is Vault's ORGANIZATION tier (a real multi-writer backend), tracked
 as its own item in `os-code/PROGRESS.md`. The original build prompts are kept
 in `os-code/docs/parked-ideas.md` as historical reference only.
 
+## Crew routines (the botOS brief) are BUILT (2026-09-05)
+
+The founder's "clone grokbot, call it botOS, local-first" shipped as
+**routines inside My Crew** (botOS is the codename only, like gitOS): a crew
+member, a task, a workspace, and a clock; the scheduler opens a headless
+journaled session on the person's own computer and leaves a dated note in the
+vault. Engine in `os-code/src/routines/`, daemon routes in `serve.ts`, the app
+in `app/src/lib/routines.ts` and `app/src/screens/CrewCommandScreen.tsx`. Do
+NOT re-scope it as a chatbot: the reference is Grok Bot (always-on agents with
+their own computer), and an earlier persona-chatbot stab was dropped on
+purpose (see `os-code/DECISIONS.md`). Copy stays honest: "while your computer
+is on", never "always on". Open follow-ups are in `os-code/PROGRESS.md`.
+
 ## Premium UX out of the box (standing rule, founder 2026-09-02)
 
 OpenShore is a machine that builds usable software, so everything a coding

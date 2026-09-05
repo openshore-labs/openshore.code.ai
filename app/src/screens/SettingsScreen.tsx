@@ -406,8 +406,8 @@ export function SettingsScreen() {
             <p>
               Child sexual abuse material, and sexual or nude imagery of a real, identifiable
               person, are refused outright. So is concrete help building or deploying biological,
-              chemical, nuclear, or high-yield explosive weapons. There is no consent option for
-              any of those.
+              chemical, nuclear, or high-yield explosive weapons. There is no consent option for any
+              of those.
             </p>
             <p>
               Synthesized media only, meaning an image, a video, or a voice. Recreating the face or

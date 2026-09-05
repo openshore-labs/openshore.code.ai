@@ -155,6 +155,12 @@ import {
 import { SEARCH_SECRET_KEY, type SearchBackend } from '../lib/webSearch.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import {
+  routinesClient,
+  type RoutineInput,
+  type RoutineRun,
+  type RoutineView,
+} from '../lib/routines.js';
+import {
   refKey as stackRefKey,
   harborRef,
   refReady,
@@ -224,6 +230,7 @@ export type ViewName =
   | 'vault'
   | 'projects'
   | 'crew'
+  | 'crewcommand'
   | 'admin'
   | 'launch'
   | 'pair'
@@ -515,8 +522,28 @@ export function hubList(settings: AppSettings): DaemonTarget[] {
   return settings.daemon ? [settings.daemon] : [];
 }
 
+/** Crew routines as this device last saw them: the roster of unattended jobs
+ *  on the computer that runs them, and their recent runs. Refreshed on demand
+ *  and while the command center is open; never persisted here (the scheduler
+ *  on the computer is the source of truth). */
+export interface RoutinesState {
+  routines: RoutineView[];
+  runs: RoutineRun[];
+  /** True once the first refresh answered (or found nowhere to ask). */
+  loaded: boolean;
+  /** False when nothing on this device can run a routine (no paired desktop). */
+  available: boolean;
+  where?: 'desktop' | 'daemon';
+  error?: string;
+}
+
+export function emptyRoutinesState(): RoutinesState {
+  return { routines: [], runs: [], loaded: false, available: false };
+}
+
 interface AppState {
   ready: boolean;
+  routines: RoutinesState;
   /** Guards init() from running twice (React StrictMode double-invokes effects). */
   initStarted: boolean;
   view: ViewName;
@@ -699,6 +726,21 @@ interface AppState {
   ): Promise<void>;
   /** Open a project's detail room (its chats, instructions, repos, access). */
   openProject(id: string): void;
+
+  // Crew routines (the command center). Every call reaches the scheduler on
+  // the computer that runs routines; the store keeps the last snapshot.
+  /** Open the command center (a sub-page of My Crew) and refresh. */
+  openCrewCommand(): void;
+  refreshRoutines(): Promise<void>;
+  createRoutine(input: RoutineInput): Promise<RoutineView | undefined>;
+  updateRoutine(id: string, patch: Partial<RoutineInput>): Promise<void>;
+  deleteRoutine(id: string): Promise<void>;
+  runRoutineNow(id: string): Promise<void>;
+  stopRoutine(id: string): Promise<void>;
+  readRoutineNote(runId: string): Promise<{ path: string; markdown: string } | null>;
+  /** Open a run's transcript: the journaled session, replayed like any
+   *  desktop chat, with a way back to the command center. */
+  openRoutineRun(run: RoutineRun): Promise<void>;
   /** Open a project's read-only memory notes (from the Vault section). */
   openProjectMemory(id: string): void;
   /** Start a fresh chat that belongs to a project, opened with a way back to
@@ -1419,10 +1461,7 @@ export const useApp = create<AppState>((set, get) => {
     return guardDriver(await buildUnguardedDriver(conv, seed));
   }
 
-  async function buildUnguardedDriver(
-    conv: Conversation,
-    seed?: SeedTurn[],
-  ): Promise<ChatDriver> {
+  async function buildUnguardedDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
     const { settings } = get();
     switch (conv.source.kind) {
       case 'desktop': {
@@ -1985,6 +2024,7 @@ export const useApp = create<AppState>((set, get) => {
 
   return {
     ready: false,
+    routines: emptyRoutinesState(),
     initStarted: false,
     view: 'chat',
     viewTrail: [],
@@ -2810,6 +2850,147 @@ export const useApp = create<AppState>((set, get) => {
       set({ viewProjectId: id });
       get().setView('project');
       logEvent('project_open');
+    },
+
+    openCrewCommand() {
+      // A sub-page of My Crew: setView pushes Crew onto the trail, so the top
+      // bar offers a way back to the roster.
+      get().setView('crewcommand');
+      logEvent('crew_command_open');
+      void get().refreshRoutines();
+    },
+
+    async refreshRoutines() {
+      const client = routinesClient(get().settings);
+      if (!client) {
+        set((s) => ({
+          routines: { ...s.routines, routines: [], runs: [], loaded: true, available: false },
+        }));
+        return;
+      }
+      try {
+        const snap = await client.list();
+        set({
+          routines: {
+            routines: snap.routines,
+            runs: snap.runs,
+            loaded: true,
+            available: true,
+            where: client.where,
+            error: undefined,
+          },
+        });
+      } catch (err) {
+        set((s) => ({
+          routines: {
+            ...s.routines,
+            loaded: true,
+            available: true,
+            where: client.where,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        }));
+      }
+    },
+
+    async createRoutine(input) {
+      const client = routinesClient(get().settings);
+      if (!client) {
+        get().showToast('Pair your desktop first. Routines run on your computer.');
+        return undefined;
+      }
+      try {
+        const routine = await client.create(input);
+        logEvent('routine_created', { access: input.access ?? 'read-only' });
+        await get().refreshRoutines();
+        return routine;
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : String(err));
+        return undefined;
+      }
+    },
+
+    async updateRoutine(id, patch) {
+      const client = routinesClient(get().settings);
+      if (!client) return;
+      // Optimistic for the switch, so a pause answers the finger at once; the
+      // refresh below settles it either way.
+      set((s) => ({
+        routines: {
+          ...s.routines,
+          routines: s.routines.routines.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+        },
+      }));
+      try {
+        await client.update(id, patch);
+        logEvent('routine_updated');
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : String(err));
+      }
+      await get().refreshRoutines();
+    },
+
+    async deleteRoutine(id) {
+      const client = routinesClient(get().settings);
+      if (!client) return;
+      try {
+        await client.remove(id);
+        logEvent('routine_deleted');
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : String(err));
+      }
+      await get().refreshRoutines();
+    },
+
+    async runRoutineNow(id) {
+      const client = routinesClient(get().settings);
+      if (!client) return;
+      try {
+        await client.run(id);
+        logEvent('routine_run_now');
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : String(err));
+      }
+      await get().refreshRoutines();
+    },
+
+    async stopRoutine(id) {
+      const client = routinesClient(get().settings);
+      if (!client) return;
+      try {
+        await client.stop(id);
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : String(err));
+      }
+      await get().refreshRoutines();
+    },
+
+    async readRoutineNote(runId) {
+      const client = routinesClient(get().settings);
+      if (!client) return null;
+      try {
+        return await client.note(runId);
+      } catch {
+        return null;
+      }
+    },
+
+    async openRoutineRun(run) {
+      if (!run.sessionId) {
+        get().showToast('That slot was missed, so there is no transcript.');
+        return;
+      }
+      const routine = get().routines.routines.find((r) => r.id === run.routineId);
+      const from = get().view;
+      await get().openDesktopSession({
+        id: run.sessionId,
+        cwd: routine?.cwd ?? '',
+        title: routine ? routine.name : undefined,
+      });
+      // The transcript is a page inside the command center: its way back is
+      // the center, not the Chats list.
+      if (from === 'crewcommand' && get().view === 'chat') set({ viewTrail: ['crewcommand'] });
+      logEvent('routine_transcript_open');
     },
 
     openProjectMemory(id) {

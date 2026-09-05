@@ -8,69 +8,79 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-05, full-codebase review remediation, then the ethics layer)
+## Current state (2026-09-05, Crew routines, the ethics layer, and the review remediation)
 
-Two pieces of work landed on 2026-09-05. The review remediation is first,
-the always-on ethical guardrail layer second; they were built in parallel
-sessions and merged here.
+Three pieces of work landed on 2026-09-05, built in parallel sessions and
+merged here: Crew routines (newest, first below), the always-on ethical
+guardrail layer, and the full-codebase review remediation (its state section
+moved to `docs/progress-archive.md`; its open items stay in What remains).
 
-### The full-codebase review remediation
+### Crew routines (the botOS brief, shipped inside My Crew)
 
-The review in `CODE-REVIEW-FINDINGS-2026-09-05.md` (root; six parallel senior
-passes over HEAD `e14b0a7`, 82 commits and about 90k changed lines since the
-2026-08-25 reviews) was worked as one wave, batched by subsystem so each file
-was edited once, with the `Verify` test written first. Rulings during the wave
-are one line each in `DECISIONS.md`.
+**Crew routines are BUILT.** The founder's brief was "clone grokbot, call it
+botOS, local-first." Research corrected the premise: Grok Bot (xAI, beta
+2026-08-11) is always-on agent teammates with their own cloud computers, a bot
+roster with presence, routines that start without a prompt, results waiting
+when you return. The local-first version ships as **routines inside My Crew**
+(CMO ruling, founder agreed: botOS stays the codename, the way gitOS ships as
+Repositories): a crew member, a task, a workspace, and a clock; the daemon
+opens a normal journaled session on the headless profile when the clock
+strikes and the computer is on; the result lands as a dated markdown note in
+the vault with the transcript one tap away. The copy says "while your computer
+is on", never "always on", and "works, then asks", never "unsupervised".
 
-- **The four P0s.** P0-1: the daemon's user command lane is no longer an
-  unjailed shell for a member token (admin-gated, and both path predicates
-  resolve real paths on both sides). P0-2: the guardrail token and dollar
-  counters reset per task, so a long session can start its next task. P0-3: the
-  sealed-store key is never minted over existing sealed data; an unreadable key
-  surfaces a "could not unlock your data on this machine" state instead of
-  orphaning every sealed byte. P0-4: email confirmation is on in
-  `supabase/config.toml`, and the email-keyed grants require a confirmed
-  address in SQL as well (migration `0015`).
-- **P1 and P2, by batch.** Trust boundaries (owner-filtered session listings,
-  profile-aware permission overrides, normalized permission globs). Session
-  lifecycle (idle work no longer inherits the task's abort signal, compaction
-  never cuts between a tool call and its result, steps rail off-by-one, native
-  batch problems reported, approvals settled on abort). Streams and timeouts
-  (Anthropic in-stream errors surface, an idle deadline on every provider
-  stream, Stop reaches a delegated specialist, a terminal exit frame). App auth
-  and the sealed store (one refreshed token helper for every Supabase call, a
-  typed sign-out on a dead refresh token, persisted pending email for the
-  magic-link binding, sign-out clears the roster, per-key write chain). On-device
-  model ownership (one `loadedModelId` owner; a load during generation ends the
-  old chat honestly). Backend (`members_write` WITH CHECK, seat ceilings by
-  trigger, the Stripe cross-rail guard, Apple link state, review column grants,
-  vault path guard, checkout filter on live statuses, entitlement decisions in
-  `_shared/entitlement.ts` with Deno tests).
-- **Guards and CI (INF).** CI now builds every package, checks formatting,
-  and runs the Deno tests; both workflows are least-privilege (`contents:
-read`), SHA-pinned, and read Node from `.nvmrc` (22.22.2; root `engines`
-  `>=22.12`); the catalog workflow scopes each secret to its one step and takes
-  an `allow_large_drop` input. The em-dash guard is repo-wide (git toplevel,
-  every text extension, test files included, one reasoned exemption for the
-  archived 2026-08-20 review). The desktop preflight refuses to launch with a
-  node-pty that is missing or built for the wrong ABI; the app postinstall
-  honors `SKIP_NATIVE_REBUILD=1` and CI and Codemagic skip the Electron binary.
-  Codemagic pins Xcode and builds the engine once. `.cjs` and `.mjs` are linted.
-  The nested `os-code/pnpm-lock.yaml` is gone. The addressed review docs live in
-  `docs/archive/` with status banners.
-- **Docs and license.** This file is lean again (one Current state, one What
-  remains, the last five log entries); the history is in
-  `docs/progress-archive.md` and the parked build prompts in
-  `docs/parked-ideas.md`, both guarded by `test/progressShape.test.ts`. The
-  license is a "no license granted" placeholder at the root and in
-  `os-code/LICENSE` (CFO ruling; the plugins are `UNLICENSED`, `private`).
-  ESLint 9 is deferred to its own commit.
-- Gates at close: os-code typecheck, lint, 493 tests (54 files), tsc build,
-  Prettier check; app typecheck (src and electron), lint (now covering .cjs and
-  .mjs), 692 tests (92 files), vite build, Prettier check; the repo-wide
-  em-dash guard and the PROGRESS shape guard. Deno and pgTAP suites are
-  written but not executed here (no Deno or Postgres in the session); CI now
-  runs the Deno suite.
+- **Engine.** `src/routines/model.ts` (pure model, schedule math, validation,
+  the preset; exported through `os-code/protocol`), `src/routines/store.ts`
+  (sealed `~/.os-code/routines.json`, atomic writes), `src/routines/scheduler.ts`
+  (a process singleton the daemon and the desktop shell share, so a routine
+  fires exactly once whichever surface is up). Contract as the CTO ruled it:
+  one run on the box at a time and one per routine; a slot the machine slept
+  through is recorded as skipped once and never replayed; an approval nobody
+  answers pauses the run (the existing approval push fires) and times out to a
+  denial with a reason after 15 minutes, never to an approval; a wall-clock cap
+  per routine (5 to 60 min) on top of the guardrails; read-only routines run in
+  plan mode, edit routines in acceptEdits; a routine runs only in an
+  admin-provisioned workspace or an outbox root (`core/security/workspaces.ts`,
+  shared with the daemon's own gates). New read-risk `gitLog` tool so a
+  read-only routine can review history without a shell.
+- **Headless hardening (CTO must-fix).** A configured permissions DEFAULT of
+  allow (not just a rule) can no longer make shell, push, or cloud spend silent
+  on the remote or headless profile; headless also blocks push auto-allow
+  (`allowPushAutoApprove` on the profile). Pinned by
+  `test/headlessPermissions.test.ts`.
+- **Daemon and desktop.** `/routines` routes (GET open to members scoped to
+  what they own, every change admin-only, workspace-gated for all); the same
+  surface over Electron IPC (`engineHost.routines*`, seven guarded handlers,
+  preload and bridge types). A run's live driver is adopted by whichever
+  surface attaches, never rehydrated twice.
+- **App.** `app/src/lib/routines.ts` (one client over the bridge or the paired
+  daemon, presence and copy helpers, the preset builder), a `routines` store
+  slice with the actions, and the **Crew command** room (`CrewCommandScreen`,
+  view `crewcommand`, a sub-page of My Crew): the live headline and four
+  counts, a Waiting-for-you list, the roster with each member's presence dot
+  (teal pulse working, amber waiting, green done), the routines with Run now,
+  Stop, Edit, and a pause switch, and the results inbox opening a result sheet
+  (the vault note rendered, Open transcript). The one preset, Morning review
+  (weekdays 06:00, read-only, so its first unattended run can never need an
+  approval), adds a Reviewer to the crew on setup; custom routines unlock after
+  the first run finishes (CX). Each Crew card shows its busiest routine's
+  presence line, and the room opens through a door card at the top of My Crew.
+  Copy for a phone with no paired desktop says so and offers pairing.
+- Gates at close: os-code typecheck, lint, 518 tests (57 files), tsc build,
+  Prettier; app typecheck (src and electron), lint, 699 tests (93 files), vite
+  build, Prettier; the repo-wide em-dash guard and the PROGRESS shape guard.
+  Pushed to `main` per the founder.
+- **Polish pass (founder: "do all the polish").** A waiting-for-you row
+  breathes a soft amber halo on the working dot's clock; the results inbox
+  arrives row by row on `--stagger`; a sheet's heading rises in, keyed to the
+  routine it came from; routine cards swipe to delete through `SwipeRow` (the
+  Delete button is gone, the card's own buttons stay); the Next run tile is
+  tabular. Every animation dies under reduced motion. The pause switch keeps
+  the app-wide button tick (a component-level haptic is banned by the polish
+  guard, per the 2026-09-05 ruling).
+- **Not verifiable here:** a real scheduled fire under Ollama on the founder's
+  box, the approval push arriving with the app closed, suspend and wake, and
+  the room on an iPhone (TestFlight). See What remains.
 
 ### The always-on ethical guardrail layer
 
@@ -126,6 +136,25 @@ What remains. Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Crew routines on the founder's machine and TestFlight (built
+      2026-09-05, unverified off the sandbox).** Set up Morning review on the
+      Pop!_OS desktop against a cloned repo, let it fire at 06:00 (or Run now),
+      confirm the note lands in `~/OSCode/Vault/Crew/Morning review/`, open the
+      transcript from the command center, and on the phone confirm the
+      approval push arrives with the app closed for an edit routine. Also
+      confirm a slot slept through shows as Missed, not as a late run.
+- [ ] **A push for a missed slot.** The push-send function takes the approval
+      and done kinds only; a missed slot shows in the results inbox today and
+      does not push. Adding a stale kind is the follow-up.
+- [ ] **Personal at $50/yr with the gates reinstated (founder, 2026-09-05).**
+      Routines sit inside Personal (CFO); gating is off while the founder
+      builds. When it returns, the command center and Run now go behind
+      `personalUnlockedNow()` like the coding agent.
+- [ ] **Measure the preset (CFO and CX conditions).** Free-to-Personal
+      conversion within 60 days with routines credited; share of payers with a
+      routine that ran unattended three times in month one; tap-through on the
+      preset card. Insights events exist (`routine_created`, `routine_run_now`,
+      `crew_command_open`, `routine_transcript_open`).
 - [x] **Ethics layer, Tier 2 likeness precision (CTO M1/M2).** Fixed: coding
       vocabulary in `NON_PERSON_NAME_WORDS`, generation verbs and photoreal
       deepfake shapes caught, likeness made non-countable. Known residual limit:
@@ -431,6 +460,16 @@ What remains. Migration is now `0016`.
 
 ## Log
 
+- **2026-09-05: Crew routines, the botOS clone brief, built and pushed to
+  main.** Go-with-conditions from the CMO, CTO, CFO, and CX; the founder signed
+  off on all four decision points (ship as Crew with routines; Personal to $50
+  when gates return; build v1 directly and measure the preset; push to main).
+  Engine scheduler and store, headless permission hardening, daemon routes,
+  Electron IPC, the app client and store slice, the Crew command room, the
+  Morning review preset, and a gitLog read tool. 25 new engine tests, 9 new
+  app tests. Gates: see the Current state above. The superseded
+  persona-chatbot stab from earlier in the day was dropped, not merged.
+
 - **2026-09-05: full-codebase review remediation, one wave.** Every finding
   in `CODE-REVIEW-FINDINGS-2026-09-05.md` worked by subsystem (four P0s, the
   P1 and P2 batches, the INF guards and CI hardening), rulings recorded in
@@ -563,24 +602,3 @@ attach` reaches it; a daemon restart seeds the agent's history from the
     fix on a real iPhone (streaming); the Swift `downloadModel` host check and
     any native change compile on TestFlight; wire an optional `HF_TOKEN` repo
     secret if you want the authenticated popularity fetch.
-- **2026-08-26: Chat-surface refinements + polish (bigger menu, anchored
-  greeting, guide-as-reasoning, a Chats room).** Founder asks over four
-  screenshots. (1) Menu button: a drawn SVG glyph (`components/MenuIcon.tsx`),
-  fuller weight in the primary ink on a 40px target, in the chat top bar and the
-  room BackBar. (2) Empty-state greeting: `.greeting` switched to
-  `justify-content: flex-end` so the mark + line sit just above the composer and
-  ride up with it under the keyboard, instead of centering and colliding with
-  the status bar. (3) Downloaded guide becomes the Reasoning anchor:
-  `reasoningPromotion` in `state/store.ts` promotes a just-downloaded Harbor /
-  Harbor Mini when there is no anchor or the anchor is a guide not on the device
-  (Harbor also upgrades a ready Mini); a matching init reconcile heals the seeded
-  Mini anchor a Harbor-only user hit ("download it first"). Cloud/BYOM/user
-  device anchors untouched. (4) Chats room: new `chats` view +
-  `screens/ChatsScreen.tsx` lists the active project's chats with an easy new
-  chat; the recent-chats list left the drawer, New chat + Quick chat stayed.
-  Polish: capped row stagger, opacity room cross-fade (keyed on view),
-  menu-glyph press spring, grouped flat rows that swipe to delete behind a
-  confirm (SwipeRow gained an optional label + danger variant + style, pin
-  behavior unchanged). Dead `.conv-list`/`.conv-empty` pruned. Animations use
-  `backwards` per the polish-standards rule. Green: 209 app tests, typecheck,
-  lint, build, em-dash. Not iOS-verified here.
