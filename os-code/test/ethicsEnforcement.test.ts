@@ -217,9 +217,8 @@ describe('the enforcement migration', () => {
     // guardrail_events and ip_ban_proposals only. likeness_consents no longer
     // carries an address: an authorization assertion is not a violation.
     expect(ipColumns).toHaveLength(2);
-    const consentsTable = /create table if not exists public\.likeness_consents \(([\s\S]*?)\n\);/.exec(
-      sql,
-    );
+    const consentsTable =
+      /create table if not exists public\.likeness_consents \(([\s\S]*?)\n\);/.exec(sql);
     expect(consentsTable?.[1]).toBeDefined();
     expect(consentsTable![1]).not.toMatch(/ip_address/);
   });
@@ -228,7 +227,9 @@ describe('the enforcement migration', () => {
     // A trigger, not a column default, so an allowed-with-assertion row never
     // carries an address. The guarantee is server-enforced.
     expect(sql).toMatch(/guardrail_events_set_ip/);
-    expect(sql).toMatch(/if new\.action = 'blocked' then\s*\n\s*new\.ip_address := public\.request_ip\(\);/i);
+    expect(sql).toMatch(
+      /if new\.action = 'blocked' then\s*\n\s*new\.ip_address := public\.request_ip\(\);/i,
+    );
     // The column has no request_ip() default; the trigger is the single writer.
     expect(sql).not.toMatch(/ip_address inet default public\.request_ip\(\)/);
   });
@@ -237,6 +238,8 @@ describe('the enforcement migration', () => {
     // record_enforcement takes no arguments and computes from guardrail_events,
     // so a reinstall cannot reset the ladder and a client cannot under-report.
     expect(sql).toMatch(/create or replace function public\.record_enforcement \(\)/);
-    expect(sql).toMatch(/from public\.guardrail_events\s*\n\s*where user_id = v_uid and action = 'blocked'/);
+    expect(sql).toMatch(
+      /from public\.guardrail_events\s*\n\s*where user_id = v_uid and action = 'blocked'/,
+    );
   });
 });

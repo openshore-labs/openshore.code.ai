@@ -155,7 +155,10 @@ import {
 import { SEARCH_SECRET_KEY, type SearchBackend } from '../lib/webSearch.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import {
+  crewControl as computeCrewControl,
   routinesClient,
+  CONTROL_REQUIRES_DOCK,
+  type CrewControl,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
@@ -388,6 +391,10 @@ const BILLING_URL = 'https://openshore.ai/os-code/';
 
 const SETTINGS_KEY = 'oscode.settings.v1';
 const CONVERSATIONS_KEY = 'oscode.conversations.v1';
+// The last-known crew snapshot, cached so the activity dashboards are viewable
+// away from home (offshore/offline), where the machine cannot be reached to
+// read live. Control still requires being docked; this is view-only history.
+const ROUTINES_KEY = 'oscode.routines.v1';
 const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
 
 // The one personal vault every account starts with, on the Local provider
@@ -531,14 +538,18 @@ export interface RoutinesState {
   runs: RoutineRun[];
   /** True once the first refresh answered (or found nowhere to ask). */
   loaded: boolean;
-  /** False when nothing on this device can run a routine (no paired desktop). */
+  /** False when no machine is set up at all (never paired, not on desktop). */
   available: boolean;
+  /** True when the current snapshot came from a live read (docked or on the
+   *  machine). False means it is the cached last-known picture, shown while
+   *  away from home. */
+  live: boolean;
   where?: 'desktop' | 'daemon';
   error?: string;
 }
 
 export function emptyRoutinesState(): RoutinesState {
-  return { routines: [], runs: [], loaded: false, available: false };
+  return { routines: [], runs: [], loaded: false, available: false, live: false };
 }
 
 interface AppState {
@@ -731,6 +742,9 @@ interface AppState {
   // the computer that runs routines; the store keeps the last snapshot.
   /** Open the command center (a sub-page of My Crew) and refresh. */
   openCrewCommand(): void;
+  /** Whether this device can set up and control routines right now (docked or
+   *  on the machine), and where it stands otherwise. Viewing is always on. */
+  crewControl(): CrewControl;
   refreshRoutines(): Promise<void>;
   createRoutine(input: RoutineInput): Promise<RoutineView | undefined>;
   updateRoutine(id: string, patch: Partial<RoutineInput>): Promise<void>;
@@ -2079,6 +2093,11 @@ export const useApp = create<AppState>((set, get) => {
         order: [],
         conversations: {},
       };
+      // The cached crew snapshot: the activity dashboards are viewable at once,
+      // even offshore, before (or without) a live read from the machine.
+      const cachedRoutines = await storeGetJson<{ routines: RoutineView[]; runs: RoutineRun[] }>(
+        ROUTINES_KEY,
+      );
       const conversations: Record<string, Conversation> = {};
       for (const id of persisted.order) {
         const row = persisted.conversations[id];
@@ -2284,6 +2303,15 @@ export const useApp = create<AppState>((set, get) => {
         settings,
         conversations,
         order: persisted.order.filter((id) => conversations[id]),
+        routines: cachedRoutines
+          ? {
+              routines: cachedRoutines.routines ?? [],
+              runs: cachedRoutines.runs ?? [],
+              loaded: false,
+              available: true,
+              live: false,
+            }
+          : emptyRoutinesState(),
         cloudKeyPresent,
         connectedProviders,
         codemagicConnected,
@@ -2860,11 +2888,38 @@ export const useApp = create<AppState>((set, get) => {
       void get().refreshRoutines();
     },
 
+    crewControl() {
+      const s = get();
+      return computeCrewControl({
+        onDesktop: isDesktop() && Boolean(bridge()),
+        hasDaemon: Boolean(s.settings.daemon),
+        homeReachable: s.connectivity.homeReachable,
+        preferRemoteHub: s.settings.preferRemoteHub,
+      });
+    },
+
     async refreshRoutines() {
+      const control = get().crewControl();
+      // Not set up anywhere: nothing to show but the dormant capabilities.
+      if (control.where === 'unpaired') {
+        set((s) => ({
+          routines: { ...s.routines, loaded: true, available: false, live: false },
+        }));
+        return;
+      }
+      // Away from home (offshore/offline): the machine is unreachable, so serve
+      // the cached snapshot rather than hang on a fetch that cannot land. The
+      // dashboards stay viewable; control is off until we are docked again.
+      if (!control.can) {
+        set((s) => ({
+          routines: { ...s.routines, loaded: true, available: true, live: false },
+        }));
+        return;
+      }
       const client = routinesClient(get().settings);
       if (!client) {
         set((s) => ({
-          routines: { ...s.routines, routines: [], runs: [], loaded: true, available: false },
+          routines: { ...s.routines, loaded: true, available: false, live: false },
         }));
         return;
       }
@@ -2876,16 +2931,22 @@ export const useApp = create<AppState>((set, get) => {
             runs: snap.runs,
             loaded: true,
             available: true,
+            live: true,
             where: client.where,
             error: undefined,
           },
         });
+        void persistRoutines(snap.routines, snap.runs);
       } catch (err) {
+        // A read that fails while we believed we were docked (home dropped
+        // mid-poll): keep the cache and fall back to view-only rather than
+        // blank the dashboards.
         set((s) => ({
           routines: {
             ...s.routines,
             loaded: true,
             available: true,
+            live: false,
             where: client.where,
             error: err instanceof Error ? err.message : String(err),
           },
@@ -2894,6 +2955,10 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async createRoutine(input) {
+      if (!get().crewControl().can) {
+        get().showToast(CONTROL_REQUIRES_DOCK);
+        return undefined;
+      }
       const client = routinesClient(get().settings);
       if (!client) {
         get().showToast('Pair your desktop first. Routines run on your computer.');
@@ -2911,6 +2976,10 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async updateRoutine(id, patch) {
+      if (!get().crewControl().can) {
+        get().showToast(CONTROL_REQUIRES_DOCK);
+        return;
+      }
       const client = routinesClient(get().settings);
       if (!client) return;
       // Optimistic for the switch, so a pause answers the finger at once; the
@@ -2931,6 +3000,10 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async deleteRoutine(id) {
+      if (!get().crewControl().can) {
+        get().showToast(CONTROL_REQUIRES_DOCK);
+        return;
+      }
       const client = routinesClient(get().settings);
       if (!client) return;
       try {
@@ -2943,6 +3016,10 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async runRoutineNow(id) {
+      if (!get().crewControl().can) {
+        get().showToast(CONTROL_REQUIRES_DOCK);
+        return;
+      }
       const client = routinesClient(get().settings);
       if (!client) return;
       try {
@@ -2955,6 +3032,10 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async stopRoutine(id) {
+      if (!get().crewControl().can) {
+        get().showToast(CONTROL_REQUIRES_DOCK);
+        return;
+      }
       const client = routinesClient(get().settings);
       if (!client) return;
       try {
@@ -5298,6 +5379,13 @@ function persistConversationsSoon(): void {
     persistTimer = undefined;
     void persistConversations(useApp.getState());
   }, 1500);
+}
+
+// The crew snapshot is cached whole (roster + recent runs) so the activity
+// dashboards render away from home, before any live read. Runs are already
+// capped at the source; store what the last live read returned.
+async function persistRoutines(routines: RoutineView[], runs: RoutineRun[]): Promise<void> {
+  await storeSetJson(ROUTINES_KEY, { routines, runs });
 }
 
 async function persistConversations(state: Pick<AppState, 'order' | 'conversations'>) {
