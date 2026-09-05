@@ -29,7 +29,7 @@ export const STACK_BUNDLES: StackBundle[] = [
     name: 'Pocket',
     tagline: 'Chat anywhere, offline, on this iPhone. Private by construction.',
     platform: 'phone',
-    orchestrator: 'qwen2.5-1.5b-phone',
+    orchestrator: 'qwen3-4b-phone',
     specialists: {},
     minVramGB: 0,
   },

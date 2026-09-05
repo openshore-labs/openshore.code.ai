@@ -2338,7 +2338,29 @@ Layer status:
   search in both the TUI and plain renderers. All covered by
   `test/polish.test.ts`.
 
-## Log entries (2026-08-18 to 2026-08-25)
+## Log entries (2026-08-18 to 2026-08-26)
+
+- **2026-08-26: Chat-surface refinements + polish (bigger menu, anchored
+  greeting, guide-as-reasoning, a Chats room).** Founder asks over four
+  screenshots. (1) Menu button: a drawn SVG glyph (`components/MenuIcon.tsx`),
+  fuller weight in the primary ink on a 40px target, in the chat top bar and the
+  room BackBar. (2) Empty-state greeting: `.greeting` switched to
+  `justify-content: flex-end` so the mark + line sit just above the composer and
+  ride up with it under the keyboard, instead of centering and colliding with
+  the status bar. (3) Downloaded guide becomes the Reasoning anchor:
+  `reasoningPromotion` in `state/store.ts` promotes a just-downloaded Harbor /
+  Harbor Mini when there is no anchor or the anchor is a guide not on the device
+  (Harbor also upgrades a ready Mini); a matching init reconcile heals the seeded
+  Mini anchor a Harbor-only user hit ("download it first"). Cloud/BYOM/user
+  device anchors untouched. (4) Chats room: new `chats` view +
+  `screens/ChatsScreen.tsx` lists the active project's chats with an easy new
+  chat; the recent-chats list left the drawer, New chat + Quick chat stayed.
+  Polish: capped row stagger, opacity room cross-fade (keyed on view),
+  menu-glyph press spring, grouped flat rows that swipe to delete behind a
+  confirm (SwipeRow gained an optional label + danger variant + style, pin
+  behavior unchanged). Dead `.conv-list`/`.conv-empty` pruned. Animations use
+  `backwards` per the polish-standards rule. Green: 209 app tests, typecheck,
+  lint, build, em-dash. Not iOS-verified here.
 
 - **2026-08-25: App Vault opens the on-disk folder (file-backed provider).** The
   paired follow-up to agent vault writes: the app's Vault can now live in the

@@ -360,6 +360,68 @@
       }
     },
     {
+      "id": "qwen3-4b-phone",
+      "name": "Qwen3 4B (pocket)",
+      "tagline": "The phone-class pick. A 2025 4B that beats the old 7B class, fully on your iPhone.",
+      "categories": ["reasoning", "coding", "fast"],
+      "orchestratorCapable": true,
+      "source": {
+        "kind": "huggingface",
+        "ref": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+        "pullCommand": "downloads in-app on iOS"
+      },
+      "sizeGB": 2.5,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 9,
+        "note": "The best model that runs on an iPhone today. Newer and sharper than any 7B from 2024, at half the memory. Needs a 6 GB phone."
+      },
+      "blessed": false,
+      "onDevice": {
+        "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "sizeGB": 2.5,
+        "minRamGB": 6
+      }
+    },
+    {
+      "id": "qwen2.5-coder-1.5b-phone",
+      "name": "Qwen 2.5 Coder 1.5B (pocket)",
+      "tagline": "A small coder for quick edits, fully on your iPhone. The Offline pack's hand.",
+      "categories": ["coding", "fast"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+        "pullCommand": "downloads in-app on iOS"
+      },
+      "sizeGB": 1.1,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 13,
+        "note": "Place it under Coding and the phone's reasoning model hands it the small edits."
+      },
+      "blessed": false,
+      "onDevice": {
+        "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "sizeGB": 1.1,
+        "minRamGB": 4
+      }
+    },
+    {
       "id": "qwen2.5-coder-3b",
       "name": "Qwen 2.5 Coder 3B",
       "tagline": "A tiny coder that still writes usable edits. Good on very light machines.",
