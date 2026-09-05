@@ -109,40 +109,47 @@ while staying out of the way of legitimate edgy work.
   no apply function in the module or the migration.
 - Gates green: os-code and app typecheck, lint, test, build.
 
-**Reviewed by the CTO and CMO on 2026-09-05, with findings still open.** Both
-ruled the ethics layer safe to land and both flagged the same top item: the
-Terms of Use asserted a data practice the product does not have. That sentence
-was corrected before publish. The open items are in What remains.
+**Reviewed by the CTO and CMO on 2026-09-05, then their findings worked to
+close.** Both ruled the layer safe to land and flagged the same top item first:
+the Terms asserted a data practice the product does not have (corrected before
+publish). The founder then asked to finish the thread per both advisors. Done in
+this pass: Tier 2 likeness precision (coding vocabulary no longer reads as a
+person, generation verbs and photoreal deepfake shapes now caught) and the gate
+made non-countable so a false gate never penalizes; IP captured on a block only
+(a trigger, never on an assertion or a consent) with the enforcement ladder
+moved server-side so it survives a reinstall and cannot be talked down by the
+client; provenance no longer dropped silently (keyword match, not a substring
+grep; a non-PNG Tier 2 output is refused rather than shipped unlabeled); and the
+honesty copy pass across Settings, README, and the ToU, plus the media-vs-text
+satire seam stated publicly. Two pure-positioning calls stay the founder's, in
+What remains. Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Ethics layer, Tier 2 likeness precision (CTO M1/M2, must-fix before any
-      build ships).** `namesAPersonAsSubject` treats a two-word capitalized name
-      as a person, so `Docker image of Ubuntu Server` blocks as a Tier 2
-      likeness, and these blocks are countable toward a restriction. It also
-      misses `draw <Name>` and `render <Name>`, the dominant image-prompt shape.
-      Fix: software and distro vocabulary in `NON_PERSON_NAME_WORDS`, require a
-      person cue for the two-word case, catch the bare-verb forms, and make Tier
-      2 blocks non-countable until precision is proven.
-- [ ] **Ethics layer, capture is not violation-only (CTO M4).**
-      `guardrail_events.ip_address` and `likeness_consents.ip_address` default to
-      `request_ip()`, so an allowed-with-assertion row and a consent row also
-      record an address. Do not run migration `0016` until this matches the
-      documented promise.
-- [ ] **Ethics layer, provenance drop paths (CTO M5).** `hasProvenance` greps the
-      first 192 bytes for `c2pa`/`xmp`, so a prompt echoed into a `tEXt` chunk
-      suppresses labeling silently; non-PNG output is a silent no-op. No image
-      path reaches a user yet, so this is a follow-up, not a gate.
-- [ ] **Ethics layer, the ladder is device-local.** `postRecord` evaluates
-      `evaluateEnforcement(recordCache)` from the device cache, so a reinstall
-      resets it. `docs/ethics-layer.md` claims it survives a reinstall; either
-      evaluate from `guardrail_events` over an RPC, or correct the doc.
-- [ ] **Ethics layer, privacy label (CTO M6).** IP is now collected and linked to
-      a user id. `PrivacyInfo.xcprivacy` does not exist; App Store Connect
-      privacy answers must be updated before the next submission.
-- [ ] **Ethics layer, CMO and CTO copy calls, both deferred by the founder.**
-      Whether IP capture stays at all (CMO recommends removing it outright), and
-      whether the C2PA name leaves the trust statement's top line.
+- [x] **Ethics layer, Tier 2 likeness precision (CTO M1/M2).** Fixed: coding
+      vocabulary in `NON_PERSON_NAME_WORDS`, generation verbs and photoreal
+      deepfake shapes caught, likeness made non-countable. Known residual limit:
+      a lowercase name with no photoreal cue and no other signal is not caught
+      (a public-figure gazetteer is out of scope; the intent path and the
+      person's own consent flow are the backstop).
+- [x] **Ethics layer, capture is now block-only (CTO M4).** A trigger fills the
+      address only on `action='blocked'`; `likeness_consents` carries no address.
+- [x] **Ethics layer, provenance drop paths (CTO M5).** Keyword match not
+      substring grep; bounded reader; a non-PNG Tier 2 output is refused.
+- [x] **Ethics layer, the ladder is server-side now.** `record_enforcement()`
+      computes from `guardrail_events`, so a reinstall does not reset it and the
+      client cannot under-report. The device cache is a local view only.
+- [ ] **Ethics layer, privacy label (CTO M6, before next submission).** IP is
+      collected on a block and linked to a user id. `PrivacyInfo.xcprivacy` does
+      not exist; the App Store Connect privacy answers must be updated before the
+      next submission. Process, not code.
+- [ ] **Ethics layer, two positioning calls the founder deferred.** Whether IP
+      capture stays at all (the CMO recommends removing it outright; it is now
+      the strongest honest keep, block-only), and whether the C2PA name leaves
+      the trust statement's top line (the CMO recommends it; the CTO is neutral).
+      Both are taste calls, not correctness; the honesty-critical parts are done.
+- [ ] **Ethics layer, re-enable "repeated Tier 2 -> warning" once precision is
+      field-proven.** Suspended while likeness is non-countable.
 - [ ] **ESLint 9 + typescript-eslint 8 upgrade (INF-9).** Deferred by the
       CTO to its own commit after the 2026-09-05 wave: flat config in both
       packages, the unsupported-TypeScript warning gone. DECISIONS.md records it.

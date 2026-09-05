@@ -197,12 +197,35 @@ export class GuardedImageProvider implements ImageProvider {
     // Provenance on every generated image, not only the Tier 2 ones. The
     // subject rides along when an authorization assertion allowed this.
     const bytes = base64ToBytes(image.imageBase64);
+    const requiresProvenance = screened.decision.requiresProvenance === true;
     const labeled = labelGeneratedImage(bytes, {
       model: opts.model ?? this.inner.label,
       modelPath: 'local',
       format: image.mediaType,
-      likenessSubject: screened.decision.requiresProvenance ? screened.decision.subject : undefined,
+      likenessSubject: requiresProvenance ? screened.decision.subject : undefined,
     });
+    // The consent gate's promise is that a likeness output carries provenance.
+    // If it could not be attached (a non-PNG format, or an image the server
+    // already stamped), that promise is not kept, so the output is NOT emitted
+    // silently. It is refused with a plain reason. An ordinary (non-likeness)
+    // image stays best-effort: it is returned even if labeling was a no-op,
+    // because there was no accountability promise to break.
+    if (requiresProvenance && !labeled.embedded) {
+      const failed: ScreenResult = {
+        decision: {
+          action: 'block',
+          tier: 2,
+          category: 'likeness',
+          reason: `authorized likeness output could not be provenance-labeled (${labeled.reason})`,
+          message:
+            'This authorized likeness could not be labeled with provenance in this image format, so it was not produced. Use a PNG-capable image server.',
+          signals: screened.decision.signals,
+          subject: screened.decision.subject,
+        },
+      };
+      this.context.onBlock?.(failed);
+      throw new EthicsBlocked(failed);
+    }
     return {
       imageBase64: labeled.embedded ? bytesToBase64(labeled.bytes) : image.imageBase64,
       mediaType: image.mediaType,

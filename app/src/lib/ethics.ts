@@ -99,12 +99,15 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
 }
 
 /**
- * Send one record to the account, then run the enforcement ladder.
+ * Send one record to the account, then let the server run the enforcement
+ * ladder.
  *
- * The ladder is evaluated from the account's history, and its outcome is
- * recorded server-side. A termination is where the IP-ban PROPOSAL is created,
- * and it is only ever a proposal: see the migration, which has no function that
- * applies one.
+ * The record is inserted; the server captures an IP only when the record is a
+ * block (a trigger, not this code). Then `record_enforcement` evaluates the
+ * ladder FROM THE ACCOUNT'S OWN HISTORY, so the outcome cannot be under-reported
+ * by the client and does not reset on a reinstall. A termination is where the
+ * IP-ban PROPOSAL and the prepared report are created, both server-side, both
+ * only ever a proposal or a queued (never submitted) report.
  *
  * Silent no-op when signed out or when the account backend is not configured on
  * this build. In that case the block still happened and the record still lives
@@ -127,32 +130,27 @@ async function postRecord(record: EthicsRecord): Promise<void> {
       signals: record.signals,
       subject: record.subject ?? null,
     });
-    if (record.action !== 'blocked') return;
     // A failed check is the layer failing closed, not a person misbehaving, so
-    // it never escalates. evaluateEnforcement filters it out; this returns
-    // early so a check failure does not even ask.
-    if (record.category === 'check-failed') return;
+    // it never drives enforcement; an allowed-with-assertion row is not a
+    // violation either. Neither asks the server to re-evaluate.
+    if (record.action !== 'blocked' || record.category === 'check-failed') return;
 
-    const outcome = evaluateEnforcement(recordCache);
-    await rpc('record_enforcement', session.accessToken, {
-      p_level: outcome.level,
-      p_action: outcome.action,
-      p_reason: outcome.reason,
-    });
-    if (outcome.reportRequired && record.tier === 1) {
-      await rpc('queue_abuse_report', session.accessToken, {
-        p_category: record.category,
-        p_request_hash: record.requestHash,
-        p_occurred_at: record.timestamp,
-      });
-    }
+    // The server decides the outcome from its own history. We pass nothing and
+    // trust nothing: a client cannot talk its own standing down.
+    await rpc('record_enforcement', session.accessToken, {});
   } catch {
     // Offline, or the account rejected it. The device copy is the fallback, and
     // the block does not depend on this call.
   }
 }
 
-/** The enforcement standing of this account, from what this device knows. */
+/**
+ * The enforcement standing this DEVICE can see, from its local record cache.
+ * A local approximation for showing the person where they stand; the
+ * authoritative ladder runs server-side in `record_enforcement`, over the full
+ * account history, and is what actually gates. A reinstall empties this cache
+ * but not the account's history.
+ */
 export function enforcementStanding(): ReturnType<typeof evaluateEnforcement> {
   return evaluateEnforcement(recordCache);
 }

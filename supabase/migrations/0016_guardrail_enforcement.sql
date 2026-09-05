@@ -82,10 +82,38 @@ create table if not exists public.guardrail_events (
   signals text[] not null default '{}',
   -- Tier 2 only: the subject named, so an assertion can be audited.
   subject text,
-  -- Recorded on a violation only. See the header note.
-  ip_address inet default public.request_ip(),
+  -- Set by a trigger on a BLOCK only (action = 'blocked'), never on an
+  -- allowed-with-assertion row. See guardrail_events_set_ip below. No column
+  -- default, so the trigger is the single place an address is written.
+  ip_address inet,
   created_at timestamptz not null default now()
 );
+
+-- Fill ip_address ONLY when a request was actually blocked. An
+-- allowed-with-assertion row is a permitted request and carries no address.
+-- Server-enforced, so the promise ("we log an address only when we block a
+-- request") holds no matter what the client sends.
+create or replace function public.guardrail_events_set_ip ()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.action = 'blocked' then
+    new.ip_address := public.request_ip();
+  else
+    new.ip_address := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guardrail_events_ip on public.guardrail_events;
+create trigger guardrail_events_ip
+  before insert on public.guardrail_events
+  for each row
+  execute function public.guardrail_events_set_ip();
 create index if not exists guardrail_events_user_time_idx
   on public.guardrail_events (user_id, occurred_at desc);
 create index if not exists guardrail_events_tier_idx
@@ -103,9 +131,9 @@ create table if not exists public.likeness_consents (
   -- The subject as the person named them, normalized lowercase for matching.
   subject text not null check (length(btrim(subject)) > 0),
   asserted_at timestamptz not null default now(),
-  -- The address the assertion was made from, for the same accountability
-  -- reason the assertion itself exists.
-  ip_address inet default public.request_ip(),
+  -- No IP. An authorization assertion is a person doing a permitted thing
+  -- (stating they are cleared for a subject), not a violation, so no address is
+  -- captured here. Capture is confined to actual blocks (CTO + CMO, 2026-09-05).
   unique (user_id, subject)
 );
 create index if not exists likeness_consents_user_idx on public.likeness_consents (user_id);
@@ -263,43 +291,82 @@ create policy abuse_reviewers_select_self on public.abuse_reviewers for select
 -- The enforcement RPCs
 -- ---------------------------------------------------------------------------
 
--- Record the ladder's outcome for the calling account, and, on a termination,
--- queue an IP ban PROPOSAL for review. Called by the app after a block.
+-- Evaluate the enforcement ladder for the calling account FROM SERVER TRUTH,
+-- and, on a termination, queue an IP ban PROPOSAL and a report for review.
 --
--- This function is the only way an ip_ban_proposals row is created, and it can
--- only create a pending one. There is no apply step here, and deliberately no
--- function anywhere in this migration that bans an address.
-create or replace function public.record_enforcement (
-  p_level smallint,
-  p_action text,
-  p_reason text
-)
-returns void
+-- The level is computed here from guardrail_events, not passed by the client.
+-- That fixes two things the earlier client-driven version got wrong: a
+-- reinstall no longer resets the ladder (the history lives on the server), and
+-- a client cannot under-report its own standing. The app calls this with no
+-- arguments after a block and reads back the outcome.
+--
+-- The ladder matches the engine's evaluateEnforcement: any Tier 1 block is
+-- termination; check-failed and likeness are non-countable. This function is
+-- the only way an ip_ban_proposals row is created, and it can only create a
+-- pending one. There is no apply step, and deliberately no function anywhere in
+-- this migration that bans an address.
+create or replace function public.record_enforcement ()
+returns table (level smallint, action text, reason text)
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
+  v_uid uuid := auth.uid();
+  v_countable int;
+  v_tier1 int;
+  v_level smallint;
+  v_action text;
+  v_reason text;
   v_ip inet;
 begin
-  if auth.uid() is null then
+  if v_uid is null then
     raise exception 'not signed in';
   end if;
-  if p_action not in ('log-only', 'warn', 'restrict', 'terminate') then
-    raise exception 'invalid enforcement action %', p_action;
+
+  -- Countable violations: blocked requests, excluding check-failed (the layer
+  -- failing closed) and likeness (the non-countable consent gate).
+  select
+    count(*) filter (where category not in ('check-failed', 'likeness')),
+    count(*) filter (where tier = 1 and category <> 'check-failed')
+    into v_countable, v_tier1
+    from public.guardrail_events
+   where user_id = v_uid and action = 'blocked';
+
+  if v_tier1 > 0 then
+    v_level := 2;
+    v_action := 'terminate';
+    v_reason := case
+      when v_tier1 = 1 then 'A prohibited request in a hard-blocked category.'
+      else v_tier1 || ' prohibited requests in hard-blocked categories.'
+    end;
+  else
+    v_level := 0;
+    v_action := 'log-only';
+    v_reason := v_countable || ' blocked request(s) on this account.';
   end if;
 
   insert into public.enforcement_actions (user_id, level, action, reason, actor)
-  values (auth.uid(), p_level, p_action, p_reason, 'system');
+  values (v_uid, v_level, v_action, v_reason, 'system');
 
-  if p_action = 'terminate' then
-    v_ip := public.request_ip();
-    if v_ip is not null then
+  if v_action = 'terminate' then
+    -- The address for the proposal is the one on the latest Tier 1 block. A
+    -- pending proposal for the same address is not duplicated.
+    select ip_address
+      into v_ip
+      from public.guardrail_events
+     where user_id = v_uid and action = 'blocked' and tier = 1 and category <> 'check-failed'
+     order by occurred_at desc
+     limit 1;
+    if v_ip is not null and not exists (
+      select 1 from public.ip_ban_proposals
+       where ip_address = v_ip and user_id = v_uid and status = 'pending'
+    ) then
       insert into public.ip_ban_proposals (ip_address, user_id, reason, review_notes)
       values (
         v_ip,
-        auth.uid(),
-        p_reason,
+        v_uid,
+        v_reason,
         array[
           'Shared addresses are the norm. Households, offices, cafes, schools, and carrier-grade NAT put unrelated people behind one address.',
           'A ban here does not reach the account holder if they move networks, and it does reach everyone else who does not.',
@@ -308,7 +375,24 @@ begin
         ]
       );
     end if;
+
+    -- Prepare (do not submit) a report for the latest Tier 1 block, deduped by
+    -- request hash so re-running does not re-report the same content.
+    insert into public.abuse_reports (user_id, category, request_hash, occurred_at, status, detail)
+    select v_uid, g.category, g.request_hash, g.occurred_at, 'queued',
+      'Prepared and stored for the operator. No submission integration is configured, so nothing has been sent.'
+      from public.guardrail_events g
+     where g.user_id = v_uid and g.action = 'blocked' and g.tier = 1
+       and g.category in ('csam', 'ncii', 'weapons-uplift')
+       and not exists (
+         select 1 from public.abuse_reports r
+          where r.user_id = v_uid and r.request_hash = g.request_hash
+       )
+     order by g.occurred_at desc
+     limit 1;
   end if;
+
+  return query select v_level, v_action, v_reason;
 end;
 $$;
 
@@ -452,7 +536,7 @@ grant select on public.abuse_reviewers to authenticated;
 
 grant execute on function public.request_ip () to authenticated;
 grant execute on function public.is_abuse_reviewer () to authenticated;
-grant execute on function public.record_enforcement (smallint, text, text) to authenticated;
+grant execute on function public.record_enforcement () to authenticated;
 grant execute on function public.queue_abuse_report (text, text, timestamptz) to authenticated;
 grant execute on function public.admin_list_ip_ban_proposals (int) to authenticated;
 grant execute on function public.admin_decide_ip_ban (uuid, text, timestamptz) to authenticated;

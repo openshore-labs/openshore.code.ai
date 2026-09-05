@@ -42,9 +42,24 @@ export interface EnforcementOutcome {
 export const TIER2_WARN_AT = 3;
 export const TIER2_RESTRICT_AT = 6;
 
-/** Records that count against a person. A failed check never does. */
+/**
+ * Records that count against a person. Two categories never count.
+ *
+ * `check-failed` is the layer failing closed, not the person misbehaving.
+ *
+ * `likeness` (the Tier 2 consent gate) does not accrue toward a restriction
+ * either, and this is deliberate. The gate rests on a heuristic that a name is
+ * a real person, and a false positive there is an ordinary request wrongly
+ * stopped, not abuse. The CTO's condition for shipping the gate was that no such
+ * false positive can ever push an account toward a penalty (2026-09-05). A
+ * likeness block still refuses the request and is still logged; it just does
+ * not count. The brief's "repeated Tier 2 -> warning" is suspended until the
+ * classifier has field-proven precision, tracked in PROGRESS.md.
+ */
 export function countableViolations(history: EthicsRecord[]): EthicsRecord[] {
-  return history.filter((r) => r.action === 'blocked' && r.category !== 'check-failed');
+  return history.filter(
+    (r) => r.action === 'blocked' && r.category !== 'check-failed' && r.category !== 'likeness',
+  );
 }
 
 /**
@@ -73,6 +88,10 @@ export function evaluateEnforcement(history: EthicsRecord[]): EnforcementOutcome
     };
   }
 
+  // Tier 2 warn/restrict. Today `likeness` is the only Tier 2 category and it
+  // is non-countable (see countableViolations), so tier2 is empty and these
+  // branches do not fire. They stay as the ladder's shape for the day a
+  // field-proven Tier 2 category counts again.
   if (tier2.length >= TIER2_RESTRICT_AT) {
     return {
       level: 1,
