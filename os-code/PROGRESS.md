@@ -8,13 +8,39 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-06 video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
+## Current state (2026-09-06 the plan-first workflow and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
-Newest first: video attachments (2026-09-06, below), then four pieces from
-2026-09-05 built in parallel sessions and merged here: the phone storefront,
-Crew routines, the always-on ethical guardrail layer, and the full-codebase
-review remediation (its state section moved to `docs/progress-archive.md`; its
-open items stay in What remains).
+Newest first: the plan-first workflow and video attachments (2026-09-06,
+below), then four pieces from 2026-09-05 built in parallel sessions and merged
+here: the phone storefront, Crew routines, the always-on ethical guardrail
+layer, and the full-codebase review remediation (its state section moved to
+`docs/progress-archive.md`; its open items stay in What remains).
+
+### The plan-first workflow (My Stack as the anchor, the reasoning LLM draws a play)
+
+The founder's explicit workflow: a prompt flows through the harness (always-on
+ethics plus curatable filters), starts in My Stack, and the reasoning LLM frames
+it (asking clarifying questions only when genuinely ambiguous), composes a play
+(an ordered set of handoffs to specialist models with dependencies), briefs the
+user (a short checklist of steps and their owner models, live), runs it in
+dependency order handing each step to its owner, re-plans at bounded
+checkpoints, and streams a final synthesis. Any category with no placed
+specialist is run by the reasoning LLM; a step can also target a specific model
+by id for a particular subject or decision (the level-deeper routing). The flow
+degrades to a single routed turn when the anchor is a weak or unreachable model,
+the plan will not parse, or the play is one step, so a modest stack still just
+answers. It is app-native (works on the phone alone); a repo/tool step is marked
+to run on the paired computer's engine when docked (engine execution from this
+flow is a seam, a follow-up). Pure core in `app/src/lib/play.ts` (scheduling,
+re-plan merge, owner resolution, the brief, planner/re-plan prompts and robust
+JSON parse), fully tested in `app/test/play.test.ts` (30 cases); the runner is
+`app/src/drivers/stackDriver.ts`; the brief renders as todos-with-owners
+(`TodoItem`/`TodoRow` gained `owner`, shown in `TodoCard`). Doc and a diagram in
+`docs/workflow.md`. Live plan quality needs a real reasoning model and a device
+(unverifiable in a web session). Clarifying questions render as a chat message
+today; the tappable picker is a follow-up.
+
+### Video attachments (reviewed frame by frame, never the video)
 
 ### Video attachments (reviewed frame by frame, never the video)
 
@@ -574,6 +600,28 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
+  to main).** The founder specified the workflow explicitly: prompt through the
+  harness, framing by the reasoning LLM (clarify only when ambiguous), a play of
+  dependency-ordered handoffs to specialist models, a brief of steps and owners
+  shown live, hybrid execution that can re-plan mid-run, then a streamed
+  synthesis. Decisions (via a picker): app-native with engine handoff for
+  repo/tool steps when docked; hybrid re-plan; ask only when ambiguous then
+  auto-run; build the whole flow now; My Stack is the single source workflows
+  inherit. Built additively over the existing backends so the single-turn path
+  is preserved as the degenerate case. New pure core `app/src/lib/play.ts`
+  (framing/play shapes, dependency scheduling, re-plan merge, owner resolution,
+  the brief, planner and re-plan prompts with robust JSON parse), 30 unit tests;
+  the runner is `stackDriver.ts` (frames, briefs as todos-with-owners, runs
+  steps by dependency, re-plans at bounded checkpoints, synthesizes, degrades to
+  single-turn); `TodoItem`/`TodoRow` gained `owner`, rendered in `TodoCard`;
+  a step can target a specific model by id (level-deeper routing), and the
+  planner is shown the targetable models. Doc and diagram in `docs/workflow.md`.
+  Gates: app typecheck (src and electron), lint, 808 tests, Vite build,
+  Prettier; os-code em-dash and PROGRESS shape guards. Follow-ups: the tappable
+  clarify picker, engine execution of a repo/tool step from this flow, and the
+  same flow on the desktop-engine routine path.
+
 - **2026-09-06: vision as a Stack category with two slots and effort, plus the
   video framing progress ring (founder, pushed to main).** Follow-ups to video
   attachments, landed across two pushes the same day. (1) Vision is a placeable
@@ -673,25 +721,3 @@ mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
   electron), lint, tests, Vite build; os-code tests and build; both em-dash
   guards and the PROGRESS shape guard. App ID capability and a TestFlight
   device test are in What remains.
-
-- **2026-09-05: IP capture removed from the product entirely (founder call,
-  taking the CMO's original recommendation over the earlier block-only
-  compromise).** The founder: "Get rid of the IP capture. Whatever the CMO
-  thinks for the trust/privacy copy lines." OpenShore now collects, stores, or
-  acts on no IP address anywhere, for enforcement or anything else.
-  `enforcement.ts` lost `proposeIpBan`, `IpBanProposal`, and `IP_REVIEW_NOTES`
-  outright; migration `0016_guardrail_enforcement.sql` lost `request_ip()`,
-  the `ip_address` columns and their fill trigger, the `ip_ban_proposals`
-  table, and both admin RPCs over it (edited in place, never applied to a live
-  database). `app/src/lib/abuseReview.ts` lost `listIpBanProposals`,
-  `decideIpBan`, and `expiryFromNow`; `EnforcementReview.tsx` lost the entire
-  proposed-bans card. Enforcement is now account termination plus a lawful
-  report, full stop. CMO copy applied verbatim across Settings, README, both
-  Terms of Use (app doc and marketing `terms.njk`, both renumbered from 11
-  sections to 10/9), `docs/ethics-layer.md`, and marketing `ethics.njk`; the
-  trust statement and `oscode.js` needed no change (neither ever claimed an IP
-  exception). Tests updated to assert absence rather than shape:
-  `ethicsEnforcement.test.ts`'s five IP-queue tests collapsed into one grep
-  that the migration text contains no IP identifier at all; `ethics.test.ts`
-  and `ethicsEnforcement.test.ts` both assert `outcome` never gains an
-  `ip`-named property. 83 ethics tests green after the pass.

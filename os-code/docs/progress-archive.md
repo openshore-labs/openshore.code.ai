@@ -2398,6 +2398,28 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-08-26)
 
+- **2026-09-05: IP capture removed from the product entirely (founder call,
+  taking the CMO's original recommendation over the earlier block-only
+  compromise).** The founder: "Get rid of the IP capture. Whatever the CMO
+  thinks for the trust/privacy copy lines." OpenShore now collects, stores, or
+  acts on no IP address anywhere, for enforcement or anything else.
+  `enforcement.ts` lost `proposeIpBan`, `IpBanProposal`, and `IP_REVIEW_NOTES`
+  outright; migration `0016_guardrail_enforcement.sql` lost `request_ip()`,
+  the `ip_address` columns and their fill trigger, the `ip_ban_proposals`
+  table, and both admin RPCs over it (edited in place, never applied to a live
+  database). `app/src/lib/abuseReview.ts` lost `listIpBanProposals`,
+  `decideIpBan`, and `expiryFromNow`; `EnforcementReview.tsx` lost the entire
+  proposed-bans card. Enforcement is now account termination plus a lawful
+  report, full stop. CMO copy applied verbatim across Settings, README, both
+  Terms of Use (app doc and marketing `terms.njk`, both renumbered from 11
+  sections to 10/9), `docs/ethics-layer.md`, and marketing `ethics.njk`; the
+  trust statement and `oscode.js` needed no change (neither ever claimed an IP
+  exception). Tests updated to assert absence rather than shape:
+  `ethicsEnforcement.test.ts`'s five IP-queue tests collapsed into one grep
+  that the migration text contains no IP identifier at all; `ethics.test.ts`
+  and `ethicsEnforcement.test.ts` both assert `outcome` never gains an
+  `ip`-named property. 83 ethics tests green after the pass.
+
 - **2026-09-05: Crew routines cross-device control model.** Setup and control
   require being docked to the machine (or on it); viewing is always on, from a
   cached snapshot when away. Three states in the command center (In control /

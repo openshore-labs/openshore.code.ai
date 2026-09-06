@@ -55,6 +55,10 @@ export const PERMISSION_MODES: readonly PermissionMode[] = [
 export interface TodoItem {
   content: string;
   status: 'pending' | 'in_progress' | 'completed';
+  /** For a play (the app's plan-first flow): the model that owns this step, so
+   *  the briefing and live status show who each handoff goes to. Absent for an
+   *  ordinary agent todo list. */
+  owner?: string;
 }
 
 export type AgentEvent =

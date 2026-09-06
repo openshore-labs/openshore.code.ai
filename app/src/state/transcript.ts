@@ -215,7 +215,10 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
     }
 
     case 'todos':
-      return { ...next, todos: event.items.map((i) => ({ content: i.content, status: i.status })) };
+      return {
+        ...next,
+        todos: event.items.map((i) => ({ content: i.content, status: i.status, owner: i.owner })),
+      };
 
     case 'plan-proposed': {
       // The plan is the final text of the turn. Turn that bubble into the plan

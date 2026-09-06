@@ -7459,6 +7459,26 @@ textarea {
   color: var(--ink);
   font-weight: 500;
 }
+/* The play's owner (the model this step hands off to), right-aligned on the row
+   so the briefing reads as "step -> owner". */
+.todo-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.todo-owner {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 11px;
+  color: var(--water, var(--muted));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .plan-card {
   border: 1px solid var(--local);
