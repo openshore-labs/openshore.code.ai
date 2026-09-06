@@ -8,13 +8,41 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-06 the plan-first workflow and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
+## Current state (2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
-Newest first: the plan-first workflow and video attachments (2026-09-06,
-below), then four pieces from 2026-09-05 built in parallel sessions and merged
-here: the phone storefront, Crew routines, the always-on ethical guardrail
-layer, and the full-codebase review remediation (its state section moved to
-`docs/progress-archive.md`; its open items stay in What remains).
+Newest first: voice mode (2026-09-06, below), then the plan-first workflow and
+video attachments (2026-09-06), then four pieces from 2026-09-05 built in
+parallel sessions and merged here: the phone storefront, Crew routines, the
+always-on ethical guardrail layer, and the full-codebase review remediation (its
+state section moved to `docs/progress-archive.md`; its open items stay in What
+remains).
+
+### Voice mode (a spoken conversation over the chat, native and offline)
+
+The founder's ask: a Claude-style voice mode usable while coding, native so it
+works offline, with a voice you pick, and with the natural breaks the work needs.
+Built on top of the existing on-device dictation. Listening reuses the
+`oscode-speech` plugin (on-device SFSpeechRecognizer, mic audio stays on the
+phone) with a silence-based finalize so it is hands-free; speaking is a new
+`oscode-tts` plugin (AVSpeechSynthesizer, synthesized on the phone, offline), Web
+Speech on desktop and web. The picker lists the device's installed system voices
+(Apple's downloadable premium neural voices included), so it is real and offline,
+and it steers clear of the ethics layer's Tier 2 voice-likeness gate (generic
+system voices, no cloud voice service like Claude's own). Access inherits the
+chat, no separate preset (founder: "if access is on for the chat, voice gets the
+same access"): a voice-triggered action rides the same `send` and approval path.
+The natural breaks are one policy table (`voiceBreaks.ts`): clarifying questions
+and plan approval are read out and answered by voice; a tool or cloud-spend
+approval, and a stopped-turn recovery, close voice and hand back to the chat
+screen, then voice reopens once an approval is answered. Everything spoken lands
+in the transcript as text, so the chat is the history. Pure, tested core in
+`app/src/lib/voice/` (`spoken.ts` speech shaping, `voiceBreaks.ts` the policy,
+`tts.ts`/`stt.ts` the backends), the loop in `app/src/hooks/useVoiceMode.ts`, the
+overlay in `VoiceMode.tsx` and the picker in `VoicePicker.tsx`, a voice button in
+`Composer.tsx`, the break/reopen wiring in `ChatScreen.tsx`, and settings
+(`voiceReplies`, `voiceId`, `voiceRate`) in `SettingsScreen.tsx`. Doc in
+`docs/voice-mode.md`, rulings in `DECISIONS.md`. Like dictation, the native speech
+path is only provable on a device (What remains).
 
 ### The plan-first workflow (My Stack as the anchor, the reasoning LLM draws a play)
 
@@ -227,6 +255,19 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Voice mode on a device (built 2026-09-06, unverified off the sandbox).**
+      The decision logic is unit tested (`app/test/voice.test.ts`), but the native
+      speech path is device-only, like dictation. TestFlight: open voice mode in a
+      chat, speak a request, confirm the reply is spoken in the chosen voice and
+      lands in the transcript as text; ask something that draws a clarifying
+      question and answer it by voice; trigger a tool or cloud-spend approval and
+      confirm voice closes, the sheet shows, and voice reopens after the tap;
+      change the voice in the picker and hear the sample; confirm it all works with
+      the network off for an on-device model. Also confirm `cap sync ios` links the
+      new `oscode-tts` plugin (registered in `app/package.json`, not yet in the
+      CLI-managed `CapApp-SPM/Package.swift`, same as `oscode-media`). Follow-ups
+      in `docs/voice-mode.md`: true always-open barge-in (needs echo handling), and
+      a bundled cross-platform neural TTS engine behind the existing seam.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -606,6 +647,29 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-06: voice mode, a spoken conversation over the chat (founder).** The
+  founder asked for a Claude-style voice mode usable while coding: native so it
+  works offline, a voice you pick, and the natural breaks the work needs (a picker
+  or a decision leaves voice, shows the card, then reopens). Four answers steered
+  it (via a picker): always available offline with machine powers inheriting the
+  chat's access (no separate voice preset); answer as much as possible by voice;
+  and, on "what does Claude use?", native OS voices rather than Claude's cloud TTS
+  (offline, free, premium, and clear of the Tier 2 voice-likeness gate). Built:
+  listening reuses `oscode-speech` (on-device) with a silence-based finalize so it
+  is hands-free; a new `oscode-tts` plugin (AVSpeechSynthesizer, on-device,
+  offline) speaks, Web Speech on desktop and web; a voice picker over the device's
+  installed system voices. The break policy is one table (`voiceBreaks.ts`):
+  clarify and plan answered by voice, tool/cloud-spend approvals and stopped-turn
+  recovery handed to the screen, voice reopening once an approval clears.
+  Everything spoken goes through the normal `send`/driver seam, so the transcript
+  is the history. Pure core tested in `app/test/voice.test.ts` (28 cases); wiring
+  in `useVoiceMode.ts`, `VoiceMode.tsx`, `VoicePicker.tsx`, `Composer.tsx`,
+  `ChatScreen.tsx`, `SettingsScreen.tsx`, `store.ts` (`voiceReplies`/`voiceId`/
+  `voiceRate`); CSS in `theme.css` on the motion tokens. Doc `docs/voice-mode.md`,
+  rulings in `DECISIONS.md`. Gates: app typecheck (src and electron), lint, 838
+  tests, Vite build, the motion/polish and em-dash guards. The native speech path
+  is device-only, like dictation, so TestFlight is the proof (What remains).
+
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the
   harness, framing by the reasoning LLM (clarify only when ambiguous), a play of
@@ -715,24 +779,3 @@ mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
   `record_enforcement()` the only signature, founder seeded into
   `abuse_reviewers`). The founder's own smoke test of a live guardrail
   block is the one thing still pending.
-
-- **2026-09-05: run a bigger model on the iPhone, the CTO + CMO consensus,
-  built and pushed to main.** The founder asked whether we could smooth a
-  larger on-device model on an iPhone and asked the CTO and CMO to converge
-  and build it. Consensus: a great 4B is the phone ceiling, bigger runs on
-  your computer, and the store is honest about the real limit (memory, not
-  storage). Built: `runsWellOnDevice` in `app/src/lib/modelStorage.ts` and the
-  product page "Where it runs" phone verdict that flips to an amber "better on
-  your computer" when a model is larger than this phone's memory keeps free
-  (guidance for copy, never a gate, the module still never returns "blocked");
-  the download-moment machine block reworded to the memory-not-storage point;
-  the iOS Increased Memory Limit and Extended Virtual Addressing entitlements
-  (App ID capability required before a distribution build); a memory-warning
-  unload in `OscodeLlamaPlugin` that emits `deviceModelUnloaded` so
-  `deviceModel.ts` forgets the slot and the next send reloads. NOT built on
-  purpose: a force-run toggle, a 7B beta pack, and llama.cpp runtime tuning
-  (LLM.swift 3.0.3 exposes no memory knobs, CTO-verified). Rulings in
-  `DECISIONS.md`; doc in `docs/MARKETPLACE.md`. Gates: app typecheck (src and
-  electron), lint, tests, Vite build; os-code tests and build; both em-dash
-  guards and the PROGRESS shape guard. App ID capability and a TestFlight
-  device test are in What remains.

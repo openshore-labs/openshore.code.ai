@@ -2398,6 +2398,27 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-08-26)
 
+- **2026-09-05: run a bigger model on the iPhone, the CTO + CMO consensus,
+  built and pushed to main.** The founder asked whether we could smooth a
+  larger on-device model on an iPhone and asked the CTO and CMO to converge
+  and build it. Consensus: a great 4B is the phone ceiling, bigger runs on
+  your computer, and the store is honest about the real limit (memory, not
+  storage). Built: `runsWellOnDevice` in `app/src/lib/modelStorage.ts` and the
+  product page "Where it runs" phone verdict that flips to an amber "better on
+  your computer" when a model is larger than this phone's memory keeps free
+  (guidance for copy, never a gate, the module still never returns "blocked");
+  the download-moment machine block reworded to the memory-not-storage point;
+  the iOS Increased Memory Limit and Extended Virtual Addressing entitlements
+  (App ID capability required before a distribution build); a memory-warning
+  unload in `OscodeLlamaPlugin` that emits `deviceModelUnloaded` so
+  `deviceModel.ts` forgets the slot and the next send reloads. NOT built on
+  purpose: a force-run toggle, a 7B beta pack, and llama.cpp runtime tuning
+  (LLM.swift 3.0.3 exposes no memory knobs, CTO-verified). Rulings in
+  `DECISIONS.md`; doc in `docs/MARKETPLACE.md`. Gates: app typecheck (src and
+  electron), lint, tests, Vite build; os-code tests and build; both em-dash
+  guards and the PROGRESS shape guard. App ID capability and a TestFlight
+  device test are in What remains.
+
 - **2026-09-05: IP capture removed from the product entirely (founder call,
   taking the CMO's original recommendation over the earlier block-only
   compromise).** The founder: "Get rid of the IP capture. Whatever the CMO
