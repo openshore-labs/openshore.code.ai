@@ -65,6 +65,7 @@ export function TodoCard({ todos }: { todos: TodoRow[] }) {
                   ) : null}
                 </span>
                 <span className="todo-text">{t.content}</span>
+                {t.owner ? <span className="todo-owner">{t.owner}</span> : null}
               </li>
             ))}
           </ul>

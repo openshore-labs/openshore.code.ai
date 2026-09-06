@@ -1,16 +1,20 @@
-// The phone-side router. Chatting with "your stack" runs through here: each
-// turn is classified into a category, routed to the specialist placed for that
-// category when it is reachable in the current connectivity profile, and
-// otherwise handled by the Reasoning LLM (which is exactly the quarterback
-// fallback the engine's router uses on the desktop). It honors each
-// specialist's persona and the active profile, and calls the right backend:
-// on-device (llama.cpp), Anthropic, or an OpenAI-compatible cloud endpoint.
+// The phone-side router and play runner. Chatting with "your stack" runs
+// through here. A capable reasoning anchor frames the prompt and composes a
+// play (an ordered set of handoffs to the stack's specialists with
+// dependencies), briefs the user as todos-with-owners, runs the steps in
+// dependency order handing each to its owner, re-plans at bounded checkpoints,
+// and streams a final synthesis (see lib/play.ts for the pure core). The flow
+// degrades to a single routed turn whenever the anchor is a weak or unreachable
+// model, the plan will not parse, or the play is a single step, so a modest
+// stack still just answers. Image turns route by capability (routeVision), and
+// the Codemagic tool loop keeps its own single-turn path.
 //
-// v1 SIMPLIFICATIONS (surface for the code review): the classifier is a keyword
-// heuristic, not a model; there is no tool use or multi-step subtask delegation
-// (each turn goes to one model end to end); the image-gen category routes as
-// text and does not yet render images; "home" models require the desktop
-// pairing and are treated as unreachable here.
+// Backends: on-device (llama.cpp), Anthropic, or an OpenAI-compatible cloud
+// endpoint. Still v1: the fallback classifier is a keyword heuristic, not a
+// model; on-device models are text-only (no vision, not driven for autonomous
+// sub-steps); the image-gen category routes as text and does not yet render
+// images; a repo/tool step notes it runs on the paired computer (engine
+// execution from this flow is a follow-up); "home" models require pairing.
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
@@ -37,6 +41,21 @@ import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
 import { buildVisionContent } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
+import {
+  briefTodos,
+  handoffNote,
+  mergeReplan,
+  ownerFor,
+  parsePlan,
+  parseReplan,
+  planPrompt,
+  readySteps,
+  replanPrompt,
+  type ClarifyingQuestion,
+  type Play,
+  type PlayStep,
+  type StepResult,
+} from '../lib/play.js';
 import { effortDirective } from '../lib/effort.js';
 import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
@@ -144,6 +163,20 @@ function hasVideoFrames(images: Attachment[]): boolean {
   return images.some((a) => a.frame);
 }
 
+/** The clarifying questions as a short chat message, when the framing needs the
+ *  user to settle something before the play is drawn. Options are listed inline;
+ *  the reply is folded back in and re-framed. */
+function renderClarify(summary: string, questions: ClarifyingQuestion[]): string {
+  const lines: string[] = [];
+  if (summary) lines.push(summary);
+  lines.push('Before I start, a couple of things to get the framing right:');
+  questions.forEach((q, i) => {
+    lines.push(`${i + 1}. ${q.question}`);
+    if (q.options?.length) lines.push(`   Options: ${q.options.join(' / ')}`);
+  });
+  return lines.join('\n');
+}
+
 // Monotonic request ids, so two sends in the same millisecond cannot share an
 // id and interleave their token streams into one answer.
 let stackRequestSeq = 0;
@@ -167,6 +200,9 @@ export class StackDriver implements ChatDriver {
   private aborted = false;
   private answer = '';
   private activeRequestId?: string;
+  // A framing turn that asked the user to clarify: the original request is held
+  // here so the next message can be folded back in and re-framed.
+  private pendingClarify?: { text: string };
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
   private abortController?: AbortController;
@@ -302,6 +338,28 @@ export class StackDriver implements ChatDriver {
     this.abortController = new AbortController();
     this.history.push({ role: 'user', content: text });
     this.emit({ type: 'task-start', input: text });
+
+    // Continue a pending clarification: fold the reply into the original ask and
+    // re-frame, rather than answering the reply on its own.
+    if (this.pendingClarify) {
+      const original = this.pendingClarify.text;
+      this.pendingClarify = undefined;
+      const handled = await this.tryRunPlay(
+        original,
+        `The user was asked to clarify and replied: "${text}". Use this to settle the framing of the original request, and do not ask again unless something is still genuinely blocking.`,
+      );
+      if (handled) return;
+      // Planning could not run; fall through and answer the reply directly.
+    }
+
+    // Plan-first flow: for a text-only turn (no build-tool loop), the reasoning
+    // LLM frames the request and composes a play. It hands back to the
+    // single-turn path below when the anchor is a weak or unreachable model, the
+    // plan will not parse, or the play is a single step.
+    if (!(attachments ?? []).some((a) => a.isImage) && !this.context.codemagicAccess) {
+      const handled = await this.tryRunPlay(text);
+      if (handled) return;
+    }
 
     // An image-bearing turn routes by capability, not by the text classifier:
     // the model placed for image reading if it can see and is reachable, else a
@@ -467,6 +525,284 @@ export class StackDriver implements ChatDriver {
       if (this.reachable(ref) && (await secretGet(providerSecretKey(p.id)))) return ref;
     }
     return undefined;
+  }
+
+  // ---- plan-first orchestration -------------------------------------------
+
+  /** Frame the prompt with the reasoning LLM and, when it is clear and needs
+   *  more than one model, run the play. Returns true when it handled the turn
+   *  (ran the play, or asked the user to clarify); false to fall back to the
+   *  single-turn path. The whole flow degrades to single-turn whenever the
+   *  reasoning anchor is a weak or unreachable model or the plan cannot be
+   *  used, so a modest stack still just answers. */
+  private async tryRunPlay(text: string, contextNote?: string): Promise<boolean> {
+    const reasoning = this.stack.reasoning ?? harborRef();
+    // A local pocket model cannot plan reliably; let the single-turn path (and
+    // its own honest device handling) take it.
+    if (reasoning.kind === 'device' || !this.reachable(reasoning)) return false;
+
+    this.emit({ type: 'status', message: 'Framing the request.' });
+    let planText: string;
+    try {
+      planText = await this.completeOnce(
+        reasoning,
+        undefined,
+        planPrompt(text, this.stack, contextNote),
+      );
+    } catch {
+      return false;
+    }
+    if (this.aborted) {
+      this.finish('aborted');
+      return true;
+    }
+    const framing = parsePlan(planText);
+    if (!framing) return false;
+
+    // Not clear: ask the questions and wait for the reply. Rendered as text for
+    // now; the tappable picker rides the same questions.
+    if (!framing.clear && framing.questions.length) {
+      this.pendingClarify = { text };
+      this.answer = renderClarify(framing.summary, framing.questions);
+      this.emit({ type: 'text-delta', text: this.answer });
+      this.finish('complete');
+      return true;
+    }
+
+    // A single-step (or empty) play is just a normal answer; let the single-turn
+    // path handle it so behavior is unchanged for simple prompts.
+    if (framing.steps.length <= 1) return false;
+
+    await this.executePlay({ summary: framing.summary, steps: framing.steps }, text);
+    return true;
+  }
+
+  /** Run the play: brief the user (todos with owners), execute steps in
+   *  dependency order handing each to its owner, re-plan at bounded checkpoints,
+   *  then stream a final synthesis. */
+  private async executePlay(initial: Play, userText: string): Promise<void> {
+    const reasoning = this.stack.reasoning ?? harborRef();
+    let play = initial;
+    const results: StepResult[] = [];
+    const done = new Set<string>();
+    const status = new Map<string, 'pending' | 'in_progress' | 'completed'>();
+    const showTodos = () =>
+      this.emit({ type: 'todos', items: briefTodos(play, this.stack, status) });
+
+    this.emit({
+      type: 'status',
+      message: `Running a ${play.steps.length}-step play. Handoffs are shown below.`,
+    });
+    showTodos();
+
+    let replans = 0;
+    const MAX_REPLANS = 2;
+    while (done.size < play.steps.length) {
+      if (this.aborted) {
+        this.finish('aborted');
+        return;
+      }
+      const ready = readySteps(play.steps, done, new Set());
+      if (!ready.length) break; // nothing runnable (residual cycle); stop cleanly
+      for (const step of ready) {
+        if (this.aborted) break;
+        status.set(step.id, 'in_progress');
+        showTodos();
+        this.emit({ type: 'status', message: handoffNote(step, this.stack) });
+
+        const owner = ownerFor(step, this.stack);
+        // A device owner (or an unreachable one) is not run autonomously; the
+        // reasoning anchor covers the step instead.
+        let ref = owner.ref;
+        let placement = owner.placement;
+        if (ref.kind === 'device' || !this.reachable(ref)) {
+          ref = reasoning;
+          placement = undefined;
+        }
+        let out = '';
+        try {
+          out = await this.completeOnce(ref, placement, this.stepPrompt(step, play, results));
+        } catch (err) {
+          out = `(this step could not run: ${err instanceof Error ? err.message : String(err)})`;
+        }
+        results.push({ id: step.id, title: step.title, text: out });
+        done.add(step.id);
+        status.set(step.id, 'completed');
+        showTodos();
+        if (this.aborted) {
+          this.finish('aborted');
+          return;
+        }
+      }
+
+      // Hybrid re-plan: after a wave, let the reasoning LLM revise what remains,
+      // bounded so a run cannot loop forever.
+      if (done.size < play.steps.length && replans < MAX_REPLANS) {
+        replans++;
+        try {
+          const revised = parseReplan(
+            await this.completeOnce(reasoning, undefined, replanPrompt(play, results)),
+          );
+          if (revised && revised.length) {
+            play = mergeReplan(play, done, revised);
+            showTodos();
+          }
+        } catch {
+          // keep the current plan
+        }
+      }
+    }
+
+    // Final synthesis, streamed as the answer.
+    this.answer = '';
+    try {
+      await this.completeOnce(reasoning, undefined, this.synthesisPrompt(userText, play, results), {
+        onDelta: (d) => {
+          if (this.aborted) return;
+          this.answer += d;
+          this.emit({ type: 'text-delta', text: d });
+        },
+      });
+    } catch (err) {
+      if (!this.answer) this.answer = results.map((r) => `${r.title}:\n${r.text}`).join('\n\n');
+      this.emit({ type: 'text-delta', text: this.answer });
+      void err;
+    }
+    this.finish(this.aborted ? 'aborted' : 'complete');
+  }
+
+  /** The prompt for one step: the goal, this step's brief, and the prior steps'
+   *  results as context so a handoff carries the work forward. */
+  private stepPrompt(step: PlayStep, play: Play, results: StepResult[]): string {
+    const priorLines = results.length
+      ? ['Work done so far by the team:', ...results.map((r) => `- ${r.title}: ${r.text}`), '']
+      : [];
+    return [
+      `Overall goal: ${play.summary}`,
+      ...priorLines,
+      `Your step: ${step.title}.`,
+      step.brief ? step.brief : '',
+      step.needsTools
+        ? 'If this needs file edits or commands, describe the exact change (a diff or precise steps); the actual edit runs on the paired computer.'
+        : '',
+      'Do only your step. Return just its result, no preamble.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  /** The final synthesis: compose the answer to the user from the team's work. */
+  private synthesisPrompt(userText: string, play: Play, results: StepResult[]): string {
+    return [
+      "Compose the final answer to the user, using the team's work below. Do not mention the internal steps or handoffs; just give the finished result.",
+      `User request: ${userText}`,
+      `Goal: ${play.summary}`,
+      'Team work:',
+      ...results.map((r) => `- ${r.title}: ${r.text}`),
+    ].join('\n');
+  }
+
+  /** One reusable completion on a cloud or BYOM model, returning its text.
+   *  Streams to onDelta when given (the final synthesis). Device models are not
+   *  driven here; callers route a device owner to the reasoning anchor. */
+  private async completeOnce(
+    ref: StackModelRef,
+    placement: Placement | undefined,
+    prompt: string,
+    opts?: { images?: Attachment[]; onDelta?: (delta: string) => void },
+  ): Promise<string> {
+    const system = this.systemFor(ref, placement);
+    if (ref.kind === 'device') {
+      throw new RouteUnavailable('A local model cannot run this step.');
+    }
+    if (ref.kind === 'cloud' && ref.provider === 'anthropic') {
+      const key = await secretGet(providerSecretKey('anthropic'));
+      if (!key) throw new RouteUnavailable('Connect Claude under Cloud Connections first.');
+      const ws = (
+        await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
+      )?.anthropicWorkspaceId?.trim();
+      const client = new Anthropic({
+        apiKey: key,
+        dangerouslyAllowBrowser: true,
+        fetch: streamingFetch,
+        ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
+      });
+      const content = opts?.images?.length
+        ? buildVisionContent(prompt, opts.images).content
+        : prompt;
+      const stream = client.messages.stream(
+        { model: ref.model, max_tokens: 4096, system, messages: [{ role: 'user', content }] },
+        { signal: this.abortController?.signal },
+      );
+      let out = '';
+      stream.on('text', (delta) => {
+        if (this.aborted) return;
+        out += delta;
+        opts?.onDelta?.(delta);
+      });
+      await stream.finalMessage();
+      return out;
+    }
+    // OpenAI-compatible: a built-in cloud provider or a BYOM endpoint.
+    const base = ref.kind === 'byom' ? ref.baseUrl : providerInfo(ref.provider)?.openaiBaseUrl;
+    if (!base) throw new RouteUnavailable(`No endpoint configured for ${refName(ref)}.`);
+    const key =
+      ref.kind === 'byom'
+        ? ((await secretGet(byomSecretKey(ref.id))) ?? undefined)
+        : ((await secretGet(providerSecretKey(ref.provider))) ?? undefined);
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (key) headers.authorization = `Bearer ${key}`;
+    const userContent = opts?.images?.length ? openAiVisionContent(prompt, opts.images) : prompt;
+    const messages = [
+      { role: 'system', content: system },
+      { role: 'user', content: userContent },
+    ];
+    if (platform() === 'ios' || platform() === 'electron') {
+      const res = await nativeFetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ model: ref.model, stream: false, messages }),
+      });
+      if (!res.ok) throw new RouteUnavailable(`${refName(ref)} answered ${res.status}.`);
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const out = data?.choices?.[0]?.message?.content ?? '';
+      if (out) opts?.onDelta?.(out);
+      return out;
+    }
+    const res = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: ref.model, stream: true, messages }),
+      signal: this.abortController?.signal,
+    });
+    if (!res.ok || !res.body) throw new RouteUnavailable(`${refName(ref)} answered ${res.status}.`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let out = '';
+    let buffer = '';
+    for (;;) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone || this.aborted) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta) {
+            out += delta;
+            opts?.onDelta?.(delta);
+          }
+        } catch {
+          // skip a keepalive or partial line
+        }
+      }
+    }
+    return out;
   }
 
   private finish(reason: 'complete' | 'aborted' | 'error', message?: string): void {

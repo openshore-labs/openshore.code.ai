@@ -1022,3 +1022,24 @@ execution contract. Newest at the bottom.
   catalog-preset Vision role (both deferred to the founder's call above); the
   desktop-engine routine path uses the engine's own router, so inheriting the
   app stack's Vision position there is a separate cross-repo follow-up.
+- 2026-09-06: **The plan-first workflow, built additively over the existing
+  stack driver (founder brief; four picker decisions).** The founder specified
+  the whole flow: prompt through the harness, framing by the reasoning LLM
+  (clarify only when ambiguous), a play of dependency-ordered handoffs to
+  specialist models, a live brief of steps and owners, hybrid execution that can
+  re-plan, then a streamed synthesis. Decisions taken: app-native with engine
+  handoff for repo/tool steps when docked; hybrid re-plan (pre-composed, can
+  revise mid-run); ask only when ambiguous then auto-run (no approval gate);
+  build the whole flow now; and "My Stack is the source, workflows inherit" over
+  a per-routine override or a catalog-preset schema change. Built additively:
+  the plan-first path sits on top of the existing single-turn backends, and the
+  flow degrades to a single routed turn whenever the anchor is weak/unreachable,
+  the plan will not parse, or the play is one step, so no working foundation was
+  renovated. The brief reuses the todos event (TodoItem gained an owner field)
+  rather than a new protocol event, so the chat's existing TodoCard renders it.
+  A step may target a specific model by id (level-deeper routing) in addition to
+  category routing; the planner is shown the targetable models and their placed
+  subjects. Deferred, and stated as follow-ups in docs/workflow.md: the tappable
+  clarify picker (questions render as chat text today), engine execution of a
+  repo/tool step from this flow (marked and described today), and the same play
+  flow on the desktop-engine routine path (routines use the engine router).

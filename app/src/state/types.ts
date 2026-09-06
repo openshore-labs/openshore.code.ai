@@ -85,6 +85,9 @@ export interface ChangedFile {
 export interface TodoRow {
   content: string;
   status: 'pending' | 'in_progress' | 'completed';
+  /** The model that owns this step, shown on the row for a play (the plan-first
+   *  flow). Absent for an ordinary agent todo list. */
+  owner?: string;
 }
 
 export interface RepoInfo {
