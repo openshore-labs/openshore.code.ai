@@ -186,6 +186,18 @@ function awaitRedirect(): Promise<RedirectResult> {
         const listener = await App.addListener('appUrlOpen', (e) => handle(e.url));
         if (settled) void listener.remove();
         else removers.push(() => void listener.remove());
+        // Closing the in-app browser without finishing sends no deep link, so
+        // the flow would otherwise hang on "Connecting..." until the timeout.
+        // That is the common path when the provider shows an error page (a
+        // redirect that does not match, a declined consent) and the person taps
+        // Done. Treat the dismissal as "did not finish" and end now. Our own
+        // Browser.close() on a successful return fires this too, but `finish`
+        // has already settled by then, so it is a no-op.
+        const finished = await Browser.addListener('browserFinished', () => {
+          finish(() => reject(new Error('Sign-in did not finish.')));
+        });
+        if (settled) void finished.remove();
+        else removers.push(() => void finished.remove());
       })();
     } else {
       const b = bridge();
