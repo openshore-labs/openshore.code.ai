@@ -241,7 +241,10 @@ log entry). Migration is now `0016`.
       (3) `VITE_SUPABASE_URL` names that same project over https with no trailing
       slash. Full checklist in `supabase/README.md` (Phase 4). The Repositories
       screen now shows the exact Callback URL to register when a connect fails.
-      Verify on TestFlight once the App's Callback URL is set.
+      Verify on TestFlight once the App's Callback URL is set. (The related
+      stuck-on-"Connecting" bug on a bailed sign-in is fixed for iOS via the
+      browser-dismiss listener; desktop still waits out the five-minute timeout
+      when its separate system browser is closed, a small follow-up.)
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -639,9 +642,17 @@ log entry). Migration is now `0016`.
   and the Repositories screen shows it, copyable, when a one-tap connect fails,
   so the exact string to register is in hand. Documented the GitHub App setup and
   a three-step troubleshooting checklist in `supabase/README.md` (Phase 4), and
-  left the config verification in What remains. Gates: app typecheck (src and
-  electron), lint, `repoOAuth.test.ts` (17, up from 14), the em-dash and
-  polish-standards guards.
+  left the config verification in What remains. Second bug from the same report:
+  closing the in-app browser without finishing (the exact path when the provider
+  shows an error page and the person taps Done, since GitHub never redirects back)
+  left the button stuck on "Connecting..." until the five-minute timeout, because
+  no `oscode://` deep link ever arrived. The iOS wait now also listens for the
+  Capacitor Browser `browserFinished` dismissal and ends the flow at once with
+  "Sign-in did not finish."; our own `Browser.close()` on a real return fires it
+  too but the flow has already settled, so it is a no-op. Desktop (a separate
+  system browser) still falls back to the timeout, noted as a follow-up. Gates:
+  app typecheck (src and electron), lint, `repoOAuth.test.ts` (19, up from 14),
+  the em-dash and polish-standards guards.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the

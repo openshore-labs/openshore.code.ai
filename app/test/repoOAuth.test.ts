@@ -11,6 +11,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 let currentPlatform = 'electron';
 const secrets = new Map<string, string>();
 let deepLinkCb: ((url: string) => void) | undefined;
+// The iOS deep-link and browser-dismiss callbacks the module registers, so a
+// test can drive the iOS path (Capacitor App appUrlOpen, Browser browserFinished).
+let iosUrlOpenCb: ((e: { url: string }) => void) | undefined;
+let browserFinishedCb: (() => void) | undefined;
 // Every authorize URL the module opens, so a test can inspect it.
 const opened: string[] = [];
 
@@ -41,7 +45,39 @@ vi.mock('../src/lib/electronBridge.js', () => ({
 }));
 
 vi.mock('@capacitor/browser', () => ({
-  Browser: { open: vi.fn(async () => {}), close: vi.fn(async () => {}) },
+  Browser: {
+    // On iOS the authorize URL opens here (not through openExternal), so record
+    // it into the same `opened` list the desktop path uses, for lastOpenedUrl().
+    open: vi.fn(async (opts: { url: string }) => {
+      opened.push(opts.url);
+    }),
+    close: vi.fn(async () => {}),
+    // The module listens for the in-app browser being dismissed so a bailed
+    // sign-in resets instead of hanging. Capture the handler for the test.
+    addListener: vi.fn(async (_event: string, cb: () => void) => {
+      browserFinishedCb = cb;
+      return {
+        remove: () => {
+          browserFinishedCb = undefined;
+        },
+      };
+    }),
+  },
+}));
+
+// The iOS deep-link bus. Dynamically imported by the module, so vi.mock still
+// intercepts it. Capture the appUrlOpen handler so a test can drive it.
+vi.mock('@capacitor/app', () => ({
+  App: {
+    addListener: vi.fn(async (_event: string, cb: (e: { url: string }) => void) => {
+      iosUrlOpenCb = cb;
+      return {
+        remove: () => {
+          iosUrlOpenCb = undefined;
+        },
+      };
+    }),
+  },
 }));
 
 const KEY = 'oscode.secret.repo.github';
@@ -70,10 +106,19 @@ beforeEach(() => {
   currentPlatform = 'electron';
   secrets.clear();
   deepLinkCb = undefined;
+  iosUrlOpenCb = undefined;
+  browserFinishedCb = undefined;
   opened.length = 0;
   vi.unstubAllEnvs();
   globalThis.fetch = vi.fn();
 });
+
+/** Wait until a condition holds, letting the module's async listener setup
+ *  (the dynamic import of @capacitor/app plus the awaited addListener calls)
+ *  settle. Polls on the macrotask queue so a real dynamic import resolves. */
+async function waitFor(cond: () => boolean) {
+  for (let i = 0; i < 100 && !cond(); i++) await new Promise((r) => setTimeout(r, 0));
+}
 
 describe('isRepoOAuthConfigured', () => {
   it('is true only when both the client id and the Supabase URL are present', async () => {
@@ -143,6 +188,43 @@ describe('connectRepoOAuth', () => {
     const v1 = JSON.parse((calls[0][1] as RequestInit).body as string).codeVerifier;
     const v2 = JSON.parse((calls[1][1] as RequestInit).body as string).codeVerifier;
     expect(v1).not.toBe(v2);
+  });
+
+  it('resets instead of hanging when the iOS in-app browser is closed without finishing', async () => {
+    // The founder's report: the provider showed an error page, they tapped Done,
+    // and the button stayed on "Connecting..." No deep link arrives on a bailed
+    // sign-in, so the dismissal must end the flow. Drive the iOS path directly.
+    currentPlatform = 'ios';
+    const mod = await loadModule();
+    const pending = mod.connectRepoOAuth('github');
+    await waitFor(() => typeof browserFinishedCb === 'function');
+    expect(browserFinishedCb, 'browserFinished listener was not registered').toBeTypeOf('function');
+
+    // The person closes the in-app browser; no oscode:// deep link ever fires.
+    browserFinishedCb!();
+    const res = await pending;
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/did not finish/i);
+    expect(secrets.has(KEY)).toBe(false);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('still completes on iOS when the deep link arrives after the browser opens', async () => {
+    // The success path must survive the new dismiss listener: a real return
+    // resolves with the code, and our own Browser.close() firing browserFinished
+    // afterward is a no-op because the flow has already settled.
+    currentPlatform = 'ios';
+    const mod = await loadModule();
+    mockFetchOnce({ accessToken: 'gho_ok' });
+    const pending = mod.connectRepoOAuth('github');
+    await waitFor(() => typeof iosUrlOpenCb === 'function');
+    const state = lastOpenedUrl().searchParams.get('state') ?? '';
+    iosUrlOpenCb!({ url: `oscode://repo-oauth?code=code_${state}&state=${state}` });
+    // A late dismissal (our Browser.close, or the person) must not un-settle it.
+    browserFinishedCb?.();
+    const res = await pending;
+    expect(res.ok).toBe(true);
+    expect(secrets.get(KEY)).toBe('gho_ok');
   });
 
   it('rejects a redirect whose state does not match', async () => {
