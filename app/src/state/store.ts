@@ -110,6 +110,7 @@ import { beatDesktopSession, registerPushForDaemon } from '../lib/push.js';
 import {
   autoProfile,
   effectiveProfile,
+  locationAllowed,
   PROFILE_ORDER,
   type Connectivity,
   type ProfileId,
@@ -169,6 +170,7 @@ import {
   refReady,
   stackReady,
   stackForProfile,
+  stackVisionReady as stackVisionReadyPure,
   type ReadinessSignals,
   type AppStack,
   type ProfileStacks,
@@ -692,6 +694,10 @@ interface AppState {
    *  The empty-state composer checks this before starting a chat, so a first
    *  message is never sent into a brain that cannot answer. */
   sourceReady(source: ConversationSource): boolean;
+  /** Whether a "My Stack" chat can read an image right now: a capable model
+   *  placed in the stack, or a connected cloud provider that reads images. Gates
+   *  the composer's attach button for the stack source. */
+  stackVisionReady(): boolean;
   /** Re-read the desktop engine's status (Electron only; no-op elsewhere). */
   refreshDesktopStatus(): Promise<void>;
   /** Buy Personal: Apple In-App Purchase on iOS, Stripe web checkout elsewhere.
@@ -2595,6 +2601,29 @@ export const useApp = create<AppState>((set, get) => {
         case 'mock':
           return true;
       }
+    },
+
+    stackVisionReady() {
+      const s = get();
+      const st = s.settings;
+      const profile = activeProfile(s.connectivity, st.profileOverride);
+      const cloudReachable = locationAllowed(profile, 'cloud');
+      const connected = (provider: string) =>
+        provider === 'anthropic' ? s.cloudKeyPresent : Boolean(s.connectedProviders[provider]);
+      // A device model cannot read images on this build, so its reachability
+      // does not decide the gate (visionCapable filters it out anyway); a cloud
+      // or BYOM model must be reachable in this profile and, for cloud,
+      // connected.
+      const reachable = (ref: StackModelRef): boolean => {
+        if (ref.kind === 'device') return platform() === 'ios';
+        if (ref.kind === 'cloud') return cloudReachable && connected(ref.provider);
+        return cloudReachable; // byom runs over the network
+      };
+      return stackVisionReadyPure(stackForProfile(st.stacks, profile), {
+        reachable,
+        cloudReachable,
+        connected,
+      });
     },
 
     async refreshDesktopStatus() {

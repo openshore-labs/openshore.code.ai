@@ -2398,6 +2398,14 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-08-26)
 
+- **2026-09-05: Crew routines cross-device control model.** Setup and control
+  require being docked to the machine (or on it); viewing is always on, from a
+  cached snapshot when away. Three states in the command center (In control /
+  View only / Not set up), a Reconnect prompt, a dormant-capabilities preview,
+  a set-up-crew guide, and mutation guards in the store. Pure crewControl() with
+  tests. App-only. Gates: app 714 tests, typecheck, lint, build, Prettier;
+  os-code unchanged and green.
+
 - **2026-09-05: the phone storefront: packs by status, families, and an
   honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that
   only toasted: make it super clear what installs on this phone versus a

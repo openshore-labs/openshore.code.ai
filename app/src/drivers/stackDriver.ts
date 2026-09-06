@@ -32,7 +32,11 @@ import {
 } from '../lib/codemagicTool.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
-import { providerInfo, providerSecretKey } from '../lib/providers.js';
+import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
+import { imageBlockParts, type Attachment } from '../lib/attachments.js';
+import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
+import { buildVisionContent } from './cloudClaudeDriver.js';
+import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import { effortDirective } from '../lib/effort.js';
 import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
@@ -41,6 +45,7 @@ import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js'
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
+  pickVisionRef,
   refName,
   type AppStack,
   type Placement,
@@ -112,6 +117,33 @@ export function classifyTask(text: string): StackCategory | 'reasoning' {
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
+/** Build the OpenAI-compatible content array for a user turn that carries
+ *  images. Video frames are labeled and led by a context header, the same
+ *  shape the Anthropic path uses, so a stack routed to an OpenAI-style vision
+ *  model reads a clip in order too. */
+function openAiVisionContent(text: string, images: Attachment[]): Array<Record<string, unknown>> {
+  const parts: Array<Record<string, unknown>> = [];
+  if (images.some((a) => a.frame)) {
+    const header = videoContextHeader(images);
+    if (header) parts.push({ type: 'text', text: header });
+  }
+  for (const a of images) {
+    const p = imageBlockParts(a);
+    if (!p) continue;
+    if (a.frame) parts.push({ type: 'text', text: frameLabel(a.frame) });
+    parts.push({ type: 'image_url', image_url: { url: `data:${p.mediaType};base64,${p.base64}` } });
+  }
+  parts.push({ type: 'text', text });
+  return parts;
+}
+
+/** Whether a turn's attachments carry video frames (as opposed to plain
+ *  screenshots), so the frame-reading system note is added only when it earns
+ *  its place. */
+function hasVideoFrames(images: Attachment[]): boolean {
+  return images.some((a) => a.frame);
+}
+
 // Monotonic request ids, so two sends in the same millisecond cannot share an
 // id and interleave their token streams into one answer.
 let stackRequestSeq = 0;
@@ -154,8 +186,8 @@ export class StackDriver implements ChatDriver {
     return this.emitter.subscribe(sink);
   }
 
-  send(text: string): void {
-    void this.run(text);
+  send(text: string, attachments?: Attachment[]): void {
+    void this.run(text, attachments);
   }
 
   private emit = (e: Parameters<DriverEmitter['emit']>[0]) => this.emitter.emit(e);
@@ -264,20 +296,45 @@ export class StackDriver implements ChatDriver {
 
   // ---- turn ---------------------------------------------------------------
 
-  private async run(text: string): Promise<void> {
+  private async run(text: string, attachments?: Attachment[]): Promise<void> {
     this.aborted = false;
     this.abortController = new AbortController();
     this.history.push({ role: 'user', content: text });
     this.emit({ type: 'task-start', input: text });
 
-    const target = this.route(text);
-    if (!this.reachable(target.ref)) {
-      this.emit({
-        type: 'task-done',
-        reason: 'error',
-        message: `Nothing in your stack is reachable while ${this.profile}. Download an on-device model or change your connection.`,
-      });
-      return;
+    // An image-bearing turn routes by capability, not by the text classifier:
+    // the model placed for image reading if it can see and is reachable, else a
+    // vision-capable model already in the stack, else a connected cloud
+    // provider (the founder's "if there isn't one available and capable it can
+    // go to a cloud provider"). A device model cannot read images on this
+    // build, so a local model placed for vision falls back to the cloud here.
+    const images = (attachments ?? []).filter((a) => a.isImage);
+    let target: {
+      ref: StackModelRef;
+      placement?: Placement;
+      category: StackCategory | 'reasoning';
+    };
+    if (images.length) {
+      const vision = await this.routeVision();
+      if (!vision) {
+        this.emit({
+          type: 'task-done',
+          reason: 'error',
+          message: `No image-reading model is reachable while ${this.profile}. Put an image-reading model in your Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
+        });
+        return;
+      }
+      target = vision;
+    } else {
+      target = this.route(text);
+      if (!this.reachable(target.ref)) {
+        this.emit({
+          type: 'task-done',
+          reason: 'error',
+          message: `Nothing in your stack is reachable while ${this.profile}. Download an on-device model or change your connection.`,
+        });
+        return;
+      }
     }
 
     this.emit({
@@ -286,7 +343,12 @@ export class StackDriver implements ChatDriver {
       model: refName(target.ref),
       providerKind: target.ref.kind === 'device' ? 'local' : 'cloud',
     });
-    if (target.category !== 'reasoning' && target.placement) {
+    if (images.length) {
+      this.emit({
+        type: 'status',
+        message: `Reading ${images.length === 1 ? 'this image' : `these ${images.length} images`} with ${refName(target.ref)}.`,
+      });
+    } else if (target.category !== 'reasoning' && target.placement) {
       this.emit({
         type: 'status',
         message: `Routing this to ${refName(target.ref)} for ${target.category}.`,
@@ -296,7 +358,7 @@ export class StackDriver implements ChatDriver {
     this.answer = '';
     const reasoning = this.stack.reasoning ?? harborRef();
     try {
-      await this.runRef(target.ref, target.placement);
+      await this.runRef(target.ref, target.placement, images);
     } catch (err) {
       // A stop is a calm end, not an error: settle with whatever streamed so
       // far so the partial reply stays in context for the next turn.
@@ -306,8 +368,11 @@ export class StackDriver implements ChatDriver {
       }
       // Graceful degradation is the contract: if a placed specialist could not
       // run, fall back to the Reasoning anchor for this turn rather than
-      // dead-ending, exactly as the desktop router does.
-      const isSpecialist = target.category !== 'reasoning' && !!target.placement;
+      // dead-ending, exactly as the desktop router does. An image turn is the
+      // exception: routeVision already chose the best reachable reader (and the
+      // reasoning anchor may not read images at all), so it never falls back
+      // here, it fails with the clear message above.
+      const isSpecialist = !images.length && target.category !== 'reasoning' && !!target.placement;
       const canFallback =
         err instanceof RouteUnavailable &&
         isSpecialist &&
@@ -326,7 +391,7 @@ export class StackDriver implements ChatDriver {
         });
         this.answer = '';
         try {
-          await this.runRef(reasoning, undefined);
+          await this.runRef(reasoning, undefined, []);
         } catch (err2) {
           if (this.aborted || (err2 instanceof Error && err2.name === 'AbortError')) {
             this.finish('aborted');
@@ -348,10 +413,59 @@ export class StackDriver implements ChatDriver {
     }
   }
 
-  private async runRef(ref: StackModelRef, placement?: Placement): Promise<void> {
+  private async runRef(
+    ref: StackModelRef,
+    placement?: Placement,
+    images: Attachment[] = [],
+  ): Promise<void> {
+    // Device inference is text-only on this build, so images never reach it
+    // (routeVision excludes a device ref); the argument is dropped there.
     if (ref.kind === 'device') await this.runDevice(ref, placement);
-    else if (ref.kind === 'byom') await this.runByom(ref, placement);
-    else await this.runCloud(ref, placement);
+    else if (ref.kind === 'byom') await this.runByom(ref, placement, images);
+    else await this.runCloud(ref, placement, images);
+  }
+
+  // ---- vision routing -----------------------------------------------------
+
+  /** Pick the target for an image-bearing turn, or undefined when nothing can
+   *  read it. A capable model placed in (or anchoring) the stack wins; otherwise
+   *  a connected cloud provider that reads images is the fallback. */
+  private async routeVision(): Promise<
+    { ref: StackModelRef; placement?: Placement; category: 'vision' } | undefined
+  > {
+    const pick = pickVisionRef(this.stack, (r) => this.reachable(r));
+    if (pick) return { ref: pick.ref, placement: pick.placement, category: 'vision' };
+    const fallback = await this.cloudVisionFallback();
+    if (fallback) return { ref: fallback, category: 'vision' };
+    return undefined;
+  }
+
+  /** A connected, reachable cloud model that reads images, when the stack holds
+   *  none. Claude first (its whole lineup reads images), then the first other
+   *  provider with a stored key and a vision-capable model. */
+  private async cloudVisionFallback(): Promise<StackModelRef | undefined> {
+    const anthropic: StackModelRef = {
+      kind: 'cloud',
+      provider: 'anthropic',
+      model: DEFAULT_CLAUDE_MODEL,
+      label: 'Claude',
+    };
+    if (this.reachable(anthropic) && (await secretGet(providerSecretKey('anthropic')))) {
+      return anthropic;
+    }
+    for (const p of PROVIDERS) {
+      if (p.id === 'anthropic') continue;
+      const visionModel = p.models.find((m) => m.categories?.includes('vision'));
+      if (!visionModel) continue;
+      const ref: StackModelRef = {
+        kind: 'cloud',
+        provider: p.id,
+        model: visionModel.id,
+        label: p.name,
+      };
+      if (this.reachable(ref) && (await secretGet(providerSecretKey(p.id)))) return ref;
+    }
+    return undefined;
   }
 
   private finish(reason: 'complete' | 'aborted' | 'error', message?: string): void {
@@ -415,6 +529,7 @@ export class StackDriver implements ChatDriver {
   private async runCloud(
     ref: Extract<StackModelRef, { kind: 'cloud' }>,
     placement?: Placement,
+    images: Attachment[] = [],
   ): Promise<void> {
     const key = await secretGet(providerSecretKey(ref.provider));
     if (!key) {
@@ -422,20 +537,24 @@ export class StackDriver implements ChatDriver {
     }
     const system = this.systemFor(ref, placement);
     if (ref.provider === 'anthropic') {
-      // Codemagic Access on: run the tool-use loop so the model can drive builds
-      // (trigger, status, logs) on-device. Off keeps the original single-turn
-      // path exactly as it was.
-      if (this.context.codemagicAccess) await this.runAnthropicWithTools(key, ref.model, system);
-      else await this.runAnthropic(key, ref.model, system);
+      // An image turn takes the plain vision path (it needs no build tools);
+      // otherwise Codemagic Access on runs the tool-use loop so the model can
+      // drive builds, and off keeps the original single-turn path.
+      if (images.length) await this.runAnthropic(key, ref.model, system, images);
+      else if (this.context.codemagicAccess)
+        await this.runAnthropicWithTools(key, ref.model, system);
+      else await this.runAnthropic(key, ref.model, system, []);
     } else {
       const base = providerInfo(ref.provider)?.openaiBaseUrl;
       if (!base) {
         throw new RouteUnavailable(`No endpoint configured for ${ref.provider}.`);
       }
-      if (this.context.codemagicAccess) {
+      if (images.length) {
+        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system, images);
+      } else if (this.context.codemagicAccess) {
         await this.runOpenAiCompatibleWithTools(ref.provider, base, key, ref.model, system);
       } else {
-        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system);
+        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system, []);
       }
     }
   }
@@ -443,21 +562,29 @@ export class StackDriver implements ChatDriver {
   private async runByom(
     ref: Extract<StackModelRef, { kind: 'byom' }>,
     placement?: Placement,
+    images: Attachment[] = [],
   ): Promise<void> {
     // A BYOM key is optional: a local or trusted-network server may accept
     // unauthenticated requests, so an absent key is not an error here.
     const key = (await secretGet(byomSecretKey(ref.id))) ?? undefined;
     const system = this.systemFor(ref, placement);
-    // Codemagic Access on: the tool-use loop (function calling) so the model can
-    // drive builds. Off keeps the original single-turn path exactly as it was.
-    if (this.context.codemagicAccess) {
+    // An image turn takes the plain vision path; otherwise Codemagic Access on
+    // runs the tool-use loop, off keeps the original single-turn path.
+    if (images.length) {
+      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, images);
+    } else if (this.context.codemagicAccess) {
       await this.runOpenAiCompatibleWithTools(ref.label, ref.baseUrl, key, ref.model, system);
     } else {
-      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system);
+      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, []);
     }
   }
 
-  private async runAnthropic(key: string, model: string, system: string): Promise<void> {
+  private async runAnthropic(
+    key: string,
+    model: string,
+    system: string,
+    images: Attachment[] = [],
+  ): Promise<void> {
     const ws = (
       await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
     )?.anthropicWorkspaceId?.trim();
@@ -467,13 +594,22 @@ export class StackDriver implements ChatDriver {
       fetch: streamingFetch,
       ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
     });
+    const messages: Anthropic.MessageParam[] = this.history.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    let sys = system;
+    if (images.length && messages.length) {
+      // Fold the images into the current (last) user turn as image blocks, with
+      // frame labels and a context header when they came from a video. History
+      // stays text-only; only this turn carries the pixels.
+      const last = messages[messages.length - 1]!;
+      const built = buildVisionContent(String(last.content ?? ''), images);
+      last.content = built.content;
+      if (hasVideoFrames(images)) sys = `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}`;
+    }
     const stream = client.messages.stream(
-      {
-        model,
-        max_tokens: 2048,
-        system,
-        messages: this.history.map((m) => ({ role: m.role, content: m.content })),
-      },
+      { model, max_tokens: 2048, system: sys, messages },
       { signal: this.abortController?.signal },
     );
     stream.on('text', (delta) => {
@@ -590,8 +726,20 @@ export class StackDriver implements ChatDriver {
     key: string | undefined,
     model: string,
     system: string,
+    images: Attachment[] = [],
   ): Promise<void> {
-    const messages = [{ role: 'system', content: system }, ...this.history];
+    const sys =
+      images.length && hasVideoFrames(images) ? `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}` : system;
+    const messages: Array<{ role: string; content: unknown }> = [
+      { role: 'system', content: sys },
+      ...this.history.map((m) => ({ role: m.role, content: m.content as unknown })),
+    ];
+    if (images.length && messages.length > 1) {
+      // Fold the images into the current (last) user turn as image_url parts,
+      // with frame labels and a context header when they came from a video.
+      const last = messages[messages.length - 1]!;
+      last.content = openAiVisionContent(String(last.content ?? ''), images);
+    }
     const authHeaders: Record<string, string> = { 'content-type': 'application/json' };
     if (key) authHeaders.authorization = `Bearer ${key}`;
 

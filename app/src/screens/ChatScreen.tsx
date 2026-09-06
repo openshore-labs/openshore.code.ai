@@ -354,6 +354,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // the pending selection for the next new chat.
   const composerSource = conv ? conv.source : selectedSource;
 
+  // A "My Stack" chat can read images when a capable model is placed in it, or
+  // a connected cloud provider reads them; this lights the attach button there,
+  // the same way it lights for a vision-capable cloud model.
+  const stackVision = useApp((s) => s.stackVisionReady());
+
   const startWith = async (
     source: ConversationSource,
     text?: string,
@@ -560,7 +565,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <Composer
           busy={Boolean(thread?.busy)}
           source={composerSource}
-          visionSupported={sourceSupportsVision(composerSource)}
+          visionSupported={
+            sourceSupportsVision(composerSource) || (composerSource.kind === 'stack' && stackVision)
+          }
           placeholder={
             conv?.source.kind === 'device' && conv.source.modelId === HARBOR_MINI_MODEL_ID
               ? HARBOR_MINI_EMPTY_HINT

@@ -64,6 +64,31 @@ function MicIcon() {
   );
 }
 
+// A small determinate ring for a video being read into frames: the arc fills as
+// frames land (done/total). Before a decoder knows the count (total 0) it shows
+// a soft pulse instead of a false-empty ring. The arc travel rides a motion
+// token, so reduced motion zeroes it with everything else.
+function FrameRing({ done, total }: { done: number; total: number }) {
+  if (total <= 0) return <span className="pulse-dot" aria-hidden="true" />;
+  const r = 7;
+  const circumference = 2 * Math.PI * r;
+  const frac = Math.max(0, Math.min(1, done / total));
+  return (
+    <span className="frame-ring" aria-hidden="true">
+      <svg viewBox="0 0 20 20" width={16} height={16}>
+        <circle className="frame-ring-track" cx={10} cy={10} r={r} />
+        <circle
+          className="frame-ring-arc"
+          cx={10}
+          cy={10}
+          r={r}
+          style={{ strokeDasharray: circumference, strokeDashoffset: circumference * (1 - frac) }}
+        />
+      </svg>
+    </span>
+  );
+}
+
 export type SlashCommand =
   'help' | 'clear' | 'compact' | 'model' | 'cost' | 'mode' | 'init' | 'rename';
 
@@ -241,7 +266,9 @@ export function Composer({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Videos being turned into frames right now. Each shows a "Reading …" chip
   // until its frames land in attachments, so the person sees the work happen.
-  const [videoJobs, setVideoJobs] = useState<Array<{ id: string; name: string }>>([]);
+  const [videoJobs, setVideoJobs] = useState<
+    Array<{ id: string; name: string; done: number; total: number }>
+  >([]);
   const [pasted, setPasted] = useState<PastedChunk[]>([]);
   // Terminal mode: on a desktop-backed chat, the composer can send its text to
   // the connected machine as a command instead of a prompt (the "type ls from
@@ -453,9 +480,11 @@ export function Composer({
   // with no approval step: attaching is not a tool call.
   const ingestVideo = async (file: File) => {
     const jobId = `job-${chunkSeq++}`;
-    setVideoJobs((prev) => [...prev, { id: jobId, name: file.name || 'video' }]);
+    setVideoJobs((prev) => [...prev, { id: jobId, name: file.name || 'video', done: 0, total: 0 }]);
+    const onProgress = (done: number, total: number) =>
+      setVideoJobs((prev) => prev.map((x) => (x.id === jobId ? { ...x, done, total } : x)));
     try {
-      const built = await buildVideoAttachment(file, pickVideoBackend());
+      const built = await buildVideoAttachment(file, pickVideoBackend(), onProgress);
       setAttachments((prev) => [...prev, ...built.frames]);
     } catch {
       showToast('Could not read that video. Try a shorter or standard-format clip.');
@@ -750,8 +779,12 @@ export function Composer({
             })}
             {videoJobs.map((job) => (
               <span key={job.id} className="composer-chip" aria-live="polite">
-                <span className="pulse-dot" aria-hidden="true" />
-                <span className="composer-chip-name">Reading {job.name}…</span>
+                <FrameRing done={job.done} total={job.total} />
+                <span className="composer-chip-name">
+                  {job.total > 0
+                    ? `Reading ${job.name} · ${job.done}/${job.total}`
+                    : `Reading ${job.name}…`}
+                </span>
               </span>
             ))}
             {pasted.map((p, i) => (

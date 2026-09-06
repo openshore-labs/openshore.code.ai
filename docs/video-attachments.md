@@ -31,7 +31,11 @@ files (Camera, Photos, Files), with video folded in.
    frames flow to the model as image blocks like any pasted screenshot.
 
 Only the stills ever leave the device to a model. The video is read locally and
-never uploaded.
+never uploaded. While a clip is being read, the composer chip shows a
+determinate ring that fills as frames land (done/total): real per-frame progress
+on the canvas path, a single step to done on the native paths that return the
+set in one call. Before a decoder knows the frame count the chip shows a soft
+pulse instead of a false-empty ring.
 
 ## Where the pixel work runs
 
@@ -50,11 +54,36 @@ the canvas as a universal fallback so a video always yields frames somewhere:
 - **Web (dev and the browser demo):** a canvas over a hidden `<video>`, seeking
   and drawing each frame. No compression (the frames are downscaled regardless).
 
+## Vision routing (the stack)
+
+Vision is a placeable Stack category ("Image reading"), so a person can put a
+model in it the same way they place a coder or a writer. An image-bearing turn
+routes by capability, not by the text classifier
+(`pickVisionRef`/`stackVisionReady` in `app/src/lib/stack.ts`, wired in
+`StackDriver`):
+
+1. a reachable, capable model placed in the vision category, else
+2. the reasoning anchor if it can read images, else
+3. any reachable capable model already in the stack, else
+4. a connected, reachable cloud provider that reads images (Claude out of the
+   box), the founder's "if there isn't one available and capable it can go to a
+   cloud provider."
+
+An on-device model cannot read images on this build (the local runtime is
+text-only), so `visionCapable` returns false for a device ref and a local model
+placed in vision falls back to the cloud. Flip the device case in
+`visionCapable` when a multimodal on-device runtime lands. `StackDriver` folds
+the frames into the current user turn for the Anthropic and OpenAI-compatible
+backends (frame labels and header included); the device backend never receives
+images. The composer's attach button lights for a "My Stack" chat exactly when
+`stackVisionReady()` says a picture would be understood.
+
 ## Harnessing the model
 
-Frames reach a vision model through the cloud Claude driver
-(`app/src/drivers/cloudClaudeDriver.ts`, `buildVisionContent`), which is the
-only vision path today (see `sourceSupportsVision`). For a video turn it:
+Frames reach cloud Claude directly through the cloud Claude driver
+(`app/src/drivers/cloudClaudeDriver.ts`, `buildVisionContent`), and through the
+stack via `StackDriver` (which reuses `buildVisionContent` for its Anthropic
+path). For a video turn it:
 
 - leads with a one-line context header naming the clip and calling the stills a
   frame-by-frame view, not the video itself;
@@ -88,7 +117,10 @@ without FFmpeg, confirm the canvas fallback still produces frames.
 - A native PHPicker on iOS would avoid staging the video's bytes through the
   WebView (today a large clip is copied into the app cache before the plugin
   opens it). The plugin already reads a path, so this is a picker swap.
-- Vision beyond cloud Claude: when a direct BYOM / OpenAI / Gemini vision chat
-  or a vision pocket model lands, extend `sourceSupportsVision` and thread the
-  frames through that driver too (the frames are already plain image
-  attachments).
+- On-device vision: wire a multimodal runtime into the `oscode-llama` plugin,
+  then flip the device case in `visionCapable` so a local vision model placed in
+  the stack actually reads the frames instead of falling back to the cloud.
+- Direct cloud vision chats: `sourceSupportsVision` already covers a
+  vision-capable cloud model on its own driver; the stack path covers "My
+  Stack." A direct Gemini/OpenAI vision chat outside the stack is the remaining
+  gap.

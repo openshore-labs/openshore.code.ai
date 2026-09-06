@@ -12,6 +12,7 @@ import { Media, type MediaProcessResult } from './mediaPlugin.js';
 import {
   planFrameTimes,
   type FramePlan,
+  type FrameProgress,
   type RawFrame,
   type RawVideoResult,
   type VideoBackend,
@@ -46,7 +47,7 @@ function once(el: HTMLVideoElement, event: string, timeoutMs: number): Promise<v
 }
 
 const browserBackend: VideoBackend = {
-  async process(file: File, plan: FramePlan): Promise<RawVideoResult> {
+  async process(file: File, plan: FramePlan, onProgress?: FrameProgress): Promise<RawVideoResult> {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
     video.preload = 'metadata';
@@ -58,6 +59,7 @@ const browserBackend: VideoBackend = {
       await once(video, 'loadedmetadata', 15_000);
       const duration = Number.isFinite(video.duration) ? video.duration : 0;
       const times = planFrameTimes(duration, plan.maxFrames);
+      onProgress?.(0, times.length);
       const vw = video.videoWidth || plan.maxDimension;
       const vh = video.videoHeight || plan.maxDimension;
       const scale = Math.min(1, plan.maxDimension / Math.max(vw, vh));
@@ -80,6 +82,7 @@ const browserBackend: VideoBackend = {
         const comma = dataUrl.indexOf(',');
         if (comma < 0) continue;
         frames.push({ base64: dataUrl.slice(comma + 1), mediaType: 'image/jpeg', timeSec: t });
+        onProgress?.(frames.length, times.length);
       }
       return {
         frames,
@@ -145,17 +148,22 @@ const iosBackend: VideoBackend = {
       return 'Native video processing is not available.';
     }
   },
-  async process(file: File, plan: FramePlan): Promise<RawVideoResult> {
+  async process(file: File, plan: FramePlan, onProgress?: FrameProgress): Promise<RawVideoResult> {
     // WKWebView hands JS a copy of the picked file but no path the native side
     // can open, so stage the bytes in the app cache and pass that path along.
     // The temp copy is removed once the frames are back.
+    onProgress?.(0, 0);
     const base64 = await fileToBase64(file);
     const name = `oscode-video-${Date.now()}-${(file.name || 'clip').replace(/[^a-z0-9.]+/gi, '_')}`;
     await Filesystem.writeFile({ path: name, data: base64, directory: Directory.Cache });
     const { uri } = await Filesystem.getUri({ path: name, directory: Directory.Cache });
     try {
+      // The plugin returns the whole set in one call, so progress is a single
+      // step to done once the frames are back.
       const result = await Media.processVideo(processOptions(uri, plan));
-      return toRawResult(result);
+      const raw = toRawResult(result);
+      onProgress?.(raw.frames.length, raw.frames.length);
+      return raw;
     } finally {
       await Filesystem.deleteFile({ path: name, directory: Directory.Cache }).catch(() => {});
     }
@@ -168,15 +176,18 @@ const electronBackend: VideoBackend = {
     if (!b?.mediaProcess) return 'The desktop bridge cannot process video.';
     return null;
   },
-  async process(file: File, plan: FramePlan): Promise<RawVideoResult> {
+  async process(file: File, plan: FramePlan, onProgress?: FrameProgress): Promise<RawVideoResult> {
     const b = bridge();
     if (!b?.mediaProcess) throw new Error('The desktop bridge cannot process video.');
     // Electron exposes the real path on a picked File, so FFmpeg reads the
     // original in place with no copy.
     const path = (file as File & { path?: string }).path;
     if (!path) throw new Error('The desktop could not locate that video file.');
+    onProgress?.(0, 0);
     const result = await b.mediaProcess(processOptions(path, plan));
-    return toRawResult(result);
+    const raw = toRawResult(result);
+    onProgress?.(raw.frames.length, raw.frames.length);
+    return raw;
   },
 };
 
@@ -188,16 +199,16 @@ export function pickVideoBackend(): VideoBackend {
   if (!native) return browserBackend;
   return {
     unavailable: native.unavailable,
-    async process(file, plan) {
+    async process(file, plan, onProgress) {
       const why = native.unavailable ? await native.unavailable() : null;
-      if (why) return browserBackend.process(file, plan);
+      if (why) return browserBackend.process(file, plan, onProgress);
       try {
-        return await native.process(file, plan);
+        return await native.process(file, plan, onProgress);
       } catch {
         // Native tried and failed (an odd codec, a permissions edge): the canvas
         // still gets usable frames from most clips, so fall back rather than
         // fail the attach.
-        return browserBackend.process(file, plan);
+        return browserBackend.process(file, plan, onProgress);
       }
     },
   };

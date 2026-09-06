@@ -27,11 +27,17 @@ AVFoundation on the phone (new `oscode-media` plugin) and FFmpeg on the desktop
 Screenshots and screen recordings flow through with no approval. The cloud
 Claude driver leads the frames with a context header, labels each with its
 timestamp, and adds a system note so the model reads them as one clip and may
-say plainly it reviewed the video frame by frame. Vision stays cloud Claude
-only. Code in `app/src/lib/{attachments,videoAttach,videoBackends,
-mediaPlugin}.ts`, `Composer.tsx`, `cloudClaudeDriver.ts`, `app/electron/media.ts`,
-and `app/plugins/oscode-media`; doc `docs/video-attachments.md`. Device and
-desktop-FFmpeg verification are in What remains.
+say plainly it reviewed the video frame by frame. Vision is a placeable Stack
+category ("Image reading"): an image turn routes to a capable model placed in
+(or anchoring) the stack, else a connected cloud provider that reads images
+(`pickVisionRef`/`stackVisionReady`, wired in `StackDriver`); an on-device model
+is text-only on this build, so a local model placed for vision falls back to the
+cloud. The composer chip shows a determinate progress ring keyed to frames
+extracted. Code in `app/src/lib/{attachments,videoAttach,videoBackends,
+mediaPlugin,stack}.ts`, `Composer.tsx`, `cloudClaudeDriver.ts`,
+`drivers/stackDriver.ts`, `app/electron/media.ts`, and `app/plugins/oscode-media`;
+doc `docs/video-attachments.md`. Device and desktop-FFmpeg verification are in
+What remains.
 
 ### The phone storefront (Marketplace, on iPhone)
 
@@ -563,6 +569,28 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-06: vision as a Stack category, plus the video framing progress
+  ring (founder, pushed to main).** Two follow-ups to video attachments. (1)
+  Vision is now a placeable Stack category you can put a local LLM in: an
+  image-bearing turn routes by capability, to a reachable capable model placed
+  in (or anchoring) the stack, else any capable model in it, else a connected
+  cloud provider that reads images (Claude out of the box). On-device models are
+  text-only on this build, so a local model placed for vision falls back to the
+  cloud (`visionCapable` returns false for a device ref, one line to flip when a
+  multimodal runtime lands). `StackDriver` now accepts attachments (it dropped
+  them before) and folds frames into the Anthropic and OpenAI-compatible
+  backends with the same labels and header the cloud Claude driver uses; the
+  device backend never gets images. Pure `pickVisionRef` and `stackVisionReady`
+  in `stack.ts` decide routing and the composer gate; the attach button lights
+  for a "My Stack" chat exactly when a picture would be understood. (2) The
+  video chip's pulse became a determinate ring keyed to frames extracted
+  (`onProgress` threaded through the backends; real per-frame on the canvas
+  path, one step to done on the native paths). Code: `stack.ts`, `stackDriver.ts`,
+  `store.ts` (`stackVisionReady`), `ChatScreen.tsx`, `Composer.tsx`, `theme.css`,
+  `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
+  lint, 776 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
+  guards. Ruling in `DECISIONS.md`.
+
 - **2026-09-06: video attachments, reviewed frame by frame, never the video
   (founder, pushed to main).** The founder wanted Claude Code's attachment flow
   (Camera, Photos, Files) with video added, on two rules: a model never reviews
@@ -656,11 +684,3 @@ mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
   that the migration text contains no IP identifier at all; `ethics.test.ts`
   and `ethicsEnforcement.test.ts` both assert `outcome` never gains an
   `ip`-named property. 83 ethics tests green after the pass.
-
-- **2026-09-05: Crew routines cross-device control model.** Setup and control
-  require being docked to the machine (or on it); viewing is always on, from a
-  cached snapshot when away. Three states in the command center (In control /
-  View only / Not set up), a Reconnect prompt, a dormant-capabilities preview,
-  a set-up-crew guide, and mutation guards in the store. Pure crewControl() with
-  tests. App-only. Gates: app 714 tests, typecheck, lint, build, Prettier;
-  os-code unchanged and green.

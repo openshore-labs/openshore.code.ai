@@ -2266,6 +2266,28 @@ textarea {
 .composer-chip-x:hover {
   color: var(--ink);
 }
+/* The video framing ring: a determinate arc that fills as frames land. The arc
+   travel rides a motion token so reduced motion zeroes it; nothing here
+   animates layout (stroke only). */
+.frame-ring {
+  display: inline-flex;
+  align-items: center;
+  color: var(--water, currentColor);
+}
+.frame-ring-track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2.5;
+}
+.frame-ring-arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset var(--dur-2) var(--ease-standard);
+}
 
 /* Model + effort sheet. Effort pinned at the top, then grouped model rows. */
 .ms-effort {
