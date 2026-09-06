@@ -965,3 +965,18 @@ execution contract. Newest at the bottom.
   been applied" is a question for the live database, not the file's edit
   history, and it should have been asked with a query the first time, not
   four edits later.
+- 2026-09-06: **Video attachments: a model reviews frames, never the video, and
+  a large clip is compressed first (founder brief).** Frames are ordinary image
+  `Attachment`s, so they reuse the whole existing vision path (the + gate, the
+  send filter, the cloud image block) with no new send surface. Compression to
+  the 25 to 29MB band is done natively where a real primitive exists:
+  `AVAssetExportSession.fileLengthLimit` on the phone (a ceiling, not a floor,
+  so "under 29MB" is the guaranteed half; the floor is a quality aim, not
+  enforced) and a rate-capped FFmpeg pass on the desktop. Vision stays cloud
+  Claude only (`sourceSupportsVision` unchanged), so frames route there and no
+  text-only model is fed images. A canvas over a hidden `<video>` is the
+  universal fallback (browser, and any native gap), so a clip always yields
+  frames even without FFmpeg or the plugin; on iOS the video bytes are staged
+  through the app cache for the plugin to open (a native PHPicker to skip that
+  is the noted follow-up). FFmpeg is invoked with an argument array, never a
+  shell string.

@@ -122,7 +122,9 @@ describe('the wiring', () => {
     expect(store).toMatch(/daemonCreateSession\(settings\.daemon, cwd, \{/);
     expect(store).toMatch(/instructions: sessionOpts\.instructions/);
     expect((store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length).toBe(4);
-    expect(read('drivers/cloudClaudeDriver.ts')).toMatch(/this\.extraSystem\]\.filter\(Boolean\)/);
+    expect(read('drivers/cloudClaudeDriver.ts')).toMatch(
+      /this\.extraSystem,?[\s\S]{0,40}\.filter\(Boolean\)/,
+    );
   });
 
   it('offers the same repos in the project detail sheet', () => {

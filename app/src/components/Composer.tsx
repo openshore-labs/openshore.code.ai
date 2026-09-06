@@ -28,7 +28,14 @@ import {
   nextPermissionMode,
   permissionModeLabel,
 } from '../lib/permissionMode.js';
-import { fileToAttachment, type Attachment } from '../lib/attachments.js';
+import {
+  fileToAttachment,
+  groupAttachments,
+  isVideoFile,
+  type Attachment,
+} from '../lib/attachments.js';
+import { buildVideoAttachment } from '../lib/videoAttach.js';
+import { pickVideoBackend } from '../lib/videoBackends.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { CloseGlyph } from './SheetGlyphs.js';
@@ -232,6 +239,9 @@ export function Composer({
   const setPermissionMode = useApp((s) => s.setPermissionMode);
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Videos being turned into frames right now. Each shows a "Reading …" chip
+  // until its frames land in attachments, so the person sees the work happen.
+  const [videoJobs, setVideoJobs] = useState<Array<{ id: string; name: string }>>([]);
   const [pasted, setPasted] = useState<PastedChunk[]>([]);
   // Terminal mode: on a desktop-backed chat, the composer can send its text to
   // the connected machine as a command instead of a prompt (the "type ls from
@@ -388,6 +398,12 @@ export function Composer({
       void addMemory(memory[1]!);
       return;
     }
+    // A video is still being read into frames: hold the send so the frames are
+    // not left behind. The chips show what is pending.
+    if (videoJobs.length) {
+      showToast('Still reading the video. One moment.');
+      return;
+    }
     // Send-time guard (belt and suspenders to the + gate): never forward images
     // to a brain that cannot see them. The model can change between attach and
     // send, so re-check here.
@@ -430,10 +446,38 @@ export function Composer({
     fileRef.current?.click();
   };
 
+  // A video never goes to a model as video. It is compressed if large and
+  // sampled into frames natively (FFmpeg on the desktop, AVFoundation on the
+  // phone, a canvas on the web), and those frames ride along as image
+  // attachments. Screen recordings and screenshots flow through the same way,
+  // with no approval step: attaching is not a tool call.
+  const ingestVideo = async (file: File) => {
+    const jobId = `job-${chunkSeq++}`;
+    setVideoJobs((prev) => [...prev, { id: jobId, name: file.name || 'video' }]);
+    try {
+      const built = await buildVideoAttachment(file, pickVideoBackend());
+      setAttachments((prev) => [...prev, ...built.frames]);
+    } catch {
+      showToast('Could not read that video. Try a shorter or standard-format clip.');
+    } finally {
+      setVideoJobs((prev) => prev.filter((x) => x.id !== jobId));
+    }
+  };
+
   const addFiles = async (list: File[]) => {
     if (!list.length) return;
-    const images = list.filter((f) => f.type.startsWith('image/'));
-    const texts = list.filter((f) => !f.type.startsWith('image/'));
+    const videos = list.filter(isVideoFile);
+    const rest = list.filter((f) => !isVideoFile(f));
+    const images = rest.filter((f) => f.type.startsWith('image/'));
+    const texts = rest.filter((f) => !f.type.startsWith('image/'));
+    if (videos.length) {
+      if (!visionSupported) {
+        showToast('This model reads text only. Switch to Claude to review a video.');
+      } else {
+        // Kick each video off; the chips show progress and settle on their own.
+        for (const file of videos) void ingestVideo(file);
+      }
+    }
     if (images.length) {
       if (!visionSupported) {
         showToast('This model reads text only. Switch to Claude to send images.');
@@ -675,25 +719,39 @@ export function Composer({
         />
       ) : null}
       <div className="composer">
-        {attachments.length || pasted.length ? (
+        {attachments.length || pasted.length || videoJobs.length ? (
           <div className="composer-chips">
-            {attachments.map((a) => (
-              <span key={a.id} className="composer-chip">
-                {a.isImage ? (
-                  <img src={a.dataUrl} alt="" className="composer-chip-thumb" />
-                ) : (
-                  <span className="composer-chip-file" aria-hidden="true">
-                    {'📄'}
-                  </span>
-                )}
-                <span className="composer-chip-name">{a.name}</span>
-                <button
-                  className="composer-chip-x press-fb"
-                  aria-label={`Remove ${a.name}`}
-                  onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
-                >
-                  <CloseGlyph size={12} />
-                </button>
+            {groupAttachments(attachments).map((g) => {
+              const first = g.items[0];
+              const label = g.video ? `${g.label} · ${g.video.count} frames` : g.label;
+              return (
+                <span key={g.groupId} className="composer-chip">
+                  {first?.isImage ? (
+                    <img src={first.dataUrl} alt="" className="composer-chip-thumb" />
+                  ) : (
+                    <span className="composer-chip-file" aria-hidden="true">
+                      {'📄'}
+                    </span>
+                  )}
+                  <span className="composer-chip-name">{label}</span>
+                  <button
+                    className="composer-chip-x press-fb"
+                    aria-label={`Remove ${g.label}`}
+                    onClick={() =>
+                      setAttachments((prev) =>
+                        prev.filter((x) => !g.items.some((it) => it.id === x.id)),
+                      )
+                    }
+                  >
+                    <CloseGlyph size={12} />
+                  </button>
+                </span>
+              );
+            })}
+            {videoJobs.map((job) => (
+              <span key={job.id} className="composer-chip" aria-live="polite">
+                <span className="pulse-dot" aria-hidden="true" />
+                <span className="composer-chip-name">Reading {job.name}…</span>
               </span>
             ))}
             {pasted.map((p, i) => (
@@ -750,7 +808,7 @@ export function Composer({
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             multiple
             hidden
             onChange={(e) => void onFiles(e.target.files)}

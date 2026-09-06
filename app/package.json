@@ -39,6 +39,7 @@
     "oscode-iap": "file:./plugins/oscode-iap",
     "oscode-icloud": "file:./plugins/oscode-icloud",
     "oscode-llama": "file:./plugins/oscode-llama",
+    "oscode-media": "file:./plugins/oscode-media",
     "oscode-speech": "file:./plugins/oscode-speech",
     "qrcode": "1.5.4",
     "react": "18.3.1",

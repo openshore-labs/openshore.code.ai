@@ -32,6 +32,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import { isIP } from 'node:net';
 import { EngineHost } from './engineHost.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
+import { processVideoDesktop, type DesktopMediaOptions } from './media.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -731,6 +732,29 @@ guarded('osc:repoReadDir', (root: unknown, subdir: unknown): string[] | null => 
     return null;
   }
 });
+// Video framing over FFmpeg. The renderer hands the picked file's real path and
+// the plan; the main process compresses (if large) and samples frames, and
+// returns downscaled JPEG base64 stills. Every numeric field is validated, and
+// the path must be an existing file (checked in processVideoDesktop) before any
+// binary runs. Never sends the video anywhere; it is read locally and framed.
+guarded('osc:mediaProcess', (options: unknown): Promise<unknown> => {
+  if (!options || typeof options !== 'object') {
+    throw new Error('blocked: mediaProcess needs options');
+  }
+  const o = options as Record<string, unknown>;
+  const opts: DesktopMediaOptions = {
+    path: str(o.path, 'path'),
+    maxFrames: num(o.maxFrames, 'maxFrames'),
+    maxDimension: num(o.maxDimension, 'maxDimension'),
+    frameQuality: num(o.frameQuality, 'frameQuality'),
+    compressThresholdBytes: num(o.compressThresholdBytes, 'compressThresholdBytes'),
+    targetMinBytes: num(o.targetMinBytes, 'targetMinBytes'),
+    targetMaxBytes: num(o.targetMaxBytes, 'targetMaxBytes'),
+    targetBytes: num(o.targetBytes, 'targetBytes'),
+  };
+  return processVideoDesktop(opts);
+});
+
 guarded('osc:repoReadFile', (root: unknown, relPath: unknown): string | null => {
   try {
     // Only an .md file directly inside a memory folder may be read.
