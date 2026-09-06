@@ -9,6 +9,8 @@
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
+import { DEFAULT_CLAUDE_MODEL } from './claudeModels.js';
+import type { Effort } from './effort.js';
 import type { ProfileId } from './profiles.js';
 
 export type StackCategory =
@@ -51,6 +53,9 @@ export interface Placement {
   whenCalled?: string;
   /** Custom system persona for this specialist. Required when Custom. */
   persona?: string;
+  /** Reasoning effort for this specialist's turns. Overrides the global
+   *  composer effort when set; absent means "use the global effort." */
+  effort?: Effort;
 }
 
 export interface ActiveMember {
@@ -130,12 +135,39 @@ export function pickVisionRef(
   reachable: (ref: StackModelRef) => boolean,
 ): { ref: StackModelRef; placement?: Placement } | undefined {
   const ok = (r: StackModelRef) => visionCapable(r) && reachable(r);
-  const placed = stack.active.find((m) => m.placement.category === 'vision' && ok(m.ref));
-  if (placed) return { ref: placed.ref, placement: placed.placement };
+  // The local vision slot is preferred over the cloud slot when it can actually
+  // read images (a capable BYOM vision model today; an on-device one when that
+  // runtime lands), so "put a local LLM in it" wins over the cloud fallback.
+  const { local, cloud } = visionSlots(stack);
+  if (local && ok(local.ref)) return { ref: local.ref, placement: local.placement };
+  if (cloud && ok(cloud.ref)) return { ref: cloud.ref, placement: cloud.placement };
   if (stack.reasoning && ok(stack.reasoning)) return { ref: stack.reasoning };
   const any = stack.active.find((m) => ok(m.ref));
   if (any) return { ref: any.ref, placement: any.placement };
   return undefined;
+}
+
+/** The most capable cloud model, the default the Vision cloud slot falls to
+ *  until a person assigns their own. Claude's whole lineup reads images, and
+ *  Opus is the strongest of it. */
+export function defaultVisionCloudRef(): StackModelRef {
+  return { kind: 'cloud', provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL, label: 'Claude' };
+}
+
+/** The two Vision slots the manager shows: a local model (on-device or your own
+ *  server, the ones "you control") and a cloud model. Both are ordinary vision
+ *  placements; this just splits them by kind so the UI can present one of each.
+ *  A person may fill either, both, or neither; an empty cloud slot falls back to
+ *  the most capable cloud model. */
+export function visionSlots(stack: AppStack): {
+  local?: ActiveMember;
+  cloud?: ActiveMember;
+} {
+  const vision = stack.active.filter((m) => m.placement.category === 'vision');
+  return {
+    local: vision.find((m) => m.ref.kind === 'device' || m.ref.kind === 'byom'),
+    cloud: vision.find((m) => m.ref.kind === 'cloud'),
+  };
 }
 
 /** Whether an image turn could be read at all right now: a capable model in the

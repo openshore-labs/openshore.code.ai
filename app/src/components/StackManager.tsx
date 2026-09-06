@@ -21,14 +21,17 @@ import { byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import {
   STACK_CATEGORIES,
   categoryLabel,
+  defaultVisionCloudRef,
   harborRef,
   placementValid,
   refKey,
   refName,
   stackForProfile,
+  visionSlots,
   type Placement,
   type StackModelRef,
 } from '../lib/stack.js';
+import { EFFORTS, effortLabel, DEFAULT_EFFORT, type Effort } from '../lib/effort.js';
 import { Sheet } from './Sheet.js';
 
 /** A cloud provider's selectable models for the bench. Claude comes from the
@@ -75,6 +78,10 @@ export function StackManager() {
   const [editProfile, setEditProfile] = useState<ProfileId>(profile);
   const stack = stackForProfile(settings.stacks, editProfile);
   const reasoning = stack.reasoning ?? harborRef();
+  // The two Vision slots (a local model and a cloud model), split out of the
+  // active list so the manager shows a dedicated Image reading card.
+  const slots = visionSlots(stack);
+  const nonVisionActive = stack.active.filter((m) => m.placement.category !== 'vision');
 
   const deviceRefs: StackModelRef[] = [
     ...(settings.harborReady ? [harborRef()] : []),
@@ -156,6 +163,68 @@ export function StackManager() {
     }
     await placeSpecialist(config.ref, config.placement, editProfile);
     setConfig(undefined);
+  };
+
+  // ---- Vision slots -------------------------------------------------------
+  // Two positions in one category: a local model (on-device or your own server)
+  // and a cloud model. Each carries its own effort. The cloud slot defaults to
+  // the most capable cloud model until a person assigns one.
+  const localVisionRefs = [...deviceRefs, ...byomRefs];
+  const [visionEdit, setVisionEdit] = useState<
+    { slot: 'local' | 'cloud'; pickKey: string; effort: Effort } | undefined
+  >();
+  const eligibleVisionRefs = (slot: 'local' | 'cloud') =>
+    slot === 'local' ? localVisionRefs : cloudRefs;
+  const openVisionEdit = (slot: 'local' | 'cloud') => {
+    const member = slot === 'local' ? slots.local : slots.cloud;
+    const initial =
+      member?.ref ?? (slot === 'cloud' ? defaultVisionCloudRef() : localVisionRefs[0]);
+    setVisionEdit({
+      slot,
+      pickKey: initial ? refKey(initial) : '',
+      effort: member?.placement.effort ?? DEFAULT_EFFORT,
+    });
+  };
+  const saveVisionSlot = async () => {
+    if (!visionEdit) return;
+    const ref = eligibleVisionRefs(visionEdit.slot).find((r) => refKey(r) === visionEdit.pickKey);
+    if (!ref) {
+      showToast('Pick a model for this slot first.');
+      return;
+    }
+    const existing = visionEdit.slot === 'local' ? slots.local : slots.cloud;
+    // Replacing the slot: move the old model to the bench (its settings are
+    // kept) so the slot holds exactly one model of its kind.
+    if (existing && refKey(existing.ref) !== refKey(ref)) {
+      await benchSpecialist(refKey(existing.ref), editProfile);
+    }
+    await placeSpecialist(ref, { category: 'vision', effort: visionEdit.effort }, editProfile);
+    setVisionEdit(undefined);
+  };
+  const clearVisionSlot = async () => {
+    if (!visionEdit) return;
+    const existing = visionEdit.slot === 'local' ? slots.local : slots.cloud;
+    if (existing) await benchSpecialist(refKey(existing.ref), editProfile);
+    setVisionEdit(undefined);
+  };
+
+  // A Vision slot's display line: the assigned model and its effort, or the
+  // default/empty state.
+  const slotLine = (slot: 'local' | 'cloud'): { title: string; sub: string } => {
+    const member = slot === 'local' ? slots.local : slots.cloud;
+    if (member) {
+      return {
+        title: refName(member.ref),
+        sub: `${effortLabel(member.placement.effort ?? DEFAULT_EFFORT)} effort`,
+      };
+    }
+    if (slot === 'cloud') {
+      return {
+        title: `${refName(defaultVisionCloudRef())} (default)`,
+        sub: 'Most capable cloud model, until you choose another.',
+      };
+    }
+    return { title: 'None', sub: 'Falls back to the cloud slot for now.' };
   };
 
   return (
@@ -252,13 +321,58 @@ export function StackManager() {
           </div>
         </div>
 
+        {/* Image reading (Vision): two slots, a local model and a cloud model,
+            each with its own effort. The cloud slot defaults to the most
+            capable cloud model until changed. This is the position a picture
+            (a screenshot, a photo, a video's frames) routes to, and workflows
+            that run through the stack inherit it. */}
+        <h3 style={{ margin: '18px 0 10px' }}>Image reading (Vision)</h3>
+        <div className="card">
+          <div className="card-row">
+            <div className="grow">
+              <div className="sub">
+                Where screenshots, photos, and video frames are read. A local model runs on your
+                device or your own server; the cloud model reads anything it cannot.
+              </div>
+            </div>
+          </div>
+          {(['local', 'cloud'] as const).map((slot) => {
+            const line = slotLine(slot);
+            return (
+              <div className="card-row" key={slot} style={{ marginTop: 10 }}>
+                <div className="grow">
+                  <h3 style={{ fontSize: 14 }}>{slot === 'local' ? 'On device' : 'Cloud'}</h3>
+                  <div className="sub">
+                    {line.title}
+                    {' · '}
+                    {line.sub}
+                  </div>
+                </div>
+                {admin ? (
+                  <button
+                    className="btn ghost"
+                    style={{ padding: '8px 14px' }}
+                    onClick={() => openVisionEdit(slot)}
+                  >
+                    Change
+                  </button>
+                ) : (
+                  <span className="lock-hint" aria-label="Admin owned">
+                    <span className="lock-glyph" aria-hidden="true" />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
         <h3 style={{ margin: '18px 0 10px' }}>Active stack</h3>
-        {stack.active.length === 0 ? (
+        {nonVisionActive.length === 0 ? (
           <p className="hint" style={{ marginBottom: 12 }}>
             No specialists yet. The Reasoning LLM handles everything until you place one.
           </p>
         ) : (
-          stack.active.map((m) => (
+          nonVisionActive.map((m) => (
             <div className="card" key={refKey(m.ref)}>
               <div className="card-row">
                 <div className="grow">
@@ -266,6 +380,7 @@ export function StackManager() {
                   <div className="sub">
                     {categoryLabel(m.placement.category)}
                     {m.placement.whenCalled ? ` · ${m.placement.whenCalled}` : ''}
+                    {m.placement.effort ? ` · ${effortLabel(m.placement.effort)} effort` : ''}
                   </div>
                 </div>
                 {admin ? (
@@ -748,6 +863,41 @@ export function StackManager() {
               />
             </div>
 
+            <div className="field">
+              <label>Effort (optional)</label>
+              <div className="suggestion-row" style={{ justifyContent: 'flex-start' }}>
+                {EFFORTS.map((e) => (
+                  <button
+                    key={e}
+                    className="suggestion"
+                    style={
+                      config.placement.effort === e
+                        ? {
+                            background: 'var(--local-soft)',
+                            color: 'var(--local)',
+                            borderColor: 'var(--local)',
+                          }
+                        : undefined
+                    }
+                    onClick={() =>
+                      setConfig({
+                        ...config,
+                        placement: {
+                          ...config.placement,
+                          effort: config.placement.effort === e ? undefined : e,
+                        },
+                      })
+                    }
+                  >
+                    {effortLabel(e)}
+                  </button>
+                ))}
+              </div>
+              <div className="hint" style={{ marginTop: 4 }}>
+                How hard it thinks. Left unset, it uses the composer's effort.
+              </div>
+            </div>
+
             <div className="sheet-actions">
               <button
                 className="btn primary"
@@ -757,6 +907,85 @@ export function StackManager() {
                 Add to active stack
               </button>
               <button className="btn quiet" onClick={() => setConfig(undefined)}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : null}
+      </Sheet>
+
+      {/* Vision slot editor: pick the model for the On-device or Cloud image
+          reading position, and its effort. */}
+      <Sheet open={Boolean(visionEdit)} onClose={() => setVisionEdit(undefined)}>
+        {visionEdit ? (
+          <>
+            <h2>
+              {visionEdit.slot === 'local' ? 'On-device image reading' : 'Cloud image reading'}
+            </h2>
+            <p className="sheet-sub">
+              {visionEdit.slot === 'local'
+                ? 'A model on your device or your own server. On-device image reading falls back to the cloud slot until a model that reads images runs on device.'
+                : 'A cloud model that reads images. Defaults to the most capable one until you choose another.'}
+            </p>
+
+            {eligibleVisionRefs(visionEdit.slot).length === 0 ? (
+              <p className="hint">
+                {visionEdit.slot === 'local'
+                  ? 'No on-device or bring-your-own models yet. Download one from the Marketplace or connect your own.'
+                  : 'No cloud provider connected yet. Connect one under Cloud Connections.'}
+              </p>
+            ) : (
+              <div className="sheet-actions">
+                {eligibleVisionRefs(visionEdit.slot).map((r) => (
+                  <button
+                    key={refKey(r)}
+                    className={`btn ghost profile-option${refKey(r) === visionEdit.pickKey ? ' selected' : ''}`}
+                    onClick={() => setVisionEdit({ ...visionEdit, pickKey: refKey(r) })}
+                  >
+                    {refName(r)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="field" style={{ marginTop: 16 }}>
+              <label>Effort</label>
+              <div className="suggestion-row" style={{ justifyContent: 'flex-start' }}>
+                {EFFORTS.map((e) => (
+                  <button
+                    key={e}
+                    className="suggestion"
+                    style={
+                      visionEdit.effort === e
+                        ? {
+                            background: 'var(--local-soft)',
+                            color: 'var(--local)',
+                            borderColor: 'var(--local)',
+                          }
+                        : undefined
+                    }
+                    onClick={() => setVisionEdit({ ...visionEdit, effort: e })}
+                  >
+                    {effortLabel(e)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="sheet-actions">
+              <button
+                className="btn primary"
+                disabled={!visionEdit.pickKey}
+                onClick={() => void saveVisionSlot()}
+              >
+                Save
+              </button>
+              {(visionEdit.slot === 'local' ? slots.local : slots.cloud) ? (
+                <button className="btn ghost" onClick={() => void clearVisionSlot()}>
+                  Clear this slot
+                </button>
+              ) : null}
+              <button className="btn quiet" onClick={() => setVisionEdit(undefined)}>
                 Cancel
               </button>
             </div>

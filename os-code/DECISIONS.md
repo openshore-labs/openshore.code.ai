@@ -1000,3 +1000,25 @@ execution contract. Newest at the bottom.
   at all. The composer attach button lights for a "My Stack" chat via
   `stackVisionReady`, which mirrors the routing plus the connected-cloud
   fallback so the button is honest.
+- 2026-09-06: **Vision gets two slots (local + cloud) with per-slot effort, and
+  My Stack is the single source workflows inherit (founder).** "Assign a local
+  model to vision and a cloud model. Choose the model/effort in my stack and
+  preset for workflows. Default that position to most capable cloud model until
+  manually adjusted." Implemented additively over the existing placement model:
+  Vision is still one category, but the manager (`StackManager`) presents it as
+  two slots split by ref kind (`visionSlots`: device/BYOM = local, cloud =
+  cloud), each an ordinary vision placement. `Placement` gains an optional
+  `effort` (honored in `StackDriver.systemFor` over the global composer effort),
+  settable on any specialist, so Vision effort needed no special field. The
+  cloud slot shows the most capable cloud model (`defaultVisionCloudRef`, Opus)
+  as its default and routes to it via the existing cloud fallback until a person
+  assigns one; assigning writes a real placement. Local is preferred over cloud
+  in `pickVisionRef` when it can actually read images (a BYOM vision model does;
+  a device model does not yet, so it falls back). On the "preset for workflows"
+  fork the founder chose "My Stack is the source; workflows inherit" over a
+  per-routine override or extending the published catalog-preset schema, so no
+  new surface was added: a workflow that runs through the stack uses whatever the
+  Vision position holds. Not built: a per-routine Vision override and a
+  catalog-preset Vision role (both deferred to the founder's call above); the
+  desktop-engine routine path uses the engine's own router, so inheriting the
+  app stack's Vision position there is a separate cross-repo follow-up.

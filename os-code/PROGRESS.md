@@ -28,12 +28,17 @@ Screenshots and screen recordings flow through with no approval. The cloud
 Claude driver leads the frames with a context header, labels each with its
 timestamp, and adds a system note so the model reads them as one clip and may
 say plainly it reviewed the video frame by frame. Vision is a placeable Stack
-category ("Image reading"): an image turn routes to a capable model placed in
-(or anchoring) the stack, else a connected cloud provider that reads images
-(`pickVisionRef`/`stackVisionReady`, wired in `StackDriver`); an on-device model
-is text-only on this build, so a local model placed for vision falls back to the
-cloud. The composer chip shows a determinate progress ring keyed to frames
-extracted. Code in `app/src/lib/{attachments,videoAttach,videoBackends,
+category ("Image reading") with two slots: a local model (on-device or your own
+server) and a cloud model, each with its own effort, the cloud slot defaulting
+to the most capable cloud model until assigned (`visionSlots`,
+`defaultVisionCloudRef`, edited in `StackManager`). An image turn routes to the
+local slot when it can actually read images, else the cloud slot, else a
+connected cloud provider (`pickVisionRef`/`stackVisionReady`, wired in
+`StackDriver`); an on-device model is text-only on this build, so a device model
+placed for vision falls back to the cloud. My Stack is the source: a workflow
+run through the stack inherits the Vision position. The composer chip shows a
+determinate progress ring keyed to frames extracted. Code in
+`app/src/lib/{attachments,videoAttach,videoBackends,
 mediaPlugin,stack}.ts`, `Composer.tsx`, `cloudClaudeDriver.ts`,
 `drivers/stackDriver.ts`, `app/electron/media.ts`, and `app/plugins/oscode-media`;
 doc `docs/video-attachments.md`. Device and desktop-FFmpeg verification are in
@@ -569,27 +574,33 @@ log entry). Migration is now `0016`.
 
 ## Log
 
-- **2026-09-06: vision as a Stack category, plus the video framing progress
-  ring (founder, pushed to main).** Two follow-ups to video attachments. (1)
-  Vision is now a placeable Stack category you can put a local LLM in: an
-  image-bearing turn routes by capability, to a reachable capable model placed
-  in (or anchoring) the stack, else any capable model in it, else a connected
-  cloud provider that reads images (Claude out of the box). On-device models are
-  text-only on this build, so a local model placed for vision falls back to the
-  cloud (`visionCapable` returns false for a device ref, one line to flip when a
-  multimodal runtime lands). `StackDriver` now accepts attachments (it dropped
-  them before) and folds frames into the Anthropic and OpenAI-compatible
-  backends with the same labels and header the cloud Claude driver uses; the
-  device backend never gets images. Pure `pickVisionRef` and `stackVisionReady`
-  in `stack.ts` decide routing and the composer gate; the attach button lights
-  for a "My Stack" chat exactly when a picture would be understood. (2) The
-  video chip's pulse became a determinate ring keyed to frames extracted
-  (`onProgress` threaded through the backends; real per-frame on the canvas
-  path, one step to done on the native paths). Code: `stack.ts`, `stackDriver.ts`,
+- **2026-09-06: vision as a Stack category with two slots and effort, plus the
+  video framing progress ring (founder, pushed to main).** Follow-ups to video
+  attachments, landed across two pushes the same day. (1) Vision is a placeable
+  Stack category you can put a local LLM in. It has two slots in My Stack, a
+  local model (on-device or your own server) and a cloud model, each with its
+  own effort; the cloud slot defaults to the most capable cloud model
+  (`defaultVisionCloudRef`, Claude Opus) until assigned, so images are always
+  understood out of the box (founder: "default that position to most capable
+  cloud model until manually adjusted"). An image turn routes to the local slot
+  when it can actually read images, else the cloud slot, else a connected cloud
+  provider (`visionSlots`/`pickVisionRef`/`stackVisionReady`, wired in
+  `StackDriver`). On-device models are text-only on this build, so a device
+  model placed for vision falls back to the cloud (`visionCapable` false for a
+  device ref, one line to flip when a multimodal runtime lands); a BYOM vision
+  model does read images and is preferred over the cloud slot. `StackDriver` now
+  accepts attachments (it dropped them before) and folds frames into the
+  Anthropic and OpenAI-compatible backends; the device backend never gets
+  images. Per-placement `effort` is honored in `systemFor` over the global
+  composer effort, and is settable on any specialist, not just Vision. My Stack
+  is the source (founder call): a workflow run through the stack inherits the
+  Vision position, so there is one place to set it. (2) The video chip's pulse
+  became a determinate ring keyed to frames extracted (`onProgress` threaded
+  through the backends). Code: `stack.ts`, `stackDriver.ts`, `StackManager.tsx`,
   `store.ts` (`stackVisionReady`), `ChatScreen.tsx`, `Composer.tsx`, `theme.css`,
   `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
-  lint, 776 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
-  guards. Ruling in `DECISIONS.md`.
+  lint, 780 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
+  guards. Rulings in `DECISIONS.md`.
 
 - **2026-09-06: video attachments, reviewed frame by frame, never the video
   (founder, pushed to main).** The founder wanted Claude Code's attachment flow
