@@ -980,3 +980,23 @@ execution contract. Newest at the bottom.
   through the app cache for the plugin to open (a native PHPicker to skip that
   is the noted follow-up). FFmpeg is invoked with an argument array, never a
   shell string.
+- 2026-09-06: **Vision is a placeable Stack category, with a cloud fallback
+  (founder: "vision needs to be a stack category that you can put a local LLM
+  in; if there isn't one available and capable it can go to a cloud provider").**
+  The category already existed ("Image reading"); what was missing was routing.
+  An image-bearing turn no longer goes through the text classifier: it routes by
+  capability (`pickVisionRef`) to a reachable, capable model placed in or
+  anchoring the stack, else a connected reachable cloud provider that reads
+  images (`cloudVisionFallback`, Claude first). Capability is honest per kind:
+  cloud by catalog (`providerModelVision`, Claude always), BYOM trusted (the
+  user declared it; it errors and the turn fails cleanly if the endpoint cannot),
+  device false, because the on-device runtime (LLM.swift) is text-only, so a
+  local model placed for vision falls back to the cloud until a multimodal
+  runtime lands (one line in `visionCapable` to flip). `StackDriver` now accepts
+  attachments (it silently dropped them before) and folds frames into the
+  Anthropic and OpenAI-compatible backends only, never the device backend. A
+  vision turn does not use the specialist-to-reasoning fallback, since
+  routeVision already picked the best reader and the anchor may not read images
+  at all. The composer attach button lights for a "My Stack" chat via
+  `stackVisionReady`, which mirrors the routing plus the connected-cloud
+  fallback so the button is honest.

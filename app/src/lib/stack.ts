@@ -8,6 +8,7 @@
 // The Reasoning LLM plans and routes each task to the specialist whose category
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
+import { PROVIDERS, providerModelVision } from './providers.js';
 import type { ProfileId } from './profiles.js';
 
 export type StackCategory =
@@ -95,6 +96,66 @@ export function placementValid(p: Placement): boolean {
 
 export function harborRef(): StackModelRef {
   return { kind: 'device', modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME };
+}
+
+// ---- vision -------------------------------------------------------------
+
+/** Whether a model can actually take image input on this build. A cloud vision
+ *  model reads images (Claude's whole lineup does; another provider's model
+ *  when its catalog lists the vision capability). A BYOM endpoint the user
+ *  placed for image reading is trusted to (it errors and the turn falls back if
+ *  it cannot). An on-device model cannot yet: the local runtime is text-only,
+ *  so a device model placed in the vision category falls back to a cloud
+ *  provider. Flip the device case when a multimodal on-device runtime lands. */
+export function visionCapable(ref: StackModelRef): boolean {
+  switch (ref.kind) {
+    case 'cloud':
+      return ref.provider === 'anthropic' || providerModelVision(ref.provider, ref.model);
+    case 'byom':
+      return true;
+    case 'device':
+      return false;
+  }
+}
+
+/** The model that should read an image-bearing turn: a reachable, capable model
+ *  placed in the vision category first (the founder's "put a local LLM in
+ *  it"), then the reasoning anchor if it can see, then any reachable capable
+ *  model already in the stack. Undefined when nothing in the stack can read an
+ *  image, at which point the driver reaches for a connected cloud provider.
+ *  `reachable` carries the caller's meaning of reachable: profile reach in the
+ *  driver, profile reach plus a stored key in the composer gate. */
+export function pickVisionRef(
+  stack: AppStack,
+  reachable: (ref: StackModelRef) => boolean,
+): { ref: StackModelRef; placement?: Placement } | undefined {
+  const ok = (r: StackModelRef) => visionCapable(r) && reachable(r);
+  const placed = stack.active.find((m) => m.placement.category === 'vision' && ok(m.ref));
+  if (placed) return { ref: placed.ref, placement: placed.placement };
+  if (stack.reasoning && ok(stack.reasoning)) return { ref: stack.reasoning };
+  const any = stack.active.find((m) => ok(m.ref));
+  if (any) return { ref: any.ref, placement: any.placement };
+  return undefined;
+}
+
+/** Whether an image turn could be read at all right now: a capable model in the
+ *  stack (pickVisionRef), or, failing that, a connected cloud provider that
+ *  reads images and is reachable in this profile. This is what the composer's
+ *  attach button checks for a "My Stack" chat, so the button lights exactly
+ *  when a picture would actually be understood. */
+export function stackVisionReady(
+  stack: AppStack,
+  signals: {
+    reachable: (ref: StackModelRef) => boolean;
+    cloudReachable: boolean;
+    connected: (provider: string) => boolean;
+  },
+): boolean {
+  if (pickVisionRef(stack, signals.reachable)) return true;
+  if (!signals.cloudReachable) return false;
+  return PROVIDERS.some(
+    (p) => signals.connected(p.id) && p.models.some((m) => m.categories?.includes('vision')),
+  );
 }
 
 // A stack per connectivity profile. Reach changes what your stack can use, so

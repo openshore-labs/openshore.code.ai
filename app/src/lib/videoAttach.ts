@@ -121,12 +121,19 @@ export interface RawVideoResult {
   compressed: boolean;
 }
 
+/** Progress from a backend as it works: how many frames are done out of the
+ *  total planned. `total` is 0 until the backend knows the count (a decoder has
+ *  to read the clip's length first), which the UI shows as an indeterminate
+ *  state. */
+export type FrameProgress = (done: number, total: number) => void;
+
 /** The pixel worker. Takes a picked file and a plan, returns frames plus what
- *  it did about size. Implemented per platform in lib/videoBackends.ts. */
+ *  it did about size, and reports progress as frames land. Implemented per
+ *  platform in lib/videoBackends.ts. */
 export interface VideoBackend {
   /** A short reason this backend cannot run, or null when it can. */
   unavailable?(): Promise<string | null>;
-  process(file: File, plan: FramePlan): Promise<RawVideoResult>;
+  process(file: File, plan: FramePlan, onProgress?: FrameProgress): Promise<RawVideoResult>;
 }
 
 // ---- assembly -------------------------------------------------------------
@@ -155,9 +162,10 @@ export interface VideoAttachment {
 export async function buildVideoAttachment(
   file: File,
   backend: VideoBackend,
+  onProgress?: FrameProgress,
 ): Promise<VideoAttachment> {
   const plan = defaultFramePlan();
-  const result = await backend.process(file, plan);
+  const result = await backend.process(file, plan, onProgress);
   if (!result.frames.length) {
     throw new Error('No frames could be read from that video.');
   }
