@@ -58,6 +58,9 @@ importers:
       oscode-llama:
         specifier: file:./plugins/oscode-llama
         version: file:app/plugins/oscode-llama(@capacitor/core@8.5.0)
+      oscode-media:
+        specifier: file:./plugins/oscode-media
+        version: file:app/plugins/oscode-media(@capacitor/core@8.5.0)
       oscode-speech:
         specifier: file:./plugins/oscode-speech
         version: file:app/plugins/oscode-speech(@capacitor/core@8.5.0)
@@ -2446,6 +2449,11 @@ packages:
 
   oscode-llama@file:app/plugins/oscode-llama:
     resolution: {directory: app/plugins/oscode-llama, type: directory}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  oscode-media@file:app/plugins/oscode-media:
+    resolution: {directory: app/plugins/oscode-media, type: directory}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -5853,6 +5861,10 @@ snapshots:
       '@capacitor/core': 8.5.0
 
   oscode-llama@file:app/plugins/oscode-llama(@capacitor/core@8.5.0):
+    dependencies:
+      '@capacitor/core': 8.5.0
+
+  oscode-media@file:app/plugins/oscode-media(@capacitor/core@8.5.0):
     dependencies:
       '@capacitor/core': 8.5.0
 

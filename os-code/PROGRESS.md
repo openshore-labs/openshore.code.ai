@@ -8,13 +8,30 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-05, the phone storefront, Crew routines, the ethics layer, and the review remediation)
+## Current state (2026-09-06 video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
-Four pieces of work landed on 2026-09-05, built in parallel sessions and merged
-here: the phone storefront (newest, first below), Crew routines, the always-on
-ethical guardrail layer, and the full-codebase review remediation (its state
-section moved to `docs/progress-archive.md`; its open items stay in What
-remains).
+Newest first: video attachments (2026-09-06, below), then four pieces from
+2026-09-05 built in parallel sessions and merged here: the phone storefront,
+Crew routines, the always-on ethical guardrail layer, and the full-codebase
+review remediation (its state section moved to `docs/progress-archive.md`; its
+open items stay in What remains).
+
+### Video attachments (reviewed frame by frame, never the video)
+
+A model never receives a video. On attach, a clip is compressed toward the 25
+to 29MB band when it is over 30MB, then sampled into up to 12 downscaled JPEG
+frames tagged with order and timestamp; the frames ride to a vision model as
+image blocks and the composer shows one chip per video. Native work runs on
+AVFoundation on the phone (new `oscode-media` plugin) and FFmpeg on the desktop
+(`osc:mediaProcess`), with a canvas fallback so a clip always yields frames.
+Screenshots and screen recordings flow through with no approval. The cloud
+Claude driver leads the frames with a context header, labels each with its
+timestamp, and adds a system note so the model reads them as one clip and may
+say plainly it reviewed the video frame by frame. Vision stays cloud Claude
+only. Code in `app/src/lib/{attachments,videoAttach,videoBackends,
+mediaPlugin}.ts`, `Composer.tsx`, `cloudClaudeDriver.ts`, `app/electron/media.ts`,
+and `app/plugins/oscode-media`; doc `docs/video-attachments.md`. Device and
+desktop-FFmpeg verification are in What remains.
 
 ### The phone storefront (Marketplace, on iPhone)
 
@@ -167,6 +184,17 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
+      off the sandbox).** TestFlight: attach a screen recording over 30MB,
+      confirm one chip with a frame count appears, send to Claude, and confirm
+      the reply reasons across the frames in order and can say it reviewed the
+      clip frame by frame. Desktop with FFmpeg installed: the same with a picked
+      video file (confirm compression lands under 29MB and frames extract);
+      without FFmpeg, confirm the canvas fallback still produces frames. Also
+      confirm `cap sync ios` picks up the new `oscode-media` plugin and the
+      photo-library permission prompt reads correctly. Follow-ups noted in
+      `docs/video-attachments.md`: a native PHPicker to skip staging the video
+      bytes through the WebView, and vision beyond cloud Claude.
 - [ ] **Run `osc eval` on `qwen3-4b-phone` and commit its average to
       `curation/eval.json` (founder, needs a machine with the model).** Until
       then the curated gate drops the 4B from the live feed (an orchestrator
@@ -535,6 +563,37 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-06: video attachments, reviewed frame by frame, never the video
+  (founder, pushed to main).** The founder wanted Claude Code's attachment flow
+  (Camera, Photos, Files) with video added, on two rules: a model never reviews
+  a video directly, and a large clip is compressed before it is broken into
+  stills. Built: a video is detected on attach (`isVideoFile`), compressed
+  toward the 25 to 29MB band when it is over 30MB, and sampled into up to 12
+  downscaled JPEG frames, each tagged with its order and timestamp; the frames
+  ride to a vision model as ordinary image blocks and the composer shows one
+  chip per video. Native compression and framing run on AVFoundation on the
+  phone (new `oscode-media` Capacitor plugin: `AVAssetExportSession`
+  fileLengthLimit for the band, `AVAssetImageGenerator` for the frames) and on
+  FFmpeg on the desktop (`osc:mediaProcess` over the Electron bridge, invoked
+  with an argument array, never a shell string, with a friendly "install
+  ffmpeg" message when it is absent); the browser and any native gap fall back
+  to a canvas over a hidden `<video>`, so a clip always yields frames.
+  Screenshots and screen recordings flow through with no approval, since
+  attaching is not a tool call. The cloud Claude driver (`buildVisionContent`)
+  leads the frames with a one-line context header, labels each with its
+  timestamp, and adds a system note so the model reads them as one clip in
+  order and may say plainly it reviewed the video frame by frame. Only stills
+  ever leave the device; the video is read locally. Vision stays cloud Claude
+  only (`sourceSupportsVision`), so frames route there. New Info.plist photo
+  permission string. Code: `app/src/lib/{attachments,videoAttach,videoBackends,
+mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
+  `app/src/drivers/cloudClaudeDriver.ts`, `app/electron/media.ts` +
+  `main.ts`/`preload.cjs`, `app/plugins/oscode-media`. Doc:
+  `docs/video-attachments.md`. Gates: app typecheck (src and electron), lint,
+  tests (29 in the touched suites), Vite build, Prettier; os-code em-dash guard
+  and the PROGRESS shape guard. Native device and desktop-FFmpeg verification
+  are in What remains (not runnable in a web session).
+
 - **2026-09-05: `0016` had already been applied to production, from its
   stale first draft, before every edit made to it since.** Discovered by
   querying the live schema directly (prompted by the founder asking what to
@@ -605,22 +664,3 @@ log entry). Migration is now `0016`.
   a set-up-crew guide, and mutation guards in the store. Pure crewControl() with
   tests. App-only. Gates: app 714 tests, typecheck, lint, build, Prettier;
   os-code unchanged and green.
-
-- **2026-09-05: the phone storefront: packs by status, families, and an
-  honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that
-  only toasted: make it super clear what installs on this phone versus a
-  desktop or home server, browse by model name then size, say plainly that a
-  new 4B beats the old 7B class here, and be package-ready on the phone where
-  choices are few. Built: `app/src/lib/packs.ts` (Offline, Offshore, Docked
-  packs, one per connection status, filling that status's own stack, resolved
-  by preference list against the loaded catalog); `modelFamilies.ts` (client
-  derived families, a rail, a family page split by where each size installs);
-  `runsOn` and `installLabel` in `marketplace.ts` (a "Where it runs" row on
-  every product page; "On <hub>" or "Desktop" instead of a Get the phone cannot
-  honor); the pocket shelf retitled "Runs on this iPhone" with the 4B-beats-7B
-  line; a "Desktop and home servers" divider. Seed: `qwen3-4b-phone` (Qwen3 4B
-  Instruct 2507, 2.5 GB, published GPQA / LiveCodeBench / AIME) and
-  `qwen2.5-coder-1.5b-phone` (the Offline pack's coder), the Pocket bundle
-  moved to the 4B. Rulings in `DECISIONS.md`; the doc is
-  `docs/MARKETPLACE.md`, "The phone storefront". Gates: app typecheck, lint,
-  tests, Prettier; os-code builder and isolation tests; both em-dash guards.

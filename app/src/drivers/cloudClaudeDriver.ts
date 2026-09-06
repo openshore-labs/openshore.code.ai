@@ -9,6 +9,7 @@ import { DriverEmitter } from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
+import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import { SWITCH_TO_LOCAL } from '../lib/usageFallback.js';
 import { WORKSPACE_HINT, needsWorkspaceId } from '../lib/providers.js';
 import type { SeedTurn } from '../state/types.js';
@@ -30,6 +31,43 @@ export function contextWindowFor(model: string): number {
 /** The context meter reading: input tokens as a percent of the real window. */
 export function contextPercentFor(model: string, inputTokens: number): number {
   return Math.min(100, Math.round((inputTokens / contextWindowFor(model)) * 100));
+}
+
+/** Build the user turn's content for the messages API. Plain image attachments
+ *  become image blocks; video frames become image blocks too, each preceded by
+ *  a short timestamp label and the whole set led by a one-line context header,
+ *  so the model reads the stills as a clip in order. With no usable images the
+ *  turn stays a plain string, unchanged. Pure and exported so the interleaving
+ *  is testable without the network. `hasFrames` tells the caller whether to add
+ *  the frame-reading system note. */
+export function buildVisionContent(
+  text: string,
+  attachments?: Attachment[],
+): {
+  content: string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>;
+  hasFrames: boolean;
+} {
+  const atts = (attachments ?? [])
+    .map((a) => ({ a, parts: imageBlockParts(a) }))
+    .filter((x): x is { a: Attachment; parts: { mediaType: string; base64: string } } =>
+      Boolean(x.parts),
+    );
+  const hasFrames = atts.some((x) => x.a.frame);
+  const content: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = [];
+  if (hasFrames) {
+    const header = videoContextHeader(atts.map((x) => x.a));
+    if (header) content.push({ type: 'text', text: header });
+  }
+  for (const { a, parts } of atts) {
+    if (a.frame) content.push({ type: 'text', text: frameLabel(a.frame) });
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: parts.mediaType as 'image/png', data: parts.base64 },
+    });
+  }
+  if (!content.length) return { content: text, hasFrames: false };
+  content.push({ type: 'text', text });
+  return { content, hasFrames };
 }
 
 const SYSTEM_PROMPT = [
@@ -78,24 +116,10 @@ export class CloudClaudeDriver implements ChatDriver {
   private async run(text: string, attachments?: Attachment[]): Promise<void> {
     this.emitter.emit({ type: 'task-start', input: text });
     this.emitter.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
-    // Vision: fold image attachments into the user turn as base64 image blocks
-    // (the shape the Anthropic messages API takes). With no images it stays a
-    // plain string, unchanged.
-    const imageBlocks = (attachments ?? [])
-      .map(imageBlockParts)
-      .filter((p): p is { mediaType: string; base64: string } => Boolean(p))
-      .map((p): Anthropic.ImageBlockParam => ({
-        type: 'image',
-        source: { type: 'base64', media_type: p.mediaType as 'image/png', data: p.base64 },
-      }));
-    if (imageBlocks.length) {
-      this.history.push({
-        role: 'user',
-        content: [...imageBlocks, { type: 'text', text }],
-      });
-    } else {
-      this.history.push({ role: 'user', content: text });
-    }
+    // Vision: fold image attachments (and video frames) into the user turn. See
+    // buildVisionContent for the frame labeling and header.
+    const { content, hasFrames } = buildVisionContent(text, attachments);
+    this.history.push({ role: 'user', content });
 
     // Accumulate the streamed text so an abort can keep the visible partial in
     // model history (Claude's own apps re-feed the partial when you continue).
@@ -104,7 +128,14 @@ export class CloudClaudeDriver implements ChatDriver {
       const stream = this.client.messages.stream({
         model: this.model,
         max_tokens: 16000,
-        system: [SYSTEM_PROMPT, effortDirective(), this.extraSystem].filter(Boolean).join('\n'),
+        system: [
+          SYSTEM_PROMPT,
+          effortDirective(),
+          hasFrames ? VIDEO_FRAMES_SYSTEM_NOTE : undefined,
+          this.extraSystem,
+        ]
+          .filter(Boolean)
+          .join('\n'),
         messages: this.history,
       });
       this.activeStream = stream;

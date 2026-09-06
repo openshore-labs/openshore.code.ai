@@ -59,6 +59,8 @@
 	<string>OpenShore uses the camera only to scan the pairing QR code shown on your computer, so you never have to type the address and token by hand.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>OpenShore uses the microphone to turn your speech into text when you tap the mic in the composer.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>OpenShore reads photos, screenshots, and screen recordings you attach so a model can review them. A video is turned into still frames on your device first, and the video itself is never sent.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>OpenShore transcribes your speech on this device so you can dictate messages. The audio stays on your phone.</string>
 	<!-- Only standard TLS; skips the export-compliance question on each TestFlight build. -->

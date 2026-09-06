@@ -214,6 +214,15 @@ export interface OscodeBridge {
   repoReadDir(root: string, subdir: string): Promise<string[] | null>;
   repoReadFile(root: string, relPath: string): Promise<string | null>;
 
+  // Video framing on the desktop: FFmpeg compresses a large clip into the size
+  // band, then samples it into stills, so a vision model reviews it frame by
+  // frame and never sees the video. `options.path` is the picked file's real
+  // path. Kept in lockstep with lib/mediaPlugin.ts (the phone's contract) and
+  // main.ts (the FFmpeg driver).
+  mediaProcess(
+    options: import('./mediaPlugin.js').MediaProcessOptions,
+  ): Promise<import('./mediaPlugin.js').MediaProcessResult>;
+
   // OS-encrypted secret store (safeStorage), for the data-encryption key.
   // secureHas tells "no entry" from "an entry this launch cannot decrypt", so
   // the renderer never mints a new key over data sealed with the old one.

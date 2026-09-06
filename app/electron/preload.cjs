@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('oscode', {
   repoReadDir: invoke('osc:repoReadDir'),
   repoReadFile: invoke('osc:repoReadFile'),
 
+  mediaProcess: invoke('osc:mediaProcess'),
+
   reconcileRepos: invoke('osc:reconcileRepos'),
 
   pickFolder: invoke('osc:pickFolder'),

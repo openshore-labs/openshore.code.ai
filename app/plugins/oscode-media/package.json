@@ -1,0 +1,19 @@
+{
+  "name": "oscode-media",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native video framing for OpenShore: compress a clip and lift stills with AVFoundation, so a vision model reviews it frame by frame and never sees the video.",
+  "license": "UNLICENSED",
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

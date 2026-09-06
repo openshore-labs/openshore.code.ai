@@ -2398,6 +2398,25 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-08-26)
 
+- **2026-09-05: the phone storefront: packs by status, families, and an
+  honest Get.** Founder, from an iPhone Air with 90 GB free and a "Get" that
+  only toasted: make it super clear what installs on this phone versus a
+  desktop or home server, browse by model name then size, say plainly that a
+  new 4B beats the old 7B class here, and be package-ready on the phone where
+  choices are few. Built: `app/src/lib/packs.ts` (Offline, Offshore, Docked
+  packs, one per connection status, filling that status's own stack, resolved
+  by preference list against the loaded catalog); `modelFamilies.ts` (client
+  derived families, a rail, a family page split by where each size installs);
+  `runsOn` and `installLabel` in `marketplace.ts` (a "Where it runs" row on
+  every product page; "On <hub>" or "Desktop" instead of a Get the phone cannot
+  honor); the pocket shelf retitled "Runs on this iPhone" with the 4B-beats-7B
+  line; a "Desktop and home servers" divider. Seed: `qwen3-4b-phone` (Qwen3 4B
+  Instruct 2507, 2.5 GB, published GPQA / LiveCodeBench / AIME) and
+  `qwen2.5-coder-1.5b-phone` (the Offline pack's coder), the Pocket bundle
+  moved to the 4B. Rulings in `DECISIONS.md`; the doc is
+  `docs/MARKETPLACE.md`, "The phone storefront". Gates: app typecheck, lint,
+  tests, Prettier; os-code builder and isolation tests; both em-dash guards.
+
 - **2026-09-05: Crew routines, the botOS clone brief, built and pushed to
   main.** Go-with-conditions from the CMO, CTO, CFO, and CX; the founder signed
   off on all four decision points (ship as Crew with routines; Personal to $50
