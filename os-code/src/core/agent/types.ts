@@ -86,6 +86,14 @@ export type AgentEvent =
   | { type: 'todos'; items: TodoItem[] }
   // Plan mode: the model's proposed plan, awaiting the person's go-ahead.
   | { type: 'plan-proposed'; text: string }
+  // The plan-first flow (app): the reasoning LLM needs the person to settle the
+  // framing before it draws the play. Rendered as a picker; the reply is folded
+  // back in and re-framed. Free text is always allowed alongside the options.
+  | {
+      type: 'clarify';
+      summary: string;
+      questions: Array<{ id: string; question: string; options?: string[] }>;
+    }
   // The permission mode in force, so a reattaching client shows the truth.
   | { type: 'mode'; mode: PermissionMode }
   // Where the session works and the branch it is on; refreshed at the

@@ -261,6 +261,13 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
     case 'note':
       return push(next, { kind: 'note', text: event.message });
 
+    case 'clarify':
+      return push(next, {
+        kind: 'clarify',
+        summary: event.summary,
+        questions: event.questions,
+      });
+
     case 'usage':
       return {
         ...next,

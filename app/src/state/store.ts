@@ -1679,6 +1679,12 @@ export const useApp = create<AppState>((set, get) => {
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
             codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,
+            // Docked to a computer with a local workspace connected to this chat:
+            // a play's repo/tool step runs on the engine there. Absent (not
+            // docked, or a GitHub-only / repo-less chat) means such a step is
+            // described instead of executed.
+            daemon: s.settings.daemon,
+            repoCwd: firstWorkspace(conv.repoIds ?? []),
           },
           seed,
         );

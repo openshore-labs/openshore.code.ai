@@ -7480,6 +7480,51 @@ textarea {
   text-overflow: ellipsis;
 }
 
+/* The plan-first flow's clarifying-question picker. Tappable option chips; free
+   text in the composer works too. Animates in with the house token. */
+.clarify-card {
+  margin: 8px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.clarify-summary {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.clarify-lead {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  margin-bottom: 10px;
+}
+.clarify-q {
+  margin-bottom: 10px;
+}
+.clarify-question {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.clarify-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.clarify-option {
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.clarify-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 .plan-card {
   border: 1px solid var(--local);
   background: var(--bg-raised);
