@@ -78,9 +78,11 @@ function isProvider(v: string | null): v is Provider {
 // The one https redirect URI every provider app registers. Supabase injects
 // SUPABASE_URL into every function, so the app (VITE_SUPABASE_URL) and this
 // function derive the identical string, which OAuth requires to match between
-// the authorize call and the token exchange.
+// the authorize call and the token exchange. Trim any trailing slash so a base
+// with one can never compose into a doubled-slash URL that the exchange sends
+// while authorize sent the clean one; the app normalizes the same way.
 function redirectUri(): string {
-  const base = Deno.env.get('SUPABASE_URL') ?? '';
+  const base = (Deno.env.get('SUPABASE_URL') ?? '').trim().replace(/\/+$/, '');
   return `${base}/functions/v1/repo-oauth/callback`;
 }
 

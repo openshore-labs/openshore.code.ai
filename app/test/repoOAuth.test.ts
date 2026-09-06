@@ -205,6 +205,49 @@ describe('connectRepoOAuth', () => {
   });
 });
 
+describe('redirect URI', () => {
+  async function loadWithUrl(url: string) {
+    vi.stubEnv('VITE_SUPABASE_URL', url);
+    vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'Iv1_testclient');
+    vi.resetModules();
+    return import('../src/lib/gitos/repoOAuth.js');
+  }
+
+  it('exposes the exact Callback URL the authorize call sends', async () => {
+    const mod = await loadWithUrl('https://proj.supabase.co');
+    expect(mod.repoOAuthCallbackUrl()).toBe(
+      'https://proj.supabase.co/functions/v1/repo-oauth/callback',
+    );
+  });
+
+  it('strips a trailing slash so the redirect_uri never doubles it (GitHub rejects that)', async () => {
+    // A trailing slash on the build var used to compose into `host//functions`,
+    // which a GitHub App refuses as "redirect_uri is not associated with this
+    // application". The exposed Callback URL and the value that actually rides on
+    // authorize and exchange are all the single-slash string.
+    const mod = await loadWithUrl('https://proj.supabase.co/');
+    expect(mod.repoOAuthCallbackUrl()).toBe(
+      'https://proj.supabase.co/functions/v1/repo-oauth/callback',
+    );
+
+    mockFetchOnce({ accessToken: 'gho_abc' });
+    const res = await mod.connectRepoOAuth('github');
+    expect(res.ok).toBe(true);
+    const authUrl = lastOpenedUrl();
+    expect(authUrl.searchParams.get('redirect_uri')).toBe(
+      'https://proj.supabase.co/functions/v1/repo-oauth/callback',
+    );
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://proj.supabase.co/functions/v1/repo-oauth/exchange');
+  });
+
+  it('is undefined when the build carries no Supabase URL', async () => {
+    const mod = await loadWithUrl('');
+    expect(mod.repoOAuthCallbackUrl()).toBeUndefined();
+    expect(mod.isRepoOAuthConfigured('github')).toBe(false);
+  });
+});
+
 describe('friendlyError', () => {
   it('has a sentence for every code the function can return', async () => {
     const mod = await loadModule();
