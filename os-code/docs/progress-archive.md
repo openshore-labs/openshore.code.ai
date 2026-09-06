@@ -2398,6 +2398,26 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-09-05)
 
+- **2026-09-05: `0016` had already been applied to production, from its
+  stale first draft, before every edit made to it since.** Discovered by
+  querying the live schema directly (prompted by the founder asking what to
+  check before running `db push`), rather than trusting the file's edit
+  history: production had unconditional IP capture on every row of
+  `guardrail_events` and `likeness_consents`, the full `ip_ban_proposals`
+  queue, `request_ip()`, and a three-argument `record_enforcement` the app
+  no longer calls (the app calls the zero-argument version, so enforcement
+  recording has been silently broken in production). Confirmed empty first
+  (0 rows in all three tables), so nothing real was at stake. Fixed with a
+  new migration rather than more edits to `0016`:
+  `0017_reconcile_stale_0016.sql` drops every stale IP object and the
+  stale `record_enforcement` signature, then recreates the zero-argument
+  version the app expects. 3 new tests in `ethicsEnforcement.test.ts`
+  (86 total, up from 83). Full write-up in `DECISIONS.md`. Applied to
+  production the same day and verified live (all four stale objects gone,
+  `record_enforcement()` the only signature, founder seeded into
+  `abuse_reviewers`). The founder's own smoke test of a live guardrail
+  block is the one thing still pending.
+
 - **2026-09-05: run a bigger model on the iPhone, the CTO + CMO consensus,
   built and pushed to main.** The founder asked whether we could smooth a
   larger on-device model on an iPhone and asked the CTO and CMO to converge

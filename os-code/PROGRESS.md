@@ -8,13 +8,41 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-06 the plan-first workflow and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
+## Current state (2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
-Newest first: the plan-first workflow and video attachments (2026-09-06,
-below), then four pieces from 2026-09-05 built in parallel sessions and merged
-here: the phone storefront, Crew routines, the always-on ethical guardrail
-layer, and the full-codebase review remediation (its state section moved to
-`docs/progress-archive.md`; its open items stay in What remains).
+Newest first: voice mode (2026-09-06, below), then the plan-first workflow and
+video attachments (2026-09-06), then four pieces from 2026-09-05 built in
+parallel sessions and merged here: the phone storefront, Crew routines, the
+always-on ethical guardrail layer, and the full-codebase review remediation (its
+state section moved to `docs/progress-archive.md`; its open items stay in What
+remains).
+
+### Voice mode (a spoken conversation over the chat, native and offline)
+
+The founder's ask: a Claude-style voice mode usable while coding, native so it
+works offline, with a voice you pick, and with the natural breaks the work needs.
+Built on top of the existing on-device dictation. Listening reuses the
+`oscode-speech` plugin (on-device SFSpeechRecognizer, mic audio stays on the
+phone) with a silence-based finalize so it is hands-free; speaking is a new
+`oscode-tts` plugin (AVSpeechSynthesizer, synthesized on the phone, offline), Web
+Speech on desktop and web. The picker lists the device's installed system voices
+(Apple's downloadable premium neural voices included), so it is real and offline,
+and it steers clear of the ethics layer's Tier 2 voice-likeness gate (generic
+system voices, no cloud voice service like Claude's own). Access inherits the
+chat, no separate preset (founder: "if access is on for the chat, voice gets the
+same access"): a voice-triggered action rides the same `send` and approval path.
+The natural breaks are one policy table (`voiceBreaks.ts`): clarifying questions
+and plan approval are read out and answered by voice; a tool or cloud-spend
+approval, and a stopped-turn recovery, close voice and hand back to the chat
+screen, then voice reopens once an approval is answered. Everything spoken lands
+in the transcript as text, so the chat is the history. Pure, tested core in
+`app/src/lib/voice/` (`spoken.ts` speech shaping, `voiceBreaks.ts` the policy,
+`tts.ts`/`stt.ts` the backends), the loop in `app/src/hooks/useVoiceMode.ts`, the
+overlay in `VoiceMode.tsx` and the picker in `VoicePicker.tsx`, a voice button in
+`Composer.tsx`, the break/reopen wiring in `ChatScreen.tsx`, and settings
+(`voiceReplies`, `voiceId`, `voiceRate`) in `SettingsScreen.tsx`. Doc in
+`docs/voice-mode.md`, rulings in `DECISIONS.md`. Like dictation, the native speech
+path is only provable on a device (What remains).
 
 ### The plan-first workflow (My Stack as the anchor, the reasoning LLM draws a play)
 
@@ -227,6 +255,19 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Voice mode on a device (built 2026-09-06, unverified off the sandbox).**
+      The decision logic is unit tested (`app/test/voice.test.ts`), but the native
+      speech path is device-only, like dictation. TestFlight: open voice mode in a
+      chat, speak a request, confirm the reply is spoken in the chosen voice and
+      lands in the transcript as text; ask something that draws a clarifying
+      question and answer it by voice; trigger a tool or cloud-spend approval and
+      confirm voice closes, the sheet shows, and voice reopens after the tap;
+      change the voice in the picker and hear the sample; confirm it all works with
+      the network off for an on-device model. Also confirm `cap sync ios` links the
+      new `oscode-tts` plugin (registered in `app/package.json`, not yet in the
+      CLI-managed `CapApp-SPM/Package.swift`, same as `oscode-media`). Follow-ups
+      in `docs/voice-mode.md`: true always-open barge-in (needs echo handling), and
+      a bundled cross-platform neural TTS engine behind the existing seam.
 - [ ] **GitHub repo connect: root cause confirmed (a doubled slash), fixed in
       code and merged to main, verify on the next TestFlight build (founder,
       TestFlight "redirect_uri is not associated with this application").**
@@ -626,6 +667,29 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-06: voice mode, a spoken conversation over the chat (founder).** The
+  founder asked for a Claude-style voice mode usable while coding: native so it
+  works offline, a voice you pick, and the natural breaks the work needs (a picker
+  or a decision leaves voice, shows the card, then reopens). Four answers steered
+  it (via a picker): always available offline with machine powers inheriting the
+  chat's access (no separate voice preset); answer as much as possible by voice;
+  and, on "what does Claude use?", native OS voices rather than Claude's cloud TTS
+  (offline, free, premium, and clear of the Tier 2 voice-likeness gate). Built:
+  listening reuses `oscode-speech` (on-device) with a silence-based finalize so it
+  is hands-free; a new `oscode-tts` plugin (AVSpeechSynthesizer, on-device,
+  offline) speaks, Web Speech on desktop and web; a voice picker over the device's
+  installed system voices. The break policy is one table (`voiceBreaks.ts`):
+  clarify and plan answered by voice, tool/cloud-spend approvals and stopped-turn
+  recovery handed to the screen, voice reopening once an approval clears.
+  Everything spoken goes through the normal `send`/driver seam, so the transcript
+  is the history. Pure core tested in `app/test/voice.test.ts` (28 cases); wiring
+  in `useVoiceMode.ts`, `VoiceMode.tsx`, `VoicePicker.tsx`, `Composer.tsx`,
+  `ChatScreen.tsx`, `SettingsScreen.tsx`, `store.ts` (`voiceReplies`/`voiceId`/
+  `voiceRate`); CSS in `theme.css` on the motion tokens. Doc `docs/voice-mode.md`,
+  rulings in `DECISIONS.md`. Gates: app typecheck (src and electron), lint, 838
+  tests, Vite build, the motion/polish and em-dash guards. The native speech path
+  is device-only, like dictation, so TestFlight is the proof (What remains).
+
 - **2026-09-06: GitHub repo connect, the redirect address GitHub could not match
   (founder report from TestFlight).** Connecting a repo, one-tap Connect GitHub
   reached the GitHub consent page and stopped on "The redirect_uri is not
@@ -754,23 +818,3 @@ mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
   tests (29 in the touched suites), Vite build, Prettier; os-code em-dash guard
   and the PROGRESS shape guard. Native device and desktop-FFmpeg verification
   are in What remains (not runnable in a web session).
-
-- **2026-09-05: `0016` had already been applied to production, from its
-  stale first draft, before every edit made to it since.** Discovered by
-  querying the live schema directly (prompted by the founder asking what to
-  check before running `db push`), rather than trusting the file's edit
-  history: production had unconditional IP capture on every row of
-  `guardrail_events` and `likeness_consents`, the full `ip_ban_proposals`
-  queue, `request_ip()`, and a three-argument `record_enforcement` the app
-  no longer calls (the app calls the zero-argument version, so enforcement
-  recording has been silently broken in production). Confirmed empty first
-  (0 rows in all three tables), so nothing real was at stake. Fixed with a
-  new migration rather than more edits to `0016`:
-  `0017_reconcile_stale_0016.sql` drops every stale IP object and the
-  stale `record_enforcement` signature, then recreates the zero-argument
-  version the app expects. 3 new tests in `ethicsEnforcement.test.ts`
-  (86 total, up from 83). Full write-up in `DECISIONS.md`. Applied to
-  production the same day and verified live (all four stale objects gone,
-  `record_enforcement()` the only signature, founder seeded into
-  `abuse_reviewers`). The founder's own smoke test of a live guardrail
-  block is the one thing still pending.

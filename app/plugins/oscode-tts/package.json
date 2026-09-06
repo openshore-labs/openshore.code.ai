@@ -1,0 +1,19 @@
+{
+  "name": "oscode-tts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native on-device text-to-speech for OpenShore voice mode, via AVSpeechSynthesizer. Audio is synthesized on the phone, so replies can be spoken offline and no voice ever leaves the device.",
+  "license": "UNLICENSED",
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

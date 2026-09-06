@@ -9413,3 +9413,195 @@ button.settings-row:active {
 .cc-routine.view-only {
   opacity: 0.92;
 }
+
+/* -------------------------------------------------------------- voice mode */
+/* A calm, immersive surface you talk to. It fades in over the chat on the door
+   clock and fades out the same way (useExitPresence holds it mounted for it), so
+   it never snaps. Teal, because the voice is on-device (local/private), the same
+   language the rest of the app uses for what stays on your machine. */
+.voice-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  display: flex;
+  background: var(--bg);
+  animation: fade-in var(--dur-7) var(--ease-glide);
+  transition: opacity var(--dur-7) var(--ease-glide);
+}
+.voice-scrim.closing {
+  animation: none;
+  opacity: 0;
+}
+.voice-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: calc(14px + var(--safe-top)) 18px calc(18px + var(--safe-bottom));
+  animation: voice-in var(--dur-7) var(--ease-glide);
+}
+@keyframes voice-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.voice-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.voice-voice-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--local);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.voice-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+/* The orb: a filled core that breathes, a ring that pulses out. Both loops are
+   infinite, so their raw seconds are allowed by the motion guard; the global
+   reduced-motion reset zeroes them, leaving a calm static orb. */
+.voice-orb {
+  position: relative;
+  width: 176px;
+  height: 176px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  display: grid;
+  place-items: center;
+}
+.voice-orb-core {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, var(--local), var(--local-deep));
+  box-shadow: 0 10px 40px var(--local-soft);
+  animation: voice-breathe 3s var(--ease-loop) infinite;
+}
+.voice-orb-ring {
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--local);
+  opacity: 0;
+}
+@keyframes voice-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes voice-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+@keyframes voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Listening: a steady pulse out. Speaking: a quicker, livelier breath. Thinking:
+   the ring turns while the core rests. Suspended: dimmed while a card takes over. */
+.voice-orb-listening .voice-orb-ring {
+  animation: voice-ring 2.4s var(--ease-loop) infinite;
+}
+.voice-orb-speaking .voice-orb-core {
+  animation: voice-breathe 1.2s var(--ease-loop) infinite;
+}
+.voice-orb-speaking .voice-orb-ring {
+  animation: voice-ring 1.2s var(--ease-loop) infinite;
+}
+.voice-orb-thinking .voice-orb-ring {
+  border-style: dashed;
+  opacity: 0.7;
+  animation: voice-spin 3s linear infinite;
+}
+.voice-orb-suspended .voice-orb-core {
+  opacity: 0.5;
+  animation: none;
+}
+.voice-phase {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+.voice-caption {
+  min-height: 3.4em;
+  max-width: 30rem;
+  text-align: center;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.4;
+  text-wrap: pretty;
+  margin: 0;
+}
+.voice-hint {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  min-height: 1.2em;
+}
+.voice-foot {
+  text-align: center;
+  margin: 0;
+}
+/* The voice picker rows (reused in Settings and the overlay). */
+.voice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+.voice-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font-size: 15px;
+}
+.voice-row.active {
+  border-color: var(--local);
+  background: var(--local-soft);
+}
+.voice-row-name {
+  flex: 1;
+  font-weight: 600;
+}
+.voice-row-lang {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+.voice-row-check {
+  color: var(--local);
+  font-weight: 700;
+}
