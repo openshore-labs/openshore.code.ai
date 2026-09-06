@@ -1043,3 +1043,27 @@ execution contract. Newest at the bottom.
   clarify picker (questions render as chat text today), engine execution of a
   repo/tool step from this flow (marked and described today), and the same play
   flow on the desktop-engine routine path (routines use the engine router).
+- 2026-09-06: **The three workflow follow-ups, ruled by the CTO (founder
+  delegated the forks: "ask my CTO what to do").** (1) Clarify picker: a
+  `clarify` driver event renders a `ClarifyCard` with tappable option chips;
+  tapping sends the reply, which the driver folds back into the framing.
+  Straightforward, no fork. (2) FORK A, engine execution of a `needsTools` step
+  when docked: CTO ruled to open ONE real daemon engine session per play (bound
+  to the chat's local workspace via `firstWorkspace(repoIds)`), run each tool
+  step through the existing `RemoteDriver`, and surface the engine's real tool
+  approvals in the chat, never auto-answered. Reuse, do not rebuild; do not use
+  the tool-less `/chat` path; share one session/cwd across tool steps. Must-fixes
+  applied: `StackDriver.answerApproval` is now a real pass-through to the engine
+  session; abort aborts the engine turn and settles the awaited step; the session
+  defaults to `acceptEdits` (in-jail edits flow, shell/push/cloud stay loud);
+  `projectSecrets` are never sent to the docked session; every failure (not
+  docked, no bound workspace, a 403 for a member) degrades to describe-only.
+  Blast radius as the CTO scoped it: `stackDriver.ts` + one `StackContext` thread
+  in `store.ts`, reusing `remoteDriver.ts`, no daemon/engine change. (3) FORK B,
+  the play flow on the routine path: CTO ruled to KEEP the engine's ReAct loop
+  and NOT port `play.ts` (a headless routine must never block on a clarifying
+  question, and porting would create two planners to keep from drifting, a
+  foundation renovation). Instead capture the loop's own `todoWrite` in the
+  scheduler's `onEvent` and write it as a Plan section in the routine's vault
+  note, no extra model call, no regression to the approval-free first run. Blast
+  radius: `os-code/src/routines/scheduler.ts` only.

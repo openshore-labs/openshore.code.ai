@@ -101,6 +101,9 @@ interface ActiveRun {
   off: () => void;
   finalText: string;
   steps: string[];
+  /** The agent's own plan (its latest todoWrite), written into the note so the
+   *  founder sees what the routine set out to do, not just what it touched. */
+  plan: string[];
   /** Why the scheduler itself ended the run (the wall-clock cap), if it did. */
   endNote?: string;
   approvalTimer?: ReturnType<typeof setTimeout>;
@@ -369,6 +372,7 @@ export class RoutineScheduler {
       off: () => {},
       finalText: '',
       steps: [],
+      plan: [],
       finished: false,
     };
     this.active = active;
@@ -417,6 +421,13 @@ export class RoutineScheduler {
       }
       case 'text-final': {
         if (event.text.trim()) active.finalText = event.text.trim();
+        break;
+      }
+      case 'todos': {
+        // The agent's own plan, replaced whole each todoWrite. The latest one is
+        // written into the note as a Plan section, so the founder sees what the
+        // routine set out to do. No extra model call; this is the loop's own plan.
+        if (event.items.length) active.plan = event.items.map((i) => i.content);
         break;
       }
       case 'tool-start': {
@@ -506,6 +517,9 @@ export class RoutineScheduler {
       active.finalText || (endNote ? endNote : 'No result text was written.'),
     ];
     if (endNote && active.finalText) lines.push('', `Note: ${endNote}`);
+    if (active.plan.length) {
+      lines.push('', '## Plan', '', ...active.plan.map((s) => `- ${s}`));
+    }
     if (active.steps.length) {
       lines.push('', '## Steps', '', ...active.steps.map((s) => `- ${s}`));
     }

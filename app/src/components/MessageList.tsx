@@ -15,6 +15,7 @@ import { CommandCard } from './CommandCard.js';
 import { WorkingRow } from './WorkingRow.js';
 import { ThinkingBlock } from './ThinkingBlock.js';
 import { PlanCard } from './PlanCard.js';
+import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 
 function AssistantBubble({
@@ -67,6 +68,7 @@ export function MessageList({
   onRetry,
   onApprovePlan,
   onRevisePlan,
+  onClarifyPick,
   onUnqueue,
 }: {
   thread: ThreadState;
@@ -76,6 +78,8 @@ export function MessageList({
   onRetry?: () => void;
   onApprovePlan?: () => void;
   onRevisePlan?: () => void;
+  /** Answer a clarifying question (the plan-first picker): sends the reply. */
+  onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
   onUnqueue?: (index: number) => void;
 }) {
@@ -220,6 +224,15 @@ export function MessageList({
                   status={item.status}
                   onApprove={() => onApprovePlan?.()}
                   onRevise={() => onRevisePlan?.()}
+                />
+              );
+            case 'clarify':
+              return (
+                <ClarifyCard
+                  key={item.id}
+                  summary={item.summary}
+                  questions={item.questions}
+                  onPick={onClarifyPick}
                 />
               );
             case 'changed':

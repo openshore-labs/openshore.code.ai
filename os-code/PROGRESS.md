@@ -36,9 +36,15 @@ re-plan merge, owner resolution, the brief, planner/re-plan prompts and robust
 JSON parse), fully tested in `app/test/play.test.ts` (30 cases); the runner is
 `app/src/drivers/stackDriver.ts`; the brief renders as todos-with-owners
 (`TodoItem`/`TodoRow` gained `owner`, shown in `TodoCard`). Doc and a diagram in
-`docs/workflow.md`. Live plan quality needs a real reasoning model and a device
-(unverifiable in a web session). Clarifying questions render as a chat message
-today; the tappable picker is a follow-up.
+`docs/workflow.md`. The three follow-ups then landed (CTO-guided, 2026-09-06):
+the clarifying questions are a tappable picker (`ClarifyCard`, a `clarify`
+driver event); a repo/tool step runs on the paired computer's engine when docked
+over one shared `RemoteDriver` session with real approvals surfaced (describe
+only when not docked or no local workspace is bound); and crew routines, which
+keep the engine's own ReAct loop, now write a Plan section into their vault note
+from the agent's `todoWrite`. Live plan quality, the engine hand-off, and the
+routine Plan note need a real reasoning model, a paired computer, and a device
+(unverifiable in a web session).
 
 ### Video attachments (reviewed frame by frame, never the video)
 
@@ -617,10 +623,19 @@ log entry). Migration is now `0016`.
   single-turn); `TodoItem`/`TodoRow` gained `owner`, rendered in `TodoCard`;
   a step can target a specific model by id (level-deeper routing), and the
   planner is shown the targetable models. Doc and diagram in `docs/workflow.md`.
-  Gates: app typecheck (src and electron), lint, 808 tests, Vite build,
-  Prettier; os-code em-dash and PROGRESS shape guards. Follow-ups: the tappable
-  clarify picker, engine execution of a repo/tool step from this flow, and the
-  same flow on the desktop-engine routine path.
+  The three follow-ups then landed the same day (CTO-ruled, founder delegated
+  the forks): a tappable clarify picker (`ClarifyCard` off a new `clarify`
+  driver event; the reply folds back into the framing); a repo/tool step runs on
+  the paired computer's engine when docked, over one shared `RemoteDriver`
+  session bound to the chat's local workspace, with real tool approvals surfaced
+  in the chat and never auto-answered, `StackDriver.answerApproval` now a real
+  pass-through, abort wired, degrading to describe-only when not docked or no
+  workspace is bound; and crew routines keep the engine's ReAct loop (no planner
+  port, so a headless run never blocks on a question) and write a Plan section
+  into their vault note from the agent's `todoWrite`. Gates: app typecheck, lint,
+  810 tests, Vite build, Prettier; os-code 604 tests, em-dash and PROGRESS shape
+  guards. The engine hand-off and the routine Plan note need a paired computer
+  and a real routine fire to verify.
 
 - **2026-09-06: vision as a Stack category with two slots and effort, plus the
   video framing progress ring (founder, pushed to main).** Follow-ups to video

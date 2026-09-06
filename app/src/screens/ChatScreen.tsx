@@ -480,6 +480,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               revisePlan();
               setFocusSignal((n) => n + 1);
             }}
+            onClarifyPick={(text) => send(text)}
           />
         ) : resuming ? (
           <ResumeSkeleton count={conv?.lastItemCount} />

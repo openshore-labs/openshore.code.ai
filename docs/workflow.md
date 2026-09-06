@@ -62,11 +62,31 @@ draws up the play.
 
 App-native. The framing, play, brief, and execution run in the app over My
 Stack (so it works on the phone alone). A step that must edit a repo or run
-commands is marked and, when you are docked to your computer, hands off to the
-engine harness there; when you are not docked it describes the exact change
-instead of pretending to make it. The reasoning anchor being a weak on-device
-model, an unreachable model, or a single-step request all fall back to a plain
-routed answer, so a modest stack still just works.
+commands (`needsTools`) runs on the paired computer's engine when you are
+docked: the play opens one engine session (bound to the chat's local
+workspace), runs the step with real tools, and surfaces the engine's real tool
+approvals in the chat (approvals are never auto-answered to keep the play
+moving). When you are not docked, or no local workspace is bound to the chat,
+the step describes the exact change instead of pretending to make it. The
+reasoning anchor being a weak on-device model, an unreachable model, or a
+single-step request all fall back to a plain routed answer, so a modest stack
+still just works.
+
+## The clarifying-question picker
+
+When the framing is ambiguous the reasoning LLM asks in a card with tappable
+option chips; tapping one sends it as the reply, and typing a free answer works
+too. The reply is folded back into the framing and it re-frames. Rendered from a
+`clarify` driver event through the message list (`ClarifyCard`).
+
+## Workflows on your computer (crew routines)
+
+Crew routines fire headless on the engine, which runs its own ReAct loop with
+real tools (not the app's play). Per the CTO ruling we did not port the play
+planner there (a headless run must never block on a clarifying question).
+Instead the routine's dated vault note now carries a **Plan** section, taken
+from the agent's own `todoWrite`, so you see what a routine set out to do
+alongside what it touched, with no extra model call.
 
 ## The code
 
@@ -78,11 +98,10 @@ routed answer, so a modest stack still just works.
 - The brief UI: the todo card renders each step with its owner
   (`app/src/components/TodoCard.tsx`, `owner` on `TodoItem`/`TodoRow`).
 
-## Follow-ups
+## Verification
 
-- The clarifying questions render as a chat message today (functional); the
-  tappable picker (option chips) is the next polish.
-- Engine execution of a repo/tool step from this flow when docked (today the
-  step describes the change; the paired-engine hand-off is wired as a seam).
-- Bringing the same play flow to the desktop-engine routine path (routines run
-  on the engine's own router today).
+Live plan quality (does the reasoning model draw good plays), the engine
+hand-off of a tool step (needs a paired computer), and the routine Plan note
+(needs a real routine fire) are not runnable in a web session. The pure play
+core is unit-tested (`app/test/play.test.ts`); the rest is proven on a device
+plus a paired computer, like the other native paths here.

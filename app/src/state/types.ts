@@ -54,6 +54,14 @@ export type ThreadItem =
   | { kind: 'status'; id: string; text: string }
   | { kind: 'note'; id: string; text: string }
   | { kind: 'stopped'; id: string; message: string }
+  // The plan-first flow's clarifying questions, as a tappable picker. Tapping an
+  // option (or typing) sends the answer, which is folded back into the framing.
+  | {
+      kind: 'clarify';
+      id: string;
+      summary: string;
+      questions: Array<{ id: string; question: string; options?: string[] }>;
+    }
   // A command the user ran through the chat-to-terminal bridge: its live output
   // streams in, then an exit badge. Distinct from a tool card (which is the
   // agent's own action) so the transcript reads as "I ran this," not "it did."

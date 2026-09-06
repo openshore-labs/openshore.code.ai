@@ -10,11 +10,14 @@
 // the Codemagic tool loop keeps its own single-turn path.
 //
 // Backends: on-device (llama.cpp), Anthropic, or an OpenAI-compatible cloud
-// endpoint. Still v1: the fallback classifier is a keyword heuristic, not a
-// model; on-device models are text-only (no vision, not driven for autonomous
-// sub-steps); the image-gen category routes as text and does not yet render
-// images; a repo/tool step notes it runs on the paired computer (engine
-// execution from this flow is a follow-up); "home" models require pairing.
+// endpoint. A play step that must edit files or run commands (needsTools) runs
+// on the paired computer's engine when docked, over one shared RemoteDriver
+// session, with its real tool approvals surfaced in the chat; when not docked
+// (or no local workspace is bound) the step is described instead. Still v1: the
+// fallback classifier is a keyword heuristic, not a model; on-device models are
+// text-only (no vision, not driven for autonomous sub-steps); the image-gen
+// category routes as text and does not yet render images; "home" models require
+// pairing.
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
@@ -51,7 +54,6 @@ import {
   planPrompt,
   readySteps,
   replanPrompt,
-  type ClarifyingQuestion,
   type Play,
   type PlayStep,
   type StepResult,
@@ -74,6 +76,8 @@ import {
 import type { CrewAgent } from '../state/types.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
+import { RemoteDriver, daemonCreateSession, type DaemonTarget } from './remoteDriver.js';
+import type { DriverEvent } from 'os-code/protocol';
 
 /** Extra context a chat carries into the router: its project and its crew. */
 export interface StackContext {
@@ -90,6 +94,15 @@ export interface StackContext {
    *  native tool use runs the trigger/status/logs loop on-device. Off leaves the
    *  chat exactly as it was, single turn and tool-less. */
   codemagicAccess?: boolean;
+  /** The paired computer, when docked. A play step that must edit files or run
+   *  commands (needsTools) runs on the engine there, with real tool approvals
+   *  surfaced in the chat. Absent means not docked, so such a step is described
+   *  instead of executed. */
+  daemon?: DaemonTarget;
+  /** The local workspace this chat is bound to, where an engine step works. A
+   *  GitHub-only or repo-less chat leaves this undefined, so a tool step is
+   *  described rather than run against an invented cwd. */
+  repoCwd?: string;
 }
 
 /** Whether the Humanize Writing standard rides into this model's prompt. On by
@@ -163,20 +176,6 @@ function hasVideoFrames(images: Attachment[]): boolean {
   return images.some((a) => a.frame);
 }
 
-/** The clarifying questions as a short chat message, when the framing needs the
- *  user to settle something before the play is drawn. Options are listed inline;
- *  the reply is folded back in and re-framed. */
-function renderClarify(summary: string, questions: ClarifyingQuestion[]): string {
-  const lines: string[] = [];
-  if (summary) lines.push(summary);
-  lines.push('Before I start, a couple of things to get the framing right:');
-  questions.forEach((q, i) => {
-    lines.push(`${i + 1}. ${q.question}`);
-    if (q.options?.length) lines.push(`   Options: ${q.options.join(' / ')}`);
-  });
-  return lines.join('\n');
-}
-
 // Monotonic request ids, so two sends in the same millisecond cannot share an
 // id and interleave their token streams into one answer.
 let stackRequestSeq = 0;
@@ -203,6 +202,16 @@ export class StackDriver implements ChatDriver {
   // A framing turn that asked the user to clarify: the original request is held
   // here so the next message can be folded back in and re-framed.
   private pendingClarify?: { text: string };
+  // The one engine session a play opens (lazily, on its first tool step) to run
+  // repo/tool steps on the paired computer. Shared across every tool step in the
+  // play so working-tree state and cwd carry forward; torn down with the driver.
+  private engineDriver?: RemoteDriver;
+  private engineUnsub?: () => void;
+  // The in-flight engine turn's collected final text, and a settler called on
+  // task-done or on abort, so a stop never leaves the play awaiting a turn that
+  // will not report back.
+  private engineTurnText = '';
+  private engineTurnSettle?: () => void;
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
   private abortController?: AbortController;
@@ -559,12 +568,12 @@ export class StackDriver implements ChatDriver {
     const framing = parsePlan(planText);
     if (!framing) return false;
 
-    // Not clear: ask the questions and wait for the reply. Rendered as text for
-    // now; the tappable picker rides the same questions.
+    // Not clear: ask the questions as a tappable picker and wait for the reply.
+    // The reply (a tapped option or free text) is folded back into the framing.
     if (!framing.clear && framing.questions.length) {
       this.pendingClarify = { text };
-      this.answer = renderClarify(framing.summary, framing.questions);
-      this.emit({ type: 'text-delta', text: this.answer });
+      this.emit({ type: 'clarify', summary: framing.summary, questions: framing.questions });
+      this.answer = '';
       this.finish('complete');
       return true;
     }
@@ -621,7 +630,15 @@ export class StackDriver implements ChatDriver {
         }
         let out = '';
         try {
-          out = await this.completeOnce(ref, placement, this.stepPrompt(step, play, results));
+          // A repo/tool step runs on the paired computer's engine when docked
+          // (real tools, real approvals). When that is not available it returns
+          // null and we fall through to a chat model that describes the change.
+          const onEngine = step.needsTools
+            ? await this.runToolStepOnEngine(step, play, results)
+            : null;
+          out =
+            onEngine ??
+            (await this.completeOnce(ref, placement, this.stepPrompt(step, play, results)));
         } catch (err) {
           out = `(this step could not run: ${err instanceof Error ? err.message : String(err)})`;
         }
@@ -700,6 +717,95 @@ export class StackDriver implements ChatDriver {
       'Team work:',
       ...results.map((r) => `- ${r.title}: ${r.text}`),
     ].join('\n');
+  }
+
+  // ---- engine execution of a tool step (when docked) ----------------------
+
+  /** Run a repo/tool step on the paired computer's engine, with real tools and
+   *  real approvals surfaced in the chat. Returns the step's result text, or
+   *  null to degrade to describe-only (not docked, no bound workspace, or the
+   *  daemon refused the session, e.g. a member on a non-provisioned workspace).
+   *  One engine session is opened per play (lazily) and shared across tool
+   *  steps so working-tree state and cwd carry forward. Approvals are never
+   *  auto-answered; they flow to the chat and back through answerApproval. */
+  private async runToolStepOnEngine(
+    step: PlayStep,
+    play: Play,
+    results: StepResult[],
+  ): Promise<string | null> {
+    const target = this.context.daemon;
+    const cwd = this.context.repoCwd;
+    if (!target || !cwd) return null;
+    try {
+      if (!this.engineDriver) {
+        // acceptEdits, the same mapping routines use: in-jail edits flow, while
+        // shell, push, and cloud spend still raise an approval into the chat.
+        // projectSecrets are deliberately never sent to the docked session.
+        const sessionId = await daemonCreateSession(target, cwd, {
+          permissionMode: 'acceptEdits',
+          humanize: this.context.humanize,
+        });
+        this.engineDriver = new RemoteDriver(sessionId, target);
+        this.engineUnsub = this.engineDriver.subscribe((event) => this.forwardEngineEvent(event));
+      }
+      this.emit({
+        type: 'status',
+        message: `Running "${step.title}" on your computer.`,
+      });
+      return await this.runEngineTurn(this.engineDriver, this.stepPrompt(step, play, results));
+    } catch (err) {
+      // A refused session (403 for a member, an unreachable hub) degrades to
+      // describe-only rather than dead-ending the play.
+      this.emit({
+        type: 'status',
+        message: `Could not run that on your computer (${err instanceof Error ? err.message : 'unavailable'}); describing the change instead.`,
+      });
+      return null;
+    }
+  }
+
+  /** Forward the engine session's user-visible events into the chat: its tool
+   *  cards, approvals, and status. The step's own final text is captured for the
+   *  play's synthesis; task-done settles the turn. */
+  private forwardEngineEvent(event: DriverEvent): void {
+    switch (event.type) {
+      case 'text-final':
+        this.engineTurnText = event.text;
+        break;
+      case 'task-done':
+        if (!this.engineTurnText && event.reason === 'error') {
+          this.engineTurnText = event.message ?? '(the step failed on your computer)';
+        }
+        this.engineTurnSettle?.();
+        break;
+      case 'tool-start':
+      case 'tool-end':
+      case 'tool-denied':
+      case 'approval-request':
+      case 'approval-resolved':
+      case 'command-start':
+      case 'command-output':
+      case 'command-end':
+      case 'status':
+      case 'note':
+        this.emit(event);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Send one turn to the engine session and resolve with its final text. The
+   *  turn also settles on abort (see abort()), so a stopped play never hangs. */
+  private runEngineTurn(driver: RemoteDriver, prompt: string): Promise<string> {
+    this.engineTurnText = '';
+    return new Promise<string>((resolve) => {
+      this.engineTurnSettle = () => {
+        this.engineTurnSettle = undefined;
+        resolve(this.engineTurnText.trim());
+      };
+      driver.send(prompt);
+    });
   }
 
   /** One reusable completion on a cloud or BYOM model, returning its text.
@@ -1330,14 +1436,23 @@ export class StackDriver implements ChatDriver {
     this.aborted = true;
     this.abortController?.abort();
     if (this.activeRequestId) void Llama.stop({ requestId: this.activeRequestId });
+    // Stop any engine turn a tool step has running on the paired computer, and
+    // settle the awaited turn so the play does not hang on a stopped run.
+    this.engineDriver?.abort();
+    this.engineTurnSettle?.();
   }
 
-  answerApproval(_id: string, _answer: ApprovalAnswer): void {
-    // No tools in v1, so nothing asks for approval.
+  answerApproval(id: string, answer: ApprovalAnswer): void {
+    // A tool step's approval is the engine's; pass the person's answer through
+    // to the engine session running it. Nothing else in this driver asks.
+    this.engineDriver?.answerApproval(id, answer);
   }
 
   dispose(): void {
     this.abort();
+    this.engineUnsub?.();
+    this.engineDriver?.dispose();
+    this.engineDriver = undefined;
     for (const h of this.deviceListeners) void h.remove();
     this.deviceListeners = [];
     this.emitter.clear();
