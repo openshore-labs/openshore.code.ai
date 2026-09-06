@@ -227,24 +227,26 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **GitHub repo connect: align the GitHub App's Callback URL (founder,
+- [ ] **GitHub repo connect: root cause confirmed (a doubled slash), fixed in
+      code and merged to main, verify on the next TestFlight build (founder,
       TestFlight "redirect_uri is not associated with this application").**
-      One-tap Connect GitHub reached the consent page and GitHub refused the
-      redirect address. GitHub found the App (the client id is valid) but the
-      `redirect_uri` the app sends,
-      `https://lzlrlfdffwiypzreoldb.supabase.co/functions/v1/repo-oauth/callback`,
-      did not match a registered Callback URL. This is config, not app logic
-      (the code paths are hardened and tested). Fix on GitHub, in order: (1) the
-      GitHub App named by `VITE_GITHUB_CLIENT_ID` has that exact Callback URL
-      (a GitHub App created without one rejects every redirect); (2) that build
-      var is the OpenShore Code App's client id, not a stray personal OAuth app;
-      (3) `VITE_SUPABASE_URL` names that same project over https with no trailing
-      slash. Full checklist in `supabase/README.md` (Phase 4). The Repositories
-      screen now shows the exact Callback URL to register when a connect fails.
-      Verify on TestFlight once the App's Callback URL is set. (The related
-      stuck-on-"Connecting" bug on a bailed sign-in is fixed for iOS via the
-      browser-dismiss listener; desktop still waits out the five-minute timeout
-      when its separate system browser is closed, a small follow-up.)
+      Reading the live authorize URL settled it: the build sent
+      `redirect_uri=https://lzlrlfdffwiypzreoldb.supabase.co//functions/v1/repo-oauth/callback`,
+      a doubled slash after `.co`, because the Codemagic `VITE_SUPABASE_URL`
+      carries a trailing slash and the code composed `base + /functions/...`. So
+      it never matched the GitHub App's single-slash Callback URL (client id
+      `Iv23...`, which confirmed the correct App, not the CLI OAuth app). It was
+      the trailing-slash bug, not a GitHub misconfiguration. The runtime
+      normalization (shipped) now trims the trailing slash before composing the
+      URL, so the next TestFlight build sends the single-slash address and
+      connects regardless of the var. Verify on that build. Optional hygiene:
+      also drop the trailing slash from the Codemagic `VITE_SUPABASE_URL`, since
+      `app/src/lib/supabase.ts` reads it raw (sign-in and other calls form the
+      same doubled slash, tolerated by the gateway today, unlike GitHub's exact
+      match). The stuck-on-"Connecting" bug on a bailed sign-in shipped fixed for
+      iOS via the browser-dismiss listener; desktop still waits out the
+      five-minute timeout when its separate system browser is closed, a small
+      follow-up.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -650,9 +652,18 @@ log entry). Migration is now `0016`.
   Capacitor Browser `browserFinished` dismissal and ends the flow at once with
   "Sign-in did not finish."; our own `Browser.close()` on a real return fires it
   too but the flow has already settled, so it is a no-op. Desktop (a separate
-  system browser) still falls back to the timeout, noted as a follow-up. Gates:
-  app typecheck (src and electron), lint, `repoOAuth.test.ts` (19, up from 14),
-  the em-dash and polish-standards guards.
+  system browser) still falls back to the timeout, noted as a follow-up. Then
+  the founder read the live authorize URL off GitHub's error page, which
+  confirmed the cause outright: the `redirect_uri` was
+  `...supabase.co//functions/v1/repo-oauth/callback`, a doubled slash from the
+  trailing slash on the Codemagic `VITE_SUPABASE_URL` (client id `Iv23...`, the
+  right GitHub App), so the trailing-slash trim is the actual fix, not a GitHub
+  config change. Merged to main (fast-forward) so Codemagic ships it to
+  TestFlight; the same push carried a Prettier-only reformat of
+  `test/ethicsEnforcement.test.ts` (a pre-existing drift that had CI red on
+  format) so main lands green. Gates: full workspace build, format, lint,
+  typecheck, and tests green (os-code 604, app 815; `repoOAuth.test.ts` 19, up
+  from 14); the em-dash, polish-standards, and PROGRESS shape guards.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the
