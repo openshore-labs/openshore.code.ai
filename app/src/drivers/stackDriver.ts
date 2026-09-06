@@ -733,6 +733,10 @@ export class StackDriver implements ChatDriver {
     play: Play,
     results: StepResult[],
   ): Promise<string | null> {
+    // The engine lives on your home system (the hub), which is reachable only
+    // in the docked profile. Offshore and offline never reach for it, so a tool
+    // step there goes straight to describe-only with no wasted hub attempt.
+    if (!locationAllowed(this.profile, 'home')) return null;
     const target = this.context.daemon;
     const cwd = this.context.repoCwd;
     if (!target || !cwd) return null;
