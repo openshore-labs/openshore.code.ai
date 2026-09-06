@@ -19,6 +19,8 @@ import { ROOM_NAMES } from '../components/BackBar.js';
 import { RepoPicker } from '../components/RepoPicker.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
+import { VoiceMode } from '../components/VoiceMode.js';
+import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
 import { Sheet } from '../components/Sheet.js';
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_EMPTY_HINT } from '../lib/harborMini.js';
 import { buildRotation, type Greeting } from '../lib/greeting.js';
@@ -155,6 +157,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [renameDraft, setRenameDraft] = useState('');
   // Bumped to pull focus into the composer (a plan's "Change something").
   const [focusSignal, setFocusSignal] = useState(0);
+  // Voice mode: a spoken conversation over this same chat. It closes itself when
+  // the model needs an on-screen decision (an approval, a spend), and reopens
+  // once that decision is answered. resumeVoice remembers that we owe a reopen.
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const resumeVoice = useRef(false);
   const online = useOnline();
   const { mounted: offlineMounted, closing: offlineClosing } = useExitPresence(!online);
   // The brain a new chat will use, chosen from the composer. On the desktop app
@@ -193,6 +200,16 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const history = thread
     ? thread.items.filter((i) => i.kind === 'user').map((i) => (i.kind === 'user' ? i.text : ''))
     : [];
+
+  // Reopen voice once an on-screen decision it stepped aside for is answered: the
+  // approval sheet is gone and no chooser is up. Keyed on those states clearing,
+  // so answering the approval brings the conversation right back to voice.
+  useEffect(() => {
+    if (resumeVoice.current && !approval && !sheetOpen && !modeSheetOpen && !renameOpen) {
+      resumeVoice.current = false;
+      setVoiceOpen(true);
+    }
+  }, [approval, sheetOpen, modeSheetOpen, renameOpen]);
 
   const openRename = () => {
     if (!conv) return;
@@ -368,6 +385,32 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     if (text || (attachments && attachments.length)) {
       useApp.getState().sendWhenAttached(id, text ?? '', attachments);
     }
+  };
+
+  // Voice mode rides on an open chat (it subscribes to that chat's driver). From
+  // the empty state, start a chat first on the chosen brain, so the first thing
+  // said has somewhere to go; if the brain is not ready, send the person to the
+  // chooser rather than opening a voice surface that cannot answer.
+  const openVoice = async () => {
+    if (!conv) {
+      if (!sourceReady(selectedSource)) {
+        setSheetStage('root');
+        setSheetOpen(true);
+        showToast('Pick where your answers come from, then start voice.');
+        return;
+      }
+      await startWith(selectedSource);
+    }
+    setVoiceOpen(true);
+  };
+
+  // The model needs an on-screen decision (an approval, a spend): close voice and
+  // remember to reopen it once the decision is answered. A plan revision and a
+  // stopped-turn recovery deliberately hand you to the screen without a reopen,
+  // since you are choosing to work there.
+  const onVoiceBreakToScreen = (brk: VoiceBreak) => {
+    setVoiceOpen(false);
+    resumeVoice.current = brk.kind === 'approval-tool' || brk.kind === 'approval-spend';
   };
 
   return (
@@ -585,6 +628,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             setSheetOpen(true);
           }}
           onOpenModeSheet={() => setModeSheetOpen(true)}
+          onOpenVoice={() => void openVoice()}
           onSend={(text, attachments) => {
             if (!conv) {
               // Never start a chat on a brain that cannot answer yet. Hold the
@@ -688,6 +732,22 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ) : null}
 
       {modeSheetOpen ? <ModeSheet onClose={() => setModeSheetOpen(false)} /> : null}
+
+      <VoiceMode
+        open={voiceOpen}
+        onClose={() => {
+          setVoiceOpen(false);
+          resumeVoice.current = false;
+        }}
+        conversationId={activeId}
+        send={(text) => send(text)}
+        approvePlan={approvePlan}
+        revisePlan={() => {
+          revisePlan();
+          setFocusSignal((n) => n + 1);
+        }}
+        onBreakToScreen={onVoiceBreakToScreen}
+      />
     </div>
   );
 }

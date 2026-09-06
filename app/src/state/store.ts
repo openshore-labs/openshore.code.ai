@@ -357,6 +357,18 @@ export interface AppSettings {
    *  writing). On by default; undefined means on. Off drops the standard from
    *  the prompt, so a model runs a little faster on a shorter prompt. */
   humanizeWriting?: boolean;
+  /** Voice mode: speak replies aloud during a spoken conversation. On by default
+   *  (undefined means on); off keeps voice mode as listen-and-send, with replies
+   *  read on screen. Device local (a per-device output preference). */
+  voiceReplies?: boolean;
+  /** The chosen text-to-speech voice id, from the device's installed system
+   *  voices (lib/voice/tts.ts). Undefined uses the best default voice for the
+   *  language. Device local: voices differ per device. */
+  voiceId?: string;
+  /** Speaking speed for voice mode, normalized 0..1 where 0.5 is the natural
+   *  default, so one slider reads the same on iOS and the web backend. Device
+   *  local. */
+  voiceRate?: number;
   /** Codemagic Access: whether the model may drive Codemagic builds on its own
    *  (trigger, read the failure, fix, rebuild until green) using this device's
    *  Codemagic token. Off by default; missing means Off, the opt-in default. A
