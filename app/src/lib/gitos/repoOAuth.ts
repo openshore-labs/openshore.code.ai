@@ -28,7 +28,20 @@ import { platform, openExternal, secretGet, secretSet, secretDelete } from '../p
 import { bridge } from '../electronBridge.js';
 import { repoSecretKey, type RepoPlatform } from '../repos.js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+// The Supabase origin this build was compiled against. A trailing slash or
+// stray whitespace on VITE_SUPABASE_URL would compose into a redirect_uri like
+// `https://host//functions/v1/repo-oauth/callback`, which GitHub rejects with
+// "The redirect_uri is not associated with this application": a GitHub App
+// requires the redirect_uri to match a registered Callback URL exactly, and a
+// doubled slash is not that string. Normalize once, here, so authorize and the
+// token exchange derive the identical clean URL, the same one registered on the
+// provider app.
+function normalizeOrigin(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim().replace(/\/+$/, '');
+  return trimmed ? trimmed : undefined;
+}
+
+const SUPABASE_URL = normalizeOrigin(import.meta.env.VITE_SUPABASE_URL as string | undefined);
 
 interface OAuthProviderConfig {
   clientId?: string;
@@ -73,6 +86,17 @@ function functionBase(): string | undefined {
 function redirectUri(): string | undefined {
   const base = functionBase();
   return base ? `${base}/callback` : undefined;
+}
+
+/** The exact https Callback URL this build sends as the OAuth redirect_uri, and
+ *  so the string that must be registered, byte for byte, as the provider app's
+ *  Callback URL (the GitHub App "OpenShore Code", the GitLab/Bitbucket app). One
+ *  URL serves all three providers. Exposed so the Repositories screen can show
+ *  it when a connect fails, because the usual failure here is that the provider
+ *  app has a different Callback URL (or none), and this is the value to paste in.
+ *  Undefined when the build carries no Supabase URL, so OAuth is not set up. */
+export function repoOAuthCallbackUrl(): string | undefined {
+  return redirectUri();
 }
 
 /** Whether one-tap OAuth is available for this provider on this build: a public

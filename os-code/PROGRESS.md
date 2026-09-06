@@ -227,6 +227,21 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **GitHub repo connect: align the GitHub App's Callback URL (founder,
+      TestFlight "redirect_uri is not associated with this application").**
+      One-tap Connect GitHub reached the consent page and GitHub refused the
+      redirect address. GitHub found the App (the client id is valid) but the
+      `redirect_uri` the app sends,
+      `https://lzlrlfdffwiypzreoldb.supabase.co/functions/v1/repo-oauth/callback`,
+      did not match a registered Callback URL. This is config, not app logic
+      (the code paths are hardened and tested). Fix on GitHub, in order: (1) the
+      GitHub App named by `VITE_GITHUB_CLIENT_ID` has that exact Callback URL
+      (a GitHub App created without one rejects every redirect); (2) that build
+      var is the OpenShore Code App's client id, not a stray personal OAuth app;
+      (3) `VITE_SUPABASE_URL` names that same project over https with no trailing
+      slash. Full checklist in `supabase/README.md` (Phase 4). The Repositories
+      screen now shows the exact Callback URL to register when a connect fails.
+      Verify on TestFlight once the App's Callback URL is set.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -606,6 +621,28 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-06: GitHub repo connect, the redirect address GitHub could not match
+  (founder report from TestFlight).** Connecting a repo, one-tap Connect GitHub
+  reached the GitHub consent page and stopped on "The redirect_uri is not
+  associated with this application." Traced it: the app's OAuth connect
+  (`app/src/lib/gitos/repoOAuth.ts`) sends
+  `redirect_uri = <VITE_SUPABASE_URL>/functions/v1/repo-oauth/callback`, and a
+  GitHub App requires that to match one of its registered Callback URLs exactly.
+  GitHub found the App (the client id resolved), so the mismatch is the address,
+  which makes this a configuration gap (the App's Callback URL, the client id
+  the build carries, or the Supabase project the build names), not app logic.
+  The CLI device flow (`os-code/src/auth/github.ts`) uses no redirect and is not
+  involved. Hardened and made it self-diagnosable rather than guessing at values
+  only the founder can see: the app and the `repo-oauth` function now trim a
+  trailing slash off the Supabase base, so it can never compose a doubled-slash
+  address that fails the exact match; `repoOAuth` exports the exact Callback URL
+  and the Repositories screen shows it, copyable, when a one-tap connect fails,
+  so the exact string to register is in hand. Documented the GitHub App setup and
+  a three-step troubleshooting checklist in `supabase/README.md` (Phase 4), and
+  left the config verification in What remains. Gates: app typecheck (src and
+  electron), lint, `repoOAuth.test.ts` (17, up from 14), the em-dash and
+  polish-standards guards.
+
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the
   harness, framing by the reasoning LLM (clarify only when ambiguous), a play of
@@ -715,24 +752,3 @@ mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
   `record_enforcement()` the only signature, founder seeded into
   `abuse_reviewers`). The founder's own smoke test of a live guardrail
   block is the one thing still pending.
-
-- **2026-09-05: run a bigger model on the iPhone, the CTO + CMO consensus,
-  built and pushed to main.** The founder asked whether we could smooth a
-  larger on-device model on an iPhone and asked the CTO and CMO to converge
-  and build it. Consensus: a great 4B is the phone ceiling, bigger runs on
-  your computer, and the store is honest about the real limit (memory, not
-  storage). Built: `runsWellOnDevice` in `app/src/lib/modelStorage.ts` and the
-  product page "Where it runs" phone verdict that flips to an amber "better on
-  your computer" when a model is larger than this phone's memory keeps free
-  (guidance for copy, never a gate, the module still never returns "blocked");
-  the download-moment machine block reworded to the memory-not-storage point;
-  the iOS Increased Memory Limit and Extended Virtual Addressing entitlements
-  (App ID capability required before a distribution build); a memory-warning
-  unload in `OscodeLlamaPlugin` that emits `deviceModelUnloaded` so
-  `deviceModel.ts` forgets the slot and the next send reloads. NOT built on
-  purpose: a force-run toggle, a 7B beta pack, and llama.cpp runtime tuning
-  (LLM.swift 3.0.3 exposes no memory knobs, CTO-verified). Rulings in
-  `DECISIONS.md`; doc in `docs/MARKETPLACE.md`. Gates: app typecheck (src and
-  electron), lint, tests, Vite build; os-code tests and build; both em-dash
-  guards and the PROGRESS shape guard. App ID capability and a TestFlight
-  device test are in What remains.

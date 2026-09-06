@@ -190,3 +190,65 @@ subscription's live state from every notification, and `link-apple-purchase`
 refuses a stale, refunded, revoked, or over-48-hour-old JWS. The remaining
 follow-up is to ask the App Store Server API for live status with the `.p8`
 above, which closes the window between two notifications.
+
+## Phase 4 - connect repos over OAuth (the GitHub App path)
+
+One-tap "Connect GitHub" in the Repositories screen runs the OAuth web flow
+(`app/src/lib/gitos/repoOAuth.ts`); the `repo-oauth` function holds the client
+secret and does the token exchange. The app only ever sends the public client
+id and a redirect address; it never carries the secret.
+
+**The Callback URL is the whole ballgame.** The app sends this exact
+`redirect_uri` on the authorize call, and the same string on the token
+exchange, both derived from the build's Supabase URL:
+
+```
+<VITE_SUPABASE_URL>/functions/v1/repo-oauth/callback
+```
+
+For the live OS Code project that is:
+
+```
+https://lzlrlfdffwiypzreoldb.supabase.co/functions/v1/repo-oauth/callback
+```
+
+A GitHub App requires the `redirect_uri` to match one of its registered
+Callback URLs **exactly** (scheme, host, and path, byte for byte). If it does
+not, GitHub never shows the consent screen; it shows **"The redirect_uri is not
+associated with this application."**
+
+GitHub App "OpenShore Code" (openshore-labs, "Any account"), settings:
+
+- **Callback URL**: the exact string above. A GitHub App created without a
+  Callback URL rejects every `redirect_uri`, so this field must be filled in.
+- **Permissions**: Contents read/write, Pull requests read/write, Metadata read.
+- The App's **Client ID** goes to `VITE_GITHUB_CLIENT_ID` (public, app build,
+  a Codemagic build var) and `GITHUB_OAUTH_CLIENT_ID` (function secret); its
+  generated **client secret** goes to `GITHUB_OAUTH_CLIENT_SECRET` (function
+  secret). GitLab and Bitbucket light up the same way once their `*_CLIENT_ID`
+  and `*_CLIENT_SECRET` are set; one Callback URL serves all three.
+
+Deploy: `supabase functions deploy repo-oauth` (verify_jwt is false in
+`config.toml`, since the provider redirect carries no bearer).
+
+### Troubleshooting "redirect_uri is not associated with this application"
+
+The address the app sends is not (yet) registered on the App the client id
+points at. Walk these, in order:
+
+1. **The GitHub App has that Callback URL.** Open the App the
+   `VITE_GITHUB_CLIENT_ID` names, and confirm its Callback URL field contains
+   the exact string above. Missing or different is the usual cause; add it.
+2. **The client id points at that App.** A stray personal OAuth App with a
+   different callback, baked into `VITE_GITHUB_CLIENT_ID`, produces this error
+   even though GitHub finds an app. Confirm the build var is the OpenShore Code
+   App's client id.
+3. **`VITE_SUPABASE_URL` names the right project and has no trailing slash.**
+   The redirect is derived from it, so it must be the project whose URL the
+   Callback names. The app and the function now trim a trailing slash before
+   composing the URL (a `host//functions/...` was one silent way to break the
+   exact match), but the two still have to name the same project over https.
+
+The app helps you read the live value: when a one-tap connect fails, the
+Repositories screen shows the exact Callback URL this build sends, with a copy
+button, so you can paste precisely that string into the App's settings.

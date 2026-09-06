@@ -8,7 +8,7 @@ import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, openInAppBrowser } from '../lib/platform.js';
 import { daemonCloneRepo, daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { homeRepoReady, REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.js';
-import { isRepoOAuthConfigured } from '../lib/gitos/repoOAuth.js';
+import { isRepoOAuthConfigured, repoOAuthCallbackUrl } from '../lib/gitos/repoOAuth.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 
@@ -115,12 +115,20 @@ export function ReposScreen() {
   // One-tap OAuth: open the provider's consent screen, and on return the tokens
   // are already stored. A failure comes back as a message, never a throw.
   const [oauthBusy, setOauthBusy] = useState<string | undefined>();
+  // The provider whose last one-tap connect failed, so its setup hint shows. The
+  // usual failure is the provider app rejecting the redirect address, which the
+  // hint turns into the exact Callback URL to register.
+  const [oauthFailed, setOauthFailed] = useState<string | undefined>();
   const runOAuth = async (id: RepoPlatform, name: string) => {
     setOauthBusy(id);
+    setOauthFailed(undefined);
     try {
       const res = await connectRepoOAuth(id);
       if (res.ok) showToast(`${name} connected.`);
-      else showToast(res.error);
+      else {
+        showToast(res.error);
+        setOauthFailed(id);
+      }
     } finally {
       setOauthBusy(undefined);
     }
@@ -255,6 +263,44 @@ export function ReposScreen() {
                   </p>
                 </div>
               ) : null}
+              {oauth && !on && oauthFailed === c.id
+                ? (() => {
+                    const callback = repoOAuthCallbackUrl();
+                    if (!callback) return null;
+                    return (
+                      <div style={{ marginTop: 12 }}>
+                        <p className="hint" style={{ marginTop: 0 }}>
+                          If {c.name} said the redirect address is not associated with this
+                          application, its OAuth app is missing this exact Callback URL:
+                        </p>
+                        <p
+                          className="sub"
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            wordBreak: 'break-all',
+                            margin: '0 0 8px',
+                          }}
+                        >
+                          {callback}
+                        </p>
+                        <button
+                          type="button"
+                          className="linklike"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(callback);
+                              showToast('Callback URL copied.');
+                            } catch {
+                              showToast('Copy is unavailable here.');
+                            }
+                          }}
+                        >
+                          Copy Callback URL
+                        </button>
+                      </div>
+                    );
+                  })()
+                : null}
             </div>
           );
         })}
