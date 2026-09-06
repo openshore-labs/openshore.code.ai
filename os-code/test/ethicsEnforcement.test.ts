@@ -216,12 +216,8 @@ describe('the 0017 reconciliation migration', () => {
 
   it('drops every stale IP object the live schema audit found', () => {
     expect(sql).toMatch(/drop index if exists public\.guardrail_events_ip_idx/);
-    expect(sql).toMatch(
-      /alter table public\.guardrail_events drop column if exists ip_address/,
-    );
-    expect(sql).toMatch(
-      /alter table public\.likeness_consents drop column if exists ip_address/,
-    );
+    expect(sql).toMatch(/alter table public\.guardrail_events drop column if exists ip_address/);
+    expect(sql).toMatch(/alter table public\.likeness_consents drop column if exists ip_address/);
     expect(sql).toMatch(/drop function if exists public\.request_ip \(\)/);
     expect(sql).toMatch(/drop table if exists public\.ip_ban_proposals cascade/);
     expect(sql).toMatch(/drop function if exists public\.admin_list_ip_ban_proposals \(int\)/);
@@ -235,14 +231,17 @@ describe('the 0017 reconciliation migration', () => {
       /drop function if exists public\.record_enforcement \(smallint, text, text\)/,
     );
     expect(sql).toMatch(/create or replace function public\.record_enforcement \(\)/);
-    expect(sql).toMatch(/grant execute on function public\.record_enforcement \(\) to authenticated/);
+    expect(sql).toMatch(
+      /grant execute on function public\.record_enforcement \(\) to authenticated/,
+    );
   });
 
   it('introduces no new IP identifier while reconciling the old one away', () => {
     // Every ip/request_ip/inet mention in this file must be inside a DROP
     // statement removing it, never a CREATE or a column definition adding it
     // back.
-    const creating = /(create table|create or replace function|create index)[^;]*\b(ip_address|request_ip|inet)\b/is;
+    const creating =
+      /(create table|create or replace function|create index)[^;]*\b(ip_address|request_ip|inet)\b/is;
     expect(sql).not.toMatch(creating);
   });
 });
