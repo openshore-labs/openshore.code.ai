@@ -64,6 +64,30 @@ function MicIcon() {
   );
 }
 
+// Voice mode: a soundwave, the sign for a spoken conversation (distinct from the
+// mic, which dictates into the field). Opens the full-screen voice surface.
+function VoiceWaveIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={20}
+      height={20}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="4" y1="10" x2="4" y2="14" />
+      <line x1="8" y1="7" x2="8" y2="17" />
+      <line x1="12" y1="4" x2="12" y2="20" />
+      <line x1="16" y1="7" x2="16" y2="17" />
+      <line x1="20" y1="10" x2="20" y2="14" />
+    </svg>
+  );
+}
+
 // A small determinate ring for a video being read into frames: the arc fills as
 // frames land (done/total). Before a decoder knows the count (total 0) it shows
 // a soft pulse instead of a false-empty ring. The arc travel rides a motion
@@ -228,6 +252,7 @@ export function Composer({
   onStop,
   onOpenModelSheet,
   onOpenModeSheet,
+  onOpenVoice,
   onCommand,
   hubRole,
 }: {
@@ -251,6 +276,9 @@ export function Composer({
   onStop: () => void;
   onOpenModelSheet: () => void;
   onOpenModeSheet: () => void;
+  /** Open voice mode: a spoken conversation over this same chat. Always offered
+   *  (it works offline); absent only where the screen has no voice surface. */
+  onOpenVoice?: () => void;
   /** A slash command, with whatever followed it. */
   onCommand?: (command: SlashCommand, arg: string) => void;
   /** What the paired hub lets this device do (P0-1). A member device never
@@ -902,6 +930,17 @@ export function Composer({
           ) : null}
 
           <div className="composer-row-spacer" />
+
+          {onOpenVoice && !terminal ? (
+            <button
+              className="composer-mic press-fb"
+              onClick={onOpenVoice}
+              aria-label="Voice mode: have a spoken conversation"
+              title="Voice mode"
+            >
+              <VoiceWaveIcon />
+            </button>
+          ) : null}
 
           <button
             className={`composer-mic press-fb${dictation.listening ? ' listening' : ''}`}

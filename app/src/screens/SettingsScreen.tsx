@@ -36,6 +36,8 @@ import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { VoicePicker } from '../components/VoicePicker.js';
+import { listVoices } from '../lib/voice/tts.js';
 import type { SearchBackend } from '../lib/webSearch.js';
 import { TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 
@@ -231,6 +233,22 @@ export function SettingsScreen() {
   const facts = useSeal();
   const sealed = facts ? facts.every((f) => f.state === 'good') : false;
   const close = () => setSheet(undefined);
+
+  // Voice mode's settings: the chosen voice (resolved to a name for the row), the
+  // speaking speed, and whether replies are spoken aloud.
+  const [voicePickerOpen, setVoicePickerOpen] = useState(false);
+  const [voiceName, setVoiceName] = useState('');
+  const speakReplies = settings.voiceReplies !== false;
+  const voiceRate = settings.voiceRate ?? 0.5;
+  useEffect(() => {
+    let live = true;
+    void listVoices().then((voices) => {
+      if (live) setVoiceName(voices.find((v) => v.id === settings.voiceId)?.name ?? '');
+    });
+    return () => {
+      live = false;
+    };
+  }, [settings.voiceId]);
 
   const installHarbor = async () => {
     // Harbor Light's voice on the handoff: the guide stays beside you while the
@@ -695,6 +713,60 @@ export function SettingsScreen() {
           </InfoSheet>
         </SettingsGroup>
 
+        <SettingsGroup title="Voice" index={group++}>
+          <SettingsRow
+            label="Voice"
+            sub="Spoken replies use this device's voices. Premium voices download once, then work offline."
+            value={voiceName || 'Default'}
+            onClick={() => setVoicePickerOpen(true)}
+          />
+          <SettingsRow
+            label="Speaking speed"
+            trailing={
+              <div className="segmented" role="tablist" aria-label="Speaking speed">
+                {(
+                  [
+                    ['Slow', 0.3],
+                    ['Normal', 0.5],
+                    ['Fast', 0.7],
+                  ] as const
+                ).map(([label, val]) => {
+                  const active = Math.abs(voiceRate - val) < 0.01;
+                  return (
+                    <button
+                      key={label}
+                      role="tab"
+                      aria-selected={active}
+                      className={`seg press-fb${active ? ' active' : ''}`}
+                      onClick={() => void saveSettings({ voiceRate: val })}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            }
+          />
+          <SettingsRow
+            label="Speak replies aloud"
+            sub="In voice mode, read the model's replies. Off keeps voice as listen and send."
+            trailing={
+              <Switch
+                checked={speakReplies}
+                label="Speak replies aloud"
+                onChange={(next) => {
+                  void saveSettings({ voiceReplies: next });
+                  showToast(
+                    next
+                      ? 'Replies will be spoken in voice mode.'
+                      : 'Replies stay on screen; voice still listens and sends.',
+                  );
+                }}
+              />
+            }
+          />
+        </SettingsGroup>
+
         <SettingsGroup index={group++}>
           <SettingsRow
             label="Clear conversations"
@@ -828,6 +900,19 @@ export function SettingsScreen() {
           </button>
         </div>
       </Sheet>
+
+      <VoicePicker
+        open={voicePickerOpen}
+        onClose={() => setVoicePickerOpen(false)}
+        selectedId={settings.voiceId}
+        rate={voiceRate}
+        onSelect={(id) => {
+          void saveSettings({ voiceId: id });
+          void listVoices().then((voices) =>
+            setVoiceName(voices.find((v) => v.id === id)?.name ?? ''),
+          );
+        }}
+      />
     </div>
   );
 }

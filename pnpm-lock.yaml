@@ -64,6 +64,9 @@ importers:
       oscode-speech:
         specifier: file:./plugins/oscode-speech
         version: file:app/plugins/oscode-speech(@capacitor/core@8.5.0)
+      oscode-tts:
+        specifier: file:./plugins/oscode-tts
+        version: file:app/plugins/oscode-tts(@capacitor/core@8.5.0)
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -2459,6 +2462,11 @@ packages:
 
   oscode-speech@file:app/plugins/oscode-speech:
     resolution: {directory: app/plugins/oscode-speech, type: directory}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  oscode-tts@file:app/plugins/oscode-tts:
+    resolution: {directory: app/plugins/oscode-tts, type: directory}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -5869,6 +5877,10 @@ snapshots:
       '@capacitor/core': 8.5.0
 
   oscode-speech@file:app/plugins/oscode-speech(@capacitor/core@8.5.0):
+    dependencies:
+      '@capacitor/core': 8.5.0
+
+  oscode-tts@file:app/plugins/oscode-tts(@capacitor/core@8.5.0):
     dependencies:
       '@capacitor/core': 8.5.0
 

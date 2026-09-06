@@ -1067,3 +1067,34 @@ execution contract. Newest at the bottom.
   scheduler's `onEvent` and write it as a Plan section in the routine's vault
   note, no extra model call, no regression to the approval-free first run. Blast
   radius: `os-code/src/routines/scheduler.ts` only.
+- **Voice mode uses native OS voices, not Claude's cloud TTS** (founder asked
+  "what does Claude use?"). Claude streams a cloud voice service (online only)
+  and a chosen human voice would sit against our own Tier 2 likeness gate. Native
+  `AVSpeechSynthesizer` (and `speechSynthesis` on desktop/web) is on-device,
+  offline, free, premium (Apple's downloadable neural voices), and generic (no
+  likeness synthesized). A bundled cross-platform neural engine is a later seam
+  behind the one TTS interface, not a day-one need.
+- **Voice mode inherits the chat's access; no separate voice preset** (founder,
+  2026-09-06: "if access is turned on for the chat, voice control gets the same
+  access"). Voice is always available offline; a voice-triggered action flows
+  through the same `send` and approval path as a typed one, so its reach lights
+  up exactly when the chat's does. Rejected the earlier idea of a "voice coding"
+  preset that flips Terminal Control and pairing on together.
+- **The break policy: conversation stays in voice, authorization and visual
+  selection break to the screen** (founder chose "answer as much as possible by
+  voice", tempered by the original "a picker means go back to the screen").
+  Clarify and plan are answered by voice; tool/terminal and cloud-spend approvals
+  and the stopped-turn recovery hand back to the chat. One table
+  (`VOICE_BREAK_POLICY`) so it is a one-line change to move a row.
+- **Reopen only after an approval clears; a plan revision and a stopped-turn
+  recovery do not auto-reopen.** Approvals have a clean resolved signal
+  (`pendingApprovals` empties); a revision or a retry deliberately puts the
+  person in the composer, and auto-reopening voice would cover the recovery UI.
+  The voice button reopens it when they want it.
+- **Listen and speak are mutually exclusive; the orb is tap-to-interrupt.** No
+  echo cancellation is assumed, so the mic is off while a reply speaks. True
+  always-open barge-in is a later refinement, noted in the doc.
+- **The `oscode-tts` plugin is registered in `app/package.json` only, not in the
+  CLI-managed `CapApp-SPM/Package.swift`,** mirroring how `oscode-media` was left
+  for `cap sync ios` to wire. Verifying `cap sync` links it is a device-side
+  follow-up in PROGRESS.
