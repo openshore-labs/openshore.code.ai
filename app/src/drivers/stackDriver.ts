@@ -233,8 +233,9 @@ export class StackDriver implements ChatDriver {
     // file header). Its persona still applies so it identifies itself
     // correctly and stays honest about not being a coder.
     const parts = [guideSystem ?? BASE_SYSTEM];
-    // Reasoning effort, read live so it reflects the current composer choice.
-    parts.push(effortDirective());
+    // Reasoning effort: a specialist's own effort when it was placed with one
+    // (the Vision position sets this), otherwise the live composer choice.
+    parts.push(effortDirective(placement?.effort));
     // Project context: name + standing instructions, injected into every turn.
     const proj = this.context.projectInstructions?.trim();
     if (this.context.projectName || proj) {

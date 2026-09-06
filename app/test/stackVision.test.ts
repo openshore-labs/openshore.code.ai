@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  defaultVisionCloudRef,
   harborRef,
   pickVisionRef,
   stackVisionReady,
   visionCapable,
+  visionSlots,
   type AppStack,
   type StackModelRef,
 } from '../src/lib/stack.js';
+import { DEFAULT_CLAUDE_MODEL } from '../src/lib/claudeModels.js';
 
 const claude: StackModelRef = {
   kind: 'cloud',
@@ -111,5 +114,57 @@ describe('stackVisionReady', () => {
         connected: () => false,
       }),
     ).toBe(false);
+  });
+});
+
+describe('visionSlots and the default cloud position', () => {
+  it('the default cloud vision model is the most capable cloud model', () => {
+    const ref = defaultVisionCloudRef();
+    expect(ref.kind).toBe('cloud');
+    expect(ref).toMatchObject({ provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL });
+  });
+
+  it('splits vision placements into a local slot and a cloud slot', () => {
+    const stack: AppStack = {
+      reasoning: harborRef(),
+      active: [
+        { ref: device, placement: { category: 'vision', effort: 'low' } },
+        { ref: claude, placement: { category: 'vision', effort: 'high' } },
+        { ref: byom, placement: { category: 'coding' } },
+      ],
+      saved: {},
+    };
+    const slots = visionSlots(stack);
+    expect(slots.local?.ref).toEqual(device);
+    expect(slots.cloud?.ref).toEqual(claude);
+    // A BYOM model counts as local (your own server), not the cloud slot.
+    expect(
+      visionSlots({ ...stack, active: [{ ref: byom, placement: { category: 'vision' } }] }).local
+        ?.ref,
+    ).toEqual(byom);
+  });
+
+  it('prefers the local slot over the cloud slot when the local model can see', () => {
+    // A BYOM vision model in the local slot wins over a cloud model.
+    const stack: AppStack = {
+      reasoning: harborRef(),
+      active: [
+        { ref: claude, placement: { category: 'vision' } },
+        { ref: byom, placement: { category: 'vision', effort: 'medium' } },
+      ],
+      saved: {},
+    };
+    const pick = pickVisionRef(stack, reachAll);
+    expect(pick?.ref).toEqual(byom);
+    expect(pick?.placement?.effort).toBe('medium');
+  });
+
+  it('carries the placement effort through for the cloud slot', () => {
+    const stack: AppStack = {
+      reasoning: harborRef(),
+      active: [{ ref: claude, placement: { category: 'vision', effort: 'high' } }],
+      saved: {},
+    };
+    expect(pickVisionRef(stack, reachAll)?.placement?.effort).toBe('high');
   });
 });

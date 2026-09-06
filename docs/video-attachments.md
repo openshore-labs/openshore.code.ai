@@ -78,6 +78,24 @@ backends (frame labels and header included); the device backend never receives
 images. The composer's attach button lights for a "My Stack" chat exactly when
 `stackVisionReady()` says a picture would be understood.
 
+### The two Vision slots, in My Stack
+
+The Stack manager shows Image reading (Vision) as a dedicated card with two
+slots (`visionSlots` in `stack.ts`, edited in `StackManager.tsx`):
+
+- **On device**: a model on the phone or your own server (device or BYOM). A
+  BYOM vision model actually reads images and is preferred over the cloud slot;
+  a device model falls back to the cloud until on-device image reading ships.
+- **Cloud**: a cloud model that reads images. It defaults to the most capable
+  cloud model (`defaultVisionCloudRef`, Claude Opus) until a person assigns
+  one, so images are always understood out of the box.
+
+Each slot carries its own **effort** (`Placement.effort`, honored in
+`StackDriver.systemFor` over the global composer effort). "My Stack is the
+source": a workflow that runs through the stack (a crew routine on the app path)
+uses whatever the Vision position holds, so there is one place to set it.
+Effort is now settable on any specialist placement, not just Vision.
+
 ## Harnessing the model
 
 Frames reach cloud Claude directly through the cloud Claude driver
