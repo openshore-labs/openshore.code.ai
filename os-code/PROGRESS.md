@@ -303,11 +303,29 @@ log entry). Migration is now `0016`.
       returns the `oscode://repo-oauth` callback straight to the completion
       handler, so connecting is one tap with no bounce page and no deep-link round
       trip at all. Desktop keeps the system-browser + deep-link path; the
-      cold-start recovery stays as a backstop. TestFlight verification of the full
-      one-tap connect (and that `cap sync ios` links `oscode-authsession`) is
-      still pending, and is the only thing left here. Optional hygiene, unchanged:
-      drop the trailing slash from the Codemagic `VITE_SUPABASE_URL`, since
-      `app/src/lib/supabase.ts` reads it raw.
+      cold-start recovery stays as a backstop. **Blocked on a Codemagic build
+      failure (2026-09-07), root cause not yet known.** The TestFlight pipeline
+      now fails at "Build the signed IPA", inside its own preliminary
+      `xcodebuild ... -showBuildSettings` check, exit 74, reproduced identically
+      on a retry (so not the transient network blip it was first guessed to be).
+      GitHub CI stays green throughout, since it never touches Xcode or SwiftPM;
+      only Codemagic exercises the real iOS package graph. Ruled out with actual
+      evidence rather than assumed: `oscode-authsession`'s manifest is
+      byte-identical in structure to the already-shipping `oscode-speech`, every
+      plugin pins the same `capacitor-swift-pm` dependency (no version
+      conflict), and a clean `pnpm install --frozen-lockfile` reproduces the
+      identical dependency tree Codemagic would see. The failing step's own log
+      carries no more detail than its one-line summary. Whether the cause is
+      `oscode-authsession` or the still-unverified `oscode-tts`/`oscode-speech`
+      from the same-day voice-mode merge is unknown; Codemagic's `xcode-project`
+      CLI curates its output and does not forward xcodebuild's real error on this
+      path, so nobody has seen the actual cause yet. Added a temporary diagnostic
+      step (`codemagic.yaml`, "DIAGNOSTIC - show the real xcodebuild/SwiftPM
+      error", a plain script step, which unlike the wrapper tool prints
+      everything verbatim) right before the failing step, to surface it on the
+      next build. Remove that step once the real error is seen and fixed. Optional
+      hygiene, unchanged: drop the trailing slash from the Codemagic
+      `VITE_SUPABASE_URL`, since `app/src/lib/supabase.ts` reads it raw.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -769,7 +787,25 @@ log entry). Migration is now `0016`.
   typecheck, and tests green (os-code 604, app 850; `repoOAuth.test.ts` 26);
   the em-dash, polish-standards, and PROGRESS shape guards. TestFlight
   verification of the one-tap connect, and that `cap sync ios` links
-  `oscode-authsession`, is still pending.
+  `oscode-authsession`, is still pending. That build then failed: Codemagic's
+  "Build the signed IPA" step died inside its own `xcodebuild -showBuildSettings`
+  check, exit 74, identically on a retry (so not the transient blip first
+  guessed). GitHub CI stayed green throughout, since it never touches Xcode or
+  SwiftPM; only Codemagic exercises the real iOS package graph, and its
+  `xcode-project` CLI tool curates its own output rather than forwarding
+  xcodebuild's real error, so the failing step's log carried no more detail than
+  its one-line summary. Checked what could be checked without a Mac toolchain:
+  `oscode-authsession`'s manifest is structurally identical to the
+  already-shipping `oscode-speech`, every plugin pins the same
+  `capacitor-swift-pm` version, and a clean `pnpm install --frozen-lockfile`
+  reproduces the same dependency tree Codemagic would install. None of that
+  found the cause, and whether it is `oscode-authsession` or the same-day,
+  still-unverified `oscode-tts`/`oscode-speech` from the voice-mode merge is
+  unknown. Added a temporary diagnostic step to `codemagic.yaml` (a plain script
+  step right before the failing one, since plain steps print output verbatim
+  unlike the wrapper tool) to surface the real xcodebuild/SwiftPM error on the
+  next build; remove it once the cause is seen and fixed. Full state in What
+  remains.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the
