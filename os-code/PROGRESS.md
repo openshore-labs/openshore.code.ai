@@ -268,9 +268,23 @@ log entry). Migration is now `0016`.
       CLI-managed `CapApp-SPM/Package.swift`, same as `oscode-media`). Follow-ups
       in `docs/voice-mode.md`: true always-open barge-in (needs echo handling), and
       a bundled cross-platform neural TTS engine behind the existing seam.
-- [ ] **GitHub repo connect: root cause confirmed (a doubled slash), fixed in
-      code and merged to main, verify on the next TestFlight build (founder,
-      TestFlight "redirect_uri is not associated with this application").**
+- [x] **GitHub repo connect: RESOLVED, connected on device (founder, 2026-09-07).
+      Started as TestFlight "redirect_uri is not associated with this
+      application"; four distinct bugs deep, all fixed.** The whole chain below is
+      kept as the record. Final state: after the `repo-oauth` function was
+      redeployed with the 302 fix, Connect GitHub on the phone returned on its own
+      (no bounce page, no tap) and the card shows "connected". The four bugs, in
+      the order they surfaced: (1) a doubled slash in the redirect_uri from a
+      trailing slash on `VITE_SUPABASE_URL`; (2) a stuck-on-"Connecting" hang on a
+      bailed sign-in; (3) the return leg dropped on a cold start; then the one-tap
+      rebuild uncovered (4a) a `cap sync` casing mismatch that broke the iOS
+      build, and (4b) ASWebAuthenticationSession not capturing the callback's JS
+      redirect, fixed by the server 302. Nice-to-haves still open, none blocking:
+      confirm the one-tap auto-return with a clean Remove-then-Connect (the
+      founder's connect may have carried over from an earlier manual attempt); the
+      app-side `.r` state marker for an iPad-desktop-UA ships with the next build;
+      and the trailing slash on the Codemagic `VITE_SUPABASE_URL` is still worth
+      dropping, since `app/src/lib/supabase.ts` reads it raw. Detail follows.
       Reading the live authorize URL settled it: the build sent
       `redirect_uri=https://lzlrlfdffwiypzreoldb.supabase.co//functions/v1/repo-oauth/callback`,
       a doubled slash after `.co`, because the Codemagic `VITE_SUPABASE_URL`
@@ -334,12 +348,12 @@ log entry). Migration is now `0016`.
       engineer's reply). `/callback` now returns an HTTP 302 to `oscode://` for
       iOS (User-Agent iPhone/iPad/iPod, or `state` ending ".r", which the iOS
       app now appends to cover an iPad reporting a desktop UA), keeping the HTML
-      page as the 302 body fallback and as the full desktop response. **This is
-      a server change: it takes effect on `supabase functions deploy repo-oauth`
-      and fixes the already-installed one-tap build with no new build.** Verify:
-      redeploy the function, then Connect GitHub should complete with no page and
-      no tap. Optional hygiene, unchanged: drop the trailing slash from the
-      Codemagic `VITE_SUPABASE_URL`, since `app/src/lib/supabase.ts` reads it raw.
+      page as the 302 body fallback and as the full desktop response. It is a
+      server change: it took effect on `supabase functions deploy repo-oauth`
+      (redeployed from the founder's Pop!_OS clone to project
+      `lzlrlfdffwiypzreoldb`, script 8.7 kB) and fixed the already-installed
+      build with no new build. The founder then had GitHub connect on the phone,
+      the card reading "connected" with no manual step. Done.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -846,7 +860,10 @@ log entry). Migration is now `0016`.
   already-installed build. Ruling in `DECISIONS.md`. Gates: full workspace
   build, format, lint, typecheck, and tests green (os-code 604, app 851;
   `repoOAuth.test.ts` 27); em-dash, polish-standards, and PROGRESS shape guards.
-  Full state in What remains.
+  The founder redeployed the function and GitHub connected on the phone with no
+  manual step, the card reading "connected". RESOLVED: four distinct bugs from
+  the first "redirect_uri is not associated" report, all fixed. Full state, and
+  the small non-blocking nice-to-haves, in What remains.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the
