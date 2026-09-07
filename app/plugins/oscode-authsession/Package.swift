@@ -13,12 +13,23 @@ import PackageDescription
 // so nothing imports its Swift module directly and no manual Xcode-project
 // linking is needed: cap sync lists it in CapApp-SPM/Package.swift and Capacitor
 // discovers it at runtime.
+//
+// The package and product name below MUST be exactly "OscodeAuthsession"
+// (lowercase "s" in "session"), not the nicer-looking "OscodeAuthSession": cap
+// sync derives the name CapApp-SPM looks for by capitalizing only the first
+// letter of each hyphen-separated segment of the npm package name
+// ("oscode-authsession" has no hyphen inside "authsession", so that whole word
+// is one segment, giving "Oscode" plus "Authsession"). A capital "S" here caused
+// "product 'OscodeAuthsession' ... not found in package 'OscodeAuthSession'" on
+// a real build (2026-09-07). The target name and the Swift plugin's jsName and
+// identifier are a separate JS-bridge lookup, unrelated to this SPM product
+// name, so those keep their readable casing.
 let package = Package(
-    name: "OscodeAuthSession",
+    name: "OscodeAuthsession",
     platforms: [.iOS(.v16)],
     products: [
         .library(
-            name: "OscodeAuthSession",
+            name: "OscodeAuthsession",
             targets: ["OscodeAuthSessionPlugin"])
     ],
     dependencies: [
