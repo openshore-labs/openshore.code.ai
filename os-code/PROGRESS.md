@@ -279,12 +279,16 @@ log entry). Migration is now `0016`.
       bailed sign-in; (3) the return leg dropped on a cold start; then the one-tap
       rebuild uncovered (4a) a `cap sync` casing mismatch that broke the iOS
       build, and (4b) ASWebAuthenticationSession not capturing the callback's JS
-      redirect, fixed by the server 302. Nice-to-haves still open, none blocking:
-      confirm the one-tap auto-return with a clean Remove-then-Connect (the
-      founder's connect may have carried over from an earlier manual attempt); the
-      app-side `.r` state marker for an iPad-desktop-UA ships with the next build;
-      and the trailing slash on the Codemagic `VITE_SUPABASE_URL` is still worth
-      dropping, since `app/src/lib/supabase.ts` reads it raw. Detail follows.
+      redirect, fixed by the server 302. The one-tap auto-return is confirmed: a
+      founder screen recording (viewed frame by frame via ffmpeg) shows Connect
+      GitHub, the iOS "App wants to use github.com to Sign In" consent that is
+      unique to ASWebAuthenticationSession, a brief github.com view (instant on a
+      shared Safari session), then an automatic return to the app with a "GitHub
+      connected" toast and no bounce page. Nice-to-haves still open, none
+      blocking: the app-side `.r` state marker for an iPad-desktop-UA ships with
+      the next build, and the trailing slash on the Codemagic `VITE_SUPABASE_URL`
+      is still worth dropping, since `app/src/lib/supabase.ts` reads it raw.
+      Detail follows.
       Reading the live authorize URL settled it: the build sent
       `redirect_uri=https://lzlrlfdffwiypzreoldb.supabase.co//functions/v1/repo-oauth/callback`,
       a doubled slash after `.co`, because the Codemagic `VITE_SUPABASE_URL`
