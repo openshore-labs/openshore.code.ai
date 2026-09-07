@@ -321,12 +321,25 @@ log entry). Migration is now `0016`.
       voice-mode plugins. Fixed by renaming the package and product name (only)
       to `OscodeAuthsession`; the target name and the Swift plugin's
       `jsName`/`identifier` are a separate JS-bridge lookup and keep their
-      readable casing. Ruling and the general lesson in `DECISIONS.md`. The
-      diagnostic step stays in `codemagic.yaml` for this one verification build
-      (a safety net after two earlier wrong guesses), to be removed once the
-      real `xcode-project build-ipa` step is confirmed green end to end.
-      Optional hygiene, unchanged: drop the trailing slash from the Codemagic
-      `VITE_SUPABASE_URL`, since `app/src/lib/supabase.ts` reads it raw.
+      readable casing. Ruling and the general lesson in `DECISIONS.md`. That
+      build then went green (the packaging error is gone), so the diagnostic
+      step has been removed from `codemagic.yaml`. **Last leg, the callback did
+      not auto-complete (fixed 2026-09-07).** On the working one-tap build the
+      session opened, GitHub authorized, and the Supabase `/callback` came back,
+      but the person was left on the "Returning to OpenShore" page.
+      ASWebAuthenticationSession uses `WKNavigationDelegate` and completes only
+      on a network-level redirect to the callback scheme; the page's
+      `window.location` JavaScript redirect runs inside the page and is not
+      reliably captured (confirmed against Apple's forums and an Apple
+      engineer's reply). `/callback` now returns an HTTP 302 to `oscode://` for
+      iOS (User-Agent iPhone/iPad/iPod, or `state` ending ".r", which the iOS
+      app now appends to cover an iPad reporting a desktop UA), keeping the HTML
+      page as the 302 body fallback and as the full desktop response. **This is
+      a server change: it takes effect on `supabase functions deploy repo-oauth`
+      and fixes the already-installed one-tap build with no new build.** Verify:
+      redeploy the function, then Connect GitHub should complete with no page and
+      no tap. Optional hygiene, unchanged: drop the trailing slash from the
+      Codemagic `VITE_SUPABASE_URL`, since `app/src/lib/supabase.ts` reads it raw.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -818,8 +831,22 @@ log entry). Migration is now `0016`.
   (only, in `app/plugins/oscode-authsession/Package.swift`) to
   `OscodeAuthsession`; the target name and the Swift plugin's
   `jsName`/`identifier` are a separate JS-bridge lookup, unaffected. General
-  lesson recorded in `DECISIONS.md`. The diagnostic step stays for one more
-  verification build before removal. Full state in What remains.
+  lesson recorded in `DECISIONS.md`. That build went green, so the diagnostic
+  step was removed. One last leg surfaced then: on the working one-tap build the
+  session opened and GitHub authorized, but the person was left on the Supabase
+  `/callback` "Returning to OpenShore" page. Research (Apple forums, an Apple
+  engineer's reply) confirmed ASWebAuthenticationSession completes only on a
+  network-level redirect to the callback scheme; the page's `window.location`
+  JavaScript redirect is not reliably captured. Fixed server-side: `/callback`
+  now returns an HTTP 302 to `oscode://` for iOS (UA iPhone/iPad/iPod, or `state`
+  ending ".r", which the iOS app now appends for the iPad-desktop-UA case),
+  keeping the HTML page as the 302 body fallback and as the full desktop
+  response, and using query params never a fragment. Takes effect on
+  `supabase functions deploy repo-oauth`, no new app build, so it fixes the
+  already-installed build. Ruling in `DECISIONS.md`. Gates: full workspace
+  build, format, lint, typecheck, and tests green (os-code 604, app 851;
+  `repoOAuth.test.ts` 27); em-dash, polish-standards, and PROGRESS shape guards.
+  Full state in What remains.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the

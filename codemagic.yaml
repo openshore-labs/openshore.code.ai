@@ -141,26 +141,6 @@ workflows:
             --create
           keychain add-certificates
           xcode-project use-profiles --project "app/ios/App/App.xcodeproj"
-      # TEMPORARY diagnostic (2026-09-07): the next step, "Build the signed IPA",
-      # started failing at its own internal "xcodebuild ... -showBuildSettings"
-      # check with only "Failed to show build settings", no further detail. That
-      # message comes from Codemagic's `xcode-project` CLI tool, which curates its
-      # own output and does not forward xcodebuild's real stdout/stderr on this
-      # failure path, so the actual cause (almost certainly SwiftPM resolving the
-      # CapApp-SPM package graph) has never reached a log anyone can read. A plain
-      # script step prints everything verbatim, unlike that tool, so running the
-      # identical xcodebuild invocation here first surfaces the real error. Remove
-      # this step once the underlying cause is fixed; it duplicates work the next
-      # step also does.
-      - name: DIAGNOSTIC - show the real xcodebuild/SwiftPM error
-        script: |
-          set -x
-          rc=0
-          xcodebuild -resolvePackageDependencies \
-            -project app/ios/App/App.xcodeproj -scheme App || rc=$?
-          xcodebuild -showBuildSettings \
-            -project app/ios/App/App.xcodeproj -scheme App || rc=$?
-          exit $rc
       - name: Build the signed IPA
         script: |
           set -euo pipefail

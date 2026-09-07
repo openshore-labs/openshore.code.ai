@@ -1129,3 +1129,20 @@ execution contract. Newest at the bottom.
   the npm name (`oscode-auth-session`) so `cap sync` PascalCases each word, or
   verify the Package.swift's product name against `cap sync`'s actual output
   before shipping, never against what reads well.
+- **The repo-oauth `/callback` returns an HTTP 302 to the `oscode://` scheme for
+  iOS, not just a JavaScript redirect (found via a real one-tap connect,
+  2026-09-07).** ASWebAuthenticationSession uses `WKNavigationDelegate` and
+  completes only when the web content navigates to the callback scheme through a
+  network-level redirect it can intercept; a `window.location` redirect runs
+  inside the page and is not reliably captured (confirmed against Apple
+  Developer Forums and an Apple engineer's reply), which left the person on the
+  "Returning to OpenShore" page. So `/callback` now sends a 302 with
+  `Location: oscode://repo-oauth?...` when the request is iOS (User-Agent carries
+  iPhone/iPad/iPod, or `state` ends with ".r", which the iOS app now appends for
+  the iPad-desktop-UA case); the HTML page with its manual button stays as the
+  302's body fallback and as the full 200 response for desktop, where a real
+  browser runs the JS redirect. Query params (`?code=...`), never a fragment
+  (`#`), since fragment callbacks are the one shape the forums report as flaky
+  to intercept. This is a server change: it takes effect on
+  `supabase functions deploy repo-oauth`, with no new app build, so it fixes the
+  already-installed one-tap build.

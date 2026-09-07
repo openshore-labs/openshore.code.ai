@@ -316,7 +316,15 @@ export async function connectRepoOAuth(
     return { ok: false, error: 'Repo sign-in needs the iPhone app or the desktop app.' };
   }
 
-  const state = `${id}.${randomToken(16)}`;
+  // iOS runs the flow through ASWebAuthenticationSession (runAuthSession), which
+  // completes only when the callback function issues a real network-level 302 to
+  // the oscode:// scheme, not a JavaScript redirect. The function decides that
+  // partly from the request User-Agent, but an iPad in desktop mode reports a
+  // "Macintosh" UA, so the app also opts in explicitly by ending `state` with
+  // ".r". The full state (marker and all) is still what gets verified on return,
+  // so this does not weaken the CSRF check. Desktop keeps the plain state and the
+  // interactive page. base64url has no ".", so the marker parses cleanly.
+  const state = platform() === 'ios' ? `${id}.${randomToken(16)}.r` : `${id}.${randomToken(16)}`;
   // PKCE: 32 random bytes gives a 43-character base64url verifier, inside the
   // 43..128 range RFC 7636 requires. A fresh one per attempt; never stored.
   const codeVerifier = randomToken(32);
