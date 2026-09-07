@@ -90,7 +90,26 @@ function redirectUri(): string {
 // the app's deep-link router never confuses the three (useAuthDeepLink.ts).
 const APP_REDIRECT = 'oscode://repo-oauth';
 
-function bounce(params: Record<string, string>): Response {
+// Whether this callback is being loaded inside an iOS auth session
+// (ASWebAuthenticationSession), which presents Safari, so its User-Agent is the
+// Mobile Safari one carrying iPhone/iPad/iPod. That session completes ONLY when
+// the web content navigates to the custom callback scheme through a real
+// network-level redirect (its WKNavigationDelegate intercepts it); a JavaScript
+// `window.location` redirect runs inside the page and is NOT reliably captured,
+// which stranded the person on this page. So iOS gets a 302, everyone else the
+// interactive page. (iPadOS that reports a desktop "Macintosh" UA falls through
+// to the page; the app also marks its state for a redirect, below, so that case
+// is covered too once a build carrying the mark is installed.)
+function wantsSchemeRedirect(req: Request, state: string): boolean {
+  const ua = req.headers.get('user-agent') ?? '';
+  if (/\b(iPhone|iPad|iPod)\b/i.test(ua)) return true;
+  // The app can also opt in explicitly by ending its `state` with ".r", so a
+  // client whose UA does not read as iOS (an iPad in desktop mode) still gets
+  // the network-level redirect its auth session needs.
+  return state.endsWith('.r');
+}
+
+function bounce(params: Record<string, string>, req: Request): Response {
   const url = new URL(APP_REDIRECT);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   // A tiny page that fires the deep link and offers a manual button, so a
@@ -119,9 +138,20 @@ function bounce(params: Record<string, string>): Response {
 </div>
 <script>try{ window.location.href=${JSON.stringify(link)}; }catch(e){}</script>
 </body></html>`;
+  // On iOS, a 302 whose Location is the custom scheme is what the auth session
+  // captures. The HTML body stays as a fallback: any client that does not follow
+  // the redirect (an older in-app-browser build) still renders the page and its
+  // manual button, so no one is ever stranded. Desktop keeps the 200 page: a
+  // full browser runs the JS redirect and the button, and a 302 there would add
+  // an "Open OpenShore?" prompt with no body to fall back to.
+  const redirect = wantsSchemeRedirect(req, params.state ?? '');
   return new Response(html, {
-    status: 200,
-    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+    status: redirect ? 302 : 200,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      ...(redirect ? { location: link } : {}),
+    },
   });
 }
 
@@ -218,9 +248,9 @@ Deno.serve(async (req) => {
     const err = url.searchParams.get('error');
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state') ?? '';
-    if (err) return bounce({ state, error: fixedProviderError(err) });
-    if (!code) return bounce({ state, error: 'no_code' });
-    return bounce({ state, code });
+    if (err) return bounce({ state, error: fixedProviderError(err) }, req);
+    if (!code) return bounce({ state, error: 'no_code' }, req);
+    return bounce({ state, code }, req);
   }
 
   // --- POST /exchange and /refresh: the secret is used here, over TLS only.

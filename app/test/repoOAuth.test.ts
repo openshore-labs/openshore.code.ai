@@ -216,6 +216,24 @@ describe('connectRepoOAuth', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  it('marks iOS state with the ".r" redirect opt-in, and leaves desktop state plain', async () => {
+    // The callback function returns a 302 to the oscode:// scheme (which
+    // ASWebAuthenticationSession needs) when state ends with ".r"; iOS opts in
+    // so an iPad reporting a desktop UA is covered. Desktop keeps plain state.
+    currentPlatform = 'ios';
+    let mod = await loadModule();
+    mockFetchOnce({ accessToken: 'a' });
+    await mod.connectRepoOAuth('github');
+    expect(lastOpenedUrl().searchParams.get('state')).toMatch(/^github\..+\.r$/);
+
+    currentPlatform = 'electron';
+    opened.length = 0;
+    mod = await loadModule();
+    mockFetchOnce({ accessToken: 'b' });
+    await mod.connectRepoOAuth('github');
+    expect(lastOpenedUrl().searchParams.get('state')).toMatch(/^github\.[^.]+$/);
+  });
+
   it('rejects a redirect whose state does not match', async () => {
     const mod = await loadModule();
     const { openExternal } = await import('../src/lib/platform.js');
