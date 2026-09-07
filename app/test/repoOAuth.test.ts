@@ -330,6 +330,110 @@ describe('redirect URI', () => {
   });
 });
 
+describe('resumeRepoOAuthFromLink (cold-start recovery)', () => {
+  const PENDING = 'oscode.repo.oauth.pending';
+
+  it('clears the pending record after a warm connect completes', async () => {
+    const mod = await loadModule();
+    mockFetchOnce({ accessToken: 'gho_abc' });
+    await mod.connectRepoOAuth('github');
+    expect(secrets.has(PENDING)).toBe(false);
+  });
+
+  it('finishes a pending OAuth from a cold-start deep link and stores the tokens', async () => {
+    const mod = await loadModule();
+    // A prior process persisted the attempt, then iOS evicted the app; the
+    // return cold-starts it, so only this record survives.
+    secrets.set(
+      PENDING,
+      JSON.stringify({
+        provider: 'github',
+        state: 'github.abc',
+        codeVerifier: 'verifier123',
+        ts: Date.now(),
+      }),
+    );
+    mockFetchOnce({ accessToken: 'gho_resumed', refreshToken: 'ghr_r' });
+
+    const res = await mod.resumeRepoOAuthFromLink(
+      'oscode://repo-oauth?code=thecode&state=github.abc',
+    );
+    expect(res.handled).toBe(true);
+    expect(res.ok).toBe(true);
+    expect(res.provider).toBe('github');
+    expect(secrets.get(KEY)).toBe('gho_resumed');
+    expect(secrets.get(`${KEY}.mode`)).toBe('oauth');
+
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://proj.supabase.co/functions/v1/repo-oauth/exchange');
+    const sent = JSON.parse((init as RequestInit).body as string);
+    expect(sent.code).toBe('thecode');
+    expect(sent.codeVerifier).toBe('verifier123');
+    // The record is consumed, so a re-delivered launch URL cannot re-run it.
+    expect(secrets.has(PENDING)).toBe(false);
+  });
+
+  it('does nothing when there is no pending attempt to resume', async () => {
+    const mod = await loadModule();
+    const res = await mod.resumeRepoOAuthFromLink('oscode://repo-oauth?code=x&state=github.abc');
+    expect(res.handled).toBe(false);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a resume whose state does not match, and still consumes the record', async () => {
+    const mod = await loadModule();
+    secrets.set(
+      PENDING,
+      JSON.stringify({
+        provider: 'github',
+        state: 'github.expected',
+        codeVerifier: 'v',
+        ts: Date.now(),
+      }),
+    );
+    const res = await mod.resumeRepoOAuthFromLink('oscode://repo-oauth?code=x&state=github.forged');
+    expect(res.handled).toBe(true);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/could not be verified/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(secrets.has(PENDING)).toBe(false);
+  });
+
+  it('ignores (and clears) a stale pending attempt', async () => {
+    const mod = await loadModule();
+    secrets.set(
+      PENDING,
+      JSON.stringify({
+        provider: 'github',
+        state: 'github.abc',
+        codeVerifier: 'v',
+        ts: Date.now() - 20 * 60_000,
+      }),
+    );
+    const res = await mod.resumeRepoOAuthFromLink('oscode://repo-oauth?code=x&state=github.abc');
+    expect(res.handled).toBe(false);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(secrets.has(PENDING)).toBe(false);
+  });
+
+  it('is a silent no-op for a link that is not a repo-oauth return', async () => {
+    const mod = await loadModule();
+    secrets.set(
+      PENDING,
+      JSON.stringify({
+        provider: 'github',
+        state: 'github.abc',
+        codeVerifier: 'v',
+        ts: Date.now(),
+      }),
+    );
+    const res = await mod.resumeRepoOAuthFromLink('oscode://auth-callback#access_token=zzz');
+    expect(res.handled).toBe(false);
+    // A different route must not consume a pending repo attempt.
+    expect(secrets.has(PENDING)).toBe(true);
+  });
+});
+
 describe('friendlyError', () => {
   it('has a sentence for every code the function can return', async () => {
     const mod = await loadModule();

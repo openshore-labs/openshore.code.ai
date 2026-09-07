@@ -112,6 +112,50 @@ const refreshKey = (id: RepoPlatform) => `${repoSecretKey(id)}.refresh`;
 const expiryKey = (id: RepoPlatform) => `${repoSecretKey(id)}.expiresAt`;
 const modeKey = (id: RepoPlatform) => `${repoSecretKey(id)}.mode`;
 
+// A pending OAuth attempt, persisted so the return can finish even if iOS
+// evicted the app while the person was on the provider's consent screen. OS
+// Code loads models and is memory-heavy, so the app is often gone by the time
+// the person taps back, which cold-starts it: the in-memory awaitRedirect
+// listener no longer exists, so useAuthDeepLink's cold-start path reads this
+// record and completes the exchange (resumeRepoOAuthFromLink). The state and the
+// PKCE verifier live here only for the seconds the consent screen is open, are
+// single-use, and are cleared the moment the flow ends either way.
+const PENDING_KEY = 'oscode.repo.oauth.pending';
+const PENDING_TTL_MS = 15 * 60_000;
+
+interface PendingOAuth {
+  provider: RepoPlatform;
+  state: string;
+  codeVerifier: string;
+  ts: number;
+}
+
+async function setPending(p: PendingOAuth): Promise<void> {
+  await secretSet(PENDING_KEY, JSON.stringify(p));
+}
+
+async function clearPending(): Promise<void> {
+  await secretDelete(PENDING_KEY);
+}
+
+/** Read and remove the pending attempt in one step, so a resume runs at most
+ *  once. Returns undefined when there is nothing pending or the record is stale
+ *  (older than the TTL) or unparseable. */
+async function claimPending(): Promise<PendingOAuth | undefined> {
+  const raw = await secretGet(PENDING_KEY);
+  if (!raw) return undefined;
+  await secretDelete(PENDING_KEY);
+  try {
+    const p = JSON.parse(raw) as PendingOAuth;
+    if (!p || typeof p.state !== 'string' || Date.now() - (p.ts ?? 0) > PENDING_TTL_MS) {
+      return undefined;
+    }
+    return p;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Whether this platform is connected via OAuth (vs a pasted token), which
  *  decides whether tokens can be refreshed and should be forgotten on remove. */
 export async function isRepoOAuthConnected(id: RepoPlatform): Promise<boolean> {
@@ -273,6 +317,10 @@ export async function connectRepoOAuth(
   if (cfg.scope) authUrl.searchParams.set('scope', cfg.scope);
   for (const [k, v] of Object.entries(cfg.extraAuthParams ?? {})) authUrl.searchParams.set(k, v);
 
+  // Persist the attempt before opening the browser, so a return that cold-starts
+  // the app (the app was evicted while authorizing) can still be finished from
+  // the deep-link handler. The finally clears it on every warm outcome.
+  await setPending({ provider: id, state, codeVerifier, ts: Date.now() });
   try {
     const waiting = awaitRedirect();
     if (platform() === 'ios') await Browser.open({ url: authUrl.toString() });
@@ -292,6 +340,63 @@ export async function connectRepoOAuth(
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    // The warm path owns completion; drop the record so the cold-start handler
+    // never re-runs a code this call already consumed (or a cancelled attempt).
+    await clearPending();
+  }
+}
+
+/** The result of trying to finish a repo OAuth from a returning deep link.
+ *  `handled` is false when there was nothing to resume (no pending attempt, a
+ *  stale link, or a link for another route), so the caller stays silent. */
+export interface ResumeResult {
+  handled: boolean;
+  ok?: boolean;
+  provider?: RepoPlatform;
+  error?: string;
+}
+
+/** Finish a repo OAuth that returned after the app was evicted from memory.
+ *  Reads the persisted attempt (claimed once), verifies state, exchanges the
+ *  code, and stores the tokens exactly where the warm path does. Called from the
+ *  app's cold-start deep-link path (useAuthDeepLink) with the launch URL. Never
+ *  throws; a wire error comes back as a fixed sentence in `error`. */
+export async function resumeRepoOAuthFromLink(rawUrl: string): Promise<ResumeResult> {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return { handled: false };
+  }
+  if (u.protocol !== 'oscode:') return { handled: false };
+  const host = (u.hostname || u.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
+  if (host !== APP_REDIRECT_HOST) return { handled: false };
+
+  const pending = await claimPending();
+  if (!pending) return { handled: false };
+
+  try {
+    const p = u.searchParams;
+    const state = p.get('state') ?? '';
+    const code = p.get('code') ?? undefined;
+    const error = p.get('error') ?? undefined;
+    if (state !== pending.state) {
+      return { handled: true, ok: false, error: 'The sign-in response could not be verified.' };
+    }
+    if (error) return { handled: true, ok: false, error: friendlyError(error) };
+    if (!code)
+      return { handled: true, ok: false, error: 'The sign-in response was missing its code.' };
+
+    const tokens = await postFunction('exchange', {
+      provider: pending.provider,
+      code,
+      codeVerifier: pending.codeVerifier,
+    });
+    await storeTokens(pending.provider, tokens);
+    return { handled: true, ok: true, provider: pending.provider };
+  } catch (err) {
+    return { handled: true, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

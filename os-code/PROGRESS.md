@@ -287,7 +287,20 @@ log entry). Migration is now `0016`.
       match). The stuck-on-"Connecting" bug on a bailed sign-in shipped fixed for
       iOS via the browser-dismiss listener; desktop still waits out the
       five-minute timeout when its separate system browser is closed, a small
-      follow-up.
+      follow-up. With the redirect fixed the authorize step now succeeds and the
+      Supabase `/callback` bounces `oscode://repo-oauth?code=...` back; the return
+      leg was then hardened (2026-09-07): if iOS evicts the app while the person
+      authorizes (likely, models are memory-heavy), tapping back cold-starts it
+      and the in-memory connect listener is gone, so the code was dropped.
+      `connectRepoOAuth` now persists the attempt (state plus PKCE verifier,
+      single-use, TTL 15 min) and `useAuthDeepLink` finishes it from the
+      cold-start launch URL via `resumeRepoOAuth` (`repoOAuth.resumeRepoOAuthFromLink`,
+      cold-start only so it never races the warm listener). A warm return still
+      needs the person to tap "Back to OpenShore" on the bounce page, since iOS
+      blocks the page's automatic custom-scheme redirect without a gesture; making
+      that return automatic (ASWebAuthenticationSession over the Capacitor Browser)
+      is the remaining polish. TestFlight verification of the full connect,
+      warm tap and a cold return, is still pending.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -725,9 +738,22 @@ log entry). Migration is now `0016`.
   config change. Merged to main (fast-forward) so Codemagic ships it to
   TestFlight; the same push carried a Prettier-only reformat of
   `test/ethicsEnforcement.test.ts` (a pre-existing drift that had CI red on
-  format) so main lands green. Gates: full workspace build, format, lint,
-  typecheck, and tests green (os-code 604, app 815; `repoOAuth.test.ts` 19, up
-  from 14); the em-dash, polish-standards, and PROGRESS shape guards.
+  format) so main lands green. Then, on the build that carried the trim, the
+  authorize step finally succeeded and the Supabase `/callback` bounced the code
+  back, exposing the last leg (2026-09-07): the return relied only on the
+  in-memory connect listener, so a cold start (iOS evicts the memory-heavy app
+  while the person authorizes, then the return relaunches it) dropped the code.
+  `connectRepoOAuth` now persists the attempt (state and PKCE verifier,
+  single-use, 15-minute TTL, claimed once) and `useAuthDeepLink` completes it
+  from the cold-start launch URL through a new `resumeRepoOAuth` store action and
+  `repoOAuth.resumeRepoOAuthFromLink`, cold-start only so it never races the warm
+  listener. A warm return still needs the "Back to OpenShore" tap (iOS blocks the
+  bounce page's automatic custom-scheme redirect without a gesture); an
+  ASWebAuthenticationSession swap to make it automatic is the noted follow-up.
+  Gates: full workspace build, format, lint, typecheck, and tests green (os-code
+  604, app 821; `repoOAuth.test.ts` 25, up from 14); the em-dash,
+  polish-standards, and PROGRESS shape guards. TestFlight verification of the
+  full connect is still pending.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the

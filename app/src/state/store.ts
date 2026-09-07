@@ -203,6 +203,7 @@ import {
 import {
   connectRepoOAuth as runRepoOAuthConnect,
   disconnectRepoOAuth,
+  resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath } from '../lib/vault.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
@@ -890,6 +891,10 @@ interface AppState {
   connectRepoPlatform(id: string, token: string): Promise<void>;
   /** Connect a repo platform through one-tap OAuth (the GitHub App path). */
   connectRepoOAuth(id: RepoPlatform): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Finish a one-tap OAuth from a returning deep link when the app cold-started
+   *  (it was evicted from memory while the person authorized). No-op when there
+   *  is no pending attempt. */
+  resumeRepoOAuth(url: string): Promise<void>;
   disconnectRepoPlatform(id: string): Promise<void>;
   /** Admin: set the home repo the whole system works through. */
   setHomeRepo(home: HomeRepo): Promise<void>;
@@ -4002,6 +4007,24 @@ export const useApp = create<AppState>((set, get) => {
         logEvent('repo_platform_connected', { platform: id, method: 'oauth' });
       }
       return res;
+    },
+
+    // Finish a one-tap OAuth that returned after the app was evicted from memory
+    // while the person authorized (a cold start): the in-memory connect flow is
+    // gone, so the deep-link handler hands the launch URL here to complete the
+    // exchange from the persisted attempt. Silent when there is nothing pending.
+    async resumeRepoOAuth(url) {
+      const res = await resumeRepoOAuthFromLink(url);
+      if (!res.handled) return;
+      const id = res.provider;
+      const name = REPO_CONNECTORS.find((c) => c.id === id)?.name ?? 'The repository';
+      if (res.ok && id) {
+        set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: true } }));
+        logEvent('repo_platform_connected', { platform: id, method: 'oauth-resumed' });
+        get().showToast(`${name} connected.`);
+      } else if (res.error) {
+        get().showToast(res.error);
+      }
     },
 
     async disconnectRepoPlatform(id) {
