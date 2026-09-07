@@ -1108,3 +1108,24 @@ execution contract. Newest at the bottom.
   system-browser + deep-link path (ASWebAuthenticationSession is Apple-only). The
   cold-start deep-link recovery stays as a harmless backstop. Device verification
   (and that `cap sync ios` links the plugin) is a follow-up in PROGRESS.
+- **A Swift Package's product name must match `cap sync`'s naive capitalize-first-
+  letter-per-segment transform of its npm package name, not readable PascalCase
+  (found via a real Codemagic failure, 2026-09-07).** `oscode-authsession`'s
+  `Package.swift` named its product `OscodeAuthSession` (capital S, treating
+  "auth" and "session" as two words); `cap sync` instead derives
+  `OscodeAuthsession` (capitalizing only the first letter of the whole
+  "authsession" segment, since the npm name has no hyphen there), so
+  `CapApp-SPM/Package.swift` asked for a product `OscodeAuthsession` that did not
+  exist, and every build failed at SwiftPM's package-graph resolution with
+  "product 'OscodeAuthsession' ... not found in package 'OscodeAuthSession'" (an
+  error Codemagic's `xcode-project` CLI does not surface; found only by adding a
+  plain diagnostic script step that runs `xcodebuild` directly, since plain
+  script steps print output verbatim). Fixed by renaming the package and
+  product name (only) to `OscodeAuthsession`; the target name and the Swift
+  plugin's `jsName`/`identifier` are a separate, unrelated JS-bridge lookup and
+  keep their readable casing. Lesson for any future oscode-* plugin whose npm
+  name's suffix is itself multi-word with no internal hyphen (matching this
+  repo's plugins is the same instinct that produced the bug): either hyphenate
+  the npm name (`oscode-auth-session`) so `cap sync` PascalCases each word, or
+  verify the Package.swift's product name against `cap sync`'s actual output
+  before shipping, never against what reads well.

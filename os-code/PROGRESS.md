@@ -303,28 +303,29 @@ log entry). Migration is now `0016`.
       returns the `oscode://repo-oauth` callback straight to the completion
       handler, so connecting is one tap with no bounce page and no deep-link round
       trip at all. Desktop keeps the system-browser + deep-link path; the
-      cold-start recovery stays as a backstop. **Blocked on a Codemagic build
-      failure (2026-09-07), root cause not yet known.** The TestFlight pipeline
-      now fails at "Build the signed IPA", inside its own preliminary
-      `xcodebuild ... -showBuildSettings` check, exit 74, reproduced identically
-      on a retry (so not the transient network blip it was first guessed to be).
-      GitHub CI stays green throughout, since it never touches Xcode or SwiftPM;
-      only Codemagic exercises the real iOS package graph. Ruled out with actual
-      evidence rather than assumed: `oscode-authsession`'s manifest is
-      byte-identical in structure to the already-shipping `oscode-speech`, every
-      plugin pins the same `capacitor-swift-pm` dependency (no version
-      conflict), and a clean `pnpm install --frozen-lockfile` reproduces the
-      identical dependency tree Codemagic would see. The failing step's own log
-      carries no more detail than its one-line summary. Whether the cause is
-      `oscode-authsession` or the still-unverified `oscode-tts`/`oscode-speech`
-      from the same-day voice-mode merge is unknown; Codemagic's `xcode-project`
-      CLI curates its output and does not forward xcodebuild's real error on this
-      path, so nobody has seen the actual cause yet. Added a temporary diagnostic
-      step (`codemagic.yaml`, "DIAGNOSTIC - show the real xcodebuild/SwiftPM
-      error", a plain script step, which unlike the wrapper tool prints
-      everything verbatim) right before the failing step, to surface it on the
-      next build. Remove that step once the real error is seen and fixed. Optional
-      hygiene, unchanged: drop the trailing slash from the Codemagic
+      cold-start recovery stays as a backstop. **Codemagic build failure, root
+      cause found and fixed (2026-09-07).** The diagnostic step added to
+      `codemagic.yaml` (a plain script running `xcodebuild` directly, since it
+      prints output verbatim where the wrapper CLI tool curates and swallows it)
+      caught the real error on the next build: SwiftPM's package-graph
+      resolution failed with "product 'OscodeAuthsession' required by ... not
+      found in package 'OscodeAuthSession'". `cap sync` derives the Swift
+      package/product name from the npm name by capitalizing only the first
+      letter of each hyphen-separated segment; `oscode-authsession` has no
+      hyphen inside "authsession", so that whole word is one segment and the
+      derived name is `OscodeAuthsession` (lowercase second "s"), not the
+      readable `OscodeAuthSession` the plugin's own `Package.swift` declared.
+      Every dependency (`capacitor-swift-pm`, `swift-syntax`, `LLM.swift`,
+      `ion-ios-filesystem`) had fetched and checked out fine; this was purely a
+      one-word casing mismatch, unrelated to the SPM fetch, network, disk, or the
+      voice-mode plugins. Fixed by renaming the package and product name (only)
+      to `OscodeAuthsession`; the target name and the Swift plugin's
+      `jsName`/`identifier` are a separate JS-bridge lookup and keep their
+      readable casing. Ruling and the general lesson in `DECISIONS.md`. The
+      diagnostic step stays in `codemagic.yaml` for this one verification build
+      (a safety net after two earlier wrong guesses), to be removed once the
+      real `xcode-project build-ipa` step is confirmed green end to end.
+      Optional hygiene, unchanged: drop the trailing slash from the Codemagic
       `VITE_SUPABASE_URL`, since `app/src/lib/supabase.ts` reads it raw.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
@@ -804,8 +805,21 @@ log entry). Migration is now `0016`.
   unknown. Added a temporary diagnostic step to `codemagic.yaml` (a plain script
   step right before the failing one, since plain steps print output verbatim
   unlike the wrapper tool) to surface the real xcodebuild/SwiftPM error on the
-  next build; remove it once the cause is seen and fixed. Full state in What
-  remains.
+  next build. That build named it exactly: SwiftPM failed the package graph with
+  "product 'OscodeAuthsession' required by ... not found in package
+  'OscodeAuthSession'", every dependency (`capacitor-swift-pm`, `swift-syntax`,
+  `LLM.swift`, `ion-ios-filesystem`) having already fetched and checked out
+  fine, so it was neither the voice-mode plugins, network, nor disk. `cap sync`
+  derives a Swift package/product name by capitalizing only the first letter of
+  each hyphen-separated segment of the npm name; `oscode-authsession` has no
+  hyphen inside "authsession", so the derived name is `OscodeAuthsession`
+  (lowercase second "s"), not the readable `OscodeAuthSession` the plugin's own
+  `Package.swift` declared. Fixed by renaming the package and product name
+  (only, in `app/plugins/oscode-authsession/Package.swift`) to
+  `OscodeAuthsession`; the target name and the Swift plugin's
+  `jsName`/`identifier` are a separate JS-bridge lookup, unaffected. General
+  lesson recorded in `DECISIONS.md`. The diagnostic step stays for one more
+  verification build before removal. Full state in What remains.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the
