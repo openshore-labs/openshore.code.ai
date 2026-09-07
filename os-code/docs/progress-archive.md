@@ -2398,6 +2398,37 @@ Layer status:
 
 ## Log entries (2026-08-18 to 2026-09-05)
 
+- **2026-09-06: video attachments, reviewed frame by frame, never the video
+  (founder, pushed to main).** The founder wanted Claude Code's attachment flow
+  (Camera, Photos, Files) with video added, on two rules: a model never reviews
+  a video directly, and a large clip is compressed before it is broken into
+  stills. Built: a video is detected on attach (`isVideoFile`), compressed
+  toward the 25 to 29MB band when it is over 30MB, and sampled into up to 12
+  downscaled JPEG frames, each tagged with its order and timestamp; the frames
+  ride to a vision model as ordinary image blocks and the composer shows one
+  chip per video. Native compression and framing run on AVFoundation on the
+  phone (new `oscode-media` Capacitor plugin: `AVAssetExportSession`
+  fileLengthLimit for the band, `AVAssetImageGenerator` for the frames) and on
+  FFmpeg on the desktop (`osc:mediaProcess` over the Electron bridge, invoked
+  with an argument array, never a shell string, with a friendly "install
+  ffmpeg" message when it is absent); the browser and any native gap fall back
+  to a canvas over a hidden `<video>`, so a clip always yields frames.
+  Screenshots and screen recordings flow through with no approval, since
+  attaching is not a tool call. The cloud Claude driver (`buildVisionContent`)
+  leads the frames with a one-line context header, labels each with its
+  timestamp, and adds a system note so the model reads them as one clip in
+  order and may say plainly it reviewed the video frame by frame. Only stills
+  ever leave the device; the video is read locally. Vision stays cloud Claude
+  only (`sourceSupportsVision`), so frames route there. New Info.plist photo
+  permission string. Code: `app/src/lib/{attachments,videoAttach,videoBackends,
+mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
+  `app/src/drivers/cloudClaudeDriver.ts`, `app/electron/media.ts` +
+  `main.ts`/`preload.cjs`, `app/plugins/oscode-media`. Doc:
+  `docs/video-attachments.md`. Gates: app typecheck (src and electron), lint,
+  tests (29 in the touched suites), Vite build, Prettier; os-code em-dash guard
+  and the PROGRESS shape guard. Native device and desktop-FFmpeg verification
+  are in What remains (not runnable in a web session).
+
 - **2026-09-05: `0016` had already been applied to production, from its
   stale first draft, before every edit made to it since.** Discovered by
   querying the live schema directly (prompted by the founder asking what to

@@ -879,3 +879,45 @@ describe('an evicted vault note is an existing note (UI-2)', () => {
     expect(useApp.getState().toast).toMatch(/Still downloading/);
   });
 });
+
+describe('hub models (a Marketplace pull onto your home machine lands on the Bench)', () => {
+  beforeEach(resetStore);
+
+  it('addHubModel puts a pulled model on the bench and is idempotent by ref', async () => {
+    await useApp.getState().addHubModel('qwen3-coder:30b', 'Qwen3 Coder 30B');
+    expect(useApp.getState().settings.hubModels).toEqual([
+      { ref: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B' },
+    ]);
+    // Pulling the same ref again refreshes the label in place, never doubling.
+    await useApp.getState().addHubModel('qwen3-coder:30b', 'Qwen3 Coder 30B (Q4)');
+    expect(useApp.getState().settings.hubModels).toEqual([
+      { ref: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B (Q4)' },
+    ]);
+    // A different ref adds a second bench row.
+    await useApp.getState().addHubModel('gemma3:12b', 'Gemma 3 12B');
+    expect(useApp.getState().settings.hubModels).toHaveLength(2);
+  });
+
+  it('removeHubModel forgets it and pulls it from every profile stack', async () => {
+    await useApp.getState().addHubModel('qwen3-coder:30b', 'Qwen3 Coder 30B');
+    const hub: StackModelRef = { kind: 'hub', ref: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B' };
+    // Place it as the docked coding specialist.
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        stacks: {
+          docked: {
+            reasoning: { kind: 'device', modelId: 'reason', modelName: 'R' },
+            active: [{ ref: hub, placement: { category: 'coding' } }],
+            saved: {},
+          },
+        },
+      },
+    });
+    await useApp.getState().removeHubModel('qwen3-coder:30b');
+    expect(useApp.getState().settings.hubModels).toEqual([]);
+    // Gone from the docked stack too: no dangling placed specialist.
+    const docked = useApp.getState().settings.stacks!.docked!;
+    expect(docked.active.some((m) => m.ref.kind === 'hub')).toBe(false);
+  });
+});

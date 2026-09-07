@@ -1098,3 +1098,19 @@ execution contract. Newest at the bottom.
   CLI-managed `CapApp-SPM/Package.swift`,** mirroring how `oscode-media` was left
   for `cap sync ios` to wire. Verifying `cap sync` links it is a device-side
   follow-up in PROGRESS.
+- **A home model on the hub is a first-class `hub` `StackModelRef` kind, not a
+  reused BYOM ref (MP-F3).** A BYOM ref reports reachable whenever online, which
+  is wrong for a model that runs on your own machine: it must bench when you leave
+  the tailnet. A `hub` ref maps to `locationOf` -> `home`, so the existing
+  `locationAllowed(profile, 'home')` gates it to docked with no new reachability
+  logic, and TypeScript's exhaustive switches flag every site that must handle it.
+- **A docked phone routes a hub model through a new daemon route
+  (`POST /models/chat`), not through the hub's Ollama port directly.** Ollama
+  binds loopback by default, so the phone cannot reach `hub:11434` over the
+  tailnet without the user reconfiguring `OLLAMA_HOST`; the daemon already binds
+  the tailnet and authenticates, and routing through it keeps the turn inside the
+  guarded (ethics-wrapped) provider registry. The route is member-open (running a
+  local model is not privileged), takes an explicit model plus an optional system
+  prompt (so the specialist persona rides along), and is pinned to a LOCAL
+  provider so a home model never spends the user's cloud budget. Installing stays
+  admin-gated on `POST /models/install`.

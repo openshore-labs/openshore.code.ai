@@ -336,6 +336,54 @@ describe('model install from a paired phone (MP-F2)', () => {
   });
 });
 
+describe('home model routing from a docked phone (MP-F3)', () => {
+  it('lists the hub local models (member-open, read-only)', async () => {
+    // No Ollama is running under test, so the list is empty, but the route
+    // answers 200 with a models array a docked phone can read.
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await fetch(`${base}/models`, { headers: auth(token) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { models?: unknown };
+    expect(Array.isArray(body.models)).toBe(true);
+  });
+
+  it('rejects a home chat with no model or no messages', async () => {
+    const noModel = await fetch(`${base}/models/chat`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    });
+    expect(noModel.status).toBe(400);
+    const noMessages = await fetch(`${base}/models/chat`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ model: 'qwen3:8b' }),
+    });
+    expect(noMessages.status).toBe(400);
+  });
+
+  it('opens an SSE stream for a named local model (member-open)', async () => {
+    // The default config has a local (ollama) provider, so the route resolves it
+    // and streams; ollama is not running under test, so the stream ends with an
+    // error frame. The point is the endpoint streams against a by-name model and
+    // is not admin-gated (running a home model is not privileged; pulling is).
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await fetch(`${base}/models/chat`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({
+        model: 'qwen3:8b',
+        system: 'You are a coding specialist.',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const text = await res.text();
+    expect(text).toMatch(/"type":"(error|done|text)"/);
+  });
+});
+
 describe('command lane (chat-to-terminal bridge)', () => {
   it('runs a user command and streams its output over the session SSE', async () => {
     const created = await createSessionAs(adminToken, home);

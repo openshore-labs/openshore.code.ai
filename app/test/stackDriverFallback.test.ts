@@ -84,6 +84,74 @@ describe('stack routing degradation (COR-12)', () => {
     driver.dispose();
   });
 
+  it('a hub specialist is unreachable off the dock, so the turn uses the anchor', async () => {
+    // A home model runs on the hub over Tailscale (locationOf -> "home"), so
+    // while offshore it is not reachable and route() never picks it: the coding
+    // turn goes straight to the reasoning anchor, with no "Falling back" needed
+    // (it was never routed there in the first place).
+    const hubStack: AppStack = {
+      reasoning: { kind: 'device', modelId: 'reason-model', modelName: 'Reasoner' },
+      active: [
+        {
+          ref: { kind: 'hub', ref: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B' },
+          placement: { category: 'coding' },
+        },
+      ],
+      saved: {},
+    };
+    const driver = new StackDriver(hubStack, 'offshore', {});
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    await tick();
+
+    driver.send('please debug this typescript function');
+    for (let i = 0; i < 20 && llama.requestIds.length === 0; i++) await tick();
+    expect(llama.requestIds.length).toBe(1); // the device anchor ran
+    llama.tokenCb!({ requestId: llama.requestIds[0]!, delta: 'fixed' });
+    llama.doneCb!({ requestId: llama.requestIds[0]!, stopReason: 'complete' });
+    await tick();
+
+    // The hub name never surfaced (it was never a candidate) and no error fired.
+    const statuses = events.filter((e) => e.type === 'status') as Array<{ message: string }>;
+    expect(statuses.some((s) => s.message.includes('Routing this to Qwen3 Coder 30B'))).toBe(false);
+    expect(events.some((e) => e.type === 'task-done' && e.reason === 'error')).toBe(false);
+    driver.dispose();
+  });
+
+  it('a docked hub specialist with no hub bound falls back to the anchor', async () => {
+    // Docked, so the hub specialist is reachable and route() picks it. But no
+    // daemon is bound to this chat (context.daemon is absent), so runHub throws
+    // RouteUnavailable and the turn degrades to the reasoning anchor, exactly
+    // like a cloud specialist with no key.
+    const hubStack: AppStack = {
+      reasoning: { kind: 'device', modelId: 'reason-model', modelName: 'Reasoner' },
+      active: [
+        {
+          ref: { kind: 'hub', ref: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B' },
+          placement: { category: 'coding' },
+        },
+      ],
+      saved: {},
+    };
+    const driver = new StackDriver(hubStack, 'docked', {}); // no daemon in context
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    await tick();
+
+    driver.send('please debug this typescript function');
+    for (let i = 0; i < 20 && llama.requestIds.length === 0; i++) await tick();
+    expect(llama.requestIds.length).toBe(1); // fell back to the device anchor
+    llama.tokenCb!({ requestId: llama.requestIds[0]!, delta: 'here is the fix' });
+    llama.doneCb!({ requestId: llama.requestIds[0]!, stopReason: 'complete' });
+    await tick();
+
+    const statuses = events.filter((e) => e.type === 'status') as Array<{ message: string }>;
+    expect(statuses.some((s) => s.message.includes('Falling back'))).toBe(true);
+    expect(events.some((e) => e.type === 'text-delta' && e.text === 'here is the fix')).toBe(true);
+    expect(events.some((e) => e.type === 'task-done' && e.reason === 'error')).toBe(false);
+    driver.dispose();
+  });
+
   it('gives distinct request ids to successive device turns (R-18)', async () => {
     const deviceStack: AppStack = {
       reasoning: { kind: 'device', modelId: 'reason-model', modelName: 'Reasoner' },

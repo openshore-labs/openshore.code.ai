@@ -88,6 +88,20 @@ export async function daemonInstallProgress(
   return (await res.json()) as DaemonInstallProgress;
 }
 
+/** The models physically present on the paired hub's local backends right now
+ *  (MP-F3). A docked phone reads this to know which home models it can place on
+ *  its Bench, and to confirm a pull landed. Empty on a hub with no local backend
+ *  running or one that predates the route. */
+export async function daemonListModels(target: DaemonTarget): Promise<string[]> {
+  const res = await fetch(`${target.baseUrl}/models`, {
+    headers: headers(target),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
+  const body = (await res.json()) as { models?: string[] };
+  return Array.isArray(body.models) ? body.models : [];
+}
+
 /** What the hub says this device's token may do. Absent on a daemon that
  *  predates roles, which the app treats as "nothing hidden". */
 function roleOf(body: unknown): HubRole | undefined {

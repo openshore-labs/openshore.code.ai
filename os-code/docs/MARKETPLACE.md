@@ -184,6 +184,43 @@ curated gate as an orchestrator only once `osc eval` has scored it into
 `curation/eval.json`, so until then the live feed carries it as nothing and the
 packs fall back to Qwen 2.5 1.5B. The bundled seed shows it either way.
 
+### Download to your hub, then use it while docked (MP-F3, 2026-09-07)
+
+The whole point of a home machine is that it runs the models a phone cannot. So
+a docked phone can pull a desktop-class model onto the hub from the Marketplace,
+and then use it, because it lands on the phone's Bench.
+
+- **Pull (already built, MP-F2).** Tapping the install control on a desktop
+  model when a hub is paired (no local Electron bridge, `settings.daemon` set)
+  runs `installViaDaemon`: `daemonInstallModel` POSTs `/models/install` to the
+  daemon (admin-gated, since pulling weights provisions shared machine state),
+  the hub runs `ollama pull`, and the phone polls `/models/install/:id/progress`
+  so the same download bar animates as an on-device pull.
+- **Bench (the loop's second half).** On success the phone calls `addHubModel`,
+  which records the model in `settings.hubModels` and puts it on the Bench in
+  Your stack with an honest line: "Runs on your home machine, ready while you are
+  docked." It places into a category (or as the Reasoning anchor) like any other
+  model. `removeHubModel` forgets a bench entry; the weights stay on the hub.
+- **Use it (routing).** A hub model is a `hub` `StackModelRef` (`{ ref, label }`,
+  where `ref` is the source ref the hub pulled). `StackDriver.runHub` streams its
+  turn over the tailnet through the daemon's `POST /models/chat`: a completion on
+  a NAMED local model of the hub, ethics-guarded through the same guarded provider
+  registry as `/chat`, carrying the specialist's system prompt, and pinned to a
+  local provider so a home model never spends the cloud budget. It is reachable
+  only while docked (`locationOf` maps it to `home`, and the existing
+  `locationAllowed(profile, 'home')` gates it), so it benches when you leave and
+  falls back to the Reasoning anchor if a turn is routed to it off the dock.
+- **Reconcile.** `GET /models` lists what the hub actually holds (the local
+  provider's `listModels`), so a docked phone marks a model pulled in an earlier
+  session (or from another device) as already installed rather than a fresh Get.
+- **Limits, stated honestly.** A hub model is text-only on this build (the home
+  route carries no image blocks yet), so a hub model placed for image reading
+  falls back to a cloud reader. `/models/chat` resolves the hub's orchestrator
+  provider when it is local, else the first local provider, so on a box whose one
+  local backend is not the one holding the model, place the model on the resolved
+  backend. Copy never says "always": a home model is usable while your computer is
+  on and you are docked.
+
 ### Where it runs, and the phone memory ceiling (2026-09-05, CTO + CMO consensus)
 
 The founder asked whether we could smooth a LARGER on-device model on an

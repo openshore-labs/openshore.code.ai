@@ -13,16 +13,22 @@ import {
   type StackModelRef,
 } from '../src/lib/stack.js';
 
-const phone = (downloaded: string[] = [], clouds: string[] = []): ReadinessSignals => ({
+const phone = (
+  downloaded: string[] = [],
+  clouds: string[] = [],
+  homeReachable = false,
+): ReadinessSignals => ({
   onDeviceHost: true,
   deviceModelReady: (id) => downloaded.includes(id),
   cloudReady: (p) => clouds.includes(p),
+  homeReachable,
 });
 
-const desktop = (clouds: string[] = []): ReadinessSignals => ({
+const desktop = (clouds: string[] = [], homeReachable = false): ReadinessSignals => ({
   onDeviceHost: false, // a desktop/web build cannot run on-device inference
   deviceModelReady: () => false,
   cloudReady: (p) => clouds.includes(p),
+  homeReachable,
 });
 
 describe('source readiness', () => {
@@ -37,6 +43,19 @@ describe('source readiness', () => {
     const ref: StackModelRef = { kind: 'cloud', provider: 'anthropic', model: 'x', label: 'X' };
     expect(refReady(ref, desktop(['anthropic']))).toBe(true);
     expect(refReady(ref, desktop([]))).toBe(false);
+  });
+
+  it('a hub model is ready only while the home machine is reachable (docked)', () => {
+    // A model pulled onto the hub runs on the hub over Tailscale, so it can only
+    // answer while docked. Away from home it benches (unreachable), exactly like
+    // the profile system's locationAllowed(profile, "home").
+    const ref: StackModelRef = { kind: 'hub', ref: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B' };
+    expect(refReady(ref, phone([], [], /* homeReachable */ true))).toBe(true);
+    expect(refReady(ref, phone([], [], /* homeReachable */ false))).toBe(false);
+    // Its readiness does not depend on the device hosting local inference: it
+    // runs on the hub, not this device, so a desktop docked to another hub is
+    // ready too.
+    expect(refReady(ref, desktop([], /* homeReachable */ true))).toBe(true);
   });
 
   it('the default empty stack is NOT ready on desktop (its anchor is on-device)', () => {

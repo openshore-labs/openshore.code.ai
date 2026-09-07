@@ -41,11 +41,28 @@ export function categoryLabel(id: StackCategory): string {
 }
 
 // A model that can sit in the stack: an on-device model, a built-in cloud
-// provider's model, or a user-connected "bring your own model" endpoint.
+// provider's model, a user-connected "bring your own model" endpoint, or a model
+// that lives on your paired home machine (the hub), pulled there from the
+// Marketplace. A hub model runs on your own hardware and is routed over the
+// tailnet, so it is reachable only while docked.
 export type StackModelRef =
   | { kind: 'device'; modelId: string; modelName: string }
   | { kind: 'cloud'; provider: string; model: string; label: string }
-  | { kind: 'byom'; id: string; label: string; baseUrl: string; model: string };
+  | { kind: 'byom'; id: string; label: string; baseUrl: string; model: string }
+  | { kind: 'hub'; ref: string; label: string };
+
+// A model resident on your paired home machine. `ref` is the source ref the hub
+// pulled (e.g. "qwen3-coder:30b"), which is also how the hub routes to it. The
+// bytes never leave the hub; the phone reaches it over Tailscale while docked.
+export interface HubModel {
+  ref: string;
+  label: string;
+}
+
+/** The stack ref for a model resident on your hub. */
+export function hubRef(m: HubModel): StackModelRef {
+  return { kind: 'hub', ref: m.ref, label: m.label };
+}
 
 export interface Placement {
   category: StackCategory;
@@ -80,6 +97,8 @@ export function refKey(ref: StackModelRef): string {
       return `cloud:${ref.provider}:${ref.model}`;
     case 'byom':
       return `byom:${ref.id}`;
+    case 'hub':
+      return `hub:${ref.ref}`;
   }
 }
 
@@ -119,6 +138,12 @@ export function visionCapable(ref: StackModelRef): boolean {
     case 'byom':
       return true;
     case 'device':
+      return false;
+    case 'hub':
+      // The hub could run a vision model, but this build's home route streams
+      // text only (no image blocks cross the tailnet yet), so a hub model placed
+      // for image reading falls back to a cloud reader. Flip this when the home
+      // route carries images.
       return false;
   }
 }
@@ -223,6 +248,9 @@ export interface ReadinessSignals {
   deviceModelReady: (modelId: string) => boolean;
   /** A usable key is stored for this cloud provider. */
   cloudReady: (provider: string) => boolean;
+  /** Your home machine (the hub) is reachable over Tailscale right now, i.e. you
+   *  are docked. A hub model can only answer while this is true. */
+  homeReachable: boolean;
 }
 
 export function refReady(ref: StackModelRef, s: ReadinessSignals): boolean {
@@ -233,6 +261,9 @@ export function refReady(ref: StackModelRef, s: ReadinessSignals): boolean {
       return s.cloudReady(ref.provider);
     case 'byom':
       return true;
+    case 'hub':
+      // A model on your hub answers only while you can reach the hub (docked).
+      return s.homeReachable;
   }
 }
 

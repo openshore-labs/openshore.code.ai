@@ -186,10 +186,14 @@ let stackRequestSeq = 0;
 class RouteUnavailable extends Error {}
 
 function locationOf(ref: StackModelRef): 'home' | 'cloud' | 'device' {
-  // A BYOM endpoint goes over the network (its own or someone else's server),
-  // so it shares the cloud reachability rules: available online, held back on
-  // the strictest offline profile. Only a truly on-device model is 'device'.
-  return ref.kind === 'device' ? 'device' : 'cloud';
+  // A hub model lives on your own paired machine, reachable only while docked,
+  // so it is 'home'. A BYOM endpoint goes over the network (its own or someone
+  // else's server), so it shares the cloud reachability rules: available online,
+  // held back on the strictest offline profile. Only a truly on-device model is
+  // 'device'.
+  if (ref.kind === 'device') return 'device';
+  if (ref.kind === 'hub') return 'home';
+  return 'cloud';
 }
 
 export class StackDriver implements ChatDriver {
@@ -409,7 +413,8 @@ export class StackDriver implements ChatDriver {
       type: 'turn-start',
       turn: this.history.length,
       model: refName(target.ref),
-      providerKind: target.ref.kind === 'device' ? 'local' : 'cloud',
+      providerKind:
+        target.ref.kind === 'device' || target.ref.kind === 'hub' ? 'local' : 'cloud',
     });
     if (images.length) {
       this.emit({
@@ -455,7 +460,7 @@ export class StackDriver implements ChatDriver {
           type: 'turn-start',
           turn: this.history.length,
           model: refName(reasoning),
-          providerKind: reasoning.kind === 'device' ? 'local' : 'cloud',
+          providerKind: reasoning.kind === 'device' || reasoning.kind === 'hub' ? 'local' : 'cloud',
         });
         this.answer = '';
         try {
@@ -489,8 +494,76 @@ export class StackDriver implements ChatDriver {
     // Device inference is text-only on this build, so images never reach it
     // (routeVision excludes a device ref); the argument is dropped there.
     if (ref.kind === 'device') await this.runDevice(ref, placement);
+    else if (ref.kind === 'hub') await this.runHub(ref, placement);
     else if (ref.kind === 'byom') await this.runByom(ref, placement, images);
     else await this.runCloud(ref, placement, images);
+  }
+
+  /** Run a turn on a model resident on your paired home machine, streamed over
+   *  the tailnet through the daemon's local-model route. The weights run on your
+   *  own hardware; this phone is the remote. Reachable only while docked, so an
+   *  absent hub (or a hub that cannot run the model) throws RouteUnavailable and
+   *  run() falls back to the Reasoning anchor, exactly like any other specialist
+   *  that could not answer. Text only on this build: the home route carries no
+   *  image blocks yet (visionCapable is false for a hub ref, so an image turn
+   *  never routes here). */
+  private async runHub(
+    ref: Extract<StackModelRef, { kind: 'hub' }>,
+    placement?: Placement,
+  ): Promise<void> {
+    const daemon = this.context.daemon;
+    if (!daemon) {
+      throw new RouteUnavailable(
+        'Your home machine is not connected. Dock over Tailscale to use this model.',
+      );
+    }
+    const system = this.systemFor(ref, placement);
+    const messages = this.history.map((m) => ({ role: m.role, content: m.content }));
+    const res = await streamingFetch(`${daemon.baseUrl}/models/chat`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${daemon.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ model: ref.ref, messages, system }),
+      signal: this.abortController?.signal,
+    });
+    if (!res.ok || !res.body) {
+      throw new RouteUnavailable(`${ref.label} answered ${res.status} on your home machine.`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done || this.aborted) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
+        if (!dataLine) continue;
+        let ev: { type?: string; delta?: string; message?: string };
+        try {
+          ev = JSON.parse(dataLine.slice(5).trim());
+        } catch {
+          continue;
+        }
+        if (ev.type === 'text' && ev.delta) {
+          this.answer += ev.delta;
+          this.emit({ type: 'text-delta', text: ev.delta });
+        } else if (ev.type === 'error') {
+          // The hub could not run it (the model is not pulled there, or the box
+          // has no local provider): fall back to the anchor with the reason,
+          // rather than dead-ending the turn.
+          throw new RouteUnavailable(
+            ev.message ?? `${ref.label} could not run on your home machine.`,
+          );
+        }
+      }
+    }
+    this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
   // ---- vision routing -----------------------------------------------------
@@ -824,6 +897,59 @@ export class StackDriver implements ChatDriver {
     const system = this.systemFor(ref, placement);
     if (ref.kind === 'device') {
       throw new RouteUnavailable('A local model cannot run this step.');
+    }
+    if (ref.kind === 'hub') {
+      // A home model: run it on the hub over the tailnet, streaming its text back
+      // the same way runHub does. Text only (no images cross the home route yet).
+      const daemon = this.context.daemon;
+      if (!daemon) {
+        throw new RouteUnavailable(
+          'Your home machine is not connected. Dock over Tailscale to use this model.',
+        );
+      }
+      const res = await streamingFetch(`${daemon.baseUrl}/models/chat`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ model: ref.ref, messages: [{ role: 'user', content: prompt }], system }),
+        signal: this.abortController?.signal,
+      });
+      if (!res.ok || !res.body) {
+        throw new RouteUnavailable(`${ref.label} answered ${res.status} on your home machine.`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let out = '';
+      let buffer = '';
+      for (;;) {
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone || this.aborted) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
+          if (!dataLine) continue;
+          let ev: { type?: string; delta?: string; message?: string };
+          try {
+            ev = JSON.parse(dataLine.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (ev.type === 'text' && ev.delta) {
+            out += ev.delta;
+            opts?.onDelta?.(ev.delta);
+          } else if (ev.type === 'error') {
+            throw new RouteUnavailable(
+              ev.message ?? `${ref.label} could not run on your home machine.`,
+            );
+          }
+        }
+      }
+      return out;
     }
     if (ref.kind === 'cloud' && ref.provider === 'anthropic') {
       const key = await secretGet(providerSecretKey('anthropic'));

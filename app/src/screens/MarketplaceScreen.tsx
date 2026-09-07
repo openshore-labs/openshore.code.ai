@@ -13,7 +13,11 @@ import type { Catalog, CatalogModel, CapabilityCategory } from 'os-code/protocol
 import { CAPABILITIES } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
-import { daemonInstallModel, daemonInstallProgress } from '../drivers/remoteDriver.js';
+import {
+  daemonInstallModel,
+  daemonInstallProgress,
+  daemonListModels,
+} from '../drivers/remoteDriver.js';
 import { pollInstall } from '../drivers/installPoll.js';
 import { bundleModelIds, bundleTotalGB, bundlesFor, type StackBundle } from '../lib/bundles.js';
 import {
@@ -174,6 +178,7 @@ export function MarketplaceScreen() {
     settings,
     addDeviceModel,
     addCloudModel,
+    addHubModel,
     showToast,
     libraryIntro,
     endLibraryIntro,
@@ -291,6 +296,25 @@ export function MarketplaceScreen() {
       setCatalog(catalog);
       setNote(note);
     });
+  }, [settings.daemon]);
+
+  // On a phone paired with a hub, read what the hub actually has installed so a
+  // model pulled in an earlier session (or from another device) shows as already
+  // on the hub, not as a fresh Get. Desktop seeds installedRefs from its own
+  // bridge above; this is the tailnet equivalent. Best-effort: an unreachable
+  // hub simply leaves the set as it is.
+  useEffect(() => {
+    const daemon = settings.daemon;
+    if (!daemon || bridge()) return;
+    let live = true;
+    void daemonListModels(daemon)
+      .then((models) => {
+        if (live && models.length) setInstalledRefs((s) => new Set([...s, ...models]));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, [settings.daemon]);
 
   // The scale path: when the builder baked a review snapshot into the catalog
@@ -619,8 +643,14 @@ export function MarketplaceScreen() {
     if (outcome.ok) {
       hapticSuccess();
       setInstalledRefs((s) => new Set(s).add(model.source.ref));
+      // Close the loop: the model now lives on the hub, so put it on the Bench.
+      // It places into your stack like any other model and runs on the hub over
+      // Tailscale, so it answers while you are docked.
+      await addHubModel(model.source.ref, model.name);
+      showToast(`${model.name} is on your hub. Place it in your stack. Ready while you are docked.`);
+      return;
     }
-    showToast(outcome.detail ?? (outcome.ok ? 'Installed on your desktop.' : 'Install failed.'));
+    showToast(outcome.detail ?? 'Install failed.');
   };
 
   // The internal axis only exists when the user has real local usage that maps

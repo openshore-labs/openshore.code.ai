@@ -8,7 +8,7 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
+## Current state (2026-09-07 home models on the bench; 2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
 Newest first: voice mode (2026-09-06, below), then the plan-first workflow and
 video attachments (2026-09-06), then four pieces from 2026-09-05 built in
@@ -16,6 +16,34 @@ parallel sessions and merged here: the phone storefront, Crew routines, the
 always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
+
+### Home models on the bench (pull a bigger model onto your hub from the phone, use it while docked)
+
+The founder's ask: connected to the home machine over Tailscale, pull a larger
+model from the Marketplace onto the hub from the phone, and then use it, because
+it lands on the bench in the stack while docked. The phone-triggered hub download
+was already built (MP-F2: `POST /models/install` on the daemon, `installViaDaemon`
+on the phone, `ollama pull` on the hub). This closes the loop (MP-F3): a completed
+hub install now registers the model as a first-class HOME model on the Bench
+(`settings.hubModels`, the `addHubModel` store action), a new `hub`
+`StackModelRef` kind that places into the stack like any other and routes to the
+hub over the tailnet. Routing is a new daemon route, `POST /models/chat`: a
+streamed completion on a named LOCAL model of the hub, ethics-guarded like
+`/chat`, but never pinned to the orchestrator (any pulled model can answer) and
+never a cloud spend (it resolves a local provider or refuses). Reachability is
+gated to docked by the existing `locationAllowed(profile, 'home')`, so a home
+model benches when you leave and answers when you return; `GET /models` lets a
+docked phone see what the hub already holds so a model pulled earlier reads as
+owned. On the phone the model is text-only for now (the home route carries no
+image blocks yet). Pure resolver in `os-code/src/providers/localChat.ts`
+(`pickLocalProvider`, `listLocalModels`), the two routes in `serve.ts`; app in
+`app/src/lib/stack.ts` (`hub` ref, `hubRef`, `HubModel`, `refReady` gated on a
+new `homeReachable` signal), `drivers/stackDriver.ts` (`runHub`, `completeOnce`
+hub branch, `locationOf` -> home), `drivers/remoteDriver.ts` (`daemonListModels`),
+`state/store.ts` (`addHubModel`/`removeHubModel`), `MarketplaceScreen.tsx` (the
+install-success hook and a docked reconcile) and `StackManager.tsx` (the bench
+row). Doc in `docs/MARKETPLACE.md`, ruling in `DECISIONS.md`. A real hub running
+Ollama and a docked phone are the proof (What remains).
 
 ### Voice mode (a spoken conversation over the chat, native and offline)
 
@@ -255,6 +283,23 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Home models on the bench, end to end on a real hub (built 2026-09-07,
+      unverified off the sandbox).** The loop is unit tested (os-code
+      `localChat.test.ts` and the daemon `MP-F3` route tests; app `readiness`,
+      `stackDriverFallback`, and `store` hub cases), but a real docked run needs
+      a hub with Ollama. On the founder's box + a docked phone: pull a
+      desktop-class model from the Marketplace (it lands as "On your hub" and
+      shows "on your bench" when done), open Your stack docked and place it as a
+      specialist or the anchor, chat and confirm the turn streams from the hub
+      (providerKind local), then flip to Offshore and confirm it benches as
+      unreachable and the turn falls back to the anchor. Also confirm a model
+      pulled in an earlier session reads as already installed (the `GET /models`
+      reconcile). Known limits, by design: a hub model is text-only on this
+      build (the home route carries no image blocks), `POST /models/install`
+      stays admin-gated (a member phone token cannot pull), and routing prefers
+      the hub's orchestrator provider, else the first local one, so a box whose
+      only local backend is not the one holding the model would need that model
+      on the resolved backend.
 - [ ] **Voice mode on a device (built 2026-09-06, unverified off the sandbox).**
       The decision logic is unit tested (`app/test/voice.test.ts`), but the native
       speech path is device-only, like dictation. TestFlight: open voice mode in a
@@ -667,6 +712,37 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-07: home models on the bench, pull a bigger model onto your hub from
+  the phone and use it while docked (founder, MP-F3).** The founder's ask: docked
+  to the home machine over Tailscale, download a larger model from the Marketplace
+  onto the hub from the phone, and then use it, because it becomes something added
+  to the bench in the stack while docked. Research found the download half was
+  already built (MP-F2: the daemon's admin-gated `POST /models/install`, the
+  phone's `installViaDaemon` + progress poll, `ollama pull` on the hub); what was
+  missing was the loop's second half, so this built exactly that. New daemon
+  routes: `GET /models` (member-open, lists the hub's installed local models via
+  the local provider's `listModels`, so a docked phone can see what the hub holds)
+  and `POST /models/chat` (member-open, streamed completion on a NAMED local model,
+  ethics-guarded through the guarded registry like `/chat`, but not pinned to the
+  orchestrator and pinned to local so a home model never spends the cloud budget;
+  the local provider is resolved by `pickLocalProvider` in the new
+  `providers/localChat.ts`). New app plumbing: a fourth `hub` `StackModelRef` kind
+  (`{ ref, label }`), `hubRef`/`HubModel`, persisted in `settings.hubModels`; a
+  successful hub install now calls `addHubModel` so the model lands on the Bench
+  with an honest "on your hub, ready while docked" line, and `removeHubModel`
+  forgets it (leaving the weights on the hub); `StackDriver.runHub` routes a turn
+  over the tailnet through `/models/chat`, `completeOnce` gained a hub branch for
+  framing/planning, and `locationOf` maps a hub ref to 'home' so the existing
+  `locationAllowed(profile, 'home')` gates it to docked (it benches offshore and
+  falls back to the anchor). `refReady` gained a `homeReachable` signal; the
+  Marketplace reconciles owned state from `GET /models` when docked. Copy stays
+  honest ("ready while you are docked", never "always"). Gates: os-code typecheck,
+  lint, 611 tests (localChat + daemon MP-F3 added), tsc build; app typecheck (src
+  and electron), lint, 848 tests (readiness/stackDriverFallback/store hub cases
+  added), vite build; the repo-wide em-dash and PROGRESS shape guards. A real hub
+  with Ollama and a docked phone are the proof (What remains). Ruling in
+  `DECISIONS.md`, doc in `docs/MARKETPLACE.md`.
+
 - **2026-09-06: voice mode, a spoken conversation over the chat (founder).** The
   founder asked for a Claude-style voice mode usable while coding: native so it
   works offline, a voice you pick, and the natural breaks the work needs (a picker
@@ -787,34 +863,3 @@ log entry). Migration is now `0016`.
   `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
   lint, 780 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
   guards. Rulings in `DECISIONS.md`.
-
-- **2026-09-06: video attachments, reviewed frame by frame, never the video
-  (founder, pushed to main).** The founder wanted Claude Code's attachment flow
-  (Camera, Photos, Files) with video added, on two rules: a model never reviews
-  a video directly, and a large clip is compressed before it is broken into
-  stills. Built: a video is detected on attach (`isVideoFile`), compressed
-  toward the 25 to 29MB band when it is over 30MB, and sampled into up to 12
-  downscaled JPEG frames, each tagged with its order and timestamp; the frames
-  ride to a vision model as ordinary image blocks and the composer shows one
-  chip per video. Native compression and framing run on AVFoundation on the
-  phone (new `oscode-media` Capacitor plugin: `AVAssetExportSession`
-  fileLengthLimit for the band, `AVAssetImageGenerator` for the frames) and on
-  FFmpeg on the desktop (`osc:mediaProcess` over the Electron bridge, invoked
-  with an argument array, never a shell string, with a friendly "install
-  ffmpeg" message when it is absent); the browser and any native gap fall back
-  to a canvas over a hidden `<video>`, so a clip always yields frames.
-  Screenshots and screen recordings flow through with no approval, since
-  attaching is not a tool call. The cloud Claude driver (`buildVisionContent`)
-  leads the frames with a one-line context header, labels each with its
-  timestamp, and adds a system note so the model reads them as one clip in
-  order and may say plainly it reviewed the video frame by frame. Only stills
-  ever leave the device; the video is read locally. Vision stays cloud Claude
-  only (`sourceSupportsVision`), so frames route there. New Info.plist photo
-  permission string. Code: `app/src/lib/{attachments,videoAttach,videoBackends,
-mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
-  `app/src/drivers/cloudClaudeDriver.ts`, `app/electron/media.ts` +
-  `main.ts`/`preload.cjs`, `app/plugins/oscode-media`. Doc:
-  `docs/video-attachments.md`. Gates: app typecheck (src and electron), lint,
-  tests (29 in the touched suites), Vite build, Prettier; os-code em-dash guard
-  and the PROGRESS shape guard. Native device and desktop-FFmpeg verification
-  are in What remains (not runnable in a web session).

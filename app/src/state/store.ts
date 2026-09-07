@@ -176,6 +176,7 @@ import {
   type ProfileStacks,
   type Placement,
   type StackModelRef,
+  type HubModel,
 } from '../lib/stack.js';
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
 import {
@@ -279,6 +280,11 @@ export interface AppSettings {
    *  controls. Metadata only; each connection's API key lives in the secret
    *  store under byomSecretKey(id). */
   byomModels?: ByomConnection[];
+  /** Models resident on your paired home machine (the hub), pulled there from
+   *  the Marketplace. They land on the Bench and place into your stack like any
+   *  other model, but run on the hub over Tailscale, so they answer only while
+   *  docked. Metadata only; the weights live on the hub. */
+  hubModels?: HubModel[];
   /** gitOS resources: repos and vaults, each pointing at a storage provider.
    *  Metadata only; the bytes live behind the provider seam. */
   gitosResources?: GitosResource[];
@@ -1053,6 +1059,13 @@ interface AppState {
   addDeviceModel(id: string, name: string): Promise<void>;
   /** Record a model downloaded to iCloud Drive rather than this device. */
   addCloudModel(id: string, name: string): Promise<void>;
+  /** Record a model that just finished downloading onto your paired hub, so it
+   *  lands on the Bench and can be placed into your (docked) stack. Idempotent
+   *  by ref; reads fresh state so two installs never clobber each other. */
+  addHubModel(ref: string, label: string): Promise<void>;
+  /** Forget a hub model: drop it from the bench registry and pull it from every
+   *  status's stack (like disconnecting a BYOM endpoint). */
+  removeHubModel(ref: string): Promise<void>;
   setCloudKey(key: string): Promise<void>;
   clearCloudKey(): Promise<void>;
   /** Connect a cloud provider by API key (Keychain), surfacing its models. The
@@ -2595,6 +2608,8 @@ export const useApp = create<AppState>((set, get) => {
           (id === HARBOR_MODEL_ID && Boolean(st.harborReady)),
         cloudReady: (provider) =>
           provider === 'anthropic' ? s.cloudKeyPresent : Boolean(s.connectedProviders[provider]),
+        // A hub model answers only while the home machine is reachable (docked).
+        homeReachable: s.connectivity.homeReachable,
       };
       switch (source.kind) {
         case 'stack':
@@ -2635,6 +2650,7 @@ export const useApp = create<AppState>((set, get) => {
       const reachable = (ref: StackModelRef): boolean => {
         if (ref.kind === 'device') return platform() === 'ios';
         if (ref.kind === 'cloud') return cloudReachable && connected(ref.provider);
+        if (ref.kind === 'hub') return profile === 'docked'; // runs on your hub, docked only
         return cloudReachable; // byom runs over the network
       };
       return stackVisionReadyPure(stackForProfile(st.stacks, profile), {
@@ -5260,6 +5276,39 @@ export const useApp = create<AppState>((set, get) => {
       const deviceModels = { ...get().settings.deviceModels };
       delete deviceModels[id];
       await get().saveSettings({ cloudModels, deviceModels });
+    },
+
+    async addHubModel(ref, label) {
+      // Read fresh (like addDeviceModel) so two installs finishing close together
+      // each keep their bench entry. Idempotent by ref: pulling the same model
+      // again (or re-confirming it is on the hub) refreshes the label in place
+      // rather than doubling the row.
+      const existing = get().settings.hubModels ?? [];
+      const hubModels = existing.some((m) => m.ref === ref)
+        ? existing.map((m) => (m.ref === ref ? { ref, label } : m))
+        : [...existing, { ref, label }];
+      await get().saveSettings({ hubModels });
+    },
+
+    async removeHubModel(ref) {
+      const settings = get().settings;
+      const hubModels = (settings.hubModels ?? []).filter((m) => m.ref !== ref);
+      const key = `hub:${ref}`;
+      // Pull it out of EVERY status's stack, the same way disconnectByom does, so
+      // a forgotten hub model never lingers as a placed specialist or a dangling
+      // anchor in any profile.
+      const stacks: ProfileStacks = { ...settings.stacks };
+      for (const p of PROFILE_ORDER) {
+        const st = stacks[p];
+        if (!st) continue;
+        const active = st.active.filter((m) => stackRefKey(m.ref) !== key);
+        const saved = { ...st.saved };
+        delete saved[key];
+        const reasoning =
+          st.reasoning && stackRefKey(st.reasoning) === key ? harborRef() : st.reasoning;
+        stacks[p] = { ...st, active, saved, reasoning };
+      }
+      await get().saveSettings({ hubModels, stacks });
     },
 
     async setCloudKey(key) {

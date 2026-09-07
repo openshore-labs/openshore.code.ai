@@ -23,6 +23,7 @@ import {
   categoryLabel,
   defaultVisionCloudRef,
   harborRef,
+  hubRef,
   placementValid,
   refKey,
   refName,
@@ -65,6 +66,7 @@ export function StackManager() {
     benchSpecialist,
     connectByom,
     disconnectByom,
+    removeHubModel,
     setView,
     showToast,
   } = useApp();
@@ -92,6 +94,10 @@ export function StackManager() {
     })),
   ];
   const byomRefs: StackModelRef[] = (settings.byomModels ?? []).map(byomRef);
+  // Models pulled onto your paired home machine from the Marketplace. They bench
+  // and place like any other model, but run on the hub over Tailscale, so they
+  // are usable only while docked.
+  const hubRefs: StackModelRef[] = (settings.hubModels ?? []).map(hubRef);
   const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
     (p) =>
       providerBenchModels(p).map((m): StackModelRef => ({
@@ -101,13 +107,13 @@ export function StackManager() {
         label: m.label,
       })),
   );
-  const available: StackModelRef[] = [...deviceRefs, ...byomRefs, ...cloudRefs];
+  const available: StackModelRef[] = [...deviceRefs, ...byomRefs, ...hubRefs, ...cloudRefs];
   const activeKeys = new Set(stack.active.map((m) => refKey(m.ref)));
   const reasoningKey = refKey(reasoning);
   const placed = (r: StackModelRef) => refKey(r) === reasoningKey || activeKeys.has(refKey(r));
   // The local bench holds on-device and bring-your-own-model refs, both placed
   // the same way; connected cloud providers get their own grouped section.
-  const bench = [...deviceRefs, ...byomRefs].filter((r) => !placed(r));
+  const bench = [...deviceRefs, ...byomRefs, ...hubRefs].filter((r) => !placed(r));
   const pins = settings.pinnedModels ?? [];
   const cloudBench = PROVIDERS.filter((p) => connectedProviders[p.id])
     .map((p) => ({
@@ -429,11 +435,14 @@ export function StackManager() {
                       <h3>
                         {refName(ref)}
                         {ref.kind === 'byom' ? <span className="sub"> (your model)</span> : null}
+                        {ref.kind === 'hub' ? <span className="sub"> (on your hub)</span> : null}
                       </h3>
                       <div className="sub">
                         {ref.kind === 'byom'
                           ? `On the bench. ${ref.model} at ${byomHost(ref.baseUrl)}.`
-                          : 'On the bench. Place it to put it to work.'}
+                          : ref.kind === 'hub'
+                            ? 'On the bench. Runs on your home machine, ready while you are docked.'
+                            : 'On the bench. Place it to put it to work.'}
                       </div>
                     </div>
                     <button
@@ -448,6 +457,20 @@ export function StackManager() {
                         className="icon-btn"
                         aria-label="Options"
                         onClick={() => setByomMenuId(ref.id)}
+                      >
+                        {'⋯'}
+                      </button>
+                    ) : null}
+                    {ref.kind === 'hub' ? (
+                      <button
+                        className="icon-btn"
+                        aria-label={`Remove ${ref.label} from your bench`}
+                        onClick={() => {
+                          void removeHubModel(ref.ref);
+                          showToast(
+                            `${ref.label} removed from your bench. It stays installed on your hub.`,
+                          );
+                        }}
                       >
                         {'⋯'}
                       </button>

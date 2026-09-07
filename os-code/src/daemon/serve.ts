@@ -38,6 +38,7 @@ import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
 import { installModel, type InstallProgress } from '../market/install.js';
 import { ProviderRegistry } from '../providers/registry.js';
+import { pickLocalProvider, listLocalModels } from '../providers/localChat.js';
 import { resolveStack } from '../router/stack.js';
 import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
@@ -404,6 +405,82 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       sendJson(res, 200, state);
+      return;
+    }
+    // List the models physically present on this machine's local backends, so a
+    // docked phone can put a home model it pulled here onto its Bench and route
+    // to it (MP-F3). Read-only and member-open, like the catalog and free chat:
+    // knowing what is installed is not a privileged action; pulling weights is.
+    if (req.method === 'GET' && url.pathname === '/models') {
+      const chatConfig = loadConfig().config;
+      const providers = new ProviderRegistry(chatConfig, getAnthropicKey, engineEthicsContext());
+      try {
+        sendJson(res, 200, { models: await listLocalModels(providers, chatConfig) });
+      } catch (err) {
+        sendJson(res, 500, { error: (err as Error).message });
+      }
+      return;
+    }
+    // Run one completion on a named LOCAL model of this machine, streamed to a
+    // docked phone (MP-F3). This is how a home model the phone placed in its
+    // Stack answers: the phone is the remote, the weights run here. Like /chat it
+    // instantiates none of the acting machinery (no session, no tools, no command
+    // lane, no journal), so it can only stream text; unlike /chat it takes an
+    // explicit model and an optional system prompt (the specialist persona), and
+    // it is not pinned to the orchestrator, so any local model can answer. Pinned
+    // to local: a home model never spends the user's cloud budget. Guarded like
+    // every path, so the ethics layer screens both sides. Member-open.
+    if (req.method === 'POST' && url.pathname === '/models/chat') {
+      const body = await readJson(req);
+      const model = typeof body.model === 'string' ? body.model : '';
+      const rawMessages = Array.isArray(body.messages) ? body.messages : undefined;
+      if (!model || !rawMessages) {
+        sendJson(res, 400, { error: 'Send {"model": "...", "messages": [{"role","content"}, ...]}.' });
+        return;
+      }
+      const chatConfig = loadConfig().config;
+      const providers = new ProviderRegistry(chatConfig, getAnthropicKey, engineEthicsContext());
+      const local = pickLocalProvider(providers, chatConfig);
+      if (!local) {
+        sendJson(res, 400, {
+          error:
+            'This machine has no local model provider. Set up a local model (for example Ollama) on your computer, then place it in your stack.',
+        });
+        return;
+      }
+      const system = typeof body.system === 'string' && body.system ? body.system : undefined;
+      const messages: ChatMessage[] = [
+        ...(system ? [{ role: 'system' as const, content: system }] : []),
+        ...rawMessages
+          .filter(
+            (m: unknown): m is { role: string; content: string } =>
+              Boolean(m) &&
+              typeof (m as { content?: unknown }).content === 'string' &&
+              ['user', 'assistant'].includes((m as { role?: unknown }).role as string),
+          )
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      ];
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+        ...CORS_HEADERS,
+      });
+      const controller = new AbortController();
+      req.on('close', () => controller.abort());
+      try {
+        for await (const ev of local.provider.chat({ model, messages }, controller.signal)) {
+          if (ev.type === 'text' && ev.delta) {
+            res.write(`data: ${JSON.stringify({ type: 'text', delta: ev.delta })}\n\n`);
+          }
+        }
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      } catch (err) {
+        res.write(
+          `data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`,
+        );
+      }
+      res.end();
       return;
     }
     // Apply a buffered commit-intent from a phone into a real commit + push.
