@@ -23,10 +23,10 @@
 // authorize, and sends the verifier only to /exchange, which forwards it.
 // Providers that implement PKCE bind the code to this app instance; the rest
 // ignore the parameters. `state` still guards against a forged redirect.
-import { Browser } from '@capacitor/browser';
 import { platform, openExternal, secretGet, secretSet, secretDelete } from '../platform.js';
 import { bridge } from '../electronBridge.js';
 import { repoSecretKey, type RepoPlatform } from '../repos.js';
+import { OscodeAuthSession } from '../authSessionPlugin.js';
 
 // The Supabase origin this build was compiled against. A trailing slash or
 // stray whitespace on VITE_SUPABASE_URL would compose into a redirect_uri like
@@ -76,6 +76,9 @@ const OAUTH: Record<RepoPlatform, OAuthProviderConfig> = {
 // Distinct deep-link host from auth-callback and checkout-success, so the app's
 // deep-link router (useAuthDeepLink.ts) never confuses repo OAuth with sign-in.
 const APP_REDIRECT_HOST = 'repo-oauth';
+// The app's custom scheme. ASWebAuthenticationSession watches for it to end the
+// iOS flow, and it is the scheme of the oscode://repo-oauth deep link on desktop.
+const APP_SCHEME = 'oscode';
 
 function functionBase(): string | undefined {
   return SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/repo-oauth` : undefined;
@@ -185,10 +188,12 @@ interface RedirectResult {
   error?: string;
 }
 
-// Wait for the function's bounce to arrive as an oscode://repo-oauth deep link.
-// Uniform across platforms via the buses the app already uses: appUrlOpen on
-// iOS, the Electron main process forward on desktop. Resolves once, then tears
-// its listeners down; a five-minute cap so a bailed sign-in never hangs.
+// The desktop deep-link wait: the system browser is opened externally, the
+// function bounces the code back as an oscode://repo-oauth deep link, and the
+// Electron main process forwards it over the bridge. iOS does not use this; it
+// runs the whole flow through ASWebAuthenticationSession (runAuthSession), which
+// returns the callback URL directly. Resolves once, tears its listener down, and
+// caps at five minutes so a bailed sign-in never hangs.
 function awaitRedirect(): Promise<RedirectResult> {
   return new Promise<RedirectResult>((resolve, reject) => {
     let settled = false;
@@ -214,41 +219,48 @@ function awaitRedirect(): Promise<RedirectResult> {
       const host = (u.hostname || u.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
       if (host !== APP_REDIRECT_HOST) return;
       const p = u.searchParams;
-      finish(() => {
-        void Browser.close().catch(() => {});
+      finish(() =>
         resolve({
           code: p.get('code') ?? undefined,
           state: p.get('state') ?? '',
           error: p.get('error') ?? undefined,
-        });
-      });
+        }),
+      );
     };
 
-    if (platform() === 'ios') {
-      void (async () => {
-        const { App } = await import('@capacitor/app');
-        const listener = await App.addListener('appUrlOpen', (e) => handle(e.url));
-        if (settled) void listener.remove();
-        else removers.push(() => void listener.remove());
-        // Closing the in-app browser without finishing sends no deep link, so
-        // the flow would otherwise hang on "Connecting..." until the timeout.
-        // That is the common path when the provider shows an error page (a
-        // redirect that does not match, a declined consent) and the person taps
-        // Done. Treat the dismissal as "did not finish" and end now. Our own
-        // Browser.close() on a successful return fires this too, but `finish`
-        // has already settled by then, so it is a no-op.
-        const finished = await Browser.addListener('browserFinished', () => {
-          finish(() => reject(new Error('Sign-in did not finish.')));
-        });
-        if (settled) void finished.remove();
-        else removers.push(() => void finished.remove());
-      })();
-    } else {
-      const b = bridge();
-      if (b) removers.push(b.onDeepLink((url) => handle(url)));
-      else finish(() => reject(new Error('Repo sign-in needs the phone or desktop app.')));
-    }
+    const b = bridge();
+    if (b) removers.push(b.onDeepLink((url) => handle(url)));
+    else finish(() => reject(new Error('Repo sign-in needs the phone or desktop app.')));
   });
+}
+
+/** iOS one-tap: ASWebAuthenticationSession runs the consent and, watching for the
+ *  app's callback scheme, returns the oscode://repo-oauth callback URL straight
+ *  back. No bounce-page tap, and no deep-link round trip a memory eviction could
+ *  drop. Parse the callback into the same shape the deep-link path produces. */
+async function runAuthSession(authorizeUrl: string): Promise<RedirectResult> {
+  let callback: string;
+  try {
+    const res = await OscodeAuthSession.start({ url: authorizeUrl, callbackScheme: APP_SCHEME });
+    callback = res.url;
+  } catch (e) {
+    // The plugin rejects with code 'canceled' when the person closes the sheet.
+    const code = (e as { code?: string } | undefined)?.code;
+    if (code === 'canceled') throw new Error('Sign-in did not finish.');
+    throw e instanceof Error ? e : new Error(String(e));
+  }
+  let u: URL;
+  try {
+    u = new URL(callback);
+  } catch {
+    throw new Error('The sign-in response could not be verified.');
+  }
+  const p = u.searchParams;
+  return {
+    code: p.get('code') ?? undefined,
+    state: p.get('state') ?? '',
+    error: p.get('error') ?? undefined,
+  };
 }
 
 interface TokenSet {
@@ -322,10 +334,14 @@ export async function connectRepoOAuth(
   // the deep-link handler. The finally clears it on every warm outcome.
   await setPending({ provider: id, state, codeVerifier, ts: Date.now() });
   try {
-    const waiting = awaitRedirect();
-    if (platform() === 'ios') await Browser.open({ url: authUrl.toString() });
-    else openExternal(authUrl.toString());
-    const result = await waiting;
+    let result: RedirectResult;
+    if (platform() === 'ios') {
+      result = await runAuthSession(authUrl.toString());
+    } else {
+      const waiting = awaitRedirect();
+      openExternal(authUrl.toString());
+      result = await waiting;
+    }
 
     if (result.state !== state) throw new Error('The sign-in response could not be verified.');
     if (result.error) throw new Error(friendlyError(result.error));

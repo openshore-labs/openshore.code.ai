@@ -1,0 +1,19 @@
+{
+  "name": "oscode-authsession",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native ASWebAuthenticationSession for OpenShore repo OAuth: runs the provider consent in a system auth sheet and returns the oscode:// callback directly, so connecting a repo is one tap with no bounce page and no deep-link round trip that a memory eviction could drop.",
+  "license": "UNLICENSED",
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

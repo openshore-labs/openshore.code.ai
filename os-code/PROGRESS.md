@@ -297,10 +297,17 @@ log entry). Migration is now `0016`.
       cold-start launch URL via `resumeRepoOAuth` (`repoOAuth.resumeRepoOAuthFromLink`,
       cold-start only so it never races the warm listener). A warm return still
       needs the person to tap "Back to OpenShore" on the bounce page, since iOS
-      blocks the page's automatic custom-scheme redirect without a gesture; making
-      that return automatic (ASWebAuthenticationSession over the Capacitor Browser)
-      is the remaining polish. TestFlight verification of the full connect,
-      warm tap and a cold return, is still pending.
+      blocks the page's automatic custom-scheme redirect without a gesture. That
+      last tap is now gone too (2026-09-07): iOS runs the whole flow through
+      `ASWebAuthenticationSession` (new `oscode-authsession` plugin), which
+      returns the `oscode://repo-oauth` callback straight to the completion
+      handler, so connecting is one tap with no bounce page and no deep-link round
+      trip at all. Desktop keeps the system-browser + deep-link path; the
+      cold-start recovery stays as a backstop. TestFlight verification of the full
+      one-tap connect (and that `cap sync ios` links `oscode-authsession`) is
+      still pending, and is the only thing left here. Optional hygiene, unchanged:
+      drop the trailing slash from the Codemagic `VITE_SUPABASE_URL`, since
+      `app/src/lib/supabase.ts` reads it raw.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -747,13 +754,22 @@ log entry). Migration is now `0016`.
   single-use, 15-minute TTL, claimed once) and `useAuthDeepLink` completes it
   from the cold-start launch URL through a new `resumeRepoOAuth` store action and
   `repoOAuth.resumeRepoOAuthFromLink`, cold-start only so it never races the warm
-  listener. A warm return still needs the "Back to OpenShore" tap (iOS blocks the
-  bounce page's automatic custom-scheme redirect without a gesture); an
-  ASWebAuthenticationSession swap to make it automatic is the noted follow-up.
-  Gates: full workspace build, format, lint, typecheck, and tests green (os-code
-  604, app 821; `repoOAuth.test.ts` 25, up from 14); the em-dash,
-  polish-standards, and PROGRESS shape guards. TestFlight verification of the
-  full connect is still pending.
+  listener. Then the founder asked for the one-tap version, so the warm tap went
+  away too: iOS now runs the whole flow through `ASWebAuthenticationSession` (new
+  `oscode-authsession` plugin, same SPM/JS-registered shape as `oscode-tts`),
+  which watches for the `oscode` callback scheme and hands the callback URL
+  straight to its completion handler. So there is no bounce-page tap (iOS blocks
+  that page's automatic custom-scheme redirect without a gesture) and no deep-link
+  round trip a memory eviction could drop. `repoOAuth` routes iOS through
+  `runAuthSession` and maps the plugin's `canceled` to "Sign-in did not finish.";
+  the old Capacitor Browser open and the `browserFinished` dismiss listener are
+  gone from iOS, and `awaitRedirect` is now the desktop-only deep-link wait.
+  Desktop keeps the system-browser path; the cold-start recovery stays as a
+  backstop. Ruling in `DECISIONS.md`. Gates: full workspace build, format, lint,
+  typecheck, and tests green (os-code 604, app 850; `repoOAuth.test.ts` 26);
+  the em-dash, polish-standards, and PROGRESS shape guards. TestFlight
+  verification of the one-tap connect, and that `cap sync ios` links
+  `oscode-authsession`, is still pending.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the

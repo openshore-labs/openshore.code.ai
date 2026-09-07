@@ -1098,3 +1098,13 @@ execution contract. Newest at the bottom.
   CLI-managed `CapApp-SPM/Package.swift`,** mirroring how `oscode-media` was left
   for `cap sync ios` to wire. Verifying `cap sync` links it is a device-side
   follow-up in PROGRESS.
+- **Repo OAuth on iOS uses `ASWebAuthenticationSession` (new `oscode-authsession`
+  plugin), not Capacitor Browser + a deep-link bounce (founder, 2026-09-07).** The
+  founder asked for a one-tap connect. ASWebAuthenticationSession runs the consent
+  and, watching for the `oscode` callback scheme, returns the callback URL
+  straight to the completion handler: no bounce-page "Back to OpenShore" tap
+  (iOS blocks that page's automatic custom-scheme redirect without a gesture) and
+  no deep-link round trip that a memory eviction could drop. Desktop keeps the
+  system-browser + deep-link path (ASWebAuthenticationSession is Apple-only). The
+  cold-start deep-link recovery stays as a harmless backstop. Device verification
+  (and that `cap sync ios` links the plugin) is a follow-up in PROGRESS.
