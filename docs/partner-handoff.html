@@ -1,10 +1,10 @@
-<title>OS Code Partner Handoff</title>
+<title>OpenShore Partner Handoff</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600&display=swap">
 
 <style>
-  /* OpenShore OS Code handoff. Honors the product's own design system:
+  /* OpenShore partner handoff. Honors the product's own design system:
      cream paper, deep ink, teal for anything local and private, amber for
      anything cloud or spend. Fraunces display + Inter body, the same faces the
      app ships. No em dashes anywhere (repo rule). */
@@ -419,7 +419,7 @@
 </svg>
 
 <div class="bar">
-  <span class="brand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore <small>OS Code</small></span>
+  <span class="brand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore <small>Handoff</small></span>
   <nav id="nav">
     <a href="#what">What it is</a>
     <a href="#compare">Different how</a>
@@ -439,10 +439,10 @@
   <!-- ============ MASTHEAD ============ -->
   <header class="hero" id="top">
     <div class="eyebrow">Partner handoff, private beta</div>
-    <h1>OS Code, from the inside</h1>
+    <h1>OpenShore, from the inside</h1>
     <p class="lede-hero">A walkthrough of what OpenShore is, what it already does, and where the edges are still rough, so you can start poking today.</p>
     <div class="metastrip">
-      <span class="tag"><svg class="mark" style="width:16px;height:16px;border-radius:4px" aria-hidden="true"><use href="#wave"/></svg> <b>OpenShore OS Code</b></span>
+      <span class="tag"><svg class="mark" style="width:16px;height:16px;border-radius:4px" aria-hidden="true"><use href="#wave"/></svg> <b>OpenShore</b></span>
       <span class="tag"><span class="dot d-local"></span> Local first, cloud optional</span>
       <span class="tag">Desktop <b>+</b> mobile, one codebase</span>
       <span class="tag"><span class="dot d-ok"></span> Shipping on <code>main</code></span>
@@ -456,8 +456,9 @@
   <!-- ============ WHAT IT IS ============ -->
   <section id="what">
     <div class="eyebrow">The product</div>
-    <h2>What OS Code is</h2>
-    <p class="lede big">OS Code is a native app, one codebase running across the desktop (Linux, macOS, and Windows) and mobile (iPhone, iPad, and Android), that chats and builds software using a stack of models you choose, on hardware you own and keys you hold. It is shaped like a modern coding agent, the tool you already know, but the default engine is your local models rather than one vendor's cloud.</p>
+    <h2>What OpenShore is</h2>
+    <p class="lede big">OpenShore is a native app, one codebase running across the desktop (Linux, macOS, and Windows) and mobile (iPhone, iPad, and Android), that chats and builds software using a stack of models you choose, on hardware you own and keys you hold. It is shaped like a modern coding agent, the tool you already know, but the default engine is your local models rather than one vendor's cloud.</p>
+    <p class="callout-quiet">A note on names as you read the code: the product is <b>OpenShore</b>. The engine and this repository are called <b>OS Code</b> (the <code>osc</code> CLI, the <code>os-code/</code> package), so you will see that name in the tree. Product is OpenShore, engine is OS Code.</p>
 
     <p class="measure"><b>The mission.</b> Give local and self hosted models the complete, polished experience developers expect from the best cloud coding agents, and make the cloud a deliberate choice rather than the default. Your machine, your models, your keys. Nothing is rehosted or proxied, and no product analytics leave the device.</p>
 
@@ -508,7 +509,7 @@
         <thead>
           <tr>
             <th></th>
-            <th class="us">OS Code</th>
+            <th class="us">OpenShore</th>
             <th>Claude Code, Cursor, Copilot</th>
             <th>Grok Bot</th>
           </tr>
@@ -1049,7 +1050,7 @@
 
     <div class="subhead" style="margin-top:26px">The repository map</div>
     <div class="maprows">
-      <div class="maprow"><span class="path">os-code/</span><span>The engine: agent loop, tools, edit engine, router, daemon, security, ethics, marketplace builder. Also the parked <code>osc</code> CLI and TUI.</span></div>
+      <div class="maprow"><span class="path">os-code/</span><span>The OS Code engine, the codename for the engine and this repo: agent loop, tools, edit engine, router, daemon, security, ethics, marketplace builder. Also the parked <code>osc</code> CLI and TUI.</span></div>
       <div class="maprow"><span class="path">app/</span><span>The one React codebase both shells ship. Screens, drivers, and the app side libraries (stack, play, gitos, vault, routines).</span></div>
       <div class="maprow"><span class="path">app/electron/</span><span>The desktop shell for Linux, macOS, and Windows (Electron, all three targets in the build config). The engine runs in process here.</span></div>
       <div class="maprow"><span class="path">app/ios/</span><span>The Capacitor iOS project, universal for iPhone and iPad (Swift Package Manager, iOS 16 and up). The same web app targets Android through Capacitor.</span></div>
@@ -1060,7 +1061,7 @@
   </section>
 
   <footer>
-    <div class="fbrand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore OS Code</div>
+    <div class="fbrand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore</div>
     <p>This document is a snapshot for the incoming engineering partner, written from the repository's own source of truth. Where it and the code disagree, the code and <code>os-code/PROGRESS.md</code> win. Nothing here is marketing copy; it is meant to get you oriented and poking quickly.</p>
     <p style="margin-top:6px">Local is teal, cloud is amber, and money always asks first. Welcome aboard.</p>
   </footer>
