@@ -1,0 +1,1106 @@
+<title>OS Code Partner Handoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600&display=swap">
+
+<style>
+  /* OpenShore OS Code handoff. Honors the product's own design system:
+     cream paper, deep ink, teal for anything local and private, amber for
+     anything cloud or spend. Fraunces display + Inter body, the same faces the
+     app ships. No em dashes anywhere (repo rule). */
+
+  :root {
+    /* Light: the openshore.ai paper palette, token for token with app theme.css */
+    --bg: #f2efe7;
+    --paper: #f6f4ef;
+    --raised: #fcfbf7;
+    --surface: #edeae0;
+    --surface-2: #f3f1e8;
+    --border: #e5e0d3;
+    --border-strong: #d9d4c9;
+
+    --ink: #1c2a33;
+    --ink-soft: #55636b;
+    --muted: #8a949a;
+
+    /* LOCAL work carries the brand water teal. CLOUD and spend carry amber. */
+    --local: #2f5a66;
+    --local-deep: #24454f;
+    --local-soft: rgba(47, 90, 102, 0.10);
+    --local-line: rgba(47, 90, 102, 0.28);
+    --wave: #4b90a3;
+
+    --cloud: #a35f0a;
+    --cloud-soft: rgba(163, 95, 10, 0.11);
+    --cloud-line: rgba(163, 95, 10, 0.30);
+
+    --ok: #2f8f4e;
+    --ok-soft: rgba(47, 143, 78, 0.13);
+    --warn: #8a6d0a;
+    --warn-soft: rgba(138, 109, 10, 0.13);
+    --navy: #1c2a33;
+
+    --shadow: 0 1px 2px rgba(28, 42, 51, 0.05), 0 8px 30px rgba(28, 42, 51, 0.06);
+    --shadow-sm: 0 1px 2px rgba(28, 42, 51, 0.06);
+
+    --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --display: 'Fraunces', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+    --mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+
+    --radius: 14px;
+    --radius-lg: 20px;
+    --measure: 68ch;
+
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #131009;
+      --paper: #17140e;
+      --raised: #201c14;
+      --surface: #29241a;
+      --surface-2: #241f17;
+      --border: #3a3427;
+      --border-strong: #4a4433;
+
+      --ink: #ece5d6;
+      --ink-soft: #b3ab99;
+      --muted: #8b8674;
+
+      --local: #6bb3c4;
+      --local-deep: #4b90a3;
+      --local-soft: rgba(107, 179, 196, 0.13);
+      --local-line: rgba(107, 179, 196, 0.32);
+      --wave: #6bb3c4;
+
+      --cloud: #e0902f;
+      --cloud-soft: rgba(224, 144, 47, 0.13);
+      --cloud-line: rgba(224, 144, 47, 0.34);
+
+      --ok: #5cbd7a;
+      --ok-soft: rgba(92, 189, 122, 0.14);
+      --warn: #d8b25a;
+      --warn-soft: rgba(216, 178, 90, 0.14);
+      --navy: #0f0c07;
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 34px rgba(0, 0, 0, 0.42);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #131009;
+    --paper: #17140e;
+    --raised: #201c14;
+    --surface: #29241a;
+    --surface-2: #241f17;
+    --border: #3a3427;
+    --border-strong: #4a4433;
+    --ink: #ece5d6;
+    --ink-soft: #b3ab99;
+    --muted: #8b8674;
+    --local: #6bb3c4;
+    --local-deep: #4b90a3;
+    --local-soft: rgba(107, 179, 196, 0.13);
+    --local-line: rgba(107, 179, 196, 0.32);
+    --wave: #6bb3c4;
+    --cloud: #e0902f;
+    --cloud-soft: rgba(224, 144, 47, 0.13);
+    --cloud-line: rgba(224, 144, 47, 0.34);
+    --ok: #5cbd7a;
+    --ok-soft: rgba(92, 189, 122, 0.14);
+    --warn: #d8b25a;
+    --warn-soft: rgba(216, 178, 90, 0.14);
+    --navy: #0f0c07;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 34px rgba(0, 0, 0, 0.42);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection { background: var(--local-soft); }
+
+  a { color: var(--local-deep); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+
+  /* ---- Top bar --------------------------------------------------------- */
+  .bar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px clamp(16px, 4vw, 40px);
+    background: color-mix(in srgb, var(--paper) 86%, transparent);
+    backdrop-filter: saturate(1.2) blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .bar .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -0.01em; }
+  .bar .brand small { color: var(--ink-soft); font-weight: 450; }
+  .bar nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+  .bar nav a {
+    color: var(--ink-soft); text-decoration: none; font-size: 13.5px; font-weight: 500;
+    padding: 6px 10px; border-radius: 9px;
+  }
+  .bar nav a:hover, .bar nav a.on { color: var(--ink); background: var(--surface); }
+  .ctrls { display: flex; gap: 8px; align-items: center; }
+  .btn {
+    font-family: var(--font); font-size: 13px; font-weight: 500; color: var(--ink-soft);
+    background: var(--raised); border: 1px solid var(--border-strong); border-radius: 9px;
+    padding: 6px 11px; cursor: pointer; white-space: nowrap;
+    transition: transform 120ms cubic-bezier(0.4,0,1,1), color 160ms, border-color 160ms;
+  }
+  .btn:hover { color: var(--ink); border-color: var(--muted); }
+  .btn:active { transform: scale(0.96); }
+  .btn:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--wave); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---- Layout ---------------------------------------------------------- */
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px) 96px; }
+  section { padding-top: 30px; }
+  .measure { max-width: var(--measure); }
+
+  /* wave mark */
+  .mark { width: 26px; height: 26px; border-radius: 7px; flex: none; }
+  .mark.lg { width: 46px; height: 46px; border-radius: 11px; }
+
+  /* ---- Masthead -------------------------------------------------------- */
+  .hero { padding-top: 48px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--local-deep);
+  }
+  .eyebrow.cloud { color: var(--cloud); }
+  .eyebrow.plain { color: var(--muted); }
+  h1 {
+    font-family: var(--display); font-weight: 600; font-optical-sizing: auto;
+    font-size: clamp(2.4rem, 6vw, 3.7rem); line-height: 1.02; letter-spacing: -0.02em;
+    margin: 14px 0 0; text-wrap: balance; color: var(--ink);
+  }
+  .lede-hero {
+    font-family: var(--display); font-weight: 400; font-size: clamp(1.15rem, 2.6vw, 1.45rem);
+    line-height: 1.4; color: var(--ink-soft); margin: 18px 0 0; max-width: 40ch;
+  }
+  .metastrip {
+    display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 26px;
+  }
+  .tag {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12.5px; color: var(--ink-soft);
+    background: var(--raised); border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 12px;
+  }
+  .tag b { color: var(--ink); font-weight: 600; }
+  .tag .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .d-local { background: var(--local); }
+  .d-cloud { background: var(--cloud); }
+  .d-ok { background: var(--ok); }
+  .d-warn { background: var(--warn); }
+
+  .readnote {
+    margin-top: 22px; padding: 14px 16px; border-left: 3px solid var(--local-line);
+    background: var(--local-soft); border-radius: 0 12px 12px 0; color: var(--ink-soft);
+    font-size: 14.5px; max-width: 62ch;
+  }
+  .readnote b { color: var(--ink); }
+
+  /* ---- Section heads --------------------------------------------------- */
+  h2 {
+    font-family: var(--display); font-weight: 600; font-size: clamp(1.6rem, 3.4vw, 2.15rem);
+    line-height: 1.1; letter-spacing: -0.015em; margin: 8px 0 0; text-wrap: balance; color: var(--ink);
+  }
+  h3 {
+    font-family: var(--display); font-weight: 600; font-size: 1.18rem; line-height: 1.2;
+    letter-spacing: -0.01em; margin: 0 0 4px; color: var(--ink);
+  }
+  .lede { font-size: 16.5px; color: var(--ink-soft); margin: 12px 0 0; max-width: var(--measure); }
+  .lede.big { font-size: 18px; color: var(--ink); }
+  p { margin: 12px 0 0; max-width: var(--measure); }
+  .rule { height: 1px; background: var(--border); border: 0; margin: 34px 0 0; }
+
+  /* ---- Key / legend card ---------------------------------------------- */
+  .keycard {
+    margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--border); border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .keycard > div { background: var(--raised); padding: 16px 18px; }
+  .keycard h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .keyrow { display: flex; align-items: flex-start; gap: 10px; margin-top: 9px; font-size: 14px; color: var(--ink-soft); }
+  .keyrow .sw { width: 14px; height: 14px; border-radius: 4px; flex: none; margin-top: 2px; }
+  .keyrow b { color: var(--ink); font-weight: 600; }
+  .sw-local { background: var(--local); }
+  .sw-cloud { background: var(--cloud); }
+
+  /* state chips */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
+    padding: 4px 10px; border-radius: 999px; border: 1px solid transparent;
+  }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .chip.built { color: var(--ok); background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 24%, transparent); }
+  .chip.built .dot { background: var(--ok); }
+  .chip.device { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 28%, transparent); }
+  .chip.device .dot { background: var(--warn); }
+  .chip.roadmap { color: var(--muted); background: var(--surface); border-color: var(--border-strong); }
+  .chip.roadmap .dot { background: var(--muted); }
+
+  /* ---- Feature section ------------------------------------------------- */
+  .feat { padding-top: 40px; }
+  .feat .head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .feat .head h2 { margin: 4px 0 0; font-size: clamp(1.4rem, 3vw, 1.85rem); }
+  .feat .head .chip { align-self: center; margin-left: auto; }
+  .domain { display: inline-flex; align-items: center; gap: 8px; }
+  .domain .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  details.deep {
+    margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--raised); overflow: hidden;
+  }
+  details.deep > summary {
+    list-style: none; cursor: pointer; padding: 13px 16px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13.5px; font-weight: 600; color: var(--local-deep);
+    user-select: none;
+  }
+  details.deep > summary::-webkit-details-marker { display: none; }
+  details.deep > summary .caret {
+    width: 16px; height: 16px; flex: none; color: var(--muted);
+    transition: transform 220ms cubic-bezier(0.32,0.72,0,1);
+  }
+  details.deep[open] > summary .caret { transform: rotate(90deg); }
+  details.deep > summary .sumlbl { color: var(--ink-soft); font-weight: 500; }
+  details.deep .body { padding: 4px 18px 20px; border-top: 1px solid var(--border); }
+
+  .subhead { font-size: 11.5px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 18px 0 8px; }
+  ul.spec { margin: 8px 0 0; padding: 0; list-style: none; }
+  ul.spec > li { position: relative; padding: 5px 0 5px 20px; font-size: 14.5px; color: var(--ink-soft); max-width: var(--measure); }
+  ul.spec > li::before {
+    content: ""; position: absolute; left: 3px; top: 12px; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--local-line);
+  }
+  ul.spec > li b { color: var(--ink); font-weight: 600; }
+  ul.spec.cloud > li::before { background: var(--cloud-line); }
+
+  .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  code, .path {
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .path {
+    background: var(--surface-2); color: var(--local-deep);
+    border: 1px solid var(--border); border-radius: 7px; padding: 3px 8px;
+    white-space: nowrap;
+  }
+  .compare {
+    margin-top: 16px; padding: 12px 15px; border-radius: 12px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    font-size: 14px; color: var(--ink-soft);
+  }
+  .compare b { color: var(--ink); }
+  .compare .lbl { display:block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+
+  /* ---- Compare table --------------------------------------------------- */
+  .tablewrap { overflow-x: auto; margin-top: 22px; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+  thead th { text-align: left; font-weight: 600; color: var(--ink); background: var(--surface); padding: 12px 14px; border-bottom: 1px solid var(--border-strong); font-size: 13px; }
+  thead th.us { color: var(--local-deep); }
+  tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--ink-soft); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody td:first-child { color: var(--ink); font-weight: 500; width: 24%; }
+  td.us { background: var(--local-soft); color: var(--ink); }
+  tbody tr td.us { border-bottom-color: var(--local-line); }
+
+  /* ---- The play diagram ------------------------------------------------ */
+  .flowcard { margin-top: 22px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px clamp(14px, 3vw, 26px) 20px; }
+  .flow { width: 100%; height: auto; display: block; max-width: 560px; margin: 0 auto; }
+  .flow .box { fill: var(--surface-2); stroke: var(--border-strong); }
+  .flow .box.local { fill: var(--local-soft); stroke: var(--local-line); }
+  .flow .box.start { fill: var(--surface); stroke: var(--border-strong); }
+  .flow .box.end { fill: var(--local-soft); stroke: var(--local); }
+  .flow .t { fill: var(--ink); font-family: var(--font); font-weight: 600; font-size: 14px; }
+  .flow .ts { fill: var(--ink-soft); font-family: var(--font); font-weight: 400; font-size: 11.5px; }
+  .flow .ar { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .flow .arh { fill: var(--muted); }
+  .flow .lockicon { fill: none; stroke: var(--local); stroke-width: 1.6; }
+
+  .owners { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; align-items: center; }
+  .owners .oc { font-size: 12px; font-weight: 500; color: var(--local-deep); background: var(--local-soft); border: 1px solid var(--local-line); border-radius: 999px; padding: 4px 11px; }
+  .owners .lbl { font-size: 12px; color: var(--muted); }
+  .flownote { margin-top: 16px; font-size: 13.5px; color: var(--ink-soft); max-width: 64ch; }
+  .flownote .amber { color: var(--cloud); font-weight: 600; }
+
+  /* ---- Stage list ------------------------------------------------------ */
+  ol.stages { counter-reset: st; list-style: none; margin: 22px 0 0; padding: 0; }
+  ol.stages > li { position: relative; padding: 0 0 18px 44px; }
+  ol.stages > li:last-child { padding-bottom: 0; }
+  ol.stages > li::before {
+    counter-increment: st; content: counter(st);
+    position: absolute; left: 0; top: 0; width: 28px; height: 28px;
+    display: grid; place-items: center; border-radius: 8px;
+    background: var(--local-soft); color: var(--local-deep); border: 1px solid var(--local-line);
+    font-family: var(--display); font-weight: 600; font-size: 14px;
+  }
+  ol.stages > li::after {
+    content: ""; position: absolute; left: 13.5px; top: 30px; bottom: 4px; width: 1px; background: var(--border);
+  }
+  ol.stages > li:last-child::after { display: none; }
+  ol.stages b { color: var(--ink); }
+  ol.stages p { margin: 3px 0 0; font-size: 14.5px; }
+
+  /* ---- Rough edges groups --------------------------------------------- */
+  .rough { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin-top: 22px; }
+  .rgroup { border: 1px solid var(--border); border-radius: var(--radius); background: var(--raised); padding: 16px 17px; }
+  .rgroup .gh { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
+  .rgroup .gh h3 { font-size: 1rem; margin: 0; }
+  .rgroup .gsub { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
+  .rgroup ul { margin: 0; padding: 0; list-style: none; }
+  .rgroup li { font-size: 13.5px; color: var(--ink-soft); padding: 6px 0; border-top: 1px solid var(--border); }
+  .rgroup li:first-child { border-top: 0; }
+  .rgroup li b { color: var(--ink); font-weight: 600; }
+
+  /* ---- Start poking ---------------------------------------------------- */
+  .cmd { margin-top: 16px; background: var(--navy); border-radius: 12px; padding: 16px 18px; overflow-x: auto; }
+  .cmd pre { margin: 0; font-family: var(--mono); font-size: 13px; line-height: 1.85; color: #e6e6e6; }
+  .cmd .c { color: #7f8b93; }
+  .cmd .p { color: #4b90a3; }
+  .maprows { margin-top: 20px; display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .maprow { display: grid; grid-template-columns: minmax(140px, 210px) 1fr; gap: 14px; background: var(--raised); padding: 12px 16px; align-items: baseline; }
+  .maprow .path { justify-self: start; }
+  .maprow span { font-size: 13.5px; color: var(--ink-soft); }
+
+  /* ---- Footer ---------------------------------------------------------- */
+  footer { border-top: 1px solid var(--border); margin-top: 60px; padding-top: 24px; color: var(--muted); font-size: 13px; }
+  footer .fbrand { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-weight: 600; }
+  footer p { max-width: 68ch; margin-top: 10px; }
+
+  .callout-quiet { color: var(--muted); font-size: 13.5px; font-style: italic; margin-top: 10px; }
+
+  @media (max-width: 620px) {
+    .keycard { grid-template-columns: 1fr; }
+    .bar nav { display: none; }
+    .maprow { grid-template-columns: 1fr; gap: 4px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+</style>
+
+<!-- Reusable wave mark: the openshore.ai mark, navy tile, cream bar, teal wave -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="wave" viewBox="0 0 32 32">
+    <rect width="32" height="32" fill="#1c2a33"/>
+    <g transform="translate(0 -0.81)">
+      <line x1="7" y1="13" x2="25" y2="13" stroke="#f6f4ef" stroke-width="2" stroke-linecap="round"/>
+      <path d="M7 19q4.5-3.3 9 0t9 0" fill="none" stroke="#4b90a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </symbol>
+</svg>
+
+<div class="bar">
+  <span class="brand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore <small>OS Code</small></span>
+  <nav id="nav">
+    <a href="#what">What it is</a>
+    <a href="#compare">Different how</a>
+    <a href="#play">The workflow</a>
+    <a href="#specs">The specs</a>
+    <a href="#rough">Rough edges</a>
+    <a href="#start">Start poking</a>
+  </nav>
+  <span class="ctrls">
+    <button class="btn" id="expandAll" aria-pressed="false">Expand all</button>
+    <button class="btn" id="theme" aria-label="Switch light or dark">Theme</button>
+  </span>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ MASTHEAD ============ -->
+  <header class="hero" id="top">
+    <div class="eyebrow">Partner handoff, private beta</div>
+    <h1>OS Code, from the inside</h1>
+    <p class="lede-hero">A walkthrough of what OpenShore is, what it already does, and where the edges are still rough, so you can start poking today.</p>
+    <div class="metastrip">
+      <span class="tag"><svg class="mark" style="width:16px;height:16px;border-radius:4px" aria-hidden="true"><use href="#wave"/></svg> <b>OpenShore OS Code</b></span>
+      <span class="tag"><span class="dot d-local"></span> Local first, cloud optional</span>
+      <span class="tag">Linux desktop <b>+</b> iPhone</span>
+      <span class="tag"><span class="dot d-ok"></span> Shipping on <code>main</code></span>
+      <span class="tag">For the incoming engineering partner</span>
+    </div>
+    <div class="readnote">
+      <b>How to read this.</b> The page at rest is the tour, about a three minute read top to bottom. Every feature has an <b>Open the engineering detail</b> panel with the spec and the exact files to open. Use <b>Expand all</b> in the top bar when you want the whole thing at once.
+    </div>
+  </header>
+
+  <!-- ============ WHAT IT IS ============ -->
+  <section id="what">
+    <div class="eyebrow">The product</div>
+    <h2>What OS Code is</h2>
+    <p class="lede big">OS Code is a native app for the Linux desktop and the iPhone that chats and builds software using a stack of models you choose, running on hardware you own and keys you hold. It is shaped like a modern coding agent, the tool you already know, but the default engine is your local models rather than one vendor's cloud.</p>
+
+    <p class="measure"><b>The mission.</b> Give local and self hosted models the complete, polished experience developers expect from the best cloud coding agents, and make the cloud a deliberate choice rather than the default. Your machine, your models, your keys. Nothing is rehosted or proxied, and no product analytics leave the device.</p>
+
+    <p class="measure"><b>Who it is for.</b> Developers and technical builders who want a capable coding agent without handing their code and prompts to a single provider by default. People who already run Ollama or llama.cpp, who hold their own API keys, and who care that spend and network access are visible and asked for.</p>
+
+    <div class="keycard">
+      <div>
+        <h4>The color language, here and in the app</h4>
+        <div class="keyrow"><span class="sw sw-local"></span><span><b>Teal is local and private.</b> The work runs on your own hardware, offline capable, no spend. This is the default posture.</span></div>
+        <div class="keyrow"><span class="sw sw-cloud"></span><span><b>Amber is cloud and spend.</b> The work leaves your machine to a provider on your key. The app never routes here on its own, and money always asks first.</span></div>
+      </div>
+      <div>
+        <h4>The mental model: a quarterback and specialists</h4>
+        <div class="keyrow" style="align-items:flex-start"><span style="width:14px"></span><span>One model in your stack is the <b>reasoning anchor</b>, the quarterback. It frames the request, plans the work, and hands each part to the specialist best suited to it. Specialists plug into named categories: <b>Coding, Writing, Analysis, Image reading,</b> and <b>Fast</b>. Any category with no specialist placed, the quarterback runs itself.</span></div>
+      </div>
+    </div>
+
+    <div class="metastrip" style="margin-top:18px">
+      <span class="tag"><span class="dot d-local"></span> Default engine: <b>your local fleet</b></span>
+      <span class="tag"><span class="dot d-cloud"></span> Cloud: <b>Claude, OpenAI, Gemini, Kimi</b> on your key</span>
+      <span class="tag">Desktop runs the engine, the phone pairs to it</span>
+      <span class="tag">The phone can also run pocket models fully offline</span>
+    </div>
+
+    <hr class="rule">
+  </section>
+
+  <!-- ============ HOW IT DIFFERS ============ -->
+  <section id="compare">
+    <div class="eyebrow plain">Orientation</div>
+    <h2>How it is different from what you have used</h2>
+    <p class="lede">You already know the shape of a coding agent. The differences that matter are where the model runs, whose model it is, and who decides when money is spent. A few comparisons make it concrete.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th class="us">OS Code</th>
+            <th>Claude Code, Cursor, Copilot</th>
+            <th>Grok Bot</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Default engine</td>
+            <td class="us">Your local models, offline capable</td>
+            <td>One vendor's cloud model</td>
+            <td>Cloud agents with their own cloud computers</td>
+          </tr>
+          <tr>
+            <td>Whose model</td>
+            <td class="us">Any you download or host, plus cloud on your own key</td>
+            <td>The vendor's, on the vendor's account</td>
+            <td>xAI's, hosted for you</td>
+          </tr>
+          <tr>
+            <td>When it spends</td>
+            <td class="us">Only when you place a cloud model, and it asks every time</td>
+            <td>Per the vendor's plan, continuously</td>
+            <td>Per the vendor's plan</td>
+          </tr>
+          <tr>
+            <td>Where your code goes</td>
+            <td class="us">Stays on your machine unless you send it out</td>
+            <td>To the vendor to get an answer</td>
+            <td>To the vendor's runners</td>
+          </tr>
+          <tr>
+            <td>Background work</td>
+            <td class="us">Routines run on your own computer, while it is on</td>
+            <td>Not the model, mostly interactive</td>
+            <td>Always on in the cloud</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="callout-quiet">The knowledge base ships as a Vault that is Obsidian compatible on purpose: point Obsidian at the same folder and it just opens. More on that below.</p>
+
+    <hr class="rule">
+  </section>
+
+  <!-- ============ THE PLAY / WORKFLOW ============ -->
+  <section id="play">
+    <div class="eyebrow">The workflow</div>
+    <h2>How a prompt actually runs</h2>
+    <p class="lede">This is the single workflow the app is built around. Think of it the way a coach runs a play. My Stack is the anchor. The reasoning model frames the request, draws up a play, shows you a brief, and runs it, handing each step to the model that owns it.</p>
+
+    <div class="flowcard">
+      <svg class="flow" viewBox="0 0 400 566" role="img" aria-label="Flow from prompt through the harness, framing, the play, the brief, the run, and synthesis">
+        <defs>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="5.5" refY="3" orient="auto">
+            <path class="arh" d="M0,0 L6,3 L0,6 Z"/>
+          </marker>
+        </defs>
+
+        <!-- prompt -->
+        <rect class="box start" x="90" y="8" width="220" height="44" rx="11"/>
+        <text class="t" x="200" y="35" text-anchor="middle">Your prompt</text>
+        <path class="ar" d="M200,52 L200,72" marker-end="url(#ah)"/>
+
+        <!-- harness -->
+        <rect class="box local" x="60" y="74" width="280" height="58" rx="12"/>
+        <path class="lockicon" d="M92 96 v-4 a5 5 0 0 1 10 0 v4 M89 96 h16 v13 h-16 z"/>
+        <text class="t" x="200" y="98" text-anchor="middle">The harness</text>
+        <text class="ts" x="200" y="118" text-anchor="middle">Ethics, always on. Plus your skills and vault.</text>
+        <path class="ar" d="M200,132 L200,152" marker-end="url(#ah)"/>
+
+        <!-- framing -->
+        <rect class="box local" x="60" y="154" width="280" height="58" rx="12"/>
+        <text class="t" x="200" y="178" text-anchor="middle">Reasoning model frames it</text>
+        <text class="ts" x="200" y="198" text-anchor="middle">Asks a clarifying question only if truly ambiguous.</text>
+        <path class="ar" d="M200,212 L200,232" marker-end="url(#ah)"/>
+
+        <!-- play -->
+        <rect class="box local" x="60" y="234" width="280" height="58" rx="12"/>
+        <text class="t" x="200" y="258" text-anchor="middle">Composes the play</text>
+        <text class="ts" x="200" y="278" text-anchor="middle">Ordered handoffs, each with a dependency.</text>
+        <path class="ar" d="M200,292 L200,312" marker-end="url(#ah)"/>
+
+        <!-- brief -->
+        <rect class="box local" x="60" y="314" width="280" height="58" rx="12"/>
+        <text class="t" x="200" y="338" text-anchor="middle">Briefs you, live</text>
+        <text class="ts" x="200" y="358" text-anchor="middle">A short checklist of steps and their owner models.</text>
+        <path class="ar" d="M200,372 L200,392" marker-end="url(#ah)"/>
+
+        <!-- run + replan -->
+        <rect class="box local" x="60" y="394" width="280" height="66" rx="12"/>
+        <text class="t" x="200" y="420" text-anchor="middle">Runs in order, re-plans at checkpoints</text>
+        <text class="ts" x="200" y="440" text-anchor="middle">Each step hands off to its owner. Results feed forward.</text>
+        <path class="ar" d="M200,460 L200,480" marker-end="url(#ah)"/>
+
+        <!-- synthesis -->
+        <rect class="box end" x="90" y="482" width="220" height="48" rx="12"/>
+        <text class="t" x="200" y="511" text-anchor="middle">Synthesis, streamed to you</text>
+      </svg>
+
+      <div class="owners">
+        <span class="lbl">A step's owner is a category, or a specific model:</span>
+        <span class="oc">Coding</span>
+        <span class="oc">Writing</span>
+        <span class="oc">Analysis</span>
+        <span class="oc">Image reading</span>
+        <span class="oc">Fast</span>
+      </div>
+      <p class="flownote">It works on the phone alone over My Stack. A step that must edit a repo or run commands runs on your <b>paired computer's engine when you are docked</b>, with the engine's real approvals surfaced in the chat. Cloud is used only if you placed a cloud model, and <span class="amber">spend asks first</span>. A weak anchor, an unreachable model, or a one step request all fall back to a plain routed answer, so a modest stack still just works.</p>
+    </div>
+
+    <div class="compare">
+      <span class="lbl">The difference from a single cloud model</span>
+      A single model answers everything itself. Here the reasoning model is a router and a planner. It keeps the plan visible, sends each part to the model that is actually good at it, and can revise the rest of the plan when a result changes the picture. It is closer to running a small team than asking one expert.
+    </div>
+
+    <details class="deep">
+      <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail <span class="sumlbl">the shapes, the runner, the fallbacks</span></summary>
+      <div class="body">
+        <div class="subhead">The stages</div>
+        <ol class="stages">
+          <li><b>Setup.</b><p>The chat connects to its repos and inherits their markdown instructions. My Stack for the current status, Offline, Offshore, or Docked, is loaded: the reasoning anchor plus its placed specialists.</p></li>
+          <li><b>The harness.</b><p>Every prompt flows through always on filters (ethics) plus curatable ones (skills, preset markdowns, the vault). Ethics can never be turned off. The rest you curate.</p></li>
+          <li><b>Framing.</b><p>The reasoning model reads and frames the prompt, asking a clarifying question only when a wrong assumption would waste real work. The clarify card renders tappable option chips, and a typed answer works too.</p></li>
+          <li><b>The play.</b><p>An ordered list of steps, each owned by a category or a specific model, with dependencies, so a coding step can feed a writing step that feeds a vision step. Any category with no specialist is run by the reasoning model.</p></li>
+          <li><b>The brief.</b><p>Before it runs you see the play as a short checklist, each step tagged with the model that will run it, updated live.</p></li>
+          <li><b>Run and synthesize.</b><p>Steps run in dependency order. At bounded checkpoints the reasoning model can re-plan the remaining steps. The final answer is composed by the reasoning model and streamed.</p></li>
+        </ol>
+        <div class="subhead">Key files to open</div>
+        <div class="files">
+          <span class="path">app/src/lib/play.ts</span>
+          <span class="path">app/src/drivers/stackDriver.ts</span>
+          <span class="path">app/test/play.test.ts</span>
+          <span class="path">docs/workflow.md</span>
+          <span class="path">app/src/components/TodoCard.tsx</span>
+        </div>
+        <div class="compare">
+          <span class="lbl">State</span>
+          The pure play core (scheduling, re-plan merge, owner resolution) is unit tested across 30 cases. Live plan quality and the docked engine hand off need a real reasoning model and a paired computer, so they are proven on a device, not in this sandbox.
+        </div>
+      </div>
+    </details>
+
+    <hr class="rule">
+  </section>
+
+  <!-- ============ THE SPECS ============ -->
+  <section id="specs">
+    <div class="eyebrow">The specs, top to bottom</div>
+    <h2>Everything that is built, feature by feature</h2>
+    <p class="lede">Each block opens with what it is in plain language and its state, then an engineering panel with the spec and the files to open. The state chips: <span class="chip built"><span class="dot"></span>Built</span> is on <code>main</code> and tested in this environment. <span class="chip device"><span class="dot"></span>Needs a device</span> is built but only fully provable on a real phone or a paired computer. <span class="chip roadmap"><span class="dot"></span>Roadmap</span> is deliberately deferred.</p>
+
+    <!-- Stack -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>My Stack, the router, and BYOM</h2>
+        <span class="chip built"><span class="dot"></span>Built</span>
+      </div>
+      <p class="lede">Your stack is the roster of models the app draws from: one reasoning anchor plus specialists in named categories. You can bring your own cloud keys, or connect any OpenAI compatible endpoint you run yourself.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>The anchor plus categories.</b> Categories are Coding, Writing, Analysis, Image reading, Fast, plus image generation, embedding, and a Custom slot for a specific model with a "when it is called" trigger.</li>
+            <li><b>Owner resolution.</b> A step resolves to its placed specialist, or falls back to the reasoning anchor, or to a reachable capable model. Vision has a local slot and a cloud slot, preferring a capable local model when present.</li>
+            <li><b>Three connection statuses.</b> Offline (local only), Offshore (your cloud keys), and Docked (paired to your computer). Each has its own stack, so the app knows what it can run right now.</li>
+            <li><b>Prefab stacks.</b> One tap downloadable presets, auto derived from the live catalog and eval scores, not hand authored, so they reassess as models change.</li>
+            <li><b>Cloud connections.</b> Bring your own key for Claude (Opus 5, Sonnet 5, Haiku 4.5), OpenAI (GPT-5, GPT-5 mini), Gemini (2.5 Pro, Flash), and Kimi (Moonshot). The app never routes to cloud on its own, and spend asks first.</li>
+            <li><b>BYOM.</b> Connect any model you control at an OpenAI compatible endpoint, on your own server, treated as a first class stack member.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">app/src/lib/stack.ts</span>
+            <span class="path">app/src/lib/providers.ts</span>
+            <span class="path">app/src/lib/byom.ts</span>
+            <span class="path">app/src/screens/StackScreen.tsx</span>
+            <span class="path">os-code/src/router/</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Marketplace -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>The Marketplace and model catalog</h2>
+        <span class="chip built"><span class="dot"></span>Built</span>
+      </div>
+      <p class="lede">A place to find and install models. It is a catalog, not a weight host: models download straight from their public sources, and OpenShore never rehosts weights or proxies inference.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>Direct from source.</b> Downloads pull from Hugging Face and Ollama, with license flags shown honestly. Nothing is rehosted.</li>
+            <li><b>Browse by family, then size.</b> Model families are derived on the client from the id and source ref, so today's feed and the bundled seed group the same way.</li>
+            <li><b>The phone storefront.</b> One tap packs keyed to the connection status (Offline, Offshore, Docked), a "Runs on this iPhone" shelf, and a "Desktop and home servers" divider below which no control ever says Get on a phone.</li>
+            <li><b>Honest popularity, several axes.</b> A benchmark "OpenShore fit" score, community stars (a separate signal, always shown with a count), your own most used (fully local), and staff picks. No axis is invented.</li>
+            <li><b>Live discovery.</b> Trusted publishers only, both axes. A discovered model with no eval is labelled unrated rather than given a fake star.</li>
+            <li><b>The catalog builder.</b> A CI job builds, gates, and publishes <code>catalog.json</code> to the marketing site daily, so the feed refreshes with no intervention.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">os-code/docs/MARKETPLACE.md</span>
+            <span class="path">app/src/lib/packs.ts</span>
+            <span class="path">app/src/components/marketplace.ts</span>
+            <span class="path">os-code/scripts/build-catalog/</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- On-device / engine / daemon -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>On-device models, the engine, and pairing</h2>
+        <span class="chip device"><span class="dot"></span>Needs a device</span>
+      </div>
+      <p class="lede">The desktop is home. It runs the engine and a private daemon. The iPhone pairs to it over Tailscale and can also run pocket sized models fully on the phone. The phone is a remote control and a viewer, not the compute.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>Pocket inference.</b> On iOS, GGUF models run through llama.cpp on Metal. On the Linux desktop the on-device path runs through Ollama.</li>
+            <li><b>The two built in guides.</b> Harbor Light (SmolLM2-135M, about 105 MB, bundled in the app, offline, a grounded guide not a reasoner) and Harbor (Qwen3-1.7B, about 1.1 GB, a real download, the first capable coding agent with web search).</li>
+            <li><b>Memory aware.</b> The store is honest about the phone's memory limit, not storage, and a memory warning unloads the model so the next send reloads cleanly.</li>
+            <li><b>The daemon.</b> Binds Tailscale or loopback, never 0.0.0.0, behind a bearer token. Shell is default deny with approvals.</li>
+            <li><b>Free desktop chat.</b> A stateless <code>/chat</code> route builds only a provider and streams one completion, with none of the acting machinery, so chatting with your own local models is free. The coding agent stays behind Personal.</li>
+            <li><b>Terminal Control.</b> A per machine switch. Off keeps the model out of the terminal entirely.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">docs/HARBOR.md</span>
+            <span class="path">app/src/lib/harbor.ts</span>
+            <span class="path">app/plugins/oscode-llama/</span>
+            <span class="path">os-code/src/daemon/serve.ts</span>
+            <span class="path">app/src/screens/PairScreen.tsx</span>
+          </div>
+          <div class="compare"><span class="lbl">Why a device is needed</span> The native inference, the memory path, and a real Tailscale pairing cannot be exercised in a web sandbox. First TestFlight and a paired desktop are the proof.</div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Coding agent -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>The coding agent, built to the Claude Code contract</h2>
+        <span class="chip built"><span class="dot"></span>Built</span>
+      </div>
+      <p class="lede">The chat with a desktop repo is built to work the way Claude Code works, so someone who knows one knows the other. Same permission modes, same transcript grammar, same approvals, enforced by the engine.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>Four permission modes, engine enforced.</b> Default asks before every edit and command, Accept edits lets edits flow and asks for shell, Plan is read only and ends in a plan card, Bypass runs everything except cloud spend. Plan mode filters the tool specs to read and network at the engine, not the client.</li>
+            <li><b>The tool set.</b> <code>readFile</code>, <code>writeFile</code>, <code>editFile</code>, <code>glob</code>, <code>grep</code>, <code>searchRepo</code>, <code>runShell</code>, <code>readTerminal</code>, git (<code>gitStatus</code>, <code>gitDiff</code>, <code>gitLog</code>, <code>gitCommit</code>), <code>webSearch</code>, <code>webFetch</code>, <code>todoWrite</code>, <code>delegate</code> to a specialist, image tools, and the vault and project memory tools.</li>
+            <li><b>One event protocol.</b> Todos, plan proposals, mode, repo chip, and title are all DriverEvents, so the desktop and the phone render them from one reducer and the journal replays them losslessly.</li>
+            <li><b>The composer grammar.</b> Slash commands, <code>@</code> for repo files, <code>#</code> to save a line to the project's standing instructions, a queued message mid run, approvals that stack honestly with "always allow in this project" as an engine scoped rule.</li>
+            <li><b>Project memory.</b> Notes live inside the project's primary repo in an "OpenShore Project [name] MDs/" folder, committed with the code, with a read only view in the app.</li>
+            <li><b>Project secrets.</b> Reach the model only when the orchestrator is a local model, under an egress lockdown that never escalates to the cloud.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">os-code/src/core/agent/loop.ts</span>
+            <span class="path">os-code/src/core/tools/</span>
+            <span class="path">os-code/src/core/permissions/</span>
+            <span class="path">docs/interaction-model.md</span>
+            <span class="path">app/src/lib/projectMemory.ts</span>
+          </div>
+          <div class="compare"><span class="lbl">Still building toward parity</span> Remaining Claude Code parity items: MCP stdio on the engine, checkpoints and rewind, replacing the stack regex classifier with a small model call, and vision beyond Claude.</div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Repositories + Vault -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>Repositories and the Vault</h2>
+        <span class="chip built"><span class="dot"></span>Built</span>
+      </div>
+      <p class="lede">A per repo storage seam (shipped as "Repositories") and a native Obsidian style knowledge base (the Vault) on top of it. Your notes are real markdown files you can open in Obsidian.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>The seam.</b> Path and bytes shaped, with a single writer lease from day one, so the phone can browse and buffer through the outbox while the desktop shells out to real git.</li>
+            <li><b>Storage providers.</b> Local, iCloud Drive (a native Capacitor plugin over the app's ubiquity container), and Google Drive (OAuth PKCE, drive.file scope only to avoid a CASA assessment). Readiness is a runtime probe, never a hardcoded flag.</li>
+            <li><b>Sealed secrets.</b> Secrets on untrusted storage are sealed under a per repo key from the credential store, never the device key.</li>
+            <li><b>The Vault.</b> Native markdown browsing, wikilinks worn in the local teal, and the honest compat claim: point Obsidian at the same folder and it just opens.</li>
+            <li><b>Agent writes.</b> User directed or agent proposed with approval, never silent.</li>
+            <li><b>Ships as "Repositories."</b> The gitOS codename stays internal, a Git trademark call.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">app/src/lib/gitos/</span>
+            <span class="path">app/src/lib/vault.ts</span>
+            <span class="path">app/src/screens/VaultScreen.tsx</span>
+            <span class="path">os-code/DECISIONS.md</span>
+          </div>
+          <div class="compare"><span class="lbl">Open follow up</span> The organization tier, a real multi writer backend, is not built. A synced folder cannot honestly serve concurrent writers, so it needs a Supabase backed store. Tracked as its own item.</div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Crew / routines -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>My Crew and routines</h2>
+        <span class="chip device"><span class="dot"></span>Needs a device</span>
+      </div>
+      <p class="lede">A routine is a crew member, a task, a workspace, and a clock. When the clock strikes and your computer is on, the scheduler opens a headless journaled session on your own machine and leaves a dated note in the Vault. The copy is honest: "while your computer is on," never "always on."</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>The safety contract.</b> One run on the box at a time and one per routine. A slot the machine slept through is recorded as skipped once and never replayed. An unanswered approval times out to a denial after 15 minutes, never to an approval. A wall clock cap per routine (5 to 60 minutes).</li>
+            <li><b>Least privilege.</b> Read only routines run in plan mode, edit routines in acceptEdits. A routine runs only in an admin provisioned workspace, with headless permission hardening so an allow default cannot make shell, push, or cloud spend silent.</li>
+            <li><b>Cross device control.</b> You set up and control routines only while docked over Tailscale, and can always view. Three header states: In control, View only, Not set up. Away from home the command center shows a cached snapshot and hides every control.</li>
+            <li><b>The command center.</b> A live headline with four counts, a Waiting for you list, the roster with presence dots, and a results inbox that opens the rendered vault note with the transcript one tap away.</li>
+            <li><b>The advisor org.</b> The founder's advisory team ships as a Crew preset, eight named members, all advisory, the person decides.</li>
+            <li><b>One preset.</b> Morning review, weekdays at 06:00, read only, so its first unattended run can never need an approval.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">os-code/src/routines/</span>
+            <span class="path">app/src/lib/routines.ts</span>
+            <span class="path">app/src/screens/CrewCommandScreen.tsx</span>
+            <span class="path">app/src/lib/crewPresets.ts</span>
+          </div>
+          <div class="compare"><span class="lbl">The reference, and the difference</span> The brief was "clone Grok Bot, local first." Grok Bot is always on cloud agents with their own computers. This is the same idea run on your own machine, so it is honest about only working while that machine is on.</div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Ethics -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-cloud"></span></span>
+        <h2>The always-on ethics layer</h2>
+        <span class="chip built"><span class="dot"></span>Built</span>
+      </div>
+      <p class="lede">A safety filter wraps every model call, local and cloud alike, on both sides: the prompt is screened before a model sees it, and the answer before a person does. There is no setting, config key, or environment variable that turns it off, and a test fails the build if one ever appears.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec cloud">
+            <li><b>One chokepoint, installed by construction.</b> The provider registry hands out only guarded providers, and the driver factory wraps every driver, so a new call site cannot forget the layer. There is no unguarded object to call.</li>
+            <li><b>Both sides, and fail closed.</b> A stream screener releases text only after a clean screen, so a blocked answer is never partially shown. Any throw or timeout blocks, and is recorded as our fault, never counted toward enforcement.</li>
+            <li><b>The three tiers.</b> Tier 1 is a hard block with no consent override (CSAM, non consensual intimate imagery, concrete CBRN uplift). Tier 2 gates recreating a real person's face or voice behind an authorization assertion. Tier 3 is protected: legal adult content, dark fiction, horror, satire, security research.</li>
+            <li><b>Provenance.</b> Generated images carry a C2PA vocabulary record. It is unsigned and says so, because no signing certificate is held yet.</li>
+            <li><b>Enforcement is server side.</b> The ladder computes from recorded events so a reinstall cannot reset it. There is no IP address anywhere in the product: no column, no header reading, no ban queue.</li>
+            <li><b>Framework alignment.</b> A self attestation to NIST AI RMF, ISO/IEC 42001, and C2PA. No third party has certified it, and the repo says so plainly.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">os-code/src/core/ethics/index.ts</span>
+            <span class="path">app/src/drivers/guardedDriver.ts</span>
+            <span class="path">docs/ethics-layer.md</span>
+            <span class="path">os-code/test/ethicsNoBypass.test.ts</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Standards -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>Premium by default: the build standards</h2>
+        <span class="chip built"><span class="dot"></span>Built</span>
+      </div>
+      <p class="lede">OpenShore is a machine that builds usable software, so the quality bar is enforced rather than hoped for. Two standards are injected into the models, and a third is pinned by tests on this repo's own screens.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>The UX standard.</b> The twenty laws of UX plus a house motion and honesty bar, injected into the coding agent's system prompt as build instructions. On by default, off via a project's config or "skip the UX standard" in the chat.</li>
+            <li><b>The Humanizer.</b> Anti AI writing tells, distilled from a dated Wikipedia snapshot treated as data, injected into the writing agent so output reads like a careful human wrote it. Surfaced as a "Humanize Writing" setting, on by default.</li>
+            <li><b>Motion and polish.</b> One motion vocabulary of tokens, every tappable acknowledges the touch, everything that animates in animates out, transform and opacity never layout, native haptics, reduced motion always honored. Enforced by <code>polish-standards.test.ts</code>, which fails CI on drift.</li>
+            <li><b>Stack Health.</b> A usage and sustainability dashboard, kept in the teal and water palette (local means private), with estimates labelled as estimates and a daily refresh cadence.</li>
+            <li><b>No em dash, anywhere.</b> A repo wide guard forbids em dashes in all tracked source, comments included. This document is written under the same rule.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">os-code/src/core/agent/uxStandard.ts</span>
+            <span class="path">os-code/src/core/agent/humanizerStandard.ts</span>
+            <span class="path">app/src/theme.css</span>
+            <span class="path">os-code/docs/STACK-HEALTH.md</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Voice + media -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-local"></span></span>
+        <h2>Voice mode and media attachments</h2>
+        <span class="chip device"><span class="dot"></span>Needs a device</span>
+      </div>
+      <p class="lede">A spoken conversation over the chat that is native so it works offline, and attachments that let a model reason over a video by its frames.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec">
+            <li><b>Voice, native and offline.</b> Listening reuses on device speech recognition with a silence based finalize; speaking is on device synthesis (Web Speech on desktop). You pick from the device's installed system voices, which keeps it clear of the Tier 2 voice likeness gate.</li>
+            <li><b>Natural breaks.</b> Clarifying questions and plan approval are answered by voice; a tool or spend approval closes voice, shows the card, then voice reopens once it clears. Everything spoken lands in the transcript as text.</li>
+            <li><b>Video attachments.</b> A model never receives a video. A clip is sampled into up to 12 downscaled frames tagged with order and timestamp, and those ride to a vision model as image blocks, so it can say plainly it reviewed the clip frame by frame.</li>
+            <li><b>Vision routing.</b> Image reading is a placeable Stack category with a local slot and a cloud slot, each with its own effort.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">app/src/lib/voice/</span>
+            <span class="path">os-code/docs/voice-mode.md</span>
+            <span class="path">app/src/lib/videoAttach.ts</span>
+            <span class="path">os-code/docs/video-attachments.md</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Billing -->
+    <div class="feat">
+      <div class="head">
+        <span class="domain"><span class="dot d-cloud"></span></span>
+        <h2>Tiers and billing</h2>
+        <span class="chip built"><span class="dot"></span>Built, gates off for beta</span>
+      </div>
+      <p class="lede">Personal is an Apple only subscription. Commercial team plans run on Stripe. For the beta every pay gate is off behind one reversible switch, so the whole product is free to exercise while it is being built.</p>
+      <details class="deep">
+        <summary><svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Open the engineering detail</summary>
+        <div class="body">
+          <div class="subhead">Spec</div>
+          <ul class="spec cloud">
+            <li><b>Personal is Apple only.</b> A 20 dollar a year auto renewable subscription bought in app on iPhone or iPad. There is no Stripe purchase for Personal; web and desktop point to buy on iPhone, then refresh the shared entitlement row.</li>
+            <li><b>Commercial on Stripe.</b> Team plans use Stripe, since Apple forbids seat based SaaS in app. Seat ceilings are enforced in Postgres by security definer triggers.</li>
+            <li><b>Beta switch.</b> One reversible flag, <code>PAY_GATES_ENABLED=false</code>, short circuits every gate to unlocked from one place. The Apple purchase and entitlement plumbing stays built underneath.</li>
+            <li><b>The edge functions.</b> Stripe checkout, webhook, and portal; Apple notifications and purchase linking; push register, grant, and send; and the repo OAuth exchange. All in <code>supabase/functions/</code>.</li>
+          </ul>
+          <div class="subhead">Key files</div>
+          <div class="files">
+            <span class="path">app/src/lib/plans.ts</span>
+            <span class="path">app/src/lib/iap.ts</span>
+            <span class="path">supabase/functions/</span>
+            <span class="path">supabase/migrations/</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <hr class="rule">
+  </section>
+
+  <!-- ============ ROUGH EDGES ============ -->
+  <section id="rough">
+    <div class="eyebrow cloud">Honest about the state</div>
+    <h2>What is still rough</h2>
+    <p class="lede">The founder tracks every open item in <code>os-code/PROGRESS.md</code> under "What remains." Here it is grouped the way it matters for you: what needs a real device to prove, what needs the founder to finish a configuration step, and what was deferred on purpose. None of it is blocking the beta.</p>
+
+    <div class="rough">
+      <div class="rgroup">
+        <div class="gh"><span class="chip device"><span class="dot"></span>Needs a device to verify</span></div>
+        <p class="gsub">Built and unit tested, but the native path only runs on real hardware.</p>
+        <ul>
+          <li><b>Voice mode</b> on an iPhone (the decision logic is tested, the speech path is device only).</li>
+          <li><b>Video attachments</b> on device and on a desktop with FFmpeg.</li>
+          <li><b>The phone storefront</b> packs and shelves on a real phone.</li>
+          <li><b>On device memory path</b>, a 4B loading and sustaining a reply without a jetsam kill.</li>
+          <li><b>Crew routines</b> firing on the founder's machine, and the approval push arriving with the app closed.</li>
+        </ul>
+      </div>
+
+      <div class="rgroup">
+        <div class="gh"><span class="chip roadmap"><span class="dot"></span>Needs founder config</span></div>
+        <p class="gsub">Code is ready; a credential or an account setting is the gate.</p>
+        <ul>
+          <li><b>Apple secrets</b> for the subscription and server notifications.</li>
+          <li><b>Google OAuth client ids</b> before Drive can connect.</li>
+          <li><b>iOS memory entitlements</b> on the App ID before the next distribution build.</li>
+          <li><b>The license choice.</b> A "no license granted" placeholder stands until the founder signs one (the CFO recommends BSL 1.1).</li>
+        </ul>
+      </div>
+
+      <div class="rgroup">
+        <div class="gh"><span class="chip roadmap"><span class="dot"></span>Deliberately deferred</span></div>
+        <p class="gsub">Chosen not to build yet, with a reason on record.</p>
+        <ul>
+          <li><b>The org Vault tier</b>, a real multi writer backend.</li>
+          <li><b>BYOM on device streaming</b> (buffer then dump today).</li>
+          <li><b>Per seat Stripe billing</b> (flat per band today).</li>
+          <li><b>The CLI and TUI</b> (<code>osc</code>) is parked; the native apps are the product.</li>
+          <li><b>A ComfyUI image path</b> and a tree-sitter code map, behind existing seams.</li>
+          <li><b>Two unconfirmed edges:</b> a Linux <code>safeStorage</code> repro and a Codemagic access gate case.</li>
+        </ul>
+      </div>
+    </div>
+
+    <hr class="rule">
+  </section>
+
+  <!-- ============ START POKING ============ -->
+  <section id="start">
+    <div class="eyebrow">For your first hour</div>
+    <h2>Where to start poking</h2>
+    <p class="lede">Everything needs Node 22 or newer and pnpm. The desktop runs the whole engine in process, so you can be chatting against a local model in a few minutes.</p>
+
+    <div class="cmd" aria-label="Getting the desktop app running">
+<pre><span class="c"># clone your working branch, then from the repo root</span>
+<span class="p">corepack</span> enable
+<span class="p">pnpm</span> install
+<span class="p">pnpm</span> desktop            <span class="c"># launches the Linux desktop app, engine in process</span>
+
+<span class="c"># checks across the workspace</span>
+<span class="p">pnpm</span> -r build && <span class="p">pnpm</span> -r typecheck && <span class="p">pnpm</span> -r lint && <span class="p">pnpm</span> -r test</pre>
+    </div>
+    <p class="callout-quiet">Point it at Ollama (or any OpenAI compatible local server), grab a model in the marketplace, pick your quarterback, and chat. The iPhone builds ship through TestFlight; see <code>docs/TESTFLIGHT.md</code>.</p>
+
+    <div class="subhead" style="margin-top:26px">Read these first</div>
+    <p class="measure">The two files the founder keeps as the source of truth. Read them before anything else, and they will point you at the rest.</p>
+    <div class="files" style="margin-top:12px">
+      <span class="path">os-code/PROGRESS.md</span>
+      <span class="path">os-code/DECISIONS.md</span>
+      <span class="path">README.md</span>
+      <span class="path">docs/interaction-model.md</span>
+    </div>
+
+    <div class="subhead" style="margin-top:26px">The repository map</div>
+    <div class="maprows">
+      <div class="maprow"><span class="path">os-code/</span><span>The engine: agent loop, tools, edit engine, router, daemon, security, ethics, marketplace builder. Also the parked <code>osc</code> CLI and TUI.</span></div>
+      <div class="maprow"><span class="path">app/</span><span>The one React codebase both shells ship. Screens, drivers, and the app side libraries (stack, play, gitos, vault, routines).</span></div>
+      <div class="maprow"><span class="path">app/electron/</span><span>The Linux desktop shell. The engine runs in process here.</span></div>
+      <div class="maprow"><span class="path">app/ios/</span><span>The Capacitor iOS project (Swift Package Manager, iOS 16 and up).</span></div>
+      <div class="maprow"><span class="path">app/plugins/</span><span>Native Capacitor plugins: llama.cpp inference, speech, TTS, media, iCloud, in app purchase, auth session.</span></div>
+      <div class="maprow"><span class="path">supabase/</span><span>Edge functions (Stripe, Apple, push, repo OAuth) and the SQL migrations.</span></div>
+      <div class="maprow"><span class="path">docs/</span><span>Product docs: the workflow, the interaction model, the ethics layer, TestFlight, and this handoff.</span></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="fbrand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore OS Code</div>
+    <p>This document is a snapshot for the incoming engineering partner, written from the repository's own source of truth. Where it and the code disagree, the code and <code>os-code/PROGRESS.md</code> win. Nothing here is marketing copy; it is meant to get you oriented and poking quickly.</p>
+    <p style="margin-top:6px">Local is teal, cloud is amber, and money always asks first. Welcome aboard.</p>
+  </footer>
+
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+
+    // theme toggle, remembered per viewer
+    var THEME_KEY = 'oscode-handoff-theme';
+    try {
+      var saved = localStorage.getItem(THEME_KEY);
+      if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    } catch (e) {}
+
+    function currentIsDark() {
+      var t = root.getAttribute('data-theme');
+      if (t === 'dark') return true;
+      if (t === 'light') return false;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    var themeBtn = document.getElementById('theme');
+    if (themeBtn) {
+      themeBtn.addEventListener('click', function () {
+        var next = currentIsDark() ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+      });
+    }
+
+    // expand all / collapse all
+    var expandBtn = document.getElementById('expandAll');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', function () {
+        var open = expandBtn.getAttribute('aria-pressed') === 'true';
+        var next = !open;
+        document.querySelectorAll('details.deep').forEach(function (d) { d.open = next; });
+        expandBtn.setAttribute('aria-pressed', String(next));
+        expandBtn.textContent = next ? 'Collapse all' : 'Expand all';
+      });
+    }
+
+    // active section in the top nav
+    var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+    if ('IntersectionObserver' in window && links.length) {
+      var obs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) {
+            links.forEach(function (l) { l.classList.remove('on'); });
+            var a = byId[en.target.id];
+            if (a) a.classList.add('on');
+          }
+        });
+      }, { rootMargin: '-45% 0px -50% 0px' });
+      ['what', 'compare', 'play', 'specs', 'rough', 'start'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) obs.observe(el);
+      });
+    }
+  })();
+</script>
