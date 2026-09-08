@@ -261,6 +261,14 @@
   .pnote { font-size: 12.5px; color: var(--ink-soft); margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--border); }
   @media (max-width: 620px) { .pgroup .plabel { width: 100%; } }
 
+  /* why it exists */
+  .why { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; max-width: var(--measure); }
+  .whyitem { background: var(--raised); padding: 14px 16px; display: flex; gap: 11px; align-items: flex-start; }
+  .whyitem .wd { width: 9px; height: 9px; border-radius: 50%; background: var(--local); margin-top: 6px; flex: none; }
+  .whyitem b { color: var(--ink); font-weight: 600; font-size: 14.5px; display: block; }
+  .whyitem p { margin: 3px 0 0; font-size: 13.5px; color: var(--ink-soft); max-width: none; }
+  @media (max-width: 620px) { .why { grid-template-columns: 1fr; } }
+
   /* state chips */
   .chip {
     display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
@@ -475,7 +483,15 @@
     <p class="lede big">OpenShore is a native app, one codebase running across the desktop (Linux, macOS, and Windows) and mobile (iPhone, iPad, and Android), that chats and builds software using a stack of models you choose, on hardware you own and keys you hold. It is shaped like a modern coding agent, the tool you already know, but the default engine is your local models rather than one vendor's cloud.</p>
     <p class="callout-quiet">A note on names as you read the code: the product is <b>OpenShore</b>. The engine and this repository are called <b>OS Code</b> (the <code>osc</code> CLI, the <code>os-code/</code> package), so you will see that name in the tree. Product is OpenShore, engine is OS Code.</p>
 
-    <p class="measure"><b>The mission.</b> Give local and self hosted models the complete, polished experience developers expect from the best cloud coding agents, and make the cloud a deliberate choice rather than the default. Your machine, your models, your keys. Nothing is rehosted or proxied, and no product analytics leave the device.</p>
+    <p class="measure"><b>The mission.</b> Lower the barrier to open source models, and give the people and companies who would otherwise reach for a mainstream cloud a private, local alternative that gives up nothing. Open models get the complete, polished experience developers expect from the best cloud agents, so choosing local is no longer the harder path. Individuals and companies alike, your machine, your models, your keys.</p>
+
+    <div class="subhead">Why it exists</div>
+    <div class="why">
+      <div class="whyitem"><span class="wd"></span><div><b>Open models, made simple</b><p>The setup and the rough edges of running your own models, handled for you.</p></div></div>
+      <div class="whyitem"><span class="wd"></span><div><b>Private by default</b><p>Your prompts, your code, and your keys stay on your hardware. No telemetry, ever.</p></div></div>
+      <div class="whyitem"><span class="wd"></span><div><b>Lower cost, lighter footprint</b><p>Your own models instead of a metered cloud bill, and a smaller energy draw for the same work.</p></div></div>
+      <div class="whyitem"><span class="wd"></span><div><b>Built for teams</b><p>Companies configure their people's experience and grow and build together.</p></div></div>
+    </div>
 
     <p class="measure"><b>Who it is for.</b> Developers and technical builders who want a capable coding agent without handing their code and prompts to a single provider by default. People who already run Ollama or llama.cpp, who hold their own API keys, and who care that spend and network access are visible and asked for.</p>
 
