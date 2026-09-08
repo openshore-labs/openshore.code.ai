@@ -175,7 +175,16 @@
   .mark.lg { width: 46px; height: 46px; border-radius: 11px; }
 
   /* ---- Masthead -------------------------------------------------------- */
-  .hero { padding-top: 48px; }
+  .hero { position: relative; padding-top: 52px; }
+  .hero > *:not(.herowave) { position: relative; z-index: 1; }
+  .herowave { position: absolute; top: 28px; right: -4px; width: min(330px, 40%); color: var(--wave); opacity: 0.15; pointer-events: none; }
+  .herowave svg { display: block; width: 100%; height: auto; }
+  .hero-guide { font-size: 15px; color: var(--ink-soft); margin: 16px 0 0; max-width: 60ch; }
+  @media (prefers-reduced-motion: no-preference) {
+    .herowave .drift { animation: drift 9s ease-in-out infinite alternate; }
+    @keyframes drift { from { transform: translateX(0); } to { transform: translateX(7px); } }
+  }
+  @media (max-width: 720px) { .herowave { display: none; } }
   .eyebrow {
     font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
     color: var(--local-deep);
@@ -419,12 +428,12 @@
 </svg>
 
 <div class="bar">
-  <span class="brand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore <small>Handoff</small></span>
+  <span class="brand"><svg class="mark" aria-hidden="true"><use href="#wave"/></svg> OpenShore <small>Partner tour</small></span>
   <nav id="nav">
     <a href="#what">What it is</a>
-    <a href="#compare">Different how</a>
+    <a href="#compare">What's different</a>
     <a href="#play">The workflow</a>
-    <a href="#specs">The specs</a>
+    <a href="#specs">The pieces</a>
     <a href="#rough">Rough edges</a>
     <a href="#start">Start poking</a>
   </nav>
@@ -438,18 +447,24 @@
 
   <!-- ============ MASTHEAD ============ -->
   <header class="hero" id="top">
-    <div class="eyebrow">Partner handoff, private beta</div>
-    <h1>OpenShore, from the inside</h1>
-    <p class="lede-hero">A walkthrough of what OpenShore is, what it already does, and where the edges are still rough, so you can start poking today.</p>
-    <div class="metastrip">
-      <span class="tag"><svg class="mark" style="width:16px;height:16px;border-radius:4px" aria-hidden="true"><use href="#wave"/></svg> <b>OpenShore</b></span>
-      <span class="tag"><span class="dot d-local"></span> Local first, cloud optional</span>
-      <span class="tag">Desktop <b>+</b> mobile, one codebase</span>
-      <span class="tag"><span class="dot d-ok"></span> Shipping on <code>main</code></span>
-      <span class="tag">For the incoming engineering partner</span>
+    <div class="herowave">
+      <svg viewBox="0 0 320 172" fill="none" aria-hidden="true">
+        <path d="M12 34 H308" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.45"/>
+        <g class="drift">
+          <path d="M12 74 q28 -16 56 0 t56 0 t56 0 t56 0 t56 0" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M12 112 q28 -16 56 0 t56 0 t56 0 t56 0 t56 0" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.72"/>
+          <path d="M12 150 q28 -16 56 0 t56 0 t56 0 t56 0 t56 0" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+        </g>
+      </svg>
     </div>
-    <div class="readnote">
-      <b>How to read this.</b> The page at rest is the tour, about a three minute read top to bottom. Every feature has an <b>Open the engineering detail</b> panel with the spec and the exact files to open. Use <b>Expand all</b> in the top bar when you want the whole thing at once.
+    <div class="eyebrow">A partner tour, private beta</div>
+    <h1>Welcome to OpenShore</h1>
+    <p class="lede-hero">A coding agent that runs on your own models, your machine, your keys, so building never means handing your code, or your bill, to someone else's cloud.</p>
+    <p class="hero-guide">This page is the whole tour: what it does today, how a prompt runs, and an honest map of what is still rough. Read straight down, or open any part for the detail. About three minutes at a glance.</p>
+    <div class="metastrip">
+      <span class="tag"><span class="dot d-local"></span> Local first, cloud only when you say</span>
+      <span class="tag">Desktop and mobile, one codebase</span>
+      <span class="tag"><span class="dot d-ok"></span> Shipping on <code>main</code></span>
     </div>
   </header>
 
@@ -501,7 +516,7 @@
   <!-- ============ HOW IT DIFFERS ============ -->
   <section id="compare">
     <div class="eyebrow plain">Orientation</div>
-    <h2>How it is different from what you have used</h2>
+    <h2>How it is different</h2>
     <p class="lede">You already know the shape of a coding agent. The differences that matter are where the model runs, whose model it is, and who decides when money is spent. A few comparisons make it concrete.</p>
 
     <div class="tablewrap">
@@ -657,7 +672,7 @@
   <!-- ============ THE SPECS ============ -->
   <section id="specs">
     <div class="eyebrow">The specs, top to bottom</div>
-    <h2>Everything that is built, feature by feature</h2>
+    <h2>The pieces, one by one</h2>
     <p class="lede">Each block opens with what it is in plain language and its state, then an engineering panel with the spec and the files to open. The state chips: <span class="chip built"><span class="dot"></span>Built</span> is on <code>main</code> and tested in this environment. <span class="chip device"><span class="dot"></span>Needs a device</span> is built but only fully provable on a real phone or a paired computer. <span class="chip roadmap"><span class="dot"></span>Roadmap</span> is deliberately deferred.</p>
 
     <!-- Stack -->
