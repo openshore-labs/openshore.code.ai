@@ -269,6 +269,13 @@
   .whyitem p { margin: 3px 0 0; font-size: 13.5px; color: var(--ink-soft); max-width: none; }
   @media (max-width: 620px) { .why { grid-template-columns: 1fr; } }
 
+  /* ethics stance */
+  .stance { margin-top: 16px; border: 1px solid var(--border); border-left: 3px solid var(--local); border-radius: 0 var(--radius) var(--radius) 0; background: var(--raised); padding: 18px 22px; max-width: 70ch; box-shadow: var(--shadow-sm); }
+  .stance p { margin: 0; font-size: 15.5px; color: var(--ink-soft); max-width: none; }
+  .stance p b { color: var(--ink); font-weight: 600; }
+  .stance p + p { margin-top: 13px; }
+  .stance a { color: var(--local-deep); font-weight: 500; }
+
   /* state chips */
   .chip {
     display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
@@ -524,6 +531,18 @@
       <span class="tag"><span class="dot d-cloud"></span> Cloud: <b>Claude, OpenAI, Gemini, Kimi</b> on your key</span>
       <span class="tag">Desktop runs the engine, the phone pairs to it</span>
       <span class="tag">The phone can also run pocket models fully offline</span>
+    </div>
+
+    <hr class="rule">
+  </section>
+
+  <!-- ============ ETHICS STANCE ============ -->
+  <section id="stance">
+    <div class="eyebrow">Where we stand</div>
+    <h2>AI for humans, by humans</h2>
+    <div class="stance">
+      <p>OpenShore ships with an ethical floor that is on for everyone and cannot be turned down. The abusive core, sexual content involving minors and non consensual intimate imagery, is blocked outright, with no override. That floor is the foundation, and the door only opens one way: <b>individuals and companies can raise the bar and set stricter boundaries for their own people, never loosen it.</b></p>
+      <p>One line we will not cross: OpenShore is not a tool for making deepfakes or synthetic humans. Photo or video built to pass a fake or real person off as real is off the table. It is not what the world or a business needs to build, and the harm to society is not a trade worth making. <a href="#ethics">How the guardrail enforces the floor</a> is in the specs below.</p>
     </div>
 
     <hr class="rule">
@@ -885,7 +904,7 @@
     </div>
 
     <!-- Ethics -->
-    <div class="feat">
+    <div class="feat" id="ethics">
       <div class="head">
         <span class="domain"><span class="dot d-cloud"></span></span>
         <h2>The always-on ethics layer</h2>
