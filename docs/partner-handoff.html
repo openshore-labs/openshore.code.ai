@@ -242,6 +242,16 @@
   .sw-local { background: var(--local); }
   .sw-cloud { background: var(--cloud); }
 
+  /* platforms strip */
+  .platforms { margin-top: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--raised); padding: 15px 18px; }
+  .pgroup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
+  .pgroup + .pgroup { border-top: 1px solid var(--border); }
+  .pgroup .plabel { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; width: 130px; flex: none; }
+  .pgroup .plabel .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .pill { font-size: 12.5px; font-weight: 500; color: var(--ink); background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 999px; padding: 4px 12px; }
+  .pnote { font-size: 12.5px; color: var(--ink-soft); margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--border); }
+  @media (max-width: 620px) { .pgroup .plabel { width: 100%; } }
+
   /* state chips */
   .chip {
     display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
@@ -434,7 +444,7 @@
     <div class="metastrip">
       <span class="tag"><svg class="mark" style="width:16px;height:16px;border-radius:4px" aria-hidden="true"><use href="#wave"/></svg> <b>OpenShore OS Code</b></span>
       <span class="tag"><span class="dot d-local"></span> Local first, cloud optional</span>
-      <span class="tag">Linux desktop <b>+</b> iPhone</span>
+      <span class="tag">Desktop <b>+</b> mobile, one codebase</span>
       <span class="tag"><span class="dot d-ok"></span> Shipping on <code>main</code></span>
       <span class="tag">For the incoming engineering partner</span>
     </div>
@@ -447,7 +457,7 @@
   <section id="what">
     <div class="eyebrow">The product</div>
     <h2>What OS Code is</h2>
-    <p class="lede big">OS Code is a native app for the Linux desktop and the iPhone that chats and builds software using a stack of models you choose, running on hardware you own and keys you hold. It is shaped like a modern coding agent, the tool you already know, but the default engine is your local models rather than one vendor's cloud.</p>
+    <p class="lede big">OS Code is a native app, one codebase running across the desktop (Linux, macOS, and Windows) and mobile (iPhone, iPad, and Android), that chats and builds software using a stack of models you choose, on hardware you own and keys you hold. It is shaped like a modern coding agent, the tool you already know, but the default engine is your local models rather than one vendor's cloud.</p>
 
     <p class="measure"><b>The mission.</b> Give local and self hosted models the complete, polished experience developers expect from the best cloud coding agents, and make the cloud a deliberate choice rather than the default. Your machine, your models, your keys. Nothing is rehosted or proxied, and no product analytics leave the device.</p>
 
@@ -463,6 +473,18 @@
         <h4>The mental model: a quarterback and specialists</h4>
         <div class="keyrow" style="align-items:flex-start"><span style="width:14px"></span><span>One model in your stack is the <b>reasoning anchor</b>, the quarterback. It frames the request, plans the work, and hands each part to the specialist best suited to it. Specialists plug into named categories: <b>Coding, Writing, Analysis, Image reading,</b> and <b>Fast</b>. Any category with no specialist placed, the quarterback runs itself.</span></div>
       </div>
+    </div>
+
+    <div class="platforms">
+      <div class="pgroup">
+        <span class="plabel"><span class="dot d-local"></span>Desktop</span>
+        <span class="pill">Linux</span><span class="pill">macOS</span><span class="pill">Windows</span>
+      </div>
+      <div class="pgroup">
+        <span class="plabel"><span class="dot d-local"></span>Mobile and tablet</span>
+        <span class="pill">iPhone</span><span class="pill">iPad</span><span class="pill">Android</span>
+      </div>
+      <p class="pnote">One React codebase. Electron packages the desktop trio, Capacitor packages mobile. The universal iOS app (iPhone and iPad) ships through TestFlight today, and Android builds from the same Capacitor base.</p>
     </div>
 
     <div class="metastrip" style="margin-top:18px">
@@ -713,7 +735,7 @@
         <div class="body">
           <div class="subhead">Spec</div>
           <ul class="spec">
-            <li><b>Pocket inference.</b> On iOS, GGUF models run through llama.cpp on Metal. On the Linux desktop the on-device path runs through Ollama.</li>
+            <li><b>Pocket inference.</b> On iOS, GGUF models run through llama.cpp on Metal. On the desktop the on-device path runs through Ollama.</li>
             <li><b>The two built in guides.</b> Harbor Light (SmolLM2-135M, about 105 MB, bundled in the app, offline, a grounded guide not a reasoner) and Harbor (Qwen3-1.7B, about 1.1 GB, a real download, the first capable coding agent with web search).</li>
             <li><b>Memory aware.</b> The store is honest about the phone's memory limit, not storage, and a memory warning unloads the model so the next send reloads cleanly.</li>
             <li><b>The daemon.</b> Binds Tailscale or loopback, never 0.0.0.0, behind a bearer token. Shell is default deny with approvals.</li>
@@ -1009,12 +1031,12 @@
 <pre><span class="c"># clone your working branch, then from the repo root</span>
 <span class="p">corepack</span> enable
 <span class="p">pnpm</span> install
-<span class="p">pnpm</span> desktop            <span class="c"># launches the Linux desktop app, engine in process</span>
+<span class="p">pnpm</span> desktop            <span class="c"># launches the desktop app on this OS (Linux, macOS, or Windows)</span>
 
 <span class="c"># checks across the workspace</span>
 <span class="p">pnpm</span> -r build && <span class="p">pnpm</span> -r typecheck && <span class="p">pnpm</span> -r lint && <span class="p">pnpm</span> -r test</pre>
     </div>
-    <p class="callout-quiet">Point it at Ollama (or any OpenAI compatible local server), grab a model in the marketplace, pick your quarterback, and chat. The iPhone builds ship through TestFlight; see <code>docs/TESTFLIGHT.md</code>.</p>
+    <p class="callout-quiet">Point it at Ollama (or any OpenAI compatible local server), grab a model in the marketplace, pick your quarterback, and chat. Desktop installers build with <code>package:linux</code>, <code>package:mac</code>, or <code>package:win</code>. The iPhone and iPad builds ship through TestFlight; see <code>docs/TESTFLIGHT.md</code>.</p>
 
     <div class="subhead" style="margin-top:26px">Read these first</div>
     <p class="measure">The two files the founder keeps as the source of truth. Read them before anything else, and they will point you at the rest.</p>
@@ -1029,8 +1051,8 @@
     <div class="maprows">
       <div class="maprow"><span class="path">os-code/</span><span>The engine: agent loop, tools, edit engine, router, daemon, security, ethics, marketplace builder. Also the parked <code>osc</code> CLI and TUI.</span></div>
       <div class="maprow"><span class="path">app/</span><span>The one React codebase both shells ship. Screens, drivers, and the app side libraries (stack, play, gitos, vault, routines).</span></div>
-      <div class="maprow"><span class="path">app/electron/</span><span>The Linux desktop shell. The engine runs in process here.</span></div>
-      <div class="maprow"><span class="path">app/ios/</span><span>The Capacitor iOS project (Swift Package Manager, iOS 16 and up).</span></div>
+      <div class="maprow"><span class="path">app/electron/</span><span>The desktop shell for Linux, macOS, and Windows (Electron, all three targets in the build config). The engine runs in process here.</span></div>
+      <div class="maprow"><span class="path">app/ios/</span><span>The Capacitor iOS project, universal for iPhone and iPad (Swift Package Manager, iOS 16 and up). The same web app targets Android through Capacitor.</span></div>
       <div class="maprow"><span class="path">app/plugins/</span><span>Native Capacitor plugins: llama.cpp inference, speech, TTS, media, iCloud, in app purchase, auth session.</span></div>
       <div class="maprow"><span class="path">supabase/</span><span>Edge functions (Stripe, Apple, push, repo OAuth) and the SQL migrations.</span></div>
       <div class="maprow"><span class="path">docs/</span><span>Product docs: the workflow, the interaction model, the ethics layer, TestFlight, and this handoff.</span></div>
