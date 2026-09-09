@@ -137,7 +137,7 @@ export const SLASH_COMMANDS: Array<{
 /** The brain's short name for the pill: the row is narrow and the full label
  *  lives in the model sheet. */
 function shortLabel(source?: ConversationSource): string {
-  if (!source) return 'My Stack';
+  if (!source) return 'Stack';
   switch (source.kind) {
     case 'cloud':
       return 'Claude';
@@ -148,7 +148,7 @@ function shortLabel(source?: ConversationSource): string {
     case 'device':
       return sourceLabel(source).split(' · ')[0] ?? 'On device';
     case 'stack':
-      return 'My Stack';
+      return 'Stack';
     case 'mock':
       return 'Demo';
   }
@@ -901,7 +901,7 @@ export function Composer({
           <button
             className="composer-pill press-fb"
             onClick={onOpenModelSheet}
-            aria-label={`Model: ${source ? sourceLabel(source) : 'My Stack'}`}
+            aria-label={`Model: ${source ? sourceLabel(source) : 'Stack'}`}
           >
             <span className="composer-pill-text">{modelLabel}</span>
             <span className="composer-pill-chevron" aria-hidden="true" />
