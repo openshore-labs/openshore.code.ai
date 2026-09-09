@@ -11,6 +11,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { OrgJoinSheet } from './components/OrgJoinSheet.js';
+import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { ChatsScreen } from './screens/ChatsScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
@@ -267,6 +268,11 @@ export function App() {
       <Paywall />
       <AuthConfirmSheet />
       <OrgJoinSheet />
+      {/* Agentic Currents: the arrival that flows from the switch to the
+          edges, and the faint water-line that frames every screen while a
+          current is on. Both render nothing when none is on. */}
+      <CurrentArrival />
+      <CurrentWaterline />
       {toastPresence.mounted ? (
         <div
           className={`toast${toastPresence.closing ? ' closing' : ''}`}

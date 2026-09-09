@@ -9605,3 +9605,169 @@ button.settings-row:active {
   color: var(--local);
   font-weight: 700;
 }
+
+/* ---------------------------------------------------------------------------
+   The currents layer (Creative Studio, 2026-09-09): the arrival, the water-line,
+   the header pill, and the BETA badge. The same water, moving: everything
+   rides the flow tokens (no third blue), the door clock and the glide curve
+   like the drawer, transform and opacity only, and the global reduced-motion
+   reset collapses it to a crossfade.
+   --------------------------------------------------------------------------- */
+
+/* The arrival overlay: full-screen, never interactive, gone once it settles. */
+.current-arrival {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* The wave: a circle centered on the switch, scaled out on transform until it
+   covers the far corner. --wave-size is the viewport diagonal, so one scale
+   reaches every edge. */
+.current-wave {
+  position: absolute;
+  left: var(--wave-x, 50%);
+  top: var(--wave-y, 50%);
+  width: var(--wave-size, 200vmax);
+  height: var(--wave-size, 200vmax);
+  margin-left: calc(var(--wave-size, 200vmax) / -2);
+  margin-top: calc(var(--wave-size, 200vmax) / -2);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(90, 107, 114, 0) 0%,
+    rgba(90, 107, 114, 0) 46%,
+    rgba(75, 144, 163, 0.22) 49%,
+    rgba(75, 144, 163, 0.06) 52%,
+    rgba(90, 107, 114, 0) 56%
+  );
+  transform: scale(0);
+  opacity: 1;
+  animation: current-flow var(--dur-7) var(--ease-glide) forwards;
+  will-change: transform, opacity;
+}
+@keyframes current-flow {
+  from {
+    transform: scale(0);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+/* The edge lights as the wave reaches it, then hands over to the water-line. */
+.current-arrival-edge {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--wave);
+  border-radius: var(--radius-lg);
+  opacity: 0;
+  animation: current-edge var(--dur-7) var(--ease-glide) forwards;
+}
+@keyframes current-edge {
+  0% {
+    opacity: 0;
+  }
+  70% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+/* The ebb: the water drains back to the switch. */
+.current-arrival.ebb .current-wave {
+  animation: current-ebb var(--dur-7) var(--ease-glide) forwards;
+}
+@keyframes current-ebb {
+  from {
+    transform: scale(1);
+    opacity: 0;
+  }
+  to {
+    transform: scale(0);
+    opacity: 1;
+  }
+}
+.current-arrival.ebb .current-arrival-edge {
+  animation: current-edge-out var(--dur-5) var(--ease-standard) forwards;
+}
+@keyframes current-edge-out {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* The persistent water-line: a faint frame on every screen while a current is
+   on. Fixed, non-interactive, under the sheets and the toast. */
+.current-waterline {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  border: 1.5px solid var(--wave);
+  border-radius: var(--radius-lg);
+  opacity: 0.28;
+  animation: fade-in var(--dur-6) var(--ease-arrive) backwards;
+}
+.current-waterline.closing {
+  animation: fade-out var(--dur-6) var(--ease-standard) forwards;
+}
+
+/* The header pill naming the current that is on, beside the reach pill. Teal:
+   a current runs on a machine you own, local and private. */
+.pill.current-pill {
+  background: var(--local-soft);
+  color: var(--local);
+  animation: fade-in var(--dur-4) var(--ease-arrive) backwards;
+}
+
+/* The BETA badge after a settings group head, and the group's intro line. */
+.settings-group-badge {
+  margin-left: 8px;
+  vertical-align: middle;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+}
+.settings-group-intro {
+  margin: -2px 4px 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+/* A current row keeps a small text action before its switch. */
+.settings-row-value .linklike {
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .current-wave,
+  .current-arrival-edge,
+  .current-waterline,
+  .pill.current-pill {
+    animation: none;
+  }
+  .current-waterline.closing {
+    opacity: 0;
+  }
+}
+/* A current row's small actions (a status pill, Set up / Edit) before the
+   switch. The switch wrapper only anchors the arrival's origin. */
+.settings-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-row-switch {
+  display: inline-flex;
+}

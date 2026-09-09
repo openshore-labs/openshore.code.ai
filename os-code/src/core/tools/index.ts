@@ -9,6 +9,7 @@ import type { OscConfig } from '../../config/schema.js';
 import type { ImageProvider } from '../../providers/types.js';
 import type { ToolSpec } from '../../providers/types.js';
 import type { DelegatedUsage, DelegateOptions } from '../../router/router.js';
+import type { CurrentsHandles } from '../../currents/model.js';
 
 export interface Citation {
   title: string;
@@ -84,6 +85,16 @@ export interface ToolContext {
     token: string;
     target?: { appId: string; workflowId: string; branch: string; platform?: string };
   };
+  /**
+   * The Agentic Current the person turned on for this session, as a handle the
+   * matching tool uses (a Hermes box, an A2A agent, a paired coding CLI). One
+   * current at a time, so at most one field is set. Undefined leaves every
+   * current tool out of the registry (and degraded if somehow reached).
+   */
+  currents?: CurrentsHandles;
+  /** This session's id, so a tool that keeps per-session state on another
+   *  service (Hermes session continuity) can key it without a global. */
+  sessionId?: string;
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {

@@ -25,6 +25,14 @@ import { profileFor } from '../core/security/profiles.js';
 import { isAdminProvisionedWorkspace, isOutboxAllowedPath } from '../core/security/workspaces.js';
 import { getRoutineScheduler } from '../routines/scheduler.js';
 import { validateRoutineInput, type RoutineInput } from '../routines/model.js';
+import { parseCurrentsHandles } from '../currents/model.js';
+import {
+  cliCommandAvailable,
+  hermesHome,
+  listHermesNotes,
+  probeCurrentsHost,
+  readHermesNote,
+} from '../currents/host.js';
 import { tailscaleIp } from '../connect/tailscale.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
@@ -745,6 +753,39 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       return;
     }
 
+    // ---- Agentic Currents: what this hub can host, and a Hermes home's notes. ----
+    // The probe is open to any member (it names a folder's presence and two
+    // booleans, nothing more). The notes are the machine owner's own agent
+    // memory, so reading them is admin-only, like every other machine-wide
+    // surface on a shared hub. Read-only by construction: there is no write.
+    if (parts[0] === 'currents') {
+      if (req.method === 'GET' && !parts[1]) {
+        sendJson(res, 200, probeCurrentsHost());
+        return;
+      }
+      if (req.method === 'GET' && parts[1] === 'hermes' && parts[2] === 'notes') {
+        if (!requireAdmin()) return;
+        const home = hermesHome();
+        if (!parts[3]) {
+          sendJson(res, 200, { home, notes: listHermesNotes(home) });
+          return;
+        }
+        const rel = parts
+          .slice(3)
+          .map((p) => decodeURIComponent(p))
+          .join('/');
+        const note = readHermesNote(home, rel);
+        if (!note) {
+          sendJson(res, 404, { error: 'No such Hermes note.' });
+          return;
+        }
+        sendJson(res, 200, note);
+        return;
+      }
+      sendJson(res, 404, { error: `No route ${req.method} ${url.pathname}.` });
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/sessions') {
       // Owner-scoped (DAE-1): titles are the user's own prompt text, so a
       // member sees exactly its own sessions. Admins (and the legacy shared
@@ -775,6 +816,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const { mode: permissionMode, note: modeNote } = effectiveRemoteMode(requestedMode);
       // The app's Humanize Writing setting for this session (only ever an off).
       const humanize = typeof body.humanize === 'boolean' ? body.humanize : undefined;
+      // The Agentic Current the person turned on, as the handle its tool needs.
+      // A malformed handle is dropped, never a refused session. A CLI handle is
+      // honored only when that CLI is really on this hub's PATH, so the tool
+      // never registers for a command that cannot run.
+      let currents = parseCurrentsHandles(body.currents);
+      if (currents?.cli && !cliCommandAvailable(currents.cli.command)) {
+        const { cli: _dropped, ...rest } = currents;
+        currents = Object.keys(rest).length ? rest : undefined;
+      }
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
         sendJson(res, 403, {
           error:
@@ -791,6 +841,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           projectName,
           permissionMode,
           humanize,
+          currents,
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);

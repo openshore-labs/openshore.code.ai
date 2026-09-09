@@ -8,14 +8,65 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
+## Current state (2026-09-09 Agentic Currents and Wayfinding; 2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
-Newest first: voice mode (2026-09-06, below), then the plan-first workflow and
-video attachments (2026-09-06), then four pieces from 2026-09-05 built in
+Newest first: Agentic Currents and Wayfinding (2026-09-09, below), then voice
+mode (2026-09-06), then the plan-first workflow and video attachments
+(2026-09-06), then four pieces from 2026-09-05 built in
 parallel sessions and merged here: the phone storefront, Crew routines, the
 always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
+
+### Agentic Currents and Wayfinding (BETA, founder 2026-09-09)
+
+The founder's frame: the app evolves by connecting to new tech and layering it
+in, never by reshaping the familiar rooms. Two Settings groups after Voice hold
+it. **Wayfinding** (memory, skills, browser; default on) is how the agent finds
+its way. **Agentic Currents** (BETA; Hermes Agent, CLI Pairing, Vellum,
+OpenAGI, A2A; default off; ONE on at a time everywhere) are opt-in modalities
+for agent work: flip one on and the same rooms gain rows for it (a Bench
+model, a Crew member with its jobs, a Vault folder, a tool for the coding
+agent, a pill beside the reach pill); flip it off and every trace is gone. The
+name is the CMO and Creative Studio's ("Layers" retired); "frontier" stays
+reserved for cloud models. Doc: `docs/agentic-currents.md`; rulings in
+`DECISIONS.md`.
+
+- **The rules are code.** One id, not a map, so exclusivity is structural. A
+  two-part gate (toggle AND a live probe) yields off, arriving, ready, or on.
+  Every current fills the same contribution slots or names why not (the
+  mirrored pattern), pinned by a test. Rooms render a current only through
+  `activeContribution`; a source grep refuses a proper noun anywhere else, and
+  turning a current off purges its bench model from every stack.
+- **How it is felt.** A current flows from the switch to the edges on the door
+  clock and the glide curve (transform and opacity only, flow tokens, no third
+  blue), settles as a faint persistent water-line on every screen, ebbs back on
+  off, one decisive haptic at the border, reduced motion honored. The BETA
+  badge is a neutral pill after the group head with one honest line under it.
+- **Engine.** `src/currents/model.ts` (shapes, through `os-code/protocol`) and
+  `src/currents/host.ts` (host probe; a jailed, markdown-only Hermes home
+  reader). Tools `askHermes` (OpenAI-compatible, one Hermes session per
+  OpenShore session via `X-Hermes-Session-Id`), `askAgent` (A2A `message/send`),
+  `cliAgent` (a shell run of Claude Code or Codex headless, always asks on the
+  headless and remote profiles). Registered only when a handle was delivered,
+  never under egress lockdown; a CLI handle only when the CLI is on PATH. Daemon
+  `GET /currents` (any member) and `GET /currents/hermes/notes[/<path>]` (admin);
+  `POST /sessions` accepts `currents`. Electron IPC parity.
+- **App.** `app/src/lib/currents.ts` (pure core), `currentsProbe.ts` (probes,
+  Hermes jobs, Hermes notes), `CurrentConnectSheet`, `CurrentArrival` and
+  `CurrentWaterline` (mounted in `App.tsx`), the header pill in
+  `ProfileStatus`, the bench in `StackManager` (a `current-<id>` BYOM ref, the
+  session header in `stackDriver.ts`), the roster and a "Runs on" jobs section
+  in `CrewCommandScreen`, the folder and a read-only note sheet in
+  `VaultScreen`. Three written guides. Vellum and OpenAGI are Arriving rows
+  that accept an address and probe an A2A card then an OpenAI-compatible `/v1`.
+- Gates at close: os-code typecheck, lint, 628 tests (62 files), build,
+  Prettier; app typecheck (src and electron), lint, 872 tests (101 files),
+  Vite build, Prettier; the motion and polish guards, the trace guard, the
+  em-dash guard, the PROGRESS shape guard.
+- **Not verifiable here** (What remains): the arrival on a phone, a real
+  Hermes box answering over Tailscale, a paired CLI running headless, an A2A
+  agent card, and the App Review read of the BETA label.
 
 ### Voice mode (a spoken conversation over the chat, native and offline)
 
@@ -255,6 +306,22 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Agentic Currents on a device and a real box (built 2026-09-09, unverified
+      off the sandbox).** TestFlight: flip Hermes Agent on in Settings and
+      confirm the current flows from the switch to the edges, the water-line
+      stays faint on every screen, the pill sits beside the reach pill, and
+      turning it off ebbs and leaves no row anywhere. With a Hermes box on the
+      tailnet (`hermes api-server`): confirm the `/v1/models` probe turns the
+      row On, Hermes appears on the bench and places, a chat turn reaches it
+      with `X-Hermes-Session-Id`, the Crew room lists its `/api/jobs`, and the
+      Vault reads its home through the paired computer. With Claude Code or
+      Codex on the paired computer: CLI Pairing finds it and a coding chat can
+      hand it a task as an approved command. With any A2A agent: the card names
+      it and `askAgent` gets an answer. Open follow-ups: Wayfinding's three
+      switches are honest labels over what exists today (project memory, the
+      Skills.md recipes note, and no browser driver yet), so the Browser
+      switch gates nothing until a Playwright-driven browser lands on the
+      engine; the BETA pill's per-row exit is a founder call.
 - [ ] **Voice mode on a device (built 2026-09-06, unverified off the sandbox).**
       The decision logic is unit tested (`app/test/voice.test.ts`), but the native
       speech path is device-only, like dictation. TestFlight: open voice mode in a
@@ -268,96 +335,6 @@ log entry). Migration is now `0016`.
       CLI-managed `CapApp-SPM/Package.swift`, same as `oscode-media`). Follow-ups
       in `docs/voice-mode.md`: true always-open barge-in (needs echo handling), and
       a bundled cross-platform neural TTS engine behind the existing seam.
-- [x] **GitHub repo connect: RESOLVED, connected on device (founder, 2026-09-07).
-      Started as TestFlight "redirect_uri is not associated with this
-      application"; four distinct bugs deep, all fixed.** The whole chain below is
-      kept as the record. Final state: after the `repo-oauth` function was
-      redeployed with the 302 fix, Connect GitHub on the phone returned on its own
-      (no bounce page, no tap) and the card shows "connected". The four bugs, in
-      the order they surfaced: (1) a doubled slash in the redirect_uri from a
-      trailing slash on `VITE_SUPABASE_URL`; (2) a stuck-on-"Connecting" hang on a
-      bailed sign-in; (3) the return leg dropped on a cold start; then the one-tap
-      rebuild uncovered (4a) a `cap sync` casing mismatch that broke the iOS
-      build, and (4b) ASWebAuthenticationSession not capturing the callback's JS
-      redirect, fixed by the server 302. The one-tap auto-return is confirmed: a
-      founder screen recording (viewed frame by frame via ffmpeg) shows Connect
-      GitHub, the iOS "App wants to use github.com to Sign In" consent that is
-      unique to ASWebAuthenticationSession, a brief github.com view (instant on a
-      shared Safari session), then an automatic return to the app with a "GitHub
-      connected" toast and no bounce page. Nice-to-haves still open, none
-      blocking: the app-side `.r` state marker for an iPad-desktop-UA ships with
-      the next build, and the trailing slash on the Codemagic `VITE_SUPABASE_URL`
-      is still worth dropping, since `app/src/lib/supabase.ts` reads it raw.
-      Detail follows.
-      Reading the live authorize URL settled it: the build sent
-      `redirect_uri=https://lzlrlfdffwiypzreoldb.supabase.co//functions/v1/repo-oauth/callback`,
-      a doubled slash after `.co`, because the Codemagic `VITE_SUPABASE_URL`
-      carries a trailing slash and the code composed `base + /functions/...`. So
-      it never matched the GitHub App's single-slash Callback URL (client id
-      `Iv23...`, which confirmed the correct App, not the CLI OAuth app). It was
-      the trailing-slash bug, not a GitHub misconfiguration. The runtime
-      normalization (shipped) now trims the trailing slash before composing the
-      URL, so the next TestFlight build sends the single-slash address and
-      connects regardless of the var. Verify on that build. Optional hygiene:
-      also drop the trailing slash from the Codemagic `VITE_SUPABASE_URL`, since
-      `app/src/lib/supabase.ts` reads it raw (sign-in and other calls form the
-      same doubled slash, tolerated by the gateway today, unlike GitHub's exact
-      match). The stuck-on-"Connecting" bug on a bailed sign-in shipped fixed for
-      iOS via the browser-dismiss listener; desktop still waits out the
-      five-minute timeout when its separate system browser is closed, a small
-      follow-up. With the redirect fixed the authorize step now succeeds and the
-      Supabase `/callback` bounces `oscode://repo-oauth?code=...` back; the return
-      leg was then hardened (2026-09-07): if iOS evicts the app while the person
-      authorizes (likely, models are memory-heavy), tapping back cold-starts it
-      and the in-memory connect listener is gone, so the code was dropped.
-      `connectRepoOAuth` now persists the attempt (state plus PKCE verifier,
-      single-use, TTL 15 min) and `useAuthDeepLink` finishes it from the
-      cold-start launch URL via `resumeRepoOAuth` (`repoOAuth.resumeRepoOAuthFromLink`,
-      cold-start only so it never races the warm listener). A warm return still
-      needs the person to tap "Back to OpenShore" on the bounce page, since iOS
-      blocks the page's automatic custom-scheme redirect without a gesture. That
-      last tap is now gone too (2026-09-07): iOS runs the whole flow through
-      `ASWebAuthenticationSession` (new `oscode-authsession` plugin), which
-      returns the `oscode://repo-oauth` callback straight to the completion
-      handler, so connecting is one tap with no bounce page and no deep-link round
-      trip at all. Desktop keeps the system-browser + deep-link path; the
-      cold-start recovery stays as a backstop. **Codemagic build failure, root
-      cause found and fixed (2026-09-07).** The diagnostic step added to
-      `codemagic.yaml` (a plain script running `xcodebuild` directly, since it
-      prints output verbatim where the wrapper CLI tool curates and swallows it)
-      caught the real error on the next build: SwiftPM's package-graph
-      resolution failed with "product 'OscodeAuthsession' required by ... not
-      found in package 'OscodeAuthSession'". `cap sync` derives the Swift
-      package/product name from the npm name by capitalizing only the first
-      letter of each hyphen-separated segment; `oscode-authsession` has no
-      hyphen inside "authsession", so that whole word is one segment and the
-      derived name is `OscodeAuthsession` (lowercase second "s"), not the
-      readable `OscodeAuthSession` the plugin's own `Package.swift` declared.
-      Every dependency (`capacitor-swift-pm`, `swift-syntax`, `LLM.swift`,
-      `ion-ios-filesystem`) had fetched and checked out fine; this was purely a
-      one-word casing mismatch, unrelated to the SPM fetch, network, disk, or the
-      voice-mode plugins. Fixed by renaming the package and product name (only)
-      to `OscodeAuthsession`; the target name and the Swift plugin's
-      `jsName`/`identifier` are a separate JS-bridge lookup and keep their
-      readable casing. Ruling and the general lesson in `DECISIONS.md`. That
-      build then went green (the packaging error is gone), so the diagnostic
-      step has been removed from `codemagic.yaml`. **Last leg, the callback did
-      not auto-complete (fixed 2026-09-07).** On the working one-tap build the
-      session opened, GitHub authorized, and the Supabase `/callback` came back,
-      but the person was left on the "Returning to OpenShore" page.
-      ASWebAuthenticationSession uses `WKNavigationDelegate` and completes only
-      on a network-level redirect to the callback scheme; the page's
-      `window.location` JavaScript redirect runs inside the page and is not
-      reliably captured (confirmed against Apple's forums and an Apple
-      engineer's reply). `/callback` now returns an HTTP 302 to `oscode://` for
-      iOS (User-Agent iPhone/iPad/iPod, or `state` ending ".r", which the iOS
-      app now appends to cover an iPad reporting a desktop UA), keeping the HTML
-      page as the 302 body fallback and as the full desktop response. It is a
-      server change: it took effect on `supabase functions deploy repo-oauth`
-      (redeployed from the founder's Pop!_OS clone to project
-      `lzlrlfdffwiypzreoldb`, script 8.7 kB) and fixed the already-installed
-      build with no new build. The founder then had GitHub connect on the phone,
-      the card reading "connected" with no manual step. Done.
 - [ ] **Video attachments on device and desktop (built 2026-09-06, unverified
       off the sandbox).** TestFlight: attach a screen recording over 30MB,
       confirm one chip with a frame count appears, send to Claude, and confirm
@@ -737,6 +714,28 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
+  familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
+  Agent, the founder asked whether to go down that route, then how to layer
+  new tech in without touching the people who do not, then named the shape:
+  a toggle that turns on a modality, mirrored across every current, one at a
+  time, with a current and haptics flowing from the switch to the border. The
+  CMO and Creative Studio named it Currents (Layers retired) and Wayfinding
+  (Navigation collides with the side panel); the founder answered the five
+  forks (one everywhere, the gesture, Wayfinding, Arriving rows now, the
+  water-line persistent and faint) and asked for BETA on the group. Built:
+  the pure core with the two-part gate and the contribution contract, the
+  Settings groups and connect sheet, the arrival and the persistent
+  water-line, the header pill, the bench, crew, and vault contributions, the
+  engine tools (`askHermes`, `askAgent`, `cliAgent`), the daemon and IPC
+  routes, three written guides, and the guards (trace, contract, exclusivity).
+  Research settled the roster's honesty: Hermes exposes an OpenAI-compatible
+  server with a session header, a cron REST API, and MCP; Vellum and OpenAGI
+  document no network API and ship as Arriving rows that try an A2A card then
+  a `/v1`. Doc `docs/agentic-currents.md`; rulings in `DECISIONS.md`. Gates:
+  both packages typecheck, lint, test, build, Prettier; every guard green.
+  Device and real-box verification in What remains.
+
 - **2026-09-06: voice mode, a spoken conversation over the chat (founder).** The
   founder asked for a Claude-style voice mode usable while coding: native so it
   works offline, a voice you pick, and the natural breaks the work needs (a picker
@@ -927,34 +926,3 @@ log entry). Migration is now `0016`.
   `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
   lint, 780 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
   guards. Rulings in `DECISIONS.md`.
-
-- **2026-09-06: video attachments, reviewed frame by frame, never the video
-  (founder, pushed to main).** The founder wanted Claude Code's attachment flow
-  (Camera, Photos, Files) with video added, on two rules: a model never reviews
-  a video directly, and a large clip is compressed before it is broken into
-  stills. Built: a video is detected on attach (`isVideoFile`), compressed
-  toward the 25 to 29MB band when it is over 30MB, and sampled into up to 12
-  downscaled JPEG frames, each tagged with its order and timestamp; the frames
-  ride to a vision model as ordinary image blocks and the composer shows one
-  chip per video. Native compression and framing run on AVFoundation on the
-  phone (new `oscode-media` Capacitor plugin: `AVAssetExportSession`
-  fileLengthLimit for the band, `AVAssetImageGenerator` for the frames) and on
-  FFmpeg on the desktop (`osc:mediaProcess` over the Electron bridge, invoked
-  with an argument array, never a shell string, with a friendly "install
-  ffmpeg" message when it is absent); the browser and any native gap fall back
-  to a canvas over a hidden `<video>`, so a clip always yields frames.
-  Screenshots and screen recordings flow through with no approval, since
-  attaching is not a tool call. The cloud Claude driver (`buildVisionContent`)
-  leads the frames with a one-line context header, labels each with its
-  timestamp, and adds a system note so the model reads them as one clip in
-  order and may say plainly it reviewed the video frame by frame. Only stills
-  ever leave the device; the video is read locally. Vision stays cloud Claude
-  only (`sourceSupportsVision`), so frames route there. New Info.plist photo
-  permission string. Code: `app/src/lib/{attachments,videoAttach,videoBackends,
-mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
-  `app/src/drivers/cloudClaudeDriver.ts`, `app/electron/media.ts` +
-  `main.ts`/`preload.cjs`, `app/plugins/oscode-media`. Doc:
-  `docs/video-attachments.md`. Gates: app typecheck (src and electron), lint,
-  tests (29 in the touched suites), Vite build, Prettier; os-code em-dash guard
-  and the PROGRESS shape guard. Native device and desktop-FFmpeg verification
-  are in What remains (not runnable in a web session).

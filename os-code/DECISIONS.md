@@ -1146,3 +1146,69 @@ execution contract. Newest at the bottom.
   to intercept. This is a server change: it takes effect on
   `supabase functions deploy repo-oauth`, with no new app build, so it fixes the
   already-installed one-tap build.
+
+- 2026-09-09: **"Agentic Currents" is the name; "Layers" is retired.** The CMO and
+  Creative Studio's call (founder agreed): "Layers" names the mechanism, not the
+  feeling, and carries Photoshop and network baggage. "Currents" is water in
+  motion through the familiar app, and the founder's own "connected throughout"
+  is the promise. "Frontier" stays reserved for cloud models on a paid key, so
+  the two axes never blur.
+- 2026-09-09: **Wayfinding, not Navigation, for the default-on group.** The
+  side panel is already "the main navigation" in the codebase and the haptics
+  rules, and a settings group named Navigation would read as getting-around-
+  the-app settings. Memory, skills, and a browser are how the agent finds its
+  way. Founder picked Wayfinding.
+- 2026-09-09: **One Agentic Current at a time, everywhere** (founder; the
+  first cut is one modality as one idea, lifted later if wanted). Encoded as a
+  single `agenticCurrent` id rather than a map of booleans, so exclusivity is
+  structural and switching is one write.
+- 2026-09-09: **The arrival is a gesture, not a progress bar** (founder: yes,
+  the gesture). A few hundred milliseconds on the door clock and the glide
+  curve, then the row's own state line says whether the box answered. Nothing
+  "installs" on a phone; the copy says connect.
+- 2026-09-09: **The water-line is persistent and faint on every screen** while
+  a current is on (founder), which is what makes the modality feel whole
+  without any room changing shape.
+- 2026-09-09: **One decisive haptic at the border, never a run of ticks.** The
+  haptics ruling on file allows marking a decisive commit and bans component
+  ticks; a multi-tick pattern would read as a notification buzz, not calm.
+- 2026-09-09: **Vellum and OpenAGI ship as Arriving rows now** (founder: try
+  to find a way to connect them). Neither documents a network API (Vellum's
+  README names an SSE stream and tunnel access but no endpoint; OpenAGI is an
+  in-process Python framework), so their rows say so and accept an address:
+  the probe tries an A2A agent card first, then an OpenAI-compatible `/v1`,
+  and remembers which answered. Full opacity, an Arriving pill, never
+  disabled-looking, per the roster ruling.
+- 2026-09-09: **A2A is both the seam and a named row.** The generic door
+  (`askAgent`, a tolerant JSON-RPC `message/send` client) serves any agent
+  with a card, Hermes and Vellum included when they expose one; the named row
+  is the "connect any agent" entry.
+- 2026-09-09: **A current's handle rides to a remote hub; the Codemagic token
+  does not.** A current names a box or a CLI the person chose to reach from
+  the hub (a Hermes box on the tailnet, a CLI on the hub itself), and its key
+  is that box's own key, not a secret bound to this device. So `currents`
+  goes in the daemon session body, unlike `codemagicToken`.
+- 2026-09-09: **A current tool never registers under egress lockdown, and a
+  CLI handle is honored only when the CLI is really on PATH** (checked on the
+  daemon and the desktop host alike), so a session never carries a tool that
+  cannot run.
+- 2026-09-09: **Hermes memory is read-only and jailed.** The daemon serves
+  only `MEMORY.md`, `SOUL.md`, `USER.md`, `AGENTS.md`, and `skills/**/SKILL.md`
+  under `HERMES_HOME` (default `~/.hermes`), through the same `Jail` the repo
+  reader uses, size-capped, admin-only on a shared hub. Config, sessions,
+  credentials, and plugins are never listed: not knowledge, and some hold
+  secrets. Editing stays with Hermes and the vault's always-ask write.
+- 2026-09-09: **A current's bench model is a BYOM-shaped ref keyed
+  `current-<id>`.** It places and runs through the unchanged BYOM path, its
+  key lives under the same secret slot the BYOM path reads, and turning the
+  current off purges it from every status's stack (the disconnectByom sweep,
+  shared). Placements are not kept across an off/on, on purpose.
+- 2026-09-09: **Rooms never name a current.** They render the active current
+  only through `activeContribution`; `app/test/currents.test.ts` greps the
+  source and allows the proper nouns only in the core, the probe, the guides,
+  the Settings screen, and the connect sheet. This is what makes "off leaves
+  no trace" a fact.
+- 2026-09-09: **The BETA badge is on the group, the exit condition is per
+  current** (a contract test passing, device and paired-computer
+  verification, no open must-fix). The founder deferred whether the pill
+  moves down to the rows that are still rough once one graduates.

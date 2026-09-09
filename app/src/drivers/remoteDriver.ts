@@ -4,6 +4,7 @@
 // with backoff and resumes from the last sequence it saw.
 import type {
   ApprovalAnswer,
+  CurrentsHandles,
   DaemonSessionInfo,
   DriverEvent,
   PermissionMode,
@@ -126,7 +127,13 @@ export async function daemonHealth(
 export async function daemonCreateSession(
   target: DaemonTarget,
   cwd?: string,
-  opts: { instructions?: string; permissionMode?: PermissionMode; humanize?: boolean } = {},
+  opts: {
+    instructions?: string;
+    permissionMode?: PermissionMode;
+    humanize?: boolean;
+    /** The Agentic Current that is on, as the handle its engine tool needs. */
+    currents?: CurrentsHandles;
+  } = {},
 ): Promise<string> {
   const res = await fetch(`${target.baseUrl}/sessions`, {
     method: 'POST',
@@ -136,6 +143,7 @@ export async function daemonCreateSession(
       ...(opts.instructions ? { instructions: opts.instructions } : {}),
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
+      ...(opts.currents ? { currents: opts.currents } : {}),
     }),
     signal: AbortSignal.timeout(10_000),
   });

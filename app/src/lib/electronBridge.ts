@@ -4,7 +4,11 @@
 import type {
   ApprovalAnswer,
   Catalog,
+  CurrentsHandles,
+  CurrentsHostProbe,
   DriverEvent,
+  HermesNote,
+  HermesNoteMeta,
   PermissionMode,
   ReconcileResult,
   RoutineInput,
@@ -85,6 +89,9 @@ export interface OscodeBridge {
        *  Codemagic Access is on; never sent to a remote daemon. */
       codemagicToken?: string;
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
+      /** The Agentic Current the person turned on, as the handle its engine
+       *  tool needs (a Hermes box, an A2A agent, a paired coding CLI). */
+      currents?: CurrentsHandles;
     },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the
@@ -197,6 +204,14 @@ export interface OscodeBridge {
   routineRun(id: string): Promise<{ queued: true; position: number } | { error: string }>;
   routineStop(id: string): Promise<{ stopped: boolean }>;
   routineNote(runId: string): Promise<{ path: string; markdown: string } | null>;
+
+  // Agentic Currents: what this computer can host (a Hermes home present, a
+  // coding CLI on PATH), and the read-only notes in a Hermes home (memory,
+  // identity, skills), jailed and markdown-only in the engine. Keep in
+  // lockstep with electron/main.ts.
+  currentsProbe(): Promise<CurrentsHostProbe>;
+  hermesNotes(): Promise<{ home: string; notes: HermesNoteMeta[] }>;
+  hermesNote(path: string): Promise<HermesNote | null>;
 
   // On-disk vault: plain .md files under the agent's vault dir (~/OSCode/Vault),
   // so the app's Vault and the agent share one folder. Paths are jailed to that

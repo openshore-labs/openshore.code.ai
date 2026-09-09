@@ -21,6 +21,7 @@ import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
 import { engineEthicsContext } from '../ethics/host.js';
 import type { AgentEvent, PermissionMode } from './types.js';
+import type { CurrentsHandles } from '../../currents/model.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -66,6 +67,13 @@ export interface BootstrapOptions {
   /** The saved launch target (app id, workflow, branch), so a trigger uses it
    *  without the model guessing. Paired with codemagicToken. */
   codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
+  /** The Agentic Current the person turned on, as a per-session handle: a
+   *  Hermes box, an A2A agent, or a paired coding CLI. One at a time. Unlike
+   *  the Codemagic token this DOES travel over the daemon, because a current
+   *  names a service the person chose to reach from the hub (a box on the
+   *  tailnet, a CLI on the hub itself), not a secret that only lives on the
+   *  phone. Undefined leaves every current tool out. */
+  currents?: CurrentsHandles;
 }
 
 export interface BootstrapResult {
@@ -136,6 +144,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
     egressLockdown,
     hasCodemagic: Boolean(options.codemagicToken),
+    currents: options.currents,
   });
   const toolContext = buildToolContext({
     cwd: options.cwd,
@@ -183,6 +192,10 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (options.codemagicToken) {
     toolContext.codemagic = { token: options.codemagicToken, target: options.codemagicTarget };
   }
+  // The Agentic Current's handle, and this session's id so the Hermes tool can
+  // keep one Hermes session per OpenShore session.
+  if (options.currents) toolContext.currents = options.currents;
+  toolContext.sessionId = driver.id;
 
   const agent = new AgentSession({
     config,

@@ -16,6 +16,7 @@ import {
 } from '../lib/profiles.js';
 import { hapticTick } from '../lib/haptics.js';
 import { sheetExitMs } from '../lib/motion.js';
+import { activeContribution } from '../lib/currents.js';
 import { SheetHead } from './SheetHead.js';
 
 // Drag further than this and the release dismisses; short of it, the sheet
@@ -106,8 +107,18 @@ export function ProfileStatus() {
     }
   };
 
+  // The Agentic Current that is on, named beside the reach pill on every
+  // screen, so the modality reads as whole without one room changing shape.
+  // Rendered only through the contribution: with none on, nothing is here.
+  const current = activeContribution(settings);
+
   return (
     <>
+      {current ? (
+        <span className="pill current-pill" aria-label={`${current.header.label} is on`}>
+          {current.header.label}
+        </span>
+      ) : null}
       <button className="profile-chip" onClick={openSheet} aria-label={`Connection: ${info.label}`}>
         <span className="profile-dot" style={{ background: info.dot }} />
         <span>{info.label}</span>

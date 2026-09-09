@@ -3,7 +3,7 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop } from '../lib/platform.js';
@@ -35,6 +35,21 @@ import { InfoSheet } from '../components/InfoSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
+import { CurrentConnectSheet } from '../components/CurrentConnectSheet.js';
+import {
+  AGENTIC_CURRENTS,
+  AGENTIC_CURRENTS_BETA_LINE,
+  WAYFINDING,
+  WAYFINDING_IDS,
+  activeCurrent,
+  currentConfigured,
+  currentInfo,
+  currentState,
+  currentStateLabel,
+  currentStateLine,
+  wayfindingOn,
+  type AgenticCurrentId,
+} from '../lib/currents.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
@@ -200,6 +215,60 @@ function HarborInstallButton({
 
 type SheetName = 'account' | 'log' | 'search' | 'clear';
 
+/** One Agentic Current row: the label, the honest state line, a small text
+ *  action to open its connect sheet, and the switch. The switch reports where
+ *  it sits so the arrival can flow from it to the edges of the screen. A
+ *  current with no integration surface yet wears an Arriving pill at full
+ *  opacity, never disabled-looking, per the roster ruling. */
+function CurrentRow({
+  id,
+  onOpen,
+  onFlip,
+}: {
+  id: AgenticCurrentId;
+  onOpen: () => void;
+  onFlip: (on: boolean, at: { x: number; y: number }) => void;
+}) {
+  const { settings, currentProbes } = useApp();
+  const info = currentInfo(id);
+  const state = currentState(id, settings, currentProbes);
+  const on = activeCurrent(settings) === id;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const flip = (next: boolean) => {
+    const rect = anchor.current?.getBoundingClientRect();
+    const at = rect
+      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : { x: window.innerWidth - 40, y: window.innerHeight / 2 };
+    onFlip(next, at);
+  };
+  return (
+    <SettingsRow
+      label={info.label}
+      sub={currentStateLine(id, settings, currentProbes)}
+      subWrap
+      value={
+        <span className="settings-row-actions">
+          {!info.available && state !== 'on' ? (
+            <span className="pill muted" title={info.needs}>
+              Arriving
+            </span>
+          ) : state === 'ready' ? (
+            <span className="pill ok">{currentStateLabel(state)}</span>
+          ) : null}
+          <button type="button" className="linklike press-fb" onClick={onOpen}>
+            {currentConfigured(id, settings) ? 'Edit' : 'Set up'}
+          </button>
+        </span>
+      }
+      trailing={
+        <span ref={anchor} className="settings-row-switch">
+          <Switch checked={on} label={info.label} onChange={flip} />
+        </span>
+      }
+    />
+  );
+}
+
 export function SettingsScreen() {
   const {
     order,
@@ -219,6 +288,8 @@ export function SettingsScreen() {
     setCodemagicAccess,
     codemagicConnected,
     serverRole,
+    setWayfinding,
+    setAgenticCurrent,
   } = useApp();
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
@@ -233,6 +304,9 @@ export function SettingsScreen() {
   const facts = useSeal();
   const sealed = facts ? facts.every((f) => f.state === 'good') : false;
   const close = () => setSheet(undefined);
+
+  // The connect sheet for one Agentic Current, opened from its row.
+  const [currentSheet, setCurrentSheet] = useState<AgenticCurrentId | undefined>();
 
   // Voice mode's settings: the chosen voice (resolved to a name for the row), the
   // speaking speed, and whether replies are spoken aloud.
@@ -767,6 +841,51 @@ export function SettingsScreen() {
           />
         </SettingsGroup>
 
+        {/* Wayfinding: how the agent finds its way. On by default. */}
+        <SettingsGroup title="Wayfinding" index={group++}>
+          {WAYFINDING_IDS.map((id) => (
+            <SettingsRow
+              key={id}
+              label={WAYFINDING[id].label}
+              sub={WAYFINDING[id].sub}
+              subWrap
+              trailing={
+                <Switch
+                  checked={wayfindingOn(settings, id)}
+                  label={WAYFINDING[id].label}
+                  onChange={(next) => {
+                    void setWayfinding(id, next);
+                    showToast(`${WAYFINDING[id].label} ${next ? 'on' : 'off'}.`);
+                  }}
+                />
+              }
+            />
+          ))}
+        </SettingsGroup>
+
+        {/* Agentic Currents: opt-in modalities for agent work, one at a time,
+            a BETA. Each row is the two-part gate made visible: the switch and
+            the honest state line. The names live in the roster, never here. */}
+        <SettingsGroup
+          title="Agentic Currents"
+          badge="BETA"
+          intro={AGENTIC_CURRENTS_BETA_LINE}
+          index={group++}
+        >
+          {AGENTIC_CURRENTS.map((c) => (
+            <CurrentRow
+              key={c.id}
+              id={c.id}
+              onOpen={() => setCurrentSheet(c.id)}
+              onFlip={(on, at) => {
+                if (on) hapticApproval();
+                void setAgenticCurrent(c.id, on, at);
+                if (on && !currentConfigured(c.id, settings)) setCurrentSheet(c.id);
+              }}
+            />
+          ))}
+        </SettingsGroup>
+
         <SettingsGroup index={group++}>
           <SettingsRow
             label="Clear conversations"
@@ -782,6 +901,8 @@ export function SettingsScreen() {
           Familiar where it should be, yours where it matters.
         </p>
       </div>
+
+      <CurrentConnectSheet id={currentSheet} onClose={() => setCurrentSheet(undefined)} />
 
       <Sheet open={sheet === 'account'} onClose={close}>
         <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />
