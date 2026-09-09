@@ -10,6 +10,10 @@ import { editFileTool } from '../tools/editFile.js';
 import { runShellTool } from '../tools/runShell.js';
 import { readTerminalTool } from '../tools/readTerminal.js';
 import { codemagicTool } from '../tools/codemagic.js';
+import { askHermesTool } from '../tools/askHermes.js';
+import { askAgentTool } from '../tools/askAgent.js';
+import { cliAgentTool } from '../tools/cliAgent.js';
+import type { CurrentsHandles } from '../../currents/model.js';
 import { grepTool } from '../tools/grep.js';
 import { globTool } from '../tools/glob.js';
 import { gitCommitTool, gitDiffTool, gitLogTool, gitStatusTool } from '../tools/git.js';
@@ -39,6 +43,12 @@ export function buildToolRegistry(options: {
   // token was delivered to this session. Registers the codemagic tool. Dropped
   // under egress lockdown, since it reaches the network like the web tools.
   hasCodemagic?: boolean;
+  // The Agentic Current handed to this session, if any. Each registers its one
+  // tool: askHermes for a Hermes box, askAgent for an A2A agent, cliAgent for a
+  // paired coding CLI. The two network ones ride the egress gate with the web
+  // tools; the CLI one is a shell run and stays out under lockdown too, since
+  // a CLI on the box can reach the network on its own.
+  currents?: CurrentsHandles;
 }): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(readFileTool);
@@ -66,6 +76,9 @@ export function buildToolRegistry(options: {
     // Codemagic reaches the network too, so it rides with the web tools under
     // the egress gate. Present only when a token was delivered (Access on).
     if (options.hasCodemagic) registry.register(codemagicTool);
+    if (options.currents?.hermes) registry.register(askHermesTool);
+    if (options.currents?.a2a) registry.register(askAgentTool);
+    if (options.currents?.cli) registry.register(cliAgentTool);
   }
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes

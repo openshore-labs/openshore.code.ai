@@ -25,6 +25,10 @@ import {
 import { exportVaultToFiles } from '../lib/vaultExport.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { activeContribution, slotNone } from '../lib/currents.js';
+import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
+import { isDesktop } from '../lib/platform.js';
+import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -56,6 +60,36 @@ export function VaultScreen() {
   } = useApp();
 
   const team = vaultScope === 'team';
+
+  // The Agentic Current's notes (a Hermes home's memory and skills), listed
+  // once the current is on and read one at a time into a sheet. Undefined
+  // while reading or unreachable; an answered listing may be empty.
+  const current = activeContribution(settings);
+  const currentVault = current && !slotNone(current.vault) ? current.vault : undefined;
+  const [currentNotes, setCurrentNotes] = useState<
+    { home: string; notes: HermesNoteMeta[] } | undefined
+  >();
+  const [currentNote, setCurrentNote] = useState<HermesNote | undefined>();
+  useEffect(() => {
+    if (!currentVault) {
+      setCurrentNotes(undefined);
+      return;
+    }
+    let live = true;
+    void hermesNotesList(settings.daemon).then((r) => {
+      if (live) setCurrentNotes(r ?? { home: '', notes: [] });
+    });
+    return () => {
+      live = false;
+    };
+    // Re-read when the current changes or the hub does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, settings.daemon?.baseUrl]);
+  const openCurrentNote = async (path: string) => {
+    const note = await hermesNoteRead(settings.daemon, path);
+    if (note) setCurrentNote(note);
+    else showToast('That note could not be read right now.');
+  };
   // Another device holds the vault's write lease: show the note read-only.
   const readOnly = Boolean(vaultLeaseHeldByOther);
   const teamAvailable = teamVaultAvailable();
@@ -585,6 +619,48 @@ export function VaultScreen() {
           </div>
         ) : null}
 
+        {/* The Agentic Current's folder: what it remembers and the skills it
+            wrote, read from its home on the paired computer. Rendered only
+            through the contribution; with none on, the Vault is as it was. */}
+        {!team && !folder && current && !slotNone(current.vault) ? (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-row">
+              <h3 style={{ marginBottom: 0 }}>{current.vault.title}</h3>
+            </div>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {current.vault.sub} Read only here.
+            </p>
+            {currentNotes === undefined ? (
+              <p className="hint" style={{ marginTop: 0 }}>
+                {settings.daemon || isDesktop()
+                  ? 'Reading its home folder.'
+                  : 'Pair the computer that runs it to read its memory here.'}
+              </p>
+            ) : currentNotes.notes.length === 0 ? (
+              <p className="hint" style={{ marginTop: 0 }}>
+                Nothing to read yet. Its home folder ({currentNotes.home}) has no memory or skills
+                on the paired computer, or you are not docked.
+              </p>
+            ) : (
+              <div className="vault-tree">
+                {currentNotes.notes.map((n) => (
+                  <button
+                    key={n.path}
+                    className="conv-item vault-row press-fb press-fb--row"
+                    onClick={() => void openCurrentNote(n.path)}
+                  >
+                    <span className="vault-row-chevron" aria-hidden="true" />
+                    {n.title}
+                    <span className="sub vault-topsheet">
+                      {n.path.startsWith('skills/') ? 'skill' : ''}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
         {crumbs.length ? (
           <p className="hint vault-crumbs">
             <button className="linklike" onClick={() => setFolder('')}>
@@ -677,6 +753,19 @@ export function VaultScreen() {
                 Cancel
               </button>
             </div>
+          </>
+        ) : null}
+      </Sheet>
+
+      {/* One of the current's notes, read only, in the vault's own paper. */}
+      <Sheet open={Boolean(currentNote)} onClose={() => setCurrentNote(undefined)}>
+        {currentNote ? (
+          <>
+            <SheetHead title={currentNote.title} onClose={() => setCurrentNote(undefined)} />
+            <p className="hint" style={{ marginTop: 0 }}>
+              {currentNote.path} · Read only. Edit it where it lives.
+            </p>
+            <VaultMarkdown text={currentNote.text} paths={[]} onOpenNote={() => {}} />
           </>
         ) : null}
       </Sheet>

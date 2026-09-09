@@ -61,6 +61,7 @@ import {
 import { effortDirective } from '../lib/effort.js';
 import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
+import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
@@ -103,6 +104,22 @@ export interface StackContext {
    *  GitHub-only or repo-less chat leaves this undefined, so a tool step is
    *  described rather than run against an invented cwd. */
   repoCwd?: string;
+  /** This conversation's id, so a bench model that keeps a session of its own
+   *  on another service (a Hermes box, via its session header) continues the
+   *  same thread turn after turn instead of starting over per call. */
+  conversationId?: string;
+}
+
+/** The extra request headers a bench model carries. An Agentic Current's model
+ *  (id `current-<id>`) sends one session id per conversation, which the Hermes
+ *  API server reads as X-Hermes-Session-Id; other OpenAI-compatible servers
+ *  ignore an unknown header, so it is harmless to send on any current. */
+export function benchExtraHeaders(
+  refId: string,
+  conversationId: string | undefined,
+): Record<string, string> {
+  if (!isCurrentBenchId(refId) || !conversationId) return {};
+  return { 'x-hermes-session-id': `oscode-${conversationId}` };
 }
 
 /** Whether the Humanize Writing standard rides into this model's prompt. On by
@@ -1015,14 +1032,22 @@ export class StackDriver implements ChatDriver {
     // unauthenticated requests, so an absent key is not an error here.
     const key = (await secretGet(byomSecretKey(ref.id))) ?? undefined;
     const system = this.systemFor(ref, placement);
+    const extra = benchExtraHeaders(ref.id, this.context.conversationId);
     // An image turn takes the plain vision path; otherwise Codemagic Access on
     // runs the tool-use loop, off keeps the original single-turn path.
     if (images.length) {
-      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, images);
+      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, images, extra);
     } else if (this.context.codemagicAccess) {
-      await this.runOpenAiCompatibleWithTools(ref.label, ref.baseUrl, key, ref.model, system);
+      await this.runOpenAiCompatibleWithTools(
+        ref.label,
+        ref.baseUrl,
+        key,
+        ref.model,
+        system,
+        extra,
+      );
     } else {
-      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, []);
+      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, [], extra);
     }
   }
 
@@ -1174,6 +1199,7 @@ export class StackDriver implements ChatDriver {
     model: string,
     system: string,
     images: Attachment[] = [],
+    extraHeaders: Record<string, string> = {},
   ): Promise<void> {
     const sys =
       images.length && hasVideoFrames(images) ? `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}` : system;
@@ -1187,7 +1213,10 @@ export class StackDriver implements ChatDriver {
       const last = messages[messages.length - 1]!;
       last.content = openAiVisionContent(String(last.content ?? ''), images);
     }
-    const authHeaders: Record<string, string> = { 'content-type': 'application/json' };
+    const authHeaders: Record<string, string> = {
+      'content-type': 'application/json',
+      ...extraHeaders,
+    };
     if (key) authHeaders.authorization = `Bearer ${key}`;
 
     // On a device or the desktop shell, these providers send no CORS headers, so
@@ -1275,8 +1304,12 @@ export class StackDriver implements ChatDriver {
     key: string | undefined,
     model: string,
     system: string,
+    extraHeaders: Record<string, string> = {},
   ): Promise<void> {
-    const authHeaders: Record<string, string> = { 'content-type': 'application/json' };
+    const authHeaders: Record<string, string> = {
+      'content-type': 'application/json',
+      ...extraHeaders,
+    };
     if (key) authHeaders.authorization = `Bearer ${key}`;
     const messages: Array<Record<string, unknown>> = [
       { role: 'system', content: system },

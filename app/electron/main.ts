@@ -23,6 +23,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
+import { parseCurrentsHandles } from 'os-code/dist/src/currents/model.js';
 import { loadConfig } from 'os-code/dist/src/config/load.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
@@ -517,6 +518,9 @@ function sessionOpts(v: unknown) {
     humanize: optBool(o.humanize, 'humanize'),
     codemagicToken: optStr(o.codemagicToken, 'codemagicToken'),
     codemagicTarget,
+    // The Agentic Current's handle: the shared parser drops anything malformed,
+    // so a bad shape leaves the tool out rather than failing the session.
+    currents: parseCurrentsHandles(o.currents),
   };
 }
 
@@ -633,6 +637,13 @@ guarded('osc:routineDelete', (id: unknown) => host.routineDelete(str(id, 'id')))
 guarded('osc:routineRun', (id: unknown) => host.routineRun(str(id, 'id')));
 guarded('osc:routineStop', (id: unknown) => host.routineStop(str(id, 'id')));
 guarded('osc:routineNote', (runId: unknown) => host.routineNote(str(runId, 'runId')));
+
+// Agentic Currents: what this computer can host, and a Hermes home's notes.
+// Read-only; the engine jails the path to the Hermes home and serves markdown
+// only, so a bad path answers null rather than escaping.
+guarded('osc:currentsProbe', () => host.currentsProbe());
+guarded('osc:hermesNotes', () => host.hermesNotes());
+guarded('osc:hermesNote', (path: unknown) => host.hermesNote(str(path, 'path')));
 
 guarded('osc:daemonInfo', () => host.daemonInfo());
 guarded('osc:daemonStart', () => host.daemonStart());

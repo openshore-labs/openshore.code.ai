@@ -2396,7 +2396,133 @@ Layer status:
   search in both the TUI and plain renderers. All covered by
   `test/polish.test.ts`.
 
-## Log entries (2026-08-18 to 2026-09-05)
+## Resolved What remains items (moved out 2026-09-09)
+
+Kept as written, as the record of how each was closed.
+
+- [x] **GitHub repo connect: RESOLVED, connected on device (founder, 2026-09-07).
+      Started as TestFlight "redirect_uri is not associated with this
+      application"; four distinct bugs deep, all fixed.** The whole chain below is
+      kept as the record. Final state: after the `repo-oauth` function was
+      redeployed with the 302 fix, Connect GitHub on the phone returned on its own
+      (no bounce page, no tap) and the card shows "connected". The four bugs, in
+      the order they surfaced: (1) a doubled slash in the redirect_uri from a
+      trailing slash on `VITE_SUPABASE_URL`; (2) a stuck-on-"Connecting" hang on a
+      bailed sign-in; (3) the return leg dropped on a cold start; then the one-tap
+      rebuild uncovered (4a) a `cap sync` casing mismatch that broke the iOS
+      build, and (4b) ASWebAuthenticationSession not capturing the callback's JS
+      redirect, fixed by the server 302. The one-tap auto-return is confirmed: a
+      founder screen recording (viewed frame by frame via ffmpeg) shows Connect
+      GitHub, the iOS "App wants to use github.com to Sign In" consent that is
+      unique to ASWebAuthenticationSession, a brief github.com view (instant on a
+      shared Safari session), then an automatic return to the app with a "GitHub
+      connected" toast and no bounce page. Nice-to-haves still open, none
+      blocking: the app-side `.r` state marker for an iPad-desktop-UA ships with
+      the next build, and the trailing slash on the Codemagic `VITE_SUPABASE_URL`
+      is still worth dropping, since `app/src/lib/supabase.ts` reads it raw.
+      Detail follows.
+      Reading the live authorize URL settled it: the build sent
+      `redirect_uri=https://lzlrlfdffwiypzreoldb.supabase.co//functions/v1/repo-oauth/callback`,
+      a doubled slash after `.co`, because the Codemagic `VITE_SUPABASE_URL`
+      carries a trailing slash and the code composed `base + /functions/...`. So
+      it never matched the GitHub App's single-slash Callback URL (client id
+      `Iv23...`, which confirmed the correct App, not the CLI OAuth app). It was
+      the trailing-slash bug, not a GitHub misconfiguration. The runtime
+      normalization (shipped) now trims the trailing slash before composing the
+      URL, so the next TestFlight build sends the single-slash address and
+      connects regardless of the var. Verify on that build. Optional hygiene:
+      also drop the trailing slash from the Codemagic `VITE_SUPABASE_URL`, since
+      `app/src/lib/supabase.ts` reads it raw (sign-in and other calls form the
+      same doubled slash, tolerated by the gateway today, unlike GitHub's exact
+      match). The stuck-on-"Connecting" bug on a bailed sign-in shipped fixed for
+      iOS via the browser-dismiss listener; desktop still waits out the
+      five-minute timeout when its separate system browser is closed, a small
+      follow-up. With the redirect fixed the authorize step now succeeds and the
+      Supabase `/callback` bounces `oscode://repo-oauth?code=...` back; the return
+      leg was then hardened (2026-09-07): if iOS evicts the app while the person
+      authorizes (likely, models are memory-heavy), tapping back cold-starts it
+      and the in-memory connect listener is gone, so the code was dropped.
+      `connectRepoOAuth` now persists the attempt (state plus PKCE verifier,
+      single-use, TTL 15 min) and `useAuthDeepLink` finishes it from the
+      cold-start launch URL via `resumeRepoOAuth` (`repoOAuth.resumeRepoOAuthFromLink`,
+      cold-start only so it never races the warm listener). A warm return still
+      needs the person to tap "Back to OpenShore" on the bounce page, since iOS
+      blocks the page's automatic custom-scheme redirect without a gesture. That
+      last tap is now gone too (2026-09-07): iOS runs the whole flow through
+      `ASWebAuthenticationSession` (new `oscode-authsession` plugin), which
+      returns the `oscode://repo-oauth` callback straight to the completion
+      handler, so connecting is one tap with no bounce page and no deep-link round
+      trip at all. Desktop keeps the system-browser + deep-link path; the
+      cold-start recovery stays as a backstop. **Codemagic build failure, root
+      cause found and fixed (2026-09-07).** The diagnostic step added to
+      `codemagic.yaml` (a plain script running `xcodebuild` directly, since it
+      prints output verbatim where the wrapper CLI tool curates and swallows it)
+      caught the real error on the next build: SwiftPM's package-graph
+      resolution failed with "product 'OscodeAuthsession' required by ... not
+      found in package 'OscodeAuthSession'". `cap sync` derives the Swift
+      package/product name from the npm name by capitalizing only the first
+      letter of each hyphen-separated segment; `oscode-authsession` has no
+      hyphen inside "authsession", so that whole word is one segment and the
+      derived name is `OscodeAuthsession` (lowercase second "s"), not the
+      readable `OscodeAuthSession` the plugin's own `Package.swift` declared.
+      Every dependency (`capacitor-swift-pm`, `swift-syntax`, `LLM.swift`,
+      `ion-ios-filesystem`) had fetched and checked out fine; this was purely a
+      one-word casing mismatch, unrelated to the SPM fetch, network, disk, or the
+      voice-mode plugins. Fixed by renaming the package and product name (only)
+      to `OscodeAuthsession`; the target name and the Swift plugin's
+      `jsName`/`identifier` are a separate JS-bridge lookup and keep their
+      readable casing. Ruling and the general lesson in `DECISIONS.md`. That
+      build then went green (the packaging error is gone), so the diagnostic
+      step has been removed from `codemagic.yaml`. **Last leg, the callback did
+      not auto-complete (fixed 2026-09-07).** On the working one-tap build the
+      session opened, GitHub authorized, and the Supabase `/callback` came back,
+      but the person was left on the "Returning to OpenShore" page.
+      ASWebAuthenticationSession uses `WKNavigationDelegate` and completes only
+      on a network-level redirect to the callback scheme; the page's
+      `window.location` JavaScript redirect runs inside the page and is not
+      reliably captured (confirmed against Apple's forums and an Apple
+      engineer's reply). `/callback` now returns an HTTP 302 to `oscode://` for
+      iOS (User-Agent iPhone/iPad/iPod, or `state` ending ".r", which the iOS
+      app now appends to cover an iPad reporting a desktop UA), keeping the HTML
+      page as the 302 body fallback and as the full desktop response. It is a
+      server change: it took effect on `supabase functions deploy repo-oauth`
+      (redeployed from the founder's Pop!_OS clone to project
+      `lzlrlfdffwiypzreoldb`, script 8.7 kB) and fixed the already-installed
+      build with no new build. The founder then had GitHub connect on the phone,
+      the card reading "connected" with no manual step. Done.
+
+## Log entries (2026-08-18 to 2026-09-06)
+
+- **2026-09-06: video attachments, reviewed frame by frame, never the video
+  (founder, pushed to main).** The founder wanted Claude Code's attachment flow
+  (Camera, Photos, Files) with video added, on two rules: a model never reviews
+  a video directly, and a large clip is compressed before it is broken into
+  stills. Built: a video is detected on attach (`isVideoFile`), compressed
+  toward the 25 to 29MB band when it is over 30MB, and sampled into up to 12
+  downscaled JPEG frames, each tagged with its order and timestamp; the frames
+  ride to a vision model as ordinary image blocks and the composer shows one
+  chip per video. Native compression and framing run on AVFoundation on the
+  phone (new `oscode-media` Capacitor plugin: `AVAssetExportSession`
+  fileLengthLimit for the band, `AVAssetImageGenerator` for the frames) and on
+  FFmpeg on the desktop (`osc:mediaProcess` over the Electron bridge, invoked
+  with an argument array, never a shell string, with a friendly "install
+  ffmpeg" message when it is absent); the browser and any native gap fall back
+  to a canvas over a hidden `<video>`, so a clip always yields frames.
+  Screenshots and screen recordings flow through with no approval, since
+  attaching is not a tool call. The cloud Claude driver (`buildVisionContent`)
+  leads the frames with a one-line context header, labels each with its
+  timestamp, and adds a system note so the model reads them as one clip in
+  order and may say plainly it reviewed the video frame by frame. Only stills
+  ever leave the device; the video is read locally. Vision stays cloud Claude
+  only (`sourceSupportsVision`), so frames route there. New Info.plist photo
+  permission string. Code: `app/src/lib/{attachments,videoAttach,videoBackends,
+mediaPlugin}.ts`, `app/src/components/Composer.tsx`,
+  `app/src/drivers/cloudClaudeDriver.ts`, `app/electron/media.ts` +
+  `main.ts`/`preload.cjs`, `app/plugins/oscode-media`. Doc:
+  `docs/video-attachments.md`. Gates: app typecheck (src and electron), lint,
+  tests (29 in the touched suites), Vite build, Prettier; os-code em-dash guard
+  and the PROGRESS shape guard. Native device and desktop-FFmpeg verification
+  are in What remains (not runnable in a web session).
 
 - **2026-09-05: `0016` had already been applied to production, from its
   stale first draft, before every edit made to it since.** Discovered by

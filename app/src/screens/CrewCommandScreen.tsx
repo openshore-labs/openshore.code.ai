@@ -42,6 +42,9 @@ import {
   type RoutineView,
 } from '../lib/routines.js';
 import { ROUTINE_LIMITS } from 'os-code/protocol';
+import { activeContribution, currentSecretKey, slotNone } from '../lib/currents.js';
+import { hermesJobs, type HermesJob } from '../lib/currentsProbe.js';
+import { secretGet } from '../lib/platform.js';
 
 /** How often the room re-asks the computer while it is open. */
 const REFRESH_MS = 5000;
@@ -93,6 +96,7 @@ export function CrewCommandScreen() {
     startGuideChat,
     setView,
     showToast,
+    currentProbes,
   } = useApp();
   const crewList = settings.crew;
   const crew = useMemo(() => crewList ?? [], [crewList]);
@@ -207,6 +211,31 @@ export function CrewCommandScreen() {
   }, [crew, routines]);
 
   const orderedRoutines = useMemo(() => busiestFirst(routines), [routines]);
+
+  // The Agentic Current that is on, and its own box's scheduled jobs when it
+  // has any to read (view only). Undefined while reading; empty when the box
+  // did not answer or has none.
+  const current = activeContribution(settings);
+  const currentEndpoint = current ? settings.currentConnections?.[current.id]?.endpoint : undefined;
+  const [currentJobs, setCurrentJobs] = useState<HermesJob[] | undefined>();
+  useEffect(() => {
+    if (!current || slotNone(current.crew) || !current.crew.jobsFrom || !currentEndpoint) {
+      setCurrentJobs(undefined);
+      return;
+    }
+    let live = true;
+    const id = current.id;
+    void (async () => {
+      const key = (await secretGet(currentSecretKey(id))) ?? undefined;
+      const jobs = await hermesJobs(currentEndpoint, key);
+      if (live) setCurrentJobs(jobs);
+    })();
+    return () => {
+      live = false;
+    };
+    // Re-read when the current or its address changes, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, currentEndpoint]);
 
   const recentRuns = useMemo(() => runs.slice(0, 20), [runs]);
   const routineById = (id: string) => routines.find((r) => r.id === id);
@@ -492,6 +521,27 @@ export function CrewCommandScreen() {
               </p>
             ) : (
               <div className="cc-roster">
+                {/* The Agentic Current that is on joins the roster as a member
+                    on its own computer. Rendered only through the
+                    contribution: with none on, the roster is exactly as before. */}
+                {current && !slotNone(current.crew) ? (
+                  <div className="cc-member muted">
+                    <span className="crew-monogram auto" aria-hidden="true">
+                      {(current.crew.name.trim()[0] ?? '?').toUpperCase()}
+                    </span>
+                    <div className="cc-member-body">
+                      <div className="cc-member-name">
+                        {current.crew.name} <span className="pill local">on its own computer</span>
+                      </div>
+                      <div className="cc-member-line">
+                        <PresenceDot tone={currentProbes[current.id] ? 'ok' : 'muted'} />
+                        {currentProbes[current.id]
+                          ? current.crew.line
+                          : 'Arriving. Not answering yet.'}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {roster.map((row) => {
                   const mine = routinesForAgent(routines, row.agent);
                   const top = busiestFirst(mine)[0];
@@ -515,6 +565,39 @@ export function CrewCommandScreen() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {/* The scheduled jobs the current's own box runs, view only: they are
+            set up and controlled on that box, not here. */}
+        {current && !slotNone(current.crew) && current.crew.jobsFrom ? (
+          <section className="cc-section" aria-label={`Runs on ${current.label}`}>
+            <div className="cc-section-head">
+              <h2>Runs on {current.label}</h2>
+            </div>
+            {currentJobs === undefined ? (
+              <p className="hint">Reading its schedule.</p>
+            ) : currentJobs.length === 0 ? (
+              <p className="hint">
+                No scheduled jobs reported, or the box did not answer. Jobs are set up on the box
+                itself; they show here once it answers.
+              </p>
+            ) : (
+              <div className="cc-roster">
+                {currentJobs.map((job) => (
+                  <div key={job.id} className={`cc-member ${job.enabled ? 'ok' : 'muted'}`}>
+                    <div className="cc-member-body">
+                      <div className="cc-member-name">{job.name}</div>
+                      <div className="cc-member-line">
+                        <PresenceDot tone={job.enabled ? 'ok' : 'muted'} />
+                        {job.enabled ? job.schedule || 'Scheduled' : 'Paused'}
+                        {job.nextRunAt ? ` · next ${job.nextRunAt}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </section>

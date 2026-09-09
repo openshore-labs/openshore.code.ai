@@ -34,8 +34,19 @@ import {
 import { oscHome } from 'os-code/dist/src/config/load.js';
 import { getRoutineScheduler, type RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
 import { validateRoutineInput } from 'os-code/dist/src/routines/model.js';
+import {
+  cliCommandAvailable,
+  hermesHome,
+  listHermesNotes,
+  probeCurrentsHost,
+  readHermesNote,
+} from 'os-code/dist/src/currents/host.js';
 import type {
+  CurrentsHandles,
+  CurrentsHostProbe,
   DriverEvent,
+  HermesNote,
+  HermesNoteMeta,
   PermissionMode,
   RoutineInput,
   RoutineRun,
@@ -196,9 +207,18 @@ export class EngineHost {
       humanize?: boolean;
       codemagicToken?: string;
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
+      currents?: CurrentsHandles;
     } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
+    // A CLI handle is honored only when that CLI is really on this machine's
+    // PATH (same rule as the daemon), so the tool never registers for a
+    // command that cannot run.
+    let currents = opts.currents;
+    if (currents?.cli && !cliCommandAvailable(currents.cli.command)) {
+      const { cli: _dropped, ...rest } = currents;
+      currents = Object.keys(rest).length ? rest : undefined;
+    }
     const { driver, warnings } = bootstrapSession({
       cwd: workDir,
       profile: 'local-interactive',
@@ -210,6 +230,7 @@ export class EngineHost {
       humanize: opts.humanize,
       codemagicToken: opts.codemagicToken,
       codemagicTarget: opts.codemagicTarget,
+      currents,
     });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
@@ -686,6 +707,24 @@ export class EngineHost {
 
   routineNote(runId: string): { path: string; markdown: string } | null {
     return this.scheduler.readNote(runId) ?? null;
+  }
+
+  // -------------------------------------------------------- agentic currents
+  // The same read-only surface the daemon serves the phone, over IPC: what this
+  // computer can host, and the notes in a Hermes home. Jailed and markdown-only
+  // in the engine; nothing here writes.
+
+  currentsProbe(): CurrentsHostProbe {
+    return probeCurrentsHost();
+  }
+
+  hermesNotes(): { home: string; notes: HermesNoteMeta[] } {
+    const home = hermesHome();
+    return { home, notes: listHermesNotes(home) };
+  }
+
+  hermesNote(path: string): HermesNote | null {
+    return readHermesNote(hermesHome(), path) ?? null;
   }
 
   // ------------------------------------------------------------------ daemon

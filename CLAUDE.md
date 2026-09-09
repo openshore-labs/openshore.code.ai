@@ -123,3 +123,22 @@ No em dash anywhere in tracked source, comments included, encoded spellings
 too. Use a period, a comma, or a rewrite. `test/em-dash-policy.test.ts` in both
 `os-code` and `app` enforces it and fails the build on any violation. This is
 stricter than the Uki repos by design, because OS Code started under the rule.
+
+## Agentic Currents and Wayfinding are BUILT (BETA, 2026-09-09)
+
+The founder's frame: OpenShore takes on new agent tech by connecting to it and
+layering it in, never by reshaping the familiar rooms. Two Settings groups hold
+that promise, doc in `docs/agentic-currents.md`. **Wayfinding** (memory,
+skills, browser) is how the agent finds its way, default on. **Agentic
+Currents** (Hermes Agent, CLI Pairing, Vellum, OpenAGI, A2A) are opt-in
+modalities for agent work, default off, a BETA, ONE on at a time everywhere:
+flip one on and the same rooms gain rows for it; flip it off and every trace
+is gone. The rules are code, not memory: the pure core is
+`app/src/lib/currents.ts`, the engine side is `os-code/src/currents/` plus the
+`askHermes`, `askAgent`, and `cliAgent` tools, and `app/test/currents.test.ts`
+holds the guards (one at a time, the two-part gate, every current fills every
+contribution slot, and no room names a current itself). Do NOT add a room for
+a current, do NOT hardcode a current's name in a room (render through
+`activeContribution`), and do NOT call a current "always on". "Currents" is
+the CMO and Creative Studio's name; "Layers" was retired; "frontier" stays
+reserved for cloud models. Open follow-ups are in `os-code/PROGRESS.md`.

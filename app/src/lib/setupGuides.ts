@@ -13,7 +13,10 @@ export type SetupGuideId =
   | 'open-a-repo'
   | 'install-tailscale'
   | 'connect-codemagic'
-  | 'set-up-crew';
+  | 'set-up-crew'
+  | 'connect-hermes'
+  | 'cli-pairing'
+  | 'connect-a2a';
 
 export interface SetupGuide {
   id: SetupGuideId;
@@ -138,6 +141,59 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
       'Away from home you can always watch your crew and read its results here. To change or run a routine, reconnect to your machine over Tailscale first.',
     ],
     done: 'A routine shows in Crew command with its next run time, and its first report lands in your vault.',
+  },
+  'connect-hermes': {
+    id: 'connect-hermes',
+    title: 'Connect your Hermes box',
+    goal: 'Run Hermes Agent on a computer I own and reach it from OpenShore, so it shows up on my bench, in my crew, and in my vault.',
+    steps: [
+      'Agentic Currents are a beta. Hermes runs its own tools on its own computer under its own rules; OpenShore shows you what it remembers and lets your models hand it work, and off leaves no trace.',
+      {
+        text: 'On the computer that will run Hermes (a Mac mini or a small Linux box works), install it with the official installer and run the setup wizard:',
+        paste: 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash && hermes setup',
+      },
+      {
+        text: 'Turn on its API server so OpenShore can talk to it. This serves an OpenAI-compatible endpoint on the box:',
+        paste: 'hermes api-server',
+      },
+      'Put both machines on the same Tailscale network, the same private link your paired computer uses. Never expose the Hermes port to the public internet.',
+      'Back in OpenShore, open Settings, then Agentic Currents, and turn on Hermes Agent. Enter the address, which ends in /v1, for example http://mini.tail1234.ts.net:8642/v1, and the API key if you set one.',
+      'Hermes now sits on your bench in Your stack, as a member in Crew command, and its memory and skills read in the Vault when you are docked to the computer that holds its home folder.',
+    ],
+    done: 'The Hermes Agent row reads On, a faint water-line frames every screen, and Hermes appears on your bench.',
+  },
+  'cli-pairing': {
+    id: 'cli-pairing',
+    title: 'Pair a coding CLI',
+    goal: 'Use Claude Code or Codex on my paired computer as a specialist my stack can hand a coding task to.',
+    steps: [
+      'Agentic Currents are a beta. Your own engine stays the default; a paired CLI is one more specialist to hand work to, and off leaves no trace.',
+      {
+        text: 'On the computer OpenShore is paired with, install the CLI you already use. For Claude Code:',
+        paste: 'npm install -g @anthropic-ai/claude-code',
+      },
+      {
+        text: 'Or for Codex:',
+        paste: 'npm install -g @openai/codex',
+      },
+      'Sign in to it once in a terminal on that computer, the way its own docs say, so it can run headless later.',
+      'In OpenShore, open Settings, then Agentic Currents, and turn on CLI Pairing. Pick the CLI. OpenShore checks that it is really on the computer before it offers it.',
+      'Ask for something small in a coding chat, like: hand this to Claude Code and review the diff. The run shows as a command you approve, and the diff comes back for review.',
+    ],
+    done: 'The CLI Pairing row reads On, and a coding chat can hand a task to the CLI with a command you approve.',
+  },
+  'connect-a2a': {
+    id: 'connect-a2a',
+    title: 'Connect an agent over A2A',
+    goal: 'Reach an agent I run, over the open agent-to-agent protocol, so my stack can hand it work.',
+    steps: [
+      'Agentic Currents are a beta. A2A is the generic door: any agent that publishes an agent card connects here, Hermes and Vellum included when they expose one. Off leaves no trace.',
+      'Find the base address of the agent. It publishes its card at /.well-known/agent-card.json under that address, and its own docs say how to turn A2A on.',
+      'Put it on your Tailscale network if it runs on a computer you own. Never expose an agent port to the public internet.',
+      'In OpenShore, open Settings, then Agentic Currents, and turn on A2A. Paste the address and the key if it needs one. OpenShore reads the card and shows the name of the agent.',
+      'In a chat, ask for something the agent is good at. Your model hands it over with the askAgent tool and says plainly when an answer came from it.',
+    ],
+    done: 'The A2A row reads On and names the agent from its card, and a chat can hand it a task.',
   },
 };
 

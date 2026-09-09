@@ -19,6 +19,12 @@ import { CLAUDE_MODELS } from '../lib/claudeModels.js';
 import { isPinned } from '../lib/pins.js';
 import { byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import {
+  activeContribution,
+  currentBenchRefs,
+  isCurrentBenchId,
+  slotNone,
+} from '../lib/currents.js';
+import {
   STACK_CATEGORIES,
   categoryLabel,
   defaultVisionCloudRef,
@@ -91,7 +97,14 @@ export function StackManager() {
       modelName,
     })),
   ];
-  const byomRefs: StackModelRef[] = (settings.byomModels ?? []).map(byomRef);
+  // The bench holds the person's own endpoints plus the model an Agentic
+  // Current contributes while it is on (none when none is on). Both are
+  // BYOM-shaped, so they place and run through the same path.
+  const current = activeContribution(settings);
+  const byomRefs: StackModelRef[] = [
+    ...(settings.byomModels ?? []).map(byomRef),
+    ...currentBenchRefs(settings),
+  ];
   const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
     (p) =>
       providerBenchModels(p).map((m): StackModelRef => ({
@@ -428,12 +441,25 @@ export function StackManager() {
                     <div className="grow">
                       <h3>
                         {refName(ref)}
-                        {ref.kind === 'byom' ? <span className="sub"> (your model)</span> : null}
+                        {ref.kind === 'byom' && isCurrentBenchId(ref.id) ? (
+                          <>
+                            {' '}
+                            <span className="pill local">
+                              {current && !slotNone(current.bench)
+                                ? current.bench.pill
+                                : 'via current'}
+                            </span>
+                          </>
+                        ) : ref.kind === 'byom' ? (
+                          <span className="sub"> (your model)</span>
+                        ) : null}
                       </h3>
                       <div className="sub">
-                        {ref.kind === 'byom'
-                          ? `On the bench. ${ref.model} at ${byomHost(ref.baseUrl)}.`
-                          : 'On the bench. Place it to put it to work.'}
+                        {ref.kind === 'byom' && isCurrentBenchId(ref.id)
+                          ? `On the bench. Runs on its own computer at ${byomHost(ref.baseUrl)}; your approvals do not reach it.`
+                          : ref.kind === 'byom'
+                            ? `On the bench. ${ref.model} at ${byomHost(ref.baseUrl)}.`
+                            : 'On the bench. Place it to put it to work.'}
                       </div>
                     </div>
                     <button
@@ -443,7 +469,7 @@ export function StackManager() {
                     >
                       Add to stack
                     </button>
-                    {ref.kind === 'byom' ? (
+                    {ref.kind === 'byom' && !isCurrentBenchId(ref.id) ? (
                       <button
                         className="icon-btn"
                         aria-label="Options"

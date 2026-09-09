@@ -160,6 +160,28 @@ export {
   validateSchedule,
 } from './routines/model.js';
 
+// Agentic Currents: the roster ids, the per-session handles, the host probe,
+// and the Hermes note shapes. Pure; the node side lives in currents/host.ts
+// and is NOT imported here.
+export type {
+  A2aHandle,
+  AgenticCurrentId,
+  CliAgentCommand,
+  CliHandle,
+  CurrentsHandles,
+  CurrentsHostProbe,
+  HermesHandle,
+  HermesNote,
+  HermesNoteMeta,
+} from './currents/model.js';
+export {
+  AGENTIC_CURRENT_IDS,
+  CURRENTS_LIMITS,
+  isAgenticCurrentId,
+  normalizeHermesBaseUrl,
+  parseCurrentsHandles,
+} from './currents/model.js';
+
 /** Wire shapes the daemon serves that are not agent events. */
 export interface DaemonSessionInfo {
   id: string;

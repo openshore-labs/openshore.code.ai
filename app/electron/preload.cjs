@@ -81,6 +81,10 @@ contextBridge.exposeInMainWorld('oscode', {
   routineStop: invoke('osc:routineStop'),
   routineNote: invoke('osc:routineNote'),
 
+  currentsProbe: invoke('osc:currentsProbe'),
+  hermesNotes: invoke('osc:hermesNotes'),
+  hermesNote: invoke('osc:hermesNote'),
+
   vaultList: invoke('osc:vaultList'),
   vaultRead: invoke('osc:vaultRead'),
   vaultWrite: invoke('osc:vaultWrite'),

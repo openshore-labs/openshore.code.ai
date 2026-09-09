@@ -179,6 +179,22 @@ import {
 } from '../lib/stack.js';
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
 import {
+  activeCurrent,
+  currentBenchId,
+  currentInfo,
+  currentSecretKey,
+  currentsHandles,
+  nextActiveCurrent,
+  type AgenticCurrentId,
+  type CurrentConnection,
+  type CurrentConnections,
+  type CurrentProbes,
+  type WayfindingId,
+  type WayfindingSettings,
+} from '../lib/currents.js';
+import { currentsHost, probeCurrent } from '../lib/currentsProbe.js';
+import { normalizeHermesBaseUrl, type CurrentsHostProbe } from 'os-code/protocol';
+import {
   createOrgProject,
   deleteOrgProject,
   listOrgProjects,
@@ -377,6 +393,20 @@ export interface AppSettings {
    *  token lives in this device's Keychain and only ever executes on this
    *  device, never on a remote hub. Never synced. See codemagicControl.ts. */
   codemagicAccess?: boolean;
+  /** Wayfinding (Settings): memory, skills, browser. How the agent finds its
+   *  way. Each is on unless turned off (missing means on). Device local. See
+   *  lib/currents.ts. */
+  wayfinding?: WayfindingSettings;
+  /** The Agentic Current that is on, or none. ONE at a time everywhere
+   *  (founder, 2026-09-09): turning one on turns the other off, so this is a
+   *  single id rather than a map of booleans. Device local, never synced: a
+   *  current names a box or a CLI reachable from THIS device's pairing. BETA. */
+  agenticCurrent?: AgenticCurrentId | null;
+  /** What the person saved per current (an address, a model, a CLI). Metadata
+   *  only; an API key lives in the secret store under currentSecretKey(id).
+   *  Kept when a current is turned off so turning it back on is one tap; the
+   *  rooms never read it while the current is off. Device local. */
+  currentConnections?: CurrentConnections;
   /** The role each paired hub reported for this device's credential (from the
    *  hub's /health), keyed by base URL. Read at pair time and refreshed when a
    *  session attaches. Missing means the hub predates roles and decides per
@@ -602,6 +632,17 @@ interface AppState {
   arrivedBack: boolean;
   /** Whether a Codemagic API token is connected (the token lives in Keychain). */
   codemagicConnected: boolean;
+  /** The live half of each Agentic Current's two-part gate: whether its saved
+   *  connection answered the last probe. Never persisted; re-probed on open,
+   *  on connect, and on demand. */
+  currentProbes: CurrentProbes;
+  /** What the paired computer (or this desktop) can host for currents: a
+   *  Hermes home present, a coding CLI on PATH. Undefined until reachable. */
+  currentsHost?: CurrentsHostProbe;
+  /** The arrival gesture in flight: where the switch was (viewport px) and
+   *  whether the current is flowing in or ebbing out. `seq` restarts the
+   *  animation for a second flip. Cleared by the overlay when it settles. */
+  currentArrival?: { seq: number; x: number; y: number; ebb: boolean; label: string };
   /** Which repo platforms are connected (tokens live in the Keychain). */
   connectedRepoPlatforms: Record<string, boolean>;
   /** The signed-in Supabase session, when accounts are configured + signed in. */
@@ -1037,6 +1078,32 @@ interface AppState {
    *  model from the terminal entirely. Scoped to that one target. */
   setTerminalControl(on: boolean): Promise<void>;
   setCodemagicAccess(on: boolean): Promise<void>;
+
+  // Wayfinding and Agentic Currents (lib/currents.ts).
+  /** Turn one Wayfinding switch on or off. */
+  setWayfinding(id: WayfindingId, on: boolean): Promise<void>;
+  /** Flip an Agentic Current. One at a time everywhere: turning one on turns
+   *  the other off. `at` is where the switch sits, for the arrival gesture that
+   *  flows from it to the edges of the screen. Turning the active one off
+   *  purges its bench entry from every stack, so off leaves no trace. */
+  setAgenticCurrent(
+    id: AgenticCurrentId,
+    on: boolean,
+    at?: { x: number; y: number },
+  ): Promise<void>;
+  /** Save what a current needs (an address, a model, a CLI, a key) and probe
+   *  it. Returns whether it answered. */
+  connectCurrent(
+    id: AgenticCurrentId,
+    input: { endpoint?: string; model?: string; command?: 'claude' | 'codex'; apiKey?: string },
+  ): Promise<boolean>;
+  /** Forget a current's connection and key, and turn it off if it was on. */
+  disconnectCurrent(id: AgenticCurrentId): Promise<void>;
+  /** Re-probe the host and the saved connections (on open, on reconnect, on
+   *  demand). Never throws; an unreachable box reads as Arriving. */
+  refreshCurrents(): Promise<void>;
+  /** The arrival overlay reports that it settled. */
+  clearCurrentArrival(): void;
   /** Save a hub (upsert by base URL) and make it the active one. The role the
    *  hub reported at pairing rides along; when absent it is read from the hub. */
   saveHub(target: DaemonTarget, opts?: { role?: HubRole }): Promise<void>;
@@ -1095,6 +1162,36 @@ interface AppState {
   benchSpecialist(key: string, profile?: ProfileId): Promise<void>;
   /** Edit a model's category / trigger / persona, active or benched. */
   editPlacement(key: string, placement: Placement, profile?: ProfileId): Promise<void>;
+}
+
+/** Pull a bench id (a current's model) out of EVERY status's stack: the active
+ *  specialists, the saved-placement map, and a Reasoning anchor (which falls
+ *  back to the built-in guide). The same sweep disconnectByom does, shared so
+ *  turning a current off can never leave its model behind in one profile. */
+function purgeBenchId(
+  stacks: ProfileStacks | undefined,
+  benchId: string,
+): ProfileStacks | undefined {
+  if (!stacks) return stacks;
+  const key = `byom:${benchId}`;
+  const out: ProfileStacks = { ...stacks };
+  for (const p of PROFILE_ORDER) {
+    const st = out[p];
+    if (!st) continue;
+    const active = st.active.filter((m) => stackRefKey(m.ref) !== key);
+    const saved = { ...st.saved };
+    delete saved[key];
+    const reasoning =
+      st.reasoning && stackRefKey(st.reasoning) === key ? harborRef() : st.reasoning;
+    out[p] = { ...st, active, saved, reasoning };
+  }
+  return out;
+}
+
+/** The active current's API key, if one is saved. */
+async function currentSecretForActive(settings: AppSettings): Promise<string | null> {
+  const id = activeCurrent(settings);
+  return id ? secretGet(currentSecretKey(id)) : null;
 }
 
 let convSeq = 0;
@@ -1548,6 +1645,15 @@ export const useApp = create<AppState>((set, get) => {
             }
           }
         }
+        // The Agentic Current that is on, as the handle its engine tool needs.
+        // Unlike the Codemagic token this rides to a remote hub too: a current
+        // names a box or a CLI the person chose to reach FROM the hub, and the
+        // key is that box's own key, not a secret bound to this device.
+        const currents = currentsHandles(
+          settings,
+          (await currentSecretForActive(settings)) ?? undefined,
+          get().currentsHost,
+        );
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -1562,6 +1668,7 @@ export const useApp = create<AppState>((set, get) => {
           humanize: settings.humanizeWriting !== false,
           codemagicToken,
           codemagicTarget,
+          currents,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -1609,6 +1716,7 @@ export const useApp = create<AppState>((set, get) => {
             instructions: sessionOpts.instructions,
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
+            currents: sessionOpts.currents,
           });
           await bindSessionId(conv.id, sessionId);
         }
@@ -1702,6 +1810,7 @@ export const useApp = create<AppState>((set, get) => {
             // described instead of executed.
             daemon: s.settings.daemon,
             repoCwd: firstWorkspace(conv.repoIds ?? []),
+            conversationId: conv.id,
           },
           seed,
         );
@@ -2079,6 +2188,7 @@ export const useApp = create<AppState>((set, get) => {
     connectedProviders: {},
     arrivedBack: false,
     codemagicConnected: false,
+    currentProbes: {},
     searchKeyConfigured: false,
     vaultFiles: [],
     vaultScope: 'personal',
@@ -2355,6 +2465,12 @@ export const useApp = create<AppState>((set, get) => {
         view: settings.onboarded || stored || locked ? 'chat' : 'onboarding',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
+      // The live half of the currents gate: probe what the paired computer can
+      // host and whether each saved connection answers. Best effort, off the
+      // launch path; an unreachable box simply reads as Arriving.
+      void get()
+        .refreshCurrents()
+        .catch(() => {});
       if (locked) {
         get().showToast(
           'Could not unlock your data on this machine. Nothing was changed. Restart the app, or check your system keychain.',
@@ -5186,6 +5302,122 @@ export const useApp = create<AppState>((set, get) => {
       // and only ever runs here, so there is no per-target map (see
       // codemagicControl.ts).
       await get().saveSettings({ codemagicAccess: on });
+    },
+
+    // ------------------------------------------ wayfinding and agentic currents
+
+    async setWayfinding(id, on) {
+      const wayfinding = { ...(get().settings.wayfinding ?? {}), [id]: on };
+      await get().saveSettings({ wayfinding });
+      logEvent('wayfinding_toggle', { id, on });
+    },
+
+    async setAgenticCurrent(id, on, at) {
+      const s = get();
+      const prior = activeCurrent(s.settings);
+      const next = nextActiveCurrent(prior, id, on);
+      if (next === prior) return;
+      // Off leaves no trace: a current's bench entry is pulled from EVERY
+      // status's stack the moment it stops being the active current, the same
+      // sweep a disconnected BYOM endpoint gets. Placements are not kept
+      // across an off/on, on purpose: the person places it again, in one tap.
+      const stacks = prior
+        ? purgeBenchId(s.settings.stacks, currentBenchId(prior))
+        : s.settings.stacks;
+      await get().saveSettings({ agenticCurrent: next, stacks });
+      const seq = (s.currentArrival?.seq ?? 0) + 1;
+      const label = next ? currentInfo(next).label : prior ? currentInfo(prior).label : '';
+      set({
+        currentArrival: at ? { seq, x: at.x, y: at.y, ebb: next === null, label } : undefined,
+      });
+      logEvent(next ? 'current_on' : 'current_off', { id: next ?? prior ?? id });
+      if (next) void get().refreshCurrents();
+    },
+
+    async connectCurrent(id, input) {
+      const s = get();
+      const info = currentInfo(id);
+      const prior = s.settings.currentConnections?.[id] ?? {};
+      const conn: CurrentConnection = { ...prior };
+      if (info.kind === 'cli') {
+        conn.command = input.command ?? prior.command;
+      } else {
+        const raw = (input.endpoint ?? prior.endpoint ?? '').trim();
+        conn.endpoint =
+          info.kind === 'hermes' ? normalizeHermesBaseUrl(raw) : raw.replace(/\/+$/, '');
+        conn.model = input.model?.trim() || prior.model;
+        // A fresh address forgets what the last one answered as.
+        if (conn.endpoint !== prior.endpoint) {
+          delete conn.via;
+          delete conn.agentName;
+        }
+      }
+      if (input.apiKey !== undefined) {
+        const key = input.apiKey.trim();
+        if (key) await secretSet(currentSecretKey(id), key);
+        else await secretDelete(currentSecretKey(id));
+      }
+      await get().saveSettings({
+        currentConnections: { ...(s.settings.currentConnections ?? {}), [id]: conn },
+      });
+      logEvent('current_connected', { id });
+      await get().refreshCurrents();
+      return get().currentProbes[id] === true;
+    },
+
+    async disconnectCurrent(id) {
+      await secretDelete(currentSecretKey(id));
+      const s = get();
+      const currentConnections = { ...(s.settings.currentConnections ?? {}) };
+      delete currentConnections[id];
+      const wasOn = activeCurrent(s.settings) === id;
+      await get().saveSettings({
+        currentConnections,
+        ...(wasOn
+          ? { agenticCurrent: null, stacks: purgeBenchId(s.settings.stacks, currentBenchId(id)) }
+          : {}),
+      });
+      set({ currentProbes: { ...get().currentProbes, [id]: false } });
+      logEvent('current_disconnected', { id });
+    },
+
+    async refreshCurrents() {
+      const s = get();
+      // Nothing here may throw: a probe that fails reads as "did not answer".
+      const host = await currentsHost(s.settings.daemon).catch(() => undefined);
+      const probes: CurrentProbes = { ...get().currentProbes };
+      // Probe every saved connection, not only the active one, so a row can
+      // read Ready (saved and answering) while another current is on.
+      const saved = Object.keys(s.settings.currentConnections ?? {}) as AgenticCurrentId[];
+      await Promise.all(
+        saved.map(async (id) => {
+          const conn = s.settings.currentConnections?.[id];
+          const key = (await secretGet(currentSecretKey(id)).catch(() => null)) ?? undefined;
+          const result = await probeCurrent(id, conn, key, host).catch(() => ({
+            answered: false as const,
+          }));
+          probes[id] = result.answered;
+          // An endpoint current remembers which door answered and the agent's
+          // name from its card, so the rooms can render it honestly.
+          if (result.answered && conn && (result.via || result.agentName)) {
+            const next: CurrentConnection = {
+              ...conn,
+              via: result.via ?? conn.via,
+              agentName: result.agentName ?? conn.agentName,
+            };
+            if (next.via !== conn.via || next.agentName !== conn.agentName) {
+              await get().saveSettings({
+                currentConnections: { ...(get().settings.currentConnections ?? {}), [id]: next },
+              });
+            }
+          }
+        }),
+      );
+      set({ currentProbes: probes, currentsHost: host });
+    },
+
+    clearCurrentArrival() {
+      set({ currentArrival: undefined });
     },
 
     async saveHub(target, opts) {

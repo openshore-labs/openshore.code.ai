@@ -89,3 +89,15 @@ Configuration notes:
   App Store Connect as data collected and used only to deliver notifications, not
   linked to identity and not used for tracking. If a `PrivacyInfo.xcprivacy`
   manifest is added to the target, mirror the same disclosure there.
+
+## A feature group labeled BETA (Agentic Currents)
+
+Settings carries a group headed "Agentic Currents" with a small BETA pill and
+the line "An imperfect addition we are exploring. One on at a time. Off leaves
+no trace." This labels one opt-in feature group inside a shipped app; the app
+itself is not presented as a beta, a trial, or a demo (Guideline 2.2), and
+nothing in the group is required to use the app. Everything in it is off by
+default, connects only to services the person runs on their own hardware over
+their own private network (the same Tailscale transport the daemon uses), and
+turning it off removes every trace. If a reviewer asks: the label is honesty
+about maturity, not a beta distribution channel.

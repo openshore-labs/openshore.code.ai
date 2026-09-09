@@ -7,17 +7,31 @@ import type { CSSProperties, ReactNode } from 'react';
 
 export function SettingsGroup({
   title,
+  badge,
+  intro,
   index,
   children,
 }: {
   title?: string;
+  /** A short uppercase pill after the title (BETA), in the neutral pill style:
+   *  not teal (local) and not amber (spend), the word does the work. */
+  badge?: string;
+  /** One plain sentence under the head, for a group that needs a promise
+   *  stated before its rows (what beta means here). */
+  intro?: string;
   /** Position on the screen, for the entrance stagger. */
   index: number;
   children: ReactNode;
 }) {
   return (
     <section className="settings-group" style={{ '--i': index } as CSSProperties}>
-      {title ? <h2 className="settings-group-head">{title}</h2> : null}
+      {title ? (
+        <h2 className="settings-group-head">
+          {title}
+          {badge ? <span className="pill settings-group-badge">{badge}</span> : null}
+        </h2>
+      ) : null}
+      {intro ? <p className="settings-group-intro">{intro}</p> : null}
       <div className="settings-card">{children}</div>
     </section>
   );
