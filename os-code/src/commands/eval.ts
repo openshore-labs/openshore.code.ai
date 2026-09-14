@@ -6,6 +6,7 @@ import { ProviderRegistry } from '../providers/registry.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import { runEval } from '../eval/harness.js';
+import { classBlurb } from '../harness/profile.js';
 import { header, okLine, out, warnLine } from './util.js';
 
 export interface EvalOptions {
@@ -58,6 +59,7 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
         `${model} averages ${(report.average * 100).toFixed(0)}%. It will work, with more repair passes; a stronger orchestrator (osc market) will feel much better.`,
       );
     }
+    out(t.muted(`  Class: ${report.modelClass}. ${classBlurb(report.modelClass)}`));
     out(t.muted('  Report saved under ~/.os-code/eval/.'));
   } catch (err) {
     warnLine(`The eval could not finish: ${(err as Error).message}`);
