@@ -103,6 +103,13 @@ export const ResourceBudgetSchema = z.object({
   maxResidentModels: z.number().int().min(1).default(1),
   /** Override detected VRAM in GB (for headless boxes and tests). */
   vramOverrideGB: z.number().positive().optional(),
+  /** Seconds a stream may go silent between tokens before the guard calls it a
+   *  stall. */
+  streamIdleSeconds: z.number().int().min(1).default(120),
+  /** Seconds to wait for the FIRST token, which is prefill: a cold local model
+   *  reading a large prompt on a modest box can take minutes before it speaks.
+   *  Raise it on very slow hardware. Never shorter than streamIdleSeconds. */
+  streamFirstByteSeconds: z.number().int().min(1).default(300),
 });
 
 // ---------------------------------------------------------------------------

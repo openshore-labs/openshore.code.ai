@@ -20,6 +20,7 @@ import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
 import { engineEthicsContext } from '../ethics/host.js';
+import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles } from '../../currents/model.js';
 import { logger } from '../../util/log.js';
@@ -93,6 +94,14 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     config = loaded.config;
     warnings.push(...loaded.warnings);
   }
+
+  // Apply the stream idle windows from config once, before any provider streams.
+  // The first-byte window matters most on modest local hardware, where a cold
+  // model reading a large prompt can take minutes to emit its first token.
+  configureStreamIdle({
+    idleSeconds: config.resourceBudget.streamIdleSeconds,
+    firstByteSeconds: config.resourceBudget.streamFirstByteSeconds,
+  });
 
   // The app's Humanize Writing setting rides in as a per-session override. It
   // only ever turns the humanizer off (a project's config 'off' or notes always

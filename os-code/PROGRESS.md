@@ -56,7 +56,22 @@ reporting one try next to best of n, so a best-of-N picker is measured before
 it is built) and the frontier reference run: `--provider anthropic --model
 <model>` puts the named model in the orchestrator seat for the run, asks once
 up front on the terminal (default No, `--yes` for a scripted run), and draws
-the ceiling line the local numbers are measured against. What is NOT done:
+the ceiling line the local numbers are measured against. The eval also became
+self-diagnosing: each drive can return a trace (turns, tools reached for,
+whether a write landed, how it ended) and the scorecard prints a one-line why
+under any task short of a clean pass. That trace paid off immediately: the
+first deep run of qwen2.5-coder:7b on the box scored 0% on all four tasks, and
+the why-lines showed why, "1 turn; no tools called; done: error (No bytes for
+120s from ollama)". Not model incapacity: the stream idle guard was killing the
+request during prefill, because a cold 7B reading the full agent-loop prompt on
+a modest box (small GPU or CPU) takes longer than 120s to emit its first token.
+Fixed by splitting the guard into two windows (`src/providers/streamIdle.ts`):
+a generous first-byte window (prefill, default 300s) and the tight inter-token
+window (default 120s), both configurable via `resourceBudget.streamIdleSeconds`
+and `streamFirstByteSeconds`, applied at bootstrap and in the deep eval. The
+three-probe eval had hidden this because its prompts are tiny and prefill is
+quick. Re-running the deep eval on the box is the immediate next step, now that
+the model can actually respond. What is NOT done:
 wiring the profile and decoding into `loop.ts` (then re-running eval to prove
 the small class climbs), a best-of-N picker in the loop (needs checkpoints, and
 only if the attempts gap says it pays), a pass/fail verify pill on the
@@ -843,10 +858,21 @@ log entry). Migration is now `0016`.
   the frontier reference run (`--provider anthropic --model <model>` puts the
   named model in the orchestrator seat, asks once up front, and draws the
   ceiling line; this also fixed the deep eval always driving the configured
-  orchestrator whatever `--model` said). os-code 676 green, lint and build
-  clean, app typecheck clean. The profile and decoding seam is still not wired
-  into `loop.ts`; that wiring is gated on the deep-eval numbers from the
-  founder's box.
+  orchestrator whatever `--model` said). The eval also became self-diagnosing
+  (each drive can return a trace; the scorecard prints a one-line why under any
+  task short of a pass), and that trace earned its keep on the first real deep
+  run: qwen2.5-coder:7b scored 0% on all four tasks, and the why-lines showed
+  "1 turn; no tools called; done: error (No bytes for 120s from ollama)". Not
+  the model, the harness: the stream idle guard was killing the request during
+  prefill, because a cold 7B reading the full agent-loop prompt on a modest box
+  takes longer than 120s to first token. Fixed by splitting the guard into a
+  generous first-byte window (prefill, default 300s) and the tight inter-token
+  window (`src/providers/streamIdle.ts`, both configurable via
+  `resourceBudget.streamIdleSeconds`/`streamFirstByteSeconds`). os-code 679
+  green, lint and build clean, app typecheck clean. The profile and decoding
+  seam is still not wired into `loop.ts`; that wiring, and the whole harness
+  measurement story, is gated on a clean deep-eval run from the founder's box,
+  which the prefill fix now makes possible.
 
 - **2026-09-14: Perplexity, Sonar as a cloud provider and Research as a
   default-off layer (founder, after a CTO and CX read).** The founder wanted
