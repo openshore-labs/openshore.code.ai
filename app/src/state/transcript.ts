@@ -265,7 +265,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // The harness ran the project's checks after a task that changed files.
       // Shown as a note today (the summary reads "Verified:" or "Not
       // verified:"); a dedicated pill on the task-done card is a fast follow.
-      return push(next, { kind: 'note', text: event.summary });
+      // A failure that is going back to the model says so, so the last verify
+      // note of the task is the verdict.
+      return push(next, {
+        kind: 'note',
+        text: event.willRetry ? `${event.summary} Handing it back to the model.` : event.summary,
+      });
 
     case 'clarify':
       return push(next, {
