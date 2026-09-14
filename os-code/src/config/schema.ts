@@ -240,6 +240,41 @@ const SyncSchema = z.object({
   autoPush: z.boolean().default(true),
 });
 
+// The premium harness (founder + advisor org, 2026-09-14; see
+// docs/premium-harness-proposal.md and CLAUDE.md "The premium harness"). The
+// discipline seam that makes the smallest models capable: a model-class profile
+// per seat, and constrained decoding to the tool-or-answer union schema for
+// small local models. On by default, tunable or off per project. An empty
+// config stays a valid, working setup. Code in os-code/src/harness/.
+const HarnessProfileOverrideSchema = z.object({
+  maxToolsShown: z.number().int().min(1).optional(),
+  maxCallsPerTurn: z.number().int().min(1).optional(),
+  constrainedDecoding: z.boolean().optional(),
+  subagents: z.enum(['no', 'worker', 'yes']).optional(),
+  plans: z.boolean().optional(),
+  codeMapContextFraction: z.number().min(0).max(1).optional(),
+  compactAtContextFraction: z.number().min(0).max(1).optional(),
+});
+
+const HarnessSchema = z.object({
+  profiles: z
+    .object({
+      // Apply model-class discipline so a small seat gets the harness's help.
+      enabled: z.boolean().default(true),
+      // Per-class tweaks, keyed by "tiny" | "small" | "mid" | "large".
+      overrides: z.record(z.string(), HarnessProfileOverrideSchema).default({}),
+    })
+    .prefault({}),
+  decoding: z
+    .object({
+      // Constrain a small local model's decoding to the tool-or-answer union
+      // schema when the backend supports grammar. The eval decides per family
+      // whether it is a lift or a tax, so it stays a switch.
+      constrainForSmallModels: z.boolean().default(true),
+    })
+    .prefault({}),
+});
+
 export const ConfigSchema = z.object({
   providers: z
     .record(z.string(), ProviderEndpointSchema)
@@ -260,6 +295,7 @@ export const ConfigSchema = z.object({
   ux: UxSchema.prefault({}),
   humanizer: HumanizerSchema.prefault({}),
   sync: SyncSchema.prefault({}),
+  harness: HarnessSchema.prefault({}),
 });
 
 export type OscConfig = z.infer<typeof ConfigSchema>;
