@@ -90,4 +90,38 @@ describe('CloudOpenAiDriver (device path)', () => {
     const usage = events.find((e) => e.type === 'usage') as { promptTokens: number } | undefined;
     expect(usage?.promptTokens).toBeGreaterThan(0);
   });
+
+  it('surfaces Sonar search_results as a citations event with title, url, and snippet', async () => {
+    // Perplexity returns sources as a top-level field outside the OpenAI schema.
+    nextBody = {
+      choices: [{ message: { content: 'A sourced answer.' } }],
+      search_results: [{ title: 'Doc', url: 'https://ex.com/a', snippet: 'S' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    };
+    const events = await runTurn('what is new?');
+    const cites = events.find((e) => e.type === 'citations') as
+      { citations: Array<{ title: string; url: string; snippet: string }> } | undefined;
+    expect(cites?.citations).toEqual([{ title: 'Doc', url: 'https://ex.com/a', snippet: 'S' }]);
+  });
+
+  it('falls back to bare citation URLs, titling by host, and emits nothing for a plain provider', async () => {
+    nextBody = {
+      choices: [{ message: { content: 'ok' } }],
+      citations: ['https://example.com/x'],
+    };
+    let events = await runTurn('q');
+    let cites = events.find((e) => e.type === 'citations') as
+      { citations: Array<{ title: string; url: string }> } | undefined;
+    expect(cites?.citations[0]).toEqual({
+      title: 'example.com',
+      url: 'https://example.com/x',
+      snippet: '',
+    });
+
+    // A provider with no sources (the common case) emits no citations event.
+    nextBody = { choices: [{ message: { content: 'plain' } }] };
+    events = await runTurn('q');
+    cites = events.find((e) => e.type === 'citations') as never;
+    expect(cites).toBeUndefined();
+  });
 });

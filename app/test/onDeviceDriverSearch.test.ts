@@ -3,11 +3,11 @@
 // at most once per user turn even if the model keeps asking.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { callbacks, generateCalls, searchMock, loadSearchKeyMock } = vi.hoisted(() => ({
+const { callbacks, generateCalls, searchMock, resolveSearchKeyMock } = vi.hoisted(() => ({
   callbacks: {} as Record<string, (payload: any) => void>,
   generateCalls: [] as Array<{ requestId: string }>,
   searchMock: vi.fn(),
-  loadSearchKeyMock: vi.fn(),
+  resolveSearchKeyMock: vi.fn(),
 }));
 
 vi.mock('../src/lib/llamaPlugin.js', () => ({
@@ -26,7 +26,7 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
 }));
 
 vi.mock('../src/lib/webSearch.js', () => ({
-  loadSearchKey: loadSearchKeyMock,
+  resolveSearchKey: resolveSearchKeyMock,
   webSearch: searchMock,
   formatSearchResults: (query: string, results: unknown[]) =>
     `RESULTS for ${query}: ${results.length}`,
@@ -41,8 +41,8 @@ describe('OnDeviceDriver web search loop (Harbor)', () => {
   beforeEach(() => {
     generateCalls.length = 0;
     searchMock.mockReset();
-    loadSearchKeyMock.mockReset();
-    loadSearchKeyMock.mockResolvedValue(undefined);
+    resolveSearchKeyMock.mockReset();
+    resolveSearchKeyMock.mockResolvedValue(undefined);
   });
 
   it('detects a SEARCH: line, searches, and continues with the real answer', async () => {
