@@ -1212,3 +1212,14 @@ execution contract. Newest at the bottom.
   current** (a contract test passing, device and paired-computer
   verification, no open must-fix). The founder deferred whether the pill
   moves down to the rows that are still rough once one graduates.
+- 2026-09-14: **The arrival is a replica of the iOS Siri glow, in the brand's
+  water** (founder, from a screen recording read frame by frame: a bloom from
+  the pressed edge, a thick multi-hue ring with an inward glow, settling to a
+  thin drifting ring). Never Siri's pink and purple: the palette is deep water,
+  water, shore teal, a light aqua for the highlight, and the amber counterpoint
+  (`--current-1..5`, per theme). The ring is a masked frame whose conic gradient
+  rides a rotating square (transform only); the bloom is a plain gradient (a
+  large blurred element janks a WebView); the glow is the one blurred layer and
+  lives only through the flourish. The persistent water-line became the same
+  ring, thin and faint, breathing, so the hand-over is seamless and the
+  modality reads whole. Supersedes the 2026-09-09 radial wave and thin border.
