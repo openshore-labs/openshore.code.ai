@@ -50,13 +50,16 @@ export interface TestSessionOptions {
   consents?: ConsentAssertion[];
   /** The security profile to run under (default: sitting at the desk). */
   profile?: SecurityProfileName;
+  /** Run in this workspace instead of a fresh temp dir. Eval v2 prepares a
+   *  fixture workspace and drives the loop inside it. */
+  cwd?: string;
 }
 
 export function makeTestSession(
   provider: MockProvider,
   options: TestSessionOptions = {},
 ): TestSession {
-  const cwd = mkdtempSync(join(tmpdir(), 'osc-test-'));
+  const cwd = options.cwd ?? mkdtempSync(join(tmpdir(), 'osc-test-'));
   for (const [rel, content] of Object.entries(options.files ?? {})) {
     writeFileSync(join(cwd, rel), content);
   }
