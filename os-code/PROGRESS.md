@@ -35,11 +35,16 @@ constrained small model can always answer in prose or call a tool with its own
 argument schema). Config `harness.profiles` and `harness.decoding`, on by
 default, tunable or off, an empty config still valid; the derived class rides
 `osc eval` and prints on the report. Exported from the engine surface for the
-app. 27 new tests. What is NOT done: wiring the profile and decoding into
-`loop.ts`, eval v2 (a benchmark that runs the loop against fixtures, the real
-spine), verify/checkpoints/rewind/hooks, Ask for a hand with Auto-place, the
-pure-core extraction and the phone host, and Lessons. Those are the next steps,
-each gated on a number, in What remains and the proposal.
+app. 27 new tests. Step 2 (eval v2, the real spine) also landed:
+`src/eval/tasks.ts` (four hermetic fixture tasks scored by behavior),
+`src/eval/v2.ts` (the runner, loop injected), `osc eval --deep` (wires the
+real engine loop), and a CI regression test that drives the loop with a mock
+provider and no weights (`test/evalV2.test.ts`), so the harness itself is
+guarded. What is NOT done: wiring the profile and decoding into `loop.ts`
+(then re-running eval to prove the small class climbs),
+verify/checkpoints/rewind/hooks, Ask for a hand with Auto-place, the
+pure-core extraction and the phone host, and Lessons. Those are the next
+steps, each gated on a number, in What remains and the proposal.
 
 ### Agentic Currents and Wayfinding (BETA, founder 2026-09-09)
 
@@ -332,11 +337,13 @@ log entry). Migration is now `0016`.
       landed behind config but is not wired into `loop.ts` yet. Next, in order,
       each gated on a number per the tenets: (1) commit the founder's real eval
       baselines to `curation/eval.json` (deepseek-coder:latest 33%,
-      qwen2.5-coder:7b 75%, run on the founder's box); (2) eval v2, a benchmark
-      that runs the loop through `bootstrapSession` against fixtures under
-      `os-code/eval-fixtures/` with a mock-provider regression mode in CI and a
-      "Measure" Crew routine, so a lift is provable without a person in the loop;
-      (3) wire profiles and the union decoding into `loop.ts` (tools shown, calls
+      qwen2.5-coder:7b 75%, run on the founder's box), and run the deeper
+      `osc eval --deep` there too for a real-loop baseline; (2) DONE, eval v2
+      landed (`src/eval/tasks.ts`, `src/eval/v2.ts`, `osc eval --deep`, the
+      mock-provider CI regression `test/evalV2.test.ts`); the remaining eval-v2
+      follow-ups are a "Measure" Crew routine that runs it nightly on the box
+      and more fixture tasks (a vision-need-recognized task once the hand
+      exists); (3) wire profiles and the union decoding into `loop.ts` (tools shown, calls
       per turn, retrieval before the first turn, per-class context budget), then
       re-run eval to prove the small class climbs; (4) the Claude Code moment on
       the engine (verify, checkpoints and rewind, hooks); (5) Ask for a hand with
