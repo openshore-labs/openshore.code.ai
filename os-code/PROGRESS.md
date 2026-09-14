@@ -45,10 +45,23 @@ guarded. Verify also landed (`src/harness/verify.ts`, config
 project's check command and emits a `verify` event (verified / not verified),
 gated to the local-interactive profile so a project-config command never fires
 unprompted on a remote or headless session; the app shows it as a note for
-now. What is NOT done: wiring the profile and decoding into `loop.ts` (then
-re-running eval to prove the small class climbs), a pass/fail verify pill on
-the task-done card, checkpoints/rewind, hooks, Ask for a hand with Auto-place,
-the pure-core extraction and the phone host, and Lessons. Those are the next
+now. Verify then went IN the loop (the founder's north star is frontier-level
+coding from a decent local model, and coding has an oracle): a failing check
+is handed back to the model as an observation (the exact output tail plus one
+plain ask) and it gets another go, bounded by `harness.verify.maxRetries`
+(default 2, 0 means report only), still under the step rails; the `verify`
+event carries `round` and `willRetry` so the last one is the verdict. Eval v2
+gained `--attempts <n>` (independent tries per task in fresh workspaces,
+reporting one try next to best of n, so a best-of-N picker is measured before
+it is built) and the frontier reference run: `--provider anthropic --model
+<model>` puts the named model in the orchestrator seat for the run, asks once
+up front on the terminal (default No, `--yes` for a scripted run), and draws
+the ceiling line the local numbers are measured against. What is NOT done:
+wiring the profile and decoding into `loop.ts` (then re-running eval to prove
+the small class climbs), a best-of-N picker in the loop (needs checkpoints, and
+only if the attempts gap says it pays), a pass/fail verify pill on the
+task-done card, checkpoints/rewind, hooks, Ask for a hand with Auto-place, the
+pure-core extraction and the phone host, and Lessons. Those are the next
 steps, each gated on a number, in What remains and the proposal.
 
 ### Agentic Currents and Wayfinding (BETA, founder 2026-09-09)
@@ -350,8 +363,15 @@ log entry). Migration is now `0016`.
       and more fixture tasks (a vision-need-recognized task once the hand
       exists); (3) wire profiles and the union decoding into `loop.ts` (tools shown, calls
       per turn, retrieval before the first turn, per-class context budget), then
-      re-run eval to prove the small class climbs; (4) the rest of the Claude
-      Code moment on the engine (verify LANDED as a `verify` event; still to do:
+      re-run eval to prove the small class climbs; (3b) the frontier-level
+      coding path, measured: run `osc eval --deep --attempts 3` on the founder's
+      box for qwen2.5-coder:7b and the largest local coder that fits, and a
+      reference run on a frontier model on the founder's key; the one-try vs
+      best-of-3 gap decides whether a best-of-N picker judged by tests (needs
+      checkpoints) is built into the loop; (4) the rest of the Claude
+      Code moment on the engine (verify LANDED as a `verify` event, and verify
+      IN the loop landed: a failing check goes back to the model for up to
+      `harness.verify.maxRetries` more goes; still to do:
       a pass/fail verify pill on the task-done card, checkpoints and rewind,
       hooks); (5) Ask for a hand with
       Auto-place (needs a runtime tool-registry seam, local-only, never under
@@ -813,9 +833,20 @@ log entry). Migration is now `0016`.
   schema), on by default, tunable or off, an empty config still valid; the
   derived class now rides `osc eval`. Five tenets added to CLAUDE.md, the stale
   org-vault line retired, and the grey owner chip fixed (an undefined `--water`
-  token). 27 new tests; os-code 655 green, lint and build clean. Nothing is
-  wired into `loop.ts` yet and no live behavior changed; that wiring is next,
-  gated on eval numbers.
+  token). 27 new tests; os-code 655 green, lint and build clean. Then, in the
+  same day and with the founder's "do everything you think necessary": eval v2
+  (`src/eval/tasks.ts`, `src/eval/v2.ts`, `osc eval --deep`, the mock-provider
+  CI regression), verify (`src/harness/verify.ts`, the `verify` event, the app
+  note), verify IN the loop (a failing check is handed back to the model,
+  bounded by `harness.verify.maxRetries`, default 2), eval v2 `--attempts <n>`
+  (one try next to best of n, so best-of-N is measured before it is built), and
+  the frontier reference run (`--provider anthropic --model <model>` puts the
+  named model in the orchestrator seat, asks once up front, and draws the
+  ceiling line; this also fixed the deep eval always driving the configured
+  orchestrator whatever `--model` said). os-code 676 green, lint and build
+  clean, app typecheck clean. The profile and decoding seam is still not wired
+  into `loop.ts`; that wiring is gated on the deep-eval numbers from the
+  founder's box.
 
 - **2026-09-14: Perplexity, Sonar as a cloud provider and Research as a
   default-off layer (founder, after a CTO and CX read).** The founder wanted

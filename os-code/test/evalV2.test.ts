@@ -68,6 +68,39 @@ describe('eval v2 runs the loop and scores by behavior', () => {
     expect(wrong.scores[0]!.score).toBe(0);
   });
 
+  it('runs independent tries and reports one try next to best of k', async () => {
+    // Three tries: miss, hit, miss. One try is the mean (1/3); best of 3 is 1.
+    // Each try is a fresh workspace, so the hit cannot leak into the misses.
+    let call = 0;
+    const drive: DriveTask = async (cwd, prompt) => {
+      call += 1;
+      const turns =
+        call === 2
+          ? [toolTurn('writeFile', { path: 'math.mjs', content: MATH_FIXED }), textTurn('done')]
+          : [textTurn('Looks fine to me.')];
+      const provider = new MockProvider('mock', turns);
+      const session = makeTestSession(provider, { cwd });
+      await session.agent.run(prompt);
+      return finalText(session.events);
+    };
+    const report = await runEvalV2(drive, { tasks: [task('fix-bug')], attempts: 3 });
+    expect(report.attempts).toBe(3);
+    expect(report.scores[0]!.attempts).toEqual([0, 1, 0]);
+    expect(report.scores[0]!.score).toBeCloseTo(1 / 3);
+    expect(report.scores[0]!.best).toBe(1);
+    expect(report.average).toBeCloseTo(1 / 3);
+    expect(report.bestAverage).toBe(1);
+  });
+
+  it('defaults to one try, where best equals the score', async () => {
+    const report = await runEvalV2(driverFor([textTurn('42')]), {
+      tasks: [task('answer-from-code')],
+    });
+    expect(report.attempts).toBe(1);
+    expect(report.scores[0]!.attempts).toEqual([1]);
+    expect(report.bestAverage).toBe(report.average);
+  });
+
   it('reports a per-category average across tasks', async () => {
     // One correct edit, one wrong answer: category averages reflect each.
     const drive: DriveTask = async (cwd, prompt) => {
