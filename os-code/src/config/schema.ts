@@ -285,6 +285,11 @@ const HarnessSchema = z.object({
       // local-interactive profile); see maybeVerify in loop.ts.
       command: z.string().optional(),
       timeoutSeconds: z.number().int().min(1).default(120),
+      // Verify in the loop: when the check fails, the failure tail goes back to
+      // the model as an observation and it gets another go, this many times at
+      // most, before the task reports not verified. Zero means one shot: report
+      // the result, never retry. The step and dollar rails still apply.
+      maxRetries: z.number().int().min(0).max(10).default(2),
     })
     .prefault({}),
 });

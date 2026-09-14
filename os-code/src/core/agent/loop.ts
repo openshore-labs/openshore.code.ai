@@ -41,7 +41,7 @@ import type {
   TodoItem,
 } from './types.js';
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
-import { runVerify } from '../../harness/verify.js';
+import { runVerify, verifyRetryPrompt } from '../../harness/verify.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('agent');
@@ -221,18 +221,40 @@ export class AgentSession {
   // profile where shell may auto-run, since it runs a configured command with
   // no prompt: a project-config command never fires on a remote or headless
   // session, the same containment hooks get.
-  private maybeVerify(): void {
+  //
+  // Verify in the loop: a failing check is not the end of the task while a
+  // retry remains. The failure tail goes back to the model as an observation
+  // and the loop continues, so the model fixes against the real error instead
+  // of its own guess. Returns 'retry' when the loop should continue, 'done'
+  // otherwise. Bounded by harness.verify.maxRetries on top of the step rails,
+  // and a retry only counts once the check has actually failed.
+  private maybeVerify(verifyRounds: number): 'retry' | 'done' {
     const verifyConfig = this.deps.config.harness?.verify;
-    if (!verifyConfig?.command || !this.wroteThisTask) return;
-    if (!this.deps.profile.allowShellAutoApprove) return;
+    if (!verifyConfig?.command || !this.wroteThisTask) return 'done';
+    if (!this.deps.profile.allowShellAutoApprove) return 'done';
     const result = runVerify(this.deps.toolContext.cwd, verifyConfig);
-    if (!result.ran) return;
+    if (!result.ran) return 'done';
+    const maxRetries = verifyConfig.maxRetries ?? 0;
+    const round = verifyRounds + 1;
+    const willRetry = !result.passed && verifyRounds < maxRetries;
     this.emit({
       type: 'verify',
       passed: result.passed,
       summary: result.summary,
       detail: result.detail,
+      round,
+      willRetry,
     });
+    if (!willRetry) return 'done';
+    this.emit({
+      type: 'status',
+      message: `The check did not pass; handing the failure back to the model (retry ${round} of ${maxRetries}).`,
+    });
+    this.history.push({
+      role: 'user',
+      content: verifyRetryPrompt(result, round, maxRetries),
+    });
+    return 'retry';
   }
 
   // -------------------------------------------------------------------------
@@ -347,6 +369,8 @@ export class AgentSession {
     let parseFailStreak = 0;
     let repairAttempts = 0;
     let turn = 0;
+    // Failing verify checks handed back to the model this task (verify in the loop).
+    let verifyRounds = 0;
 
     for (;;) {
       if (this.abortController.signal.aborted) {
@@ -546,7 +570,10 @@ export class AgentSession {
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
-        this.maybeVerify();
+        if (this.maybeVerify(verifyRounds) === 'retry') {
+          verifyRounds += 1;
+          continue;
+        }
         this.emit({ type: 'task-done', reason: 'complete' });
         return;
       }

@@ -18,6 +18,9 @@ export interface VerifyConfig {
   command?: string;
   /** Wall-clock cap in seconds. */
   timeoutSeconds?: number;
+  /** How many times a failing check is handed back to the model for another
+   *  go before the task reports not verified. Zero means report only. */
+  maxRetries?: number;
 }
 
 export interface VerifyResult {
@@ -34,6 +37,23 @@ const MAX_DETAIL = 2000;
 function tail(text: string): string {
   const t = text.trimEnd();
   return t.length > MAX_DETAIL ? `... ${t.slice(-MAX_DETAIL)}` : t;
+}
+
+/** The observation the loop hands back to the model when verify fails and a
+ *  retry remains. Coding has an oracle, so the failure itself is the best
+ *  instruction: the exact output, then one plain ask. The model is told which
+ *  go this is so it does not thrash, and told not to claim a pass it did not
+ *  earn (the honesty bar). */
+export function verifyRetryPrompt(result: VerifyResult, round: number, maxRetries: number): string {
+  const output = result.detail?.trim() ? result.detail.trim() : '(the command produced no output)';
+  return [
+    `[verify result]`,
+    result.summary,
+    `Output tail:`,
+    output,
+    '',
+    `Fix the cause (retry ${round} of ${maxRetries}). Inspect the failing output, make the smallest change that makes the check pass, and only then answer again. Do not answer without changing something, and do not claim the check passes; the harness runs it and reports the result.`,
+  ].join('\n');
 }
 
 /** Run the configured check command in `cwd`. Never throws: a non-zero exit is
