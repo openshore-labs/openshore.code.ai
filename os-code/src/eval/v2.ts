@@ -15,9 +15,29 @@ import { join, dirname } from 'node:path';
 import { oscHome } from '../config/load.js';
 import { EVAL_TASKS, type EvalTask } from './tasks.js';
 
+/** What the loop did on one run, so a zero is a diagnosis and not just a
+ *  verdict: how many turns, which tools it reached for and whether any write
+ *  landed, and how the task ended. Optional, since the CI mock path does not
+ *  need it; the CLI fills it from the agent's events. */
+export interface DriveTrace {
+  turns: number;
+  toolCalls: string[];
+  wrote: boolean;
+  doneReason?: string;
+  message?: string;
+}
+
+/** A drive may return just the final text, or the text plus a trace of what
+ *  happened. Both are accepted so the CI mock path stays a one-liner. */
+export interface DriveOutcome {
+  finalText: string;
+  trace?: DriveTrace;
+}
+
 /** Runs the agent loop on a prepared workspace and returns its final answer
- *  text. Throwing is allowed; the runner records it as a zero-scored task. */
-export type DriveTask = (cwd: string, prompt: string) => Promise<string>;
+ *  text (or that plus a trace). Throwing is allowed; the runner records it as
+ *  a zero-scored task. */
+export type DriveTask = (cwd: string, prompt: string) => Promise<string | DriveOutcome>;
 
 export interface EvalV2TaskScore {
   task: string;
@@ -31,6 +51,8 @@ export interface EvalV2TaskScore {
   attempts: number[];
   /** The detail of the best attempt (or the only one). */
   detail: string;
+  /** What the loop did on the reported attempt, when the drive supplied it. */
+  trace?: DriveTrace;
 }
 
 export interface EvalV2Report {
@@ -65,6 +87,7 @@ export interface EvalV2Options {
 interface AttemptOutcome {
   score: number;
   detail: string;
+  trace?: DriveTrace;
 }
 
 async function runAttempt(drive: DriveTask, task: EvalTask): Promise<AttemptOutcome> {
@@ -76,13 +99,20 @@ async function runAttempt(drive: DriveTask, task: EvalTask): Promise<AttemptOutc
       writeFileSync(abs, content);
     }
     let finalText = '';
+    let trace: DriveTrace | undefined;
     try {
-      finalText = await drive(cwd, task.prompt);
+      const outcome = await drive(cwd, task.prompt);
+      if (typeof outcome === 'string') {
+        finalText = outcome;
+      } else {
+        finalText = outcome.finalText;
+        trace = outcome.trace;
+      }
     } catch (err) {
       return { score: 0, detail: `the run failed: ${(err as Error).message}` };
     }
     const result = await task.check({ cwd, finalText });
-    return { score: result.score, detail: result.detail };
+    return { score: result.score, detail: result.detail, trace };
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
@@ -115,6 +145,7 @@ export async function runEvalV2(
       best: bestOutcome.score,
       attempts: attemptScores,
       detail: bestOutcome.detail,
+      trace: bestOutcome.trace,
     });
   }
 

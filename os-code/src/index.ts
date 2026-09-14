@@ -51,7 +51,13 @@ export {
   parseDecoded,
   unionProtocolInstructions,
 } from './harness/decoding.js';
-export { runEvalV2, type EvalV2Report, type DriveTask } from './eval/v2.js';
+export {
+  runEvalV2,
+  type EvalV2Report,
+  type DriveTask,
+  type DriveOutcome,
+  type DriveTrace,
+} from './eval/v2.js';
 export { EVAL_TASKS, type EvalTask } from './eval/tasks.js';
 export { runVerify, type VerifyResult, type VerifyConfig } from './harness/verify.js';
 export { CONNECTORS } from './server/connectorMap.js';
