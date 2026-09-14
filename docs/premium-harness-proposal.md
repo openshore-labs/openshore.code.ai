@@ -6,8 +6,12 @@ work, creative work, and agentic work"; the smallest models as capable as
 possible through it; V1 harnesses the Stack so building feels like Claude Code
 on any model; models recommend other models or setups when a request is beyond
 them; local models keep learning from the person's builds. This document is the
-integration plan, the honest inventory it rests on, and the founder's calls on
-the forks (eight answered the same day, recorded at the end).
+integration plan, the honest inventory it rests on, the founder's calls on the
+forks (eight answered the same day), and the advisor team's consensus on the
+way forward (all eight advisors, the same day; the memos are in
+`premium-harness-advisory-memos.md`). The consensus revised the plan; where a
+section below reads differently from the founder's first call, the consensus
+section at the end says why.
 
 "Keel" is a working codename only, the way gitOS ships as Repositories and
 botOS as routines. It ships with no room and no new name; it is simply how
@@ -20,7 +24,9 @@ OpenShore works. The CMO names it if it needs a name.
    loop and the app's play runner). V1 extracts the loop into a core with no
    Node dependencies that three hosts run: the desktop engine, the daemon
    (which is also the CLI), and the phone against its own tool slice. The
-   phone feels like Claude Code in V1, not only when docked (founder's call).
+   phone feels like Claude Code in V1 (founder's call): docked, it gets every
+   new card through the engine path from the first step; alone, it runs the
+   core for phone-sized work, built last and gated (consensus).
 2. The Claude Code contract is the baseline. Most of it exists. What is missing
    for the feel is subagents, skills, hooks, a verify phase, and checkpoints.
 3. Small models get capable through discipline in the harness, not through
@@ -28,29 +34,35 @@ OpenShore works. The CMO names it if it needs a name.
    what the model sees, how it must answer, and what the harness does for it.
 4. Constrained decoding by default on small local models, with a schema that
    allows either a tool call or an answer, so the "grammar forbids prose"
-   objection goes away.
+   objection goes away. It lives at the provider and adapter layer, so free
+   chat gets the lift too and the loop is not rewritten twice (consensus).
 5. The harness does the mechanical work itself: retrieval before the first
    turn, structural checks, running the project's own tests, feeding failures
    back. A small model with an external judge beats a large model without one.
 6. "Ask for a hand" is a tool every seat has. The model names the need; the
    harness, not the model, names the candidate from the stack, the catalog
-   (honest ratings, rated to the hardware), or a connected cloud key. A
-   Settings switch, LLM Auto-Source, default on, lets the harness place a
-   local model itself; off, it is always a card the person taps (founder's
-   call). Cloud is never automatic either way.
+   (honest ratings, rated to the hardware), or a connected cloud key, local
+   first. A Settings switch, Auto-place, default on, lets the harness place a
+   model already on this machine or on the bench itself (founder's call);
+   every download and every cloud call is a card the person taps (consensus,
+   eight of eight).
 7. Learning is local only and in tiers. V1: lessons as data (exemplar bank,
    outcome stats, proposed standing instructions), mined from the journals the
-   engine already writes, inspectable in the Vault. V2: real adapters trained
-   on the person's own computer, promoted only when the eval says they are
-   better. Nothing ever leaves the device, so every public promise holds.
+   engine already writes, per person and per workspace, inspectable in the
+   Vault, cleared with the chats. V2: real adapters trained on the person's
+   own computer, promoted only when the eval says they are better. Nothing
+   ever leaves the device, so every public promise holds.
 8. Eval is the spine. `osc eval` grows from three probes to a real harness
-   benchmark, and it runs before, during, and after every step below, because
-   nothing here can be claimed without it.
-9. Every new surface is held to the interaction model and the motion bar.
-10. Order: measure, then discipline, then the core and its three hosts, then
-    the Stack inside the loop, then the Claude Code pieces, then the hand, then
-    the lessons. Each step additive, behind config, tested, with the old path
-    preserved.
+   benchmark that runs the loop, and it runs before, during, and after every
+   step below, because nothing here can be claimed without it. It ships as a
+   nightly routine so it never waits on a person.
+9. Every new surface is held to the interaction model and the motion bar, and
+   the team is felt, not read: the Creative Studio's "current in the thread."
+10. Order: measure, then discipline at the seam, then the Claude Code moment
+    on the engine (verify, rewind, hooks), then the hand, then the core
+    extraction as a pure move with subagents and the plan, then the phone
+    host, then the lessons. Each step additive, behind config, gated by a
+    number, with the old path preserved.
 
 ## What you asked for, restated
 
@@ -296,29 +308,44 @@ model names the need. It never names a model.
 
 **The resolution, by the harness.** In order: an idle seat in the stack that
 has the capability; a benched model that has it; a catalog model that fits
-this hardware, with its honest rating and provenance; a connected cloud
-provider on the person's key (amber, and spend asks). Grounded in the catalog's
-`perCapability` stars and `osCodeFit`, never in a model's opinion, which keeps
-the Marketplace's "honest ratings" promise intact.
+this hardware, with its honest rating and provenance; and only when nothing
+local fits, a connected cloud provider on the person's key (amber, and spend
+asks). Grounded in the catalog's `perCapability` stars and `osCodeFit`, never
+in a model's opinion, which keeps the Marketplace's "honest ratings" promise
+intact. A fitting local model is always the recommendation, and the card
+says why when cloud is the only option (CMO). Under egress lockdown (a
+secrets session) the cloud candidate is never offered, the rule `askHermes`
+already follows, and a subagent can never be handed a seat its parent could
+not hold (Chief of Staff).
 
-**The card.** A `handoff` event renders a card: "Qwen 7B cannot read this
-image. Options: place LLaVA 7B (4.1 GB, fits this machine), or use Claude on
-your key (asks before spend)." The person taps; the seat is placed (or the
-install starts through the existing channel), and the step re-runs. This
-resurrects the dead `routing.escalation.onModelRequest` flag.
+**The card.** A `hand` event renders a card with the badge "Needs a hand":
+"Qwen 7B cannot read this image. Place LLaVA 7B (4.1 GB, fits in 12 GB free),
+or use Claude on your key (asks before spend)." The numbers carry their basis
+(CTO). The person taps; the seat is placed (or the install starts through the
+existing channel), and the step re-runs. This resurrects the dead
+`routing.escalation.onModelRequest` flag, and it needs a runtime seam the
+registry lacks today: tools are built once at bootstrap, so placing a vision
+model mid-session must be able to register `analyzeImage` (CTO).
 
-**LLM Auto-Source (founder's call, 2026-09-14).** A Settings switch, default
-on. On, the harness sources a local model itself when a seat cannot do the
-step: a model already installed on this machine or sitting on the bench is
-placed with no card, a note in the transcript ("Placed LLaVA 7B for image
-reading"), a seat badge "auto-sourced", and one tap to put it back. A model
-that fits but needs a download starts on its own on the desktop and when
-docked (local, free, disk is there) and shows the card on a phone alone
-(memory and data plan; the storefront rule that "Get" never appears for a
-model the phone cannot take holds). Off, every hand is a card the person taps.
-Cloud is never automatic in either state: a cloud option is always the card,
-amber, and spend asks. The site's "You decide who sits in each seat" gains
-"or let Auto-Source do it for you" in the same change, per the mirror rule.
+**Auto-place (founder's call, revised by consensus, 2026-09-14).** A
+Settings switch, default on. On, the harness fills a gap itself when a seat
+cannot do the step, with a model already installed on this machine or sitting
+on the bench: placed with no card, a quiet teal note in the transcript
+("Placed LLaVA 7B for image reading"), an "auto-placed" pill on the Bench
+row, and one tap to put it back. It never changes the anchor. It resolves
+only local refs, pinned by a grep test in the style of `ethicsNoBypass`, and
+it is off for a member on a shared hub (the admin owns the shared stack) and
+on a phone alone. **A download is always a card**, one tap, size and disk
+left shown, with "Always allow downloads on this computer" in the existing
+approvals grammar. All eight advisors ruled the same way: a multi-gigabyte
+write the person did not choose is the one moment that breaks "every change
+shown before it lands," and "Get" is a decisive tap everywhere else in the
+app. Off, every hand is a card. Cloud is never automatic in either state. The
+site's "You decide who sits in each seat" gains "or let Auto-place fill one
+from your bench when a step needs it. Cloud never places itself." in the same
+change, per the mirror rule. The name is the CMO's: "LLM Auto-Source" was a
+mechanism name, the fault that retired "Layers," and the Stack room already
+says place and bench.
 
 **Pre-empting.** The harness already knows a seat's capabilities before it
 tries (vision, tools, context). A step that needs 40k of context on an 8k
@@ -351,19 +378,32 @@ writes (tool-start and tool-end are in them; only rehydration drops them).
 - **Proposals.** The system prompt already tells the model to propose a line
   for the standing instructions when it learns how the person works, with no
   machinery behind it. A `lesson-proposal` event renders a card; accept
-  writes it to the project instructions or a global `~/.os-code/USER.md`.
-  Never silent, per the ruling that agent writes are user-directed or
-  agent-proposed with approval.
+  writes it to the project instructions, or to a global standing
+  instructions surface that is visible in Settings (never a hidden dotfile,
+  per the `#` ruling). Never silent, per the ruling that agent writes are
+  user-directed or agent-proposed with approval. One proposal card per task,
+  batched onto the task-done card; the rest wait in the Vault folder and
+  surface on the third recurrence with history (Chief of Staff, CX).
 - **Skills drafted.** What worked (the test command, a gotcha) is proposed
   into the project's Skills note through the existing `projectMemoryWrite`
   path, so it rides into the repo with the change.
 
-Storage: `~/.os-code/lessons/`, sealed at rest like the journals, per machine.
-Surfaces: a Wayfinding row, "Lessons", default on, with one honest line
-("Learns from your builds on this computer. Nothing leaves it."), and a
-read-only Lessons folder in the Vault (the Hermes notes pattern). The ethics
-layer's blocked requests never enter the bank; a block records a category and
-a hash, never a prompt, and that stays true.
+Storage: `~/.os-code/lessons/`, sealed at rest like the journals, **keyed by
+owner and workspace, never machine-wide**: on a shared hub one member's
+`readFile` of a keys file must never become another member's exemplar (CTO
+must-fix; Stack Health had to stamp `scope: 'machine'` for the same reason).
+"Clear conversations" clears lessons too, the privacy sheet names them, and
+the Vault folder reads from that store rather than living in a vault that
+can move to Drive (CX). Surfaces: a Wayfinding row, "Lessons", default on,
+with one honest line, "Remembers what worked in your own builds, sealed on
+this computer. Nothing leaves it." (CX: "remembers" is honest for retrieval;
+"learns" reads as "trained on my code"), a count on the row ("12 lessons on
+this computer"), "Used 2 lessons" in the transcript, a "Forget lessons"
+control, and a read-only Lessons folder in the Vault (the Hermes notes
+pattern). The row ships beside a measured delta on this machine or the bank
+stays a read-only folder (Board). The ethics layer's blocked requests never
+enter the bank; a block records a category and a hash, never a prompt, and
+that stays true.
 
 **Tier 2 (V2): adapters.** Real weight updates on the person's own computer.
 A trainer sidecar (Python, PEFT-style LoRA) on Linux with an NVIDIA GPU
@@ -385,46 +425,96 @@ copy says "learns from your builds," never "trains itself," until Tier 2
 ships.
 
 **The mirror rule.** Any new on-device record must appear in the trust
-statement in Settings and on the site in the same piece of work. Lessons
-adds one line: "Lessons stay on this computer."
+statement in Settings and on the site in the same piece of work. Lessons is a
+record of use on the device, so the absolute "Nothing about your use is
+collected" (Stack Health's trust row) stops being literally true; it becomes
+"No telemetry. Nothing about your use leaves this computer." The privacy page
+gains "Lessons stay here: what the agent learns from your builds is kept on
+this computer, readable in your Vault, and yours to delete." Never
+"collected"; always "leaves" (CMO).
 
 ## Eval as the spine
 
 Nothing above can be claimed without measurement, so eval v2 is step zero.
 
 - **Fixture repos** under `os-code/eval-fixtures/`: a small TypeScript
-  package with a failing test, a Python script, a markdown doc.
+  package with a failing test, a Python script, a markdown doc. They must run
+  in 8 GB, because the founder's box is the reference machine (Strategist).
 - **Tasks**: fix the failing test; add a function with a test; rename across
-  files; answer a question from the code; plan a three-step change; recognize
-  a vision need and ask for a hand; work inside an 8k context.
+  files; answer a question from the code (the plain-question fast path and
+  the `say` branch, since that is the first thing a novice sends); plan a
+  three-step change; recognize a vision need and ask for a hand; work inside
+  an 8k context; a schema-accepted probe per backend (CTO).
+- **It runs the loop**, through `bootstrapSession` against the fixtures with
+  a scripted approver, three or more trials per task, so repair, compaction,
+  and approvals are exercised (CTO). Today's harness is three one-shot calls.
 - **Scoring is deterministic**: tests pass, the diff applies, the JSON is
   valid, the hand was raised. No judge model.
 - **Per model class**, with and without each harness feature, so every claim
   in this document ("constrained decoding lifts the 4B") is a number.
+- **It never waits on a person.** A mock-provider regression mode runs in CI
+  with no weights, and a read-only Crew preset, "Measure", runs the real thing
+  nightly on the box while the computer is on and leaves a dated note, so the
+  founder reads numbers and never has to run anything after the first run
+  (CFO, Chief of Staff).
 - **Outputs**: `~/.os-code/eval/`, the catalog's `osCodeFit` with
-  `provenance: "osc eval v2"`, the profile's inputs, adapter promotion.
+  `provenance: "osc eval v2"` (the storefront shows the curated number; the
+  local number lives on the Bench row only), the profile's inputs, adapter
+  promotion.
 - **Harness regression**: golden journals replayed against a mock provider
-  (the pattern `agentModes.test.ts` starts).
+  (the pattern `agentModes.test.ts` starts), byte-identical events, which is
+  also the proof that the core extraction preserved behavior.
+- **Two human numbers, pinned now** (CX): median time from first `app_open`
+  to `first_accepted_edit`, and the share of testers reaching it with no
+  `cloud_key_added`. New insights events with the build: `hand_raised`,
+  `hand_resolved`, `auto_place_reverted` (the regret signal), `verify_result`,
+  `lesson_proposed|accepted|dismissed`, `phone_run_suspended|resumed`.
 
 ## How it feels
 
-Held to `docs/interaction-model.md` and the motion standard.
+Held to `docs/interaction-model.md` and the motion standard. The Creative
+Studio offered three directions for how the team is felt and recommended the
+third; the founder picks (see the consensus section).
 
-- **Subagent card.** A nested, collapsible card named by the seat ("Coding
-  seat: Qwen 7B"), its own tool rows inside, folding to one line when done.
-- **Verify row.** "Ran pnpm test (42 passed)" in the transcript, with the
-  task-done card saying verified, not verified, or skipped. Tenet 6 as
-  machinery.
-- **Handoff card.** Options as a picker with a recommendation and one-line
-  trade-off, teal for local, amber for cloud. Tenet 3.
-- **Lesson card.** "I noticed you always run prettier before commit. Add to
-  standing instructions?" Accept, edit, dismiss.
-- **Rewind.** On a tool card; the transcript folds the undone turns.
-- **The seat badge.** "Adapted 12 Sep" on a seat with an adapter, and "runs
-  single steps" on a tiny seat.
+- **The current in the thread (recommended direction).** When the anchor
+  hands a step to a model, a current leaves the plan row and runs down the
+  transcript's left rail on the glide curve and the door clock to the
+  arriving subagent card; the rail stays faintly teal while that model works;
+  when it returns, the current ebbs back and the card folds to one line. A
+  hand stops the current and the card rises as a picker. Verify draws a
+  check. Rewind runs the current backwards and folds the undone cards in
+  reverse stagger. An accepted lesson folds to a teal wikilink line, "Saved
+  to Lessons." Presence dots beside the reach pill, one per placed model,
+  teal breathing while its owner works, amber holding when a hand waits.
+  One decisive haptic when a hand is asked and when verify lands. Transform
+  and opacity only; reduced motion collapses the rail to a crossfade.
+- **Subagent card.** Nested and collapsible, named by category and model
+  ("Coding: Qwen 7B", never "seat", which means a billing seat inside the
+  app), its own tool rows inside, folding to one line when done.
+- **Verify row.** "Checked it: 42 tests pass" in the transcript, or "This
+  project has no tests. Want one?"; the task-done card says verified, not
+  verified, or skipped, and the task bar turns ok only when verify passed.
+  Tenet 6 as machinery.
+- **The hand card.** Badge "Needs a hand." Options as a picker with the
+  recommendation first, teal for local, amber for cloud, never a
+  default-selected cloud tile. On a phone alone the first option is "Do this
+  on your computer" with the pair guide one tap away (CX). Tenet 3.
+- **Lesson card.** "You run prettier before every commit. Make it a standing
+  instruction?" Accept, edit, dismiss. No narration.
+- **Rewind.** On a tool card, as a gesture through `SwipeRow` with a haptic
+  at the arm; the transcript folds the undone turns.
+- **Bench-row pills**, in the existing `pill local` grammar, not a new badge
+  family: "auto-placed", "runs single steps", "0.71 on this machine, 3 Sep",
+  "adapted 12 Sep".
+- **The phone says what it did not do.** "Proposed, not applied. Applies when
+  docked." and "Not verified: tests run on your computer." (CMO.)
 
 Every card arrives and leaves on the tokens, transform and opacity only,
-press feedback on every tappable, reduced motion honored.
+press feedback on every tappable, reduced motion honored; the polish guard
+grows a card clause so no new card can snap-unmount. One bug to fix first:
+the owner chip on a todo row reads `var(--water, var(--muted))` and `--water`
+is not defined, so the only place a person sees who owns a step renders grey
+today (Creative Studio).
 
 ## Where the code goes
 
@@ -463,26 +553,36 @@ Phone host, additive:
 - `transcript.ts` cases for the new events; `SubagentCard`, `HandoffCard`,
   `VerifyRow`, `LessonCard`, Rewind on `ToolCard`.
 - Settings: Wayfinding rows (Skills becomes real, Lessons is new) and the
-  LLM Auto-Source switch.
+  Auto-place switch.
 - The Vault's Lessons folder through the existing read-only note sheet.
-- `StackManager` seat badges ("auto-sourced", "runs single steps").
+- `StackManager` Bench-row pills ("auto-placed", "runs single steps").
 
 ## Phasing and order
 
-Each step ships additively behind config, with tests, gates green, a
-PROGRESS entry, and the previous path intact.
+Each step ships additively behind config, with tests, gates green, its own
+PROGRESS entry, and the previous path intact. The order is the consensus
+order: the CFO's "visible wins before the invisible extraction" and the CTO's
+"never land the profiles in the loop and then move the loop" agree once the
+discipline lives at the provider and adapter seam and verify, rewind, and
+hooks live on the engine host, which needs no core. Each step unlocks on a
+number (Board).
 
-| Step | What                                                           | Why this order                                    |
-| ---- | -------------------------------------------------------------- | ------------------------------------------------- |
-| 0    | Eval v2                                                        | Measure before changing anything (founder's call) |
-| 1    | Profiles, constrained decoding, context discipline, retrieval  | The small-model lift, provable on day one         |
-| 2    | The pure core and its three hosts, the phone tool slice        | One loop everywhere before it grows               |
-| 3    | Plan with owners on every host, the classifier, subagents      | The Stack inside the loop                         |
-| 4    | Skills, hooks, verify, checkpoints                             | The Claude Code feel completes                    |
-| 5    | Ask for a hand, the handoff card, LLM Auto-Source              | Needs profiles and the catalog wiring from 1      |
-| 6    | Lessons tier 1                                                 | Needs journals with subagent events from 3        |
-| 1.5  | MCP stdio, the browser driver                                  | Promised (Wayfinding) or listed follow-ups        |
-| V2   | Adapters: a hardware check, a spike, then the Practice routine | Only with eval v2 as the gate                     |
+| Step | What                                                                            | Unlocks when                                                                                     |
+| ---- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 0    | Measure: eval v2 runs the loop; golden journals; the Measure routine; CI mock   | The founder runs it once on the box; baselines per class committed with provenance               |
+| 1    | Discipline at the seam: profiles, the union schema, budgets, retrieval-first    | Step 0 numbers exist. Ships when the small class shows a lift from harness changes alone         |
+| 2    | The Claude Code moment on the engine: verify, checkpoints and rewind, hooks     | Step 1 landed. The first marketable recording: a 7B fixes a failing test and verify says so      |
+| 3    | Ask for a hand, the card, Auto-place, the runtime registry seam, the classifier | The three stubs closed with tests; the card raised pre-emptively in the vision eval task         |
+| 4    | The core extraction as a pure move; desktop then daemon switch; subagents; plan | The purity guard exists first; golden journals replay byte-identical; the four-backend live-fire |
+| 5    | The phone host, last                                                            | Desktop at parity on golden journals; device backlog under five; one TestFlight run end to end   |
+| 6    | Lessons tier 1                                                                  | Journals carry subagent events; a repeatable delta on the same machine, two runs a week apart    |
+| 1.5  | MCP stdio (can ride with skills once the profile tool filter exists), browser   | Promised (Wayfinding) or listed follow-ups                                                       |
+| V2   | Adapters: a hardware check, a spike on rented GPU hours, then Practice          | Tier 1 shows a measured lift and the gates are on                                                |
+
+The docked phone gets every card from step 2 on, through the engine path it
+uses today; only the phone-alone host waits for step 5. Sizing, the CFO's
+estimate from the log's build days: ten to eighteen session-days for V1;
+step 4 is the large one.
 
 ## Risks and honest limits
 
@@ -532,17 +632,182 @@ are answered; the calls that differ from the recommendation are marked.
 9. **The founder's box.** Under 12 GB of VRAM or not NVIDIA. The V2 adapter
    spike starts with a hardware check and a small base.
 
-**Two calls raised by the answers, still open.**
+Two calls the answers raised (the parked TUI, downloads under Auto-place)
+were settled by the advisor team below.
 
-- **The CLI.** The TUI is parked (2026-08-18: no new features land on it).
-  The harness reaches `osc` through the daemon for free, but rendering the
-  new cards (subagent, verify, handoff, lesson) in the TUI unparks it.
-  Recommendation: leave the TUI parked in V1; the CLI runs the harness and
-  prints the new events as plain rows, the way `--plain` does today.
-- **Auto-Source and downloads.** The proposal above starts a fitting download
-  on its own on the desktop and when docked, and shows the card on a phone
-  alone. A founder yes or a stricter line ("downloads always ask") is one
-  word.
+## The advisor team's consensus (2026-09-14)
+
+All eight advisors reviewed the proposal and the founder's calls the same
+day, independently, against the code and the public promises. The memos are
+in `premium-harness-advisory-memos.md`. Every memo returned the same verdict:
+**go, with conditions.** The conditions agree far more than they conflict,
+and where they conflicted the reconciliation is recorded here. The founder
+decides; four calls below are theirs.
+
+### Where the team agreed, eight of eight
+
+- **Eval first, and it is the gate for every step, not a step.** Nothing in
+  this plan can be claimed until eval v2 runs on the founder's own machine.
+  The founder's first act is one `osc eval` run on the box; after that the
+  Measure routine runs it nightly so no number ever waits on a person.
+- **Downloads always ask.** Auto-place fills a gap with a model already on
+  this machine or on the bench, with a note and one-tap revert. A download is
+  a card, one tap, size and disk shown. Cloud is never automatic. (This
+  settles the second open call against the proposal's first draft.)
+- **The TUI stays parked.** The CLI runs the harness through the daemon and
+  prints new events as plain rows. Every event consumer keeps a default case
+  so an older client never crashes on a new event.
+- **Seats become subagents,** with the CTO's rails: a child draws down its
+  parent's step and dollar budget with no reset, its tool set is a subset of
+  the parent's, its permission mode is never looser, approvals bubble, and
+  spend is estimated on the seat.
+- **Constrained decoding on for tiny and small, per family, by the eval,**
+  with the CTO's three fixes (per-tool `oneOf` arg schemas, retry
+  unconstrained on a 4xx, an incremental decoder so prose streams) and the
+  CFO's placement at the adapter so free chat gets it too. The DECISIONS
+  line "a repair tool, not a default" is superseded on the day step 1 starts.
+- **Lessons as data only in V1,** per owner and workspace, cleared with the
+  chats, shown as a count and "Used 2 lessons", never "trains", shipped beside
+  a measured delta or kept a read-only folder.
+- **No public name.** Keel never reaches copy (grep it like the Currents
+  nouns). "Lessons" and "Auto-place" are the visible words.
+- **Creative work is writing and images, and the site says exactly that.**
+- **V2 adapters wait** for a Tier 1 lift and the gates; when they come, the
+  spike rents GPU hours rather than buying a card, on a small base.
+
+### Where the team disagreed, and how it was reconciled
+
+- **The phone in V1.** The founder's call stands: the phone feels like Claude
+  Code in V1. Four advisors (Board, Chief of Staff, Strategist, and CX on the
+  evidence) pressed that the phone-alone host is the most expensive piece,
+  the one the site never promised, and the one that reverses a call the
+  founder made twice; the CTO, CMO, CFO, and Creative Studio agreed on the
+  outcome with conditions. Reconciled in two layers, which every memo can
+  sign: the **docked** phone gets every new card in V1 from step 2, through
+  the engine path it already uses, which is most of the feel and none of the
+  risk; the **phone-alone** host runs the core for phone-sized work (read
+  tools, the vault, todos, vision, the hand), is built last, is gated on
+  desktop parity, the device backlog under five, and one TestFlight run, and
+  its copy states the ceiling ("short builds on this iPhone, long work on
+  your computer"). Repo edits from a phone alone stay describe-only until the
+  outbox producer exists, since it does not today (`REPO_OUTBOX_ENABLED` is
+  false). The 2026-08-25 principle is applied, not reversed, and the
+  2026-08-26 R-16 call is recorded as superseded in scope only.
+- **The order.** The CTO wanted the extraction before the profiles so the
+  loop is never rewritten twice; the CFO wanted the visible wins before the
+  invisible extraction. Both hold once the discipline lives at the provider
+  and adapter seam and verify, rewind, and hooks live on the engine host. The
+  phasing table above is that order.
+- **The planner on every host.** The Chief of Staff flagged that the shared
+  planner re-opens CTO FORK B (2026-09-06: do not port `play.ts` to the
+  engine, a headless routine must never block on a question). Reconciled:
+  the planner moves into the core with the headless constraint kept as a
+  profile flag (`clarify: never`), recorded as an explicit re-ruling in
+  DECISIONS, not a silent reversal.
+- **Auto-place default on.** The founder's call stands on the desktop and
+  docked. It is off for a member on a shared hub and on a phone alone (CTO),
+  never touches the anchor (Strategist), never runs under lockdown (Chief of
+  Staff), and its first placement is visible in the chat, never only in
+  Settings (Creative Studio).
+
+### Must-fixes the review found in the code
+
+- A subagent sharing the parent's `ToolContext` and `Guardrails` resets the
+  parent's counters and detaches its abort (`loop.ts:131`, `loop.ts:304`,
+  `Guardrails.startTask`). Design the child rail before step 4.
+- Machine-wide lessons on a shared hub leak one member's code into
+  another's prompt. Key by owner and workspace before step 6.
+- The union schema as first written could not stream prose and a rejected
+  schema would end the task as an error. Fixed in step 1's design.
+- The tool registry is built once at bootstrap, so a mid-session placement
+  cannot register a tool. The runtime seam is part of step 3.
+- No purity guard exists for `os-code/protocol` today; write it before the
+  first line of the core moves.
+- The owner chip on a todo row renders grey because `--water` is undefined.
+  Fix now; it is the only place the team is visible today.
+- Hooks from a project file always ask on headless and remote profiles,
+  never auto-allowed by a config rule (the `daemon` block ruling).
+- CLAUDE.md still names the org Vault tier as the one open follow-up; it is
+  built. Retire the line in the commit that adds the tenets below.
+- Two Personal prices are on record: the site, `plans.ts`, and the Supabase
+  README say $20 a year; DECISIONS and PROGRESS say $50 when the gates
+  return; and Micro ($20 for five people with admin) sits below Personal.
+  One number, and the ladder, before step 1 ships. The CFO recommends $50
+  once the harness ships with eval numbers, with the beta list kept at $20
+  for a first year because the site said so, and Micro at 2x Personal or an
+  org-domain requirement (a Board gate). The founder decides.
+
+### What the team says makes this gold standard, unique, and marketable
+
+- **The number sells, not the adjective.** The one claim only OpenShore can
+  make honestly is "small models do real work, measured": the Marketplace
+  card shows "Bare: 2 of 7 tasks. With OpenShore: 5 of 7," provenance osc
+  eval v2, and the reference machine (the founder's under-12 GB desktop) is
+  published as "what a modest desktop finishes."
+- **The story (CMO).** One-liner: "Real work from a model you already own."
+  Under it: "The harness carries the discipline. It finds the code first, runs
+  your tests, checks its own work, and asks for a hand when a step is beyond
+  it. So a small local model does work you used to rent." The villain: the
+  rented brain. "Claude Code" never appears on the site; the bar is internal.
+- **What is honestly unique (Strategist).** Not a Claude Code-shaped loop on
+  local models; that exists. Unique, if measured: heterogeneous local seats
+  distributed inside one loop with owners, a hand grounded in hardware-rated
+  honest ratings, lessons that stay on the device and make the same model
+  better next week under an eval gate, on a phone-and-desktop pair over a
+  tailnet, with no telemetry and an ethics floor that cannot be turned off.
+  The marketable words are "yours, and provably better next week."
+- **The marketing unit (Board).** A recording: a 7B fixes a failing test on
+  its own and the verify row says 42 passed. Produced by step 2.
+- **The signature (CMO, CTO, CFO).** The verify row on every task-done card,
+  and "Personal verifies" as the wall the paywall names when the gates return.
+- **Felt, not read (Creative Studio).** The current in the thread, presence
+  dots by the reach pill, rewind as a gesture, a lesson that settles into the
+  Vault. "Ship the harness so a person can watch it work without reading a
+  word."
+- **Lower the barrier (CX).** The first coding chat opens seeded with one
+  chip, "Explain this project and run its tests"; the first phone hand card
+  leads with "Do this on your computer"; a desktop download says "fits this
+  machine, 8 GB free" from a real probe before it starts; "What it learned"
+  lands on the task-done card with one accept.
+
+### Tenets proposed for CLAUDE.md (Strategist), on the founder's yes
+
+1. **The harness has no room and no name.** It ships as how OpenShore works:
+   cards in the transcript, rows in Wayfinding, pills on the Bench. Never a
+   new room, never a codename in copy.
+2. **Nothing is claimed without eval v2.** Every feature ships behind config
+   with a with-and-without number per model class on the reference machine.
+   Copy says "remembers what worked," never "trains itself," until an adapter
+   ships.
+3. **The harness raises the floor, never the ceiling, and says so.** A tiny
+   seat runs single steps and its pill says it; the harness does the
+   mechanical work so a small model does not have to remember to.
+4. **The person places the seat; the harness may only fill a gap.** Auto-place
+   places an installed or benched model with a note and one-tap revert. Every
+   download and every cloud call is a card. The anchor is never changed by the
+   harness.
+5. **One loop; hosts differ only by tool slice.** `os-code/src/harness/` is
+   free of Node built-ins by test, events are additive, and the working path
+   stays until a host passes on the core. Long and unattended work runs on the
+   engine.
+
+### The founder's calls, after the review
+
+1. **Downloads always ask** (eight of eight). A yes, or an overrule.
+2. **The phone in two layers**: docked from step 2, phone-alone last and gated.
+   A yes, or hold the phone-alone host ungated (against every memo).
+3. **The Personal price and the Micro ladder.** $50 with the beta list at $20,
+   and Micro at 2x, or another number. A Board gate either way.
+4. **How the harness is felt.** The current in the thread (recommended), the
+   presence dots alone, or the plain ledger.
+
+Everything else delegates: the CTO owns the host interface, the extraction
+order, the subagent rails, the lockdown rule, the schema, the checkpoint
+storage, and the per-family decoding gate; the CMO and Creative Studio own
+the names, the card copy, the pills, and the trust-statement line; the CFO
+has nothing further in V1. The founder's one sitting for step 0 is a day: one
+eval run on the box plus the device backlog, which is step 0's other half and
+must not queue behind the harness.
 
 ## Assumptions made while writing this
 
