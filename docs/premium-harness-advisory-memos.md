@@ -191,6 +191,25 @@ card before the failure ("your anchor has 8k context; this repo's code map is
 
 **One thing.** Ship the number before the name.
 
+**Second ruling, the same day, on the founder's pricing call ("Go $50 for
+personal and micro at $100 if my CFO is good with that. Ditch the $20").**
+Good with it, with one change. Personal $50 on Apple nets about $42.50 per
+payer under the Small Business Program against $17 at $20, a 2.5x
+contribution, so it breaks even at 40% of the conversion $20 would have
+brought; the harness is what is priced, so the number lands with the eval
+number. Micro $100 for up to five collides with Small at $100 for 6 to 30
+(the sixth seat would be free), so every band moves up one rung: Micro $100,
+Small $250, Growth $500, Scale $1,000; every team price stays above one
+Personal and no band's floor is cheaper per seat than the band below at its
+ceiling. Four new Stripe price objects, old ids ignored, the Personal Stripe
+price retired (Apple-only), a Board vote in DECISIONS. Ditch the $20: agreed,
+since nobody has paid it and every gate is off; change the site this week
+with one candid line ("We said $20 earlier; the price moved when the agent
+learned to verify its own work") and purge the cache. The mirror rule lists
+the site data, `plans.ts`, `Paywall.tsx`, `AccountSetup.tsx`, the Supabase
+README, App Store Connect, Stripe, DECISIONS, and PROGRESS as one piece of
+work per repo.
+
 ## CX
 
 **Verdict.** Go with conditions. The desktop path lowers the barrier on

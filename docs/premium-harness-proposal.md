@@ -791,15 +791,47 @@ decides; four calls below are theirs.
    stays until a host passes on the core. Long and unattended work runs on the
    engine.
 
-### The founder's calls, after the review
+### The founder's calls, after the review (answered 2026-09-14)
 
-1. **Downloads always ask** (eight of eight). A yes, or an overrule.
-2. **The phone in two layers**: docked from step 2, phone-alone last and gated.
-   A yes, or hold the phone-alone host ungated (against every memo).
-3. **The Personal price and the Micro ladder.** $50 with the beta list at $20,
-   and Micro at 2x, or another number. A Board gate either way.
-4. **How the harness is felt.** The current in the thread (recommended), the
-   presence dots alone, or the plain ledger.
+1. **Downloads always ask.** YES. Eight of eight advisors, and the founder.
+   The Auto-place section above is final as written.
+2. **The phone in two layers.** YES. Docked from step 2, phone-alone last and
+   gated on desktop parity, the device backlog under five, and one TestFlight
+   run. The phasing table above is final as written.
+3. **The Personal price and the Micro ladder.** The founder's call, verbatim:
+   "Go $50 for personal and micro at $100 if my CFO is good with that. Ditch
+   the $20." Personal $50 a year, Micro $100 a year, no $20 grandfather for
+   the beta list, conditional on the CFO. **The CFO's ruling: good with it,
+   with one change.** Personal at $50 a year, Apple in-app only, nets about
+   $42.50 per payer under the Small Business Program against $17 at $20, so
+   it breaks even if conversion holds at 40% of what $20 would have brought;
+   the harness is what is being priced, so the number lands with the eval
+   number on the Marketplace card. Micro at $100 for up to five people
+   collides with Small, which is $100 for 6 to 30 today (the sixth seat would
+   be free), so the whole team ladder moves up one rung: **Micro $100, Small
+   $250, Growth $500, Scale $1,000**, which keeps every team price above one
+   Personal and no band's floor cheaper per seat than the band below it at
+   its ceiling. Seats still buy admin and one shared stack, never access. Four
+   new Stripe price objects, never a repriced id; the old ids go to
+   `STRIPE_IGNORED_PRICES`; `STRIPE_PRICE_PERSONAL` is retired since Personal
+   is Apple-only. A Board gate, per the 2026-09-05 ruling; the vote goes in
+   DECISIONS. Ditching the $20: agreed. Nobody has paid $20 for Personal (the
+   Apple product still carries placeholder secrets and every gate is off), so
+   the trust cost is a sentence on the site that grows with every day it
+   stays up; the fix is speed and candor, not a discount. The copy: "Free for
+   everyone during the beta. After beta, Personal is $50 a year, bought only
+   in the app through the App Store. We said $20 earlier; the price moved when
+   the agent learned to verify its own work." Then purge the Cloudflare cache.
+   The mirror rule names every file that carries a price and must change in
+   one piece of work per repo: the site's pricing data and site meta, the
+   app's `plans.ts`, `Paywall.tsx`, `AccountSetup.tsx`, and a store comment,
+   the Supabase README and the checkout function's comment, the App Store
+   Connect product tier, the Stripe prices and secrets, and the DECISIONS and
+   PROGRESS lines. This is pricing work, not harness work, and it is not
+   built here.
+4. **How the harness is felt.** The current in the thread, with presence dots
+   by the reach pill. The Creative Studio's recommended direction; the "How it
+   feels" section above is final as written.
 
 Everything else delegates: the CTO owns the host interface, the extraction
 order, the subagent rails, the lockdown rule, the schema, the checkpoint
