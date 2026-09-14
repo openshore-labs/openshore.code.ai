@@ -2294,7 +2294,7 @@ textarea {
 .frame-ring {
   display: inline-flex;
   align-items: center;
-  color: var(--water, currentColor);
+  color: var(--wave);
 }
 .frame-ring-track {
   fill: none;
@@ -7491,7 +7491,7 @@ textarea {
   flex-shrink: 0;
   align-self: center;
   font-size: 11px;
-  color: var(--water, var(--muted));
+  color: var(--local);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 7px;

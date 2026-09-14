@@ -397,6 +397,13 @@ export interface AppSettings {
    *  way. Each is on unless turned off (missing means on). Device local. See
    *  lib/currents.ts. */
   wayfinding?: WayfindingSettings;
+  /** Research (Settings): ground web search in Perplexity's Sonar instead of
+   *  the default backend. OFF by default (missing means off, unlike Wayfinding)
+   *  because it spends the user's Perplexity key on every search. Reuses the
+   *  Perplexity key connected in Cloud Connections, so there is no second key
+   *  to paste, and does nothing until that key exists. Device local. See
+   *  lib/webSearch.ts (resolveSearchKey). */
+  perplexityResearch?: boolean;
   /** The Agentic Current that is on, or none. ONE at a time everywhere
    *  (founder, 2026-09-09): turning one on turns the other off, so this is a
    *  single id rather than a map of booleans. Device local, never synced: a
@@ -1082,6 +1089,9 @@ interface AppState {
   // Wayfinding and Agentic Currents (lib/currents.ts).
   /** Turn one Wayfinding switch on or off. */
   setWayfinding(id: WayfindingId, on: boolean): Promise<void>;
+  /** Research (Perplexity): ground web search in Sonar on the connected
+   *  Perplexity key. Off by default; reuses the Cloud Connections key. */
+  setPerplexityResearch(on: boolean): Promise<void>;
   /** Flip an Agentic Current. One at a time everywhere: turning one on turns
    *  the other off. `at` is where the switch sits, for the arrival gesture that
    *  flows from it to the edges of the screen. Turning the active one off
@@ -1740,7 +1750,12 @@ export const useApp = create<AppState>((set, get) => {
         return new DesktopChatDriver(settings.daemon, conv.source.model, seed);
       }
       case 'device':
-        return new OnDeviceDriver(conv.source.modelId, conv.source.modelName, seed);
+        return new OnDeviceDriver(
+          conv.source.modelId,
+          conv.source.modelName,
+          seed,
+          settings.perplexityResearch === true,
+        );
       case 'cloud': {
         // Claude runs on the Anthropic SDK; every other connected provider runs
         // on the shared OpenAI-compatible chat driver, so a user can chat with
@@ -5310,6 +5325,11 @@ export const useApp = create<AppState>((set, get) => {
       const wayfinding = { ...(get().settings.wayfinding ?? {}), [id]: on };
       await get().saveSettings({ wayfinding });
       logEvent('wayfinding_toggle', { id, on });
+    },
+
+    async setPerplexityResearch(on) {
+      await get().saveSettings({ perplexityResearch: on });
+      logEvent('perplexity_research_toggle', { on });
     },
 
     async setAgenticCurrent(id, on, at) {

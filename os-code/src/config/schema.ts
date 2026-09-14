@@ -103,6 +103,13 @@ export const ResourceBudgetSchema = z.object({
   maxResidentModels: z.number().int().min(1).default(1),
   /** Override detected VRAM in GB (for headless boxes and tests). */
   vramOverrideGB: z.number().positive().optional(),
+  /** Seconds a stream may go silent between tokens before the guard calls it a
+   *  stall. */
+  streamIdleSeconds: z.number().int().min(1).default(120),
+  /** Seconds to wait for the FIRST token, which is prefill: a cold local model
+   *  reading a large prompt on a modest box can take minutes before it speaks.
+   *  Raise it on very slow hardware. Never shorter than streamIdleSeconds. */
+  streamFirstByteSeconds: z.number().int().min(1).default(300),
 });
 
 // ---------------------------------------------------------------------------
@@ -110,12 +117,15 @@ export const ResourceBudgetSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const SearchSchema = z.object({
-  backend: z.enum(['duckduckgo', 'brave', 'searxng', 'tavily']).default('duckduckgo'),
+  backend: z.enum(['duckduckgo', 'brave', 'searxng', 'tavily', 'perplexity']).default('duckduckgo'),
   /** Base URL of a self-hosted SearXNG, the fully private path. */
   searxngUrl: z.string().optional(),
   /** Env var names for keyed backends, never the keys themselves. */
   braveKeyEnv: z.string().default('BRAVE_API_KEY'),
   tavilyKeyEnv: z.string().default('TAVILY_API_KEY'),
+  /** Perplexity Sonar search grounding: the key stays on this machine, read
+   *  from this env var, never carried into a remote-hub session. */
+  perplexityKeyEnv: z.string().default('PERPLEXITY_API_KEY'),
   resultCount: z.number().int().min(1).max(20).default(5),
   /** Max characters of markdown webFetch returns (small local contexts). */
   fetchMaxChars: z.number().int().min(1000).default(18000),
@@ -240,6 +250,57 @@ const SyncSchema = z.object({
   autoPush: z.boolean().default(true),
 });
 
+// The premium harness (founder + advisor org, 2026-09-14; see
+// docs/premium-harness-proposal.md and CLAUDE.md "The premium harness"). The
+// discipline seam that makes the smallest models capable: a model-class profile
+// per seat, and constrained decoding to the tool-or-answer union schema for
+// small local models. On by default, tunable or off per project. An empty
+// config stays a valid, working setup. Code in os-code/src/harness/.
+const HarnessProfileOverrideSchema = z.object({
+  maxToolsShown: z.number().int().min(1).optional(),
+  maxCallsPerTurn: z.number().int().min(1).optional(),
+  constrainedDecoding: z.boolean().optional(),
+  subagents: z.enum(['no', 'worker', 'yes']).optional(),
+  plans: z.boolean().optional(),
+  codeMapContextFraction: z.number().min(0).max(1).optional(),
+  compactAtContextFraction: z.number().min(0).max(1).optional(),
+});
+
+const HarnessSchema = z.object({
+  profiles: z
+    .object({
+      // Apply model-class discipline so a small seat gets the harness's help.
+      enabled: z.boolean().default(true),
+      // Per-class tweaks, keyed by "tiny" | "small" | "mid" | "large".
+      overrides: z.record(z.string(), HarnessProfileOverrideSchema).default({}),
+    })
+    .prefault({}),
+  decoding: z
+    .object({
+      // Constrain a small local model's decoding to the tool-or-answer union
+      // schema when the backend supports grammar. The eval decides per family
+      // whether it is a lift or a tax, so it stays a switch.
+      constrainForSmallModels: z.boolean().default(true),
+    })
+    .prefault({}),
+  verify: z
+    .object({
+      // The project's check command, run after the agent finishes a task that
+      // changed files, so it reports verified / not verified rather than
+      // claiming done blind. Unset means verify is off. Runs without a prompt,
+      // so the loop only invokes it where shell may auto-run (the
+      // local-interactive profile); see maybeVerify in loop.ts.
+      command: z.string().optional(),
+      timeoutSeconds: z.number().int().min(1).default(120),
+      // Verify in the loop: when the check fails, the failure tail goes back to
+      // the model as an observation and it gets another go, this many times at
+      // most, before the task reports not verified. Zero means one shot: report
+      // the result, never retry. The step and dollar rails still apply.
+      maxRetries: z.number().int().min(0).max(10).default(2),
+    })
+    .prefault({}),
+});
+
 export const ConfigSchema = z.object({
   providers: z
     .record(z.string(), ProviderEndpointSchema)
@@ -260,6 +321,7 @@ export const ConfigSchema = z.object({
   ux: UxSchema.prefault({}),
   humanizer: HumanizerSchema.prefault({}),
   sync: SyncSchema.prefault({}),
+  harness: HarnessSchema.prefault({}),
 });
 
 export type OscConfig = z.infer<typeof ConfigSchema>;

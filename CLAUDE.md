@@ -26,10 +26,11 @@ condition (each checkbox checked off in `os-code/PROGRESS.md`) is now met.
   BUILT 2026-08-25, commit `b8e1658`. Code in `app/src/lib/vault.ts` and
   `app/src/screens/VaultScreen.tsx`.
 
-Do NOT re-surface these as unbuilt or re-scope them from scratch. The one open
-follow-up is Vault's ORGANIZATION tier (a real multi-writer backend), tracked
-as its own item in `os-code/PROGRESS.md`. The original build prompts are kept
-in `os-code/docs/parked-ideas.md` as historical reference only.
+Do NOT re-surface these as unbuilt or re-scope them from scratch. Vault's
+ORGANIZATION tier (the real multi-writer backend) also shipped: code in
+`app/src/lib/gitos/orgVault.ts`, migration `supabase/migrations/0010_org_vault.sql`.
+The original build prompts are kept in `os-code/docs/parked-ideas.md` as
+historical reference only.
 
 ## Crew routines (the botOS brief) are BUILT (2026-09-05)
 
@@ -142,3 +143,41 @@ a current, do NOT hardcode a current's name in a room (render through
 `activeContribution`), and do NOT call a current "always on". "Currents" is
 the CMO and Creative Studio's name; "Layers" was retired; "frontier" stays
 reserved for cloud models. Open follow-ups are in `os-code/PROGRESS.md`.
+
+## The premium harness: five tenets (standing rule, founder + advisor org 2026-09-14)
+
+The plan for making OpenShore's coding agent premium on any model, dev, creative,
+and agentic work alike, is `docs/premium-harness-proposal.md`; the full advisory
+review that shaped it is `docs/premium-harness-advisory-memos.md`. The harness
+is codenamed Keel internally and ships with no room and no name, the way gitOS
+ships as Repositories. Build it to these five tenets so no session drifts:
+
+1. **The harness has no room and no name.** It ships as how OpenShore works:
+   cards in the transcript, rows in Wayfinding, pills on the Bench. Never a new
+   room, never a codename in copy. Grep the codename like the Currents nouns.
+2. **Nothing is claimed without eval.** Every feature ships behind config with a
+   with-and-without number per model class on the reference machine (the
+   founder's own box). Copy says "remembers what worked", never "trains itself",
+   until an adapter actually ships. `osc eval` is the spine.
+3. **The harness raises the floor, never the ceiling, and says so.** A tiny seat
+   runs single steps and its pill says it; the harness does the mechanical work
+   (retrieval first, structural checks, running the project's own tests) so a
+   small model does not have to remember to.
+4. **The person places the seat; the harness may only fill a gap.** Auto-place
+   places an installed or benched LOCAL model with a note and one-tap revert, and
+   never the anchor, never under a secrets lockdown. Every download and every
+   cloud call is a card the person taps. Teal is local, amber is cloud and spend.
+5. **One loop; hosts differ only by tool slice.** The pure core in
+   `os-code/src/harness/` stays free of Node built-ins by test so the phone can
+   run it; events are additive; the working path (`core/agent/loop.ts`) stays
+   until a host passes on the core. Long and unattended work runs on the engine.
+
+Order is fixed and each step unlocks on a number, not a belief: measure, then
+the discipline seam (model-class profiles, the tool-or-answer decoding schema,
+context budgets, retrieval-first), then the Claude Code moment on the engine
+(verify, checkpoints and rewind, hooks), then Ask for a hand with Auto-place,
+then the pure-core extraction with subagents, then the phone host, then Lessons
+(local-only learning, per owner and workspace, cleared with the chats). A
+subagent always draws down its parent's step and dollar rails; lessons are never
+mined machine-wide on a shared hub. Pricing (Personal $50, Micro $100, Small
+$250, Growth $500, Scale $1000) is a Board gate, not harness work.

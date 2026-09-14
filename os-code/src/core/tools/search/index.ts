@@ -24,6 +24,7 @@ import { duckduckgoProvider } from './duckduckgo.js';
 import { braveProvider } from './brave.js';
 import { searxngProvider } from './searxng.js';
 import { tavilyProvider } from './tavily.js';
+import { perplexityProvider } from './perplexity.js';
 
 export function searchProviderFor(config: SearchConfig): SearchProvider {
   switch (config.backend) {
@@ -33,6 +34,8 @@ export function searchProviderFor(config: SearchConfig): SearchProvider {
       return searxngProvider(config);
     case 'tavily':
       return tavilyProvider(config);
+    case 'perplexity':
+      return perplexityProvider(config);
     case 'duckduckgo':
     default:
       return duckduckgoProvider();

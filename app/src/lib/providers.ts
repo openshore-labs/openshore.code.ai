@@ -194,6 +194,61 @@ export const PROVIDERS: ProviderInfo[] = [
       },
     ],
   },
+  {
+    // Perplexity's Sonar models. Every Sonar completion runs a live web search
+    // and grounds its answer with citations, so it is a search engine with a
+    // language model on top, not a plain chat model: a call always reaches the
+    // network and costs more than its token count implies, and the payoff is a
+    // current, sourced answer. It is OpenAI-compatible (POST /chat/completions
+    // under api.perplexity.ai, swap base URL and model id), so key validation
+    // and the stack router treat it like any other openai-compatible provider,
+    // and a Sonar model places into a stack slot like the rest.
+    //
+    // Two honesty notes carried from the CTO review:
+    //   1. Sonar returns its sources as top-level `citations`/`search_results`
+    //      fields outside the OpenAI schema, which the plain openai-compatible
+    //      driver path drops. Threading those through the driver event stream
+    //      (the app already renders webSearch citations) is the open follow-up
+    //      before a Sonar bench model is the best it can be.
+    //   2. Model ids below are the 2026-09 Sonar lineup and, like every id in
+    //      this file, must be verified against the live API before a release:
+    //      a retired id is a dead button in the stack.
+    id: 'perplexity',
+    name: 'Perplexity',
+    keyHint: 'pplx-...',
+    openaiBaseUrl: 'https://api.perplexity.ai',
+    apiKeyUrl: 'https://www.perplexity.ai/account/api/keys',
+    models: [
+      {
+        id: 'sonar',
+        label: 'Sonar',
+        good: 'fast',
+        tagline: 'Quick, cited web answers. Searches the live web on every turn.',
+        categories: ['fast', 'analysis'],
+      },
+      {
+        id: 'sonar-pro',
+        label: 'Sonar Pro',
+        good: 'analysis',
+        tagline: 'Broader search with more sources per answer, for research that needs depth.',
+        categories: ['analysis', 'writing'],
+      },
+      {
+        id: 'sonar-reasoning-pro',
+        label: 'Sonar Reasoning Pro',
+        good: 'reasoning',
+        tagline: 'Reasons step by step over live search results. For hard, current questions.',
+        categories: ['reasoning', 'analysis'],
+      },
+      {
+        id: 'sonar-deep-research',
+        label: 'Sonar Deep Research',
+        good: 'analysis',
+        tagline: 'Runs an exhaustive multi-search report. Slow and thorough, higher cost.',
+        categories: ['analysis', 'writing'],
+      },
+    ],
+  },
 ];
 
 /** Provider model ids their provider has retired. Listing one would be a dead

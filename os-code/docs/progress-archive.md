@@ -2486,12 +2486,152 @@ Kept as written, as the record of how each was closed.
       app now appends to cover an iPad reporting a desktop UA), keeping the HTML
       page as the 302 body fallback and as the full desktop response. It is a
       server change: it took effect on `supabase functions deploy repo-oauth`
-      (redeployed from the founder's Pop!_OS clone to project
+      (redeployed from the founder's Pop!\_OS clone to project
       `lzlrlfdffwiypzreoldb`, script 8.7 kB) and fixed the already-installed
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
 ## Log entries (2026-08-18 to 2026-09-06)
+
+- **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
+  to main).** The founder specified the workflow explicitly: prompt through the
+  harness, framing by the reasoning LLM (clarify only when ambiguous), a play of
+  dependency-ordered handoffs to specialist models, a brief of steps and owners
+  shown live, hybrid execution that can re-plan mid-run, then a streamed
+  synthesis. Decisions (via a picker): app-native with engine handoff for
+  repo/tool steps when docked; hybrid re-plan; ask only when ambiguous then
+  auto-run; build the whole flow now; My Stack is the single source workflows
+  inherit. Built additively over the existing backends so the single-turn path
+  is preserved as the degenerate case. New pure core `app/src/lib/play.ts`
+  (framing/play shapes, dependency scheduling, re-plan merge, owner resolution,
+  the brief, planner and re-plan prompts with robust JSON parse), 30 unit tests;
+  the runner is `stackDriver.ts` (frames, briefs as todos-with-owners, runs
+  steps by dependency, re-plans at bounded checkpoints, synthesizes, degrades to
+  single-turn); `TodoItem`/`TodoRow` gained `owner`, rendered in `TodoCard`;
+  a step can target a specific model by id (level-deeper routing), and the
+  planner is shown the targetable models. Doc and diagram in `docs/workflow.md`.
+  The three follow-ups then landed the same day (CTO-ruled, founder delegated
+  the forks): a tappable clarify picker (`ClarifyCard` off a new `clarify`
+  driver event; the reply folds back into the framing); a repo/tool step runs on
+  the paired computer's engine when docked, over one shared `RemoteDriver`
+  session bound to the chat's local workspace, with real tool approvals surfaced
+  in the chat and never auto-answered, `StackDriver.answerApproval` now a real
+  pass-through, abort wired, degrading to describe-only when not docked or no
+  workspace is bound; and crew routines keep the engine's ReAct loop (no planner
+  port, so a headless run never blocks on a question) and write a Plan section
+  into their vault note from the agent's `todoWrite`. Gates: app typecheck, lint,
+  810 tests, Vite build, Prettier; os-code 604 tests, em-dash and PROGRESS shape
+  guards. The engine hand-off and the routine Plan note need a paired computer
+  and a real routine fire to verify.
+
+- **2026-09-06: GitHub repo connect, the redirect address GitHub could not match
+  (founder report from TestFlight).** Connecting a repo, one-tap Connect GitHub
+  reached the GitHub consent page and stopped on "The redirect_uri is not
+  associated with this application." Traced it: the app's OAuth connect
+  (`app/src/lib/gitos/repoOAuth.ts`) sends
+  `redirect_uri = <VITE_SUPABASE_URL>/functions/v1/repo-oauth/callback`, and a
+  GitHub App requires that to match one of its registered Callback URLs exactly.
+  GitHub found the App (the client id resolved), so the mismatch is the address,
+  which makes this a configuration gap (the App's Callback URL, the client id
+  the build carries, or the Supabase project the build names), not app logic.
+  The CLI device flow (`os-code/src/auth/github.ts`) uses no redirect and is not
+  involved. Hardened and made it self-diagnosable rather than guessing at values
+  only the founder can see: the app and the `repo-oauth` function now trim a
+  trailing slash off the Supabase base, so it can never compose a doubled-slash
+  address that fails the exact match; `repoOAuth` exports the exact Callback URL
+  and the Repositories screen shows it, copyable, when a one-tap connect fails,
+  so the exact string to register is in hand. Documented the GitHub App setup and
+  a three-step troubleshooting checklist in `supabase/README.md` (Phase 4), and
+  left the config verification in What remains. Second bug from the same report:
+  closing the in-app browser without finishing (the exact path when the provider
+  shows an error page and the person taps Done, since GitHub never redirects back)
+  left the button stuck on "Connecting..." until the five-minute timeout, because
+  no `oscode://` deep link ever arrived. The iOS wait now also listens for the
+  Capacitor Browser `browserFinished` dismissal and ends the flow at once with
+  "Sign-in did not finish."; our own `Browser.close()` on a real return fires it
+  too but the flow has already settled, so it is a no-op. Desktop (a separate
+  system browser) still falls back to the timeout, noted as a follow-up. Then
+  the founder read the live authorize URL off GitHub's error page, which
+  confirmed the cause outright: the `redirect_uri` was
+  `...supabase.co//functions/v1/repo-oauth/callback`, a doubled slash from the
+  trailing slash on the Codemagic `VITE_SUPABASE_URL` (client id `Iv23...`, the
+  right GitHub App), so the trailing-slash trim is the actual fix, not a GitHub
+  config change. Merged to main (fast-forward) so Codemagic ships it to
+  TestFlight; the same push carried a Prettier-only reformat of
+  `test/ethicsEnforcement.test.ts` (a pre-existing drift that had CI red on
+  format) so main lands green. Then, on the build that carried the trim, the
+  authorize step finally succeeded and the Supabase `/callback` bounced the code
+  back, exposing the last leg (2026-09-07): the return relied only on the
+  in-memory connect listener, so a cold start (iOS evicts the memory-heavy app
+  while the person authorizes, then the return relaunches it) dropped the code.
+  `connectRepoOAuth` now persists the attempt (state and PKCE verifier,
+  single-use, 15-minute TTL, claimed once) and `useAuthDeepLink` completes it
+  from the cold-start launch URL through a new `resumeRepoOAuth` store action and
+  `repoOAuth.resumeRepoOAuthFromLink`, cold-start only so it never races the warm
+  listener. Then the founder asked for the one-tap version, so the warm tap went
+  away too: iOS now runs the whole flow through `ASWebAuthenticationSession` (new
+  `oscode-authsession` plugin, same SPM/JS-registered shape as `oscode-tts`),
+  which watches for the `oscode` callback scheme and hands the callback URL
+  straight to its completion handler. So there is no bounce-page tap (iOS blocks
+  that page's automatic custom-scheme redirect without a gesture) and no deep-link
+  round trip a memory eviction could drop. `repoOAuth` routes iOS through
+  `runAuthSession` and maps the plugin's `canceled` to "Sign-in did not finish.";
+  the old Capacitor Browser open and the `browserFinished` dismiss listener are
+  gone from iOS, and `awaitRedirect` is now the desktop-only deep-link wait.
+  Desktop keeps the system-browser path; the cold-start recovery stays as a
+  backstop. Ruling in `DECISIONS.md`. Gates: full workspace build, format, lint,
+  typecheck, and tests green (os-code 604, app 850; `repoOAuth.test.ts` 26);
+  the em-dash, polish-standards, and PROGRESS shape guards. TestFlight
+  verification of the one-tap connect, and that `cap sync ios` links
+  `oscode-authsession`, is still pending. That build then failed: Codemagic's
+  "Build the signed IPA" step died inside its own `xcodebuild -showBuildSettings`
+  check, exit 74, identically on a retry (so not the transient blip first
+  guessed). GitHub CI stayed green throughout, since it never touches Xcode or
+  SwiftPM; only Codemagic exercises the real iOS package graph, and its
+  `xcode-project` CLI tool curates its own output rather than forwarding
+  xcodebuild's real error, so the failing step's log carried no more detail than
+  its one-line summary. Checked what could be checked without a Mac toolchain:
+  `oscode-authsession`'s manifest is structurally identical to the
+  already-shipping `oscode-speech`, every plugin pins the same
+  `capacitor-swift-pm` version, and a clean `pnpm install --frozen-lockfile`
+  reproduces the same dependency tree Codemagic would install. None of that
+  found the cause, and whether it is `oscode-authsession` or the same-day,
+  still-unverified `oscode-tts`/`oscode-speech` from the voice-mode merge is
+  unknown. Added a temporary diagnostic step to `codemagic.yaml` (a plain script
+  step right before the failing one, since plain steps print output verbatim
+  unlike the wrapper tool) to surface the real xcodebuild/SwiftPM error on the
+  next build. That build named it exactly: SwiftPM failed the package graph with
+  "product 'OscodeAuthsession' required by ... not found in package
+  'OscodeAuthSession'", every dependency (`capacitor-swift-pm`, `swift-syntax`,
+  `LLM.swift`, `ion-ios-filesystem`) having already fetched and checked out
+  fine, so it was neither the voice-mode plugins, network, nor disk. `cap sync`
+  derives a Swift package/product name by capitalizing only the first letter of
+  each hyphen-separated segment of the npm name; `oscode-authsession` has no
+  hyphen inside "authsession", so the derived name is `OscodeAuthsession`
+  (lowercase second "s"), not the readable `OscodeAuthSession` the plugin's own
+  `Package.swift` declared. Fixed by renaming the package and product name
+  (only, in `app/plugins/oscode-authsession/Package.swift`) to
+  `OscodeAuthsession`; the target name and the Swift plugin's
+  `jsName`/`identifier` are a separate JS-bridge lookup, unaffected. General
+  lesson recorded in `DECISIONS.md`. That build went green, so the diagnostic
+  step was removed. One last leg surfaced then: on the working one-tap build the
+  session opened and GitHub authorized, but the person was left on the Supabase
+  `/callback` "Returning to OpenShore" page. Research (Apple forums, an Apple
+  engineer's reply) confirmed ASWebAuthenticationSession completes only on a
+  network-level redirect to the callback scheme; the page's `window.location`
+  JavaScript redirect is not reliably captured. Fixed server-side: `/callback`
+  now returns an HTTP 302 to `oscode://` for iOS (UA iPhone/iPad/iPod, or `state`
+  ending ".r", which the iOS app now appends for the iPad-desktop-UA case),
+  keeping the HTML page as the 302 body fallback and as the full desktop
+  response, and using query params never a fragment. Takes effect on
+  `supabase functions deploy repo-oauth`, no new app build, so it fixes the
+  already-installed build. Ruling in `DECISIONS.md`. Gates: full workspace
+  build, format, lint, typecheck, and tests green (os-code 604, app 851;
+  `repoOAuth.test.ts` 27); em-dash, polish-standards, and PROGRESS shape guards.
+  The founder redeployed the function and GitHub connected on the phone with no
+  manual step, the card reading "connected". RESOLVED: four distinct bugs from
+  the first "redirect_uri is not associated" report, all fixed. Full state, and
+  the small non-blocking nice-to-haves, in What remains.
 
 - **2026-09-06: vision as a Stack category with two slots and effort, plus the
   video framing progress ring (founder, pushed to main).** Follow-ups to video

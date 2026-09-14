@@ -50,13 +50,16 @@ export interface TestSessionOptions {
   consents?: ConsentAssertion[];
   /** The security profile to run under (default: sitting at the desk). */
   profile?: SecurityProfileName;
+  /** Run in this workspace instead of a fresh temp dir. Eval v2 prepares a
+   *  fixture workspace and drives the loop inside it. */
+  cwd?: string;
 }
 
 export function makeTestSession(
   provider: MockProvider,
   options: TestSessionOptions = {},
 ): TestSession {
-  const cwd = mkdtempSync(join(tmpdir(), 'osc-test-'));
+  const cwd = options.cwd ?? mkdtempSync(join(tmpdir(), 'osc-test-'));
   for (const [rel, content] of Object.entries(options.files ?? {})) {
     writeFileSync(join(cwd, rel), content);
   }
@@ -66,6 +69,13 @@ export function makeTestSession(
     permissions: { defaults: { write: 'allow', shell: 'ask' } },
     ...options.configOverrides,
   });
+  // The harness discipline seam (model-class profiles) defaults ON in the real
+  // engine, but a test carries the full prompt and every tool unless it opts in,
+  // so existing behavior is the baseline and lean-seat tests turn it on
+  // explicitly. A test that sets harness.profiles itself keeps its own choice.
+  const setProfiles = (options.configOverrides as { harness?: { profiles?: unknown } } | undefined)
+    ?.harness?.profiles;
+  if (setProfiles === undefined) config.harness.profiles.enabled = false;
 
   const events: AgentEvent[] = [];
   const approvals: ApprovalRequest[] = [];

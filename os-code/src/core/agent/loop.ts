@@ -41,6 +41,9 @@ import type {
   TodoItem,
 } from './types.js';
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
+import { runVerify, verifyRetryPrompt } from '../../harness/verify.js';
+import { deriveProfile, classBlurb, type ModelClassProfile } from '../../harness/profile.js';
+import type { ToolSpec } from '../../providers/types.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('agent');
@@ -73,6 +76,11 @@ export interface AgentDeps {
   persistRule?: (rule: ProjectRule) => boolean;
 }
 
+/** Capitalize a model-class name for a sentence ("small" -> "Small"). */
+function cap(s: string): string {
+  return s.length ? s[0]!.toUpperCase() + s.slice(1) : s;
+}
+
 /** The shape of a rule the loop asks to persist for a project. */
 export interface ProjectRule {
   tool: string;
@@ -82,6 +90,31 @@ export interface ProjectRule {
 
 /** Tools a plan may use: nothing that changes the workspace or runs a shell. */
 const PLAN_SAFE_RISKS = new Set(['read', 'network']);
+
+/** The classes the harness runs a lean prompt for: a small seat gets the few
+ *  tools the step calls for and a compact standards digest instead of the full
+ *  multi-KB text, so its context goes to the task, not to instructions it cannot
+ *  hold. mid and large get the full prompt. */
+const LEAN_CLASSES = new Set<string>(['tiny', 'small']);
+
+/** When a small seat can see only a handful of tools, these are the ones worth
+ *  showing, most useful first: read, edit, search, then the rest. Tools not
+ *  listed keep their registration order after these. */
+const SMALL_MODEL_TOOL_PRIORITY = [
+  'readFile',
+  'editFile',
+  'writeFile',
+  'grep',
+  'glob',
+  'searchRepo',
+  'runShell',
+  'todoWrite',
+  'gitDiff',
+  'gitStatus',
+  'webFetch',
+  'webSearch',
+  'readTerminal',
+];
 
 /** Transient provider failures worth a bounded retry. */
 const TRANSIENT =
@@ -106,8 +139,18 @@ export class AgentSession {
   private instructions?: string;
   private todos: TodoItem[] = [];
   private transientRetries = 0;
+  /** Set when a write-risk tool succeeded this task, so verify runs only when
+   *  there is something to verify. */
+  private wroteThisTask = false;
   /** The active model's window, from the last turn's capabilities; 0 until then. */
   private contextTokens = 0;
+  /** The model-class profile for the active model this turn (the discipline
+   *  seam). Undefined when harness.profiles is off, so the full prompt and every
+   *  tool reach the model exactly as before. Recomputed each turn since the
+   *  active model can switch (a cloud escalation becomes the large class). */
+  private modelProfile?: ModelClassProfile;
+  /** So the lean-seat note is said once per session, not every turn. */
+  private profileNoteEmitted = false;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -212,6 +255,90 @@ export class AgentSession {
     this.deps.onEvent(event);
   }
 
+  // Verify, then report plainly (tenet 3). After a task that changed files, run
+  // the project's configured check command and emit the result. Gated to the
+  // profile where shell may auto-run, since it runs a configured command with
+  // no prompt: a project-config command never fires on a remote or headless
+  // session, the same containment hooks get.
+  //
+  // Verify in the loop: a failing check is not the end of the task while a
+  // retry remains. The failure tail goes back to the model as an observation
+  // and the loop continues, so the model fixes against the real error instead
+  // of its own guess. Returns 'retry' when the loop should continue, 'done'
+  // otherwise. Bounded by harness.verify.maxRetries on top of the step rails,
+  // and a retry only counts once the check has actually failed.
+  private maybeVerify(verifyRounds: number): 'retry' | 'done' {
+    const verifyConfig = this.deps.config.harness?.verify;
+    if (!verifyConfig?.command || !this.wroteThisTask) return 'done';
+    if (!this.deps.profile.allowShellAutoApprove) return 'done';
+    const result = runVerify(this.deps.toolContext.cwd, verifyConfig);
+    if (!result.ran) return 'done';
+    const maxRetries = verifyConfig.maxRetries ?? 0;
+    const round = verifyRounds + 1;
+    const willRetry = !result.passed && verifyRounds < maxRetries;
+    this.emit({
+      type: 'verify',
+      passed: result.passed,
+      summary: result.summary,
+      detail: result.detail,
+      round,
+      willRetry,
+    });
+    if (!willRetry) return 'done';
+    this.emit({
+      type: 'status',
+      message: `The check did not pass; handing the failure back to the model (retry ${round} of ${maxRetries}).`,
+    });
+    this.history.push({
+      role: 'user',
+      content: verifyRetryPrompt(result, round, maxRetries),
+    });
+    return 'retry';
+  }
+
+  // -------------------------------------------------------------------------
+  // The discipline seam (harness profiles)
+  // -------------------------------------------------------------------------
+
+  /** The model-class profile for the active model, or undefined when profiles
+   *  are off in config (the full prompt and every tool then reach the model,
+   *  exactly as before the harness). */
+  private deriveModelProfile(caps: {
+    contextTokens: number;
+    supportsGrammar: boolean;
+  }): ModelClassProfile | undefined {
+    const cfg = this.deps.config.harness?.profiles;
+    if (!cfg?.enabled) return undefined;
+    return deriveProfile(
+      {
+        model: this.active.model,
+        kind: this.active.provider.kind,
+        caps: { contextTokens: caps.contextTokens, supportsGrammar: caps.supportsGrammar },
+      },
+      cfg.overrides as Parameters<typeof deriveProfile>[1],
+    );
+  }
+
+  /** True when the active seat runs the lean prompt (a small or tiny class). */
+  private get leanSeat(): boolean {
+    return this.modelProfile ? LEAN_CLASSES.has(this.modelProfile.modelClass) : false;
+  }
+
+  /** Say once, plainly, that a small seat is running with the harness's help
+   *  (tenet 3: the harness raises the floor and says so). */
+  private announceLeanSeat(): void {
+    if (this.profileNoteEmitted || !this.leanSeat || !this.modelProfile) return;
+    this.profileNoteEmitted = true;
+    const total = this.deps.tools.specs().length;
+    const shown = Math.min(total, this.modelProfile.maxToolsShown);
+    this.emit({
+      type: 'note',
+      message: `${cap(this.modelProfile.modelClass)} model seat: ${classBlurb(
+        this.modelProfile.modelClass,
+      )} The harness shows it ${shown} of ${total} tools and carries the checklist.`,
+    });
+  }
+
   // -------------------------------------------------------------------------
   // System prompt
   // -------------------------------------------------------------------------
@@ -266,16 +393,33 @@ export class AgentSession {
         ].join('\n'),
       );
     }
-    // Premium UX out of the box: everything with a screen is built to the
-    // twenty laws plus the house bar unless a project turns it off in config
-    // or the user says to skip it (uxStandard.ts).
+    // Premium UX and the humanizer, out of the box, unless a project turns them
+    // off in config or the user says to skip. A full seat gets the complete
+    // standards (uxStandard.ts, humanizerStandard.ts). A lean seat (a small or
+    // tiny class) gets a compact digest instead: the full multi-KB text would
+    // eat the context a small model needs for the task, and on modest hardware
+    // it makes prefill so slow the model never gets to answer. The harness still
+    // holds the premium bar mechanically (verify, structure); tenet 3.
     const ux = this.deps.config.ux;
-    if (ux?.standard !== 'off') parts.push(uxStandardPrompt(ux?.notes));
-    // Humanizer out of the box: any written output reads plain, specific, and
-    // honest, avoiding AI writing tells, unless a project turns it off in config
-    // or the user says to skip it (humanizerStandard.ts).
     const humanizer = this.deps.config.humanizer;
-    if (humanizer?.standard !== 'off') parts.push(humanizerStandardPrompt(humanizer?.notes));
+    if (this.leanSeat) {
+      const bar: string[] = [];
+      if (ux?.standard !== 'off') bar.push('a clear, accessible, calm UX');
+      if (humanizer?.standard !== 'off') bar.push('plain, human prose, not chatbot patterns');
+      if (bar.length) {
+        parts.push(
+          `Build to OpenShore's premium bar: ${bar.join(
+            ', and ',
+          )}. Keep each change small and correct; the harness runs the checks.`,
+        );
+      }
+      if (ux?.standard !== 'off' && ux?.notes) parts.push(`This project adds: ${ux.notes}`);
+      if (humanizer?.standard !== 'off' && humanizer?.notes)
+        parts.push(`Voice notes: ${humanizer.notes}`);
+    } else {
+      if (ux?.standard !== 'off') parts.push(uxStandardPrompt(ux?.notes));
+      if (humanizer?.standard !== 'off') parts.push(humanizerStandardPrompt(humanizer?.notes));
+    }
     if (codeMap) {
       parts.push(`Repository map (files and symbols):\n${codeMap}`);
     }
@@ -297,6 +441,7 @@ export class AgentSession {
     const { config, guardrails } = this.deps;
     guardrails.startTask();
     this.cloudApprovedForTask = false;
+    this.wroteThisTask = false;
     this.transientRetries = 0;
     this.abortController = new AbortController();
     // Tools see the task's signal, so Stop reaches a delegated generation or
@@ -323,6 +468,8 @@ export class AgentSession {
     let parseFailStreak = 0;
     let repairAttempts = 0;
     let turn = 0;
+    // Failing verify checks handed back to the model this task (verify in the loop).
+    let verifyRounds = 0;
 
     for (;;) {
       if (this.abortController.signal.aborted) {
@@ -354,6 +501,13 @@ export class AgentSession {
       this.contextTokens = caps.contextTokens;
       const toolMode: 'native' | 'text' =
         caps.supportsTools && this.active.adapter.toolFormat() === 'native' ? 'native' : 'text';
+
+      // The discipline seam: derive the model-class profile for the active model
+      // (the small seat gets fewer tools and a lean prompt). Recomputed each
+      // turn because the active model can switch mid-task (a cloud escalation
+      // moves to the large class, which gets the full prompt back).
+      this.modelProfile = this.deriveModelProfile(caps);
+      this.announceLeanSeat();
 
       // Refresh the system prompt each turn (tool mode and model can change).
       this.history = [
@@ -522,6 +676,10 @@ export class AgentSession {
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
+        if (this.maybeVerify(verifyRounds) === 'retry') {
+          verifyRounds += 1;
+          continue;
+        }
         this.emit({ type: 'task-done', reason: 'complete' });
         return;
       }
@@ -753,6 +911,9 @@ export class AgentSession {
     }
     const durationMs = Date.now() - startedAt;
     this.emit({ type: 'tool-end', call, result, durationMs });
+    // Remember that this task changed files, so the verify phase runs only when
+    // there is something to verify.
+    if (result.ok && tool.risk === 'write') this.wroteThisTask = true;
     // The task list rides its own event so every client renders it live.
     if (call.name === 'todoWrite' && result.ok && Array.isArray(call.args.items)) {
       this.todos = call.args.items as TodoItem[];
@@ -937,15 +1098,34 @@ export class AgentSession {
     return answer.approve;
   }
 
-  /** The tool specs the model may see this turn: everything, or in plan mode
-   *  only the read-side tools. */
-  private toolSpecs() {
-    const specs = this.deps.tools.specs();
-    if (this.mode !== 'plan') return specs;
-    return specs.filter((spec) => {
-      const tool = this.deps.tools.get(spec.name);
-      return tool ? PLAN_SAFE_RISKS.has(tool.risk) : false;
-    });
+  /** The tool specs the model may see this turn: everything, in plan mode only
+   *  the read-side tools, and for a lean seat only the few the profile allows
+   *  (core-first, so read/edit/search survive the cut). A tool that is not shown
+   *  is simply not offered; the registry still executes it if a call arrives, so
+   *  nothing breaks, the model just sees a shorter, cheaper menu. */
+  private toolSpecs(): ToolSpec[] {
+    let specs = this.deps.tools.specs();
+    if (this.mode === 'plan') {
+      specs = specs.filter((spec) => {
+        const tool = this.deps.tools.get(spec.name);
+        return tool ? PLAN_SAFE_RISKS.has(tool.risk) : false;
+      });
+    }
+    return this.limitToolSpecs(specs);
+  }
+
+  /** Keep at most `maxToolsShown` specs for the active profile, most useful
+   *  first. No profile, or an unbounded one, returns the list unchanged. */
+  private limitToolSpecs(specs: ToolSpec[]): ToolSpec[] {
+    const max = this.modelProfile?.maxToolsShown ?? Infinity;
+    if (!Number.isFinite(max) || specs.length <= max) return specs;
+    const rank = (name: string): number => {
+      const i = SMALL_MODEL_TOOL_PRIORITY.indexOf(name);
+      return i === -1 ? SMALL_MODEL_TOOL_PRIORITY.length : i;
+    };
+    // Stable sort (V8): priority tools first in priority order, the rest keep
+    // their registration order behind them. Then take the top `max`.
+    return [...specs].sort((a, b) => rank(a.name) - rank(b.name)).slice(0, max);
   }
 
   private async handleProviderFailure(err: unknown, turn: number): Promise<'retry' | 'fail'> {

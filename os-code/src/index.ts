@@ -35,5 +35,30 @@ export { RemoteDriver } from './daemon/attach.js';
 export { CatalogSchema } from './market/schema.js';
 export { loadCatalog } from './market/catalog.js';
 export { runEval } from './eval/harness.js';
+export {
+  deriveModelClass,
+  deriveProfile,
+  paramsBFromModelId,
+  useConstrainedDecoding,
+  classBlurb,
+  MODEL_CLASSES,
+  type ModelClass,
+  type ModelClassProfile,
+  type ModelClassPolicy,
+} from './harness/profile.js';
+export {
+  buildDecodingSchema,
+  parseDecoded,
+  unionProtocolInstructions,
+} from './harness/decoding.js';
+export {
+  runEvalV2,
+  type EvalV2Report,
+  type DriveTask,
+  type DriveOutcome,
+  type DriveTrace,
+} from './eval/v2.js';
+export { EVAL_TASKS, type EvalTask } from './eval/tasks.js';
+export { runVerify, type VerifyResult, type VerifyConfig } from './harness/verify.js';
 export { CONNECTORS } from './server/connectorMap.js';
 export { TOKENS, banner } from './brand/theme.js';

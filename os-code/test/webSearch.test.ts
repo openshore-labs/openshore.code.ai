@@ -8,6 +8,8 @@ import { duckduckgoProvider, unwrapDdg } from '../src/core/tools/search/duckduck
 import { braveProvider } from '../src/core/tools/search/brave.js';
 import { searxngProvider } from '../src/core/tools/search/searxng.js';
 import { tavilyProvider } from '../src/core/tools/search/tavily.js';
+import { perplexityProvider } from '../src/core/tools/search/perplexity.js';
+import { searchProviderFor } from '../src/core/tools/search/index.js';
 import { webSearchTool } from '../src/core/tools/webSearch.js';
 import { webFetchTool } from '../src/core/tools/webFetch.js';
 import { Jail } from '../src/core/security/jail.js';
@@ -107,6 +109,43 @@ describe('keyed backends', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     delete process.env.TAVILY_API_KEY;
+  });
+
+  it('perplexity requires its key, posts to Sonar, and maps search_results to sources', async () => {
+    const cfg = ConfigSchema.parse({}).search;
+    delete process.env.PERPLEXITY_API_KEY;
+    await expect(
+      perplexityProvider(cfg).search('q', 3, new EgressPolicy(config.egress)),
+    ).rejects.toThrow(/PERPLEXITY_API_KEY/);
+
+    process.env.PERPLEXITY_API_KEY = 'pplx-key';
+    const spy = mockFetchOnce(
+      JSON.stringify({
+        choices: [{ message: { content: 'answer' } }],
+        search_results: [{ title: 'Src', url: 'https://src.io', snippet: 'S' }],
+      }),
+    );
+    const results = await perplexityProvider(cfg).search('q', 3, new EgressPolicy(config.egress));
+    expect(results).toEqual([{ title: 'Src', url: 'https://src.io', snippet: 'S' }]);
+    expect(spy).toHaveBeenCalledWith(
+      'https://api.perplexity.ai/chat/completions',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    delete process.env.PERPLEXITY_API_KEY;
+  });
+
+  it('perplexity falls back to bare citation URLs, titled by host', async () => {
+    process.env.PERPLEXITY_API_KEY = 'pplx-key';
+    mockFetchOnce(JSON.stringify({ citations: ['https://example.com/a'] }));
+    const cfg = ConfigSchema.parse({}).search;
+    const results = await perplexityProvider(cfg).search('q', 3, new EgressPolicy(config.egress));
+    expect(results).toEqual([{ title: 'example.com', url: 'https://example.com/a', snippet: '' }]);
+    delete process.env.PERPLEXITY_API_KEY;
+  });
+
+  it('searchProviderFor routes the perplexity backend to the perplexity provider', () => {
+    const cfg = ConfigSchema.parse({ search: { backend: 'perplexity' } }).search;
+    expect(searchProviderFor(cfg).id).toBe('perplexity');
   });
 });
 
