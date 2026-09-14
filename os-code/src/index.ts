@@ -53,5 +53,6 @@ export {
 } from './harness/decoding.js';
 export { runEvalV2, type EvalV2Report, type DriveTask } from './eval/v2.js';
 export { EVAL_TASKS, type EvalTask } from './eval/tasks.js';
+export { runVerify, type VerifyResult, type VerifyConfig } from './harness/verify.js';
 export { CONNECTORS } from './server/connectorMap.js';
 export { TOKENS, banner } from './brand/theme.js';

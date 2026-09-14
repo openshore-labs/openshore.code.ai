@@ -276,6 +276,17 @@ const HarnessSchema = z.object({
       constrainForSmallModels: z.boolean().default(true),
     })
     .prefault({}),
+  verify: z
+    .object({
+      // The project's check command, run after the agent finishes a task that
+      // changed files, so it reports verified / not verified rather than
+      // claiming done blind. Unset means verify is off. Runs without a prompt,
+      // so the loop only invokes it where shell may auto-run (the
+      // local-interactive profile); see maybeVerify in loop.ts.
+      command: z.string().optional(),
+      timeoutSeconds: z.number().int().min(1).default(120),
+    })
+    .prefault({}),
 });
 
 export const ConfigSchema = z.object({

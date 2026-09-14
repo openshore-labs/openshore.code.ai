@@ -261,6 +261,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
     case 'note':
       return push(next, { kind: 'note', text: event.message });
 
+    case 'verify':
+      // The harness ran the project's checks after a task that changed files.
+      // Shown as a note today (the summary reads "Verified:" or "Not
+      // verified:"); a dedicated pill on the task-done card is a fast follow.
+      return push(next, { kind: 'note', text: event.summary });
+
     case 'clarify':
       return push(next, {
         kind: 'clarify',

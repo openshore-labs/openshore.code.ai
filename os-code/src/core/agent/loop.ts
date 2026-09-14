@@ -41,6 +41,7 @@ import type {
   TodoItem,
 } from './types.js';
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
+import { runVerify } from '../../harness/verify.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('agent');
@@ -106,6 +107,9 @@ export class AgentSession {
   private instructions?: string;
   private todos: TodoItem[] = [];
   private transientRetries = 0;
+  /** Set when a write-risk tool succeeded this task, so verify runs only when
+   *  there is something to verify. */
+  private wroteThisTask = false;
   /** The active model's window, from the last turn's capabilities; 0 until then. */
   private contextTokens = 0;
 
@@ -212,6 +216,25 @@ export class AgentSession {
     this.deps.onEvent(event);
   }
 
+  // Verify, then report plainly (tenet 3). After a task that changed files, run
+  // the project's configured check command and emit the result. Gated to the
+  // profile where shell may auto-run, since it runs a configured command with
+  // no prompt: a project-config command never fires on a remote or headless
+  // session, the same containment hooks get.
+  private maybeVerify(): void {
+    const verifyConfig = this.deps.config.harness?.verify;
+    if (!verifyConfig?.command || !this.wroteThisTask) return;
+    if (!this.deps.profile.allowShellAutoApprove) return;
+    const result = runVerify(this.deps.toolContext.cwd, verifyConfig);
+    if (!result.ran) return;
+    this.emit({
+      type: 'verify',
+      passed: result.passed,
+      summary: result.summary,
+      detail: result.detail,
+    });
+  }
+
   // -------------------------------------------------------------------------
   // System prompt
   // -------------------------------------------------------------------------
@@ -297,6 +320,7 @@ export class AgentSession {
     const { config, guardrails } = this.deps;
     guardrails.startTask();
     this.cloudApprovedForTask = false;
+    this.wroteThisTask = false;
     this.transientRetries = 0;
     this.abortController = new AbortController();
     // Tools see the task's signal, so Stop reaches a delegated generation or
@@ -522,6 +546,7 @@ export class AgentSession {
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
+        this.maybeVerify();
         this.emit({ type: 'task-done', reason: 'complete' });
         return;
       }
@@ -753,6 +778,9 @@ export class AgentSession {
     }
     const durationMs = Date.now() - startedAt;
     this.emit({ type: 'tool-end', call, result, durationMs });
+    // Remember that this task changed files, so the verify phase runs only when
+    // there is something to verify.
+    if (result.ok && tool.risk === 'write') this.wroteThisTask = true;
     // The task list rides its own event so every client renders it live.
     if (call.name === 'todoWrite' && result.ok && Array.isArray(call.args.items)) {
       this.todos = call.args.items as TodoItem[];
