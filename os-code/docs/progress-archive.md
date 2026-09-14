@@ -2493,6 +2493,37 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-06)
 
+- **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
+  to main).** The founder specified the workflow explicitly: prompt through the
+  harness, framing by the reasoning LLM (clarify only when ambiguous), a play of
+  dependency-ordered handoffs to specialist models, a brief of steps and owners
+  shown live, hybrid execution that can re-plan mid-run, then a streamed
+  synthesis. Decisions (via a picker): app-native with engine handoff for
+  repo/tool steps when docked; hybrid re-plan; ask only when ambiguous then
+  auto-run; build the whole flow now; My Stack is the single source workflows
+  inherit. Built additively over the existing backends so the single-turn path
+  is preserved as the degenerate case. New pure core `app/src/lib/play.ts`
+  (framing/play shapes, dependency scheduling, re-plan merge, owner resolution,
+  the brief, planner and re-plan prompts with robust JSON parse), 30 unit tests;
+  the runner is `stackDriver.ts` (frames, briefs as todos-with-owners, runs
+  steps by dependency, re-plans at bounded checkpoints, synthesizes, degrades to
+  single-turn); `TodoItem`/`TodoRow` gained `owner`, rendered in `TodoCard`;
+  a step can target a specific model by id (level-deeper routing), and the
+  planner is shown the targetable models. Doc and diagram in `docs/workflow.md`.
+  The three follow-ups then landed the same day (CTO-ruled, founder delegated
+  the forks): a tappable clarify picker (`ClarifyCard` off a new `clarify`
+  driver event; the reply folds back into the framing); a repo/tool step runs on
+  the paired computer's engine when docked, over one shared `RemoteDriver`
+  session bound to the chat's local workspace, with real tool approvals surfaced
+  in the chat and never auto-answered, `StackDriver.answerApproval` now a real
+  pass-through, abort wired, degrading to describe-only when not docked or no
+  workspace is bound; and crew routines keep the engine's ReAct loop (no planner
+  port, so a headless run never blocks on a question) and write a Plan section
+  into their vault note from the agent's `todoWrite`. Gates: app typecheck, lint,
+  810 tests, Vite build, Prettier; os-code 604 tests, em-dash and PROGRESS shape
+  guards. The engine hand-off and the routine Plan note need a paired computer
+  and a real routine fire to verify.
+
 - **2026-09-06: GitHub repo connect, the redirect address GitHub could not match
   (founder report from TestFlight).** Connecting a repo, one-tap Connect GitHub
   reached the GitHub consent page and stopped on "The redirect_uri is not
