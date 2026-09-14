@@ -9,7 +9,7 @@ import { createServer, type Server } from 'node:http';
 import { AnthropicProvider } from '../src/providers/anthropic.js';
 import { OpenAICompatibleProvider } from '../src/providers/openaiCompatible.js';
 import { _setProbeResult } from '../src/providers/capabilities.js';
-import { _setStreamIdleMs } from '../src/providers/streamIdle.js';
+import { _setStreamIdleMs, _setStreamFirstByteMs } from '../src/providers/streamIdle.js';
 import type { ChatEvent } from '../src/providers/types.js';
 
 const realFetch = globalThis.fetch;
@@ -17,12 +17,27 @@ const servers: Server[] = [];
 afterEach(async () => {
   globalThis.fetch = realFetch;
   _setStreamIdleMs(undefined);
+  _setStreamFirstByteMs(undefined);
   vi.restoreAllMocks();
   for (const s of servers.splice(0)) {
     s.closeAllConnections();
     await new Promise((r) => s.close(() => r(undefined)));
   }
 });
+
+/** A server that answers 200 with headers, then writes no body at all: it
+ *  holds the connection open with the model still prefilling. */
+async function silentServer(): Promise<string> {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    // Never writes a byte of body: the wait is entirely for the first token.
+  });
+  servers.push(server);
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+  const addr = server.address();
+  if (!addr || typeof addr === 'string') throw new Error('no address');
+  return `http://127.0.0.1:${addr.port}`;
+}
 
 function sse(obj: unknown): string {
   return 'data: ' + JSON.stringify(obj) + '\n';
@@ -119,6 +134,52 @@ describe('idle deadline on provider streams (DAE-3)', () => {
     await expect(collect(provider.chat({ model: 'm', messages: [] }))).rejects.toThrow(
       /no bytes for/i,
     );
+  });
+
+  it('waits on the generous first-byte window before the first token, not the tight inter-token one', async () => {
+    // A short inter-token window must NOT kill a stream that has produced no
+    // bytes yet: that wait is prefill, governed by the first-byte window. Here
+    // the first byte never comes, but the tight 150ms inter-token window is not
+    // what fires; the (longer) first-byte window governs, so a 400ms wait does
+    // not trip at 150ms.
+    _setStreamIdleMs(150);
+    _setStreamFirstByteMs(60_000);
+    const baseUrl = await silentServer();
+    _setProbeResult(baseUrl, { flavor: 'vllm', grammar: true, nativeTools: true, label: 'vLLM' });
+    const provider = new OpenAICompatibleProvider('vllm', {
+      kind: 'openai-compatible',
+      baseUrl,
+      label: 'vLLM box',
+    });
+    const abort = new AbortController();
+    setTimeout(() => abort.abort(), 400);
+    const events = await collect(provider.chat({ model: 'm', messages: [] }, abort.signal));
+    // It was still waiting on prefill when the caller aborted: an abort, not a
+    // stall. If the inter-token window had governed, it would have thrown at 150ms.
+    const done = events.find((e) => e.type === 'done');
+    expect(done && done.type === 'done' && done.stopReason).toBe('aborted');
+  });
+
+  it('the first-byte window does fire when prefill itself overruns, governing over the tight inter-token one', async () => {
+    // Inter-token 50ms, first-byte 400ms. With no byte ever, the first-byte
+    // window governs: it must NOT fire at 50ms (that is the inter-token wait,
+    // which does not apply before the first byte) and must fire by 400ms.
+    _setStreamIdleMs(50);
+    _setStreamFirstByteMs(400);
+    const baseUrl = await silentServer();
+    _setProbeResult(baseUrl, { flavor: 'vllm', grammar: true, nativeTools: true, label: 'vLLM' });
+    const provider = new OpenAICompatibleProvider('vllm', {
+      kind: 'openai-compatible',
+      baseUrl,
+      label: 'vLLM box',
+    });
+    const started = Date.now();
+    await expect(collect(provider.chat({ model: 'm', messages: [] }))).rejects.toThrow(
+      /no bytes for/i,
+    );
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeGreaterThan(200); // did not fire at the 50ms inter-token window
+    expect(elapsed).toBeLessThan(2000); // did fire on the 400ms first-byte window
   });
 
   it("the caller's abort still reads as aborted, not as a stall", async () => {

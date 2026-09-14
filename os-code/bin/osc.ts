@@ -188,6 +188,9 @@ program
   .description('probe a model: can it hold up as an OS Code orchestrator?')
   .option('--model <model>', 'model to test (default: the orchestrator)')
   .option('--provider <id>', 'provider (default: the orchestrator provider)')
+  .option('--deep', 'run the deeper eval v2: the real agent loop against fixtures')
+  .option('--attempts <n>', 'deep only: independent tries per task (shows 1 try and best of n)')
+  .option('--yes', 'deep only: skip the spend confirmation on a frontier reference run')
   .action(evalCommand);
 
 program

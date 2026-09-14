@@ -524,7 +524,7 @@ execution contract. Newest at the bottom.
   tier. Creative Studio direction "The Standing Light." Mini is instant now, so
   making it the front door is honest, not hype.
 - 2026-09-04: Renamed the guide to "Harbor Light" (display only). Kept the code
-  identifiers HARBOR_MINI_* and the model id "harbor-mini" as the stable slot:
+  identifiers HARBOR*MINI*\* and the model id "harbor-mini" as the stable slot:
   the id is persisted in settings, stack refs, and the bundled harbor-mini.gguf,
   so moving it would strand state and the bundle for no user gain. Same slot
   pattern as Harbor's id vs its display name.
@@ -1123,7 +1123,7 @@ execution contract. Newest at the bottom.
   script steps print output verbatim). Fixed by renaming the package and
   product name (only) to `OscodeAuthsession`; the target name and the Swift
   plugin's `jsName`/`identifier` are a separate, unrelated JS-bridge lookup and
-  keep their readable casing. Lesson for any future oscode-* plugin whose npm
+  keep their readable casing. Lesson for any future oscode-\* plugin whose npm
   name's suffix is itself multi-word with no internal hyphen (matching this
   repo's plugins is the same instinct that produced the bug): either hyphenate
   the npm name (`oscode-auth-session`) so `cap sync` PascalCases each word, or
@@ -1212,6 +1212,107 @@ execution contract. Newest at the bottom.
   current** (a contract test passing, device and paired-computer
   verification, no open must-fix). The founder deferred whether the pill
   moves down to the rows that are still rough once one graduates.
+- 2026-09-14: **The premium harness starts as a pure discipline seam, not a
+  loop rewrite.** Per the CTO and Chief of Staff, step 1 ships `profile.ts`
+  (model-class derivation) and `decoding.ts` (the tool-or-answer union schema)
+  as pure, tested modules behind config, wired only into `osc eval`, before any
+  `loop.ts` change, so the loop is never rewritten twice and the class is
+  something to score. Loop wiring is gated on eval numbers.
+- 2026-09-14: **Model class is derived from size first, name hint next, on-disk
+  size next, then the eval score only as a size-unknown tie-break.** The class
+  is a resourcing decision; a 1.5B that scores well is still a 1.5B, so the
+  eval score never overrides a known size. A cloud model is always the large
+  class. Size-unknown defaults to small so the discipline is applied, not
+  skipped.
+- 2026-09-14: **Constrained decoding supersedes the 2026 "grammar is a repair
+  tool, not a default" line for small local models.** The tool-or-answer union
+  schema (`decoding.ts`) has a `say` branch, so a permanent constraint no longer
+  forbids prose, and each tool branch carries its own argument schema so a
+  constrained call validates. On by default for tiny and small (config
+  `harness.decoding.constrainForSmallModels`), and only when the backend
+  supports grammar; the eval decides per family whether it is a lift or a tax.
+- 2026-09-14: **Auto-place (renamed from "LLM Auto-Source" by the CMO) fills a
+  gap with a LOCAL model only, never the anchor, never under a secrets
+  lockdown; every download and every cloud call is a card the person taps.**
+  All eight advisors agreed downloads always ask, over the proposal's first
+  draft. The founder's call.
+- 2026-09-14: **The phone runs the harness in two layers.** Docked, it gets
+  every new card through the engine path from the Claude Code moment; alone, it
+  runs the pure core for phone-sized work, built last and gated on desktop
+  parity plus a device pass. The founder's "phone feels like Claude Code in V1"
+  applied without reversing "long work runs off the phone".
+- 2026-09-14: **Frontier-level coding from a local model is reached by the
+  oracle, not by a bigger prompt.** The founder's north star (code like Sonnet 5
+  or Opus 4.8 from a decent local model, better with more context) is pursued
+  in this order: the strongest local model the hardware allows, verify IN the
+  loop (a failing check goes back to the model, bounded), best-of-N judged by
+  the project's own tests, the discipline seam, the hand to a frontier model on
+  the person's key, then lessons. The frontier reference run is the scoreboard,
+  not the mover; every lever ships gated on the one-try and best-of-k numbers
+  from `osc eval --deep --attempts`.
+- 2026-09-14: **A failing verify is an observation, not a verdict, while a
+  retry remains.** The loop hands the exact output tail back with one plain
+  ask and continues, at most `harness.verify.maxRetries` times (default 2,
+  zero means report only), under the same step and dollar rails, and the model
+  is told not to claim a pass (the harness runs the check and reports). The
+  `verify` event grew `round` and `willRetry` so the last one is the verdict.
+- 2026-09-14: **Best-of-N is measured before it is built.** Eval v2 runs
+  independent tries per task in fresh workspaces and reports one try next to
+  best of n; a best-of-N picker in the loop (which needs checkpoints) is built
+  only if that gap says it pays on the reference machine.
+- 2026-09-14: **A lean seat gets a lean prompt: fewer tools and a compact
+  standards digest.** The discipline seam wired into `loop.ts` (gated by
+  `harness.profiles.enabled`, default on) shows a tiny/small class only its
+  `maxToolsShown` tools (core-first, so readFile/editFile/writeFile/grep survive
+  the cut) and replaces the full UX and humanizer standards (about 17KB) with a
+  one-line digest that names the bar. mid, large, and the off path keep every
+  tool and the full standards. This is not cosmetic: on a modest box the full
+  prompt made a 7B time out during prefill (0% on the deep eval), so the lean
+  prompt is what lets a small model run the loop at all. The premium bar is
+  still held mechanically by verify and structure (tenet 3). The union decoding,
+  per-class context budgets, and maxCallsPerTurn are the remaining seam pieces,
+  each to land gated and measured.
+- 2026-09-14: **The stream idle guard has two windows: prefill and inter-token.**
+  Waiting for the first token is prefill, and a cold local model reading a large
+  agent-loop prompt on a modest box (small GPU or CPU) can take minutes before
+  it speaks; killing it then fails exactly the hardware OpenShore serves. So the
+  first-byte window is generous (default 300s) and the inter-token window is
+  tight (default 120s), both in `resourceBudget` and never first-byte shorter
+  than inter-token. This was found by the self-diagnosing deep eval: qwen 0% was
+  a 120s prefill timeout, not the model. `osc eval` is the spine, and it caught
+  a harness bug that the three-probe eval (tiny prompts, fast prefill) hid.
+- 2026-09-14: **A frontier reference run is a deliberate tap, once, up front.**
+  `osc eval --deep` never spends on a local model; naming a cloud provider and
+  model on the command line asks one terminal question (count of runs, on your
+  key, default No, `--yes` for scripts) and only then does the approver say yes
+  to the loop's cloud-spend prompts. The model under test sits in the
+  orchestrator seat for the run with escalation off, so a benchmark measures one
+  model.
+- 2026-09-14: **Pricing when the beta gates return (CFO-ruled, a Board gate):**
+  Personal $50/yr, Micro $100, Small $250, Growth $500, Scale $1000, the $20
+  dropped from the site. Not harness work; new Stripe price objects, never a
+  repriced id.
+- 2026-09-14: **Perplexity is NOT an Agentic Current.** A Current is an
+  exclusive agent runtime (one at a time, "runs on a computer you own"),
+  which would force research to be mutually exclusive with Hermes/CLI and
+  make the honesty copy false for a SaaS on a key. So it splits: Sonar is a
+  cloud provider (a placeable model, `providers.ts`), and Research is a
+  default-off, key-gated Wayfinding row that reuses the Perplexity provider
+  key (`resolveSearchKey`, no second key to paste). CTO and CX both ruled
+  this over the founder's first "it's a layer, put it in Currents" instinct.
+- 2026-09-14: **Perplexity Computer was dropped, not deferred into Currents.**
+  It runs on Perplexity's own models and cannot be driven by a local model, so
+  it cannot serve the goal of computer capabilities for local models; that is
+  OpenShore's own harness to build (the stubbed Wayfinding Browser), with
+  Perplexity at most an optional cloud backend later.
+- 2026-09-14: **Engine Perplexity search reads its key from the env on the box,
+  not from the app toggle over the wire.** The `perplexity` search backend is
+  config and env driven like Brave and Tavily (`search.backend` +
+  `perplexityKeyEnv`), so a paired or headless session grounds in Sonar without
+  a provider key ever riding a session to a remote hub (the provider-key
+  ruling). The app's Research toggle governs the app-side (on-device) path
+  only; a docked user sets `search.backend` on the desktop deliberately, so
+  auto-syncing the toggle to the engine was intentionally not built.
 - 2026-09-14: **The arrival is a replica of the iOS Siri glow, in the brand's
   water** (founder, from a screen recording read frame by frame: a bloom from
   the pressed edge, a thick multi-hue ring with an inward glow, settling to a

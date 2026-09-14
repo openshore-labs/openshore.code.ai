@@ -13,6 +13,7 @@ import { grepTool } from '../core/tools/grep.js';
 import { extractTextCalls, textProtocolInstructions } from '../core/tools/parser.js';
 import { parseEditBlocks } from '../core/edit/searchReplace.js';
 import { applyEditBlocks } from '../core/edit/apply.js';
+import { deriveModelClass, type ModelClass } from '../harness/profile.js';
 
 export interface EvalScore {
   task: string;
@@ -27,6 +28,9 @@ export interface EvalReport {
   scores: EvalScore[];
   average: number;
   blessed: boolean;
+  /** The harness model class this model derives to (tiny/small/mid/large),
+   *  which decides the discipline the loop runs around it. */
+  modelClass: ModelClass;
 }
 
 const EDIT_SAMPLE = [
@@ -132,6 +136,18 @@ export async function runEval(
   });
 
   const average = scores.reduce((a, s) => a + s.score, 0) / scores.length;
+  // Derive the harness class from what we can know: the name's size hint, the
+  // capability probe, and this run's average as a tie-breaker when the size is
+  // unknown. The class is what the loop uses to decide the discipline it runs.
+  const caps = await provider.capabilities(model).catch(() => undefined);
+  const modelClass = deriveModelClass({
+    model,
+    kind: provider.kind,
+    caps: caps
+      ? { contextTokens: caps.contextTokens, supportsGrammar: caps.supportsGrammar }
+      : undefined,
+    evalScore: average,
+  });
   const report: EvalReport = {
     model,
     provider: provider.id,
@@ -139,6 +155,7 @@ export async function runEval(
     scores,
     average,
     blessed: average >= 0.8,
+    modelClass,
   };
 
   const dir = join(oscHome(), 'eval');
