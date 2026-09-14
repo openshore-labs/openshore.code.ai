@@ -188,6 +188,7 @@ program
   .description('probe a model: can it hold up as an OS Code orchestrator?')
   .option('--model <model>', 'model to test (default: the orchestrator)')
   .option('--provider <id>', 'provider (default: the orchestrator provider)')
+  .option('--deep', 'run the deeper eval v2: the real agent loop against fixtures')
   .action(evalCommand);
 
 program
