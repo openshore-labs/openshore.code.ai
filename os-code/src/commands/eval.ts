@@ -6,7 +6,7 @@ import { ProviderRegistry } from '../providers/registry.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import { runEval } from '../eval/harness.js';
-import { runEvalV2, type DriveTask, type EvalV2Report } from '../eval/v2.js';
+import { runEvalV2, type DriveTask, type DriveTrace, type EvalV2Report } from '../eval/v2.js';
 import { EVAL_TASKS } from '../eval/tasks.js';
 import { classBlurb } from '../harness/profile.js';
 import { resolveStack } from '../router/stack.js';
@@ -192,8 +192,7 @@ async function runDeep(
       persistRule: () => false,
     });
     await agent.run(prompt);
-    const finals = events.filter((e) => e.type === 'text-final') as Array<{ text: string }>;
-    return finals.length ? finals[finals.length - 1]!.text : '';
+    return { finalText: lastFinalText(events), trace: traceFrom(events) };
   };
 
   try {
@@ -209,6 +208,48 @@ async function runDeep(
     warnLine(`The deep eval could not finish: ${(err as Error).message}`);
     process.exitCode = 1;
   }
+}
+
+// The last plain-text answer the loop produced, or '' when it never got there.
+function lastFinalText(events: AgentEvent[]): string {
+  const finals = events.filter((e) => e.type === 'text-final') as Array<{ text: string }>;
+  return finals.length ? finals[finals.length - 1]!.text : '';
+}
+
+// A compact account of what the loop did, so a zero score reads as a diagnosis:
+// how many turns, which tools it reached for and whether a write landed, and
+// how it ended. This is what turns "0%, empty" into "ended after 1 turn on a
+// parse error, never called a tool".
+function traceFrom(events: AgentEvent[]): DriveTrace {
+  const turns = events.filter((e) => e.type === 'turn-start').length;
+  const toolCalls = (
+    events.filter((e) => e.type === 'tool-start') as Array<{
+      call: { name: string };
+    }>
+  ).map((e) => e.call.name);
+  const wrote = events.some(
+    (e) => e.type === 'tool-end' && (e as { result: { ok: boolean } }).result.ok,
+  );
+  const done = events.find((e) => e.type === 'task-done') as
+    { reason: string; message?: string } | undefined;
+  return { turns, toolCalls, wrote, doneReason: done?.reason, message: done?.message };
+}
+
+// One line that says why a task scored what it did: turns, tool calls (deduped
+// with counts), whether a write landed, and the stop reason with its message.
+function traceLine(trace: DriveTrace): string {
+  const counts = new Map<string, number>();
+  for (const name of trace.toolCalls) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const tools = counts.size
+    ? [...counts].map(([n, c]) => (c > 1 ? `${n} x${c}` : n)).join(', ')
+    : 'no tools called';
+  const wrote = trace.toolCalls.length ? (trace.wrote ? 'a write landed' : 'no write landed') : '';
+  const done = trace.doneReason
+    ? `done: ${trace.doneReason}${trace.message ? ` (${trace.message})` : ''}`
+    : 'no stop recorded';
+  return [`${trace.turns} turn${trace.turns === 1 ? '' : 's'}`, tools, wrote, done]
+    .filter(Boolean)
+    .join('; ');
 }
 
 function renderV2(report: EvalV2Report, kind: 'local' | 'cloud'): void {
@@ -232,6 +273,9 @@ function renderV2(report: EvalV2Report, kind: 'local' | 'cloud'): void {
       ? `${pct(score.score).padStart(6)} ${pct(score.best).padStart(7)}`
       : pct(score.score);
     out(`  ${glyph} ${score.task.padEnd(20)} ${cols}  ${t.muted(score.detail)}`);
+    // On anything short of a clean pass, say what the loop actually did, so the
+    // number reads as a diagnosis and not a shrug.
+    if (score.best < 1 && score.trace) out(t.muted(`      ${traceLine(score.trace)}`));
   }
   out();
   const avg = (report.average * 100).toFixed(0);

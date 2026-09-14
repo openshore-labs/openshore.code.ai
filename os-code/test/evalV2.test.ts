@@ -92,6 +92,30 @@ describe('eval v2 runs the loop and scores by behavior', () => {
     expect(report.bestAverage).toBe(1);
   });
 
+  it('carries a per-task trace through when the drive supplies one', async () => {
+    // A drive that returns an outcome-with-trace (as the CLI does) surfaces the
+    // trace on the score, so a zero reads as a diagnosis.
+    const drive: DriveTask = async () => ({
+      finalText: '',
+      trace: {
+        turns: 1,
+        toolCalls: ['editFile'],
+        wrote: false,
+        doneReason: 'error',
+        message: 'the model kept producing tool calls that could not be parsed',
+      },
+    });
+    const report = await runEvalV2(drive, { tasks: [task('fix-bug')] });
+    expect(report.scores[0]!.score).toBe(0);
+    expect(report.scores[0]!.trace).toEqual({
+      turns: 1,
+      toolCalls: ['editFile'],
+      wrote: false,
+      doneReason: 'error',
+      message: 'the model kept producing tool calls that could not be parsed',
+    });
+  });
+
   it('defaults to one try, where best equals the score', async () => {
     const report = await runEvalV2(driverFor([textTurn('42')]), {
       tasks: [task('answer-from-code')],
