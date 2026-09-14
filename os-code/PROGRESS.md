@@ -38,7 +38,9 @@ reserved for cloud models. Doc: `docs/agentic-currents.md`; rulings in
   mirrored pattern), pinned by a test. Rooms render a current only through
   `activeContribution`; a source grep refuses a proper noun anywhere else, and
   turning a current off purges its bench model from every stack.
-- **How it is felt.** A current flows from the switch to the edges on the door
+- **How it is felt (the Siri replica, 2026-09-14).** A bloom rises from the switch, a
+  multi-hue ring blazes around the border and settles into a thin drifting ring in the
+  brand's water (`--current-1..5`); before that, a current flowed from the switch to the edges on the door
   clock and the glide curve (transform and opacity only, flow tokens, no third
   blue), settles as a faint persistent water-line on every screen, ebbs back on
   off, one decisive haptic at the border, reduced motion honored. The BETA
@@ -714,6 +716,26 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-14: the arrival is now a replica of the iOS Siri glow, in the
+  brand's water (founder, from a screen recording).** The founder attached a
+  recording of Siri activating and asked for a replica with the OpenShore
+  palette in place of the purple. Read frame by frame (twenty stills): a soft
+  bloom from the pressed edge, then a thick multi-hue ring lighting the whole
+  border with a blurred glow bleeding inward, settling into a thinner ring
+  whose hues keep drifting. Rebuilt `CurrentArrival` and the persistent
+  water-line on that shape: a bloom (a plain gradient, no filter) centered on
+  the switch; a masked ring whose conic gradient rides an oversized rotating
+  square (transform only, `linear` infinite, the guard's allowed loop); one
+  blurred glow layer that lives only through the 1.6s flourish; and the
+  persistent ring as the same thing thin and faint, breathing, so the hand-off
+  is seamless. Palette tokens `--current-1..5` (deep water, water, shore teal,
+  a light aqua highlight, the amber counterpoint) in all three theme blocks,
+  deeper on paper. Verified in headless Chromium with animations frozen at
+  250, 500, 800, 1100, and 1600 ms in both themes (the bloom, the blaze, the
+  settle, and the persistent ring all render as designed). Gates: app
+  typecheck, lint, tests, Vite build, Prettier, and every guard.
+  `docs/agentic-currents.md` and `DECISIONS.md` updated.
+
 - **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
   familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
   Agent, the founder asked whether to go down that route, then how to layer
@@ -898,31 +920,3 @@ log entry). Migration is now `0016`.
   810 tests, Vite build, Prettier; os-code 604 tests, em-dash and PROGRESS shape
   guards. The engine hand-off and the routine Plan note need a paired computer
   and a real routine fire to verify.
-
-- **2026-09-06: vision as a Stack category with two slots and effort, plus the
-  video framing progress ring (founder, pushed to main).** Follow-ups to video
-  attachments, landed across two pushes the same day. (1) Vision is a placeable
-  Stack category you can put a local LLM in. It has two slots in My Stack, a
-  local model (on-device or your own server) and a cloud model, each with its
-  own effort; the cloud slot defaults to the most capable cloud model
-  (`defaultVisionCloudRef`, Claude Opus) until assigned, so images are always
-  understood out of the box (founder: "default that position to most capable
-  cloud model until manually adjusted"). An image turn routes to the local slot
-  when it can actually read images, else the cloud slot, else a connected cloud
-  provider (`visionSlots`/`pickVisionRef`/`stackVisionReady`, wired in
-  `StackDriver`). On-device models are text-only on this build, so a device
-  model placed for vision falls back to the cloud (`visionCapable` false for a
-  device ref, one line to flip when a multimodal runtime lands); a BYOM vision
-  model does read images and is preferred over the cloud slot. `StackDriver` now
-  accepts attachments (it dropped them before) and folds frames into the
-  Anthropic and OpenAI-compatible backends; the device backend never gets
-  images. Per-placement `effort` is honored in `systemFor` over the global
-  composer effort, and is settable on any specialist, not just Vision. My Stack
-  is the source (founder call): a workflow run through the stack inherits the
-  Vision position, so there is one place to set it. (2) The video chip's pulse
-  became a determinate ring keyed to frames extracted (`onProgress` threaded
-  through the backends). Code: `stack.ts`, `stackDriver.ts`, `StackManager.tsx`,
-  `store.ts` (`stackVisionReady`), `ChatScreen.tsx`, `Composer.tsx`, `theme.css`,
-  `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
-  lint, 780 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
-  guards. Rulings in `DECISIONS.md`.
