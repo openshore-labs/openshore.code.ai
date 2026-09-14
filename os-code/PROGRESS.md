@@ -40,10 +40,15 @@ app. 27 new tests. Step 2 (eval v2, the real spine) also landed:
 `src/eval/v2.ts` (the runner, loop injected), `osc eval --deep` (wires the
 real engine loop), and a CI regression test that drives the loop with a mock
 provider and no weights (`test/evalV2.test.ts`), so the harness itself is
-guarded. What is NOT done: wiring the profile and decoding into `loop.ts`
-(then re-running eval to prove the small class climbs),
-verify/checkpoints/rewind/hooks, Ask for a hand with Auto-place, the
-pure-core extraction and the phone host, and Lessons. Those are the next
+guarded. Verify also landed (`src/harness/verify.ts`, config
+`harness.verify.command`): after a task that changed files, the loop runs the
+project's check command and emits a `verify` event (verified / not verified),
+gated to the local-interactive profile so a project-config command never fires
+unprompted on a remote or headless session; the app shows it as a note for
+now. What is NOT done: wiring the profile and decoding into `loop.ts` (then
+re-running eval to prove the small class climbs), a pass/fail verify pill on
+the task-done card, checkpoints/rewind, hooks, Ask for a hand with Auto-place,
+the pure-core extraction and the phone host, and Lessons. Those are the next
 steps, each gated on a number, in What remains and the proposal.
 
 ### Agentic Currents and Wayfinding (BETA, founder 2026-09-09)
@@ -345,8 +350,10 @@ log entry). Migration is now `0016`.
       and more fixture tasks (a vision-need-recognized task once the hand
       exists); (3) wire profiles and the union decoding into `loop.ts` (tools shown, calls
       per turn, retrieval before the first turn, per-class context budget), then
-      re-run eval to prove the small class climbs; (4) the Claude Code moment on
-      the engine (verify, checkpoints and rewind, hooks); (5) Ask for a hand with
+      re-run eval to prove the small class climbs; (4) the rest of the Claude
+      Code moment on the engine (verify LANDED as a `verify` event; still to do:
+      a pass/fail verify pill on the task-done card, checkpoints and rewind,
+      hooks); (5) Ask for a hand with
       Auto-place (needs a runtime tool-registry seam, local-only, never under
       lockdown, downloads always ask); (6) the pure-core extraction with a
       Node-free guard and subagents drawing down the parent's rails; (7) the
