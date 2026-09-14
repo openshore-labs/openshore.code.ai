@@ -8,15 +8,38 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-09 Agentic Currents and Wayfinding; 2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
+## Current state (2026-09-14 the premium harness begun; 2026-09-09 Agentic Currents and Wayfinding; 2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
-Newest first: Agentic Currents and Wayfinding (2026-09-09, below), then voice
+Newest first: the premium harness (2026-09-14, below), then Agentic Currents
+and Wayfinding (2026-09-09, below), then voice
 mode (2026-09-06), then the plan-first workflow and video attachments
 (2026-09-06), then four pieces from 2026-09-05 built in
 parallel sessions and merged here: the phone storefront, Crew routines, the
 always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
+
+### The premium harness (founder + advisor org, 2026-09-14)
+
+The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
+(`docs/premium-harness-advisory-memos.md`), and its five tenets are in
+`CLAUDE.md`. It ships with no room and no name (codename Keel, internal only),
+the way gitOS ships as Repositories. Step 0 (measure) ran on the founder's box:
+the existing three-probe `osc eval` scored deepseek-coder:latest 33% and
+qwen2.5-coder:7b 75%, the first real baseline. Step 1 (the discipline seam that
+makes small models capable) has landed behind config: `os-code/src/harness/`
+holds `profile.ts` (derives a model class tiny/small/mid/large and its per-class
+policy: tools shown, calls per turn, constrained decoding, subagents, plans,
+context budget) and `decoding.ts` (the tool-or-answer union schema so a
+constrained small model can always answer in prose or call a tool with its own
+argument schema). Config `harness.profiles` and `harness.decoding`, on by
+default, tunable or off, an empty config still valid; the derived class rides
+`osc eval` and prints on the report. Exported from the engine surface for the
+app. 27 new tests. What is NOT done: wiring the profile and decoding into
+`loop.ts`, eval v2 (a benchmark that runs the loop against fixtures, the real
+spine), verify/checkpoints/rewind/hooks, Ask for a hand with Auto-place, the
+pure-core extraction and the phone host, and Lessons. Those are the next steps,
+each gated on a number, in What remains and the proposal.
 
 ### Agentic Currents and Wayfinding (BETA, founder 2026-09-09)
 
@@ -306,6 +329,28 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **The premium harness, the rest of the plan (begun 2026-09-14).** Step 1
+      (the discipline seam: `os-code/src/harness/profile.ts` and `decoding.ts`)
+      landed behind config but is not wired into `loop.ts` yet. Next, in order,
+      each gated on a number per the tenets: (1) commit the founder's real eval
+      baselines to `curation/eval.json` (deepseek-coder:latest 33%,
+      qwen2.5-coder:7b 75%, run on the founder's box); (2) eval v2, a benchmark
+      that runs the loop through `bootstrapSession` against fixtures under
+      `os-code/eval-fixtures/` with a mock-provider regression mode in CI and a
+      "Measure" Crew routine, so a lift is provable without a person in the loop;
+      (3) wire profiles and the union decoding into `loop.ts` (tools shown, calls
+      per turn, retrieval before the first turn, per-class context budget), then
+      re-run eval to prove the small class climbs; (4) the Claude Code moment on
+      the engine (verify, checkpoints and rewind, hooks); (5) Ask for a hand with
+      Auto-place (needs a runtime tool-registry seam, local-only, never under
+      lockdown, downloads always ask); (6) the pure-core extraction with a
+      Node-free guard and subagents drawing down the parent's rails; (7) the
+      phone host; (8) Lessons, local only, per owner and workspace, cleared with
+      the chats. Plan and rulings: `docs/premium-harness-proposal.md`,
+      `docs/premium-harness-advisory-memos.md`, `CLAUDE.md`. Pricing (Personal
+      $50, Micro $100, Small $250, Growth $500, Scale $1000) is a Board gate and
+      the site copy change, not harness work.
+
 - [ ] **Agentic Currents on a device and a real box (built 2026-09-09, unverified
       off the sandbox).** TestFlight: flip Hermes Agent on in Settings and
       confirm the current flows from the switch to the edges, the water-line
@@ -386,7 +431,7 @@ log entry). Migration is now `0016`.
       does not fire spuriously on memory-tight phones).
 - [ ] **Crew routines on the founder's machine and TestFlight (built
       2026-09-05, unverified off the sandbox).** Set up Morning review on the
-      Pop!_OS desktop against a cloned repo, let it fire at 06:00 (or Run now),
+      Pop!\_OS desktop against a cloned repo, let it fire at 06:00 (or Run now),
       confirm the note lands in `~/OSCode/Vault/Crew/Morning review/`, open the
       transcript from the command center, and on the phone confirm the
       approval push arrives with the app closed for an edit routine. Also
@@ -714,6 +759,28 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-14: the premium harness, measured and begun (founder + advisor
+  org, on the harness branch).** The founder asked for a premium coding agent
+  harness that feels like Claude Code on any model, makes the smallest models as
+  capable as possible, lets models ask for a hand or recommend a setup, and
+  learns locally from builds. Written up as `docs/premium-harness-proposal.md`,
+  reviewed by all eight advisors (`docs/premium-harness-advisory-memos.md`, all
+  "go with conditions"), and the founder made every call: downloads always ask
+  under Auto-place; the phone in two layers (docked from the Claude Code moment,
+  phone-alone last and gated); the current-in-the-thread felt direction; and
+  Personal $50, Micro $100, Small $250, Growth $500, Scale $1000 (CFO-ruled, a
+  Board gate, not harness work). Step 0 (measure) ran on the founder's box: the
+  existing three-probe `osc eval` scored deepseek-coder:latest at 33% and
+  qwen2.5-coder:7b at 75%, the first real baseline. Then step 1 landed the
+  discipline seam behind config: `os-code/src/harness/profile.ts` (model-class
+  derivation and per-class policy) and `decoding.ts` (the tool-or-answer union
+  schema), on by default, tunable or off, an empty config still valid; the
+  derived class now rides `osc eval`. Five tenets added to CLAUDE.md, the stale
+  org-vault line retired, and the grey owner chip fixed (an undefined `--water`
+  token). 27 new tests; os-code 655 green, lint and build clean. Nothing is
+  wired into `loop.ts` yet and no live behavior changed; that wiring is next,
+  gated on eval numbers.
+
 - **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
   familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
   Agent, the founder asked whether to go down that route, then how to layer
@@ -898,31 +965,3 @@ log entry). Migration is now `0016`.
   810 tests, Vite build, Prettier; os-code 604 tests, em-dash and PROGRESS shape
   guards. The engine hand-off and the routine Plan note need a paired computer
   and a real routine fire to verify.
-
-- **2026-09-06: vision as a Stack category with two slots and effort, plus the
-  video framing progress ring (founder, pushed to main).** Follow-ups to video
-  attachments, landed across two pushes the same day. (1) Vision is a placeable
-  Stack category you can put a local LLM in. It has two slots in My Stack, a
-  local model (on-device or your own server) and a cloud model, each with its
-  own effort; the cloud slot defaults to the most capable cloud model
-  (`defaultVisionCloudRef`, Claude Opus) until assigned, so images are always
-  understood out of the box (founder: "default that position to most capable
-  cloud model until manually adjusted"). An image turn routes to the local slot
-  when it can actually read images, else the cloud slot, else a connected cloud
-  provider (`visionSlots`/`pickVisionRef`/`stackVisionReady`, wired in
-  `StackDriver`). On-device models are text-only on this build, so a device
-  model placed for vision falls back to the cloud (`visionCapable` false for a
-  device ref, one line to flip when a multimodal runtime lands); a BYOM vision
-  model does read images and is preferred over the cloud slot. `StackDriver` now
-  accepts attachments (it dropped them before) and folds frames into the
-  Anthropic and OpenAI-compatible backends; the device backend never gets
-  images. Per-placement `effort` is honored in `systemFor` over the global
-  composer effort, and is settable on any specialist, not just Vision. My Stack
-  is the source (founder call): a workflow run through the stack inherits the
-  Vision position, so there is one place to set it. (2) The video chip's pulse
-  became a determinate ring keyed to frames extracted (`onProgress` threaded
-  through the backends). Code: `stack.ts`, `stackDriver.ts`, `StackManager.tsx`,
-  `store.ts` (`stackVisionReady`), `ChatScreen.tsx`, `Composer.tsx`, `theme.css`,
-  `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
-  lint, 780 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
-  guards. Rulings in `DECISIONS.md`.

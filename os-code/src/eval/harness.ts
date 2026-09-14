@@ -143,7 +143,9 @@ export async function runEval(
   const modelClass = deriveModelClass({
     model,
     kind: provider.kind,
-    caps: caps ? { contextTokens: caps.contextTokens, supportsGrammar: caps.supportsGrammar } : undefined,
+    caps: caps
+      ? { contextTokens: caps.contextTokens, supportsGrammar: caps.supportsGrammar }
+      : undefined,
     evalScore: average,
   });
   const report: EvalReport = {
