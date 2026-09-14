@@ -1260,6 +1260,18 @@ execution contract. Newest at the bottom.
   independent tries per task in fresh workspaces and reports one try next to
   best of n; a best-of-N picker in the loop (which needs checkpoints) is built
   only if that gap says it pays on the reference machine.
+- 2026-09-14: **A lean seat gets a lean prompt: fewer tools and a compact
+  standards digest.** The discipline seam wired into `loop.ts` (gated by
+  `harness.profiles.enabled`, default on) shows a tiny/small class only its
+  `maxToolsShown` tools (core-first, so readFile/editFile/writeFile/grep survive
+  the cut) and replaces the full UX and humanizer standards (about 17KB) with a
+  one-line digest that names the bar. mid, large, and the off path keep every
+  tool and the full standards. This is not cosmetic: on a modest box the full
+  prompt made a 7B time out during prefill (0% on the deep eval), so the lean
+  prompt is what lets a small model run the loop at all. The premium bar is
+  still held mechanically by verify and structure (tenet 3). The union decoding,
+  per-class context budgets, and maxCallsPerTurn are the remaining seam pieces,
+  each to land gated and measured.
 - 2026-09-14: **The stream idle guard has two windows: prefill and inter-token.**
   Waiting for the first token is prefill, and a cold local model reading a large
   agent-loop prompt on a modest box (small GPU or CPU) can take minutes before

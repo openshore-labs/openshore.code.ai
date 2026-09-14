@@ -69,6 +69,13 @@ export function makeTestSession(
     permissions: { defaults: { write: 'allow', shell: 'ask' } },
     ...options.configOverrides,
   });
+  // The harness discipline seam (model-class profiles) defaults ON in the real
+  // engine, but a test carries the full prompt and every tool unless it opts in,
+  // so existing behavior is the baseline and lean-seat tests turn it on
+  // explicitly. A test that sets harness.profiles itself keeps its own choice.
+  const setProfiles = (options.configOverrides as { harness?: { profiles?: unknown } } | undefined)
+    ?.harness?.profiles;
+  if (setProfiles === undefined) config.harness.profiles.enabled = false;
 
   const events: AgentEvent[] = [];
   const approvals: ApprovalRequest[] = [];

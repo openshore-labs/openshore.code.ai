@@ -70,10 +70,28 @@ a generous first-byte window (prefill, default 300s) and the tight inter-token
 window (default 120s), both configurable via `resourceBudget.streamIdleSeconds`
 and `streamFirstByteSeconds`, applied at bootstrap and in the deep eval. The
 three-probe eval had hidden this because its prompts are tiny and prefill is
-quick. Re-running the deep eval on the box is the immediate next step, now that
-the model can actually respond. What is NOT done:
-wiring the profile and decoding into `loop.ts` (then re-running eval to prove
-the small class climbs), a best-of-N picker in the loop (needs checkpoints, and
+quick. But raising the window to 300s was not enough: the second deep run still
+timed out with "No bytes for 300s" on every task, because the full agent-loop
+prompt (about 17KB of UX and humanizer standards plus 25 tool schemas) is
+simply too heavy for a 7B to prefill on this box inside five minutes. That is
+the real reason small local models look useless in a naive harness, and it is
+exactly what step 3 (the discipline seam) is for, so it was built next and the
+measurement justified it. The seam is now wired into `loop.ts`, gated by
+`harness.profiles.enabled` (default on): each turn derives the active model's
+class (`deriveProfile`), and for a lean seat (tiny or small) the loop shows
+only the profile's tool allowance (core-first, so read/edit/search survive the
+cut: `maxToolsShown`, 6 tiny / 10 small) and swaps the full standards for a
+compact one-line digest, with a one-time note saying the seat is small and the
+harness is carrying the checklist (tenet 3). mid and large seats, and the
+profiles-off path, keep every tool and the full standards, unchanged. The test
+helper defaults the seam off so the rest of the suite is the full-prompt
+baseline; dedicated tests (`test/harnessLoopProfile.test.ts`) prove the lean
+path and that the engine default is on. What is NOT done:
+re-running the deep eval on the box to confirm the small class now completes the
+loop and to record the with-and-without number (the immediate next step),
+wiring the union decoding (constrained tool-or-answer) into `loop.ts`,
+per-class context budgets and retrieval-first,
+a best-of-N picker in the loop (needs checkpoints, and
 only if the attempts gap says it pays), a pass/fail verify pill on the
 task-done card, checkpoints/rewind, hooks, Ask for a hand with Auto-place, the
 pure-core extraction and the phone host, and Lessons. Those are the next
@@ -868,11 +886,19 @@ log entry). Migration is now `0016`.
   takes longer than 120s to first token. Fixed by splitting the guard into a
   generous first-byte window (prefill, default 300s) and the tight inter-token
   window (`src/providers/streamIdle.ts`, both configurable via
-  `resourceBudget.streamIdleSeconds`/`streamFirstByteSeconds`). os-code 679
-  green, lint and build clean, app typecheck clean. The profile and decoding
-  seam is still not wired into `loop.ts`; that wiring, and the whole harness
-  measurement story, is gated on a clean deep-eval run from the founder's box,
-  which the prefill fix now makes possible.
+  `resourceBudget.streamIdleSeconds`/`streamFirstByteSeconds`). But 300s still
+  was not enough: the full agent-loop prompt (about 17KB of standards plus 25
+  tool schemas) is too heavy for a 7B to prefill on this box in five minutes,
+  which IS the reason small local models look useless in a naive harness. So
+  step 3, the discipline seam, was wired into `loop.ts` (gated by
+  `harness.profiles.enabled`, default on): a lean seat (tiny or small) is shown
+  only its tool allowance (core-first, 6 tiny / 10 small) and a compact
+  standards digest instead of the full text, with a one-time note; mid, large,
+  and profiles-off keep the full prompt. `test/harnessLoopProfile.test.ts`
+  proves the lean path and the on-by-default. os-code 686 green, lint and build
+  clean, app typecheck clean. Re-running the deep eval on the box to confirm the
+  small seat now completes the loop, and to record the with-and-without number,
+  is the immediate next step.
 
 - **2026-09-14: Perplexity, Sonar as a cloud provider and Research as a
   default-off layer (founder, after a CTO and CX read).** The founder wanted
@@ -948,34 +974,3 @@ log entry). Migration is now `0016`.
   rulings in `DECISIONS.md`. Gates: app typecheck (src and electron), lint, 838
   tests, Vite build, the motion/polish and em-dash guards. The native speech path
   is device-only, like dictation, so TestFlight is the proof (What remains).
-
-- **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
-  to main).** The founder specified the workflow explicitly: prompt through the
-  harness, framing by the reasoning LLM (clarify only when ambiguous), a play of
-  dependency-ordered handoffs to specialist models, a brief of steps and owners
-  shown live, hybrid execution that can re-plan mid-run, then a streamed
-  synthesis. Decisions (via a picker): app-native with engine handoff for
-  repo/tool steps when docked; hybrid re-plan; ask only when ambiguous then
-  auto-run; build the whole flow now; My Stack is the single source workflows
-  inherit. Built additively over the existing backends so the single-turn path
-  is preserved as the degenerate case. New pure core `app/src/lib/play.ts`
-  (framing/play shapes, dependency scheduling, re-plan merge, owner resolution,
-  the brief, planner and re-plan prompts with robust JSON parse), 30 unit tests;
-  the runner is `stackDriver.ts` (frames, briefs as todos-with-owners, runs
-  steps by dependency, re-plans at bounded checkpoints, synthesizes, degrades to
-  single-turn); `TodoItem`/`TodoRow` gained `owner`, rendered in `TodoCard`;
-  a step can target a specific model by id (level-deeper routing), and the
-  planner is shown the targetable models. Doc and diagram in `docs/workflow.md`.
-  The three follow-ups then landed the same day (CTO-ruled, founder delegated
-  the forks): a tappable clarify picker (`ClarifyCard` off a new `clarify`
-  driver event; the reply folds back into the framing); a repo/tool step runs on
-  the paired computer's engine when docked, over one shared `RemoteDriver`
-  session bound to the chat's local workspace, with real tool approvals surfaced
-  in the chat and never auto-answered, `StackDriver.answerApproval` now a real
-  pass-through, abort wired, degrading to describe-only when not docked or no
-  workspace is bound; and crew routines keep the engine's ReAct loop (no planner
-  port, so a headless run never blocks on a question) and write a Plan section
-  into their vault note from the agent's `todoWrite`. Gates: app typecheck, lint,
-  810 tests, Vite build, Prettier; os-code 604 tests, em-dash and PROGRESS shape
-  guards. The engine hand-off and the routine Plan note need a paired computer
-  and a real routine fire to verify.
