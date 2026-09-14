@@ -1245,3 +1245,24 @@ execution contract. Newest at the bottom.
   Personal $50/yr, Micro $100, Small $250, Growth $500, Scale $1000, the $20
   dropped from the site. Not harness work; new Stripe price objects, never a
   repriced id.
+- 2026-09-14: **Perplexity is NOT an Agentic Current.** A Current is an
+  exclusive agent runtime (one at a time, "runs on a computer you own"),
+  which would force research to be mutually exclusive with Hermes/CLI and
+  make the honesty copy false for a SaaS on a key. So it splits: Sonar is a
+  cloud provider (a placeable model, `providers.ts`), and Research is a
+  default-off, key-gated Wayfinding row that reuses the Perplexity provider
+  key (`resolveSearchKey`, no second key to paste). CTO and CX both ruled
+  this over the founder's first "it's a layer, put it in Currents" instinct.
+- 2026-09-14: **Perplexity Computer was dropped, not deferred into Currents.**
+  It runs on Perplexity's own models and cannot be driven by a local model, so
+  it cannot serve the goal of computer capabilities for local models; that is
+  OpenShore's own harness to build (the stubbed Wayfinding Browser), with
+  Perplexity at most an optional cloud backend later.
+- 2026-09-14: **Engine Perplexity search reads its key from the env on the box,
+  not from the app toggle over the wire.** The `perplexity` search backend is
+  config and env driven like Brave and Tavily (`search.backend` +
+  `perplexityKeyEnv`), so a paired or headless session grounds in Sonar without
+  a provider key ever riding a session to a remote hub (the provider-key
+  ruling). The app's Research toggle governs the app-side (on-device) path
+  only; a docked user sets `search.backend` on the desktop deliberately, so
+  auto-syncing the toggle to the engine was intentionally not built.

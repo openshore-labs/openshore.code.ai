@@ -150,8 +150,6 @@ routine Plan note need a real reasoning model, a paired computer, and a device
 
 ### Video attachments (reviewed frame by frame, never the video)
 
-### Video attachments (reviewed frame by frame, never the video)
-
 A model never receives a video. On attach, a clip is compressed toward the 25
 to 29MB band when it is over 30MB, then sampled into up to 12 downscaled JPEG
 frames tagged with order and timestamp; the frames ride to a vision model as
@@ -350,6 +348,30 @@ log entry). Migration is now `0016`.
       `docs/premium-harness-advisory-memos.md`, `CLAUDE.md`. Pricing (Personal
       $50, Micro $100, Small $250, Growth $500, Scale $1000) is a Board gate and
       the site copy change, not harness work.
+
+- [x] **Perplexity Sonar citations through the driver (built 2026-09-14).**
+      `CloudOpenAiDriver` now parses Sonar's top-level `search_results`/
+      `citations` (both the streaming and native-shim paths) and emits a
+      `citations` event, so a placed Sonar model shows its sources like the
+      on-device search path does. It is a no-op for every other provider.
+      Tested in `app/test/cloudOpenAiDriver.test.ts`.
+- [ ] **Verify Perplexity Sonar model ids and the API-key URL against the live
+      API before a distribution build.** They were taken from web search (the
+      docs host is egress-blocked in the sandbox), and carry the house
+      verify-before-release caveat in `providers.ts`. A retired id is a dead
+      button in the stack.
+- [x] **Research (Perplexity) engine parity (built 2026-09-14).** The engine
+      now has a `perplexity` search backend
+      (`os-code/src/core/tools/search/perplexity.ts`, registered in
+      `searchProviderFor`, `search.backend: 'perplexity'` +
+      `perplexityKeyEnv`), so a paired-desktop or headless session can ground
+      its own web search in Sonar. By design the key is read from the env on
+      that machine like Brave and Tavily and never rides a session to a remote
+      hub (the CTO provider-key ruling), so the engine is configured on the box
+      via `os-code.config.json` rather than by pushing the app toggle and key
+      over the wire. Auto-selecting the engine backend from the app's Research
+      toggle is deliberately NOT done for that reason; a docked user sets
+      `search.backend` on the desktop, the same as the other keyed backends.
 
 - [ ] **Agentic Currents on a device and a real box (built 2026-09-09, unverified
       off the sandbox).** TestFlight: flip Hermes Agent on in Settings and
@@ -781,6 +803,36 @@ log entry). Migration is now `0016`.
   wired into `loop.ts` yet and no live behavior changed; that wiring is next,
   gated on eval numbers.
 
+- **2026-09-14: Perplexity, Sonar as a cloud provider and Research as a
+  default-off layer (founder, after a CTO and CX read).** The founder wanted
+  Perplexity layered in. The advisors split it: Perplexity is deliberately NOT
+  an Agentic Current (a Current is an exclusive agent runtime, one at a time;
+  Perplexity research is additive and reuses a provider key), so it landed as
+  two things. (1) Sonar joins the cloud providers in `app/src/lib/providers.ts`
+  (OpenAI-compatible, `api.perplexity.ai`, five Sonar ids with the house
+  verify-before-release caveat); it places into a Stack slot like any model.
+  (2) Research is a default-off, key-gated row in the Wayfinding group
+  (`SettingsScreen`) that routes the on-device model's web search through Sonar
+  on the connected Perplexity key, with no second key to paste:
+  `resolveSearchKey` prefers Perplexity when Research is on and a key exists,
+  else falls back to the configured backend, and `webSearch` gained a
+  `perplexity` backend mapping Sonar `search_results`/`citations` to sources
+  (`onDeviceDriver` calls the resolver, `store` carries `perplexityResearch`,
+  `Switch` gained a `disabled` prop for the ungated state). Perplexity Computer
+  was scoped and dropped on purpose: it runs on Perplexity's own models and
+  cannot be driven by a local model, so it would not serve the founder's goal
+  of computer capabilities for local models (that is OpenShore's own harness to
+  build, the stubbed Wayfinding Browser). Code: `providers.ts`, `webSearch.ts`,
+  `onDeviceDriver.ts`, `store.ts`, `SettingsScreen.tsx`, `Switch.tsx`. Gates:
+  app typecheck (src and electron), lint, 880 tests, Vite build, Prettier.
+  Ruling in `DECISIONS.md`. Then the two follow-ups landed the same day: Sonar
+  citations now thread through `CloudOpenAiDriver` (top-level
+  `search_results`/`citations`, both stream paths, emitted as a `citations`
+  event), and the engine gained a `perplexity` search backend
+  (`src/core/tools/search/perplexity.ts`, `search.backend` + `perplexityKeyEnv`),
+  config and env driven so the key stays on the box. Both pushed to `main` per
+  the founder.
+
 - **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
   familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
   Agent, the founder asked whether to go down that route, then how to layer
@@ -825,115 +877,6 @@ log entry). Migration is now `0016`.
   rulings in `DECISIONS.md`. Gates: app typecheck (src and electron), lint, 838
   tests, Vite build, the motion/polish and em-dash guards. The native speech path
   is device-only, like dictation, so TestFlight is the proof (What remains).
-
-- **2026-09-06: GitHub repo connect, the redirect address GitHub could not match
-  (founder report from TestFlight).** Connecting a repo, one-tap Connect GitHub
-  reached the GitHub consent page and stopped on "The redirect_uri is not
-  associated with this application." Traced it: the app's OAuth connect
-  (`app/src/lib/gitos/repoOAuth.ts`) sends
-  `redirect_uri = <VITE_SUPABASE_URL>/functions/v1/repo-oauth/callback`, and a
-  GitHub App requires that to match one of its registered Callback URLs exactly.
-  GitHub found the App (the client id resolved), so the mismatch is the address,
-  which makes this a configuration gap (the App's Callback URL, the client id
-  the build carries, or the Supabase project the build names), not app logic.
-  The CLI device flow (`os-code/src/auth/github.ts`) uses no redirect and is not
-  involved. Hardened and made it self-diagnosable rather than guessing at values
-  only the founder can see: the app and the `repo-oauth` function now trim a
-  trailing slash off the Supabase base, so it can never compose a doubled-slash
-  address that fails the exact match; `repoOAuth` exports the exact Callback URL
-  and the Repositories screen shows it, copyable, when a one-tap connect fails,
-  so the exact string to register is in hand. Documented the GitHub App setup and
-  a three-step troubleshooting checklist in `supabase/README.md` (Phase 4), and
-  left the config verification in What remains. Second bug from the same report:
-  closing the in-app browser without finishing (the exact path when the provider
-  shows an error page and the person taps Done, since GitHub never redirects back)
-  left the button stuck on "Connecting..." until the five-minute timeout, because
-  no `oscode://` deep link ever arrived. The iOS wait now also listens for the
-  Capacitor Browser `browserFinished` dismissal and ends the flow at once with
-  "Sign-in did not finish."; our own `Browser.close()` on a real return fires it
-  too but the flow has already settled, so it is a no-op. Desktop (a separate
-  system browser) still falls back to the timeout, noted as a follow-up. Then
-  the founder read the live authorize URL off GitHub's error page, which
-  confirmed the cause outright: the `redirect_uri` was
-  `...supabase.co//functions/v1/repo-oauth/callback`, a doubled slash from the
-  trailing slash on the Codemagic `VITE_SUPABASE_URL` (client id `Iv23...`, the
-  right GitHub App), so the trailing-slash trim is the actual fix, not a GitHub
-  config change. Merged to main (fast-forward) so Codemagic ships it to
-  TestFlight; the same push carried a Prettier-only reformat of
-  `test/ethicsEnforcement.test.ts` (a pre-existing drift that had CI red on
-  format) so main lands green. Then, on the build that carried the trim, the
-  authorize step finally succeeded and the Supabase `/callback` bounced the code
-  back, exposing the last leg (2026-09-07): the return relied only on the
-  in-memory connect listener, so a cold start (iOS evicts the memory-heavy app
-  while the person authorizes, then the return relaunches it) dropped the code.
-  `connectRepoOAuth` now persists the attempt (state and PKCE verifier,
-  single-use, 15-minute TTL, claimed once) and `useAuthDeepLink` completes it
-  from the cold-start launch URL through a new `resumeRepoOAuth` store action and
-  `repoOAuth.resumeRepoOAuthFromLink`, cold-start only so it never races the warm
-  listener. Then the founder asked for the one-tap version, so the warm tap went
-  away too: iOS now runs the whole flow through `ASWebAuthenticationSession` (new
-  `oscode-authsession` plugin, same SPM/JS-registered shape as `oscode-tts`),
-  which watches for the `oscode` callback scheme and hands the callback URL
-  straight to its completion handler. So there is no bounce-page tap (iOS blocks
-  that page's automatic custom-scheme redirect without a gesture) and no deep-link
-  round trip a memory eviction could drop. `repoOAuth` routes iOS through
-  `runAuthSession` and maps the plugin's `canceled` to "Sign-in did not finish.";
-  the old Capacitor Browser open and the `browserFinished` dismiss listener are
-  gone from iOS, and `awaitRedirect` is now the desktop-only deep-link wait.
-  Desktop keeps the system-browser path; the cold-start recovery stays as a
-  backstop. Ruling in `DECISIONS.md`. Gates: full workspace build, format, lint,
-  typecheck, and tests green (os-code 604, app 850; `repoOAuth.test.ts` 26);
-  the em-dash, polish-standards, and PROGRESS shape guards. TestFlight
-  verification of the one-tap connect, and that `cap sync ios` links
-  `oscode-authsession`, is still pending. That build then failed: Codemagic's
-  "Build the signed IPA" step died inside its own `xcodebuild -showBuildSettings`
-  check, exit 74, identically on a retry (so not the transient blip first
-  guessed). GitHub CI stayed green throughout, since it never touches Xcode or
-  SwiftPM; only Codemagic exercises the real iOS package graph, and its
-  `xcode-project` CLI tool curates its own output rather than forwarding
-  xcodebuild's real error, so the failing step's log carried no more detail than
-  its one-line summary. Checked what could be checked without a Mac toolchain:
-  `oscode-authsession`'s manifest is structurally identical to the
-  already-shipping `oscode-speech`, every plugin pins the same
-  `capacitor-swift-pm` version, and a clean `pnpm install --frozen-lockfile`
-  reproduces the same dependency tree Codemagic would install. None of that
-  found the cause, and whether it is `oscode-authsession` or the same-day,
-  still-unverified `oscode-tts`/`oscode-speech` from the voice-mode merge is
-  unknown. Added a temporary diagnostic step to `codemagic.yaml` (a plain script
-  step right before the failing one, since plain steps print output verbatim
-  unlike the wrapper tool) to surface the real xcodebuild/SwiftPM error on the
-  next build. That build named it exactly: SwiftPM failed the package graph with
-  "product 'OscodeAuthsession' required by ... not found in package
-  'OscodeAuthSession'", every dependency (`capacitor-swift-pm`, `swift-syntax`,
-  `LLM.swift`, `ion-ios-filesystem`) having already fetched and checked out
-  fine, so it was neither the voice-mode plugins, network, nor disk. `cap sync`
-  derives a Swift package/product name by capitalizing only the first letter of
-  each hyphen-separated segment of the npm name; `oscode-authsession` has no
-  hyphen inside "authsession", so the derived name is `OscodeAuthsession`
-  (lowercase second "s"), not the readable `OscodeAuthSession` the plugin's own
-  `Package.swift` declared. Fixed by renaming the package and product name
-  (only, in `app/plugins/oscode-authsession/Package.swift`) to
-  `OscodeAuthsession`; the target name and the Swift plugin's
-  `jsName`/`identifier` are a separate JS-bridge lookup, unaffected. General
-  lesson recorded in `DECISIONS.md`. That build went green, so the diagnostic
-  step was removed. One last leg surfaced then: on the working one-tap build the
-  session opened and GitHub authorized, but the person was left on the Supabase
-  `/callback` "Returning to OpenShore" page. Research (Apple forums, an Apple
-  engineer's reply) confirmed ASWebAuthenticationSession completes only on a
-  network-level redirect to the callback scheme; the page's `window.location`
-  JavaScript redirect is not reliably captured. Fixed server-side: `/callback`
-  now returns an HTTP 302 to `oscode://` for iOS (UA iPhone/iPad/iPod, or `state`
-  ending ".r", which the iOS app now appends for the iPad-desktop-UA case),
-  keeping the HTML page as the 302 body fallback and as the full desktop
-  response, and using query params never a fragment. Takes effect on
-  `supabase functions deploy repo-oauth`, no new app build, so it fixes the
-  already-installed build. Ruling in `DECISIONS.md`. Gates: full workspace
-  build, format, lint, typecheck, and tests green (os-code 604, app 851;
-  `repoOAuth.test.ts` 27); em-dash, polish-standards, and PROGRESS shape guards.
-  The founder redeployed the function and GitHub connected on the phone with no
-  manual step, the card reading "connected". RESOLVED: four distinct bugs from
-  the first "redirect_uri is not associated" report, all fixed. Full state, and
-  the small non-blocking nice-to-haves, in What remains.
 
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the

@@ -9,7 +9,7 @@ import { Llama } from '../lib/llamaPlugin.js';
 import { STALL_TIMEOUT_MS, ensureDeviceModel, forgetDeviceModel } from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
-import { formatSearchResults, loadSearchKey, webSearch } from '../lib/webSearch.js';
+import { formatSearchResults, resolveSearchKey, webSearch } from '../lib/webSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 import type { SeedTurn } from '../state/types.js';
@@ -49,6 +49,10 @@ export class OnDeviceDriver implements ChatDriver {
     private readonly modelId: string,
     private readonly modelName: string,
     seed?: SeedTurn[],
+    /** Research (default off): ground this local model's web search in
+     *  Perplexity on the connected Perplexity key. Off falls back to the
+     *  configured backend (Brave/Tavily) or DuckDuckGo. */
+    private readonly researchOn = false,
   ) {
     this.searchable = isHarbor(modelId);
     this.guide = isHarborMini(modelId) || this.searchable;
@@ -204,7 +208,7 @@ export class OnDeviceDriver implements ChatDriver {
       this.emitter.emit({ type: 'status', message: `Searching the web for "${query}".` });
       let resultText: string;
       try {
-        const key = await loadSearchKey();
+        const key = await resolveSearchKey(this.researchOn);
         const results = await webSearch(query, key);
         resultText = formatSearchResults(query, results);
         if (results.length) {

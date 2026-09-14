@@ -110,12 +110,15 @@ export const ResourceBudgetSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const SearchSchema = z.object({
-  backend: z.enum(['duckduckgo', 'brave', 'searxng', 'tavily']).default('duckduckgo'),
+  backend: z.enum(['duckduckgo', 'brave', 'searxng', 'tavily', 'perplexity']).default('duckduckgo'),
   /** Base URL of a self-hosted SearXNG, the fully private path. */
   searxngUrl: z.string().optional(),
   /** Env var names for keyed backends, never the keys themselves. */
   braveKeyEnv: z.string().default('BRAVE_API_KEY'),
   tavilyKeyEnv: z.string().default('TAVILY_API_KEY'),
+  /** Perplexity Sonar search grounding: the key stays on this machine, read
+   *  from this env var, never carried into a remote-hub session. */
+  perplexityKeyEnv: z.string().default('PERPLEXITY_API_KEY'),
   resultCount: z.number().int().min(1).max(20).default(5),
   /** Max characters of markdown webFetch returns (small local contexts). */
   fetchMaxChars: z.number().int().min(1000).default(18000),
