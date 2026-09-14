@@ -21,8 +21,7 @@ import type { ToolSpec } from '../providers/types.js';
 import { parseJsonLoose } from '../core/tools/parser.js';
 
 export type DecodedReply =
-  | { kind: 'tool'; name: string; args: Record<string, unknown> }
-  | { kind: 'say'; text: string };
+  { kind: 'tool'; name: string; args: Record<string, unknown> } | { kind: 'say'; text: string };
 
 /** Build the tool-or-answer union JSON schema for a set of tools. Each tool
  *  gets its own branch with its real argument schema, and one `say` branch

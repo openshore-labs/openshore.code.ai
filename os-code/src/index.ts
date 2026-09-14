@@ -46,6 +46,10 @@ export {
   type ModelClassProfile,
   type ModelClassPolicy,
 } from './harness/profile.js';
-export { buildDecodingSchema, parseDecoded, unionProtocolInstructions } from './harness/decoding.js';
+export {
+  buildDecodingSchema,
+  parseDecoded,
+  unionProtocolInstructions,
+} from './harness/decoding.js';
 export { CONNECTORS } from './server/connectorMap.js';
 export { TOKENS, banner } from './brand/theme.js';

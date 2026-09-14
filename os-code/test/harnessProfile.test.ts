@@ -47,8 +47,12 @@ describe('deriveModelClass', () => {
     expect(deriveModelClass({ model: 'mystery:latest', kind: 'local' })).toBe('small');
   });
   it('promotes a size-unknown model to mid when the eval proves it capable', () => {
-    expect(deriveModelClass({ model: 'mystery:latest', kind: 'local', evalScore: 0.85 })).toBe('mid');
-    expect(deriveModelClass({ model: 'mystery:latest', kind: 'local', evalScore: 0.4 })).toBe('small');
+    expect(deriveModelClass({ model: 'mystery:latest', kind: 'local', evalScore: 0.85 })).toBe(
+      'mid',
+    );
+    expect(deriveModelClass({ model: 'mystery:latest', kind: 'local', evalScore: 0.4 })).toBe(
+      'small',
+    );
   });
   it('promotes a size-unknown model to mid on a very large context window', () => {
     expect(

@@ -2486,12 +2486,40 @@ Kept as written, as the record of how each was closed.
       app now appends to cover an iPad reporting a desktop UA), keeping the HTML
       page as the 302 body fallback and as the full desktop response. It is a
       server change: it took effect on `supabase functions deploy repo-oauth`
-      (redeployed from the founder's Pop!_OS clone to project
+      (redeployed from the founder's Pop!\_OS clone to project
       `lzlrlfdffwiypzreoldb`, script 8.7 kB) and fixed the already-installed
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
 ## Log entries (2026-08-18 to 2026-09-06)
+
+- **2026-09-06: vision as a Stack category with two slots and effort, plus the
+  video framing progress ring (founder, pushed to main).** Follow-ups to video
+  attachments, landed across two pushes the same day. (1) Vision is a placeable
+  Stack category you can put a local LLM in. It has two slots in My Stack, a
+  local model (on-device or your own server) and a cloud model, each with its
+  own effort; the cloud slot defaults to the most capable cloud model
+  (`defaultVisionCloudRef`, Claude Opus) until assigned, so images are always
+  understood out of the box (founder: "default that position to most capable
+  cloud model until manually adjusted"). An image turn routes to the local slot
+  when it can actually read images, else the cloud slot, else a connected cloud
+  provider (`visionSlots`/`pickVisionRef`/`stackVisionReady`, wired in
+  `StackDriver`). On-device models are text-only on this build, so a device
+  model placed for vision falls back to the cloud (`visionCapable` false for a
+  device ref, one line to flip when a multimodal runtime lands); a BYOM vision
+  model does read images and is preferred over the cloud slot. `StackDriver` now
+  accepts attachments (it dropped them before) and folds frames into the
+  Anthropic and OpenAI-compatible backends; the device backend never gets
+  images. Per-placement `effort` is honored in `systemFor` over the global
+  composer effort, and is settable on any specialist, not just Vision. My Stack
+  is the source (founder call): a workflow run through the stack inherits the
+  Vision position, so there is one place to set it. (2) The video chip's pulse
+  became a determinate ring keyed to frames extracted (`onProgress` threaded
+  through the backends). Code: `stack.ts`, `stackDriver.ts`, `StackManager.tsx`,
+  `store.ts` (`stackVisionReady`), `ChatScreen.tsx`, `Composer.tsx`, `theme.css`,
+  `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
+  lint, 780 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
+  guards. Rulings in `DECISIONS.md`.
 
 - **2026-09-06: video attachments, reviewed frame by frame, never the video
   (founder, pushed to main).** The founder wanted Claude Code's attachment flow

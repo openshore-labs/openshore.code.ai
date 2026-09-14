@@ -524,7 +524,7 @@ execution contract. Newest at the bottom.
   tier. Creative Studio direction "The Standing Light." Mini is instant now, so
   making it the front door is honest, not hype.
 - 2026-09-04: Renamed the guide to "Harbor Light" (display only). Kept the code
-  identifiers HARBOR_MINI_* and the model id "harbor-mini" as the stable slot:
+  identifiers HARBOR*MINI*\* and the model id "harbor-mini" as the stable slot:
   the id is persisted in settings, stack refs, and the bundled harbor-mini.gguf,
   so moving it would strand state and the bundle for no user gain. Same slot
   pattern as Harbor's id vs its display name.
@@ -1123,7 +1123,7 @@ execution contract. Newest at the bottom.
   script steps print output verbatim). Fixed by renaming the package and
   product name (only) to `OscodeAuthsession`; the target name and the Swift
   plugin's `jsName`/`identifier` are a separate, unrelated JS-bridge lookup and
-  keep their readable casing. Lesson for any future oscode-* plugin whose npm
+  keep their readable casing. Lesson for any future oscode-\* plugin whose npm
   name's suffix is itself multi-word with no internal hyphen (matching this
   repo's plugins is the same instinct that produced the bug): either hyphenate
   the npm name (`oscode-auth-session`) so `cap sync` PascalCases each word, or
@@ -1212,3 +1212,36 @@ execution contract. Newest at the bottom.
   current** (a contract test passing, device and paired-computer
   verification, no open must-fix). The founder deferred whether the pill
   moves down to the rows that are still rough once one graduates.
+- 2026-09-14: **The premium harness starts as a pure discipline seam, not a
+  loop rewrite.** Per the CTO and Chief of Staff, step 1 ships `profile.ts`
+  (model-class derivation) and `decoding.ts` (the tool-or-answer union schema)
+  as pure, tested modules behind config, wired only into `osc eval`, before any
+  `loop.ts` change, so the loop is never rewritten twice and the class is
+  something to score. Loop wiring is gated on eval numbers.
+- 2026-09-14: **Model class is derived from size first, name hint next, on-disk
+  size next, then the eval score only as a size-unknown tie-break.** The class
+  is a resourcing decision; a 1.5B that scores well is still a 1.5B, so the
+  eval score never overrides a known size. A cloud model is always the large
+  class. Size-unknown defaults to small so the discipline is applied, not
+  skipped.
+- 2026-09-14: **Constrained decoding supersedes the 2026 "grammar is a repair
+  tool, not a default" line for small local models.** The tool-or-answer union
+  schema (`decoding.ts`) has a `say` branch, so a permanent constraint no longer
+  forbids prose, and each tool branch carries its own argument schema so a
+  constrained call validates. On by default for tiny and small (config
+  `harness.decoding.constrainForSmallModels`), and only when the backend
+  supports grammar; the eval decides per family whether it is a lift or a tax.
+- 2026-09-14: **Auto-place (renamed from "LLM Auto-Source" by the CMO) fills a
+  gap with a LOCAL model only, never the anchor, never under a secrets
+  lockdown; every download and every cloud call is a card the person taps.**
+  All eight advisors agreed downloads always ask, over the proposal's first
+  draft. The founder's call.
+- 2026-09-14: **The phone runs the harness in two layers.** Docked, it gets
+  every new card through the engine path from the Claude Code moment; alone, it
+  runs the pure core for phone-sized work, built last and gated on desktop
+  parity plus a device pass. The founder's "phone feels like Claude Code in V1"
+  applied without reversing "long work runs off the phone".
+- 2026-09-14: **Pricing when the beta gates return (CFO-ruled, a Board gate):**
+  Personal $50/yr, Micro $100, Small $250, Growth $500, Scale $1000, the $20
+  dropped from the site. Not harness work; new Stripe price objects, never a
+  repriced id.
