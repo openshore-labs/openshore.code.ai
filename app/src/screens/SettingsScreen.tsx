@@ -60,6 +60,9 @@ const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
   duckduckgo: 'DuckDuckGo',
   brave: 'Brave Search',
   tavily: 'Tavily',
+  // Perplexity is not a user-chosen override backend (the Research toggle
+  // drives it), but it is a valid backend, so it carries a label too.
+  perplexity: 'Perplexity',
 };
 
 // A fact carries a "How" disclosure when there's a concrete step that would
@@ -290,6 +293,8 @@ export function SettingsScreen() {
     serverRole,
     setWayfinding,
     setAgenticCurrent,
+    setPerplexityResearch,
+    connectedProviders,
   } = useApp();
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
@@ -861,6 +866,30 @@ export function SettingsScreen() {
               }
             />
           ))}
+          {/* Research (Perplexity): a sibling of Browser, but OFF by default and
+              gated on a connected Perplexity key, since it spends that key on
+              every search. Reuses the Cloud Connections key, so no second ask;
+              inert with a reason until the key exists. */}
+          <SettingsRow
+            label="Research"
+            sub={
+              connectedProviders.perplexity
+                ? 'Web research through Perplexity, on your Perplexity key. Spent with your approval, on every search.'
+                : 'Web research through Perplexity. Connect a Perplexity key in Cloud Connections to turn this on.'
+            }
+            subWrap
+            trailing={
+              <Switch
+                checked={settings.perplexityResearch === true}
+                disabled={!connectedProviders.perplexity}
+                label="Research"
+                onChange={(next) => {
+                  void setPerplexityResearch(next);
+                  showToast(`Research ${next ? 'on' : 'off'}.`);
+                }}
+              />
+            }
+          />
         </SettingsGroup>
 
         {/* Agentic Currents: opt-in modalities for agent work, one at a time,

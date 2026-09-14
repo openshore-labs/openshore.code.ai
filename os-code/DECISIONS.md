@@ -1212,3 +1212,16 @@ execution contract. Newest at the bottom.
   current** (a contract test passing, device and paired-computer
   verification, no open must-fix). The founder deferred whether the pill
   moves down to the rows that are still rough once one graduates.
+- 2026-09-14: **Perplexity is NOT an Agentic Current.** A Current is an
+  exclusive agent runtime (one at a time, "runs on a computer you own"),
+  which would force research to be mutually exclusive with Hermes/CLI and
+  make the honesty copy false for a SaaS on a key. So it splits: Sonar is a
+  cloud provider (a placeable model, `providers.ts`), and Research is a
+  default-off, key-gated Wayfinding row that reuses the Perplexity provider
+  key (`resolveSearchKey`, no second key to paste). CTO and CX both ruled
+  this over the founder's first "it's a layer, put it in Currents" instinct.
+- 2026-09-14: **Perplexity Computer was dropped, not deferred into Currents.**
+  It runs on Perplexity's own models and cannot be driven by a local model, so
+  it cannot serve the goal of computer capabilities for local models; that is
+  OpenShore's own harness to build (the stubbed Wayfinding Browser), with
+  Perplexity at most an optional cloud backend later.

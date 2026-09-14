@@ -306,6 +306,24 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Perplexity Sonar citations through the driver (built 2026-09-14).**
+      Sonar returns its sources as top-level `citations`/`search_results`
+      outside the OpenAI schema, and the plain openai-compatible driver path
+      drops them, so a Sonar model placed in a cloud chat loses its one
+      advantage. Thread them through the driver event stream (the app already
+      renders `webSearch` citations) before a release leans on Sonar as a
+      placed bench model. Model ids in `providers.ts` also need the usual
+      live-API verification before a distribution build.
+- [ ] **Research (Perplexity) engine parity (built 2026-09-14).** The
+      default-off Research toggle grounds the on-device (app) search path in
+      Sonar via `resolveSearchKey`/`webSearch`. A paired-desktop session uses
+      the engine's own search tool (`os-code/src/core/tools/search`), which has
+      no `perplexity` backend and does not yet receive the toggle. Add a
+      `perplexity` search backend plus a `search.backend` value in
+      `config/schema.ts`, and thread the setting into the session the way
+      `humanize`/`currents` ride the bootstrap, so docked sessions honor
+      Research too.
+
 - [ ] **Agentic Currents on a device and a real box (built 2026-09-09, unverified
       off the sandbox).** TestFlight: flip Hermes Agent on in Settings and
       confirm the current flows from the switch to the edges, the water-line
@@ -714,6 +732,30 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-14: Perplexity, Sonar as a cloud provider and Research as a
+  default-off layer (founder, after a CTO and CX read).** The founder wanted
+  Perplexity layered in. The advisors split it: Perplexity is deliberately NOT
+  an Agentic Current (a Current is an exclusive agent runtime, one at a time;
+  Perplexity research is additive and reuses a provider key), so it landed as
+  two things. (1) Sonar joins the cloud providers in `app/src/lib/providers.ts`
+  (OpenAI-compatible, `api.perplexity.ai`, five Sonar ids with the house
+  verify-before-release caveat); it places into a Stack slot like any model.
+  (2) Research is a default-off, key-gated row in the Wayfinding group
+  (`SettingsScreen`) that routes the on-device model's web search through Sonar
+  on the connected Perplexity key, with no second key to paste:
+  `resolveSearchKey` prefers Perplexity when Research is on and a key exists,
+  else falls back to the configured backend, and `webSearch` gained a
+  `perplexity` backend mapping Sonar `search_results`/`citations` to sources
+  (`onDeviceDriver` calls the resolver, `store` carries `perplexityResearch`,
+  `Switch` gained a `disabled` prop for the ungated state). Perplexity Computer
+  was scoped and dropped on purpose: it runs on Perplexity's own models and
+  cannot be driven by a local model, so it would not serve the founder's goal
+  of computer capabilities for local models (that is OpenShore's own harness to
+  build, the stubbed Wayfinding Browser). Code: `providers.ts`, `webSearch.ts`,
+  `onDeviceDriver.ts`, `store.ts`, `SettingsScreen.tsx`, `Switch.tsx`. Gates:
+  app typecheck (src and electron), lint, 880 tests, Vite build, Prettier.
+  Ruling in `DECISIONS.md`. Follow-ups in What remains.
+
 - **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
   familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
   Agent, the founder asked whether to go down that route, then how to layer
@@ -898,31 +940,3 @@ log entry). Migration is now `0016`.
   810 tests, Vite build, Prettier; os-code 604 tests, em-dash and PROGRESS shape
   guards. The engine hand-off and the routine Plan note need a paired computer
   and a real routine fire to verify.
-
-- **2026-09-06: vision as a Stack category with two slots and effort, plus the
-  video framing progress ring (founder, pushed to main).** Follow-ups to video
-  attachments, landed across two pushes the same day. (1) Vision is a placeable
-  Stack category you can put a local LLM in. It has two slots in My Stack, a
-  local model (on-device or your own server) and a cloud model, each with its
-  own effort; the cloud slot defaults to the most capable cloud model
-  (`defaultVisionCloudRef`, Claude Opus) until assigned, so images are always
-  understood out of the box (founder: "default that position to most capable
-  cloud model until manually adjusted"). An image turn routes to the local slot
-  when it can actually read images, else the cloud slot, else a connected cloud
-  provider (`visionSlots`/`pickVisionRef`/`stackVisionReady`, wired in
-  `StackDriver`). On-device models are text-only on this build, so a device
-  model placed for vision falls back to the cloud (`visionCapable` false for a
-  device ref, one line to flip when a multimodal runtime lands); a BYOM vision
-  model does read images and is preferred over the cloud slot. `StackDriver` now
-  accepts attachments (it dropped them before) and folds frames into the
-  Anthropic and OpenAI-compatible backends; the device backend never gets
-  images. Per-placement `effort` is honored in `systemFor` over the global
-  composer effort, and is settable on any specialist, not just Vision. My Stack
-  is the source (founder call): a workflow run through the stack inherits the
-  Vision position, so there is one place to set it. (2) The video chip's pulse
-  became a determinate ring keyed to frames extracted (`onProgress` threaded
-  through the backends). Code: `stack.ts`, `stackDriver.ts`, `StackManager.tsx`,
-  `store.ts` (`stackVisionReady`), `ChatScreen.tsx`, `Composer.tsx`, `theme.css`,
-  `videoAttach.ts`/`videoBackends.ts`. Gates: app typecheck (src and electron),
-  lint, 780 tests, Vite build, Prettier; os-code em-dash and PROGRESS shape
-  guards. Rulings in `DECISIONS.md`.
