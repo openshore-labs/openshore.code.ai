@@ -1241,6 +1241,32 @@ execution contract. Newest at the bottom.
   runs the pure core for phone-sized work, built last and gated on desktop
   parity plus a device pass. The founder's "phone feels like Claude Code in V1"
   applied without reversing "long work runs off the phone".
+- 2026-09-14: **Frontier-level coding from a local model is reached by the
+  oracle, not by a bigger prompt.** The founder's north star (code like Sonnet 5
+  or Opus 4.8 from a decent local model, better with more context) is pursued
+  in this order: the strongest local model the hardware allows, verify IN the
+  loop (a failing check goes back to the model, bounded), best-of-N judged by
+  the project's own tests, the discipline seam, the hand to a frontier model on
+  the person's key, then lessons. The frontier reference run is the scoreboard,
+  not the mover; every lever ships gated on the one-try and best-of-k numbers
+  from `osc eval --deep --attempts`.
+- 2026-09-14: **A failing verify is an observation, not a verdict, while a
+  retry remains.** The loop hands the exact output tail back with one plain
+  ask and continues, at most `harness.verify.maxRetries` times (default 2,
+  zero means report only), under the same step and dollar rails, and the model
+  is told not to claim a pass (the harness runs the check and reports). The
+  `verify` event grew `round` and `willRetry` so the last one is the verdict.
+- 2026-09-14: **Best-of-N is measured before it is built.** Eval v2 runs
+  independent tries per task in fresh workspaces and reports one try next to
+  best of n; a best-of-N picker in the loop (which needs checkpoints) is built
+  only if that gap says it pays on the reference machine.
+- 2026-09-14: **A frontier reference run is a deliberate tap, once, up front.**
+  `osc eval --deep` never spends on a local model; naming a cloud provider and
+  model on the command line asks one terminal question (count of runs, on your
+  key, default No, `--yes` for scripts) and only then does the approver say yes
+  to the loop's cloud-spend prompts. The model under test sits in the
+  orchestrator seat for the run with escalation off, so a benchmark measures one
+  model.
 - 2026-09-14: **Pricing when the beta gates return (CFO-ruled, a Board gate):**
   Personal $50/yr, Micro $100, Small $250, Growth $500, Scale $1000, the $20
   dropped from the site. Not harness work; new Stripe price objects, never a
