@@ -101,6 +101,10 @@ export type AgentEvent =
   | { type: 'repo-info'; cwd: string; branch?: string; dirty?: boolean }
   // A short generated title after the first completed exchange.
   | { type: 'title'; title: string }
+  // The harness ran the project's check command after a task that changed files
+  // (verify, tenet 3), so a client shows verified / not verified without anyone
+  // reading the transcript. `detail` is a tail of the command output.
+  | { type: 'verify'; passed: boolean; summary: string; detail?: string }
   // The always-on ethics layer stopped this request or this answer. Carried as
   // its own event, not folded into an error, so every client can show the
   // plain refusal and a reviewer can see that the layer acted. The category and
