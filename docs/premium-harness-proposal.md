@@ -6,8 +6,8 @@ work, creative work, and agentic work"; the smallest models as capable as
 possible through it; V1 harnesses the Stack so building feels like Claude Code
 on any model; models recommend other models or setups when a request is beyond
 them; local models keep learning from the person's builds. This document is the
-integration plan, the honest inventory it rests on, and the forks that need the
-founder's call before a line is written.
+integration plan, the honest inventory it rests on, and the founder's calls on
+the forks (eight answered the same day, recorded at the end).
 
 "Keel" is a working codename only, the way gitOS ships as Repositories and
 botOS as routines. It ships with no room and no new name; it is simply how
@@ -15,11 +15,12 @@ OpenShore works. The CMO names it if it needs a name.
 
 ## The answer in ten lines
 
-1. Build ONE harness, on the engine, and make the Stack its distributor inside
-   the loop. Today there are two brains (the engine's ReAct loop and the app's
-   play runner). V1 makes the engine loop the harness and turns the app's play
-   into a view of engine events, keeping the phone-alone runner as the
-   degraded mode.
+1. Build ONE harness as a portable pure core, and make the Stack its
+   distributor inside the loop. Today there are two brains (the engine's ReAct
+   loop and the app's play runner). V1 extracts the loop into a core with no
+   Node dependencies that three hosts run: the desktop engine, the daemon
+   (which is also the CLI), and the phone against its own tool slice. The
+   phone feels like Claude Code in V1, not only when docked (founder's call).
 2. The Claude Code contract is the baseline. Most of it exists. What is missing
    for the feel is subagents, skills, hooks, a verify phase, and checkpoints.
 3. Small models get capable through discipline in the harness, not through
@@ -33,8 +34,10 @@ OpenShore works. The CMO names it if it needs a name.
    back. A small model with an external judge beats a large model without one.
 6. "Ask for a hand" is a tool every seat has. The model names the need; the
    harness, not the model, names the candidate from the stack, the catalog
-   (honest ratings, rated to the hardware), or a connected cloud key. Always a
-   card the person taps. Never an auto-placed seat, never an auto cloud call.
+   (honest ratings, rated to the hardware), or a connected cloud key. A
+   Settings switch, LLM Auto-Source, default on, lets the harness place a
+   local model itself; off, it is always a card the person taps (founder's
+   call). Cloud is never automatic either way.
 7. Learning is local only and in tiers. V1: lessons as data (exemplar bank,
    outcome stats, proposed standing instructions), mined from the journals the
    engine already writes, inspectable in the Vault. V2: real adapters trained
@@ -44,9 +47,10 @@ OpenShore works. The CMO names it if it needs a name.
    benchmark, and it runs before, during, and after every step below, because
    nothing here can be claimed without it.
 9. Every new surface is held to the interaction model and the motion bar.
-10. Order: measure, then discipline, then the Stack inside the loop, then the
-    Claude Code pieces, then the hand, then the lessons. Each step additive,
-    behind config, tested, with the old path preserved.
+10. Order: measure, then discipline, then the core and its three hosts, then
+    the Stack inside the loop, then the Claude Code pieces, then the hand, then
+    the lessons. Each step additive, behind config, tested, with the old path
+    preserved.
 
 ## What you asked for, restated
 
@@ -137,8 +141,12 @@ flowchart TD
   EV -.-> LS
 ```
 
-**Layer 1, the loop.** The Claude Code contract. Lives in `loop.ts` and grows
-subagents, skills, hooks, verify, and checkpoints.
+**Layer 1, the loop.** The Claude Code contract. Today it lives in `loop.ts`;
+it becomes a pure core (`os-code/src/harness/`, no Node built-ins, the way
+`play.ts` and `stackHealthTypes.ts` are already pure) behind one `HarnessHost`
+interface for tools, storage, and model transport. It grows subagents, skills,
+hooks, verify, and checkpoints. Three hosts run it: the desktop engine
+in-process, the daemon (which is what `osc` runs), and the phone.
 
 **Layer 2, the distributor.** The Stack inside the loop. The anchor seat runs
 the loop; a step that belongs to a seat runs as a subagent on that seat with
@@ -165,7 +173,7 @@ The contract, with what is left to build.
 | Modes, plan mode, todos, approvals, queue | Built    | None                                                                                                        |
 | Slash, `@`, `#`, instructions, `/init`    | Built    | None                                                                                                        |
 | Compaction, resume, titles, repo chip     | Built    | None                                                                                                        |
-| A plan with owners, in the engine         | App only | Move the play planner into plan mode on the engine; the plan card gains owners; the app renders events      |
+| A plan with owners, on every host         | App only | `play.ts` (pure, tested) becomes the core's planner; plan mode ends in a plan with owners on every host     |
 | Subagents (Task tool)                     | Missing  | `runSubagent`: a child `AgentSession` on a seat, own history, filtered tools, step cap, nested events       |
 | Skills                                    | Missing  | `SKILL.md` discovery (global, project, the Skills note), names and one-liners in the prompt, body on demand |
 | Hooks                                     | Missing  | `hooks` in `os-code.config.json`: pre and post tool, pre commit, on task done; shell risk class, ask once   |
@@ -174,15 +182,32 @@ The contract, with what is left to build.
 | A real classifier                         | Regex    | One constrained enum call on the fast seat (or Harbor Mini); cached; falls back to the anchor               |
 | MCP stdio, browser                        | Missing  | V1.5                                                                                                        |
 
-**One loop, and the phone.** The founder's standing principle (2026-08-25) is
-that long work runs off the phone and the phone is a remote and a viewer. So
-the harness lives on the engine (desktop in-process, or the daemon over the
-tailnet) and the app renders its events, exactly as the coding chat does
-today. The phone-alone case (an Offline stack of device models) keeps the
-current app-native play as the degraded path; V1.5 extracts the loop's pure
-core so the phone can run the same harness against a read-only tool slice.
-The transition is additive: `StackDriver` keeps its runner and gains "use the
-engine's plan when docked."
+**One loop, three hosts (founder's call: the phone feels like Claude Code in
+V1).** The loop becomes a pure core that any host can run, and the difference
+between hosts is only the tool slice and the transport the host hands it.
+
+- **Desktop engine.** In-process, the full tool set, the local-interactive
+  profile. What the coding chat is today.
+- **Daemon and CLI.** The same core headless over the tailnet, the remote and
+  headless profiles, and `osc` in a terminal. The CLI gets the harness through
+  the engine at no extra cost; rendering the new cards in the parked TUI is a
+  separate call (below).
+- **Phone.** The same core in the app, on the phone's own Stack, against a
+  phone tool slice: vault read and write, repositories through the gitOS seam
+  (read, and writes buffered through the outbox grain the CTO ruled for
+  phones), the GitHub contents client, web search and fetch, project memory
+  read, todos, the vision seat, and `askForHand`. A step that needs a real
+  checkout, a shell, or the project's tests runs as a subagent on the paired
+  engine when docked, exactly as the play hands a tool step off today, and
+  lands as a described change with an outbox proposal when not docked.
+  `StackDriver` stops being a second runner and becomes the phone host.
+
+The standing principle (2026-08-25: long work runs off the phone) is applied,
+not reversed: the phone runs the harness in the foreground for phone-sized
+work, and unattended or long work still goes to the engine. iOS suspension
+ends a phone run honestly (the conversation is persisted; a resume replays
+it), and the copy never claims otherwise. The pure core must not pull a Node
+built-in into the WebView bundle; `os-code/protocol` is the precedent.
 
 **Basic questions.** The classifier tags a plain question as chat, and the
 fast seat (or the anchor) answers with no plan, no tools, and no brief, the
@@ -192,8 +217,8 @@ way Claude Code answers a question. Work gets the loop.
 generation and vision. The harness treats a creative task like a build: a
 plan, drafts as files (the Vault or a repo), and a verify phase that reads the
 draft back against the humanizer and the brief. The coding tools already
-edit markdown. What "creative" spans beyond writing and images is a question
-below.
+edit markdown. Founder's call: creative work in V1 is writing and images
+through these seats; audio, video, and design assets are a later brief.
 
 **Agentic work.** Routines, Currents, subagents, and hooks together. A routine
 is a headless harness run; a Current is a seat that lives on another computer;
@@ -280,9 +305,20 @@ the Marketplace's "honest ratings" promise intact.
 image. Options: place LLaVA 7B (4.1 GB, fits this machine), or use Claude on
 your key (asks before spend)." The person taps; the seat is placed (or the
 install starts through the existing channel), and the step re-runs. This
-resurrects the dead `routing.escalation.onModelRequest` flag and keeps two
-public promises: "You decide who sits in each seat" and "cloud is one
-deliberate tap." Nothing is auto-placed; nothing auto-routes to the cloud.
+resurrects the dead `routing.escalation.onModelRequest` flag.
+
+**LLM Auto-Source (founder's call, 2026-09-14).** A Settings switch, default
+on. On, the harness sources a local model itself when a seat cannot do the
+step: a model already installed on this machine or sitting on the bench is
+placed with no card, a note in the transcript ("Placed LLaVA 7B for image
+reading"), a seat badge "auto-sourced", and one tap to put it back. A model
+that fits but needs a download starts on its own on the desktop and when
+docked (local, free, disk is there) and shows the card on a phone alone
+(memory and data plan; the storefront rule that "Get" never appears for a
+model the phone cannot take holds). Off, every hand is a card the person taps.
+Cloud is never automatic in either state: a cloud option is always the card,
+amber, and spend asks. The site's "You decide who sits in each seat" gains
+"or let Auto-Source do it for you" in the same change, per the mirror rule.
 
 **Pre-empting.** The harness already knows a seat's capabilities before it
 tries (vision, tools, context). A step that needs 40k of context on an 8k
@@ -337,8 +373,10 @@ loaded through an Ollama Modelfile as a new tag ("qwen2.5-coder:7b, yours").
 Promotion only when eval v2 scores the adapted model at or above the base;
 the seat shows "adapted on <date>" and a one-tap revert. Not for the phone.
 This is the literal "trains itself" and it costs GPU hours and carries a
-forgetting risk, so it starts as a two-week spike on the founder's box, not a
-V1 line item.
+forgetting risk. Founder's call: V1 is Tier 1 only. The founder's desktop has
+under 12 GB of VRAM or is not NVIDIA, so the V2 spike starts with a hardware
+check and a small base (a 1.5B to 4B under QLoRA fits in 8 GB), or on other
+hardware.
 
 **What V1 learning is, honestly.** In-context learning: retrieval of lessons
 and exemplars into the prompt. For small models that is where most of the
@@ -390,54 +428,75 @@ press feedback on every tappable, reduced motion honored.
 
 ## Where the code goes
 
-Engine, additive:
+The core, pure, exported through `os-code/protocol` so the app imports it
+with no Node built-in:
 
-- New `os-code/src/harness/`: `profile.ts` (the model class), `decoding.ts`
-  (the union schema), `subagent.ts`, `skills.ts`, `hooks.ts`, `verify.ts`,
-  `handoff.ts`, `checkpoint.ts`, `classify.ts`, and `lessons/` (store, mine,
-  exemplars, proposals).
-- `loop.ts` reads its policy (tools shown, calls per turn, decoding, budgets)
-  from the profile instead of constants, and gains the verify phase and the
-  plan-with-owners in plan mode.
-- `registry.ts` gains `runSubagent` (the `delegate` upgrade), `useSkill`,
-  `askForHand`, `symbol`.
+- New `os-code/src/harness/`: `host.ts` (the `HarnessHost` interface: tool
+  slice, storage, transport, approver), `loop.ts` (the loop, moved out of
+  `core/agent/loop.ts` piece by piece), `planner.ts` (today's `play.ts`),
+  `profile.ts` (the model class), `decoding.ts` (the union schema),
+  `subagent.ts`, `skills.ts`, `hooks.ts`, `verify.ts`, `handoff.ts`
+  (including Auto-Source), `checkpoint.ts`, `classify.ts`, and `lessons/`
+  (store, mine, exemplars, proposals).
 - `types.ts` gains additive events: `parent` on nested events, `handoff`,
   `verify`, `checkpoint`, `lesson-proposal`.
+
+Engine host, additive:
+
+- `core/agent/loop.ts` becomes the engine host adapter over the core, with
+  the full tool registry, the jail, and the profiles it has today.
+- `registry.ts` gains `runSubagent` (the `delegate` upgrade), `useSkill`,
+  `askForHand`, `symbol`.
 - `config/schema.ts` gains `harness: {profiles, decoding, verify, hooks,
-lessons}`; an empty config stays a valid, working setup.
+lessons, autoSource}`; an empty config stays a valid, working setup.
 - `eval/` v2 with fixtures.
-- Daemon routes and Electron IPC parity for lessons and skills listing.
+- Daemon routes and Electron IPC parity for lessons and skills listing. The
+  CLI gets the harness through the daemon path.
 
-App, additive:
+Phone host, additive:
 
+- `app/src/harness/phoneHost.ts` and `app/src/harness/tools/`: the phone tool
+  slice (vault, gitOS repositories with outbox writes, GitHub contents, web
+  search and fetch, project memory read, todos, vision, `askForHand`).
+- `drivers/stackDriver.ts` becomes the phone host driver; its planner and
+  runner code moves into the core; the docked hand-off to the engine stays.
 - `transcript.ts` cases for the new events; `SubagentCard`, `HandoffCard`,
   `VerifyRow`, `LessonCard`, Rewind on `ToolCard`.
-- Wayfinding rows: Skills becomes real, Lessons is new.
+- Settings: Wayfinding rows (Skills becomes real, Lessons is new) and the
+  LLM Auto-Source switch.
 - The Vault's Lessons folder through the existing read-only note sheet.
-- `StackManager` seat badges; the plan card renders owners from engine events.
-- `StackDriver` uses the engine's plan when docked; keeps its runner offline.
+- `StackManager` seat badges ("auto-sourced", "runs single steps").
 
 ## Phasing and order
 
 Each step ships additively behind config, with tests, gates green, a
 PROGRESS entry, and the previous path intact.
 
-| Step | What                                                          | Why this order                               |
-| ---- | ------------------------------------------------------------- | -------------------------------------------- |
-| 0    | Eval v2                                                       | Measure before changing anything             |
-| 1    | Profiles, constrained decoding, context discipline, retrieval | The small-model lift, provable on day one    |
-| 2    | Plan with owners on the engine, the classifier, subagents     | The Stack inside the loop                    |
-| 3    | Skills, hooks, verify, checkpoints                            | The Claude Code feel completes               |
-| 4    | Ask for a hand, the handoff card                              | Needs profiles and the catalog wiring from 1 |
-| 5    | Lessons tier 1                                                | Needs journals with subagent events from 2   |
-| 1.5  | MCP stdio, the browser driver, the phone pure core            | Promised (Wayfinding) or listed follow-ups   |
-| V2   | Adapters: a spike, then the Practice routine                  | Only with eval v2 as the gate                |
+| Step | What                                                           | Why this order                                    |
+| ---- | -------------------------------------------------------------- | ------------------------------------------------- |
+| 0    | Eval v2                                                        | Measure before changing anything (founder's call) |
+| 1    | Profiles, constrained decoding, context discipline, retrieval  | The small-model lift, provable on day one         |
+| 2    | The pure core and its three hosts, the phone tool slice        | One loop everywhere before it grows               |
+| 3    | Plan with owners on every host, the classifier, subagents      | The Stack inside the loop                         |
+| 4    | Skills, hooks, verify, checkpoints                             | The Claude Code feel completes                    |
+| 5    | Ask for a hand, the handoff card, LLM Auto-Source              | Needs profiles and the catalog wiring from 1      |
+| 6    | Lessons tier 1                                                 | Needs journals with subagent events from 3        |
+| 1.5  | MCP stdio, the browser driver                                  | Promised (Wayfinding) or listed follow-ups        |
+| V2   | Adapters: a hardware check, a spike, then the Practice routine | Only with eval v2 as the gate                     |
 
 ## Risks and honest limits
 
 - **Two runners during the transition.** The app's play and the engine's loop
-  both exist until step 2 lands. The rule is additive: the app uses the
-  engine's plan when docked and keeps its own offline. No rewrite.
+  both exist until step 2 lands. The rule is additive: the core is extracted
+  piece by piece behind the same events, and each host switches over when its
+  tests pass. No rewrite.
+- **The phone's limits.** iOS grants no background compute, so a phone run
+  ends when the app is suspended; the harness resumes from the persisted
+  conversation and says so. Repo writes from the phone go through the outbox
+  grain, never a shell, per the gitOS ruling. Hooks and the verify phase that
+  run a project's tests need the paired engine.
+- **Bundle weight.** The core must stay free of Node built-ins or it cannot
+  load in the WebView; a guard test (the `os-code/protocol` pattern) pins it.
 - **The constraint tax.** Constrained decoding can flatten some models. The
   profile is per family and the eval decides; nothing is turned on by belief.
 - **Latency of second opinions.** Bounded, off for tiny, and the eval must
@@ -452,37 +511,46 @@ PROGRESS entry, and the previous path intact.
 - **Small-model ceilings.** The harness raises the floor, not the ceiling. A
   tiny seat runs single steps and the copy says so.
 
-## Decisions I need from you
+## Decisions (founder, 2026-09-14)
 
-Forks, each with a recommendation, per the interaction model.
+Nine forks were put to the founder as pickers with a recommendation. Eight
+are answered; the calls that differ from the recommendation are marked.
 
-1. **Where V1 runs.** Engine-first, the app renders, the phone-alone play stays
-   as the degraded mode (recommended); or extract the loop's pure core now so
-   the phone runs the harness in V1 (more work, delays the desktop feel).
-2. **V1 learning ambition.** Lessons as data only (recommended, provable, no
-   GPU); or include the adapter spike inside V1.
-3. **The hand's autonomy.** Always a card the person taps (recommended, keeps
-   "you decide who sits in each seat"); or a setting that lets the harness
-   place a local model on its own when it fits.
-4. **What "creative work" spans.** Writing and images through the existing
-   seats (recommended for V1); or a wider brief (audio, video, design assets)
-   that needs new seats.
-5. **Specialist seats get tools.** A coding seat that reads and edits as a
-   subagent (recommended); or seats stay advice-only completions.
-6. **Constrained decoding.** Default on for tiny and small with the union
-   schema, eval-gated per family (recommended); or repair-only as today.
-7. **Eval first.** Step 0 before any harness change (recommended); or in
-   parallel.
-8. **The name.** Keel as a codename only, ships unnamed; or the CMO names a
-   visible feature ("Lessons" is the one visible word today).
-9. **Your box.** Is the Pop!\_OS desktop NVIDIA with 12 GB or more? It decides
-   whether the adapter spike can start there.
+1. **Where V1 runs.** DIFFERS: the harness runs on the phone, the desktop,
+   and the CLI in V1. "It's important V1 allows for phone to feel like Claude
+   Code, not just desktop and CLI." Hence the pure core and three hosts.
+2. **V1 learning ambition.** Lessons as data only. Adapters are V2.
+3. **The hand's autonomy.** DIFFERS: a Settings switch, LLM Auto-Source,
+   default on (the harness may place a local model itself); off is always a
+   card. Cloud never automatic.
+4. **Creative work.** Writing and images through the existing seats.
+5. **Specialist seats get tools.** Yes, seats become subagents.
+6. **Constrained decoding.** Default on for tiny and small, eval-gated per
+   family.
+7. **Eval first.** Yes, step 0.
+8. **The name.** Open. Keel stays a codename until the CMO says otherwise.
+9. **The founder's box.** Under 12 GB of VRAM or not NVIDIA. The V2 adapter
+   spike starts with a hardware check and a small base.
+
+**Two calls raised by the answers, still open.**
+
+- **The CLI.** The TUI is parked (2026-08-18: no new features land on it).
+  The harness reaches `osc` through the daemon for free, but rendering the
+  new cards (subagent, verify, handoff, lesson) in the TUI unparks it.
+  Recommendation: leave the TUI parked in V1; the CLI runs the harness and
+  prints the new events as plain rows, the way `--plain` does today.
+- **Auto-Source and downloads.** The proposal above starts a fitting download
+  on its own on the desktop and when docked, and shows the card on a phone
+  alone. A founder yes or a stricter line ("downloads always ask") is one
+  word.
 
 ## Assumptions made while writing this
 
 - The Currents and Wayfinding rulings hold: no new room, a current is never
   named in a room, "always on" is never said.
-- "Off-device is where long work runs" holds, so the harness is engine-first.
+- "Off-device is where long work runs" is applied, not reversed: the phone
+  runs the harness in the foreground; unattended and long work goes to the
+  engine.
 - The cross-user leaderboard stays parked; no learning crosses people.
 - The Personal pay gates stay off during the beta; nothing here changes what
   is gated.
