@@ -42,6 +42,39 @@ interface OaiUsage {
   completion_tokens?: number;
 }
 
+/** Perplexity's Sonar grounds its answer in a live web search and returns the
+ *  sources as top-level fields OUTSIDE the OpenAI schema: `search_results`
+ *  (title/url/snippet) on current responses, or a bare `citations` URL list on
+ *  older ones. Every other provider omits both, so this is a no-op for them.
+ *  Parsed defensively (never throws on a missing field) into the same
+ *  {title, url, snippet} shape the citations event already carries. */
+interface SonarSources {
+  citations?: string[];
+  search_results?: Array<{ title?: string; url?: string; snippet?: string }>;
+}
+
+function sonarCitations(
+  data: SonarSources,
+): Array<{ title: string; url: string; snippet: string }> {
+  const fromResults = (data.search_results ?? [])
+    .filter((r): r is { url: string; title?: string; snippet?: string } => Boolean(r?.url))
+    .map((r) => ({ title: r.title || hostOfUrl(r.url), url: r.url, snippet: r.snippet ?? '' }));
+  if (fromResults.length) return fromResults;
+  return (data.citations ?? [])
+    .filter((u): u is string => typeof u === 'string' && u.length > 0)
+    .map((url) => ({ title: hostOfUrl(url), url, snippet: '' }));
+}
+
+/** The host of a URL, for a readable citation title; the raw string on a
+ *  malformed URL rather than throwing. */
+function hostOfUrl(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 /** A rough token count for a message list, used only when the provider reports
  *  no usage of its own, so the context meter still fills instead of sitting
  *  empty. About four characters per token over the text; an estimate, and never
@@ -131,12 +164,13 @@ export class CloudOpenAiDriver implements ChatDriver {
         const data = (await res.json()) as {
           choices?: Array<{ message?: { content?: string } }>;
           usage?: OaiUsage;
-        };
+        } & SonarSources;
         const content = data?.choices?.[0]?.message?.content;
         if (typeof content === 'string' && content && !this.aborted) {
           answer = content;
           this.emitter.emit({ type: 'text-delta', text: content });
         }
+        this.emitCitations(sonarCitations(data));
         this.emitUsage(data.usage, estimatePrompt);
       } else {
         this.controller = new AbortController();
@@ -156,6 +190,9 @@ export class CloudOpenAiDriver implements ChatDriver {
         const decoder = new TextDecoder();
         let buffer = '';
         let usage: OaiUsage | undefined;
+        // Sonar sends its sources with the stream (usually the first or last
+        // chunk); keep the last non-empty set and emit once at the end.
+        let sources: Array<{ title: string; url: string; snippet: string }> = [];
         for (;;) {
           const { value, done } = await reader.read();
           if (done || this.aborted) break;
@@ -171,18 +208,21 @@ export class CloudOpenAiDriver implements ChatDriver {
               const json = JSON.parse(payload) as {
                 choices?: Array<{ delta?: { content?: string } }>;
                 usage?: OaiUsage;
-              };
+              } & SonarSources;
               const delta = json?.choices?.[0]?.delta?.content;
               if (typeof delta === 'string' && delta) {
                 answer += delta;
                 this.emitter.emit({ type: 'text-delta', text: delta });
               }
               if (json?.usage) usage = json.usage;
+              const chunkSources = sonarCitations(json);
+              if (chunkSources.length) sources = chunkSources;
             } catch {
               // a partial line or a non-JSON keepalive: skip it
             }
           }
         }
+        this.emitCitations(sources);
         this.emitUsage(usage, estimatePrompt);
       }
 
@@ -205,6 +245,13 @@ export class CloudOpenAiDriver implements ChatDriver {
     } finally {
       this.controller = undefined;
     }
+  }
+
+  /** Emit the sources of a search-grounded answer (Sonar). No-op when there
+   *  are none, so a non-Sonar provider never emits an empty citations event. */
+  private emitCitations(citations: Array<{ title: string; url: string; snippet: string }>): void {
+    if (!citations.length || this.aborted) return;
+    this.emitter.emit({ type: 'citations', citations });
   }
 
   private emitUsage(usage: OaiUsage | undefined, estimatePrompt: number): void {

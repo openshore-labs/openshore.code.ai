@@ -306,23 +306,29 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Perplexity Sonar citations through the driver (built 2026-09-14).**
-      Sonar returns its sources as top-level `citations`/`search_results`
-      outside the OpenAI schema, and the plain openai-compatible driver path
-      drops them, so a Sonar model placed in a cloud chat loses its one
-      advantage. Thread them through the driver event stream (the app already
-      renders `webSearch` citations) before a release leans on Sonar as a
-      placed bench model. Model ids in `providers.ts` also need the usual
-      live-API verification before a distribution build.
-- [ ] **Research (Perplexity) engine parity (built 2026-09-14).** The
-      default-off Research toggle grounds the on-device (app) search path in
-      Sonar via `resolveSearchKey`/`webSearch`. A paired-desktop session uses
-      the engine's own search tool (`os-code/src/core/tools/search`), which has
-      no `perplexity` backend and does not yet receive the toggle. Add a
-      `perplexity` search backend plus a `search.backend` value in
-      `config/schema.ts`, and thread the setting into the session the way
-      `humanize`/`currents` ride the bootstrap, so docked sessions honor
-      Research too.
+- [x] **Perplexity Sonar citations through the driver (built 2026-09-14).**
+      `CloudOpenAiDriver` now parses Sonar's top-level `search_results`/
+      `citations` (both the streaming and native-shim paths) and emits a
+      `citations` event, so a placed Sonar model shows its sources like the
+      on-device search path does. It is a no-op for every other provider.
+      Tested in `app/test/cloudOpenAiDriver.test.ts`.
+- [ ] **Verify Perplexity Sonar model ids and the API-key URL against the live
+      API before a distribution build.** They were taken from web search (the
+      docs host is egress-blocked in the sandbox), and carry the house
+      verify-before-release caveat in `providers.ts`. A retired id is a dead
+      button in the stack.
+- [x] **Research (Perplexity) engine parity (built 2026-09-14).** The engine
+      now has a `perplexity` search backend
+      (`os-code/src/core/tools/search/perplexity.ts`, registered in
+      `searchProviderFor`, `search.backend: 'perplexity'` +
+      `perplexityKeyEnv`), so a paired-desktop or headless session can ground
+      its own web search in Sonar. By design the key is read from the env on
+      that machine like Brave and Tavily and never rides a session to a remote
+      hub (the CTO provider-key ruling), so the engine is configured on the box
+      via `os-code.config.json` rather than by pushing the app toggle and key
+      over the wire. Auto-selecting the engine backend from the app's Research
+      toggle is deliberately NOT done for that reason; a docked user sets
+      `search.backend` on the desktop, the same as the other keyed backends.
 
 - [ ] **Agentic Currents on a device and a real box (built 2026-09-09, unverified
       off the sandbox).** TestFlight: flip Hermes Agent on in Settings and
@@ -754,7 +760,13 @@ log entry). Migration is now `0016`.
   build, the stubbed Wayfinding Browser). Code: `providers.ts`, `webSearch.ts`,
   `onDeviceDriver.ts`, `store.ts`, `SettingsScreen.tsx`, `Switch.tsx`. Gates:
   app typecheck (src and electron), lint, 880 tests, Vite build, Prettier.
-  Ruling in `DECISIONS.md`. Follow-ups in What remains.
+  Ruling in `DECISIONS.md`. Then the two follow-ups landed the same day: Sonar
+  citations now thread through `CloudOpenAiDriver` (top-level
+  `search_results`/`citations`, both stream paths, emitted as a `citations`
+  event), and the engine gained a `perplexity` search backend
+  (`src/core/tools/search/perplexity.ts`, `search.backend` + `perplexityKeyEnv`),
+  config and env driven so the key stays on the box. Both pushed to `main` per
+  the founder.
 
 - **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
   familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
