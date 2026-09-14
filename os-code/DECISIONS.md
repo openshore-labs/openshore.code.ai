@@ -1260,6 +1260,15 @@ execution contract. Newest at the bottom.
   independent tries per task in fresh workspaces and reports one try next to
   best of n; a best-of-N picker in the loop (which needs checkpoints) is built
   only if that gap says it pays on the reference machine.
+- 2026-09-14: **The stream idle guard has two windows: prefill and inter-token.**
+  Waiting for the first token is prefill, and a cold local model reading a large
+  agent-loop prompt on a modest box (small GPU or CPU) can take minutes before
+  it speaks; killing it then fails exactly the hardware OpenShore serves. So the
+  first-byte window is generous (default 300s) and the inter-token window is
+  tight (default 120s), both in `resourceBudget` and never first-byte shorter
+  than inter-token. This was found by the self-diagnosing deep eval: qwen 0% was
+  a 120s prefill timeout, not the model. `osc eval` is the spine, and it caught
+  a harness bug that the three-probe eval (tiny prompts, fast prefill) hid.
 - 2026-09-14: **A frontier reference run is a deliberate tap, once, up front.**
   `osc eval --deep` never spends on a local model; naming a cloud provider and
   model on the command line asks one terminal question (count of runs, on your

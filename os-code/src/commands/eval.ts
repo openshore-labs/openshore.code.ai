@@ -9,6 +9,7 @@ import { runEval } from '../eval/harness.js';
 import { runEvalV2, type DriveTask, type DriveTrace, type EvalV2Report } from '../eval/v2.js';
 import { EVAL_TASKS } from '../eval/tasks.js';
 import { classBlurb } from '../harness/profile.js';
+import { configureStreamIdle } from '../providers/streamIdle.js';
 import { resolveStack } from '../router/stack.js';
 import { Router } from '../router/router.js';
 import { buildToolRegistry, buildToolContext } from '../core/agent/registry.js';
@@ -153,6 +154,15 @@ async function runDeep(
       escalation: { ...config.routing.escalation, enabled: false },
     },
   };
+  // The deep eval wires sessions by hand rather than through bootstrapSession,
+  // so apply the stream idle windows here too: a cold local model reading the
+  // full agent-loop prompt on a modest box can take minutes to first token, and
+  // the default 120s inter-token window would kill it during prefill.
+  configureStreamIdle({
+    idleSeconds: config.resourceBudget.streamIdleSeconds,
+    firstByteSeconds: config.resourceBudget.streamFirstByteSeconds,
+  });
+
   const stack = resolveStack(evalConfig, providers);
   const router = new Router(evalConfig, providers, stack);
   const tools = buildToolRegistry({
