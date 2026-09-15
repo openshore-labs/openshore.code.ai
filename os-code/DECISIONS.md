@@ -1260,6 +1260,13 @@ execution contract. Newest at the bottom.
   independent tries per task in fresh workspaces and reports one try next to
   best of n; a best-of-N picker in the loop (which needs checkpoints) is built
   only if that gap says it pays on the reference machine.
+- 2026-09-15: **North star: a five-year-old MacBook should feel as powerful as
+  running Claude-grade models on a local stack (founder).** State-of-the-art
+  hardware buys headroom and options, never entry. The feeling is delivered by
+  the harness (retrieval, the project's own tests run and fed back, best-of-N by
+  those tests, a hand to a frontier model on the person's key only when needed),
+  never by pretending a small local model is a frontier one; the copy stays
+  honest (tenet 2). Recorded in `docs/premium-harness-proposal.md`.
 - 2026-09-15: **The reference machine is the lowest common denominator, on
   purpose (founder).** The founder's box is older, slower, and CPU-only (no
   NVIDIA driver, `ollama ps` reads 100% CPU; a 7B prefills at about 6.7 tok/s

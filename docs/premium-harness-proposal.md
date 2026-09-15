@@ -17,6 +17,27 @@ section at the end says why.
 botOS as routines. It ships with no room and no new name; it is simply how
 OpenShore works. The CMO names it if it needs a name.
 
+## The north star (founder, 2026-09-15)
+
+You should not need a state-of-the-art chip to run OpenShore. A better machine
+buys more headroom and more options; it is never the price of entry. The bar is
+this: someone on a five-year-old MacBook should feel as powerful as if they were
+running Claude-grade models on their own local stack. The reference machine is
+therefore the lowest common denominator on purpose (the founder's own box:
+older, CPU-only, a 7B at 3 to 7 tokens per second); a number that holds there
+holds for almost anyone.
+
+The honesty bar holds this promise up. A small local model is not secretly a
+frontier model, and the copy never says it is. What delivers the FEELING of
+that power is the harness doing the work the model cannot: retrieval so the
+model need not remember, the project's own tests run and their failures handed
+back until the change holds, the best of a few tries judged by those tests, and
+a deliberate hand to a frontier model on the person's own key only when the task
+truly needs it. The person feels capable and in control; the machinery, not a
+pretended weight upgrade, is what earns the feeling. This is the founder's
+"code like Sonnet, however we get there," stated as a promise to the person on
+the oldest machine in the room.
+
 ## The answer in ten lines
 
 1. Build ONE harness as a portable pure core, and make the Stack its
