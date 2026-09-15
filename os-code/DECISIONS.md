@@ -1271,6 +1271,15 @@ execution contract. Newest at the bottom.
   unknown tool name goes to repair. This is the harness doing the mechanical
   work for a small seat (tenet 3), and it is what turns the CPU floor from a
   timeout into a measurable baseline.
+- 2026-09-15: **A failed edit echoes the file's own current content, bounded.**
+  The 3B deep eval showed the real cost of a hint-only failure message: it
+  resent an identical, non-matching SEARCH block four times and tripped the
+  loop guardrail, because "re-read the file" is advice a small model does not
+  reliably act on across a tool round trip. `editFile.ts` now includes the
+  file's current content (capped at 4000 characters; past that, it says to
+  call readFile) directly in the failure, so the next turn can copy the exact
+  lines without a second read. This is retrieval the harness does for the
+  model, per tenet 3, not a change to the edit-matching strategies themselves.
 - 2026-09-15: **North star: a five-year-old MacBook should feel as powerful as
   running Claude-grade models on a local stack (founder).** State-of-the-art
   hardware buys headroom and options, never entry. The feeling is delivered by
