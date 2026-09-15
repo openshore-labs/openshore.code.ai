@@ -1557,3 +1557,13 @@ execution contract. Newest at the bottom.
   retries are spent, first verifying attempt wins, N per class, step rails
   still bound it), not a general checkpoint system. Recorded as the current
   small-class floor: 38% one try on CPU-only hardware.
+- **The picker's fresh attempt is independent, not a retry with the failure
+  in context (2026-09-15, round fourteen).** What the eval measured was
+  separate tries with clean context, so that is what the loop does: the
+  history is reset to the original ask, and touched files go back to their
+  pre-task content. Restoring only files that a path-carrying write tool
+  touched is deliberate: it is cheap on any project size and covers what the
+  seat itself did; changes a shell command made are not tracked, which is
+  the honest limit of this form and stays out of scope until a number asks
+  for more. The allowance is per class and one means off, so a full seat's
+  behavior is unchanged.

@@ -36,6 +36,10 @@ export interface DriveTrace {
    *  the check ran this task and whether the last run passed. Absent when it
    *  never ran (no write landed, or the task has no check). */
   verify?: { rounds: number; passed: boolean };
+  /** How many independent attempts the loop's own best-of-N picker made
+   *  this run (1 when it never had to start over). Distinct from the eval's
+   *  `--attempts`, which are whole separate runs. */
+  attempts?: number;
 }
 
 /** A drive may return just the final text, or the text plus a trace of what

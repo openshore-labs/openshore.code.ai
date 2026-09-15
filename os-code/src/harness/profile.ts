@@ -52,6 +52,13 @@ export interface ModelClassPolicy {
    *  raise it). A small seat converges in small steps: the eval's 3B came
    *  within one line of a two-file rename after the default three checks. */
   verifyRetries: number;
+  /** Best-of-N judged by the project's own check: how many independent
+   *  attempts a task gets before it reports not verified. One means no
+   *  picker. Set by measurement, not belief: `osc eval --deep --attempts 2`
+   *  on the reference box showed the small class gains about 13 points from
+   *  a second try (38% to 50%), so small and tiny get two; mid and large are
+   *  unmeasured and stay at one until a number says otherwise. */
+  bestOfAttempts: number;
 }
 
 export interface ModelClassProfile extends ModelClassPolicy {
@@ -70,6 +77,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     codeMapContextFraction: 0.15,
     compactAtContextFraction: 0.6,
     verifyRetries: 4,
+    bestOfAttempts: 2,
   },
   small: {
     maxToolsShown: 10,
@@ -80,6 +88,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     codeMapContextFraction: 0.2,
     compactAtContextFraction: 0.65,
     verifyRetries: 4,
+    bestOfAttempts: 2,
   },
   mid: {
     maxToolsShown: Infinity,
@@ -90,6 +99,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     codeMapContextFraction: 0.25,
     compactAtContextFraction: 0.7,
     verifyRetries: 2,
+    bestOfAttempts: 1,
   },
   large: {
     maxToolsShown: Infinity,
@@ -100,6 +110,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     codeMapContextFraction: 0.3,
     compactAtContextFraction: 0.7,
     verifyRetries: 2,
+    bestOfAttempts: 1,
   },
 };
 

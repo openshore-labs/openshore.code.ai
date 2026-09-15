@@ -265,6 +265,7 @@ const HarnessProfileOverrideSchema = z.object({
   codeMapContextFraction: z.number().min(0).max(1).optional(),
   compactAtContextFraction: z.number().min(0).max(1).optional(),
   verifyRetries: z.number().int().min(0).max(10).optional(),
+  bestOfAttempts: z.number().int().min(1).max(5).optional(),
 });
 
 const HarnessSchema = z.object({
