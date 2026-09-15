@@ -1368,3 +1368,12 @@ execution contract. Newest at the bottom.
   The desktop `StackScreen`/`StackHealthScreen` "Quarterback" vs "Reasoning LLM"
   vocabulary split was surfaced as a separate founder-gated copy sweep rather
   than folded in. Review in `docs/stack-page-redesign.md`.
+- **Vault empty state stops reusing the chat `.greeting` (2026-09-15, CTO +
+  Creative Studio + CX).** The shared `.greeting` is `position: fixed` and
+  `pointer-events: none` on touch by design (a chat backdrop), which made the
+  Vault's empty state float over the page and its button untappable on a phone.
+  The Vault now uses in-flow blocks: a new-user onboarding ramp for the empty
+  personal vault (Obsidian-style, teaching what it is and how the agent uses
+  it), and plain notice cards for offline/empty-team. `vaultCreate` gained an
+  optional `content` arg so a seeded welcome note opens in read mode. Review in
+  `docs/vault-page-redesign.md`.
