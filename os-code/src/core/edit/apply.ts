@@ -7,7 +7,7 @@
 // corruption, so ambiguity is always an error, never a guess.
 import type { EditBlock } from './searchReplace.js';
 
-export type MatchStrategy = 'exact' | 'trimmed' | 'normalized' | 'anchored';
+export type MatchStrategy = 'exact' | 'trimmed' | 'normalized' | 'anchored' | 'fragment';
 
 export interface AppliedBlock {
   index: number;
@@ -43,7 +43,16 @@ export function applyEditBlocks(original: string, blocks: EditBlock[]): ApplyRes
     const lines = content.split('\n');
     const before = lines.slice(0, found.start);
     const after = lines.slice(found.end + 1);
-    const replacement = block.replace === '' ? [] : block.replace.split('\n');
+    const replacement =
+      found.strategy === 'fragment'
+        ? [
+            lines[found.start]!.slice(0, found.fragmentStart) +
+              block.replace +
+              lines[found.start]!.slice(found.fragmentEnd),
+          ]
+        : block.replace === ''
+          ? []
+          : block.replace.split('\n');
     content = [...before, ...replacement, ...after].join('\n');
     applied.push({
       index,
@@ -56,7 +65,10 @@ export function applyEditBlocks(original: string, blocks: EditBlock[]): ApplyRes
   return { ok: failures.length === 0 && applied.length > 0, content, applied, failures };
 }
 
-type Located = { start: number; end: number; strategy: MatchStrategy } | { reason: string };
+type Located =
+  | { start: number; end: number; strategy: Exclude<MatchStrategy, 'fragment'> }
+  | { start: number; end: number; strategy: 'fragment'; fragmentStart: number; fragmentEnd: number }
+  | { reason: string };
 
 function locate(content: string, search: string): Located {
   if (search.trim() === '') {
@@ -151,6 +163,46 @@ function locate(content: string, search: string): Located {
       return {
         reason: `The context anchors match ${candidates.length} places. Include more unique surrounding lines.`,
       };
+    }
+  }
+
+  // Strategy 5: a single-line fragment rather than a whole line. A model
+  // sometimes copies only the part it means to change ("function oldName("
+  // instead of the full "export function oldName(name) {"), which none of
+  // the whole-line strategies above can match. When that exact text occurs
+  // in exactly one place in the whole file, once, the location is just as
+  // certain as a whole-line match, so splice only that fragment and leave
+  // the rest of the line untouched rather than demanding a full line. A
+  // minimum length keeps a stray "{" or ")" from matching by accident.
+  if (searchLines.length === 1) {
+    const needle = searchLines[0]!.trim();
+    if (needle.length >= 6) {
+      const hits: Array<{ line: number; col: number }> = [];
+      let ambiguous = false;
+      for (let i = 0; i < contentLines.length; i++) {
+        const line = contentLines[i]!;
+        const first = line.indexOf(needle);
+        if (first === -1) continue;
+        if (line.indexOf(needle, first + 1) !== -1) {
+          ambiguous = true;
+          break;
+        }
+        hits.push({ line: i, col: first });
+      }
+      if (!ambiguous && hits.length === 1) {
+        return {
+          start: hits[0]!.line,
+          end: hits[0]!.line,
+          strategy: 'fragment',
+          fragmentStart: hits[0]!.col,
+          fragmentEnd: hits[0]!.col + needle.length,
+        };
+      }
+      if (ambiguous || hits.length > 1) {
+        return {
+          reason: `"${needle}" appears more than once in the file. Include more of the line, or the whole line, so the location is unique.`,
+        };
+      }
     }
   }
 

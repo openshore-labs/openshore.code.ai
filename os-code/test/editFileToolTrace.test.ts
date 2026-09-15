@@ -77,6 +77,30 @@ describe('editFile echoes ground truth on a failed match', () => {
     expect(observation).toContain('give search');
   });
 
+  it('gives a specific redirect when SEARCH is left blank', async () => {
+    // The deep eval's add-a-function task: the model wanted to APPEND code
+    // and left search blank instead of anchoring on an existing line. Routing
+    // this through the matcher produced "Your SEARCH was:" followed by
+    // nothing; the tool now catches it before that and shows the replace text
+    // it did send, so the retry has something concrete to anchor on.
+    const provider = new MockProvider('mock', [
+      toolTurn('editFile', {
+        path: 'greet.mjs',
+        search: '',
+        replace: 'function greet2(name) {\n  console.log("hey again " + name);\n}\n',
+      }),
+      textTurn('Oops.'),
+    ]);
+    const session = makeTestSession(provider, { files: { 'greet.mjs': GREET_FILE } });
+    await session.agent.run('add a second greeting function');
+    const second = provider.requests[1]!;
+    const observation = observationContaining(second.messages, 'no SEARCH text');
+    expect(observation).toBeDefined();
+    expect(observation).toContain('function greet2(name)');
+    expect(observation).toContain('Current contents of greet.mjs');
+    expect(observation).toContain('use an existing line');
+  });
+
   it('a successful edit is unaffected: no echoed content, just the applied summary', async () => {
     const provider = new MockProvider('mock', [
       toolTurn('editFile', {

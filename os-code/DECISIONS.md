@@ -1435,3 +1435,17 @@ execution contract. Newest at the bottom.
   `.greeting` was swept off the last non-chat screen: the project memory view's
   empty/error/not-set-up states now use the shared in-flow `.empty-notice` card
   (renamed from `.vault-notice`), so only the chat keeps `.greeting`.
+- **Edit matcher gains a fragment strategy; a blank SEARCH is redirected before
+  it, not inside `locate()` (2026-09-15, deep-eval round six).** The 3B seat's
+  rename-across-files task sent a bare fragment ("function oldName(") instead
+  of a whole line. A single-line SEARCH that occurs exactly once as a substring
+  anywhere in the file is now spliced in place rather than rejected, gated at a
+  6-character minimum so a stray brace or paren never matches by coincidence
+  (the number is a judgment call, not an eval-measured cutoff, and can move if
+  a real fragment shorter than that turns up). Separately, the add-a-function
+  task sent a block with search left blank (an append with nothing to anchor
+  on); that is now caught in `editFile.ts` before `applyEditBlocks` runs at
+  all, since the matcher's own empty-string message has no room to show the
+  model's REPLACE text or the file to anchor on. Neither loosens WHERE an edit
+  lands: both still require a provably unique location. Tests in
+  `test/editMatchRelaxed.test.ts` and `test/editFileToolTrace.test.ts`.
