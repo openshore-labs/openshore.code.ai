@@ -7,7 +7,8 @@
 // corruption, so ambiguity is always an error, never a guess.
 import type { EditBlock } from './searchReplace.js';
 
-export type MatchStrategy = 'exact' | 'trimmed' | 'normalized' | 'anchored' | 'fragment';
+export type MatchStrategy =
+  'exact' | 'trimmed' | 'normalized' | 'anchored' | 'fragment' | 'flattened';
 
 export interface AppliedBlock {
   index: number;
@@ -216,6 +217,37 @@ function locate(content: string, search: string): Located {
     }
   }
 
+  // Strategy 6: the model squished a multi-line block onto one line (or a
+  // different number of lines than the file has), so no line-by-line strategy
+  // above can ever line up, however tolerant it is of spelling. Flatten both
+  // sides the same way, normalized line by line then joined by a single
+  // space standing in for the line break, and look for the SEARCH as a unique
+  // substring of the whole file's flattened form. A match found this way
+  // still pins an exact line range (the substring's start and end map back to
+  // real line numbers), so it is spliced as a normal whole-line swap, not a
+  // fragment. The minimum length is higher than a same-line fragment's
+  // because the haystack is now the whole file, not one line.
+  const flatNeedle = searchLines.map(norm).join(' ');
+  if (flatNeedle.length >= 20) {
+    const { flat, lineStarts } = flattenLines(contentLines);
+    const hits: number[] = [];
+    for (let at = flat.indexOf(flatNeedle); at !== -1; at = flat.indexOf(flatNeedle, at + 1)) {
+      hits.push(at);
+    }
+    if (hits.length === 1) {
+      return {
+        start: lineAt(lineStarts, hits[0]!),
+        end: lineAt(lineStarts, hits[0]! + flatNeedle.length - 1),
+        strategy: 'flattened',
+      };
+    }
+    if (hits.length > 1) {
+      return {
+        reason: `The SEARCH text (once line breaks and spacing are ignored) matches ${hits.length} places. Add more unique surrounding lines.`,
+      };
+    }
+  }
+
   // Nothing matched: name the closest line so the model can self-correct.
   const hint = closestLineHint(contentLines, searchLines[0]!);
   return {
@@ -228,6 +260,38 @@ function locate(content: string, search: string): Located {
  *  unique match, so this forgives how a line was spelled, never where it is. */
 function norm(line: string): string {
   return line.trim().replace(/\s+/g, ' ').replace(/[`'"]/g, '"');
+}
+
+/** The whole file as one normalized string, each line trimmed and
+ *  whitespace-collapsed then joined by a single space in place of the real
+ *  line break, plus where each original line begins in that string, so a
+ *  match found in the flattened form can be mapped back to real line numbers. */
+function flattenLines(lines: string[]): { flat: string; lineStarts: number[] } {
+  let flat = '';
+  const lineStarts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    lineStarts.push(flat.length);
+    flat += norm(lines[i]!);
+    if (i < lines.length - 1) flat += ' ';
+  }
+  return { flat, lineStarts };
+}
+
+/** The original line index containing flattened-string offset `pos`. */
+function lineAt(lineStarts: number[], pos: number): number {
+  let lo = 0;
+  let hi = lineStarts.length - 1;
+  let ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (lineStarts[mid]! <= pos) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
 }
 
 function findRuns(

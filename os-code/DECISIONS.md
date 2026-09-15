@@ -1493,3 +1493,20 @@ execution contract. Newest at the bottom.
   `attemptedWriteThisTask` flag (set whenever a write-risk tool is tried,
   landed or not, including a stale-repeat skip of one) gates the second
   trigger, so a task that never needed an edit still trips neither tell.
+- **The matcher gains a flattened whole-file strategy for a squished
+  multi-line block; the lean core is told not to reach for git (2026-09-15,
+  deep-eval round nine).** A 3B seat joined a real three-line function body
+  with spaces instead of line breaks, which no line-based strategy can match
+  regardless of spelling tolerance, since they all compare a fixed number of
+  whole lines. Both sides are now flattened the same way (each line
+  normalized, joined by one space per line break) and the SEARCH is looked
+  for as a unique substring of the whole file's flattened form; a hit still
+  maps back to a real line range and applies as an ordinary whole-line swap.
+  Deliberately does NOT bridge an actual content difference (the same run's
+  SEARCH also carried a stray semicolon the file does not have anywhere),
+  which stays a refusal, pinned by its own test: flattening forgives how the
+  lines were broken, never a fact about what the file contains. Separately,
+  the same run showed the model going looking for git tools (`gitStatus`,
+  then a hallucinated `gitAdd`) on a task that never asked for version
+  control; the lean core prompt now says plainly not to, since most tasks
+  need none of it.

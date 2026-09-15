@@ -164,3 +164,77 @@ describe('a bare fragment, not a whole line, still pins uniquely (strategy: frag
     expect(r.failures[0]!.reason).toMatch(/not found in the file/);
   });
 });
+
+describe('a multi-line block squished onto one line still pins the range (strategy: flattened)', () => {
+  const CAPITALIZE = [
+    'export function capitalize(s) {',
+    '  return s.charAt(0).toUpperCase() + s.slice(1);',
+    '}',
+    '',
+  ].join('\n');
+
+  it('matches a real three-line block joined with spaces instead of newlines', () => {
+    // The deep eval's 3B seat did close to this on the add-function task: the
+    // three-line capitalize body joined with spaces instead of real line
+    // breaks. No line-based strategy can ever line up a 1-line SEARCH against
+    // 3 real lines, however tolerant of spelling; only comparing both sides
+    // flattened finds it. (The eval's exact attempt also added a stray
+    // semicolon the file does not have, which is a real content mismatch,
+    // not a formatting one, and is correctly left unmatched, see the "will
+    // not bridge an actual content difference" case below.)
+    const r = applyEditBlocks(CAPITALIZE, [
+      {
+        search: 'export function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }',
+        replace: [
+          'export function capitalize(s) {',
+          '  return s.charAt(0).toUpperCase() + s.slice(1);',
+          '}',
+          '',
+          'export function shout(s) {',
+          '  return s.toUpperCase() + "!";',
+          '}',
+        ].join('\n'),
+      },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.applied[0]!.strategy).toBe('flattened');
+    expect(r.content).toContain('export function shout(s) {');
+    expect(r.content).toContain('export function capitalize(s) {');
+  });
+
+  it('refuses when the flattened text matches more than one place', () => {
+    const twice = CAPITALIZE + CAPITALIZE;
+    const r = applyEditBlocks(twice, [
+      {
+        search: 'export function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }',
+        replace: 'x',
+      },
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]!.reason).toMatch(/matches 2 places/);
+  });
+
+  it('will not guess below the minimum flattened length', () => {
+    const r = applyEditBlocks(CAPITALIZE, [{ search: 'capitalize(s) {', replace: 'x' }]);
+    // Short enough to skip the flattened strategy, but still a real substring
+    // of one line, so the plain single-line fragment strategy catches it.
+    expect(r.ok).toBe(true);
+    expect(r.applied[0]!.strategy).toBe('fragment');
+  });
+
+  it('will not bridge an actual content difference, only a formatting one', () => {
+    // The deep eval's real SEARCH had a trailing ";" after the closing brace
+    // that the file simply does not have anywhere: not a squished line break,
+    // a genuine wrong character. Flattening forgives HOW the lines were
+    // broken, never a fact about what the file contains, so this still
+    // refuses rather than guess which brace the model meant.
+    const r = applyEditBlocks(CAPITALIZE, [
+      {
+        search: 'export function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); };',
+        replace: 'x',
+      },
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]!.reason).toMatch(/not found in the file/);
+  });
+});
