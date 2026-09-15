@@ -251,7 +251,7 @@ export const editFileTool: ToolDef<typeof schema> = {
     if (!structural.ok) {
       return {
         ok: false,
-        content: `The edit was NOT applied because verification failed: ${structural.detail}`,
+        content: `The edit was NOT applied because verification failed: ${structural.detail}\nThe file is unchanged. Your replace must be complete, runnable code standing in for the whole search region, including any text that shared a line with it (such as "export function" at the start of a line).`,
       };
     }
     writeFileSync(abs, after);

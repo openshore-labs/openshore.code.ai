@@ -24,6 +24,19 @@ describe('paramsBFromModelId', () => {
   });
 });
 
+describe('verify retries per class', () => {
+  it('gives a lean seat more goes at a failing check than a full one', () => {
+    expect(deriveProfile({ model: 'x:3b', kind: 'local' }).verifyRetries).toBe(4);
+    expect(deriveProfile({ model: 'x:1.5b', kind: 'local' }).verifyRetries).toBe(4);
+    expect(deriveProfile({ model: 'x:14b', kind: 'local' }).verifyRetries).toBe(2);
+    expect(deriveProfile({ model: 'x', kind: 'cloud' }).verifyRetries).toBe(2);
+  });
+  it('is a per-class override like the rest of the policy', () => {
+    const p = deriveProfile({ model: 'x:3b', kind: 'local' }, { small: { verifyRetries: 6 } });
+    expect(p.verifyRetries).toBe(6);
+  });
+});
+
 describe('deriveModelClass', () => {
   it('classes by parameter count from the name', () => {
     expect(deriveModelClass({ model: 'x:1.5b', kind: 'local' })).toBe('tiny');

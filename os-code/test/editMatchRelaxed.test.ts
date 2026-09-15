@@ -60,6 +60,20 @@ describe('spelling-tolerant match (strategy: normalized)', () => {
     expect(r.ok).toBe(false);
     expect(r.failures[0]!.reason).toMatch(/matches 2 places/);
   });
+
+  it('an ambiguous SEARCH comes back with each candidate ready to copy', () => {
+    // "add surrounding lines" is an instruction; a small model follows text
+    // it can paste. Each match is shown with the line above it, so the very
+    // next call can be a copy of candidate [2].
+    const r = applyEditBlocks(TWO_FUNCS, [{ search: '  return a + b;', replace: 'x' }]);
+    expect(r.ok).toBe(false);
+    const reason = r.failures[0]!.reason;
+    expect(reason).toContain('Send one of these as search instead');
+    expect(reason).toContain('[1] lines 1 to 2:\nexport function add(a, b) {\n  return a + b;');
+    expect(reason).toContain(
+      '[2] lines 5 to 6:\nexport function subtract(a, b) {\n  return a + b;',
+    );
+  });
 });
 
 describe('two unique anchors pin the location (strategy: anchored)', () => {
@@ -220,6 +234,22 @@ describe('a multi-line block squished onto one line still pins the range (strate
     // of one line, so the plain single-line fragment strategy catches it.
     expect(r.ok).toBe(true);
     expect(r.applied[0]!.strategy).toBe('fragment');
+  });
+
+  it('keeps the text outside a match that starts part way through a line', () => {
+    // The deep eval's fix-bug run: SEARCH was "subtract(a, b) { return a + b; }",
+    // which flattens to a match starting AFTER "export function " on line 5.
+    // The first cut replaced the whole line and dropped that prefix, producing
+    // "subtract(a, b) { return a - b; }", which the syntax check refused. The
+    // prefix (and any suffix on the last line) now rides around the replace.
+    const r = applyEditBlocks(TWO_FUNCS, [
+      { search: 'subtract(a, b) { return a + b; }', replace: 'subtract(a, b) { return a - b; }' },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.applied[0]!.strategy).toBe('flattened');
+    expect(r.content).toContain('export function subtract(a, b) { return a - b; }');
+    expect(r.content).toContain('export function add(a, b) {\n  return a + b;\n}');
+    expect(r.content).not.toContain('\nsubtract(a, b)');
   });
 
   it('will not bridge an actual content difference, only a formatting one', () => {

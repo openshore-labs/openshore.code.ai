@@ -5,7 +5,7 @@
 // the multi-KB text, and a one-time note. mid and large seats, and the off
 // switch, keep the full prompt and every tool.
 import { describe, it, expect } from 'vitest';
-import { MockProvider, textTurn, type ScriptedTurn } from './helpers/mockProvider.js';
+import { MockProvider, textTurn, toolTurn, type ScriptedTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
 import type { ChatRequest } from '../src/providers/types.js';
@@ -84,6 +84,37 @@ describe('the discipline seam in the loop: a small seat gets a lean prompt', () 
     });
     const system = systemOf(requests[0]!);
     expect(system).toMatch(/do not (check git status or use|use) (any )?git/i);
+  });
+
+  it('a lean seat gets its class allowance of verify retries, a full seat the config default', async () => {
+    // A check that always fails: the loop hands it back to the model until the
+    // allowance is spent. Small class: 4 retries, so 5 checks. Profiles off:
+    // the config default of 2, so 3 checks.
+    const always = (n: number) => [
+      toolTurn('writeFile', { path: 'a.txt', content: 'x\n' }),
+      ...Array.from({ length: n }, () => textTurn('done')),
+    ];
+    const verify = { command: 'node -e "process.exit(1)"' };
+    const lean = new MockProvider('mock', always(6));
+    const leanSession = makeTestSession(lean, {
+      configOverrides: { harness: { profiles: { enabled: true }, verify } },
+    });
+    await leanSession.agent.run('write a.txt');
+    expect(leanSession.events.filter((e) => e.type === 'verify')).toHaveLength(5);
+
+    const full = new MockProvider('mock', always(6));
+    const fullSession = makeTestSession(full, {
+      configOverrides: { harness: { profiles: { enabled: false }, verify } },
+    });
+    await fullSession.agent.run('write a.txt');
+    expect(fullSession.events.filter((e) => e.type === 'verify')).toHaveLength(3);
+  });
+
+  it('tells a lean seat to run code it is asked about rather than reason about it', async () => {
+    const { requests } = await runWith([textTurn('done')], {
+      harness: { profiles: { enabled: true } },
+    });
+    expect(systemOf(requests[0]!)).toMatch(/run it with runShell/);
   });
 
   it('a full seat keeps the complete core', async () => {

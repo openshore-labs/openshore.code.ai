@@ -18,7 +18,7 @@ import { PermissionEngine, type PermissionConfig } from '../core/permissions/ind
 import { Guardrails } from '../core/guardrails/index.js';
 import { profileFor } from '../core/security/profiles.js';
 import { UsageTracker } from '../auth/usage.js';
-import type { AgentEvent } from '../core/agent/types.js';
+import type { AgentEvent, Approver } from '../core/agent/types.js';
 import type { ToolRegistry } from '../core/tools/index.js';
 import type { OscConfig } from '../config/schema.js';
 import { confirm, header, okLine, out, warnLine } from './util.js';
@@ -203,16 +203,7 @@ async function runDeep(
       guardrails: new Guardrails(config.guardrails),
       usage: new UsageTracker(),
       profile,
-      approver: async (req) =>
-        req.risk === 'read' || req.risk === 'write' || req.risk === 'network'
-          ? { approve: true }
-          : req.kind === 'cloud-spend' && cloudApproved
-            ? { approve: true }
-            : {
-                approve: false,
-                reason:
-                  'osc eval --deep runs hermetically: no shell, no push, and no cloud spend beyond a reference run you approved up front',
-              },
+      approver: evalApprover(() => cloudApproved),
       onEvent: (e) => events.push(e),
       persistRule: () => false,
     });
@@ -233,6 +224,41 @@ async function runDeep(
     warnLine(`The deep eval could not finish: ${(err as Error).message}`);
     process.exitCode = 1;
   }
+}
+
+// A plain `node ...` invocation and nothing else: no chaining, no redirection
+// (an arrow function's `=>` is fine, a bare `>` is not), no substitution, no
+// climbing out of the workspace. The same trust the verify step already
+// extends by running the task's own check with node.
+function plainNodeCommand(summary: string): boolean {
+  if (!/^Run: node(\s|$)/.test(summary)) return false;
+  const cmd = summary.slice('Run: '.length);
+  if (/[;&|`<]|\$\(/.test(cmd)) return false;
+  if (/(^|[^=])>/.test(cmd)) return false;
+  return !cmd.includes('..');
+}
+
+/** The deep eval's approver. Reads, edits, and web fetches run; a plain node
+ *  invocation runs, because a coding agent asked what code returns should
+ *  run it rather than reason about it (tenet 3, and the seat's arithmetic is
+ *  not the harness's to fix); everything else (any other shell, push) is
+ *  refused so the benchmark stays hermetic; cloud spend only on a reference
+ *  run approved up front. */
+export function evalApprover(cloudApproved: () => boolean): Approver {
+  return async (req) => {
+    if (req.risk === 'read' || req.risk === 'write' || req.risk === 'network') {
+      return { approve: true };
+    }
+    if (req.kind === 'tool' && req.toolName === 'runShell' && plainNodeCommand(req.summary)) {
+      return { approve: true };
+    }
+    if (req.kind === 'cloud-spend' && cloudApproved()) return { approve: true };
+    return {
+      approve: false,
+      reason:
+        'osc eval --deep runs hermetically: no shell beyond a plain node command in the workspace, no push, and no cloud spend beyond a reference run you approved up front',
+    };
+  };
 }
 
 // The last plain-text answer the loop produced, or '' when it never got there.
