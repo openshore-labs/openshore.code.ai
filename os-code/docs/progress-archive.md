@@ -2491,7 +2491,29 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-06)
+## Log entries (2026-08-18 to 2026-09-09)
+
+- **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
+  familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
+  Agent, the founder asked whether to go down that route, then how to layer
+  new tech in without touching the people who do not, then named the shape:
+  a toggle that turns on a modality, mirrored across every current, one at a
+  time, with a current and haptics flowing from the switch to the border. The
+  CMO and Creative Studio named it Currents (Layers retired) and Wayfinding
+  (Navigation collides with the side panel); the founder answered the five
+  forks (one everywhere, the gesture, Wayfinding, Arriving rows now, the
+  water-line persistent and faint) and asked for BETA on the group. Built:
+  the pure core with the two-part gate and the contribution contract, the
+  Settings groups and connect sheet, the arrival and the persistent
+  water-line, the header pill, the bench, crew, and vault contributions, the
+  engine tools (`askHermes`, `askAgent`, `cliAgent`), the daemon and IPC
+  routes, three written guides, and the guards (trace, contract, exclusivity).
+  Research settled the roster's honesty: Hermes exposes an OpenAI-compatible
+  server with a session header, a cron REST API, and MCP; Vellum and OpenAGI
+  document no network API and ship as Arriving rows that try an A2A card then
+  a `/v1`. Doc `docs/agentic-currents.md`; rulings in `DECISIONS.md`. Gates:
+  both packages typecheck, lint, test, build, Prettier; every guard green.
+  Device and real-box verification in What remains.
 
 - **2026-09-06: voice mode, a spoken conversation over the chat (founder).** The
   founder asked for a Claude-style voice mode usable while coding: native so it

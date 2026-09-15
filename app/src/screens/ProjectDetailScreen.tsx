@@ -1,7 +1,12 @@
 // A project's own room: everything the coding agent needs, tailored to this
-// project. Its chats, its standing instructions, the repositories (and so the
-// files) it works in, and, for a company account, who on the team may read,
-// write, or edit it. Reached by tapping a project on the Projects list.
+// project. Redesigned 2026-09-15 (founder: "75% of work happens here") from a
+// stack of identical config cards into a WORKSPACE. The room now leads with the
+// work: a premium cover carries the name, the live counts, and the one action
+// that matters (start or resume a chat), then the chats sit first, and the
+// context that rides into them (standing instructions, repositories) and the
+// team roster follow. Its chats, its standing instructions, the repositories
+// (and so the files) it works in, and, for a company account, who on the team
+// may read, write, or edit it. Reached by tapping a project on the Projects list.
 //
 // Honest scope: projects are device-local today, so the team-access controls
 // configure who WILL have access once a project is shared with the team (a
@@ -25,15 +30,6 @@ import { relativeTime, sourceShort } from './ChatsScreen.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 
-/** A short, live summary line for the header: chats · repos · access. */
-function summaryLine(project: Project, chatCount: number, showAccess: boolean): string {
-  const parts = [`${chatCount} ${chatCount === 1 ? 'chat' : 'chats'}`];
-  if (project.repoIds.length)
-    parts.push(`${project.repoIds.length} ${project.repoIds.length === 1 ? 'repo' : 'repos'}`);
-  if (showAccess && project.access?.length) parts.push(`${project.access.length} on the team`);
-  return parts.join(' · ');
-}
-
 export function ProjectDetailScreen() {
   const {
     settings,
@@ -49,6 +45,7 @@ export function ProjectDetailScreen() {
     unshareProject,
     openConversation,
     startProjectChat,
+    openProjectMemory,
     setView,
     showToast,
   } = useApp();
@@ -121,6 +118,11 @@ export function ProjectDetailScreen() {
     showToast('Project updated.');
   };
 
+  // The single highest-value action for a returning person: pick up the chat
+  // they were last in. Absent on a fresh project, where "New chat" leads.
+  const resume = chats[0];
+  const repoCount = project.repoIds.length;
+
   const newChat = mayWrite ? (
     <button
       type="button"
@@ -138,41 +140,157 @@ export function ProjectDetailScreen() {
   return (
     <div className="screen">
       <BackBar title={project.name} action={newChat} />
-      <div className="screen-inner">
-        <h1 ref={titleRef} className="project-hero-title">
-          {project.name}
-        </h1>
-        <p className="lead">
-          Everything for this project in one place. Standing instructions and its repositories ride
-          into every chat here, so the coding agent works the way this project needs.
-        </p>
-        <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 2 }}>
-          {isActive ? (
-            <span className="pill local">active</span>
-          ) : (
-            <button
-              className="suggestion"
-              onClick={() => {
-                setActiveProject(project.id);
-                showToast(`${project.name} is now active.`);
-              }}
-            >
-              Make active
-            </button>
-          )}
-          {project.shared ? <span className="pill">Shared</span> : null}
-          {project.shared && !mayEdit && myLevel ? (
-            <span className="pill">You {permissionLabel(myLevel).toLowerCase()}</span>
-          ) : null}
-          <span className="sub" style={{ alignSelf: 'center' }}>
-            {summaryLine(project, chats.length, isCommercial)}
-          </span>
-        </div>
+      <div className="screen-inner project-room">
+        {/* The cover: identity, live counts, and the action that matters. */}
+        <header className="project-cover">
+          <div className="project-cover-wash" aria-hidden="true" />
+          <div className="project-cover-body">
+            <div className="project-cover-top">
+              <span className="project-kicker">Project</span>
+              {isActive ? (
+                <span className="pill local">active</span>
+              ) : (
+                <button
+                  className="suggestion project-activate"
+                  onClick={() => {
+                    setActiveProject(project.id);
+                    showToast(`${project.name} is now active.`);
+                  }}
+                >
+                  Make active
+                </button>
+              )}
+              {project.shared ? <span className="pill muted">Shared</span> : null}
+              {project.shared && !mayEdit && myLevel ? (
+                <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
+              ) : null}
+            </div>
 
-        {/* Standing instructions + name. */}
-        <div className="card project-section" style={{ '--i': 0 } as CSSProperties}>
+            <h1 ref={titleRef} className="project-hero-title">
+              {project.name}
+            </h1>
+            <p className="project-cover-lead">
+              Everything for this project in one place. Its instructions and repositories ride into
+              every chat here.
+            </p>
+
+            <div className="project-stats" role="list">
+              <div className="project-stat" role="listitem">
+                <span className="project-stat-num">{chats.length}</span>
+                <span className="project-stat-label">{chats.length === 1 ? 'chat' : 'chats'}</span>
+              </div>
+              <div className="project-stat" role="listitem">
+                <span className="project-stat-num">{repoCount}</span>
+                <span className="project-stat-label">{repoCount === 1 ? 'repo' : 'repos'}</span>
+              </div>
+              {isCommercial ? (
+                <div className="project-stat" role="listitem">
+                  <span className="project-stat-num">{project.access?.length ?? 0}</span>
+                  <span className="project-stat-label">on the team</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="project-cover-actions">
+              {mayWrite ? (
+                <button className="btn primary" onClick={() => startProjectChat(project.id)}>
+                  New chat
+                </button>
+              ) : null}
+              {resume ? (
+                <button className="btn ghost" onClick={() => openConversation(resume.id)}>
+                  {mayWrite ? 'Resume last chat' : 'Open last chat'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </header>
+
+        {/* Work first: the chats in this project. */}
+        <section className="card project-section" style={{ '--i': 0 } as CSSProperties}>
           <div className="card-row">
-            <h3 className="grow">Standing instructions</h3>
+            <h3 className="grow">Chats</h3>
+            {chats.length ? <span className="hint">{chats.length}</span> : null}
+          </div>
+
+          {resume ? (
+            <button
+              type="button"
+              className="resume-card press-fb press-fb--row"
+              onClick={() => openConversation(resume.id)}
+            >
+              <div className="resume-card-body">
+                <span className="resume-eyebrow">
+                  {resume.thread.busy ? (
+                    <span className="chat-row-live" aria-label="working" />
+                  ) : null}
+                  {mayWrite ? 'Pick up where you left off' : 'Most recent'}
+                </span>
+                <span className="resume-title">{resume.title}</span>
+                <span className="resume-sub">
+                  {relativeTime(resume.updatedAt)} · {sourceShort(resume)}
+                </span>
+              </div>
+              <span className="disclosure-chevron" aria-hidden="true" />
+            </button>
+          ) : null}
+
+          <div className="chat-list" style={{ marginTop: resume ? 12 : 4 }}>
+            {mayWrite ? (
+              <button
+                type="button"
+                className="chat-row chat-row-new press-fb press-fb--row"
+                onClick={() => {
+                  startProjectChat(project.id);
+                }}
+              >
+                <span className="chat-row-title">
+                  <span className="chat-new-plus" aria-hidden="true">
+                    +
+                  </span>
+                  New chat
+                </span>
+              </button>
+            ) : null}
+            {chats.slice(resume ? 1 : 0).map((conv, i) => {
+              const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
+              return (
+                <button
+                  key={conv.id}
+                  type="button"
+                  className={`chat-row press-fb press-fb--row${conv.id === activeId ? ' active' : ''}`}
+                  style={style}
+                  onClick={() => openConversation(conv.id)}
+                >
+                  <span className="chat-row-title">
+                    {conv.thread.busy ? (
+                      <span className="chat-row-live" aria-label="working" />
+                    ) : null}
+                    {conv.title}
+                  </span>
+                  <span className="chat-row-sub">
+                    {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {chats.length === 0 ? (
+            <p className="hint" style={{ marginTop: 6 }}>
+              {mayWrite
+                ? 'No chats yet. Start one and it stays with this project.'
+                : 'No chats yet. You have read access, so you can see this project but not start chats in it.'}
+            </p>
+          ) : null}
+        </section>
+
+        {/* Context that rides into every chat: standing instructions. */}
+        <section className="card project-section" style={{ '--i': 1 } as CSSProperties}>
+          <div className="card-row">
+            <div className="grow">
+              <span className="project-eyebrow">Rides into every chat</span>
+              <h3>Standing instructions</h3>
+            </div>
             {!editingDetails && mayEdit ? (
               <button className="suggestion" onClick={startDetails}>
                 Edit
@@ -210,23 +328,23 @@ export function ProjectDetailScreen() {
                 </button>
               </div>
             </>
+          ) : project.instructions?.trim() ? (
+            <p className="project-instructions">{project.instructions.trim()}</p>
           ) : (
-            <p className="sub" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>
-              {project.instructions?.trim()
-                ? project.instructions.trim()
+            <p className="hint" style={{ marginTop: 6 }}>
+              {mayEdit
+                ? 'None yet. Add context and rules every chat here should follow.'
                 : 'No standing instructions yet.'}
             </p>
           )}
-        </div>
+        </section>
 
-        {/* Repositories and their files. */}
-        <div className="card project-section" style={{ '--i': 1 } as CSSProperties}>
+        {/* Context that rides into every chat: repositories and their files. */}
+        <section className="card project-section" style={{ '--i': 2 } as CSSProperties}>
           <div className="card-row">
             <div className="grow">
+              <span className="project-eyebrow">Rides into every chat</span>
               <h3>Repositories and files</h3>
-              <div className="sub">
-                The codebases this project works in. Their files ride into every chat here.
-              </div>
             </div>
             {mayEdit ? (
               <button className="suggestion" onClick={() => setManageRepos(true)}>
@@ -234,77 +352,33 @@ export function ProjectDetailScreen() {
               </button>
             ) : null}
           </div>
-          {project.repoIds.length ? (
-            <div className="check-list" style={{ marginTop: 8 }}>
-              {project.repoIds.map((id) => (
-                <div key={id} className="multiselect-row" style={{ cursor: 'default' }}>
-                  <span>
-                    {repoLabel(id)}
-                    {isGithubRepoId(id) ? <span className="hint"> · on GitHub</span> : null}
+          {repoCount ? (
+            <>
+              <div className="repo-chips">
+                {project.repoIds.map((id) => (
+                  <span key={id} className={`repo-chip${isGithubRepoId(id) ? '' : ' local'}`}>
+                    {isGithubRepoId(id) ? <GithubGlyph /> : <FolderGlyph />}
+                    <span className="repo-chip-name">{repoLabel(id)}</span>
                   </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="hint" style={{ marginTop: 6 }}>
-              No repositories yet. Attach one so the agent has the project's files in context.
-            </p>
-          )}
-        </div>
-
-        {/* Chats in this project. */}
-        <div className="card project-section" style={{ '--i': 2 } as CSSProperties}>
-          <div className="card-row">
-            <h3 className="grow">Chats</h3>
-          </div>
-          <div className="chat-list" style={{ marginTop: 4 }}>
-            {mayWrite ? (
+                ))}
+              </div>
               <button
                 type="button"
-                className="chat-row chat-row-new press-fb press-fb--row"
-                onClick={() => {
-                  startProjectChat(project.id);
-                }}
+                className="project-memory-link press-fb press-fb--row"
+                onClick={() => openProjectMemory(project.id)}
               >
-                <span className="chat-row-title">
-                  <span className="chat-new-plus" aria-hidden="true">
-                    +
-                  </span>
-                  New chat
-                </span>
+                <MemoryGlyph />
+                <span className="grow">What the agent has learned here</span>
+                <span className="disclosure-chevron" aria-hidden="true" />
               </button>
-            ) : null}
-            {chats.map((conv, i) => {
-              const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
-              return (
-                <button
-                  key={conv.id}
-                  type="button"
-                  className={`chat-row press-fb press-fb--row${conv.id === activeId ? ' active' : ''}`}
-                  style={style}
-                  onClick={() => openConversation(conv.id)}
-                >
-                  <span className="chat-row-title">
-                    {conv.thread.busy ? (
-                      <span className="chat-row-live" aria-label="working" />
-                    ) : null}
-                    {conv.title}
-                  </span>
-                  <span className="chat-row-sub">
-                    {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {chats.length === 0 ? (
+            </>
+          ) : (
             <p className="hint" style={{ marginTop: 6 }}>
-              {mayWrite
-                ? 'No chats yet. Start one and it stays with this project.'
-                : 'No chats yet. You have read access, so you can see this project but not start chats in it.'}
+              No repositories yet.{' '}
+              {mayEdit ? 'Attach one so the agent has the project’s files in context.' : ''}
             </p>
-          ) : null}
-        </div>
+          )}
+        </section>
 
         {/* Enterprise: who on the team can read, write, or edit. */}
         {isCommercial ? (
@@ -330,7 +404,7 @@ export function ProjectDetailScreen() {
             </button>
           ) : null}
           {mayEdit ? (
-            <button className="suggestion" onClick={() => setConfirmDelete(true)}>
+            <button className="suggestion project-delete" onClick={() => setConfirmDelete(true)}>
               Delete project
             </button>
           ) : null}
@@ -433,7 +507,7 @@ function TeamAccess({
   };
 
   return (
-    <div className="card project-section" style={{ '--i': index } as CSSProperties}>
+    <section className="card project-section" style={{ '--i': index } as CSSProperties}>
       <div className="card-row">
         <div className="grow">
           <h3>Team access</h3>
@@ -536,7 +610,7 @@ function TeamAccess({
           No one added yet. You always have full access as an admin.
         </p>
       ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -628,6 +702,51 @@ function ComposeIcon() {
     >
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function FolderGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+    </svg>
+  );
+}
+
+function GithubGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.7c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.9-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.9 1.57 2.35 1.11 2.92.85.09-.66.35-1.11.63-1.37-2.22-.26-4.55-1.14-4.55-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.7 0 0 .84-.28 2.75 1.05a9.34 9.34 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.4.2 2.44.1 2.7.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9v2.82c0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" />
+    </svg>
+  );
+}
+
+function MemoryGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3a4 4 0 0 0-4 4v.5A3.5 3.5 0 0 0 6 14a3 3 0 0 0 3 3 3 3 0 0 0 3 1 3 3 0 0 0 3-1 3 3 0 0 0 3-3 3.5 3.5 0 0 0-2-6.5V7a4 4 0 0 0-4-4Z" />
+      <path d="M12 3v18" />
     </svg>
   );
 }

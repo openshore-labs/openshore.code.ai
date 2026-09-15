@@ -70,3 +70,51 @@ describe('project detail polish', () => {
     expect(detail).toMatch(/className=\{detailsDirty \? 'btn primary' : 'btn quiet'\}/);
   });
 });
+
+// The 2026-09-15 redesign turned the room from a config-form stack into a
+// workspace (founder: "75% of work happens here"). These pin the shape so it
+// does not silently regress back into a wall of identical cards.
+describe('project room, redesigned as a workspace', () => {
+  const detail = src('screens/ProjectDetailScreen.tsx');
+
+  it('opens with a premium cover carrying the identity, live counts, and the primary action', () => {
+    expect(detail).toContain('project-cover');
+    expect(detail).toContain('project-stats');
+    expect(detail).toContain('project-cover-actions');
+    // The hero title lives in the cover, so the shared-element move still lands.
+    expect(detail).toMatch(/project-cover[\s\S]*project-hero-title/);
+  });
+
+  it('leads with the work: chats sit first (--i 0) before the context cards', () => {
+    const chatsAt = detail.indexOf("'--i': 0");
+    const instructionsAt = detail.indexOf("'--i': 1");
+    const reposAt = detail.indexOf("'--i': 2");
+    expect(chatsAt).toBeGreaterThan(-1);
+    expect(chatsAt).toBeLessThan(instructionsAt);
+    expect(instructionsAt).toBeLessThan(reposAt);
+    // The i=0 section is the chats one, and it precedes standing instructions.
+    expect(detail.indexOf('>Chats<')).toBeLessThan(detail.indexOf('>Standing instructions<'));
+  });
+
+  it('offers a resume affordance for the returning person', () => {
+    expect(detail).toContain('resume-card');
+    expect(detail).toMatch(/const resume = chats\[0\]/);
+    expect(detail).toContain('openConversation(resume.id)');
+  });
+
+  it('renders repositories as chips and links out to the project memory', () => {
+    expect(detail).toContain('repo-chip');
+    expect(detail).toContain('project-memory-link');
+    expect(detail).toContain('openProjectMemory(project.id)');
+  });
+
+  it('the cover rides the room-in curve on the tokens, honoring reduced motion via the global reset', () => {
+    expect(THEME).toMatch(
+      /\.project-cover \{[^}]*animation:\s*room-in var\(--dur-6\) var\(--ease-arrive\) backwards/,
+    );
+    // Its wash and stats use tokens only; the layout guard lives in
+    // polish-standards.test.ts and covers theme.css wholesale.
+    expect(THEME).toContain('.resume-card');
+    expect(THEME).toContain('.repo-chip');
+  });
+});

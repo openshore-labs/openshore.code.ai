@@ -3,16 +3,27 @@
 // can share repositories with other projects. Create one to start saving
 // chats; tap a project to open its own room (chats, instructions, repos, and,
 // for a company account, who on the team may read, write, or edit it).
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { captureTitleHero } from '../lib/heroTitle.js';
 
 export function ProjectsScreen() {
-  const { settings, createProject, openProject, showToast } = useApp();
+  const { settings, conversations, order, createProject, openProject, showToast } = useApp();
 
   const projects = settings.projects ?? [];
   const activeId = settings.activeProjectId ?? projects[0]?.id;
+
+  // Live chat counts per project, so a list card reads as a workspace (its
+  // work and its context) rather than a name and a note.
+  const chatCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const id of order) {
+      const pid = conversations[id]?.projectId;
+      if (pid) counts[pid] = (counts[pid] ?? 0) + 1;
+    }
+    return counts;
+  }, [order, conversations]);
 
   const [newName, setNewName] = useState('');
 
@@ -25,12 +36,11 @@ export function ProjectsScreen() {
     openProject(id);
   };
 
-  /** The one-line summary under a project's name. */
-  const summary = (instructions: string | undefined, repoCount: number): string => {
-    const head = instructions?.trim()
-      ? instructions.trim().slice(0, 80)
-      : 'No standing instructions yet.';
-    return repoCount ? `${head} · ${repoCount} repo${repoCount > 1 ? 's' : ''}` : head;
+  /** The counts line under a project's name: what work and context it holds. */
+  const counts = (chatCount: number, repoCount: number): string => {
+    const parts = [`${chatCount} ${chatCount === 1 ? 'chat' : 'chats'}`];
+    if (repoCount) parts.push(`${repoCount} ${repoCount === 1 ? 'repo' : 'repos'}`);
+    return parts.join(' · ');
   };
 
   return (
@@ -91,7 +101,10 @@ export function ProjectsScreen() {
                       </span>
                     ) : null}
                   </h3>
-                  <div className="sub">{summary(p.instructions, p.repoIds.length)}</div>
+                  <div className="sub">{counts(chatCounts[p.id] ?? 0, p.repoIds.length)}</div>
+                  {p.instructions?.trim() ? (
+                    <div className="project-card-note">{p.instructions.trim()}</div>
+                  ) : null}
                 </div>
                 <span
                   className="disclosure-chevron"
