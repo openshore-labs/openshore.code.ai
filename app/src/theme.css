@@ -8904,6 +8904,171 @@ button.settings-row:active {
   -webkit-box-orient: vertical;
 }
 
+/* ---------------------------------------------------------------------------
+   The stack room, redesigned as a legible system (founder, 2026-09-15). The
+   Reasoning LLM anchor gets a premium cover carrying the reach it runs under
+   (the same water wash as the project room, so the ink title lands cleanly);
+   the specialists it routes to read as one group tagged by category; the bench
+   holds the reserves. Teal is local and private, amber is cloud, everywhere.
+   Every move is on the tokens and honors the global reduced-motion reset.
+   --------------------------------------------------------------------------- */
+.stack-cover {
+  position: relative;
+  margin: 6px 0 22px;
+  animation: room-in var(--dur-6) var(--ease-arrive) backwards;
+}
+.stack-cover-wash {
+  position: absolute;
+  inset: -18px -20px auto -20px;
+  height: 200px;
+  background: radial-gradient(120% 82% at 18% 0%, var(--local-soft), transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+.stack-cover-body {
+  position: relative;
+  z-index: 1;
+}
+.stack-reach {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.stack-reach .profile-select-dot {
+  flex-shrink: 0;
+}
+.stack-reach-caret {
+  display: inline-flex;
+  color: var(--muted);
+}
+.stack-kicker {
+  display: block;
+  margin-top: 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--local);
+}
+.stack-anchor-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 3px;
+}
+.stack-anchor-name {
+  font-family: var(--font-display);
+  font-size: 27px;
+  font-weight: 500;
+  letter-spacing: -0.016em;
+  line-height: 1.12;
+  margin: 0;
+}
+.stack-cover-blurb {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  max-width: 48ch;
+}
+.stack-anchor-change {
+  margin-top: 16px;
+}
+.stack-anchor-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Location chip: teal local/private, amber cloud/spend. Reads the whole stack's
+   posture at a glance. */
+.kind-chip {
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.kind-chip.local {
+  background: var(--local-soft);
+  color: var(--local);
+}
+.kind-chip.cloud {
+  background: var(--cloud-soft);
+  color: var(--cloud);
+}
+
+/* A stack section (Specialists, Bench): a teal eyebrow, a one-line note, then
+   its cards. */
+.stack-section {
+  margin-bottom: 22px;
+}
+.stack-eyebrow {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--local);
+  margin-bottom: 4px;
+}
+.stack-section-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: 52ch;
+}
+.spec-card .spec-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--local);
+  margin-bottom: 3px;
+}
+.spec-card-head {
+  margin-bottom: 2px;
+}
+.spec-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.spec-slot-title {
+  font-size: 14px;
+}
+
+/* The connected-cloud model picker, house-styled (was a raw inline select). */
+.stack-select {
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
 .chat-list .chat-row {
   display: block;
   width: 100%;

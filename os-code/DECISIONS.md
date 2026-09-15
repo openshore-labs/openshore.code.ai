@@ -1360,3 +1360,11 @@ execution contract. Newest at the bottom.
   band so the shared-element title still lands on ink, and over a Work/Context/
   Team tab split as heavier than a room this size needs. Presentational only,
   no store or gate change. Review in `docs/project-room-redesign.md`.
+- **Stack page, legible-system rebuild scoped to the phone (2026-09-15, CTO +
+  Creative Studio + CX).** The audited screenshot was the phone `StackManager`,
+  so the redesign landed there: an anchor cover for the Reasoning LLM, a
+  Specialists group with category tags, a Bench of reserves, and teal/amber
+  location chips on every model. Presentational only, no store or gate change.
+  The desktop `StackScreen`/`StackHealthScreen` "Quarterback" vs "Reasoning LLM"
+  vocabulary split was surfaced as a separate founder-gated copy sweep rather
+  than folded in. Review in `docs/stack-page-redesign.md`.
