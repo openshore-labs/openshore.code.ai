@@ -98,9 +98,26 @@ order: the best-of-N picker in the loop, the minimal checkpoint form
 (record each touched file's original content on first write, restore on a
 fresh attempt when verify retries are spent, take the first attempt that
 verifies, N from the class profile, still under the step rails); then the
-same one command on the 7B and a Qwen3-4B for the seat comparison. The
-convergence memo for the out-of-the-box path is
-`docs/premium-harness-first-seat-convergence.md`.
+same one command on the 7B and a Qwen3-4B for the seat comparison.
+
+Round fourteen: the picker is BUILT, in exactly that minimal form. In
+`loop.ts`, every workspace file a write tool touches is recorded with its
+content before the first touch (null when it did not exist); when the verify
+retries are spent and the check still fails, and the class allows another
+attempt (`bestOfAttempts` in `profile.ts`: two for small and tiny, one for
+mid and large, a per-class override), every touched file is put back, the
+history is wiped to the original ask, and the task goes again as an
+independent try, the way the eval measured it; the first attempt that
+verifies wins, the step and wall-clock rails keep counting across attempts,
+a full seat and plan mode never start over. An `attempt` event (additive)
+says when it happens, the transcript gets a status line naming how many
+files were restored, and the eval's trace line reports "2 attempts"
+(`test/bestOfPicker.test.ts`). Not built: a general checkpoint or rewind
+system, or restoring what a shell command changed; this is the touched-file
+form the number justified and no more. os-code 762 green (5 new), app
+typecheck green. Next: the same one command on the 3B to measure the picker
+in the loop against 38%, then the 7B. The convergence memo for the
+out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in

@@ -293,7 +293,9 @@ export function traceFrom(events: AgentEvent[], tools: ToolRegistry): DriveTrace
   const done = events.find((e) => e.type === 'task-done') as
     { reason: string; message?: string } | undefined;
   const verifies = events.filter((e) => e.type === 'verify') as Array<{ passed: boolean }>;
+  const attempts = events.filter((e) => e.type === 'attempt').length + 1;
   return {
+    attempts: attempts > 1 ? attempts : undefined,
     turns,
     toolCalls,
     wrote,
@@ -343,7 +345,15 @@ export function traceLine(trace: DriveTrace): string {
   const verify = trace.verify
     ? `verify ${trace.verify.passed ? 'passed' : 'failed'} after ${trace.verify.rounds} check${trace.verify.rounds === 1 ? '' : 's'}`
     : '';
-  const summary = [`${trace.turns} turn${trace.turns === 1 ? '' : 's'}`, tools, wrote, verify, done]
+  const attempts = trace.attempts && trace.attempts > 1 ? `${trace.attempts} attempts` : '';
+  const summary = [
+    `${trace.turns} turn${trace.turns === 1 ? '' : 's'}`,
+    attempts,
+    tools,
+    wrote,
+    verify,
+    done,
+  ]
     .filter(Boolean)
     .join('; ');
   const failureLines = dedupeFailures(trace.toolFailures).map(

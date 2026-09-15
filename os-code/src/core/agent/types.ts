@@ -116,6 +116,11 @@ export type AgentEvent =
       round?: number;
       willRetry?: boolean;
     }
+  // Best-of-N judged by the project's own check: the previous attempt spent
+  // its verify retries without passing, the files it touched are restored to
+  // how they were, and the task starts again from the original ask with a
+  // clean history. `number` is the attempt now starting, `of` the allowance.
+  | { type: 'attempt'; number: number; of: number }
   // The always-on ethics layer stopped this request or this answer. Carried as
   // its own event, not folded into an error, so every client can show the
   // plain refusal and a reviewer can see that the layer acted. The category and

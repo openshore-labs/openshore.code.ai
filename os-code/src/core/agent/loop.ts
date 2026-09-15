@@ -5,7 +5,8 @@
 // bounded repair, optional grammar-constrained retries, and cloud escalation
 // as a last resort that always asks before spending.
 import { randomUUID } from 'node:crypto';
-import { relative } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, relative } from 'node:path';
 import type { OscConfig } from '../../config/schema.js';
 import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../providers/types.js';
 import { ProviderError } from '../../providers/types.js';
@@ -170,6 +171,16 @@ export class AgentSession {
   /** Set when the model has repeated one exact call three times: the next turn
    *  runs with no tools so the only thing it can do is answer. */
   private answerOnly = false;
+  /** Best-of-N judged by the project's check. The minimal checkpoint: each
+   *  workspace file a write tool touched this task, keyed by absolute path,
+   *  with its content before the first touch (null when it did not exist), so
+   *  a fresh attempt can put every one of them back. */
+  private touched = new Map<string, string | null>();
+  /** Which attempt this task is on, 1-based. */
+  private attempt = 1;
+  /** The task's own first message, kept so a fresh attempt starts from it
+   *  with a clean history, the way the eval's independent tries do. */
+  private taskMessage: ChatMessage | undefined;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -286,12 +297,12 @@ export class AgentSession {
   // of its own guess. Returns 'retry' when the loop should continue, 'done'
   // otherwise. Bounded by harness.verify.maxRetries on top of the step rails,
   // and a retry only counts once the check has actually failed.
-  private maybeVerify(verifyRounds: number): 'retry' | 'done' {
+  private maybeVerify(verifyRounds: number): 'retry' | 'passed' | 'failed' | 'skipped' {
     const verifyConfig = this.deps.config.harness?.verify;
-    if (!verifyConfig?.command || !this.wroteThisTask) return 'done';
-    if (!this.deps.profile.allowShellAutoApprove) return 'done';
+    if (!verifyConfig?.command || !this.wroteThisTask) return 'skipped';
+    if (!this.deps.profile.allowShellAutoApprove) return 'skipped';
     const result = runVerify(this.deps.toolContext.cwd, verifyConfig);
-    if (!result.ran) return 'done';
+    if (!result.ran) return 'skipped';
     // A lean seat gets at least its class's allowance of goes; a project's
     // own setting can only raise it.
     const maxRetries = Math.max(
@@ -308,7 +319,7 @@ export class AgentSession {
       round,
       willRetry,
     });
-    if (!willRetry) return 'done';
+    if (!willRetry) return result.passed ? 'passed' : 'failed';
     this.emit({
       type: 'status',
       message: `The check did not pass; handing the failure back to the model (retry ${round} of ${maxRetries}).`,
@@ -487,6 +498,8 @@ export class AgentSession {
     this.lastChangeStep = 0;
     this.callStep = 0;
     this.answerOnly = false;
+    this.touched.clear();
+    this.attempt = 1;
     this.transientRetries = 0;
     this.abortController = new AbortController();
     // Tools see the task's signal, so Stop reaches a delegated generation or
@@ -508,7 +521,8 @@ export class AgentSession {
           })),
         ]
       : modelText;
-    this.history.push({ role: 'user', content });
+    this.taskMessage = { role: 'user', content };
+    this.history.push(this.taskMessage);
 
     let parseFailStreak = 0;
     let repairAttempts = 0;
@@ -784,8 +798,18 @@ export class AgentSession {
           });
           continue;
         }
-        if (this.maybeVerify(verifyRounds) === 'retry') {
+        const verdict = this.maybeVerify(verifyRounds);
+        if (verdict === 'retry') {
           verifyRounds += 1;
+          continue;
+        }
+        // Best-of-N judged by the check: the retries are spent and it still
+        // does not pass. While the class allows another attempt, put every
+        // touched file back, wipe the history to the original ask, and go
+        // again as an independent try; the first attempt that verifies wins.
+        // The step and wall-clock rails keep counting across attempts.
+        if (verdict === 'failed' && this.startFreshAttempt()) {
+          verifyRounds = 0;
           continue;
         }
         this.emit({ type: 'task-done', reason: 'complete' });
@@ -1038,7 +1062,10 @@ export class AgentSession {
       }
     }
 
-    if (tool.risk === 'write') this.attemptedWriteThisTask = true;
+    if (tool.risk === 'write') {
+      this.attemptedWriteThisTask = true;
+      if (rawPath !== undefined && tool.pathJail !== 'own') this.recordOriginal(rawPath);
+    }
     this.emit({ type: 'tool-start', call });
     const startedAt = Date.now();
     let result;
@@ -1117,6 +1144,66 @@ export class AgentSession {
         : `Could not save that rule for this project; ${call.name} will ask again.`,
     });
     if (saved) this.deps.permissions.addSessionRule({ ...rule, decision: 'allow' });
+  }
+
+  /** Remember a workspace file's content before the first write touches it
+   *  this task (null when it does not exist yet), so a fresh attempt can put
+   *  it back. Only the first touch counts; later writes leave the record. */
+  private recordOriginal(rawPath: string): void {
+    let abs: string;
+    try {
+      abs = this.deps.toolContext.jail.resolve(rawPath);
+    } catch {
+      return;
+    }
+    if (this.touched.has(abs)) return;
+    try {
+      this.touched.set(abs, existsSync(abs) ? readFileSync(abs, 'utf8') : null);
+    } catch {
+      // unreadable (a directory, a permission): nothing to restore later
+    }
+  }
+
+  /** Put every touched file back to how it was before this task, and forget
+   *  nothing: the originals stay the originals across attempts. */
+  private restoreTouched(): void {
+    for (const [abs, original] of this.touched) {
+      try {
+        if (original === null) {
+          rmSync(abs, { force: true });
+        } else {
+          mkdirSync(dirname(abs), { recursive: true });
+          writeFileSync(abs, original);
+        }
+      } catch (err) {
+        log.warn(`could not restore ${abs}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /** Begin the next independent attempt when the class allows one: restore
+   *  the workspace, reset the per-attempt state, and rebuild the history as
+   *  just the original ask. Returns false when the allowance is spent (or
+   *  there is no profile, no task message, or plan mode). */
+  private startFreshAttempt(): boolean {
+    const allowance = this.modelProfile?.bestOfAttempts ?? 1;
+    if (this.mode === 'plan' || !this.taskMessage || this.attempt >= allowance) return false;
+    this.restoreTouched();
+    this.attempt += 1;
+    this.wroteThisTask = false;
+    this.attemptedWriteThisTask = false;
+    this.noWriteNudged = false;
+    this.answerOnly = false;
+    this.repeatLog.clear();
+    this.lastChangeStep = this.callStep;
+    this.todos = [];
+    this.history = [this.taskMessage];
+    this.emit({ type: 'attempt', number: this.attempt, of: allowance });
+    this.emit({
+      type: 'status',
+      message: `The check did not pass and the retries are spent. Restored the ${this.touched.size} file${this.touched.size === 1 ? '' : 's'} this attempt touched and starting attempt ${this.attempt} of ${allowance} from the original task.`,
+    });
+    return true;
   }
 
   /** Record this call for repeat detection. Returns false when it should run,
