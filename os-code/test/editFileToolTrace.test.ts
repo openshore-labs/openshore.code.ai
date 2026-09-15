@@ -59,6 +59,24 @@ describe('editFile echoes ground truth on a failed match', () => {
     expect(observation).toContain('Call readFile');
   });
 
+  it('echoes what the model sent when no change is recognizable at all', async () => {
+    // The 3B's actual failure: an edits string with no marker in it. The old
+    // message only restated the format; now it shows the model its own input
+    // and leads with the simple search/replace form.
+    const provider = new MockProvider('mock', [
+      toolTurn('editFile', { path: 'greet.mjs', edits: 'return a - b;' }),
+      textTurn('Hmm.'),
+    ]);
+    const session = makeTestSession(provider, { files: { 'greet.mjs': GREET_FILE } });
+    await session.agent.run('fix it');
+    const second = provider.requests[1]!;
+    const observation = observationContaining(second.messages, 'No valid edit found');
+    expect(observation).toBeDefined();
+    expect(observation).toContain('You sent:');
+    expect(observation).toContain('return a - b;');
+    expect(observation).toContain('give search');
+  });
+
   it('a successful edit is unaffected: no echoed content, just the applied summary', async () => {
     const provider = new MockProvider('mock', [
       toolTurn('editFile', {

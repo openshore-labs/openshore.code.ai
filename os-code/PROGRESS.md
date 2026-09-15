@@ -21,44 +21,32 @@ remains).
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
-Latest (2026-09-15): the floor produced its first real numbers, in two
-rounds. Round one: qwen2.5-coder:3b ran all four deep-eval tasks on the
-founder's CPU-only box with no timeout ("1 turn; done: complete"), proving the
-lean prompt plus a seat that fits the hardware solves the prefill wall. It
-still scored 0%, because the model wrote its tool call as JSON text (ollama
-hands calls back as content, not `tool_calls`, on this box) and native mode
-read that as a final answer, completing with nothing run. Fixed in `loop.ts`:
-native mode falls back to text extraction when no native call arrives, and
-records that turn the text way, never a fabricated tool_use
-(`test/textCallFallback.test.ts`). Round two, after that fix: every task now
-calls real tools (readFile, editFile, writeFile, todoWrite), no more timeouts,
-no more "no tools called". Still 0%, but for two distinct, honest reasons: (1)
-a second harness gap, now also fixed, where editFile's failure on a
-non-matching SEARCH block only offered a hint, so a 3B that mis-transcribed a
-line resent the IDENTICAL block four times and tripped the loop guardrail;
-`editFile.ts` now echoes the file's own current content (bounded to 4000
-chars) into the failure so the next turn has ground truth to copy from
-(tenet 3; `test/editFileToolTrace.test.ts`); (2) genuine 3B capability limits
-on the remaining two tasks (a wrong implementation, a wrong answer), which the
-harness does not paper over, and which best-of-N and verify-in-the-loop exist
-to buy back next. os-code 693 green. Re-running the 3B deep eval again is the
-immediate step; the convergence memo for the out-of-the-box path is
-`docs/premium-harness-first-seat-convergence.md`. A third run after that fix
-reproduced the SAME two guardrail trips byte for byte, which ruled out a
-stale-build fluke (confirmed live on the box: the new commit was checked out
-and the fix's string was present in `dist`) and exposed a real gap in the
-diagnosis itself: the trace showed "no write landed" but not which of
-editFile's two very different failure messages actually fired, so guessing at
-a fourth fix risked another wasted round trip on a slow box. Fixed by
-strengthening the eval's self-diagnosis rather than guessing again: `wrote` in
-`DriveTrace` now means a WRITE-risk tool succeeded (it was flagging ANY
-successful call, which mislabeled a read-only answer task as "a write
-landed"), and a new `toolFailures` field carries each failed call's own
-message, deduped when a task repeats the identical failure (the loop-guardrail
-signature) into one line with a count instead of drowning the report.
-`test/evalTraceDiagnosis.test.ts` covers both. os-code 700 green. The next 3B
-run will say, for the first time, whether the guardrail trip is a content
-mismatch or a format problem, which decides the next real fix.
+Latest (2026-09-15): the floor produced its first real numbers, over four
+rounds on the founder's CPU-only box with qwen2.5-coder:3b, each round fixing
+one harness gap the previous run exposed. Round one: no timeout at all (the
+lean prompt plus a seat that fits the hardware solved the prefill wall), but
+0% because the model wrote its tool call as JSON text and native mode read it
+as a final answer; fixed in `loop.ts` with a text-extraction fallback that
+records the turn honestly (`test/textCallFallback.test.ts`). Round two: real
+tool calls on every task, but two tripped the loop guardrail (editFile called
+four times with identical arguments); fixed first by echoing the file's own
+content on a failed match, then, when a third run reproduced the failure byte
+for byte, by strengthening the eval's self-diagnosis instead of guessing
+again: `wrote` now means a write-risk tool landed, and `toolFailures` carries
+each failed call's own message (`test/evalTraceDiagnosis.test.ts`). Round
+four named the real cause: "No valid edit blocks found", the model never
+produced the SEARCH/REPLACE mini-language inside a JSON string at all, a
+branch the file echo never reached. Fixed by meeting the model where it is:
+`editFile` now accepts a flat `search` + `replace` pair (and the aliases other
+tools taught models: old_string/new_string, old/new, find/replace), a JSON
+array of pairs, that array stringified, and shortened or renamed markers, all
+normalizing to the same blocks through the same matcher, and a failure now
+echoes what the model actually sent (`test/editFileShapes.test.ts`). The
+create task's "answered with code, changed no file" got a one-time nudge for
+lean seats (`test/noWriteNudge.test.ts`). The remaining wrong answer (82 for 42) is a 3B capability limit the harness does not paper over. os-code 714
+green. The next 3B run is the first with every known harness gap closed; the
+convergence memo for the out-of-the-box path is
+`docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in

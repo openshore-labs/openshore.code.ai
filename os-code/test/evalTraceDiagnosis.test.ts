@@ -70,7 +70,7 @@ describe('traceFrom: wrote means a write-risk tool succeeded, not any tool', () 
 describe('traceFrom: failed calls carry their own message', () => {
   it('records each failure, truncated', () => {
     const tools = registryWith(stubTool('editFile', 'write'));
-    const long = 'x'.repeat(500);
+    const long = 'x'.repeat(1200);
     const events: AgentEvent[] = [toolStart('editFile'), toolEnd('editFile', false, long)];
     const trace = traceFrom(events, tools);
     expect(trace.toolFailures).toHaveLength(1);

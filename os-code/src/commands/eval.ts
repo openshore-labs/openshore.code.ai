@@ -249,7 +249,7 @@ export function traceFrom(events: AgentEvent[], tools: ToolRegistry): DriveTrace
   const wrote = ends.some((e) => e.result.ok && tools.get(e.call.name)?.risk === 'write');
   const toolFailures = ends
     .filter((e) => !e.result.ok)
-    .map((e) => ({ name: e.call.name, detail: truncate(e.result.content, 300) }));
+    .map((e) => ({ name: e.call.name, detail: truncate(e.result.content, 900) }));
   const done = events.find((e) => e.type === 'task-done') as
     { reason: string; message?: string } | undefined;
   return {
@@ -301,7 +301,7 @@ export function traceLine(trace: DriveTrace): string {
     .join('; ');
   const failureLines = dedupeFailures(trace.toolFailures).map(
     (f) =>
-      `\n      ${f.name} failed${f.count > 1 ? ` x${f.count}` : ''}: ${truncate(f.detail, 140)}`,
+      `\n      ${f.name} failed${f.count > 1 ? ` x${f.count}` : ''}: ${truncate(f.detail, 500)}`,
   );
   return summary + failureLines.join('');
 }
