@@ -424,12 +424,9 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Stack page: vocabulary unification and the desktop screen (founder call,
-      raised 2026-09-15).** The phone `StackManager` redesign shipped; the CTO's
-      top cross-surface finding is that the desktop `StackScreen` and
-      `StackHealthScreen` still say "Quarterback" where the phone says "Reasoning
-      LLM". Align the copy (a small sweep), and optionally bring the work-first
-      cover to the older desktop `StackScreen`. See `docs/stack-page-redesign.md`.
+- [ ] **Bring the work-first cover to the desktop `StackScreen` (optional).** The
+      Quarterback rename to Reasoning LLM is done (2026-09-15); the older desktop
+      stack screen is still the flat list and could get the same cover if wanted.
 
 - [ ] **Project room redesign, device taste (built 2026-09-15).** The
       work-first rebuild is verified in headless Chromium in both themes; the
@@ -945,7 +942,9 @@ log entry). Migration is now `0016`.
   headless Chromium at phone width in both themes (the overlap is gone, the
   button is in flow). Gates: app typecheck, lint, 887 tests, Vite build; the
   motion, polish, and em-dash guards. Review in `docs/vault-page-redesign.md`;
-  ruling in `DECISIONS.md`.
+  ruling in `DECISIONS.md`. Follow-up the same day: the `.greeting` sweep moved
+  the project memory view's empty, error, and not-set-up states onto the shared
+  in-flow `.empty-notice` card, so only the chat keeps the fixed `.greeting`.
 
 - **2026-09-15: the Stack page, reviewed and rebuilt as a legible system
   (founder, CTO + Creative Studio + CX).** Same team, same treatment as the
@@ -968,8 +967,9 @@ log entry). Migration is now `0016`.
   typecheck, lint, 887 tests, Vite build; the motion, polish, and em-dash
   guards. Review in `docs/stack-page-redesign.md`; ruling in `DECISIONS.md`. The
   CTO's top cross-surface finding, the desktop Quarterback vs Reasoning LLM
-  vocabulary split, is left for the founder to green-light (What remains).
-  `docs/agentic-currents.md` and `DECISIONS.md` updated.
+  vocabulary split, was then closed the same day at the founder's call: Quarterback
+  is renamed to Reasoning LLM across the desktop stack screens and the guides.
+
 - **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
   CTO + Creative Studio + CX).** The founder flagged the project room (the room
   behind a tapped project, where they expect 75% of the work) as scattered and

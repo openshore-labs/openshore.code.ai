@@ -28,8 +28,8 @@ function beatsFor(guideName: string): Beat[] {
     {
       id: 'stack',
       eyebrow: 'Your stack',
-      headline: 'One quarterback, a few specialists.',
-      body: 'You build a stack. One model plans and routes the work; optional specialists take coding, writing, vision, and more. Anything missing, the quarterback covers itself.',
+      headline: 'One Reasoning LLM, a few specialists.',
+      body: 'You build a stack. One model plans and routes the work; optional specialists take coding, writing, vision, and more. Anything missing, the Reasoning LLM covers itself.',
       art: 'stack',
     },
     {
