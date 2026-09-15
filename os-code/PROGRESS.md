@@ -424,6 +424,13 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Stack page: vocabulary unification and the desktop screen (founder call,
+      raised 2026-09-15).** The phone `StackManager` redesign shipped; the CTO's
+      top cross-surface finding is that the desktop `StackScreen` and
+      `StackHealthScreen` still say "Quarterback" where the phone says "Reasoning
+      LLM". Align the copy (a small sweep), and optionally bring the work-first
+      cover to the older desktop `StackScreen`. See `docs/stack-page-redesign.md`.
+
 - [ ] **Project room redesign, device taste (built 2026-09-15).** The
       work-first rebuild is verified in headless Chromium in both themes; the
       cover wash and the resume card's teal are a first pass. TestFlight is the
@@ -896,6 +903,73 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-15: My Crew reframed to project-agnostic advisors, and a command-door
+  overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked to
+  make the crew less business-oriented, project-agnostic with the business
+  abilities kept ("CTO should be called Technical Advisor or something like
+  that"), and to audit the page. Fixed a real bug first: the "Crew command" door
+  rendered its kicker, title, and subtitle as inline spans, so on a phone they
+  ran together and the subtitle overflowed; `.crew-command-door-body` is now a
+  flex column. Reframed the eight-member advisor preset in `crewPresets.ts`: CTO
+  to Technical Advisor, CMO to Marketing Advisor, CFO to Finance Advisor, CX to
+  Research Advisor, Chief of Staff to Coordinator, Board to Sounding Board,
+  Corporate Strategist to Strategy Advisor, Creative Studio kept; personas
+  rewritten to advise on whatever a person is building rather than a company,
+  abilities and the activity shape (one reviewer, an auto trio, four by request)
+  unchanged, each still advisory. Activity labels lost their dev framing
+  ("Reviews builds" to "Reviews the work", etc.). The invite became an "Advisors"
+  card and the roster sits under a "Your crew" label. Copy updated to match in
+  the Crew screen, the guide knowledge string, and `docs/interaction-model.md`.
+  `crewPresets.test.ts` updated to the new names with a guard that the old
+  C-suite titles are gone. Rendered in headless Chromium in both themes. Gates:
+  app typecheck, lint, 888 tests, Vite build; the motion, polish, and em-dash
+  guards. Review in `docs/crew-page-redesign.md`; ruling in `DECISIONS.md`.
+
+- **2026-09-15: the Vault page, a new-user onboarding ramp, and an empty-state
+  overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked
+  how a new user would know what the Vault is or how to use it, and to take
+  Obsidian's new-user ramp as the guide. The read found a real bug first: the
+  empty Vault reused the chat screen's `.greeting`, which on a touch device is
+  `position: fixed` and `pointer-events: none`, so on a phone the empty state
+  floated over the Coding projects card and its "New note" button could not even
+  be tapped. Rebuilt the empty personal vault as an in-flow onboarding ramp (no
+  `.greeting`): a welcome cover in the room family's water wash, a plain-language
+  "what it is", two ways in (Write your first note, or Add a welcome note that
+  seeds a real readable starter note the way a fresh Obsidian vault opens on
+  one), and three "how it works" cards teaching that notes are yours in plain
+  markdown, that the agent both writes and reads here, and how `[[wikilinks]]`
+  connect them. The offline and empty-team states became in-flow notice cards
+  too. `vaultCreate` gained an optional `content` arg (backward compatible) so a
+  seeded note opens in read mode; all existing callers and tests unchanged.
+  Presentational plus that one seam; no other store or gate change. Rendered in
+  headless Chromium at phone width in both themes (the overlap is gone, the
+  button is in flow). Gates: app typecheck, lint, 887 tests, Vite build; the
+  motion, polish, and em-dash guards. Review in `docs/vault-page-redesign.md`;
+  ruling in `DECISIONS.md`.
+
+- **2026-09-15: the Stack page, reviewed and rebuilt as a legible system
+  (founder, CTO + Creative Studio + CX).** Same team, same treatment as the
+  project room. The screenshot was the phone view (`StackManager`), so that was
+  the target. The read: the control room for the plan-first workflow was drawn
+  as a flat settings list, the premise (one Reasoning LLM plans and routes to
+  specialists) invisible, the anchor looking like any benched model, and the
+  teal/amber posture language barely used. Rebuilt: an anchor cover (the same
+  water wash as the project room) carrying a compact reach pill (the status,
+  now, tap to switch which status's stack you edit) and the Reasoning LLM as the
+  hero with a location chip and Change; a single Specialists section with a
+  routing explainer, image reading as a tagged specialist keeping its two
+  local/cloud slots, and the placed specialists each with a category tag and a
+  location chip; a Bench of reserves with the teal/amber rule kept on every
+  model and a house-styled cloud picker (was a raw inline `<select>`).
+  Presentational only: every store action, sheet, the Currents bench pill, the
+  vision two-slot semantics, and the admin gating (the non-admin lock on every
+  control) preserved. No test pinned the Stack UI strings; none loosened.
+  Rendered in headless Chromium at phone width in both themes. Gates: app
+  typecheck, lint, 887 tests, Vite build; the motion, polish, and em-dash
+  guards. Review in `docs/stack-page-redesign.md`; ruling in `DECISIONS.md`. The
+  CTO's top cross-surface finding, the desktop Quarterback vs Reasoning LLM
+  vocabulary split, is left for the founder to green-light (What remains).
+
 - **2026-09-14: the arrival is now a replica of the iOS Siri glow, in the
   brand's water (founder, from a screen recording).** The founder attached a
   recording of Siri activating and asked for a replica with the OpenShore
@@ -915,58 +989,6 @@ log entry). Migration is now `0016`.
   settle, and the persistent ring all render as designed). Gates: app
   typecheck, lint, tests, Vite build, Prettier, and every guard.
   `docs/agentic-currents.md` and `DECISIONS.md` updated.
-- **2026-09-14: the premium harness, measured and begun (founder + advisor
-  org, on the harness branch).** The founder asked for a premium coding agent
-  harness that feels like Claude Code on any model, makes the smallest models as
-  capable as possible, lets models ask for a hand or recommend a setup, and
-  learns locally from builds. Written up as `docs/premium-harness-proposal.md`,
-  reviewed by all eight advisors (`docs/premium-harness-advisory-memos.md`, all
-  "go with conditions"), and the founder made every call: downloads always ask
-  under Auto-place; the phone in two layers (docked from the Claude Code moment,
-  phone-alone last and gated); the current-in-the-thread felt direction; and
-  Personal $50, Micro $100, Small $250, Growth $500, Scale $1000 (CFO-ruled, a
-  Board gate, not harness work). Step 0 (measure) ran on the founder's box: the
-  existing three-probe `osc eval` scored deepseek-coder:latest at 33% and
-  qwen2.5-coder:7b at 75%, the first real baseline. Then step 1 landed the
-  discipline seam behind config: `os-code/src/harness/profile.ts` (model-class
-  derivation and per-class policy) and `decoding.ts` (the tool-or-answer union
-  schema), on by default, tunable or off, an empty config still valid; the
-  derived class now rides `osc eval`. Five tenets added to CLAUDE.md, the stale
-  org-vault line retired, and the grey owner chip fixed (an undefined `--water`
-  token). 27 new tests; os-code 655 green, lint and build clean. Then, in the
-  same day and with the founder's "do everything you think necessary": eval v2
-  (`src/eval/tasks.ts`, `src/eval/v2.ts`, `osc eval --deep`, the mock-provider
-  CI regression), verify (`src/harness/verify.ts`, the `verify` event, the app
-  note), verify IN the loop (a failing check is handed back to the model,
-  bounded by `harness.verify.maxRetries`, default 2), eval v2 `--attempts <n>`
-  (one try next to best of n, so best-of-N is measured before it is built), and
-  the frontier reference run (`--provider anthropic --model <model>` puts the
-  named model in the orchestrator seat, asks once up front, and draws the
-  ceiling line; this also fixed the deep eval always driving the configured
-  orchestrator whatever `--model` said). The eval also became self-diagnosing
-  (each drive can return a trace; the scorecard prints a one-line why under any
-  task short of a pass), and that trace earned its keep on the first real deep
-  run: qwen2.5-coder:7b scored 0% on all four tasks, and the why-lines showed
-  "1 turn; no tools called; done: error (No bytes for 120s from ollama)". Not
-  the model, the harness: the stream idle guard was killing the request during
-  prefill, because a cold 7B reading the full agent-loop prompt on a modest box
-  takes longer than 120s to first token. Fixed by splitting the guard into a
-  generous first-byte window (prefill, default 300s) and the tight inter-token
-  window (`src/providers/streamIdle.ts`, both configurable via
-  `resourceBudget.streamIdleSeconds`/`streamFirstByteSeconds`). But 300s still
-  was not enough: the full agent-loop prompt (about 17KB of standards plus 25
-  tool schemas) is too heavy for a 7B to prefill on this box in five minutes,
-  which IS the reason small local models look useless in a naive harness. So
-  step 3, the discipline seam, was wired into `loop.ts` (gated by
-  `harness.profiles.enabled`, default on): a lean seat (tiny or small) is shown
-  only its tool allowance (core-first, 6 tiny / 10 small) and a compact
-  standards digest instead of the full text, with a one-time note; mid, large,
-  and profiles-off keep the full prompt. `test/harnessLoopProfile.test.ts`
-  proves the lean path and the on-by-default. os-code 686 green, lint and build
-  clean, app typecheck clean. Re-running the deep eval on the box to confirm the
-  small seat now completes the loop, and to record the with-and-without number,
-  is the immediate next step.
-
 - **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
   CTO + Creative Studio + CX).** The founder flagged the project room (the room
   behind a tapped project, where they expect 75% of the work) as scattered and

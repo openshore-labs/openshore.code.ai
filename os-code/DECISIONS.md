@@ -1380,3 +1380,29 @@ execution contract. Newest at the bottom.
   band so the shared-element title still lands on ink, and over a Work/Context/
   Team tab split as heavier than a room this size needs. Presentational only,
   no store or gate change. Review in `docs/project-room-redesign.md`.
+- **Stack page, legible-system rebuild scoped to the phone (2026-09-15, CTO +
+  Creative Studio + CX).** The audited screenshot was the phone `StackManager`,
+  so the redesign landed there: an anchor cover for the Reasoning LLM, a
+  Specialists group with category tags, a Bench of reserves, and teal/amber
+  location chips on every model. Presentational only, no store or gate change.
+  The desktop `StackScreen`/`StackHealthScreen` "Quarterback" vs "Reasoning LLM"
+  vocabulary split was surfaced as a separate founder-gated copy sweep rather
+  than folded in. Review in `docs/stack-page-redesign.md`.
+- **Vault empty state stops reusing the chat `.greeting` (2026-09-15, CTO +
+  Creative Studio + CX).** The shared `.greeting` is `position: fixed` and
+  `pointer-events: none` on touch by design (a chat backdrop), which made the
+  Vault's empty state float over the page and its button untappable on a phone.
+  The Vault now uses in-flow blocks: a new-user onboarding ramp for the empty
+  personal vault (Obsidian-style, teaching what it is and how the agent uses
+  it), and plain notice cards for offline/empty-team. `vaultCreate` gained an
+  optional `content` arg so a seeded welcome note opens in read mode. Review in
+  `docs/vault-page-redesign.md`.
+- **My Crew advisor preset reframed to project-agnostic advisors (2026-09-15,
+  founder).** The shipped crew read as a startup C-suite (CTO, CMO, CFO, Board,
+  ...). Renamed to general advisors that keep the business abilities (Technical
+  Advisor, Marketing Advisor, Finance Advisor, Research Advisor, Coordinator,
+  Sounding Board, Strategy Advisor; Creative Studio kept), personas rewritten to
+  advise on whatever a person is building rather than a company. Activity shape
+  unchanged. Also fixed a command-door overlap bug (inline spans to a flex
+  column). The repo's own dev-process references in CLAUDE.md keep the C-suite
+  titles for now. Review in `docs/crew-page-redesign.md`.

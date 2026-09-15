@@ -24,17 +24,17 @@ import { isDesktop } from '../lib/platform.js';
 const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   {
     id: 'review',
-    label: 'Reviews builds',
-    hint: 'Runs automatically every time a feature is about to deploy, like a standing reviewer.',
+    label: 'Reviews the work',
+    hint: 'Runs automatically before something ships or is relied on, like a standing reviewer.',
   },
   {
     id: 'auto',
-    label: 'Auto-reasoning',
-    hint: 'The Reasoning LLM can bring this member in on its own when a decision needs its view. Slower, more hands-off.',
+    label: 'Joins on its own',
+    hint: 'The Reasoning LLM can bring this member in on its own when a decision needs its view. More hands-off.',
   },
   {
     id: 'request',
-    label: 'Request only',
+    label: 'When you ask',
     hint: 'Stays dormant until you ask for it by name in a chat.',
   },
 ];
@@ -123,7 +123,7 @@ export function CrewScreen() {
     }
     showToast(
       missingAdvisors.length
-        ? `${missingAdvisors.length} advisors joined your crew. The CTO reviews every build.`
+        ? `${missingAdvisors.length} advisors joined your crew. Your Technical Advisor reviews the work.`
         : 'Your advisor team is already here.',
     );
   };
@@ -171,24 +171,36 @@ export function CrewScreen() {
         >
           + New crew member
         </button>
+
         {missingAdvisors.length ? (
-          <button
-            className="btn ghost press-fb"
-            style={{ width: '100%', marginTop: 8 }}
-            onClick={() => void addAdvisorTeam()}
-          >
-            Add the advisor team ({missingAdvisors.length})
-          </button>
+          <div className="card crew-advisors">
+            <span className="stack-eyebrow">Advisors</span>
+            <h3 className="crew-advisors-title">A ready-made team, in one tap</h3>
+            <p className="sub">
+              General advisors for whatever you are building: a Technical Advisor who reviews the
+              work, a Marketing, Finance, and Creative Studio that step in when a decision needs
+              them, and a Research Advisor, Coordinator, Sounding Board, and Strategy Advisor who
+              answer when asked. All advisory. You decide.
+            </p>
+            <button
+              className="btn ghost press-fb"
+              style={{ width: '100%', marginTop: 12 }}
+              onClick={() => void addAdvisorTeam()}
+            >
+              Add the advisor team ({missingAdvisors.length})
+            </button>
+          </div>
         ) : null}
-        <p className="hint" style={{ marginTop: 8 }}>
-          The advisor team is a CTO who reviews every build, a CMO, CFO, and Creative Studio that
-          step in when a decision needs them, and a CX lead, Chief of Staff, Board, and Strategist
-          who answer when asked. All advisory. You decide.
-        </p>
+
+        {crew.length ? (
+          <span className="stack-eyebrow" style={{ marginTop: 18, display: 'block' }}>
+            Your crew
+          </span>
+        ) : null}
 
         {crew.length === 0 ? (
           <p className="hint" style={{ marginTop: 14 }}>
-            No crew yet. Add a reviewer that checks every build, a specialist the Reasoning LLM can
+            No crew yet. Add a reviewer that checks the work, a specialist the Reasoning LLM can
             call on its own, or an expert that waits until you ask.
           </p>
         ) : (
