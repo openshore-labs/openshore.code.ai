@@ -81,8 +81,26 @@ file parses), was written, and only the next edit tripped the check; the
 check now writes the proposed content to a probe file beside the real one
 (same extension, so module type resolves the same) and checks that, and
 `writeFile` gained the same gate, which it never had
-(`test/structuralCheckContent.test.ts`). The convergence memo for the
-out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
+(`test/structuralCheckContent.test.ts`).
+
+Round thirteen, `--attempts 2`, the numbers that decide the next build:
+**qwen2.5-coder:3b, one try 38%, best of 2 50%** (edit 100%, create 50%,
+refactor 0%, answer 0%), and the report's own line: "a best-of-2 picker
+judged by tests would add about 13 points on this model." That is the gate
+the roadmap set for the picker (build it only if the attempts gap says it
+pays), and it pays. What still misses: the rename, where the seat renamed
+the function but dropped its parameter (`greet()` with `${name}` still in
+the body, valid syntax, wrong program), then searched for the line it had
+itself changed and could not recover; and the answer task, where the seat
+reads and guesses (24) and will not take the "run it" instruction. Both are
+the model at this size; the harness surfaces each exactly. Next build, in
+order: the best-of-N picker in the loop, the minimal checkpoint form
+(record each touched file's original content on first write, restore on a
+fresh attempt when verify retries are spent, take the first attempt that
+verifies, N from the class profile, still under the step rails); then the
+same one command on the 7B and a Qwen3-4B for the seat comparison. The
+convergence memo for the out-of-the-box path is
+`docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in
