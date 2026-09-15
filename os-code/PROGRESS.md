@@ -409,6 +409,13 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Project room redesign, device taste (built 2026-09-15).** The
+      work-first rebuild is verified in headless Chromium in both themes; the
+      cover wash and the resume card's teal are a first pass. TestFlight is the
+      judge: the shared-element title flying cleanly into the cover, and whether
+      the room feels premium on a phone. Review and set-aside directions in
+      `docs/project-room-redesign.md`.
+
 - [ ] **The premium harness, the rest of the plan (begun 2026-09-14).** Step 1
       (the discipline seam: `os-code/src/harness/profile.ts` and `decoding.ts`)
       landed behind config but is not wired into `loop.ts` yet. Next, in order,
@@ -975,24 +982,25 @@ log entry). Migration is now `0016`.
   config and env driven so the key stays on the box. Both pushed to `main` per
   the founder.
 
-- **2026-09-09: Agentic Currents and Wayfinding, a BETA layered over the
-  familiar app (founder, pushed to main).** From a LinkedIn post about Hermes
-  Agent, the founder asked whether to go down that route, then how to layer
-  new tech in without touching the people who do not, then named the shape:
-  a toggle that turns on a modality, mirrored across every current, one at a
-  time, with a current and haptics flowing from the switch to the border. The
-  CMO and Creative Studio named it Currents (Layers retired) and Wayfinding
-  (Navigation collides with the side panel); the founder answered the five
-  forks (one everywhere, the gesture, Wayfinding, Arriving rows now, the
-  water-line persistent and faint) and asked for BETA on the group. Built:
-  the pure core with the two-part gate and the contribution contract, the
-  Settings groups and connect sheet, the arrival and the persistent
-  water-line, the header pill, the bench, crew, and vault contributions, the
-  engine tools (`askHermes`, `askAgent`, `cliAgent`), the daemon and IPC
-  routes, three written guides, and the guards (trace, contract, exclusivity).
-  Research settled the roster's honesty: Hermes exposes an OpenAI-compatible
-  server with a session header, a cron REST API, and MCP; Vellum and OpenAGI
-  document no network API and ship as Arriving rows that try an A2A card then
-  a `/v1`. Doc `docs/agentic-currents.md`; rulings in `DECISIONS.md`. Gates:
-  both packages typecheck, lint, test, build, Prettier; every guard green.
-  Device and real-box verification in What remains.
+- **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
+  CTO + Creative Studio + CX).** The founder flagged the project room (the room
+  behind a tapped project, where they expect 75% of the work) as scattered and
+  subpar and asked the three seats to look. The read: the room opened on config
+  (standing instructions, then repos) with the actual work (chats) third, under
+  a wall of lead copy, four identical cards with no hierarchy and no identity.
+  Rebuilt work-first: a calm paper-raised cover with a soft water wash (not a
+  dark band, so the shared-element title still lands), the hero title, a live
+  stat strip (chats, repos, team), and the primary action (New chat beside
+  Resume last chat); then the chats lead, with a resume card in the brand's
+  water for the returning person; then the context that rides into every chat
+  (instructions preview, repo chips with GitHub/local glyphs, a link into the
+  agent's project memory) under a teal eyebrow; then the roster and delete last.
+  The Projects list cards were aligned to read as workspaces (live chats and
+  repos count). Presentational plus one existing outbound link
+  (`openProjectMemory`); no store, permission-gate, team-access server path, or
+  migration touched, so `mayWrite`/`mayEdit`/`canManageAccess`/`canShare` gating
+  is preserved. Rendered in headless Chromium at phone width in both themes.
+  Gates: app typecheck, lint, 887 tests (extended `projectPolish.test.ts`, none
+  loosened), Vite build; the motion, polish, and em-dash guards green. Review
+  and directions in `docs/project-room-redesign.md`; ruling in `DECISIONS.md`.
+  Device taste is the founder call (What remains).
