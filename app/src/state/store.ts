@@ -1005,7 +1005,7 @@ interface AppState {
   /** Create a note: write an empty file so it persists immediately (a fresh
    *  note no longer evaporates on back-out), then open it in write mode. If it
    *  already exists, just opens it. */
-  vaultCreate(path: string): Promise<void>;
+  vaultCreate(path: string, content?: string): Promise<void>;
   /** Close the open note (back to the tree). */
   vaultCloseNote(): void;
   /** Write a note body and refresh the file list. */
@@ -4711,7 +4711,7 @@ export const useApp = create<AppState>((set, get) => {
       logEvent('vault_note_open', { fresh: !existing });
     },
 
-    async vaultCreate(path) {
+    async vaultCreate(path, content = '') {
       const normalized = normalizeNotePath(path);
       if (!normalized) return;
       const target = vaultTarget();
@@ -4725,29 +4725,33 @@ export const useApp = create<AppState>((set, get) => {
         await get().vaultOpen(existing.path);
         return;
       }
+      // A seeded note (a starter/welcome note carries `content`) is already
+      // written and readable, so it opens in read mode; a blank new note is
+      // fresh and opens in the editor.
+      const seeded = content.length > 0;
       try {
-        const saved = await target.provider.write(target.resourceId, normalized, '');
+        const saved = await target.provider.write(target.resourceId, normalized, content);
         set({
           vaultFiles: await target.provider.list(target.resourceId),
           vaultNote: {
             path: normalized,
             text: saved.text,
             updatedAt: saved.updatedAt,
-            fresh: true,
+            fresh: !seeded,
           },
           vaultError: undefined,
         });
         logEvent('vault_note_create');
       } catch {
         // Offline: still open the editor so the user can write, and stash the
-        // empty note so the create is not lost.
-        await stashVaultDraft(target.resourceId, normalized, '');
+        // note body so the create is not lost.
+        await stashVaultDraft(target.resourceId, normalized, content);
         set({
           vaultNote: {
             path: normalized,
-            text: '',
+            text: content,
             updatedAt: new Date().toISOString(),
-            fresh: true,
+            fresh: !seeded,
           },
           vaultError: 'save',
         });
