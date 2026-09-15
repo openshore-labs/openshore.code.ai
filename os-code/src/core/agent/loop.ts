@@ -151,6 +151,9 @@ export class AgentSession {
   private modelProfile?: ModelClassProfile;
   /** So the lean-seat note is said once per session, not every turn. */
   private profileNoteEmitted = false;
+  /** A lean seat that answers with code but changes no file is nudged to make
+   *  the change, once per task; this flag keeps it to once. */
+  private noWriteNudged = false;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -442,6 +445,7 @@ export class AgentSession {
     guardrails.startTask();
     this.cloudApprovedForTask = false;
     this.wroteThisTask = false;
+    this.noWriteNudged = false;
     this.transientRetries = 0;
     this.abortController = new AbortController();
     // Tools see the task's signal, so Stop reaches a delegated generation or
@@ -693,6 +697,32 @@ export class AgentSession {
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
+        // A small seat that writes the code in its reply instead of changing
+        // the file (the deep eval's "1 turn; no tools called; done: complete"
+        // on a create task) gets one plain nudge, then the task continues. The
+        // tell is a fenced code block in a final answer with no write landed;
+        // an answer without code is left alone, and it never fires in plan mode
+        // or twice in one task.
+        if (
+          this.leanSeat &&
+          this.mode !== 'plan' &&
+          !this.wroteThisTask &&
+          !this.noWriteNudged &&
+          /```/.test(finalText)
+        ) {
+          this.noWriteNudged = true;
+          this.emit({
+            type: 'status',
+            message:
+              'The seat answered with code but changed no file; asking it to make the change.',
+          });
+          this.history.push({
+            role: 'user',
+            content:
+              'You wrote code in your reply but changed no file. Make the change with editFile (give the path, search, and replace) or writeFile, then answer briefly.',
+          });
+          continue;
+        }
         if (this.maybeVerify(verifyRounds) === 'retry') {
           verifyRounds += 1;
           continue;

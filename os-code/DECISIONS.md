@@ -1291,6 +1291,17 @@ execution contract. Newest at the bottom.
   call readFile) directly in the failure, so the next turn can copy the exact
   lines without a second read. This is retrieval the harness does for the
   model, per tenet 3, not a change to the edit-matching strategies themselves.
+- 2026-09-15: **editFile accepts the shapes small models actually produce.**
+  Four deep-eval rounds on the reference box ended at "No valid edit blocks
+  found": a 3B never once produced the SEARCH/REPLACE mini-language inside a
+  JSON string. Rather than teach it harder, the tool now takes a flat `search`
+  - `replace` pair first (plus the aliases other tools taught models), a JSON
+    array of pairs or that array stringified, and loosely fenced markers, all
+    normalized to the same blocks and the same exact / whitespace / anchored
+    matcher, so nothing gets looser about WHERE an edit lands. A failure echoes
+    what the model sent. And a lean seat that answers with a code block while
+    changing no file is nudged once to make the change. Tenet 3: the harness
+    meets the model where it is; the eval decides if it was enough.
 - 2026-09-15: **North star: a five-year-old MacBook should feel as powerful as
   running Claude-grade models on a local stack (founder).** State-of-the-art
   hardware buys headroom and options, never entry. The feeling is delivered by

@@ -1,21 +1,117 @@
-// The editFile tool: structured search/replace blocks through the edit
-// engine, with post-apply verification and a diff for approval. This is the
-// top failure mode for local models, so every rejection message teaches the
-// model how to fix its next attempt.
+// The editFile tool: structured search/replace through the edit engine, with
+// post-apply verification and a diff for approval. This is the top failure
+// mode for local models, so every rejection message teaches the model how to
+// fix its next attempt, and the tool accepts the shapes small models actually
+// produce instead of insisting on one.
+//
+// Three ways to say the same change, most forgiving first:
+//   1. `search` + `replace` as two plain string fields (one change). A flat
+//      pair is the shape a small model gets right; the deep eval's 3B seat
+//      never once produced the block mini-language inside a JSON string.
+//      Aliases other tools taught models are accepted too (old_string /
+//      new_string, old / new, find / replace, from / to).
+//   2. `edits` as SEARCH/REPLACE text blocks (several changes at once).
+//   3. `edits` as a JSON array of {search, replace} pairs, or that array
+//      stringified, which is what a model does when it "JSON-ifies" the blocks.
+// All three normalize to the same EditBlock list and go through the same
+// exact / whitespace-tolerant / anchored matcher, so nothing gets looser about
+// WHERE an edit lands, only about how the model is allowed to ask for it.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { z } from 'zod';
 import type { ToolDef } from './index.js';
-import { EDIT_FORMAT_DOC, parseEditBlocks } from '../edit/searchReplace.js';
+import { EDIT_FORMAT_DOC, parseEditBlocks, type EditBlock } from '../edit/searchReplace.js';
 import { applyEditBlocks } from '../edit/apply.js';
 import { structuralCheck, verifyWritten } from '../edit/verify.js';
 import { unifiedDiff } from '../edit/diff.js';
+import { parseJsonLoose } from './parser.js';
 
-const schema = z.object({
-  path: z.string().describe('File to edit, relative to the workspace root'),
-  edits: z
-    .string()
-    .describe('One or more search/replace blocks in the exact SEARCH/REPLACE format'),
-});
+const pairSchema = z.looseObject({});
+
+const schema = z
+  .object({
+    path: z.string().describe('File to edit, relative to the workspace root'),
+    search: z
+      .string()
+      .optional()
+      .describe(
+        'The exact lines to replace, copied verbatim from the file (include 2 or 3 unchanged lines around them). Use together with replace, for one change.',
+      ),
+    replace: z
+      .string()
+      .optional()
+      .describe('The lines that take the place of search. Use together with search.'),
+    edits: z
+      .union([z.string(), z.array(pairSchema)])
+      .optional()
+      .describe(
+        'For several changes at once: SEARCH/REPLACE blocks as plain text, or an array of {search, replace} objects. Not needed when search and replace are given.',
+      ),
+  })
+  .loose();
+
+type Args = z.infer<typeof schema>;
+
+const SIMPLE_FORM_DOC =
+  'Simplest: give search (the exact lines to replace, copied from the file) and replace (their replacement) for one change.';
+
+const SEARCH_KEYS = ['search', 'old_string', 'old_str', 'old', 'find', 'from', 'before'];
+const REPLACE_KEYS = ['replace', 'new_string', 'new_str', 'new', 'to', 'after'];
+
+function firstStringKey(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string') return v;
+  }
+  return undefined;
+}
+
+/** One {search, replace}-ish object to a block, under any of the accepted key
+ *  spellings. Undefined when the object carries no recognizable pair. */
+function pairToBlock(obj: Record<string, unknown>): EditBlock | undefined {
+  const search = firstStringKey(obj, SEARCH_KEYS);
+  const replace = firstStringKey(obj, REPLACE_KEYS);
+  if (search === undefined || replace === undefined) return undefined;
+  return { search, replace };
+}
+
+function blocksFromPairs(value: unknown): EditBlock[] {
+  const items = Array.isArray(value) ? value : [value];
+  const blocks: EditBlock[] = [];
+  for (const item of items) {
+    if (typeof item !== 'object' || item === null) continue;
+    const block = pairToBlock(item as Record<string, unknown>);
+    if (block) blocks.push(block);
+  }
+  return blocks;
+}
+
+interface Normalized {
+  blocks: EditBlock[];
+  problems: string[];
+}
+
+/** Turn whatever shape the model sent into edit blocks. */
+function normalize(args: Args): Normalized {
+  const raw = args as Record<string, unknown>;
+  // 1. Flat pair fields, canonical or aliased.
+  const pair = pairToBlock(raw);
+  if (pair) return { blocks: [pair], problems: [] };
+
+  const edits = raw.edits;
+  // 2. Text blocks.
+  if (typeof edits === 'string') {
+    const parsed = parseEditBlocks(edits);
+    if (parsed.blocks.length) return parsed;
+    // 3a. The blocks JSON-ified into a string.
+    const asJson = parseJsonLoose(edits);
+    const fromJson = blocksFromPairs(asJson);
+    if (fromJson.length) return { blocks: fromJson, problems: [] };
+    return { blocks: [], problems: parsed.problems };
+  }
+  // 3b. A real array of pairs.
+  if (Array.isArray(edits)) return { blocks: blocksFromPairs(edits), problems: [] };
+  return { blocks: [], problems: [] };
+}
 
 type Plan =
   | { error: string }
@@ -39,26 +135,52 @@ function currentContentsBlock(path: string, content: string): string {
   return `Current contents of ${path} (copy the exact lines from here):\n\`\`\`\n${content}\n\`\`\``;
 }
 
-function plan(args: z.infer<typeof schema>, before: string): Plan {
-  const parsed = parseEditBlocks(args.edits);
-  if (parsed.blocks.length === 0) {
+// Bounds echoing the model's OWN malformed request back to it: the deep
+// eval's 3B run hit "No valid edit blocks found" with zero specific parse
+// problems, meaning no marker appeared at all, and the old message only
+// restated the correct format without showing the model what IT sent, so a
+// retry had nothing new to correct against. Same principle as the file echo
+// above, applied to the model's own input.
+const MAX_ECHOED_EDITS_CHARS = 1500;
+
+function truncateEcho(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}...(truncated)` : s;
+}
+
+function whatWasSent(args: Args): string {
+  const raw = args as Record<string, unknown>;
+  const { path: _path, ...rest } = raw;
+  void _path;
+  const text =
+    typeof rest.edits === 'string' && Object.keys(rest).length === 1
+      ? rest.edits
+      : JSON.stringify(rest);
+  return truncateEcho(text, MAX_ECHOED_EDITS_CHARS);
+}
+
+function plan(args: Args, before: string): Plan {
+  const { blocks, problems } = normalize(args);
+  if (blocks.length === 0) {
+    const cause = problems.length
+      ? `Problems: ${problems.join(' ')}`
+      : 'No change was recognizable in the arguments.';
     return {
-      error: `No valid edit blocks found.${parsed.problems.length ? ` Problems: ${parsed.problems.join(' ')}` : ''}\n${EDIT_FORMAT_DOC}`,
+      error: `No valid edit found. ${cause}\n\nYou sent:\n${whatWasSent(args)}\n\n${SIMPLE_FORM_DOC}\nFor several changes, ${EDIT_FORMAT_DOC}`,
     };
   }
-  const result = applyEditBlocks(before, parsed.blocks);
+  const result = applyEditBlocks(before, blocks);
   if (!result.ok) {
     const reasons = result.failures.map((f) => `Block ${f.index + 1}: ${f.reason}`).join('\n');
     return {
       error: `The edit did not apply.\n${reasons}\n\n${currentContentsBlock(args.path, before)}`,
     };
   }
-  return { result, warnings: parsed.problems };
+  return { result, warnings: problems };
 }
 
 export const editFileTool: ToolDef<typeof schema> = {
   name: 'editFile',
-  description: `Edit part of a file with search/replace blocks. ${EDIT_FORMAT_DOC}`,
+  description: `Edit part of a file. ${SIMPLE_FORM_DOC} For several changes at once, give edits as SEARCH/REPLACE blocks: ${EDIT_FORMAT_DOC}`,
   schema,
   risk: 'write',
   pathOf: (args) => args.path,

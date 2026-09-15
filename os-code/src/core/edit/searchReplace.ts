@@ -13,9 +13,14 @@ export interface EditBlock {
   replace: string;
 }
 
-const OPEN = /^<{5,9}\s*SEARCH\s*$/;
-const MID = /^={5,9}\s*$/;
-const CLOSE = /^>{5,9}\s*REPLACE\s*$/;
+// Markers are recognized loosely on purpose: three or more angle brackets or
+// equals signs (models shorten runs), the keyword in any case, an optional
+// trailing colon, and the other spellings models learned elsewhere (ORIGINAL /
+// UPDATED, BEFORE / AFTER, OLD / NEW). Nothing gets looser about WHERE an edit
+// lands; only the fence around it is forgiven.
+const OPEN = /^<{3,}\s*(SEARCH|ORIGINAL|BEFORE|OLD)\s*:?\s*$/i;
+const MID = /^={3,}\s*$/;
+const CLOSE = /^>{3,}\s*(REPLACE|UPDATED|AFTER|NEW)\s*:?\s*$/i;
 
 export interface ParseResult {
   blocks: EditBlock[];
