@@ -1540,3 +1540,12 @@ execution contract. Newest at the bottom.
   project's `harness.verify.maxRetries` can only raise the number. The 3B
   came within one line of a two-file rename at three checks; the lean seat
   converges in small steps and the step rails still bound it.
+- **The structural check guards the proposed content, and writeFile has it
+  too (2026-09-15, round twelve).** `node --check <path>` was checking the
+  file before the edit, so a corrupting edit landed and only the next one
+  was refused; the deep eval left `greeter.mjs` as `(name) {`. The candidate
+  now goes to a probe file beside the real one with the same extension and
+  is removed whatever happens; the error names the real file. `writeFile`
+  runs the same JS and JSON gate before writing: a coding agent writing a
+  file that does not parse is a mistake worth refusing, and the message says
+  the existing file is unchanged.

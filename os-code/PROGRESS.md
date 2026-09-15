@@ -65,9 +65,24 @@ text it can paste; (3) a lean seat gets at least four verify retries
 (`verifyRetries` per class in `profile.ts`, a project's own setting can only
 raise it), since the rename came within one line after three checks. A
 rolled-back edit also says plainly the file is unchanged and the replace
-must be complete code for the whole region. os-code 753 green (9 new). The
-convergence memo for the out-of-the-box path is
-`docs/premium-harness-first-seat-convergence.md`.
+must be complete code for the whole region. os-code 753 green (9 new).
+
+Round twelve ran that: 25% again, but a different 25%. `fix-bug` passed
+(edit 100%, the flattened boundary fix did its work), `add-function` fell
+back to 0 (run-to-run variance; `--attempts 3` is the tool for that), the
+answer task ignored the "run it" line (still `readFile` only, answered 24:
+the 3B does not take that instruction, a stronger seat should), and the
+rename trace showed something worse than a miss: `greeter.mjs` left as
+`(name) {`, a corrupted file. That exposed a pre-existing bug in the edit
+engine with real teeth: `structuralCheck` ran `node --check` on the PATH,
+which is the file before the edit, so a corrupting edit passed (the old
+file parses), was written, and only the next edit tripped the check; the
+"a write landed; verify failed" shape in the last two runs was this. The
+check now writes the proposed content to a probe file beside the real one
+(same extension, so module type resolves the same) and checks that, and
+`writeFile` gained the same gate, which it never had
+(`test/structuralCheckContent.test.ts`). The convergence memo for the
+out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in
