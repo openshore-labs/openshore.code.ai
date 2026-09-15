@@ -401,6 +401,13 @@ log entry). Migration is now `0016`.
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Stack page: vocabulary unification and the desktop screen (founder call,
+      raised 2026-09-15).** The phone `StackManager` redesign shipped; the CTO's
+      top cross-surface finding is that the desktop `StackScreen` and
+      `StackHealthScreen` still say "Quarterback" where the phone says "Reasoning
+      LLM". Align the copy (a small sweep), and optionally bring the work-first
+      cover to the older desktop `StackScreen`. See `docs/stack-page-redesign.md`.
+
 - [ ] **Project room redesign, device taste (built 2026-09-15).** The
       work-first rebuild is verified in headless Chromium in both themes; the
       cover wash and the resume card's teal are a first pass. TestFlight is the
@@ -873,6 +880,29 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-15: the Stack page, reviewed and rebuilt as a legible system
+  (founder, CTO + Creative Studio + CX).** Same team, same treatment as the
+  project room. The screenshot was the phone view (`StackManager`), so that was
+  the target. The read: the control room for the plan-first workflow was drawn
+  as a flat settings list, the premise (one Reasoning LLM plans and routes to
+  specialists) invisible, the anchor looking like any benched model, and the
+  teal/amber posture language barely used. Rebuilt: an anchor cover (the same
+  water wash as the project room) carrying a compact reach pill (the status,
+  now, tap to switch which status's stack you edit) and the Reasoning LLM as the
+  hero with a location chip and Change; a single Specialists section with a
+  routing explainer, image reading as a tagged specialist keeping its two
+  local/cloud slots, and the placed specialists each with a category tag and a
+  location chip; a Bench of reserves with the teal/amber rule kept on every
+  model and a house-styled cloud picker (was a raw inline `<select>`).
+  Presentational only: every store action, sheet, the Currents bench pill, the
+  vision two-slot semantics, and the admin gating (the non-admin lock on every
+  control) preserved. No test pinned the Stack UI strings; none loosened.
+  Rendered in headless Chromium at phone width in both themes. Gates: app
+  typecheck, lint, 887 tests, Vite build; the motion, polish, and em-dash
+  guards. Review in `docs/stack-page-redesign.md`; ruling in `DECISIONS.md`. The
+  CTO's top cross-surface finding, the desktop Quarterback vs Reasoning LLM
+  vocabulary split, is left for the founder to green-light (What remains).
+
 - **2026-09-14: the arrival is now a replica of the iOS Siri glow, in the
   brand's water (founder, from a screen recording).** The founder attached a
   recording of Siri activating and asked for a replica with the OpenShore
@@ -943,36 +973,6 @@ log entry). Migration is now `0016`.
   clean, app typecheck clean. Re-running the deep eval on the box to confirm the
   small seat now completes the loop, and to record the with-and-without number,
   is the immediate next step.
-
-- **2026-09-14: Perplexity, Sonar as a cloud provider and Research as a
-  default-off layer (founder, after a CTO and CX read).** The founder wanted
-  Perplexity layered in. The advisors split it: Perplexity is deliberately NOT
-  an Agentic Current (a Current is an exclusive agent runtime, one at a time;
-  Perplexity research is additive and reuses a provider key), so it landed as
-  two things. (1) Sonar joins the cloud providers in `app/src/lib/providers.ts`
-  (OpenAI-compatible, `api.perplexity.ai`, five Sonar ids with the house
-  verify-before-release caveat); it places into a Stack slot like any model.
-  (2) Research is a default-off, key-gated row in the Wayfinding group
-  (`SettingsScreen`) that routes the on-device model's web search through Sonar
-  on the connected Perplexity key, with no second key to paste:
-  `resolveSearchKey` prefers Perplexity when Research is on and a key exists,
-  else falls back to the configured backend, and `webSearch` gained a
-  `perplexity` backend mapping Sonar `search_results`/`citations` to sources
-  (`onDeviceDriver` calls the resolver, `store` carries `perplexityResearch`,
-  `Switch` gained a `disabled` prop for the ungated state). Perplexity Computer
-  was scoped and dropped on purpose: it runs on Perplexity's own models and
-  cannot be driven by a local model, so it would not serve the founder's goal
-  of computer capabilities for local models (that is OpenShore's own harness to
-  build, the stubbed Wayfinding Browser). Code: `providers.ts`, `webSearch.ts`,
-  `onDeviceDriver.ts`, `store.ts`, `SettingsScreen.tsx`, `Switch.tsx`. Gates:
-  app typecheck (src and electron), lint, 880 tests, Vite build, Prettier.
-  Ruling in `DECISIONS.md`. Then the two follow-ups landed the same day: Sonar
-  citations now thread through `CloudOpenAiDriver` (top-level
-  `search_results`/`citations`, both stream paths, emitted as a `citations`
-  event), and the engine gained a `perplexity` search backend
-  (`src/core/tools/search/perplexity.ts`, `search.backend` + `perplexityKeyEnv`),
-  config and env driven so the key stays on the box. Both pushed to `main` per
-  the founder.
 
 - **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
   CTO + Creative Studio + CX).** The founder flagged the project room (the room

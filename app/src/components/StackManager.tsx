@@ -61,6 +61,22 @@ function byomHost(baseUrl: string): string {
   }
 }
 
+/** One consistent read on where a model runs, so the whole stack is legible at
+ *  a glance: teal for local and private (on device, or your own server), amber
+ *  for cloud (spend and off-device). The same language the rest of the app
+ *  uses. */
+function kindMeta(ref: StackModelRef): { cls: 'local' | 'cloud'; label: string } {
+  if (ref.kind === 'cloud') return { cls: 'cloud', label: 'cloud' };
+  if (ref.kind === 'byom') return { cls: 'local', label: 'your server' };
+  return { cls: 'local', label: 'on device' };
+}
+
+/** The teal/amber chip for a model's location. */
+function KindChip({ refModel }: { refModel: StackModelRef }) {
+  const { cls, label } = kindMeta(refModel);
+  return <span className={`kind-chip ${cls}`}>{label}</span>;
+}
+
 export function StackManager() {
   const {
     settings,
@@ -276,143 +292,157 @@ export function StackManager() {
             : 'Your admin sets the shared stack for the company. It plans every task and routes it to the specialist whose category fits. You can talk with your admin about changing it.'}
         </p>
 
-        {/* Status selector: each status runs its own stack, used automatically
-            when the device is in it. Opens on the current status; picking
-            another shows and edits that status's stack. */}
-        <button
-          className="card profile-select press-fb"
-          onClick={() => setProfileMenuOpen(true)}
-          aria-label={`Editing the ${PROFILES[editProfile].label} stack. Tap to switch status.`}
-        >
-          <span className="profile-select-dot" style={{ background: PROFILES[editProfile].dot }} />
-          <span className="profile-select-text">
-            <span className="profile-select-title">
-              {PROFILES[editProfile].label}
-              {editProfile === profile ? <span className="profile-now">now</span> : null}
-            </span>
-            <span className="profile-select-blurb">{PROFILES[editProfile].blurb}</span>
-          </span>
-          <span className="profile-select-caret" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+        {/* The cover: the reach the stack runs under, and the Reasoning LLM
+            anchor that runs the show. The reach button opens the status picker;
+            each status runs its own stack, used automatically when the device
+            is in it. */}
+        <header className="stack-cover">
+          <div className="stack-cover-wash" aria-hidden="true" />
+          <div className="stack-cover-body">
+            <button
+              className="stack-reach press-fb"
+              onClick={() => setProfileMenuOpen(true)}
+              aria-label={`Editing the ${PROFILES[editProfile].label} stack. Tap to switch status.`}
             >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </span>
-        </button>
+              <span
+                className="profile-select-dot"
+                style={{ background: PROFILES[editProfile].dot }}
+              />
+              <span className="stack-reach-label">{PROFILES[editProfile].label}</span>
+              {editProfile === profile ? <span className="profile-now">now</span> : null}
+              <span className="stack-reach-caret" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </span>
+            </button>
 
-        {/* Reasoning LLM anchor. Required and immovable, but replaceable. */}
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <h3>
-                Reasoning LLM <span className="sub">(runs the show)</span>
-              </h3>
-              <div className="sub">{refName(reasoning)}</div>
+            <span className="stack-kicker">Runs the show</span>
+            <div className="stack-anchor-row">
+              <h2 className="stack-anchor-name">{refName(reasoning)}</h2>
+              <KindChip refModel={reasoning} />
             </div>
-            <span className="pill local">anchor</span>
+            <p className="stack-cover-blurb">{PROFILES[editProfile].blurb}</p>
+
             {admin ? (
               <button
-                className="btn ghost"
-                style={{ padding: '8px 14px' }}
+                className="btn ghost stack-anchor-change"
                 onClick={() => setPickReasoning(true)}
               >
-                Change
+                Change the Reasoning LLM
               </button>
             ) : (
-              <span className="lock-hint" aria-label="Admin owned">
+              <span className="stack-anchor-lock" aria-label="Admin owned">
                 <span className="lock-glyph" aria-hidden="true" />
+                <span>Set by your admin</span>
               </span>
             )}
           </div>
-        </div>
+        </header>
 
         {/* Image reading (Vision): two slots, a local model and a cloud model,
             each with its own effort. The cloud slot defaults to the most
             capable cloud model until changed. This is the position a picture
             (a screenshot, a photo, a video's frames) routes to, and workflows
             that run through the stack inherit it. */}
-        <h3 style={{ margin: '18px 0 10px' }}>Image reading (Vision)</h3>
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <div className="sub">
-                Where screenshots, photos, and video frames are read. A local model runs on your
-                device or your own server; the cloud model reads anything it cannot.
-              </div>
-            </div>
-          </div>
-          {(['local', 'cloud'] as const).map((slot) => {
-            const line = slotLine(slot);
-            return (
-              <div className="card-row" key={slot} style={{ marginTop: 10 }}>
-                <div className="grow">
-                  <h3 style={{ fontSize: 14 }}>{slot === 'local' ? 'On device' : 'Cloud'}</h3>
-                  <div className="sub">
-                    {line.title}
-                    {' · '}
-                    {line.sub}
-                  </div>
-                </div>
-                {admin ? (
-                  <button
-                    className="btn ghost"
-                    style={{ padding: '8px 14px' }}
-                    onClick={() => openVisionEdit(slot)}
-                  >
-                    Change
-                  </button>
-                ) : (
-                  <span className="lock-hint" aria-label="Admin owned">
-                    <span className="lock-glyph" aria-hidden="true" />
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <h3 style={{ margin: '18px 0 10px' }}>Active stack</h3>
-        {nonVisionActive.length === 0 ? (
-          <p className="hint" style={{ marginBottom: 12 }}>
-            No specialists yet. The Reasoning LLM handles everything until you place one.
+        {/* Specialists: the models the Reasoning LLM routes work to. Image
+            reading is one of them, with its own two-slot local/cloud fallback;
+            the rest are the placed specialists, each tagged by category. */}
+        <section className="stack-section">
+          <span className="stack-eyebrow">Specialists</span>
+          <p className="stack-section-note">
+            The Reasoning LLM routes each task to the specialist whose category fits. Anything with
+            no specialist placed, it handles itself.
           </p>
-        ) : (
-          nonVisionActive.map((m) => (
-            <div className="card" key={refKey(m.ref)}>
-              <div className="card-row">
-                <div className="grow">
-                  <h3>{refName(m.ref)}</h3>
-                  <div className="sub">
-                    {categoryLabel(m.placement.category)}
-                    {m.placement.whenCalled ? ` · ${m.placement.whenCalled}` : ''}
-                    {m.placement.effort ? ` · ${effortLabel(m.placement.effort)} effort` : ''}
-                  </div>
-                </div>
-                {admin ? (
-                  <button
-                    className="icon-btn"
-                    aria-label="Options"
-                    onClick={() => setMenuKey(refKey(m.ref))}
-                  >
-                    {'⋯'}
-                  </button>
-                ) : (
-                  <span className="lock-hint" aria-label="Admin owned">
-                    <span className="lock-glyph" aria-hidden="true" />
-                  </span>
-                )}
-              </div>
+
+          <div className="card spec-card">
+            <div className="spec-card-head">
+              <span className="spec-tag">Image reading</span>
             </div>
-          ))
-        )}
+            <div className="sub">
+              Where screenshots, photos, and video frames are read. A local model runs on your
+              device or your own server; the cloud model reads anything it cannot.
+            </div>
+            {(['local', 'cloud'] as const).map((slot) => {
+              const line = slotLine(slot);
+              return (
+                <div className="spec-slot" key={slot}>
+                  <div className="grow">
+                    <h3 className="spec-slot-title">{slot === 'local' ? 'On device' : 'Cloud'}</h3>
+                    <div className="sub">
+                      {line.title}
+                      {' · '}
+                      {line.sub}
+                    </div>
+                  </div>
+                  {admin ? (
+                    <button
+                      className="btn ghost"
+                      style={{ padding: '8px 14px' }}
+                      onClick={() => openVisionEdit(slot)}
+                    >
+                      Change
+                    </button>
+                  ) : (
+                    <span className="lock-hint" aria-label="Admin owned">
+                      <span className="lock-glyph" aria-hidden="true" />
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {nonVisionActive.length === 0 ? (
+            <p className="hint" style={{ marginBottom: 12 }}>
+              No other specialists yet. The Reasoning LLM handles these until you place one.
+            </p>
+          ) : (
+            nonVisionActive.map((m) => (
+              <div className="card spec-card" key={refKey(m.ref)}>
+                <div className="card-row">
+                  <div className="grow">
+                    <span className="spec-tag">{categoryLabel(m.placement.category)}</span>
+                    <h3>{refName(m.ref)}</h3>
+                    <div className="sub">
+                      {[
+                        m.placement.whenCalled,
+                        m.placement.effort
+                          ? `${effortLabel(m.placement.effort)} effort`
+                          : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || 'Placed'}
+                    </div>
+                  </div>
+                  <KindChip refModel={m.ref} />
+                  {admin ? (
+                    <button
+                      className="icon-btn"
+                      aria-label="Options"
+                      onClick={() => setMenuKey(refKey(m.ref))}
+                    >
+                      {'⋯'}
+                    </button>
+                  ) : (
+                    <span className="lock-hint" aria-label="Admin owned">
+                      <span className="lock-glyph" aria-hidden="true" />
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </section>
 
         {!admin ? (
           <p className="hint" style={{ marginTop: 12 }}>
@@ -420,8 +450,12 @@ export function StackManager() {
             your chats, projects, and crew, is yours to set up as you like.
           </p>
         ) : (
-          <>
-            <h3 style={{ margin: '18px 0 10px' }}>Bench</h3>
+          <section className="stack-section">
+            <span className="stack-eyebrow">Bench</span>
+            <p className="stack-section-note">
+              Models you download or connect wait here, ready to place. Teal runs local and private,
+              amber is a cloud model.
+            </p>
             {bench.length === 0 && cloudBench.length === 0 ? (
               <p className="hint">
                 Models you download from the{' '}
@@ -450,9 +484,12 @@ export function StackManager() {
                                 : 'via current'}
                             </span>
                           </>
-                        ) : ref.kind === 'byom' ? (
-                          <span className="sub"> (your model)</span>
-                        ) : null}
+                        ) : (
+                          <>
+                            {' '}
+                            <KindChip refModel={ref} />
+                          </>
+                        )}
                       </h3>
                       <div className="sub">
                         {ref.kind === 'byom' && isCurrentBenchId(ref.id)
@@ -509,23 +546,15 @@ export function StackManager() {
                   <div className="card-row">
                     <div className="grow">
                       <h3>
-                        {provider.name} <span className="sub">(cloud)</span>
+                        {provider.name} <KindChip refModel={ref} />
                       </h3>
                       <div className="field" style={{ margin: '8px 0 0' }}>
                         <select
+                          className="stack-select"
                           value={picked}
                           onChange={(e) =>
                             setCloudPick({ ...cloudPick, [provider.id]: e.target.value })
                           }
-                          style={{
-                            width: '100%',
-                            background: 'var(--bg-raised)',
-                            border: '1px solid var(--border-strong)',
-                            borderRadius: 10,
-                            padding: '10px 12px',
-                            fontSize: 15,
-                            color: 'var(--ink)',
-                          }}
                         >
                           {favs.length ? (
                             <optgroup label="Favorites">
@@ -568,7 +597,7 @@ export function StackManager() {
                 </div>
               );
             })}
-          </>
+          </section>
         )}
       </div>
 
