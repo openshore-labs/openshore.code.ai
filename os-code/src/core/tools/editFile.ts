@@ -170,7 +170,14 @@ function plan(args: Args, before: string): Plan {
   }
   const result = applyEditBlocks(before, blocks);
   if (!result.ok) {
-    const reasons = result.failures.map((f) => `Block ${f.index + 1}: ${f.reason}`).join('\n');
+    // Each failure shows the model its own SEARCH beside the real file, so the
+    // exact character that differed is visible to it, and to the eval report.
+    const reasons = result.failures
+      .map(
+        (f) =>
+          `Block ${f.index + 1}: ${f.reason}\nYour SEARCH was:\n${truncateEcho(blocks[f.index]!.search, 600)}`,
+      )
+      .join('\n');
     return {
       error: `The edit did not apply.\n${reasons}\n\n${currentContentsBlock(args.path, before)}`,
     };
