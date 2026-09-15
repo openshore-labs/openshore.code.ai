@@ -101,3 +101,44 @@ describe('two unique anchors pin the location (strategy: anchored)', () => {
     expect(ambiguous.ok).toBe(false);
   });
 });
+
+describe('a bare fragment, not a whole line, still pins uniquely (strategy: fragment)', () => {
+  it('splices just the fragment when it occurs exactly once in the file', () => {
+    // The deep eval's rename-across-files task: the model sent
+    // "function oldName(" (part of a line, not the full
+    // "export function oldName(name) {"), which no whole-line strategy above
+    // can match at all.
+    const r = applyEditBlocks(GREETER, [
+      { search: 'function oldName(', replace: 'function greet(' },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.applied[0]!.strategy).toBe('fragment');
+    expect(r.content).toContain('export function greet(name) {');
+    expect(r.content).not.toContain('oldName');
+    expect(r.content).toContain('return `hello ${name}`;');
+  });
+
+  it('refuses a fragment that appears in more than one line', () => {
+    // "(a, b) {" sits in both function signatures; neither the whole line nor
+    // this fragment says which one, so it stays an error.
+    const r = applyEditBlocks(TWO_FUNCS, [{ search: '(a, b) {', replace: '(a, b, c) {' }]);
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]!.reason).toMatch(/appears more than once/);
+  });
+
+  it('refuses a fragment that repeats within the same line', () => {
+    const src = 'const pair = [addItem, addItem];\n';
+    const r = applyEditBlocks(src, [{ search: 'addItem', replace: 'addWidget' }]);
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]!.reason).toMatch(/appears more than once/);
+  });
+
+  it('will not guess on a fragment below the minimum length, even if unique', () => {
+    // "Name(" is a unique substring of "oldName(" but too short to trust as a
+    // deliberate reference; it falls through to the ordinary not-found error
+    // instead of splicing on a coincidence.
+    const r = applyEditBlocks(GREETER, [{ search: 'Name(', replace: 'X(' }]);
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]!.reason).toMatch(/not found in the file/);
+  });
+});

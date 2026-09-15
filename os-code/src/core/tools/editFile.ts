@@ -158,6 +158,29 @@ function whatWasSent(args: Args): string {
   return truncateEcho(text, MAX_ECHOED_EDITS_CHARS);
 }
 
+// A block can normalize successfully (a recognizable search/replace pair)
+// while still carrying no SEARCH text at all, for instance when a model
+// tries to APPEND new code and leaves search blank instead of anchoring on
+// an existing line. Routing that through the matcher produced "Your SEARCH
+// was:" followed by nothing, useless to a retry. Catching it here shows the
+// model what it DID send (its replace text) plus the file to anchor on,
+// before ever reaching the generic empty-string message in the matcher.
+function emptySearchError(args: Args, before: string, blocks: EditBlock[]): string | undefined {
+  const index = blocks.findIndex((b) => b.search.trim() === '');
+  if (index === -1) return undefined;
+  const block = blocks[index]!;
+  const replaceNote = block.replace.trim()
+    ? `This is the replacement text you gave, with nothing to anchor it to:\n${truncateEcho(block.replace, 600)}`
+    : 'No replacement text was given either.';
+  return (
+    `Block ${index + 1} has no SEARCH text, so there is nothing to locate in the file. ` +
+    `search must be one or more exact lines copied from the file, not left blank.\n\n${replaceNote}` +
+    `\n\n${currentContentsBlock(args.path, before)}\n\n${SIMPLE_FORM_DOC} To add new code, ` +
+    `use an existing line (such as the last line of the file) as search and include both that ` +
+    `line and the new code in replace.`
+  );
+}
+
 function plan(args: Args, before: string): Plan {
   const { blocks, problems } = normalize(args);
   if (blocks.length === 0) {
@@ -168,6 +191,8 @@ function plan(args: Args, before: string): Plan {
       error: `No valid edit found. ${cause}\n\nYou sent:\n${whatWasSent(args)}\n\n${SIMPLE_FORM_DOC}\nFor several changes, ${EDIT_FORMAT_DOC}`,
     };
   }
+  const emptySearch = emptySearchError(args, before, blocks);
+  if (emptySearch !== undefined) return { error: emptySearch };
   const result = applyEditBlocks(before, blocks);
   if (!result.ok) {
     // Each failure shows the model its own SEARCH beside the real file, so the

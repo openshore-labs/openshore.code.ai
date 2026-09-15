@@ -2491,7 +2491,30 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-14)
+## Log entries (2026-08-18 to 2026-09-15)
+
+- **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
+  CTO + Creative Studio + CX).** The founder flagged the project room (the room
+  behind a tapped project, where they expect 75% of the work) as scattered and
+  subpar and asked the three seats to look. The read: the room opened on config
+  (standing instructions, then repos) with the actual work (chats) third, under
+  a wall of lead copy, four identical cards with no hierarchy and no identity.
+  Rebuilt work-first: a calm paper-raised cover with a soft water wash (not a
+  dark band, so the shared-element title still lands), the hero title, a live
+  stat strip (chats, repos, team), and the primary action (New chat beside
+  Resume last chat); then the chats lead, with a resume card in the brand's
+  water for the returning person; then the context that rides into every chat
+  (instructions preview, repo chips with GitHub/local glyphs, a link into the
+  agent's project memory) under a teal eyebrow; then the roster and delete last.
+  The Projects list cards were aligned to read as workspaces (live chats and
+  repos count). Presentational plus one existing outbound link
+  (`openProjectMemory`); no store, permission-gate, team-access server path, or
+  migration touched, so `mayWrite`/`mayEdit`/`canManageAccess`/`canShare` gating
+  is preserved. Rendered in headless Chromium at phone width in both themes.
+  Gates: app typecheck, lint, 887 tests (extended `projectPolish.test.ts`, none
+  loosened), Vite build; the motion, polish, and em-dash guards green. Review
+  and directions in `docs/project-room-redesign.md`; ruling in `DECISIONS.md`.
+  Device taste is the founder call (What remains).
 
 - **2026-09-14: the arrival is now a replica of the iOS Siri glow, in the
   brand's water (founder, from a screen recording).** The founder attached a

@@ -21,7 +21,7 @@ remains).
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
-Latest (2026-09-15): the floor produced its first real numbers, over four
+Latest (2026-09-15): the floor produced its first real numbers, over six
 rounds on the founder's CPU-only box with qwen2.5-coder:3b, each round fixing
 one harness gap the previous run exposed. Round one: no timeout at all (the
 lean prompt plus a seat that fits the hardware solved the prefill wall), but
@@ -44,8 +44,24 @@ normalizing to the same blocks through the same matcher, and a failure now
 echoes what the model actually sent (`test/editFileShapes.test.ts`). The
 create task's "answered with code, changed no file" got a one-time nudge for
 lean seats (`test/noWriteNudge.test.ts`). The remaining wrong answer (82 for 42) is a 3B capability limit the harness does not paper over. os-code 714
-green. Round five: the model's blocks now parse, but its SEARCH lines still missed byte for byte (quote style, spacing, a paraphrased middle line), so the matcher gained a spelling-tolerant unique match and two-unique-anchor pinning, never looser about where an edit lands (`test/editMatchRelaxed.test.ts`), and a failed match now echoes the model's own SEARCH beside the file. The next 3B run is the first with every known harness gap closed; the
-convergence memo for the out-of-the-box path is
+green. Round five: the model's blocks now parse, but its SEARCH lines still missed byte for byte (quote style, spacing, a paraphrased middle line), so the matcher gained a spelling-tolerant unique match and two-unique-anchor pinning, never looser about where an edit lands (`test/editMatchRelaxed.test.ts`), and a failed match now echoes the model's own SEARCH beside the file. Round six: that run surfaced two more gaps instead of a clean pass, both real, both
+narrow. The add-a-function task sent a block with a blank SEARCH (it meant to
+append, not replace, so it had no line to anchor on); the failure fell through
+to the matcher's generic empty-string message with nothing to correct against,
+so `editFile` now catches a blank SEARCH before the matcher ever sees it and
+shows the model its own REPLACE text plus the file to anchor on. The
+rename-across-files task sent `function oldName(` instead of the full
+`export function oldName(name) {`, a bare fragment no whole-line strategy can
+match; the matcher gained a fifth and narrowest strategy that splices just the
+fragment in place, and only when that exact text occurs once in the whole
+file, with a minimum length so a stray `{` or `)` never matches by coincidence
+(both in `test/editMatchRelaxed.test.ts` and `test/editFileToolTrace.test.ts`).
+The answer-from-code task was wrong again with yet another number (16 this
+run, 82 in an earlier one, always for the same question whose real answer is
+42): a genuine 3B arithmetic limit, not a harness gap, and the harness does
+not paper over it. os-code 725 green, app 888 green. Next: re-run the deep
+eval on the box with every known gap now closed and record the real, honest
+number. The convergence memo for the out-of-the-box path is
 `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
@@ -957,26 +973,3 @@ log entry). Migration is now `0016`.
   CTO's top cross-surface finding, the desktop Quarterback vs Reasoning LLM
   vocabulary split, was then closed the same day at the founder's call: Quarterback
   is renamed to Reasoning LLM across the desktop stack screens and the guides.
-
-- **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
-  CTO + Creative Studio + CX).** The founder flagged the project room (the room
-  behind a tapped project, where they expect 75% of the work) as scattered and
-  subpar and asked the three seats to look. The read: the room opened on config
-  (standing instructions, then repos) with the actual work (chats) third, under
-  a wall of lead copy, four identical cards with no hierarchy and no identity.
-  Rebuilt work-first: a calm paper-raised cover with a soft water wash (not a
-  dark band, so the shared-element title still lands), the hero title, a live
-  stat strip (chats, repos, team), and the primary action (New chat beside
-  Resume last chat); then the chats lead, with a resume card in the brand's
-  water for the returning person; then the context that rides into every chat
-  (instructions preview, repo chips with GitHub/local glyphs, a link into the
-  agent's project memory) under a teal eyebrow; then the roster and delete last.
-  The Projects list cards were aligned to read as workspaces (live chats and
-  repos count). Presentational plus one existing outbound link
-  (`openProjectMemory`); no store, permission-gate, team-access server path, or
-  migration touched, so `mayWrite`/`mayEdit`/`canManageAccess`/`canShare` gating
-  is preserved. Rendered in headless Chromium at phone width in both themes.
-  Gates: app typecheck, lint, 887 tests (extended `projectPolish.test.ts`, none
-  loosened), Vite build; the motion, polish, and em-dash guards green. Review
-  and directions in `docs/project-room-redesign.md`; ruling in `DECISIONS.md`.
-  Device taste is the founder call (What remains).
