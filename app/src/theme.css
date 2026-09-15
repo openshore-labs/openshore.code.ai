@@ -768,7 +768,12 @@ textarea {
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  z-index: 5;
+  /* Above .edge-swipe-zone (z-index 30): the menu/back button sits in the
+     same top-left corner as the drawer's edge-swipe strip, and a direct tap
+     on a real control must win over the ambient gesture zone beneath it.
+     Left below the drawer and its scrim (40+) so those still cover it once
+     open. */
+  z-index: 31;
 }
 
 .topbar-title {

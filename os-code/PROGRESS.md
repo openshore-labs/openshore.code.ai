@@ -21,20 +21,28 @@ remains).
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
-Latest (2026-09-15): the floor produced its first real number. On the
-founder's CPU-only box, qwen2.5-coder:3b ran all four deep-eval tasks with no
-timeout ("1 turn; done: complete"), so the lean prompt plus a seat that fits
-the hardware solves the prefill wall. It still scored 0%, and the trace said
-why: the model wrote its tool call as JSON text (a fenced
-`{"name": "readFile", "arguments": ...}`), and native mode read that as a final
-answer and completed the task with nothing run; the 7B's curl test showed
-ollama hands tool calls back as content, not `tool_calls`, on this box. Fixed
-in `loop.ts`: native mode now falls back to text extraction when no native call
-arrived, and records that turn the text way (assistant text plus "[tool
-result]" observations), never a fabricated tool_use; prose that quotes JSON is
-left alone. `test/textCallFallback.test.ts` reproduces the 3B failure and the
-prose case. os-code 690 green. Re-running the 3B deep eval is the immediate
-step; the convergence memo for the out-of-the-box path is
+Latest (2026-09-15): the floor produced its first real numbers, in two
+rounds. Round one: qwen2.5-coder:3b ran all four deep-eval tasks on the
+founder's CPU-only box with no timeout ("1 turn; done: complete"), proving the
+lean prompt plus a seat that fits the hardware solves the prefill wall. It
+still scored 0%, because the model wrote its tool call as JSON text (ollama
+hands calls back as content, not `tool_calls`, on this box) and native mode
+read that as a final answer, completing with nothing run. Fixed in `loop.ts`:
+native mode falls back to text extraction when no native call arrives, and
+records that turn the text way, never a fabricated tool_use
+(`test/textCallFallback.test.ts`). Round two, after that fix: every task now
+calls real tools (readFile, editFile, writeFile, todoWrite), no more timeouts,
+no more "no tools called". Still 0%, but for two distinct, honest reasons: (1)
+a second harness gap, now also fixed, where editFile's failure on a
+non-matching SEARCH block only offered a hint, so a 3B that mis-transcribed a
+line resent the IDENTICAL block four times and tripped the loop guardrail;
+`editFile.ts` now echoes the file's own current content (bounded to 4000
+chars) into the failure so the next turn has ground truth to copy from
+(tenet 3; `test/editFileToolTrace.test.ts`); (2) genuine 3B capability limits
+on the remaining two tasks (a wrong implementation, a wrong answer), which the
+harness does not paper over, and which best-of-N and verify-in-the-loop exist
+to buy back next. os-code 693 green. Re-running the 3B deep eval again is the
+immediate step; the convergence memo for the out-of-the-box path is
 `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
