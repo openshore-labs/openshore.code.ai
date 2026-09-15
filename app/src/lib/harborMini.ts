@@ -2,7 +2,7 @@
 // BUNDLED with the app so it is present the moment the app is installed, with
 // no first-launch download. It greets the user and answers setup and "how do I"
 // questions offline, handing off to a real model for actual work. It is a
-// concierge, never a stack member: not a quarterback, not a specialist, and
+// concierge, never a stack member: not the Reasoning LLM, not a specialist, and
 // never competes with the models the user chooses. The lighter sibling of
 // Harbor (the flagship guide, in harbor.ts).
 //

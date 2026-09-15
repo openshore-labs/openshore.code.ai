@@ -711,7 +711,7 @@ export function VaultScreen() {
         ) : null}
 
         {vaultFiles.length === 0 && vaultError === 'load' ? (
-          <div className="card vault-notice">
+          <div className="card empty-notice">
             <h3>Your vault storage is offline.</h3>
             <p className="sub">
               Your notes are safe where they live. This device could not reach the storage to load
@@ -722,7 +722,7 @@ export function VaultScreen() {
             </button>
           </div>
         ) : vaultFiles.length === 0 && team ? (
-          <div className="card vault-notice">
+          <div className="card empty-notice">
             <h3>Your team vault is empty.</h3>
             <p className="sub">The first note you write is shared with your organization.</p>
             <button className="btn primary" onClick={() => setNewOpen(true)}>

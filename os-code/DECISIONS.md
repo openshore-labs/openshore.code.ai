@@ -1395,3 +1395,11 @@ execution contract. Newest at the bottom.
   unchanged. Also fixed a command-door overlap bug (inline spans to a flex
   column). The repo's own dev-process references in CLAUDE.md keep the C-suite
   titles for now. Review in `docs/crew-page-redesign.md`.
+- **Quarterback renamed to Reasoning LLM, and the greeting sweep (2026-09-15,
+  founder).** The founder rejected "Quarterback" ("either just reasoning or
+  something like Anchor"); the user-facing term is now Reasoning LLM everywhere
+  (matching the phone), across the desktop StackScreen and StackHealth, the
+  Library intro, the Harbor and guide copy. Separately, the fixed-overlay
+  `.greeting` was swept off the last non-chat screen: the project memory view's
+  empty/error/not-set-up states now use the shared in-flow `.empty-notice` card
+  (renamed from `.vault-notice`), so only the chat keeps `.greeting`.

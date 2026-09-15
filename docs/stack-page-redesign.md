@@ -97,12 +97,13 @@ the teal correctly.
 
 ## Open, for the founder
 
-- **The vocabulary unification (CTO's top item).** Align the desktop
-  `StackScreen` and `StackHealthScreen` from "Quarterback" to "Reasoning LLM" so
-  the term is one across surfaces. Small, copy-only, but it touches two more
-  screens, so it is the founder's call to green-light as its own change.
+- **The vocabulary unification (CTO's top item). DONE 2026-09-15.** The founder
+  rejected "Quarterback" ("either just reasoning or something like Anchor"), so
+  the user-facing term is now "Reasoning LLM" everywhere: the desktop
+  `StackScreen` heading and lead, `StackHealthScreen`, the Library intro, and the
+  Harbor and guide copy.
 - **Desktop `StackScreen` structure.** The desktop page is still the older flat
-  list (Quarterback + fixed roles). If the founder wants, the same work-first
-  cover and system framing can be brought to it.
+  list (fixed roles). If the founder wants, the same work-first cover and system
+  framing can be brought to it.
 - **Taste on a device.** The cover wash and the chip density are a first pass;
   TestFlight is the judge.
