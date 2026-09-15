@@ -64,6 +64,16 @@
   /* Wave-mark accent from the brand tile (the lighter shore teal). */
   --wave: #4b90a3;
 
+  /* The currents glow (the Siri-style ring in the brand's water): deep water,
+     water, shore teal, a light aqua the ring needs for its highlight, and the
+     amber counterpoint. Deeper on paper so the ring reads on a light ground. */
+  --current-1: #24454f;
+  --current-2: #2f5a66;
+  --current-3: #4b90a3;
+  --current-4: #8fcadb;
+  --current-5: #d9902e;
+  --current-glow-fade: rgba(75, 144, 163, 0.35);
+
   /* Flow: the neutral competence tone that sits between teal (local) and amber
      (spend) on the Stack Health rings. Names values already used there. */
   --flow: #8aa0a8;
@@ -168,6 +178,12 @@
     --danger: #e5675a;
     --link: #6fb0e0;
     --wave: #6bb3c4;
+    --current-1: #2f6f80;
+    --current-2: #4b90a3;
+    --current-3: #6bb3c4;
+    --current-4: #b3e4ef;
+    --current-5: #f0a850;
+    --current-glow-fade: rgba(107, 179, 196, 0.4);
     --flow: #9fb0b7;
     --flow-deep: #b6c3c9;
     --cloud-bright: #f0a850;
@@ -201,6 +217,12 @@
   --danger: #e5675a;
   --link: #6fb0e0;
   --wave: #6bb3c4;
+  --current-1: #2f6f80;
+  --current-2: #4b90a3;
+  --current-3: #6bb3c4;
+  --current-4: #b3e4ef;
+  --current-5: #f0a850;
+  --current-glow-fade: rgba(107, 179, 196, 0.4);
   --flow: #9fb0b7;
   --flow-deep: #b6c3c9;
   --cloud-bright: #f0a850;
@@ -9614,7 +9636,16 @@ button.settings-row:active {
    reset collapses it to a crossfade.
    --------------------------------------------------------------------------- */
 
-/* The arrival overlay: full-screen, never interactive, gone once it settles. */
+/* The arrival, a replica of the iOS Siri glow in the brand's own water
+   (founder, 2026-09-14, from a screen recording read frame by frame): a soft
+   bloom rises from the edge where the switch sits, then a thick multi-hue ring
+   lights the whole border with a blurred glow bleeding inward, and settles into
+   a thinner ring whose hues keep drifting around the perimeter. The palette is
+   the OpenShore water family with the amber counterpoint (--current-1..5),
+   never Siri's pink and purple. Every move is transform or opacity; the ring's
+   drift is an infinite loop on `linear` (the one raw easing the guard allows).
+   The whole flourish lasts about three door clocks, then hands over to the
+   persistent ring below. */
 .current-arrival {
   position: fixed;
   inset: 0;
@@ -9622,101 +9653,218 @@ button.settings-row:active {
   pointer-events: none;
   overflow: hidden;
 }
-/* The wave: a circle centered on the switch, scaled out on transform until it
-   covers the far corner. --wave-size is the viewport diagonal, so one scale
-   reaches every edge. */
-.current-wave {
+/* The bloom: a soft radial pool centered on the switch, no filter (a large
+   blurred element janks a WebView), just a gradient with a long falloff. */
+.current-bloom {
   position: absolute;
   left: var(--wave-x, 50%);
   top: var(--wave-y, 50%);
-  width: var(--wave-size, 200vmax);
-  height: var(--wave-size, 200vmax);
-  margin-left: calc(var(--wave-size, 200vmax) / -2);
-  margin-top: calc(var(--wave-size, 200vmax) / -2);
+  width: 90vmax;
+  height: 90vmax;
+  margin-left: -45vmax;
+  margin-top: -45vmax;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(90, 107, 114, 0) 0%,
-    rgba(90, 107, 114, 0) 46%,
-    rgba(75, 144, 163, 0.22) 49%,
-    rgba(75, 144, 163, 0.06) 52%,
-    rgba(90, 107, 114, 0) 56%
+    var(--current-3) 0%,
+    var(--current-2) 18%,
+    var(--current-glow-fade) 46%,
+    transparent 64%
   );
-  transform: scale(0);
-  opacity: 1;
-  animation: current-flow var(--dur-7) var(--ease-glide) forwards;
+  opacity: 0;
+  transform: scale(0.15);
+  animation: current-bloom var(--dur-7) var(--ease-glide) forwards;
   will-change: transform, opacity;
 }
-@keyframes current-flow {
-  from {
-    transform: scale(0);
-    opacity: 1;
-  }
-  to {
-    transform: scale(1);
+@keyframes current-bloom {
+  0% {
     opacity: 0;
+    transform: scale(0.15);
+  }
+  45% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
   }
 }
-/* The edge lights as the wave reaches it, then hands over to the water-line. */
-.current-arrival-edge {
+/* The ring: a rounded frame whose stroke is a conic gradient. The mask cuts
+   the frame out of the box (padding-box minus content-box), and the gradient
+   lives on an oversized square that rotates, so the hues drift on transform
+   alone. `.glow` is the same ring, thicker and blurred, bleeding inward. */
+.current-ring,
+.current-glow {
   position: absolute;
   inset: 0;
-  border: 2px solid var(--wave);
-  border-radius: var(--radius-lg);
-  opacity: 0;
-  animation: current-edge var(--dur-7) var(--ease-glide) forwards;
+  border-radius: var(--current-corner, 20px);
+  padding: var(--current-ring-w, 8px);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  overflow: hidden;
 }
-@keyframes current-edge {
+.current-glow {
+  padding: var(--current-glow-w, 30px);
+  filter: blur(18px);
+  opacity: 0.6;
+}
+.current-ring::before,
+.current-glow::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 200vmax;
+  height: 200vmax;
+  margin: -100vmax 0 0 -100vmax;
+  background: conic-gradient(
+    from 0deg,
+    var(--current-1),
+    var(--current-3),
+    var(--current-4),
+    var(--current-5),
+    var(--current-3),
+    var(--current-2),
+    var(--current-4),
+    var(--current-1)
+  );
+  animation: current-drift 9s linear infinite;
+  will-change: transform;
+}
+@keyframes current-drift {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* The flourish: the ring blazes in behind the bloom, holds, then settles to the
+   level the persistent ring carries, so the hand-over is seamless. Over a
+   second, so the literal seconds are allowed by the duration guard. */
+.current-arrival .current-ring {
+  opacity: 0;
+  animation: current-flourish 1.6s var(--ease-glide) forwards;
+}
+.current-arrival .current-glow {
+  opacity: 0;
+  animation: current-flourish-glow 1.6s var(--ease-glide) forwards;
+}
+@keyframes current-flourish {
   0% {
     opacity: 0;
   }
-  70% {
+  22% {
     opacity: 0;
+  }
+  45% {
+    opacity: 1;
   }
   100% {
     opacity: 0.55;
   }
 }
-/* The ebb: the water drains back to the switch. */
-.current-arrival.ebb .current-wave {
-  animation: current-ebb var(--dur-7) var(--ease-glide) forwards;
-}
-@keyframes current-ebb {
-  from {
-    transform: scale(1);
+@keyframes current-flourish-glow {
+  0% {
     opacity: 0;
   }
-  to {
-    transform: scale(0);
-    opacity: 1;
+  22% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
   }
 }
-.current-arrival.ebb .current-arrival-edge {
-  animation: current-edge-out var(--dur-5) var(--ease-standard) forwards;
+/* The ebb: the ring brightens once, then drains, and the bloom sinks back into
+   the switch. */
+.current-arrival.ebb .current-bloom {
+  animation: current-bloom-ebb var(--dur-7) var(--ease-glide) forwards;
 }
-@keyframes current-edge-out {
-  from {
+@keyframes current-bloom-ebb {
+  0% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  55% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.15);
+  }
+}
+.current-arrival.ebb .current-ring {
+  animation: current-ebb 1.2s var(--ease-standard) forwards;
+}
+.current-arrival.ebb .current-glow {
+  animation: current-ebb-glow 1.2s var(--ease-standard) forwards;
+}
+@keyframes current-ebb {
+  0% {
     opacity: 0.55;
   }
-  to {
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes current-ebb-glow {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.5;
+  }
+  100% {
     opacity: 0;
   }
 }
 
-/* The persistent water-line: a faint frame on every screen while a current is
-   on. Fixed, non-interactive, under the sheets and the toast. */
+/* The persistent ring: the same glow, thin and faint, on every screen while a
+   current is on. Its hues keep drifting slowly and it breathes. Fixed,
+   non-interactive, under the sheets and the toast. */
 .current-waterline {
   position: fixed;
   inset: 0;
   z-index: 60;
   pointer-events: none;
-  border: 1.5px solid var(--wave);
-  border-radius: var(--radius-lg);
-  opacity: 0.28;
+  opacity: 0.55;
   animation: fade-in var(--dur-6) var(--ease-arrive) backwards;
+}
+.current-waterline .current-ring {
+  --current-ring-w: 2.5px;
+  animation: current-breathe 5s var(--ease-loop) infinite;
+}
+.current-waterline .current-ring::before {
+  animation-duration: 18s;
+}
+@keyframes current-breathe {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .current-waterline.closing {
   animation: fade-out var(--dur-6) var(--ease-standard) forwards;
+}
+/* A phone's screen has round corners; the ring follows them. A desktop window
+   does not, so the ring hugs a soft radius there. */
+@media (max-width: 760px) {
+  .current-ring,
+  .current-glow {
+    --current-corner: 44px;
+  }
 }
 
 /* The header pill naming the current that is on, beside the reach pill. Teal:
@@ -9751,11 +9899,21 @@ button.settings-row:active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .current-wave,
-  .current-arrival-edge,
+  .current-bloom,
+  .current-ring,
+  .current-glow,
+  .current-ring::before,
+  .current-glow::before,
   .current-waterline,
   .pill.current-pill {
     animation: none;
+  }
+  .current-arrival .current-ring {
+    opacity: 0.55;
+  }
+  .current-arrival .current-glow,
+  .current-arrival.ebb .current-ring {
+    opacity: 0;
   }
   .current-waterline.closing {
     opacity: 0;

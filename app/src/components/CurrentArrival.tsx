@@ -1,16 +1,18 @@
-// The arrival and the water-line: how an Agentic Current is felt.
+// The arrival and the persistent ring: how an Agentic Current is felt.
 //
-// Flip a current on and a current leaves the switch, travels to the edges of
-// the screen, and settles as a faint water-line framing every room while it is
-// on. Flip it off and the line ebbs back to the switch. Creative Studio
-// direction (2026-09-09): the same water, moving. It rides the flow tokens
-// (no third blue), moves on the door clock and the glide curve like the
-// drawer, animates transform and opacity only, and dies under reduced motion
-// (the global reset zeroes it to a crossfade). One decisive haptic when the
-// current reaches the border, never a run of ticks.
+// A replica of the iOS Siri glow in the brand's own water (founder,
+// 2026-09-14, from a screen recording read frame by frame): flip a current on
+// and a soft bloom rises from where the switch sits, then a thick multi-hue
+// ring lights the whole border with a glow bleeding inward, and settles into
+// a thin ring whose hues keep drifting around the perimeter for as long as the
+// current is on. Flip it off and the ring brightens once, drains, and the
+// bloom sinks back into the switch. The palette is OpenShore's water family
+// with the amber counterpoint (theme.css --current-1..5), never pink and
+// purple. Everything is transform and opacity; the drift is an infinite loop
+// the reduced-motion reset stops; one decisive haptic when the ring is lit.
 //
-// Honesty: the arrival is a gesture, a few hundred milliseconds, not a
-// progress bar. Whether the box answered is the row's own state line.
+// Honesty: the arrival is a gesture, about three door clocks, not a progress
+// bar. Whether the box answered is the row's own state line.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useApp } from '../state/store.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
@@ -23,6 +25,11 @@ function doorMs(): number {
   return durationMs('--dur-7', 520);
 }
 
+/** How long the flourish plays before the persistent ring carries on alone:
+ *  the ring's own 1.6s settle plus a beat, matched to theme.css. */
+const FLOURISH_MS = 1700;
+const EBB_MS = 1300;
+
 export function CurrentArrival() {
   const { currentArrival, clearCurrentArrival } = useApp();
   const [playing, setPlaying] = useState<typeof currentArrival>();
@@ -33,17 +40,16 @@ export function CurrentArrival() {
     setPlaying(currentArrival);
     for (const t of timers.current) window.clearTimeout(t);
     timers.current = [];
-    const clock = doorMs();
-    // The commit: the current reaches the border (or the line has drained).
-    timers.current.push(window.setTimeout(() => hapticApproval(), clock));
-    // Then the overlay leaves; the persistent water-line has taken over.
+    // The commit: the ring is fully lit (or, on an ebb, the drain has begun).
+    timers.current.push(window.setTimeout(() => hapticApproval(), doorMs()));
+    // Then the overlay leaves; the persistent ring has taken over.
     timers.current.push(
       window.setTimeout(
         () => {
           setPlaying(undefined);
           clearCurrentArrival();
         },
-        clock + durationMs('--dur-4', 280),
+        currentArrival.ebb ? EBB_MS : FLOURISH_MS,
       ),
     );
     return () => {
@@ -53,16 +59,9 @@ export function CurrentArrival() {
   }, [currentArrival, clearCurrentArrival]);
 
   if (!playing) return null;
-  // The wave is a circle centered on the switch, scaled out until it covers
-  // the far corner of the viewport (transform only, never layout). Its size
-  // is the viewport diagonal so one scale reaches every edge.
-  const w = typeof window !== 'undefined' ? window.innerWidth : 400;
-  const h = typeof window !== 'undefined' ? window.innerHeight : 800;
-  const diagonal = Math.ceil(Math.hypot(w, h)) * 2;
   const style = {
     '--wave-x': `${playing.x}px`,
     '--wave-y': `${playing.y}px`,
-    '--wave-size': `${diagonal}px`,
   } as CSSProperties;
   return (
     <div
@@ -71,20 +70,24 @@ export function CurrentArrival() {
       style={style}
       aria-hidden="true"
     >
-      <span className="current-wave" />
-      <span className="current-arrival-edge" />
+      <span className="current-bloom" />
+      <span className="current-glow" />
+      <span className="current-ring" />
     </div>
   );
 }
 
-/** The faint frame that says a current is on, everywhere, all the time it is.
- *  Mounted through an exit presence so it fades rather than snapping off. */
+/** The thin drifting ring that says a current is on, everywhere, all the time
+ *  it is. Mounted through an exit presence so it fades rather than snapping
+ *  off. */
 export function CurrentWaterline() {
   const { settings } = useApp();
   const on = Boolean(activeContribution(settings));
   const presence = useExitPresence(on, durationMs('--dur-6', 420));
   if (!presence.mounted) return null;
   return (
-    <div className={`current-waterline${presence.closing ? ' closing' : ''}`} aria-hidden="true" />
+    <div className={`current-waterline${presence.closing ? ' closing' : ''}`} aria-hidden="true">
+      <span className="current-ring" />
+    </div>
   );
 }

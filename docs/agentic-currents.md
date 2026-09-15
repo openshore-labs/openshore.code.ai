@@ -57,16 +57,25 @@ reserved for cloud models on a paid key.
    any A2A agent run on their own computer under their own rules; the tools say
    so to the model, and the rows say so to the person.
 
-### How it is felt (Creative Studio)
+### How it is felt (Creative Studio; the Siri replica, founder 2026-09-14)
 
-Flip a current on and a current leaves the switch, travels to the edges of the
-screen, and settles as a faint water-line framing every room while it is on.
-Flip it off and the line ebbs back to the switch. No third blue: it rides the
-flow tokens (`--wave`, `--local-soft`). It moves on the door clock and the
-glide curve like the drawer, animates transform and opacity only, and the
-global reduced-motion reset collapses it to a crossfade. One decisive haptic
-when the current reaches the border, never a run of ticks. A pill beside the
-reach pill names the current on every screen. The BETA badge is a neutral
+A replica of the iOS Siri glow in the brand's own water, read frame by frame
+from the founder's screen recording. Flip a current on and a soft bloom rises
+from where the switch sits, then a thick multi-hue ring lights the whole
+border with a glow bleeding inward, and settles into a thin ring whose hues
+keep drifting around the perimeter for as long as the current is on. Flip it
+off and the ring brightens once, drains, and the bloom sinks back into the
+switch. The palette is OpenShore's, never Siri's pink and purple: deep water,
+water, shore teal, a light aqua for the highlight, and the amber counterpoint
+(`--current-1` to `--current-5`, deeper on paper, brighter in the dark).
+The ring is a masked frame whose conic gradient rides an oversized rotating
+square, so the drift is transform only; the bloom is a gradient with a long
+falloff, no filter; the glow is the one blurred layer and it is short-lived.
+The flourish lasts about three door clocks, then the persistent ring carries
+on alone, thin, faint, breathing on a five-second loop. The global
+reduced-motion reset stops the drift and collapses the rest to a crossfade.
+One decisive haptic when the ring is lit, never a run of ticks. A pill beside
+the reach pill names the current on every screen. The BETA badge is a neutral
 pill after the group head, with one line under it: "An imperfect addition we
 are exploring. One on at a time. Off leaves no trace."
 
