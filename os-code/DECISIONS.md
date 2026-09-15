@@ -1449,3 +1449,30 @@ execution contract. Newest at the bottom.
   model's REPLACE text or the file to anchor on. Neither loosens WHERE an edit
   lands: both still require a provably unique location. Tests in
   `test/editMatchRelaxed.test.ts` and `test/editFileToolTrace.test.ts`.
+- **The deep eval runs each task's own check as verify in the loop
+  (2026-09-15, deep-eval round seven).** A real project's tests run after a
+  change and the harness feeds a failure back (verify in the loop, tenet 3);
+  the eval's edit tasks now carry the same check as a plain `.eval-check.mjs`
+  in the workspace and the loop runs it, so the harness feature under
+  measurement is exercised by the benchmark. Scoring is unchanged and
+  independent (`check`), the check prints a FAIL line naming what is wrong
+  (an exit code alone told the model nothing), and the trace line reports the
+  verify rounds so the number is read with that in view. Not cheating the
+  eval: the check is the project's test, which is exactly what the harness
+  is for; a model that cannot fix against a failing test still scores zero.
+- **An exact repeated call is answered from the record; the third repeat makes
+  the next turn answer-only (2026-09-15).** Skipping applies only when no
+  successful non-read call happened in between (a write or a shell command
+  makes the same call a fresh question), so a legitimate re-run of tests
+  after an edit is untouched. Applied to every seat, not only lean ones: a
+  model repeating one exact call three times is stuck whatever its size, and
+  an answer is strictly better than the repeat rail's empty stop, which stays
+  as the backstop.
+- **A lean seat gets a short core prompt, not the desktop etiquette
+  (2026-09-15).** The interaction-model lines (ask before a change that
+  touches working code, todoWrite first, propose standing instructions) are
+  written for a capable model working with a person; a 3B reads them as the
+  task and explains or asks instead of editing. The lean core keeps the role,
+  the workspace, the tool shapes, "never ask, make the change", "answer
+  briefly, a value alone when asked for a value", and the em-dash rule.
+  Standing instructions, memory, secrets, and the UX digest still ride in.

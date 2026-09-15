@@ -7,7 +7,7 @@ import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import { runEval } from '../eval/harness.js';
 import { runEvalV2, type DriveTask, type DriveTrace, type EvalV2Report } from '../eval/v2.js';
-import { EVAL_TASKS } from '../eval/tasks.js';
+import { EVAL_TASKS, verifyCommandFor } from '../eval/tasks.js';
 import { classBlurb } from '../harness/profile.js';
 import { configureStreamIdle } from '../providers/streamIdle.js';
 import { resolveStack } from '../router/stack.js';
@@ -177,11 +177,25 @@ async function runDeep(
     defaults: { ...config.permissions.defaults, write: 'allow' as const },
   } as PermissionConfig;
 
-  const drive: DriveTask = async (cwd, prompt) => {
-    const toolContext = buildToolContext({ cwd, config: evalConfig, router, providers });
+  const drive: DriveTask = async (cwd, prompt, task) => {
+    // Verify in the loop: the task's own test runs after a change, the way a
+    // project's tests would, and a failure goes back to the model for another
+    // go (harness.verify.maxRetries). It is the harness feature under
+    // measurement; the score still comes from the task's independent check.
+    const verifyCommand = verifyCommandFor(task);
+    const driveConfig: OscConfig = verifyCommand
+      ? {
+          ...evalConfig,
+          harness: {
+            ...evalConfig.harness,
+            verify: { ...evalConfig.harness.verify, command: verifyCommand, timeoutSeconds: 30 },
+          },
+        }
+      : evalConfig;
+    const toolContext = buildToolContext({ cwd, config: driveConfig, router, providers });
     const events: AgentEvent[] = [];
     const agent = new AgentSession({
-      config: evalConfig,
+      config: driveConfig,
       router,
       tools,
       toolContext,
@@ -252,6 +266,7 @@ export function traceFrom(events: AgentEvent[], tools: ToolRegistry): DriveTrace
     .map((e) => ({ name: e.call.name, detail: truncate(e.result.content, 900) }));
   const done = events.find((e) => e.type === 'task-done') as
     { reason: string; message?: string } | undefined;
+  const verifies = events.filter((e) => e.type === 'verify') as Array<{ passed: boolean }>;
   return {
     turns,
     toolCalls,
@@ -259,6 +274,9 @@ export function traceFrom(events: AgentEvent[], tools: ToolRegistry): DriveTrace
     doneReason: done?.reason,
     message: done?.message,
     toolFailures: toolFailures.length ? toolFailures : undefined,
+    verify: verifies.length
+      ? { rounds: verifies.length, passed: verifies[verifies.length - 1]!.passed }
+      : undefined,
   };
 }
 
@@ -296,7 +314,10 @@ export function traceLine(trace: DriveTrace): string {
   const done = trace.doneReason
     ? `done: ${trace.doneReason}${trace.message ? ` (${trace.message})` : ''}`
     : 'no stop recorded';
-  const summary = [`${trace.turns} turn${trace.turns === 1 ? '' : 's'}`, tools, wrote, done]
+  const verify = trace.verify
+    ? `verify ${trace.verify.passed ? 'passed' : 'failed'} after ${trace.verify.rounds} check${trace.verify.rounds === 1 ? '' : 's'}`
+    : '';
+  const summary = [`${trace.turns} turn${trace.turns === 1 ? '' : 's'}`, tools, wrote, verify, done]
     .filter(Boolean)
     .join('; ');
   const failureLines = dedupeFailures(trace.toolFailures).map(

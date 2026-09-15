@@ -169,15 +169,24 @@ function emptySearchError(args: Args, before: string, blocks: EditBlock[]): stri
   const index = blocks.findIndex((b) => b.search.trim() === '');
   if (index === -1) return undefined;
   const block = blocks[index]!;
-  const replaceNote = block.replace.trim()
-    ? `This is the replacement text you gave, with nothing to anchor it to:\n${truncateEcho(block.replace, 600)}`
-    : 'No replacement text was given either.';
+  const newCode = block.replace.trim();
+  // The model almost always meant "add this at the end" (the deep eval's
+  // add-a-function task). The harness does the mechanical part: it names the
+  // file's last line as the anchor and hands back the exact call to send, built
+  // from the model's own replacement text, so the retry is a copy, not a
+  // composition. The model still makes the call; nothing is applied here.
+  const anchor = before
+    .split('\n')
+    .filter((l) => l.trim())
+    .pop();
+  const suggestion =
+    anchor !== undefined && newCode
+      ? `To add that code at the end of ${args.path}, send editFile again with exactly these two fields:\nsearch: ${JSON.stringify(anchor)}\nreplace: ${JSON.stringify(truncateEcho(`${anchor}\n\n${newCode}`, 1500))}\n(search is the file's last line, copied as is; replace is that same line followed by the new code.) Or use writeFile with the complete new contents of ${args.path}, keeping everything that is already there.`
+      : `${SIMPLE_FORM_DOC} To add new code, use an existing line (such as the last line of the file) as search and include both that line and the new code in replace.`;
   return (
     `Block ${index + 1} has no SEARCH text, so there is nothing to locate in the file. ` +
-    `search must be one or more exact lines copied from the file, not left blank.\n\n${replaceNote}` +
-    `\n\n${currentContentsBlock(args.path, before)}\n\n${SIMPLE_FORM_DOC} To add new code, ` +
-    `use an existing line (such as the last line of the file) as search and include both that ` +
-    `line and the new code in replace.`
+    `search must be one or more exact lines copied from the file, not left blank.\n\n${suggestion}` +
+    `\n\n${currentContentsBlock(args.path, before)}`
   );
 }
 

@@ -83,6 +83,16 @@ function locate(content: string, search: string): Located {
   if (!searchLines.length) {
     return { reason: 'The SEARCH side contained only blank lines.' };
   }
+  // Lines copied straight out of a readFile result carry its "12| " line
+  // number prefix. When every line has one, the model copied the numbered
+  // view; the prefix is not part of the file, so it is dropped before any
+  // matching. A single numbered line among plain ones is left alone.
+  const numbered = /^\s*\d+\|\s?/;
+  if (searchLines.every((l) => numbered.test(l))) {
+    for (let i = 0; i < searchLines.length; i++) {
+      searchLines[i] = searchLines[i]!.replace(numbered, '');
+    }
+  }
 
   // Strategy 1: exact line-run match.
   const exact = findRuns(contentLines, searchLines, (a, b) => a === b);

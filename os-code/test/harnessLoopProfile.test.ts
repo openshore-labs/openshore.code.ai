@@ -58,6 +58,32 @@ describe('the discipline seam in the loop: a small seat gets a lean prompt', () 
     expect(system).not.toContain("Hick's law");
   });
 
+  it('gives a small seat a short, direct core instead of the full etiquette', async () => {
+    // The full core tells a capable model to report like a colleague, ask
+    // before touching working code, and open with todoWrite. A 3B reads those
+    // as the task and explains or asks instead of editing. The lean core says:
+    // do it, do not ask, answer briefly.
+    const { requests } = await runWith([textTurn('done')], {
+      harness: { profiles: { enabled: true } },
+    });
+    const system = systemOf(requests[0]!);
+    expect(system).toContain('Never ask for permission');
+    expect(system).toContain('Workspace root:');
+    expect(system).not.toContain('call todoWrite first');
+    expect(system).not.toContain('blast radius');
+    expect(system).not.toContain('propose one line for their standing instructions');
+  });
+
+  it('a full seat keeps the complete core', async () => {
+    const { requests } = await runWith([textTurn('done')], {
+      harness: { profiles: { enabled: false } },
+    });
+    const system = systemOf(requests[0]!);
+    expect(system).toContain('call todoWrite first');
+    expect(system).toContain('blast radius');
+    expect(system).not.toContain('Never ask for permission');
+  });
+
   it('carries a project ux note into the lean digest', async () => {
     const { requests } = await runWith([textTurn('done')], {
       harness: { profiles: { enabled: true } },

@@ -102,6 +102,28 @@ describe('two unique anchors pin the location (strategy: anchored)', () => {
   });
 });
 
+describe('lines copied with readFile line numbers', () => {
+  it('drops the "N| " prefix when every SEARCH line carries one', () => {
+    const r = applyEditBlocks(TWO_FUNCS, [
+      {
+        search: '5| export function subtract(a, b) {\n6|   return a + b;\n7| }',
+        replace: 'export function subtract(a, b) {\n  return a - b;\n}',
+      },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.applied[0]!.strategy).toBe('exact');
+    expect(r.content).toContain('export function subtract(a, b) {\n  return a - b;');
+    expect(r.content).toContain('export function add(a, b) {\n  return a + b;');
+  });
+
+  it('leaves a single numbered line among plain ones alone', () => {
+    const r = applyEditBlocks(TWO_FUNCS, [
+      { search: '5| export function subtract(a, b) {\n  return a + b;', replace: 'x' },
+    ]);
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe('a bare fragment, not a whole line, still pins uniquely (strategy: fragment)', () => {
   it('splices just the fragment when it occurs exactly once in the file', () => {
     // The deep eval's rename-across-files task: the model sent

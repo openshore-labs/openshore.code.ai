@@ -154,6 +154,17 @@ export class AgentSession {
   /** A lean seat that answers with code but changes no file is nudged to make
    *  the change, once per task; this flag keeps it to once. */
   private noWriteNudged = false;
+  /** Per task: how many times each exact (tool, args) call has been made and
+   *  the step it last ran at, so a repeat with nothing changed in between is
+   *  answered from the record instead of run again. */
+  private repeatLog = new Map<string, { count: number; lastStep: number }>();
+  /** The step of the last successful call that could have changed the
+   *  workspace (anything but a read); a repeat after it is a fresh question. */
+  private lastChangeStep = 0;
+  private callStep = 0;
+  /** Set when the model has repeated one exact call three times: the next turn
+   *  runs with no tools so the only thing it can do is answer. */
+  private answerOnly = false;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -348,23 +359,38 @@ export class AgentSession {
 
   private systemPrompt(toolMode: 'native' | 'text'): string {
     const { toolContext, codeMap } = this.deps;
-    const parts = [
-      "You are OS Code, a careful, capable coding agent running on the user's own machine.",
-      `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
-      'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
-      'Use webSearch and webFetch for anything after your knowledge cutoff or specific to a library version.',
-      'When the task is complete, answer with plain text: what you did, what you verified, and anything the user should know. Be concise and concrete.',
-      // How the person works with a coding agent (docs/interaction-model.md):
-      // lead with the answer, one step at a time when they must act, never
-      // claim what was not verified, and end on the next action.
-      'Report the way a careful colleague does: lead with the outcome, then the evidence. One idea per sentence. Before a change that touches something working, say what you would change and its blast radius, and ask.',
-      'When the user has to do something themselves (paste a key, run a command, allow a permission), give exactly one step, then stop and wait for the result before the next.',
-      'Never claim a result you did not verify. If you cannot do something, say so plainly and name the next action. End every report with the single next step.',
-      'Whenever the user must paste something themselves (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
-      'Never use em dashes in your replies. Use a period or a comma instead.',
-      'For any task with three or more steps, call todoWrite first with the whole plan, mark one item in_progress as you start it, and completed the moment it lands. Keep the list current; the person watches it.',
-      'When you correct something the person told you twice, or learn a durable fact about how they work, propose one line for their standing instructions rather than silently adapting.',
-    ];
+    // A lean seat (a small or tiny class) gets a short, direct core. The full
+    // core below is written for a capable model working with a person: report
+    // like a colleague, ask before touching something that works, open with a
+    // todo list. Read by a 3B those lines become the task: it explains and asks
+    // instead of editing, or spends its first turn on todoWrite. The deep eval
+    // showed both. The harness carries that etiquette for a lean seat (tenet
+    // 3); the seat is told to do the work and answer.
+    const parts = this.leanSeat
+      ? [
+          "You are OS Code, a careful coding agent running on the user's own machine.",
+          `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
+          'Do the task yourself with the tools. Read a file with readFile. Change part of a file with editFile: give path, search (exact lines copied from the file) and replace (their replacement). Write a whole file with writeFile. Never ask for permission or confirmation; make the change.',
+          'A tool result is shown to you once; do not repeat a call whose result you already have. When the change is made, or the question is answered, reply in plain text, briefly. When asked for a value, reply with the value only.',
+          'Never use em dashes in your replies. Use a period or a comma instead.',
+        ]
+      : [
+          "You are OS Code, a careful, capable coding agent running on the user's own machine.",
+          `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
+          'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
+          'Use webSearch and webFetch for anything after your knowledge cutoff or specific to a library version.',
+          'When the task is complete, answer with plain text: what you did, what you verified, and anything the user should know. Be concise and concrete.',
+          // How the person works with a coding agent (docs/interaction-model.md):
+          // lead with the answer, one step at a time when they must act, never
+          // claim what was not verified, and end on the next action.
+          'Report the way a careful colleague does: lead with the outcome, then the evidence. One idea per sentence. Before a change that touches something working, say what you would change and its blast radius, and ask.',
+          'When the user has to do something themselves (paste a key, run a command, allow a permission), give exactly one step, then stop and wait for the result before the next.',
+          'Never claim a result you did not verify. If you cannot do something, say so plainly and name the next action. End every report with the single next step.',
+          'Whenever the user must paste something themselves (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
+          'Never use em dashes in your replies. Use a period or a comma instead.',
+          'For any task with three or more steps, call todoWrite first with the whole plan, mark one item in_progress as you start it, and completed the moment it lands. Keep the list current; the person watches it.',
+          'When you correct something the person told you twice, or learn a durable fact about how they work, propose one line for their standing instructions rather than silently adapting.',
+        ];
     if (this.mode === 'plan') {
       parts.push(
         [
@@ -446,6 +472,10 @@ export class AgentSession {
     this.cloudApprovedForTask = false;
     this.wroteThisTask = false;
     this.noWriteNudged = false;
+    this.repeatLog.clear();
+    this.lastChangeStep = 0;
+    this.callStep = 0;
+    this.answerOnly = false;
     this.transientRetries = 0;
     this.abortController = new AbortController();
     // Tools see the task's signal, so Stop reaches a delegated generation or
@@ -514,8 +544,10 @@ export class AgentSession {
       this.announceLeanSeat();
 
       // Refresh the system prompt each turn (tool mode and model can change).
+      // An answer-only turn carries no tools and no text protocol, so the
+      // model's only move is to answer.
       this.history = [
-        { role: 'system', content: this.systemPrompt(toolMode) },
+        { role: 'system', content: this.systemPrompt(this.answerOnly ? 'native' : toolMode) },
         ...this.history.filter((m) => m.role !== 'system'),
       ];
 
@@ -552,7 +584,7 @@ export class AgentSession {
           {
             model: this.active.model,
             messages: this.history,
-            tools: toolMode === 'native' ? this.toolSpecs() : undefined,
+            tools: toolMode === 'native' && !this.answerOnly ? this.toolSpecs() : undefined,
             temperature: this.active.adapter.temperature(),
             maxTokens: 8192,
             stop: this.active.adapter.stopTokens().length
@@ -627,6 +659,11 @@ export class AgentSession {
       // dropped on the floor, so the model does not retry it verbatim (ENG-11).
       const rejected: Array<{ raw: ToolCallRequest; problem: string }> = [];
 
+      // An answer-only turn: whatever came back is the answer. A model that
+      // was stuck repeating one call was told to answer and given no tools, so
+      // a call it writes anyway is not run; the text stands as the reply.
+      if (this.answerOnly) nativeCalls.length = 0;
+
       if (nativeCalls.length) {
         for (const raw of nativeCalls) {
           const validated = validateNativeCall(raw, this.deps.tools);
@@ -643,7 +680,7 @@ export class AgentSession {
       // (assistant text, then "[tool result]" observations), whatever the tool
       // mode, so we never fabricate a tool_use block the model did not emit.
       let recordMode: 'native' | 'text' = toolMode;
-      if (!nativeCalls.length && streamedText.trim()) {
+      if (!nativeCalls.length && streamedText.trim() && !this.answerOnly) {
         // Text extraction runs in text mode by design, and in native mode as a
         // fallback. A small local model offered native tools often writes the
         // call as JSON in its text anyway (ollama hands it back as content, not
@@ -708,6 +745,7 @@ export class AgentSession {
           this.mode !== 'plan' &&
           !this.wroteThisTask &&
           !this.noWriteNudged &&
+          !this.answerOnly &&
           /```/.test(finalText)
         ) {
           this.noWriteNudged = true;
@@ -818,6 +856,37 @@ export class AgentSession {
     if (violation) {
       this.emit({ type: 'task-done', reason: 'guardrail', message: violation.message });
       return 'aborted';
+    }
+
+    // The same exact call again, with nothing changed in the workspace since
+    // it last ran, would only return the same result. The deep eval's 3B seat
+    // did this on the answer task: readFile on the same file three times, then
+    // the repeat rail. Answering the repeat from the record costs no turn on a
+    // slow box and tells the model what to do instead; the third repeat makes
+    // the next turn answer-only. The rail stays as the last stop behind both.
+    const stale = this.noteRepeat(call);
+    if (stale) {
+      const advice =
+        tool.risk === 'read' || tool.risk === 'network'
+          ? 'Nothing has changed since, so do not call it again. Use that result. If you have what you need, reply now with your final answer in plain text.'
+          : 'Nothing has changed since, so it would end the same way. Change the arguments (for editFile, copy the exact lines from the file contents shown in that result into search), or reply with your answer.';
+      const note = `You already made this exact ${call.name} call; its result is above. ${advice}`;
+      this.emit({ type: 'tool-start', call });
+      this.emit({ type: 'tool-end', call, result: { ok: false, content: note }, durationMs: 0 });
+      this.pushObservation(call, note, toolMode);
+      if (stale === 'answer-only') {
+        this.answerOnly = true;
+        this.emit({
+          type: 'status',
+          message: `The model repeated the same ${call.name} call three times; the next turn is answer-only.`,
+        });
+        this.history.push({
+          role: 'user',
+          content:
+            'Stop calling tools. Reply now with your final answer in plain text, using what you already have.',
+        });
+      }
+      return 'failed';
     }
 
     // The path a permission rule sees is the workspace-relative one the jail
@@ -959,8 +1028,13 @@ export class AgentSession {
     const durationMs = Date.now() - startedAt;
     this.emit({ type: 'tool-end', call, result, durationMs });
     // Remember that this task changed files, so the verify phase runs only when
-    // there is something to verify.
+    // there is something to verify. Any successful call that is not a read may
+    // have changed the workspace (a write, a shell command), so a repeat of an
+    // earlier call after it is a fresh question, not a stale one.
     if (result.ok && tool.risk === 'write') this.wroteThisTask = true;
+    if (result.ok && tool.risk !== 'read' && tool.risk !== 'network') {
+      this.lastChangeStep = this.callStep;
+    }
     // The task list rides its own event so every client renders it live.
     if (call.name === 'todoWrite' && result.ok && Array.isArray(call.args.items)) {
       this.todos = call.args.items as TodoItem[];
@@ -1018,6 +1092,19 @@ export class AgentSession {
         : `Could not save that rule for this project; ${call.name} will ask again.`,
     });
     if (saved) this.deps.permissions.addSessionRule({ ...rule, decision: 'allow' });
+  }
+
+  /** Record this call for repeat detection. Returns false when it should run,
+   *  'stale' when it is an exact repeat with nothing changed since (answer it
+   *  from the record), and 'answer-only' on the third such repeat. */
+  private noteRepeat(call: ParsedToolCall): false | 'stale' | 'answer-only' {
+    this.callStep += 1;
+    const key = `${call.name} ${JSON.stringify(call.args ?? {})}`;
+    const prior = this.repeatLog.get(key);
+    const count = (prior?.count ?? 0) + 1;
+    this.repeatLog.set(key, { count, lastStep: this.callStep });
+    if (!prior || prior.lastStep <= this.lastChangeStep) return false;
+    return count >= 3 ? 'answer-only' : 'stale';
   }
 
   private pushObservation(
