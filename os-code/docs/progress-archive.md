@@ -2493,6 +2493,29 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-06)
 
+- **2026-09-06: voice mode, a spoken conversation over the chat (founder).** The
+  founder asked for a Claude-style voice mode usable while coding: native so it
+  works offline, a voice you pick, and the natural breaks the work needs (a picker
+  or a decision leaves voice, shows the card, then reopens). Four answers steered
+  it (via a picker): always available offline with machine powers inheriting the
+  chat's access (no separate voice preset); answer as much as possible by voice;
+  and, on "what does Claude use?", native OS voices rather than Claude's cloud TTS
+  (offline, free, premium, and clear of the Tier 2 voice-likeness gate). Built:
+  listening reuses `oscode-speech` (on-device) with a silence-based finalize so it
+  is hands-free; a new `oscode-tts` plugin (AVSpeechSynthesizer, on-device,
+  offline) speaks, Web Speech on desktop and web; a voice picker over the device's
+  installed system voices. The break policy is one table (`voiceBreaks.ts`):
+  clarify and plan answered by voice, tool/cloud-spend approvals and stopped-turn
+  recovery handed to the screen, voice reopening once an approval clears.
+  Everything spoken goes through the normal `send`/driver seam, so the transcript
+  is the history. Pure core tested in `app/test/voice.test.ts` (28 cases); wiring
+  in `useVoiceMode.ts`, `VoiceMode.tsx`, `VoicePicker.tsx`, `Composer.tsx`,
+  `ChatScreen.tsx`, `SettingsScreen.tsx`, `store.ts` (`voiceReplies`/`voiceId`/
+  `voiceRate`); CSS in `theme.css` on the motion tokens. Doc `docs/voice-mode.md`,
+  rulings in `DECISIONS.md`. Gates: app typecheck (src and electron), lint, 838
+  tests, Vite build, the motion/polish and em-dash guards. The native speech path
+  is device-only, like dictation, so TestFlight is the proof (What remains).
+
 - **2026-09-06: the plan-first workflow, My Stack draws a play (founder, pushed
   to main).** The founder specified the workflow explicitly: prompt through the
   harness, framing by the reasoning LLM (clarify only when ambiguous), a play of

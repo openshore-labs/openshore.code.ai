@@ -1260,6 +1260,17 @@ execution contract. Newest at the bottom.
   independent tries per task in fresh workspaces and reports one try next to
   best of n; a best-of-N picker in the loop (which needs checkpoints) is built
   only if that gap says it pays on the reference machine.
+- 2026-09-15: **Native tool mode falls back to text tool calls.** A small
+  local model offered native tools often writes the call as JSON in its text
+  (ollama hands it back as content, not `tool_calls`), and the loop used to
+  read that as a final answer and complete the task with nothing run: the 3B's
+  0% on the reference box, "1 turn; no tools called; done: complete". Now, when
+  no native call arrives, native mode runs the same conservative text extractor
+  text mode uses, records that turn the text way (never a fabricated
+  tool_use), and runs the tool; prose that quotes JSON stays prose, and an
+  unknown tool name goes to repair. This is the harness doing the mechanical
+  work for a small seat (tenet 3), and it is what turns the CPU floor from a
+  timeout into a measurable baseline.
 - 2026-09-15: **North star: a five-year-old MacBook should feel as powerful as
   running Claude-grade models on a local stack (founder).** State-of-the-art
   hardware buys headroom and options, never entry. The feeling is delivered by

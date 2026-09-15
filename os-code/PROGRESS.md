@@ -21,6 +21,22 @@ remains).
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
+Latest (2026-09-15): the floor produced its first real number. On the
+founder's CPU-only box, qwen2.5-coder:3b ran all four deep-eval tasks with no
+timeout ("1 turn; done: complete"), so the lean prompt plus a seat that fits
+the hardware solves the prefill wall. It still scored 0%, and the trace said
+why: the model wrote its tool call as JSON text (a fenced
+`{"name": "readFile", "arguments": ...}`), and native mode read that as a final
+answer and completed the task with nothing run; the 7B's curl test showed
+ollama hands tool calls back as content, not `tool_calls`, on this box. Fixed
+in `loop.ts`: native mode now falls back to text extraction when no native call
+arrived, and records that turn the text way (assistant text plus "[tool
+result]" observations), never a fabricated tool_use; prose that quotes JSON is
+left alone. `test/textCallFallback.test.ts` reproduces the 3B failure and the
+prose case. os-code 690 green. Re-running the 3B deep eval is the immediate
+step; the convergence memo for the out-of-the-box path is
+`docs/premium-harness-first-seat-convergence.md`.
+
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in
 `CLAUDE.md`. It ships with no room and no name (codename Keel, internal only),
@@ -972,26 +988,3 @@ log entry). Migration is now `0016`.
   a `/v1`. Doc `docs/agentic-currents.md`; rulings in `DECISIONS.md`. Gates:
   both packages typecheck, lint, test, build, Prettier; every guard green.
   Device and real-box verification in What remains.
-
-- **2026-09-06: voice mode, a spoken conversation over the chat (founder).** The
-  founder asked for a Claude-style voice mode usable while coding: native so it
-  works offline, a voice you pick, and the natural breaks the work needs (a picker
-  or a decision leaves voice, shows the card, then reopens). Four answers steered
-  it (via a picker): always available offline with machine powers inheriting the
-  chat's access (no separate voice preset); answer as much as possible by voice;
-  and, on "what does Claude use?", native OS voices rather than Claude's cloud TTS
-  (offline, free, premium, and clear of the Tier 2 voice-likeness gate). Built:
-  listening reuses `oscode-speech` (on-device) with a silence-based finalize so it
-  is hands-free; a new `oscode-tts` plugin (AVSpeechSynthesizer, on-device,
-  offline) speaks, Web Speech on desktop and web; a voice picker over the device's
-  installed system voices. The break policy is one table (`voiceBreaks.ts`):
-  clarify and plan answered by voice, tool/cloud-spend approvals and stopped-turn
-  recovery handed to the screen, voice reopening once an approval clears.
-  Everything spoken goes through the normal `send`/driver seam, so the transcript
-  is the history. Pure core tested in `app/test/voice.test.ts` (28 cases); wiring
-  in `useVoiceMode.ts`, `VoiceMode.tsx`, `VoicePicker.tsx`, `Composer.tsx`,
-  `ChatScreen.tsx`, `SettingsScreen.tsx`, `store.ts` (`voiceReplies`/`voiceId`/
-  `voiceRate`); CSS in `theme.css` on the motion tokens. Doc `docs/voice-mode.md`,
-  rulings in `DECISIONS.md`. Gates: app typecheck (src and electron), lint, 838
-  tests, Vite build, the motion/polish and em-dash guards. The native speech path
-  is device-only, like dictation, so TestFlight is the proof (What remains).
