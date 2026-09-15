@@ -2493,6 +2493,25 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-14)
 
+- **2026-09-14: the arrival is now a replica of the iOS Siri glow, in the
+  brand's water (founder, from a screen recording).** The founder attached a
+  recording of Siri activating and asked for a replica with the OpenShore
+  palette in place of the purple. Read frame by frame (twenty stills): a soft
+  bloom from the pressed edge, then a thick multi-hue ring lighting the whole
+  border with a blurred glow bleeding inward, settling into a thinner ring
+  whose hues keep drifting. Rebuilt `CurrentArrival` and the persistent
+  water-line on that shape: a bloom (a plain gradient, no filter) centered on
+  the switch; a masked ring whose conic gradient rides an oversized rotating
+  square (transform only, `linear` infinite, the guard's allowed loop); one
+  blurred glow layer that lives only through the 1.6s flourish; and the
+  persistent ring as the same thing thin and faint, breathing, so the hand-off
+  is seamless. Palette tokens `--current-1..5` (deep water, water, shore teal,
+  a light aqua highlight, the amber counterpoint) in all three theme blocks,
+  deeper on paper. Verified in headless Chromium with animations frozen at
+  250, 500, 800, 1100, and 1600 ms in both themes (the bloom, the blaze, the
+  settle, and the persistent ring all render as designed). Gates: app
+  typecheck, lint, tests, Vite build, Prettier, and every guard.
+
 - **2026-09-14: the premium harness, measured and begun (founder + advisor
   org, on the harness branch).** The founder asked for a premium coding agent
   harness that feels like Claude Code on any model, makes the smallest models as
