@@ -43,7 +43,22 @@ on the remaining two tasks (a wrong implementation, a wrong answer), which the
 harness does not paper over, and which best-of-N and verify-in-the-loop exist
 to buy back next. os-code 693 green. Re-running the 3B deep eval again is the
 immediate step; the convergence memo for the out-of-the-box path is
-`docs/premium-harness-first-seat-convergence.md`.
+`docs/premium-harness-first-seat-convergence.md`. A third run after that fix
+reproduced the SAME two guardrail trips byte for byte, which ruled out a
+stale-build fluke (confirmed live on the box: the new commit was checked out
+and the fix's string was present in `dist`) and exposed a real gap in the
+diagnosis itself: the trace showed "no write landed" but not which of
+editFile's two very different failure messages actually fired, so guessing at
+a fourth fix risked another wasted round trip on a slow box. Fixed by
+strengthening the eval's self-diagnosis rather than guessing again: `wrote` in
+`DriveTrace` now means a WRITE-risk tool succeeded (it was flagging ANY
+successful call, which mislabeled a read-only answer task as "a write
+landed"), and a new `toolFailures` field carries each failed call's own
+message, deduped when a task repeats the identical failure (the loop-guardrail
+signature) into one line with a count instead of drowning the report.
+`test/evalTraceDiagnosis.test.ts` covers both. os-code 700 green. The next 3B
+run will say, for the first time, whether the guardrail trip is a content
+mismatch or a format problem, which decides the next real fix.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in

@@ -25,6 +25,13 @@ export interface DriveTrace {
   wrote: boolean;
   doneReason?: string;
   message?: string;
+  /** Every failed tool call's own message, in order (truncated per entry so a
+   *  looping task does not bloat the report). A repeated failure at the exact
+   *  same tool and detail is what "the model is looping" looks like from the
+   *  outside; a change in detail across attempts, or none at all, is itself
+   *  the diagnosis, which "no write landed" alone cannot distinguish (was it a
+   *  content mismatch, a format problem, something else). */
+  toolFailures?: Array<{ name: string; detail: string }>;
 }
 
 /** A drive may return just the final text, or the text plus a trace of what

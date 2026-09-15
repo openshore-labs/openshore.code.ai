@@ -1271,6 +1271,17 @@ execution contract. Newest at the bottom.
   unknown tool name goes to repair. This is the harness doing the mechanical
   work for a small seat (tenet 3), and it is what turns the CPU floor from a
   timeout into a measurable baseline.
+- 2026-09-15: **When a fix might not have worked, verify on the box before
+  guessing the next one.** A byte-for-byte identical failure after a fix
+  looked like a stale build; before proposing a fourth fix, the founder
+  confirmed live (`git log`, `grep dist`) that the new commit and its string
+  were both actually present. That ruled out staleness and pointed at a real
+  gap in the diagnosis itself, not the model: `wrote` in `DriveTrace` was
+  flagging any successful tool call, not a write-risk one (mislabeling a
+  read-only answer task), and the trace never carried a failed call's own
+  message, so "no write landed" could not distinguish a content mismatch from
+  a format problem. Strengthening the eval's self-diagnosis, not another
+  guess, is the harness's own rule (`osc eval` is the spine) applied to itself.
 - 2026-09-15: **A failed edit echoes the file's own current content, bounded.**
   The 3B deep eval showed the real cost of a hint-only failure message: it
   resent an identical, non-matching SEARCH block four times and tripped the
