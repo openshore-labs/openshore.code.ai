@@ -952,36 +952,6 @@ log entry). Migration is now `0016`.
   small seat now completes the loop, and to record the with-and-without number,
   is the immediate next step.
 
-- **2026-09-14: Perplexity, Sonar as a cloud provider and Research as a
-  default-off layer (founder, after a CTO and CX read).** The founder wanted
-  Perplexity layered in. The advisors split it: Perplexity is deliberately NOT
-  an Agentic Current (a Current is an exclusive agent runtime, one at a time;
-  Perplexity research is additive and reuses a provider key), so it landed as
-  two things. (1) Sonar joins the cloud providers in `app/src/lib/providers.ts`
-  (OpenAI-compatible, `api.perplexity.ai`, five Sonar ids with the house
-  verify-before-release caveat); it places into a Stack slot like any model.
-  (2) Research is a default-off, key-gated row in the Wayfinding group
-  (`SettingsScreen`) that routes the on-device model's web search through Sonar
-  on the connected Perplexity key, with no second key to paste:
-  `resolveSearchKey` prefers Perplexity when Research is on and a key exists,
-  else falls back to the configured backend, and `webSearch` gained a
-  `perplexity` backend mapping Sonar `search_results`/`citations` to sources
-  (`onDeviceDriver` calls the resolver, `store` carries `perplexityResearch`,
-  `Switch` gained a `disabled` prop for the ungated state). Perplexity Computer
-  was scoped and dropped on purpose: it runs on Perplexity's own models and
-  cannot be driven by a local model, so it would not serve the founder's goal
-  of computer capabilities for local models (that is OpenShore's own harness to
-  build, the stubbed Wayfinding Browser). Code: `providers.ts`, `webSearch.ts`,
-  `onDeviceDriver.ts`, `store.ts`, `SettingsScreen.tsx`, `Switch.tsx`. Gates:
-  app typecheck (src and electron), lint, 880 tests, Vite build, Prettier.
-  Ruling in `DECISIONS.md`. Then the two follow-ups landed the same day: Sonar
-  citations now thread through `CloudOpenAiDriver` (top-level
-  `search_results`/`citations`, both stream paths, emitted as a `citations`
-  event), and the engine gained a `perplexity` search backend
-  (`src/core/tools/search/perplexity.ts`, `search.backend` + `perplexityKeyEnv`),
-  config and env driven so the key stays on the box. Both pushed to `main` per
-  the founder.
-
 - **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
   CTO + Creative Studio + CX).** The founder flagged the project room (the room
   behind a tapped project, where they expect 75% of the work) as scattered and
