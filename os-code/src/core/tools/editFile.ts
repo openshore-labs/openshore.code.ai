@@ -21,6 +21,24 @@ type Plan =
   | { error: string }
   | { error?: undefined; result: import('../edit/apply.js').ApplyResult; warnings: string[] };
 
+// The harness does the mechanical work of retrieval for a small model (tenet
+// 3), rather than counting on it to remember to call readFile again after a
+// failed SEARCH match. The deep eval showed exactly this gap on a 3B seat: it
+// resent an identical, non-matching SEARCH block four times in a row (tripping
+// the loop guardrail) instead of re-reading. Echoing the file's own current
+// content into the failure gives the very next turn ground truth to copy from,
+// with no extra round trip. Bounded so a large file does not blow up a lean
+// prompt; past the cap the closest-line hint in the failure reason is what is
+// left to go on, same as before this.
+const MAX_ECHOED_FILE_CHARS = 4000;
+
+function currentContentsBlock(path: string, content: string): string {
+  if (content.length > MAX_ECHOED_FILE_CHARS) {
+    return `${path} is too large to show here (${content.length} characters). Call readFile on it before trying again.`;
+  }
+  return `Current contents of ${path} (copy the exact lines from here):\n\`\`\`\n${content}\n\`\`\``;
+}
+
 function plan(args: z.infer<typeof schema>, before: string): Plan {
   const parsed = parseEditBlocks(args.edits);
   if (parsed.blocks.length === 0) {
@@ -31,7 +49,9 @@ function plan(args: z.infer<typeof schema>, before: string): Plan {
   const result = applyEditBlocks(before, parsed.blocks);
   if (!result.ok) {
     const reasons = result.failures.map((f) => `Block ${f.index + 1}: ${f.reason}`).join('\n');
-    return { error: `The edit did not apply.\n${reasons}` };
+    return {
+      error: `The edit did not apply.\n${reasons}\n\n${currentContentsBlock(args.path, before)}`,
+    };
   }
   return { result, warnings: parsed.problems };
 }
