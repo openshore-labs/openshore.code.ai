@@ -2515,6 +2515,30 @@ Kept as written, as the record of how each was closed.
   app typecheck, lint, 888 tests, Vite build; the motion, polish, and em-dash
   guards. Review in `docs/crew-page-redesign.md`; ruling in `DECISIONS.md`.
 
+- **2026-09-15: the Vault page, a new-user onboarding ramp, and an empty-state
+  overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked
+  how a new user would know what the Vault is or how to use it, and to take
+  Obsidian's new-user ramp as the guide. The read found a real bug first: the
+  empty Vault reused the chat screen's `.greeting`, which on a touch device is
+  `position: fixed` and `pointer-events: none`, so on a phone the empty state
+  floated over the Coding projects card and its "New note" button could not even
+  be tapped. Rebuilt the empty personal vault as an in-flow onboarding ramp (no
+  `.greeting`): a welcome cover in the room family's water wash, a plain-language
+  "what it is", two ways in (Write your first note, or Add a welcome note that
+  seeds a real readable starter note the way a fresh Obsidian vault opens on
+  one), and three "how it works" cards teaching that notes are yours in plain
+  markdown, that the agent both writes and reads here, and how `[[wikilinks]]`
+  connect them. The offline and empty-team states became in-flow notice cards
+  too. `vaultCreate` gained an optional `content` arg (backward compatible) so a
+  seeded note opens in read mode; all existing callers and tests unchanged.
+  Presentational plus that one seam; no other store or gate change. Rendered in
+  headless Chromium at phone width in both themes (the overlap is gone, the
+  button is in flow). Gates: app typecheck, lint, 887 tests, Vite build; the
+  motion, polish, and em-dash guards. Review in `docs/vault-page-redesign.md`;
+  ruling in `DECISIONS.md`. Follow-up the same day: the `.greeting` sweep moved
+  the project memory view's empty, error, and not-set-up states onto the shared
+  in-flow `.empty-notice` card, so only the chat keeps the fixed `.greeting`.
+
 - **2026-09-15: the Stack page, reviewed and rebuilt as a legible system
   (founder, CTO + Creative Studio + CX).** Same team, same treatment as the
   project room. The screenshot was the phone view (`StackManager`), so that was

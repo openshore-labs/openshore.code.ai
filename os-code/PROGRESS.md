@@ -111,7 +111,30 @@ alone on purpose. os-code 739 green (14 new across two rounds). Next: the
 same one-paste command again; if `add-function`'s parse problem or
 `fix-bug`'s edit failure reason show something new and fixable, one more
 narrow round; if not, the honest number is whatever the deep eval prints, and
-that is the recorded floor for this box. The convergence memo for the
+that is the recorded floor for this box.
+
+Round nine: the round-eight diagnostics did their job. `rename-across-files`
+named its exact cause for the first time, "There is no tool named 'gitAdd'";
+the model went looking for version control on a task that never asked for
+any (the fixture is not even a git repo, so its own `gitStatus` call had
+already failed), burning turns on a tool that plain does not exist. The lean
+core now says plainly not to touch git tools unless the task is actually
+about version control. `add-function`'s SEARCH squished the real three-line
+`capitalize` body onto one line, joined by spaces instead of real line
+breaks, which no line-based strategy can ever match, however tolerant of
+spelling, since it compares whole lines against whole lines. The matcher
+gained a sixth and final strategy: flatten both sides the same way (each
+line normalized, joined by one space standing in for the break) and look
+for the SEARCH as a unique substring of the whole file's flattened form; a
+hit still maps back to a real line range, so it applies as an ordinary
+whole-line swap (`test/editMatchRelaxed.test.ts`). Kept honest: the eval's
+actual attempt also carried a stray semicolon the file does not have
+anywhere, a real content difference, not a formatting one, and flattening
+correctly leaves that refused rather than guessing which brace was meant,
+pinned by its own test. `answer-from-code` landed on 82 again (a repeat of
+an earlier wrong value, still wrong, still not 42), the same clean
+non-looping trace as every round since six: the arithmetic limit stands.
+os-code 744 green (5 new), app typecheck green. The convergence memo for the
 out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
@@ -953,27 +976,3 @@ log entry). Migration is now `0016`.
       `/find` is the genuinely additive capability.
 
 ## Log
-
-- **2026-09-15: the Vault page, a new-user onboarding ramp, and an empty-state
-  overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked
-  how a new user would know what the Vault is or how to use it, and to take
-  Obsidian's new-user ramp as the guide. The read found a real bug first: the
-  empty Vault reused the chat screen's `.greeting`, which on a touch device is
-  `position: fixed` and `pointer-events: none`, so on a phone the empty state
-  floated over the Coding projects card and its "New note" button could not even
-  be tapped. Rebuilt the empty personal vault as an in-flow onboarding ramp (no
-  `.greeting`): a welcome cover in the room family's water wash, a plain-language
-  "what it is", two ways in (Write your first note, or Add a welcome note that
-  seeds a real readable starter note the way a fresh Obsidian vault opens on
-  one), and three "how it works" cards teaching that notes are yours in plain
-  markdown, that the agent both writes and reads here, and how `[[wikilinks]]`
-  connect them. The offline and empty-team states became in-flow notice cards
-  too. `vaultCreate` gained an optional `content` arg (backward compatible) so a
-  seeded note opens in read mode; all existing callers and tests unchanged.
-  Presentational plus that one seam; no other store or gate change. Rendered in
-  headless Chromium at phone width in both themes (the overlap is gone, the
-  button is in flow). Gates: app typecheck, lint, 887 tests, Vite build; the
-  motion, polish, and em-dash guards. Review in `docs/vault-page-redesign.md`;
-  ruling in `DECISIONS.md`. Follow-up the same day: the `.greeting` sweep moved
-  the project memory view's empty, error, and not-set-up states onto the shared
-  in-flow `.empty-notice` card, so only the chat keeps the fixed `.greeting`.

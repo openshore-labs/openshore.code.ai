@@ -74,6 +74,18 @@ describe('the discipline seam in the loop: a small seat gets a lean prompt', () 
     expect(system).not.toContain('propose one line for their standing instructions');
   });
 
+  it('tells a lean seat not to reach for git tools on an ordinary task', async () => {
+    // The deep eval's rename task burned turns on gitStatus (which failed,
+    // the fixture is not a repo) then a hallucinated "gitAdd" tool that does
+    // not exist, ending the task in a parse-error escalation instead of
+    // finishing the rename. Nothing in the task asked for version control.
+    const { requests } = await runWith([textTurn('done')], {
+      harness: { profiles: { enabled: true } },
+    });
+    const system = systemOf(requests[0]!);
+    expect(system).toMatch(/do not (check git status or use|use) (any )?git/i);
+  });
+
   it('a full seat keeps the complete core', async () => {
     const { requests } = await runWith([textTurn('done')], {
       harness: { profiles: { enabled: false } },
