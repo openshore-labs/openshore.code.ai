@@ -9083,16 +9083,20 @@ button.settings-row:active {
    the page and its button could not be tapped. These blocks are plain document
    flow. Every move is on the tokens and honors reduced motion.
    --------------------------------------------------------------------------- */
-.vault-notice {
+/* A shared in-flow empty/error/notice card. Any non-chat screen uses this
+   instead of the chat `.greeting`, which on touch is position: fixed and
+   pointer-events: none (a chat backdrop) and so floats over the page with an
+   untappable button. Used by the Vault and the project memory view. */
+.empty-notice {
   text-align: left;
 }
-.vault-notice h3 {
+.empty-notice h3 {
   font-family: var(--font-display);
   font-size: 20px;
   font-weight: 500;
   margin: 0 0 6px;
 }
-.vault-notice .btn {
+.empty-notice .btn {
   margin-top: 12px;
 }
 

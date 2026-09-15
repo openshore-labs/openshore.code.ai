@@ -167,8 +167,8 @@ export function StackScreen() {
       <div className="screen-inner">
         <h1>Your stack</h1>
         <p className="lead">
-          One model is the quarterback: it plans, reasons, and decides which model gets each play.
-          Specialists are optional; anything missing, the quarterback covers itself.
+          One model is your Reasoning LLM: it plans, reasons, and decides which model gets each
+          task. Specialists are optional; anything missing, the Reasoning LLM covers itself.
         </p>
 
         {canEdit && catalog && catalog.presets.length ? (
@@ -211,7 +211,7 @@ export function StackScreen() {
         <div className="card">
           <div className="card-row">
             <div className="grow">
-              <h3>Quarterback</h3>
+              <h3>Reasoning LLM</h3>
               <div className="sub">
                 {orchestrator
                   ? `${orchestrator.model} on ${orchestrator.provider}`

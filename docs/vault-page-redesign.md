@@ -85,10 +85,11 @@ the editor.
 
 ## Open, for the founder
 
-- **The same `.greeting` reuse elsewhere.** Other non-chat screens that borrow
-  `.greeting` for an empty state would have the same fixed-overlay behavior on a
-  phone. A quick sweep to move them to in-flow notices is worth doing; flagged
-  here, not done in this pass.
+- **The same `.greeting` reuse elsewhere. DONE 2026-09-15.** The one other
+  offender was the project memory view (its empty, error, and not-set-up states,
+  the error one with an untappable "Try again" on a phone). Its states, and the
+  Vault's own notices, now use a shared in-flow `.empty-notice` card; only the
+  chat keeps `.greeting`.
 - **Taste on a device.** The welcome-note copy and the ramp density are a first
   pass; TestFlight is the judge.
 - **Deeper ramp.** A natural next step is a light "what your agent saved" feed on
