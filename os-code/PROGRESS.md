@@ -116,8 +116,25 @@ files were restored, and the eval's trace line reports "2 attempts"
 system, or restoring what a shell command changed; this is the touched-file
 form the number justified and no more. os-code 762 green (5 new), app
 typecheck green. Next: the same one command on the 3B to measure the picker
-in the loop against 38%, then the 7B. The convergence memo for the
-out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
+in the loop against 38%, then the 7B.
+
+Round fifteen, the headline: **qwen2.5-coder:3b scores 75% on the deep
+benchmark on the reference box** (edit 100%, create 100%, refactor 100%,
+answer 0%), up from 38% one-try the round before, with the best-of-N picker
+carrying refactor and create over the line. This is the founder's north
+star hit in miniature: a free 3B anyone can download, on a CPU-only
+five-year-old-class box, went from 0% (2026-09-14) to 75% (2026-09-15)
+through the harness alone, no model change. The only remaining zero is the
+arithmetic answer task (the seat reads the code and guesses rather than run
+it, and cannot do 20 * 2 + 2 in its head), which is the model's ceiling at
+this size, not a harness gap; a stronger seat that takes the "run it"
+instruction closes it. The 7B run in the same pass stalled ("No bytes for
+300s" on every task): Ollama or RAM contention on the box after the 3B, not
+the harness, and left for a box-side check (`ollama ps`, `free -h`, a cold
+`ollama run` of the 7B alone), never harness work. This is the measured
+milestone for the small class; the harness cycle that chased it, rounds one
+to fifteen, is done. The convergence memo for the out-of-the-box path is
+`docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in

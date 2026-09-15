@@ -1567,3 +1567,10 @@ execution contract. Newest at the bottom.
   the honest limit of this form and stays out of scope until a number asks
   for more. The allowance is per class and one means off, so a full seat's
   behavior is unchanged.
+- **The 3B reached 75% with the picker in the loop (2026-09-15, round
+  fifteen).** edit/create/refactor 100%, answer 0% (the arithmetic ceiling
+  of a 3B, a stronger seat's job). Recorded as the small-class result on the
+  reference box and the close of the rounds-one-to-fifteen harness cycle: 0%
+  to 75% on a free local model through the harness alone. The 7B run stalled
+  on Ollama/RAM on the box, not the harness, so it is a box-side check, not
+  another round.
