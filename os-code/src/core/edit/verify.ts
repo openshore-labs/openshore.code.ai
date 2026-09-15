@@ -2,7 +2,7 @@
 // is byte-for-byte what the engine produced, and (when configured) run a
 // cheap structural check. A verification failure reverts nothing by itself;
 // it reports precisely so the caller can decide.
-import { readFileSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
@@ -45,15 +45,31 @@ export function structuralCheck(path: string, content: string): VerifyResult {
     }
   }
   if (/\.(mjs|cjs|js)$/.test(path)) {
-    const res = spawnSync(process.execPath, ['--check', path], {
-      encoding: 'utf8',
-      timeout: 10_000,
-    });
-    if (res.status === 0) return { ok: true, detail: 'JavaScript syntax check passed.' };
-    return {
-      ok: false,
-      detail: `Syntax check failed: ${(res.stderr || res.stdout).trim().slice(0, 400)}`,
-    };
+    // Check the PROPOSED content, not whatever is on disk. Until 2026-09-15
+    // this ran `node --check` on the path itself, which is the file before
+    // the edit: a corrupting edit passed (the old file parses), was written,
+    // and only the next edit tripped the check. The deep eval's 3B seat left
+    // greeter.mjs as "(name) {" that way. The candidate goes to a temp file
+    // beside the real one, same extension so module type resolves the same,
+    // and is removed whatever happens.
+    const ext = path.slice(path.lastIndexOf('.'));
+    const probe = `${path}.osc-check-${process.pid}-${Date.now()}${ext}`;
+    try {
+      writeFileSync(probe, content);
+      const res = spawnSync(process.execPath, ['--check', probe], {
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      if (res.status === 0) return { ok: true, detail: 'JavaScript syntax check passed.' };
+      const raw = (res.stderr || res.stdout).trim().split(probe).join(path);
+      return { ok: false, detail: `Syntax check failed: ${raw.slice(0, 400)}` };
+    } finally {
+      try {
+        unlinkSync(probe);
+      } catch {
+        // already gone, or never written
+      }
+    }
   }
   // Balanced-brace sanity for brace languages; heuristic on purpose, cheap on purpose.
   if (/\.(ts|tsx|jsx|c|h|cpp|hpp|java|go|rs|swift|kt|scala|css)$/.test(path)) {
