@@ -1476,3 +1476,20 @@ execution contract. Newest at the bottom.
   the workspace, the tool shapes, "never ask, make the change", "answer
   briefly, a value alone when asked for a value", and the em-dash rule.
   Standing instructions, memory, secrets, and the UX digest still ride in.
+- **A malformed-call escalation failure names its own cause (2026-09-15,
+  deep-eval round eight).** The generic sentence ("kept producing tool calls
+  that could not be parsed") gave no way to tell what a model actually sent
+  without a second, differently-instrumented run. The last turn's own parse
+  problem (`parser.ts` already produces a specific schema-mismatch or
+  unknown-tool message) now rides in the same `task-done` message, which is
+  also what the eval's trace line prints, so the next 0% on this path is
+  diagnosable from the one run that produced it. No new plumbing: the message
+  already existed per-turn, it just was not being read on the way out.
+- **The no-write nudge also fires on a failed-and-abandoned edit, not only a
+  code-in-the-reply answer (2026-09-15, deep-eval round eight).** The
+  original nudge watched for a fenced code block in the final answer; the
+  eval's fix-bug task showed a case it missed, three failed `editFile`
+  attempts followed by a plain-prose "done" with no code shown at all. A new
+  `attemptedWriteThisTask` flag (set whenever a write-risk tool is tried,
+  landed or not, including a stale-repeat skip of one) gates the second
+  trigger, so a task that never needed an edit still trips neither tell.

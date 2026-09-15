@@ -82,9 +82,36 @@ model gets another go, while scoring stays with the independent checker
 checks"); (4) SEARCH lines copied with readFile's `12| ` numbers are
 tolerated; (5) the blank-SEARCH redirect hands back the exact two fields to
 send, built from the model's own replacement text. os-code 736 green (11
-new), app typecheck green. Next: one paste on the box, pull, build, confirm
-the commit, then the 3B and the 7B deep evals back to back into their own
-logs, and record the real numbers. The convergence memo for the
+new), app typecheck green.
+
+Round eight ran that command and the round-seven fixes held up: no more
+guardrail trips, no more identical-call loops, stale repeats answered from the
+record. Still 0% overall, but every remaining miss now reads as a specific
+cause rather than a shrug. `add-function` hit "no tools called; done: error
+(the model kept producing tool calls that could not be parsed)", the exact
+malformed content invisible until now; the loop's final error message and the
+eval's trace both now carry the last turn's own parse problem (the schema
+mismatch or unknown-tool text `parser.ts` already produces), so the next
+occurrence names its own cause without a second run
+(`test/malformedCallEcho.test.ts`). `fix-bug` tried `editFile` three times,
+never landed a write, then answered "done" in plain prose with no code shown,
+which the no-write nudge could not see (it only watched for a code fence); the
+nudge now also fires when a write was attempted and failed even with no code
+in the reply, so a give-up-and-claim-done answer gets one corrective turn
+either way (`test/noWriteNudge.test.ts`). `rename-across-files` landed a real
+write for the first time (8 `editFile` calls, one applied) and verify in the
+loop actually ran, 3 checks, each returning the real FAIL line to the model;
+it still could not finish the rename in that budget, which is the harness
+working as designed and the model falling short, not a gap to close.
+`answer-from-code` keeps landing on a different wrong number each run (16,
+then 82, then 84, for a question whose answer is 42, with a clean "2 turns;
+readFile; no write landed" trace, no looping): confirmed now across three
+separate numbers as a genuine 3B arithmetic limit, not a harness gap, and left
+alone on purpose. os-code 739 green (14 new across two rounds). Next: the
+same one-paste command again; if `add-function`'s parse problem or
+`fix-bug`'s edit failure reason show something new and fixable, one more
+narrow round; if not, the honest number is whatever the deep eval prints, and
+that is the recorded floor for this box. The convergence memo for the
 out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
@@ -926,28 +953,6 @@ log entry). Migration is now `0016`.
       `/find` is the genuinely additive capability.
 
 ## Log
-
-- **2026-09-15: My Crew reframed to project-agnostic advisors, and a command-door
-  overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked to
-  make the crew less business-oriented, project-agnostic with the business
-  abilities kept ("CTO should be called Technical Advisor or something like
-  that"), and to audit the page. Fixed a real bug first: the "Crew command" door
-  rendered its kicker, title, and subtitle as inline spans, so on a phone they
-  ran together and the subtitle overflowed; `.crew-command-door-body` is now a
-  flex column. Reframed the eight-member advisor preset in `crewPresets.ts`: CTO
-  to Technical Advisor, CMO to Marketing Advisor, CFO to Finance Advisor, CX to
-  Research Advisor, Chief of Staff to Coordinator, Board to Sounding Board,
-  Corporate Strategist to Strategy Advisor, Creative Studio kept; personas
-  rewritten to advise on whatever a person is building rather than a company,
-  abilities and the activity shape (one reviewer, an auto trio, four by request)
-  unchanged, each still advisory. Activity labels lost their dev framing
-  ("Reviews builds" to "Reviews the work", etc.). The invite became an "Advisors"
-  card and the roster sits under a "Your crew" label. Copy updated to match in
-  the Crew screen, the guide knowledge string, and `docs/interaction-model.md`.
-  `crewPresets.test.ts` updated to the new names with a guard that the old
-  C-suite titles are gone. Rendered in headless Chromium in both themes. Gates:
-  app typecheck, lint, 888 tests, Vite build; the motion, polish, and em-dash
-  guards. Review in `docs/crew-page-redesign.md`; ruling in `DECISIONS.md`.
 
 - **2026-09-15: the Vault page, a new-user onboarding ramp, and an empty-state
   overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked

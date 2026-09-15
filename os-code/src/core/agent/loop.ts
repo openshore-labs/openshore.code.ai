@@ -154,6 +154,11 @@ export class AgentSession {
   /** A lean seat that answers with code but changes no file is nudged to make
    *  the change, once per task; this flag keeps it to once. */
   private noWriteNudged = false;
+  /** Set when a write-risk tool was tried this task, whether or not it landed.
+   *  Distinguishes "this task never needed an edit" (a plain question) from
+   *  "it tried to edit and every attempt failed", which the no-write nudge
+   *  below also catches even when the final answer shows no code at all. */
+  private attemptedWriteThisTask = false;
   /** Per task: how many times each exact (tool, args) call has been made and
    *  the step it last ran at, so a repeat with nothing changed in between is
    *  answered from the record instead of run again. */
@@ -472,6 +477,7 @@ export class AgentSession {
     this.cloudApprovedForTask = false;
     this.wroteThisTask = false;
     this.noWriteNudged = false;
+    this.attemptedWriteThisTask = false;
     this.repeatLog.clear();
     this.lastChangeStep = 0;
     this.callStep = 0;
@@ -717,11 +723,16 @@ export class AgentSession {
           repairAttempts = 0;
           continue;
         }
+        // The eval's 3B run hit exactly this with "no tools called; done:
+        // error", the generic sentence and no way to tell what the model
+        // actually sent without a second run under a debugger. The last
+        // turn's own problem (a schema mismatch, an unknown tool name) is the
+        // real cause; folding it in here makes it ride the trace's message
+        // field for free, no new plumbing.
         this.emit({
           type: 'task-done',
           reason: 'error',
-          message:
-            'The model kept producing tool calls that could not be parsed. Try a stronger orchestrator (osc market), or connect cloud escalation (osc login).',
+          message: `The model kept producing tool calls that could not be parsed: ${problems[0]}. Try a stronger orchestrator (osc market), or connect cloud escalation (osc login).`,
         });
         return;
       }
@@ -734,30 +745,37 @@ export class AgentSession {
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
-        // A small seat that writes the code in its reply instead of changing
-        // the file (the deep eval's "1 turn; no tools called; done: complete"
-        // on a create task) gets one plain nudge, then the task continues. The
-        // tell is a fenced code block in a final answer with no write landed;
-        // an answer without code is left alone, and it never fires in plan mode
-        // or twice in one task.
+        // A lean seat that answers as if done with no write landed gets one
+        // plain nudge, then the task continues. Two tells, either is enough:
+        // a fenced code block in the final answer (the deep eval's "1 turn;
+        // no tools called; done: complete" on a create task, the code written
+        // into the reply instead of the file), or a write it actually
+        // attempted and failed every time (fix-bug's "editFile x3; no write
+        // landed; done: complete", where the final answer was plain prose
+        // with no code shown at all, so the code-fence tell alone missed it).
+        // A task that never needed an edit (a plain question) trips neither.
+        // Never fires in plan mode or twice in one task.
+        const hasCode = /```/.test(finalText);
         if (
           this.leanSeat &&
           this.mode !== 'plan' &&
           !this.wroteThisTask &&
           !this.noWriteNudged &&
           !this.answerOnly &&
-          /```/.test(finalText)
+          (hasCode || this.attemptedWriteThisTask)
         ) {
           this.noWriteNudged = true;
           this.emit({
             type: 'status',
-            message:
-              'The seat answered with code but changed no file; asking it to make the change.',
+            message: hasCode
+              ? 'The seat answered with code but changed no file; asking it to make the change.'
+              : 'The seat answered as done but its edit never applied; asking it to try again.',
           });
           this.history.push({
             role: 'user',
-            content:
-              'You wrote code in your reply but changed no file. Make the change with editFile (give the path, search, and replace) or writeFile, then answer briefly.',
+            content: hasCode
+              ? 'You wrote code in your reply but changed no file. Make the change with editFile (give the path, search, and replace) or writeFile, then answer briefly.'
+              : 'Your edit did not apply and nothing changed, but you answered as if done. Read the file again, copy the exact lines into search, and make the change before answering.',
           });
           continue;
         }
@@ -866,6 +884,7 @@ export class AgentSession {
     // the next turn answer-only. The rail stays as the last stop behind both.
     const stale = this.noteRepeat(call);
     if (stale) {
+      if (tool.risk === 'write') this.attemptedWriteThisTask = true;
       const advice =
         tool.risk === 'read' || tool.risk === 'network'
           ? 'Nothing has changed since, so do not call it again. Use that result. If you have what you need, reply now with your final answer in plain text.'
@@ -1014,6 +1033,7 @@ export class AgentSession {
       }
     }
 
+    if (tool.risk === 'write') this.attemptedWriteThisTask = true;
     this.emit({ type: 'tool-start', call });
     const startedAt = Date.now();
     let result;
