@@ -5,7 +5,8 @@
 // loop run, tools executed, edit applied to disk, checker discriminates).
 import { describe, it, expect } from 'vitest';
 import { runEvalV2, type DriveTask } from '../src/eval/v2.js';
-import { EVAL_TASKS } from '../src/eval/tasks.js';
+import { EVAL_TASKS, EVAL_CHECK_FILE, verifyCommandFor } from '../src/eval/tasks.js';
+import { traceFrom } from '../src/commands/eval.js';
 import { MockProvider, toolTurn, textTurn, type ScriptedTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
@@ -123,6 +124,51 @@ describe('eval v2 runs the loop and scores by behavior', () => {
     expect(report.attempts).toBe(1);
     expect(report.scores[0]!.attempts).toEqual([1]);
     expect(report.bestAverage).toBe(report.average);
+  });
+
+  it("runs the task's own check in the loop: a wrong fix comes back, the next one passes", async () => {
+    // Verify in the loop, wired the way the CLI wires it: the task's check
+    // lands in the workspace and runs after a change; the failure (with the
+    // check's own FAIL line) goes back to the model, which fixes it. The score
+    // still comes from the independent checker.
+    const wrong = MATH_FIXED.replace('return a - b;', 'return a * b;');
+    let seen: AgentEvent[] = [];
+    let retryPrompt = '';
+    const drive: DriveTask = async (cwd, prompt, task) => {
+      const provider = new MockProvider('mock', [
+        toolTurn('writeFile', { path: 'math.mjs', content: wrong }, 'c1'),
+        textTurn('Fixed.'),
+        toolTurn('writeFile', { path: 'math.mjs', content: MATH_FIXED }, 'c2'),
+        textTurn('Fixed for real.'),
+      ]);
+      const session = makeTestSession(provider, {
+        cwd,
+        configOverrides: { harness: { verify: { command: verifyCommandFor(task) } } },
+      });
+      await session.agent.run(prompt);
+      seen = session.events;
+      const retry = provider.requests[2]!.messages.find(
+        (m) => m.role === 'user' && /\[verify result\]/.test(String(m.content)),
+      );
+      retryPrompt = String(retry?.content ?? '');
+      return {
+        finalText: finalText(session.events),
+        trace: traceFrom(session.events, session.tools),
+      };
+    };
+    const report = await runEvalV2(drive, { tasks: [task('fix-bug')] });
+    expect(report.scores[0]!.score).toBe(1);
+    expect(retryPrompt).toContain('FAIL: subtract(5, 3) returned 15, expected 2');
+    const verifies = seen.filter((e) => e.type === 'verify') as Array<{ passed: boolean }>;
+    expect(verifies.map((v) => v.passed)).toEqual([false, true]);
+    expect(report.scores[0]!.trace?.verify).toEqual({ rounds: 2, passed: true });
+  });
+
+  it('every edit task carries a check; the answer task has none', () => {
+    for (const id of ['fix-bug', 'add-function', 'rename-across-files']) {
+      expect(verifyCommandFor(task(id))).toBe(`node ${EVAL_CHECK_FILE}`);
+    }
+    expect(verifyCommandFor(task('answer-from-code'))).toBeUndefined();
   });
 
   it('reports a per-category average across tasks', async () => {

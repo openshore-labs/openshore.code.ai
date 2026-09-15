@@ -2493,6 +2493,30 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-15)
 
+- **2026-09-15: the Stack page, reviewed and rebuilt as a legible system
+  (founder, CTO + Creative Studio + CX).** Same team, same treatment as the
+  project room. The screenshot was the phone view (`StackManager`), so that was
+  the target. The read: the control room for the plan-first workflow was drawn
+  as a flat settings list, the premise (one Reasoning LLM plans and routes to
+  specialists) invisible, the anchor looking like any benched model, and the
+  teal/amber posture language barely used. Rebuilt: an anchor cover (the same
+  water wash as the project room) carrying a compact reach pill (the status,
+  now, tap to switch which status's stack you edit) and the Reasoning LLM as the
+  hero with a location chip and Change; a single Specialists section with a
+  routing explainer, image reading as a tagged specialist keeping its two
+  local/cloud slots, and the placed specialists each with a category tag and a
+  location chip; a Bench of reserves with the teal/amber rule kept on every
+  model and a house-styled cloud picker (was a raw inline `<select>`).
+  Presentational only: every store action, sheet, the Currents bench pill, the
+  vision two-slot semantics, and the admin gating (the non-admin lock on every
+  control) preserved. No test pinned the Stack UI strings; none loosened.
+  Rendered in headless Chromium at phone width in both themes. Gates: app
+  typecheck, lint, 887 tests, Vite build; the motion, polish, and em-dash
+  guards. Review in `docs/stack-page-redesign.md`; ruling in `DECISIONS.md`. The
+  CTO's top cross-surface finding, the desktop Quarterback vs Reasoning LLM
+  vocabulary split, was then closed the same day at the founder's call: Quarterback
+  is renamed to Reasoning LLM across the desktop stack screens and the guides.
+
 - **2026-09-15: the Project room, reviewed and rebuilt as a workspace (founder,
   CTO + Creative Studio + CX).** The founder flagged the project room (the room
   behind a tapped project, where they expect 75% of the work) as scattered and

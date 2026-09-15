@@ -96,9 +96,13 @@ describe('editFile echoes ground truth on a failed match', () => {
     const second = provider.requests[1]!;
     const observation = observationContaining(second.messages, 'no SEARCH text');
     expect(observation).toBeDefined();
-    expect(observation).toContain('function greet2(name)');
     expect(observation).toContain('Current contents of greet.mjs');
-    expect(observation).toContain('use an existing line');
+    // The harness names the anchor (the file's last line) and hands back the
+    // exact two fields to send, built from the model's own replacement text.
+    expect(observation).toContain('send editFile again with exactly these two fields');
+    expect(observation).toContain('search: "}"');
+    expect(observation).toContain('replace: "}\\n\\nfunction greet2(name)');
+    expect(observation).toContain('Or use writeFile');
   });
 
   it('a successful edit is unaffected: no echoed content, just the applied summary', async () => {

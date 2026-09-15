@@ -31,6 +31,20 @@ export interface EvalTask {
   files: Record<string, string>;
   prompt: string;
   check: (result: EvalTaskResult) => Promise<EvalTaskScore>;
+  /** The task's own test, as a plain ES module the harness runs in the
+   *  workspace after the agent changes a file (verify in the loop), the way a
+   *  real project's test suite runs. It prints what failed and exits non-zero,
+   *  so a failing check goes back to the model as something to fix. Scoring
+   *  still uses `check` alone. Absent on a task with nothing to run. */
+  verifyScript?: string;
+}
+
+/** Where a task's verify script lands inside the workspace. */
+export const EVAL_CHECK_FILE = '.eval-check.mjs';
+
+/** The verify command for a task, or undefined when it has no script. */
+export function verifyCommandFor(task: Pick<EvalTask, 'verifyScript'>): string | undefined {
+  return task.verifyScript ? `node ${EVAL_CHECK_FILE}` : undefined;
 }
 
 /** Run a short ES-module script with `node` inside `cwd`; true when it exits 0.
@@ -97,6 +111,16 @@ export const EVAL_TASKS: EvalTask[] = [
         ? { score: 1, detail: 'subtract now returns a - b and add still works' }
         : { score: 0, detail: 'subtract still wrong or add broken' };
     },
+    verifyScript: [
+      "const m = await import('./math.mjs');",
+      'let ok = true;',
+      "if (typeof m.subtract !== 'function') { console.error('FAIL: math.mjs does not export subtract'); ok = false; }",
+      "else if (m.subtract(5, 3) !== 2) { console.error('FAIL: subtract(5, 3) returned ' + m.subtract(5, 3) + ', expected 2'); ok = false; }",
+      "if (typeof m.add !== 'function' || m.add(2, 2) !== 4) { console.error('FAIL: add(2, 2) must still return 4'); ok = false; }",
+      "if (ok) console.log('PASS');",
+      'process.exit(ok ? 0 : 1);',
+      '',
+    ].join('\n'),
   },
   {
     id: 'add-function',
@@ -117,6 +141,16 @@ export const EVAL_TASKS: EvalTask[] = [
         ? { score: 1, detail: 'shout works and capitalize is intact' }
         : { score: 0, detail: 'shout missing or wrong, or capitalize broken' };
     },
+    verifyScript: [
+      "const m = await import('./strings.mjs');",
+      'let ok = true;',
+      "if (typeof m.shout !== 'function') { console.error('FAIL: strings.mjs does not export a function named shout'); ok = false; }",
+      "else if (m.shout('hi') !== 'HI!') { console.error('FAIL: shout(\"hi\") returned ' + JSON.stringify(m.shout('hi')) + ', expected \"HI!\"'); ok = false; }",
+      "if (typeof m.capitalize !== 'function' || m.capitalize('hi') !== 'Hi') { console.error('FAIL: capitalize(\"hi\") must still return \"Hi\"'); ok = false; }",
+      "if (ok) console.log('PASS');",
+      'process.exit(ok ? 0 : 1);',
+      '',
+    ].join('\n'),
   },
   {
     id: 'rename-across-files',
@@ -134,6 +168,22 @@ export const EVAL_TASKS: EvalTask[] = [
         ? { score: 1, detail: 'greet is exported, oldName is gone, and the caller still runs' }
         : { score: 0, detail: 'rename incomplete: a definition or a use was missed' };
     },
+    verifyScript: [
+      'let ok = true;',
+      "const g = await import('./greeter.mjs');",
+      "if (typeof g.greet !== 'function') { console.error('FAIL: greeter.mjs does not export a function named greet'); ok = false; }",
+      "if (g.oldName !== undefined) { console.error('FAIL: greeter.mjs still exports oldName; it must be renamed to greet'); ok = false; }",
+      'try {',
+      "  const u = await import('./user.mjs');",
+      "  if (u.greetWorld() !== 'hello world') { console.error('FAIL: greetWorld() in user.mjs returned ' + JSON.stringify(u.greetWorld()) + ', expected \"hello world\"'); ok = false; }",
+      '} catch (err) {',
+      "  console.error('FAIL: user.mjs does not run: ' + err.message + '. Its import and its call must both use greet.');",
+      '  ok = false;',
+      '}',
+      "if (ok) console.log('PASS');",
+      'process.exit(ok ? 0 : 1);',
+      '',
+    ].join('\n'),
   },
   {
     id: 'answer-from-code',

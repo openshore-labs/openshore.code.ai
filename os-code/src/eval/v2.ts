@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { oscHome } from '../config/load.js';
-import { EVAL_TASKS, type EvalTask } from './tasks.js';
+import { EVAL_TASKS, EVAL_CHECK_FILE, type EvalTask } from './tasks.js';
 
 /** What the loop did on one run, so a zero is a diagnosis and not just a
  *  verdict: how many turns, which tools it reached for and whether any write
@@ -32,6 +32,10 @@ export interface DriveTrace {
    *  the diagnosis, which "no write landed" alone cannot distinguish (was it a
    *  content mismatch, a format problem, something else). */
   toolFailures?: Array<{ name: string; detail: string }>;
+  /** Verify in the loop, when the task carries its own check: how many times
+   *  the check ran this task and whether the last run passed. Absent when it
+   *  never ran (no write landed, or the task has no check). */
+  verify?: { rounds: number; passed: boolean };
 }
 
 /** A drive may return just the final text, or the text plus a trace of what
@@ -43,8 +47,13 @@ export interface DriveOutcome {
 
 /** Runs the agent loop on a prepared workspace and returns its final answer
  *  text (or that plus a trace). Throwing is allowed; the runner records it as
- *  a zero-scored task. */
-export type DriveTask = (cwd: string, prompt: string) => Promise<string | DriveOutcome>;
+ *  a zero-scored task. The task rides along so a drive can wire the task's
+ *  own check as the loop's verify command (`verifyCommandFor`). */
+export type DriveTask = (
+  cwd: string,
+  prompt: string,
+  task: EvalTask,
+) => Promise<string | DriveOutcome>;
 
 export interface EvalV2TaskScore {
   task: string;
@@ -105,10 +114,13 @@ async function runAttempt(drive: DriveTask, task: EvalTask): Promise<AttemptOutc
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, content);
     }
+    // The task's own test sits in the workspace like a project's test file
+    // would, so the harness can run it after a change (verify in the loop).
+    if (task.verifyScript) writeFileSync(join(cwd, EVAL_CHECK_FILE), task.verifyScript);
     let finalText = '';
     let trace: DriveTrace | undefined;
     try {
-      const outcome = await drive(cwd, task.prompt);
+      const outcome = await drive(cwd, task.prompt, task);
       if (typeof outcome === 'string') {
         finalText = outcome;
       } else {

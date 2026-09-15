@@ -59,10 +59,33 @@ file, with a minimum length so a stray `{` or `)` never matches by coincidence
 The answer-from-code task was wrong again with yet another number (16 this
 run, 82 in an earlier one, always for the same question whose real answer is
 42): a genuine 3B arithmetic limit, not a harness gap, and the harness does
-not paper over it. os-code 725 green, app 888 green. Next: re-run the deep
-eval on the box with every known gap now closed and record the real, honest
-number. The convergence memo for the out-of-the-box path is
-`docs/premium-harness-first-seat-convergence.md`.
+not paper over it. os-code 725 green, app 888 green. Round seven was a
+deeper pass at the founder's ask ("a path to only one more round"), made
+from the whole body of evidence rather than the last screenshot, so several
+predictable gaps closed in one commit. The round-six fix had not yet reached
+the box (its clone was still on the round-five commit, confirmed by `git
+log` before anything was concluded), so the run that looked like a matcher
+bug was a stale build. The pass then closed what the traces and the code
+together predicted: (1) a lean seat was still getting the full desktop
+etiquette prompt (report like a colleague, ask before touching working code,
+open with todoWrite), which a 3B reads as the task, so it now gets a short,
+direct core: do it, do not ask, answer briefly
+(`test/harnessLoopProfile.test.ts`); (2) an exact repeat of a call with
+nothing changed since (the answer task's `readFile x3` into the repeat rail)
+is answered from the record instead of run again, and the third repeat makes
+the next turn answer-only, no tools, so a stuck model still answers
+(`test/staleRepeat.test.ts`); (3) the deep eval now runs each edit task's
+own check inside the loop as verify, the way a project's tests run, so a
+half-done rename comes back as a failing test with a real FAIL line and the
+model gets another go, while scoring stays with the independent checker
+(`test/evalV2.test.ts`; the trace line now says "verify passed after 2
+checks"); (4) SEARCH lines copied with readFile's `12| ` numbers are
+tolerated; (5) the blank-SEARCH redirect hands back the exact two fields to
+send, built from the model's own replacement text. os-code 736 green (11
+new), app typecheck green. Next: one paste on the box, pull, build, confirm
+the commit, then the 3B and the 7B deep evals back to back into their own
+logs, and record the real numbers. The convergence memo for the
+out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in
@@ -949,27 +972,3 @@ log entry). Migration is now `0016`.
   ruling in `DECISIONS.md`. Follow-up the same day: the `.greeting` sweep moved
   the project memory view's empty, error, and not-set-up states onto the shared
   in-flow `.empty-notice` card, so only the chat keeps the fixed `.greeting`.
-
-- **2026-09-15: the Stack page, reviewed and rebuilt as a legible system
-  (founder, CTO + Creative Studio + CX).** Same team, same treatment as the
-  project room. The screenshot was the phone view (`StackManager`), so that was
-  the target. The read: the control room for the plan-first workflow was drawn
-  as a flat settings list, the premise (one Reasoning LLM plans and routes to
-  specialists) invisible, the anchor looking like any benched model, and the
-  teal/amber posture language barely used. Rebuilt: an anchor cover (the same
-  water wash as the project room) carrying a compact reach pill (the status,
-  now, tap to switch which status's stack you edit) and the Reasoning LLM as the
-  hero with a location chip and Change; a single Specialists section with a
-  routing explainer, image reading as a tagged specialist keeping its two
-  local/cloud slots, and the placed specialists each with a category tag and a
-  location chip; a Bench of reserves with the teal/amber rule kept on every
-  model and a house-styled cloud picker (was a raw inline `<select>`).
-  Presentational only: every store action, sheet, the Currents bench pill, the
-  vision two-slot semantics, and the admin gating (the non-admin lock on every
-  control) preserved. No test pinned the Stack UI strings; none loosened.
-  Rendered in headless Chromium at phone width in both themes. Gates: app
-  typecheck, lint, 887 tests, Vite build; the motion, polish, and em-dash
-  guards. Review in `docs/stack-page-redesign.md`; ruling in `DECISIONS.md`. The
-  CTO's top cross-surface finding, the desktop Quarterback vs Reasoning LLM
-  vocabulary split, was then closed the same day at the founder's call: Quarterback
-  is renamed to Reasoning LLM across the desktop stack screens and the guides.
