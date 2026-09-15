@@ -267,6 +267,36 @@ export function VaultScreen() {
     void vaultCreate(path);
   };
 
+  // A one-tap starter, the way a fresh Obsidian vault opens on a welcome note
+  // rather than a blank void: seed a real, readable note that teaches the core
+  // moves (markdown, the shared read/write with the agent, a live wikilink).
+  const addStarterNote = async () => {
+    const body = [
+      '# Welcome to your Vault',
+      '',
+      'This is a note: a plain markdown file kept on this device, or on the',
+      'storage you pick under "Where it lives". Write anything you want here.',
+      '',
+      '## You and your agent share this',
+      '',
+      'As your agent works, it can save what it learns here and read your notes',
+      'back later. Anything you write becomes context it can use.',
+      '',
+      '## Link your notes',
+      '',
+      'Type two square brackets to link to another note, like [[Ideas]]. Your',
+      'agent follows those links to find what it needs.',
+      '',
+      '## Try it',
+      '',
+      'Tap the plus at the top to write your own note. Delete this one whenever',
+      'you like.',
+      '',
+    ].join('\n');
+    await vaultCreate('Welcome to your Vault', body);
+    showToast('Welcome note added.');
+  };
+
   const entries = treeAt(folder, vaultFiles);
   const crumbs = folder ? folder.split('/') : [];
 
@@ -681,9 +711,9 @@ export function VaultScreen() {
         ) : null}
 
         {vaultFiles.length === 0 && vaultError === 'load' ? (
-          <div className="greeting" style={{ minHeight: '40vh' }}>
-            <h1>Your vault storage is offline.</h1>
-            <p>
+          <div className="card vault-notice">
+            <h3>Your vault storage is offline.</h3>
+            <p className="sub">
               Your notes are safe where they live. This device could not reach the storage to load
               them. Check your connection and try again.
             </p>
@@ -691,18 +721,79 @@ export function VaultScreen() {
               Retry
             </button>
           </div>
-        ) : vaultFiles.length === 0 ? (
-          <div className="greeting" style={{ minHeight: '40vh' }}>
-            <h1>{team ? 'Your team vault is empty.' : 'Your vault starts with one note.'}</h1>
-            <p>
-              {team
-                ? 'The first note you write is shared with your organization.'
-                : 'Plain markdown files. Yours, on this device.'}
-            </p>
+        ) : vaultFiles.length === 0 && team ? (
+          <div className="card vault-notice">
+            <h3>Your team vault is empty.</h3>
+            <p className="sub">The first note you write is shared with your organization.</p>
             <button className="btn primary" onClick={() => setNewOpen(true)}>
               New note
             </button>
           </div>
+        ) : vaultFiles.length === 0 ? (
+          // New user, personal vault: an onboarding ramp, not a blank void. It
+          // teaches what the vault is and how the agent uses it, then gives two
+          // ways in (write your own, or seed a welcome note the way a fresh
+          // Obsidian vault opens on one).
+          <section className="vault-onboard">
+            <div className="vault-onboard-cover">
+              <div className="vault-onboard-wash" aria-hidden="true" />
+              <div className="vault-onboard-body">
+                <span className="vault-kicker">Your vault</span>
+                <h2 className="vault-onboard-title">A home for what you and your agent know</h2>
+                <p className="vault-onboard-lead">
+                  Plain markdown notes, yours on this device. You write in them, and so does your
+                  agent as it works, so what it learns stays with you.
+                </p>
+                <div className="vault-onboard-actions">
+                  <button className="btn primary" onClick={() => setNewOpen(true)}>
+                    Write your first note
+                  </button>
+                  <button className="btn ghost" onClick={() => void addStarterNote()}>
+                    Add a welcome note
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="vault-how">
+              <div className="vault-how-item">
+                <span className="vault-how-glyph">
+                  <DocGlyph />
+                </span>
+                <div>
+                  <h3>Plain markdown, yours</h3>
+                  <p className="sub">
+                    Notes are .md files kept on this device or your own storage. Export them any
+                    time; nothing is locked in.
+                  </p>
+                </div>
+              </div>
+              <div className="vault-how-item">
+                <span className="vault-how-glyph">
+                  <AgentGlyph />
+                </span>
+                <div>
+                  <h3>You and your agent both write here</h3>
+                  <p className="sub">
+                    The agent saves what it learns and reads your notes back when it works, so it
+                    remembers how you like things done.
+                  </p>
+                </div>
+              </div>
+              <div className="vault-how-item">
+                <span className="vault-how-glyph">
+                  <LinkGlyph />
+                </span>
+                <div>
+                  <h3>Link ideas with [[wikilinks]]</h3>
+                  <p className="sub">
+                    Type two square brackets to connect notes. The agent follows the links to find
+                    what it needs.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
         ) : (
           <div className="vault-tree">
             {entries.map((e) =>
@@ -892,5 +983,64 @@ export function VaultScreen() {
         ) : null}
       </Sheet>
     </div>
+  );
+}
+
+// Small line glyphs for the onboarding "how it works" points. Stroke-only, on
+// currentColor, so they sit in the brand water like the rest of the room.
+function DocGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 2h8l4 4v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" />
+      <path d="M14 2v4h4M8 13h8M8 17h6" />
+    </svg>
+  );
+}
+
+function AgentGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="4" y="8" width="16" height="12" rx="3" />
+      <path d="M12 4v4M9 14h.01M15 14h.01" />
+    </svg>
+  );
+}
+
+function LinkGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 12a3 3 0 0 1 3-3h4a3 3 0 0 1 0 6h-2" />
+      <path d="M15 12a3 3 0 0 1-3 3H8a3 3 0 0 1 0-6h2" />
+    </svg>
   );
 }
