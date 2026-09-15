@@ -1352,3 +1352,11 @@ execution contract. Newest at the bottom.
   lives only through the flourish. The persistent water-line became the same
   ring, thin and faint, breathing, so the hand-over is seamless and the
   modality reads whole. Supersedes the 2026-09-09 radial wave and thin border.
+- **Project room, work-first over a config-form stack (2026-09-15, CTO +
+  Creative Studio + CX).** The room now leads with the work (a premium cover
+  with the primary action, then chats with a resume card) and demotes the
+  context (instructions, repos) and roster below it, reversing the old order.
+  A light paper cover with a water wash was chosen over a dark `cc-hero`-style
+  band so the shared-element title still lands on ink, and over a Work/Context/
+  Team tab split as heavier than a room this size needs. Presentational only,
+  no store or gate change. Review in `docs/project-room-redesign.md`.
