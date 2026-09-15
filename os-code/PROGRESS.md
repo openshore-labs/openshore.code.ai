@@ -44,7 +44,7 @@ normalizing to the same blocks through the same matcher, and a failure now
 echoes what the model actually sent (`test/editFileShapes.test.ts`). The
 create task's "answered with code, changed no file" got a one-time nudge for
 lean seats (`test/noWriteNudge.test.ts`). The remaining wrong answer (82 for 42) is a 3B capability limit the harness does not paper over. os-code 714
-green. The next 3B run is the first with every known harness gap closed; the
+green. Round five: the model's blocks now parse, but its SEARCH lines still missed byte for byte (quote style, spacing, a paraphrased middle line), so the matcher gained a spelling-tolerant unique match and two-unique-anchor pinning, never looser about where an edit lands (`test/editMatchRelaxed.test.ts`), and a failed match now echoes the model's own SEARCH beside the file. The next 3B run is the first with every known harness gap closed; the
 convergence memo for the out-of-the-box path is
 `docs/premium-harness-first-seat-convergence.md`.
 

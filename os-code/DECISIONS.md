@@ -1291,6 +1291,16 @@ execution contract. Newest at the bottom.
   call readFile) directly in the failure, so the next turn can copy the exact
   lines without a second read. This is retrieval the harness does for the
   model, per tenet 3, not a change to the edit-matching strategies themselves.
+- 2026-09-15: **The matcher forgives how a line is spelled, never where it
+  lands.** Once the 3B produced real blocks, every edit still failed on "SEARCH
+  text was not found": inside a JSON string it swaps quote styles and spacing
+  on lines like a template literal. Two bounded strategies: a spelling-tolerant
+  match (whitespace collapsed, the three quote characters made one) that still
+  requires a unique run, and anchoring on a unique first-and-last pair with the
+  middle allowed to drift, since two independent lines pin the location and the
+  REPLACE side overwrites that region regardless, with the diff shown and
+  verify after. Several candidates still demand a strong, unique middle, and
+  otherwise it is ambiguity, an error, never a guess.
 - 2026-09-15: **editFile accepts the shapes small models actually produce.**
   Four deep-eval rounds on the reference box ended at "No valid edit blocks
   found": a 3B never once produced the SEARCH/REPLACE mini-language inside a

@@ -7,7 +7,7 @@
 // corruption, so ambiguity is always an error, never a guess.
 import type { EditBlock } from './searchReplace.js';
 
-export type MatchStrategy = 'exact' | 'trimmed' | 'anchored';
+export type MatchStrategy = 'exact' | 'trimmed' | 'normalized' | 'anchored';
 
 export interface AppliedBlock {
   index: number;
@@ -94,30 +94,60 @@ function locate(content: string, search: string): Located {
     };
   }
 
-  // Strategy 3: anchor on the surrounding context, never on the changed text
-  // alone. First and last lines of the SEARCH act as anchors; the middle may
-  // drift a little (the model often paraphrases whitespace or a comment).
+  // Strategy 3: spelling-tolerant match. A small model transcribing a line
+  // into a JSON string most often gets the quote style wrong (a backtick or a
+  // double quote for a single quote) or the spacing, and nothing else. Compare
+  // lines with whitespace runs collapsed and all three quote characters made
+  // one, and still require the run to be unique, so the location is certain
+  // even though the spelling was not.
+  const normalized = findRuns(contentLines, searchLines, (a, b) => norm(a) === norm(b));
+  if (normalized.length === 1) {
+    return {
+      start: normalized[0]!,
+      end: normalized[0]! + searchLines.length - 1,
+      strategy: 'normalized',
+    };
+  }
+  if (normalized.length > 1) {
+    return {
+      reason: `The SEARCH text matches ${normalized.length} places once quote style and spacing are ignored. Add surrounding lines to pin down which one.`,
+    };
+  }
+
+  // Strategy 4: anchor on the surrounding context, never on the changed text
+  // alone. First and last lines of the SEARCH act as anchors (compared
+  // spelling-tolerantly); the middle may drift. When exactly ONE place in the
+  // file carries both anchors at the right distance, the location is pinned by
+  // two independent lines and the edit applies however badly the middle was
+  // transcribed: the REPLACE side overwrites that region regardless, the diff
+  // shows exactly what changed, and verify runs after. When several places
+  // carry both anchors, the middle has to earn it (high similarity, unique),
+  // and otherwise it is ambiguity, which is always an error, never a guess.
   if (searchLines.length >= 3) {
-    const firstAnchor = searchLines[0]!.trim();
-    const lastAnchor = searchLines[searchLines.length - 1]!.trim();
+    const firstAnchor = norm(searchLines[0]!);
+    const lastAnchor = norm(searchLines[searchLines.length - 1]!);
     const candidates: Array<{ start: number; end: number; score: number }> = [];
     for (let i = 0; i < contentLines.length; i++) {
-      if (contentLines[i]!.trim() !== firstAnchor) continue;
+      if (norm(contentLines[i]!) !== firstAnchor) continue;
       const expectedEnd = i + searchLines.length - 1;
       for (
         let end = Math.max(i + 1, expectedEnd - 2);
         end <= expectedEnd + 2 && end < contentLines.length;
         end++
       ) {
-        if (contentLines[end]!.trim() !== lastAnchor) continue;
+        if (norm(contentLines[end]!) !== lastAnchor) continue;
         const score = middleSimilarity(contentLines.slice(i + 1, end), searchLines.slice(1, -1));
-        if (score >= 0.8) candidates.push({ start: i, end, score });
+        candidates.push({ start: i, end, score });
       }
     }
     if (candidates.length === 1) {
       return { start: candidates[0]!.start, end: candidates[0]!.end, strategy: 'anchored' };
     }
     if (candidates.length > 1) {
+      const strong = candidates.filter((c) => c.score >= 0.8);
+      if (strong.length === 1) {
+        return { start: strong[0]!.start, end: strong[0]!.end, strategy: 'anchored' };
+      }
       return {
         reason: `The context anchors match ${candidates.length} places. Include more unique surrounding lines.`,
       };
@@ -129,6 +159,13 @@ function locate(content: string, search: string): Located {
   return {
     reason: `The SEARCH text was not found in the file.${hint} Re-read the file and copy the lines exactly.`,
   };
+}
+
+/** Spelling-tolerant form of a line: trimmed, whitespace runs collapsed, and
+ *  the three quote characters made one. Location decisions still require a
+ *  unique match, so this forgives how a line was spelled, never where it is. */
+function norm(line: string): string {
+  return line.trim().replace(/\s+/g, ' ').replace(/[`'"]/g, '"');
 }
 
 function findRuns(
