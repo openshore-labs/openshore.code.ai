@@ -880,6 +880,28 @@ log entry). Migration is now `0016`.
 
 ## Log
 
+- **2026-09-15: My Crew reframed to project-agnostic advisors, and a command-door
+  overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked to
+  make the crew less business-oriented, project-agnostic with the business
+  abilities kept ("CTO should be called Technical Advisor or something like
+  that"), and to audit the page. Fixed a real bug first: the "Crew command" door
+  rendered its kicker, title, and subtitle as inline spans, so on a phone they
+  ran together and the subtitle overflowed; `.crew-command-door-body` is now a
+  flex column. Reframed the eight-member advisor preset in `crewPresets.ts`: CTO
+  to Technical Advisor, CMO to Marketing Advisor, CFO to Finance Advisor, CX to
+  Research Advisor, Chief of Staff to Coordinator, Board to Sounding Board,
+  Corporate Strategist to Strategy Advisor, Creative Studio kept; personas
+  rewritten to advise on whatever a person is building rather than a company,
+  abilities and the activity shape (one reviewer, an auto trio, four by request)
+  unchanged, each still advisory. Activity labels lost their dev framing
+  ("Reviews builds" to "Reviews the work", etc.). The invite became an "Advisors"
+  card and the roster sits under a "Your crew" label. Copy updated to match in
+  the Crew screen, the guide knowledge string, and `docs/interaction-model.md`.
+  `crewPresets.test.ts` updated to the new names with a guard that the old
+  C-suite titles are gone. Rendered in headless Chromium in both themes. Gates:
+  app typecheck, lint, 888 tests, Vite build; the motion, polish, and em-dash
+  guards. Review in `docs/crew-page-redesign.md`; ruling in `DECISIONS.md`.
+
 - **2026-09-15: the Vault page, a new-user onboarding ramp, and an empty-state
   overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked
   how a new user would know what the Vault is or how to use it, and to take

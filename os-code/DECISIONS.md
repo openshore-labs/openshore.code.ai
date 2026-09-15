@@ -1377,3 +1377,12 @@ execution contract. Newest at the bottom.
   it), and plain notice cards for offline/empty-team. `vaultCreate` gained an
   optional `content` arg so a seeded welcome note opens in read mode. Review in
   `docs/vault-page-redesign.md`.
+- **My Crew advisor preset reframed to project-agnostic advisors (2026-09-15,
+  founder).** The shipped crew read as a startup C-suite (CTO, CMO, CFO, Board,
+  ...). Renamed to general advisors that keep the business abilities (Technical
+  Advisor, Marketing Advisor, Finance Advisor, Research Advisor, Coordinator,
+  Sounding Board, Strategy Advisor; Creative Studio kept), personas rewritten to
+  advise on whatever a person is building rather than a company. Activity shape
+  unchanged. Also fixed a command-door overlap bug (inline spans to a flex
+  column). The repo's own dev-process references in CLAUDE.md keep the C-suite
+  titles for now. Review in `docs/crew-page-redesign.md`.

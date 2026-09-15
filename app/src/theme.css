@@ -9771,6 +9771,22 @@ button.settings-row:active {
 .crew-command-door-body {
   flex: 1;
   min-width: 0;
+  /* The kicker, title, and sub are spans; without a column they flow inline
+     and run together (and their margin-top is ignored). A column stacks them
+     and lets the sub ellipsis, so nothing overlaps or overflows the door. */
+  display: flex;
+  flex-direction: column;
+}
+/* The advisor-team invite: a self-contained card, so the ready-made team reads
+   as one clear offer rather than a floating paragraph under two buttons. */
+.crew-advisors {
+  margin-top: 12px;
+}
+.crew-advisors-title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  margin: 3px 0 6px;
 }
 .crew-command-door-kicker {
   font-size: 11px;
