@@ -19,6 +19,7 @@ import { Guardrails } from '../core/guardrails/index.js';
 import { profileFor } from '../core/security/profiles.js';
 import { UsageTracker } from '../auth/usage.js';
 import type { AgentEvent } from '../core/agent/types.js';
+import type { ToolRegistry } from '../core/tools/index.js';
 import type { OscConfig } from '../config/schema.js';
 import { confirm, header, okLine, out, warnLine } from './util.js';
 
@@ -202,7 +203,7 @@ async function runDeep(
       persistRule: () => false,
     });
     await agent.run(prompt);
-    return { finalText: lastFinalText(events), trace: traceFrom(events) };
+    return { finalText: lastFinalText(events), trace: traceFrom(events, tools) };
   };
 
   try {
@@ -227,27 +228,65 @@ function lastFinalText(events: AgentEvent[]): string {
 }
 
 // A compact account of what the loop did, so a zero score reads as a diagnosis:
-// how many turns, which tools it reached for and whether a write landed, and
-// how it ended. This is what turns "0%, empty" into "ended after 1 turn on a
-// parse error, never called a tool".
-function traceFrom(events: AgentEvent[]): DriveTrace {
+// how many turns, which tools it reached for, whether a WRITE-risk tool landed
+// (not just any successful call, so a read-only answer task never misreports
+// "a write landed"), how it ended, and every failed call's own message. That
+// last part matters: "no write landed" alone cannot tell a content mismatch
+// from a format problem from something else, and guessing at the difference
+// wastes a round trip on a slow box. This is what turns "0%, empty" into
+// "ended after 1 turn on a parse error, never called a tool".
+export function traceFrom(events: AgentEvent[], tools: ToolRegistry): DriveTrace {
   const turns = events.filter((e) => e.type === 'turn-start').length;
   const toolCalls = (
     events.filter((e) => e.type === 'tool-start') as Array<{
       call: { name: string };
     }>
   ).map((e) => e.call.name);
-  const wrote = events.some(
-    (e) => e.type === 'tool-end' && (e as { result: { ok: boolean } }).result.ok,
-  );
+  const ends = events.filter((e) => e.type === 'tool-end') as Array<{
+    call: { name: string };
+    result: { ok: boolean; content: string };
+  }>;
+  const wrote = ends.some((e) => e.result.ok && tools.get(e.call.name)?.risk === 'write');
+  const toolFailures = ends
+    .filter((e) => !e.result.ok)
+    .map((e) => ({ name: e.call.name, detail: truncate(e.result.content, 300) }));
   const done = events.find((e) => e.type === 'task-done') as
     { reason: string; message?: string } | undefined;
-  return { turns, toolCalls, wrote, doneReason: done?.reason, message: done?.message };
+  return {
+    turns,
+    toolCalls,
+    wrote,
+    doneReason: done?.reason,
+    message: done?.message,
+    toolFailures: toolFailures.length ? toolFailures : undefined,
+  };
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}...` : s;
+}
+
+// Consecutive failures with the same tool and the same message collapse to one
+// line with a count: that IS "the model is looping", and printing it four
+// times over would bury the report instead of explaining it.
+function dedupeFailures(
+  failures: DriveTrace['toolFailures'],
+): Array<{ name: string; detail: string; count: number }> {
+  if (!failures?.length) return [];
+  const out: Array<{ name: string; detail: string; count: number }> = [];
+  for (const f of failures) {
+    const last = out[out.length - 1];
+    if (last && last.name === f.name && last.detail === f.detail) last.count += 1;
+    else out.push({ name: f.name, detail: f.detail, count: 1 });
+  }
+  return out;
 }
 
 // One line that says why a task scored what it did: turns, tool calls (deduped
 // with counts), whether a write landed, and the stop reason with its message.
-function traceLine(trace: DriveTrace): string {
+// A failed call's own detail follows on its own indented line, so a report
+// answers "content mismatch or format problem?" without another eval run.
+export function traceLine(trace: DriveTrace): string {
   const counts = new Map<string, number>();
   for (const name of trace.toolCalls) counts.set(name, (counts.get(name) ?? 0) + 1);
   const tools = counts.size
@@ -257,9 +296,14 @@ function traceLine(trace: DriveTrace): string {
   const done = trace.doneReason
     ? `done: ${trace.doneReason}${trace.message ? ` (${trace.message})` : ''}`
     : 'no stop recorded';
-  return [`${trace.turns} turn${trace.turns === 1 ? '' : 's'}`, tools, wrote, done]
+  const summary = [`${trace.turns} turn${trace.turns === 1 ? '' : 's'}`, tools, wrote, done]
     .filter(Boolean)
     .join('; ');
+  const failureLines = dedupeFailures(trace.toolFailures).map(
+    (f) =>
+      `\n      ${f.name} failed${f.count > 1 ? ` x${f.count}` : ''}: ${truncate(f.detail, 140)}`,
+  );
+  return summary + failureLines.join('');
 }
 
 function renderV2(report: EvalV2Report, kind: 'local' | 'cloud'): void {
