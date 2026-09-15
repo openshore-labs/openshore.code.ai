@@ -21,121 +21,32 @@ remains).
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
-Latest (2026-09-15): the floor produced its first real numbers, over six
-rounds on the founder's CPU-only box with qwen2.5-coder:3b, each round fixing
-one harness gap the previous run exposed. Round one: no timeout at all (the
-lean prompt plus a seat that fits the hardware solved the prefill wall), but
-0% because the model wrote its tool call as JSON text and native mode read it
-as a final answer; fixed in `loop.ts` with a text-extraction fallback that
-records the turn honestly (`test/textCallFallback.test.ts`). Round two: real
-tool calls on every task, but two tripped the loop guardrail (editFile called
-four times with identical arguments); fixed first by echoing the file's own
-content on a failed match, then, when a third run reproduced the failure byte
-for byte, by strengthening the eval's self-diagnosis instead of guessing
-again: `wrote` now means a write-risk tool landed, and `toolFailures` carries
-each failed call's own message (`test/evalTraceDiagnosis.test.ts`). Round
-four named the real cause: "No valid edit blocks found", the model never
-produced the SEARCH/REPLACE mini-language inside a JSON string at all, a
-branch the file echo never reached. Fixed by meeting the model where it is:
-`editFile` now accepts a flat `search` + `replace` pair (and the aliases other
-tools taught models: old_string/new_string, old/new, find/replace), a JSON
-array of pairs, that array stringified, and shortened or renamed markers, all
-normalizing to the same blocks through the same matcher, and a failure now
-echoes what the model actually sent (`test/editFileShapes.test.ts`). The
-create task's "answered with code, changed no file" got a one-time nudge for
-lean seats (`test/noWriteNudge.test.ts`). The remaining wrong answer (82 for 42) is a 3B capability limit the harness does not paper over. os-code 714
-green. Round five: the model's blocks now parse, but its SEARCH lines still missed byte for byte (quote style, spacing, a paraphrased middle line), so the matcher gained a spelling-tolerant unique match and two-unique-anchor pinning, never looser about where an edit lands (`test/editMatchRelaxed.test.ts`), and a failed match now echoes the model's own SEARCH beside the file. Round six: that run surfaced two more gaps instead of a clean pass, both real, both
-narrow. The add-a-function task sent a block with a blank SEARCH (it meant to
-append, not replace, so it had no line to anchor on); the failure fell through
-to the matcher's generic empty-string message with nothing to correct against,
-so `editFile` now catches a blank SEARCH before the matcher ever sees it and
-shows the model its own REPLACE text plus the file to anchor on. The
-rename-across-files task sent `function oldName(` instead of the full
-`export function oldName(name) {`, a bare fragment no whole-line strategy can
-match; the matcher gained a fifth and narrowest strategy that splices just the
-fragment in place, and only when that exact text occurs once in the whole
-file, with a minimum length so a stray `{` or `)` never matches by coincidence
-(both in `test/editMatchRelaxed.test.ts` and `test/editFileToolTrace.test.ts`).
-The answer-from-code task was wrong again with yet another number (16 this
-run, 82 in an earlier one, always for the same question whose real answer is
-42): a genuine 3B arithmetic limit, not a harness gap, and the harness does
-not paper over it. os-code 725 green, app 888 green. Round seven was a
-deeper pass at the founder's ask ("a path to only one more round"), made
-from the whole body of evidence rather than the last screenshot, so several
-predictable gaps closed in one commit. The round-six fix had not yet reached
-the box (its clone was still on the round-five commit, confirmed by `git
-log` before anything was concluded), so the run that looked like a matcher
-bug was a stale build. The pass then closed what the traces and the code
-together predicted: (1) a lean seat was still getting the full desktop
-etiquette prompt (report like a colleague, ask before touching working code,
-open with todoWrite), which a 3B reads as the task, so it now gets a short,
-direct core: do it, do not ask, answer briefly
-(`test/harnessLoopProfile.test.ts`); (2) an exact repeat of a call with
-nothing changed since (the answer task's `readFile x3` into the repeat rail)
-is answered from the record instead of run again, and the third repeat makes
-the next turn answer-only, no tools, so a stuck model still answers
-(`test/staleRepeat.test.ts`); (3) the deep eval now runs each edit task's
-own check inside the loop as verify, the way a project's tests run, so a
-half-done rename comes back as a failing test with a real FAIL line and the
-model gets another go, while scoring stays with the independent checker
-(`test/evalV2.test.ts`; the trace line now says "verify passed after 2
-checks"); (4) SEARCH lines copied with readFile's `12| ` numbers are
-tolerated; (5) the blank-SEARCH redirect hands back the exact two fields to
-send, built from the model's own replacement text. os-code 736 green (11
-new), app typecheck green.
+Latest (2026-09-15): the floor was measured for real, over ten rounds on the
+founder's CPU-only box with qwen2.5-coder:3b, each round fixing one harness
+gap the previous run exposed (stream windows, tool-call-as-text, edit shapes
+and a six-strategy matcher, ground-truth echoes, stale-repeat handling, an
+answer-only turn, the lean core prompt, verify in the loop, self-naming
+traces). The round-by-round record is in `docs/progress-archive.md` under
+"the 3B deep-eval rounds one to nine"; the result is below.
 
-Round eight ran that command and the round-seven fixes held up: no more
-guardrail trips, no more identical-call loops, stale repeats answered from the
-record. Still 0% overall, but every remaining miss now reads as a specific
-cause rather than a shrug. `add-function` hit "no tools called; done: error
-(the model kept producing tool calls that could not be parsed)", the exact
-malformed content invisible until now; the loop's final error message and the
-eval's trace both now carry the last turn's own parse problem (the schema
-mismatch or unknown-tool text `parser.ts` already produces), so the next
-occurrence names its own cause without a second run
-(`test/malformedCallEcho.test.ts`). `fix-bug` tried `editFile` three times,
-never landed a write, then answered "done" in plain prose with no code shown,
-which the no-write nudge could not see (it only watched for a code fence); the
-nudge now also fires when a write was attempted and failed even with no code
-in the reply, so a give-up-and-claim-done answer gets one corrective turn
-either way (`test/noWriteNudge.test.ts`). `rename-across-files` landed a real
-write for the first time (8 `editFile` calls, one applied) and verify in the
-loop actually ran, 3 checks, each returning the real FAIL line to the model;
-it still could not finish the rename in that budget, which is the harness
-working as designed and the model falling short, not a gap to close.
-`answer-from-code` keeps landing on a different wrong number each run (16,
-then 82, then 84, for a question whose answer is 42, with a clean "2 turns;
-readFile; no write landed" trace, no looping): confirmed now across three
-separate numbers as a genuine 3B arithmetic limit, not a harness gap, and left
-alone on purpose. os-code 739 green (14 new across two rounds). Next: the
-same one-paste command again; if `add-function`'s parse problem or
-`fix-bug`'s edit failure reason show something new and fixable, one more
-narrow round; if not, the honest number is whatever the deep eval prints, and
-that is the recorded floor for this box.
-
-Round nine: the round-eight diagnostics did their job. `rename-across-files`
-named its exact cause for the first time, "There is no tool named 'gitAdd'";
-the model went looking for version control on a task that never asked for
-any (the fixture is not even a git repo, so its own `gitStatus` call had
-already failed), burning turns on a tool that plain does not exist. The lean
-core now says plainly not to touch git tools unless the task is actually
-about version control. `add-function`'s SEARCH squished the real three-line
-`capitalize` body onto one line, joined by spaces instead of real line
-breaks, which no line-based strategy can ever match, however tolerant of
-spelling, since it compares whole lines against whole lines. The matcher
-gained a sixth and final strategy: flatten both sides the same way (each
-line normalized, joined by one space standing in for the break) and look
-for the SEARCH as a unique substring of the whole file's flattened form; a
-hit still maps back to a real line range, so it applies as an ordinary
-whole-line swap (`test/editMatchRelaxed.test.ts`). Kept honest: the eval's
-actual attempt also carried a stray semicolon the file does not have
-anywhere, a real content difference, not a formatting one, and flattening
-correctly leaves that refused rather than guessing which brace was meant,
-pinned by its own test. `answer-from-code` landed on 82 again (a repeat of
-an earlier wrong value, still wrong, still not 42), the same clean
-non-looping trace as every round since six: the arithmetic limit stands.
-os-code 744 green (5 new), app typecheck green. The convergence memo for the
-out-of-the-box path is `docs/premium-harness-first-seat-convergence.md`.
+Round ten, the number: **qwen2.5-coder:3b scores 25% on the deep benchmark
+on the reference box** (create 100%, edit 0%, refactor 0%, answer 0%), the
+first non-zero result after nine rounds of 0%, and the recorded floor for
+the small class on CPU-only hardware. `add-function` passed clean (the
+flattened matcher and the concrete blank-SEARCH redirect did their work).
+`rename-across-files` came within one line: the definition and the call site
+were both renamed, only the import line still said `oldName`, and the seat's
+last SEARCH was `oldName(` (a fragment from the call site, no longer in the
+file) rather than the import line shown to it; it also still reached for
+`gitDiff` twice despite the new instruction, harmlessly. `answer-from-code`
+is the arithmetic limit (82). The cycle is closed at this number: every
+harness gap the traces ever showed is fixed and pinned by a test, and what
+remains is the model copying lines faithfully and holding a two-file change
+together, which is a stronger seat's job, not the harness's. Next lever is
+that seat: the 7B once the Ollama stall on the box is sorted (a separate
+check, not harness work), or a Qwen3-4B-class model, each measured with the
+same one command. The convergence memo for the out-of-the-box path is
+`docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in

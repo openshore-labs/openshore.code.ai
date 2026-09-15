@@ -1510,3 +1510,13 @@ execution contract. Newest at the bottom.
   then a hallucinated `gitAdd`) on a task that never asked for version
   control; the lean core prompt now says plainly not to, since most tasks
   need none of it.
+- **The 3B deep-eval cycle closes at 25% (2026-09-15, round ten).** The
+  first non-zero number on the reference box (create 100%, the rest 0%),
+  recorded as the small-class floor rather than chased further: every
+  harness gap the traces showed across ten rounds is fixed and pinned, and
+  the remaining misses (a one-line rename left undone with the correct line
+  in view, and 20 * 2 + 2 answered as 82) are the model, not the harness.
+  Not tuned to the tasks: no fixture-specific rule was added at any point,
+  each fix generalizes (tool shapes, matcher tolerance, repeat handling,
+  verify in the loop). The next number comes from a stronger local seat on
+  the same command, not another harness round.
