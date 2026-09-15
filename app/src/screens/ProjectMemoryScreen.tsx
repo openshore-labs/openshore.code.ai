@@ -204,25 +204,25 @@ export function ProjectMemoryScreen() {
         {state.phase === 'loading' ? (
           <p className="hint">Loading the project notes...</p>
         ) : state.phase === 'no-repo' ? (
-          <div className="greeting" style={{ minHeight: '30vh' }}>
-            <h1>No repository yet.</h1>
-            <p>
+          <div className="card empty-notice">
+            <h3>No repository yet.</h3>
+            <p className="sub">
               These notes live in the project's repository. Attach a repository to the project, and
               the agent creates the notes as it works.
             </p>
           </div>
         ) : state.phase === 'error' ? (
-          <div className="greeting" style={{ minHeight: '30vh' }}>
-            <h1>Could not load the notes.</h1>
-            <p>{state.message}</p>
+          <div className="card empty-notice">
+            <h3>Could not load the notes.</h3>
+            <p className="sub">{state.message}</p>
             <button className="btn primary" onClick={() => void load()}>
               Try again
             </button>
           </div>
         ) : !state.listing.folderExists ? (
-          <div className="greeting" style={{ minHeight: '30vh' }}>
-            <h1>Not set up yet.</h1>
-            <p>
+          <div className="card empty-notice">
+            <h3>Not set up yet.</h3>
+            <p className="sub">
               The agent creates these notes the first time it works on this project. Once it does,
               they appear here, in the repo under "OpenShore Project {project?.name} MDs".
             </p>
