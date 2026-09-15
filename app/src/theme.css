@@ -8656,6 +8656,254 @@ button.settings-row:active {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   The project room, redesigned as a workspace (founder, 2026-09-15). A calm
+   paper-raised cover carries the name, the live counts, and the one action that
+   matters; a soft water wash gives depth without a heavy band so the
+   shared-element title (ink on paper) still lands cleanly. Work leads: the
+   resume card and the chat list sit first, then the context that rides into
+   every chat (instructions, repo chips, the agent's project memory), then the
+   team roster. Every move is on the tokens; the cover honors the global
+   reduced-motion reset like the crew hero does.
+   --------------------------------------------------------------------------- */
+.project-cover {
+  position: relative;
+  margin: 2px 0 20px;
+  padding: 2px 0;
+  animation: room-in var(--dur-6) var(--ease-arrive) backwards;
+}
+.project-cover-wash {
+  position: absolute;
+  inset: -22px -20px auto -20px;
+  height: 220px;
+  background: radial-gradient(120% 82% at 16% 0%, var(--local-soft), transparent 62%);
+  pointer-events: none;
+  z-index: 0;
+}
+.project-cover-body {
+  position: relative;
+  z-index: 1;
+}
+.project-cover-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.project-kicker {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--local);
+}
+.project-activate {
+  padding: 3px 11px;
+  font-size: 12px;
+}
+.project-cover .project-hero-title {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.018em;
+  line-height: 1.1;
+  margin: 2px 0 0;
+  text-wrap: balance;
+}
+.project-cover-lead {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 8px 0 0;
+  max-width: 46ch;
+  text-wrap: pretty;
+}
+.project-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.project-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+}
+.project-stat-num {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.project-stat-label {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.project-cover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.project-cover-actions .btn {
+  flex: 1 1 auto;
+  min-width: 148px;
+}
+
+/* Resume: the single highest-value action for a returning person, so it stands
+   apart from the list in the brand's water. */
+.resume-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 14px;
+  margin-top: 6px;
+  border-radius: var(--radius);
+  background: var(--local-soft);
+  border: 1px solid transparent;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+.resume-card:hover {
+  background: var(--surface-hover);
+}
+.resume-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.resume-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--local);
+}
+.resume-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.resume-sub {
+  font-size: 13px;
+  color: var(--muted);
+}
+.resume-card .disclosure-chevron {
+  border-color: var(--local);
+  opacity: 0.9;
+}
+
+/* The two context cards wear a small teal eyebrow so the person reads them as
+   what feeds the chat, not as buried settings. */
+.project-eyebrow {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--local);
+  opacity: 0.85;
+  margin-bottom: 3px;
+}
+.project-instructions {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--code-surface);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.repo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.repo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.repo-chip.local {
+  background: var(--local-soft);
+  border-color: transparent;
+  color: var(--local);
+}
+.repo-chip svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.repo-chip-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-memory-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-size: 14px;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+.project-memory-link:hover {
+  background: var(--surface);
+}
+.project-memory-link svg {
+  color: var(--local);
+  flex-shrink: 0;
+}
+.project-delete {
+  color: var(--danger);
+}
+/* The Projects list card's standing-instructions preview, clamped to one line
+   so a long note never grows the card. */
+.project-card-note {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
 .chat-list .chat-row {
   display: block;
   width: 100%;
