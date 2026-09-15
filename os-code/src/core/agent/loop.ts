@@ -634,11 +634,28 @@ export class AgentSession {
         }
       }
       let displayText = streamedText;
-      if (!nativeCalls.length && toolMode === 'text' && streamedText.trim()) {
+      // How this turn's calls are recorded in history. Native calls record as
+      // tool_use blocks; calls the model wrote as JSON text record the text way
+      // (assistant text, then "[tool result]" observations), whatever the tool
+      // mode, so we never fabricate a tool_use block the model did not emit.
+      let recordMode: 'native' | 'text' = toolMode;
+      if (!nativeCalls.length && streamedText.trim()) {
+        // Text extraction runs in text mode by design, and in native mode as a
+        // fallback. A small local model offered native tools often writes the
+        // call as JSON in its text anyway (ollama hands it back as content, not
+        // tool_calls). Before this, native mode read that JSON as a final
+        // answer and marked the task complete with nothing run; the deep eval's
+        // "1 turn; no tools called; done: complete" on a 3B was exactly that.
+        // The extractor is conservative (a known tool with valid args; prose
+        // that quotes JSON is left alone), so a real answer still reads as one.
         const extraction = extractTextCalls(streamedText, this.deps.tools);
-        calls = extraction.calls;
-        problems.push(...extraction.problems);
-        displayText = extraction.remainder;
+        const found = extraction.calls.length > 0 || extraction.problems.length > 0;
+        if (toolMode === 'text' || found) {
+          calls = extraction.calls;
+          problems.push(...extraction.problems);
+          displayText = extraction.remainder;
+          if (found) recordMode = 'text';
+        }
       }
 
       if (!calls.length && problems.length) {
@@ -690,7 +707,7 @@ export class AgentSession {
       // Record the assistant turn (with its calls) before observations. A
       // rejected call is recorded as the model made it, so the observation
       // that refuses it has a tool_use to answer.
-      if (toolMode === 'native') {
+      if (recordMode === 'native') {
         this.history.push({
           role: 'assistant',
           content: streamedText,
@@ -709,7 +726,7 @@ export class AgentSession {
           this.pushObservation(
             { id: raw.id, name: raw.name, args: raw.args ?? {} },
             `Not run: ${problem}`,
-            toolMode,
+            recordMode,
           );
         }
       } else {
@@ -727,14 +744,14 @@ export class AgentSession {
       let sawFailure = false;
       const answered = new Set<string>();
       for (const call of calls) {
-        const observation = await this.executeCall(call, toolMode);
+        const observation = await this.executeCall(call, recordMode);
         if (observation === 'aborted') {
           // C2: an early exit mid-batch (a guardrail trip or a user abort)
           // leaves the just-recorded tool_use blocks with no tool_result, and
           // every subsequent Anthropic turn 400s. Pair each recorded call with
           // a synthetic observation. executeCall already emitted the guardrail
           // task-done; a user abort has not, so emit that here (C1/C3).
-          this.fillUnansweredCalls(calls, answered, toolMode);
+          this.fillUnansweredCalls(calls, answered, recordMode);
           if (this.abortController.signal.aborted) {
             this.emit({
               type: 'task-done',
