@@ -292,7 +292,12 @@ export class AgentSession {
     if (!this.deps.profile.allowShellAutoApprove) return 'done';
     const result = runVerify(this.deps.toolContext.cwd, verifyConfig);
     if (!result.ran) return 'done';
-    const maxRetries = verifyConfig.maxRetries ?? 0;
+    // A lean seat gets at least its class's allowance of goes; a project's
+    // own setting can only raise it.
+    const maxRetries = Math.max(
+      verifyConfig.maxRetries ?? 0,
+      this.modelProfile?.verifyRetries ?? 0,
+    );
     const round = verifyRounds + 1;
     const willRetry = !result.passed && verifyRounds < maxRetries;
     this.emit({
@@ -376,7 +381,7 @@ export class AgentSession {
           "You are OS Code, a careful coding agent running on the user's own machine.",
           `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
           'Do the task yourself with the tools. Read a file with readFile. Change part of a file with editFile: give path, search (exact lines copied from the file) and replace (their replacement). Write a whole file with writeFile. Never ask for permission or confirmation; make the change.',
-          'A tool result is shown to you once; do not repeat a call whose result you already have. Do not check git status or use any git tool unless the task itself is about version control or commits, most tasks need none of that. When the change is made, or the question is answered, reply in plain text, briefly. When asked for a value, reply with the value only.',
+          'A tool result is shown to you once; do not repeat a call whose result you already have. Do not check git status or use any git tool unless the task itself is about version control or commits, most tasks need none of that. When asked what some code returns or prints, run it with runShell (for example: node -e "import(\'./file.mjs\').then(m => console.log(m.fn()))") and reply with the real output instead of working it out in your head. When the change is made, or the question is answered, reply in plain text, briefly. When asked for a value, reply with the value only.',
           'Never use em dashes in your replies. Use a period or a comma instead.',
         ]
       : [

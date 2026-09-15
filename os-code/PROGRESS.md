@@ -45,7 +45,28 @@ remains is the model copying lines faithfully and holding a two-file change
 together, which is a stronger seat's job, not the harness's. Next lever is
 that seat: the 7B once the Ollama stall on the box is sorted (a separate
 check, not harness work), or a Qwen3-4B-class model, each measured with the
-same one command. The convergence memo for the out-of-the-box path is
+same one command.
+
+Round eleven (founder: "let's push this thing", aiming at 75%), built from
+the round-ten traces rather than a belief. The fix-bug miss turned out to be
+a bug in the new flattened matcher, caught by the structural check: the
+model's SEARCH matched starting after `export function ` on the line, and
+the whole-line swap dropped that prefix, producing `subtract(a, b) { return
+a - b; }`, which the syntax check rightly refused; text outside a flattened
+match on its first and last lines now rides around the replace, and that
+exact edit applies (`test/editMatchRelaxed.test.ts`). Three levers on top:
+(1) the answer task is now run, not reasoned: the deep eval's approver lets
+a plain `node ...` command run in the workspace (no chaining, redirection,
+substitution, or `..`; the same trust verify already extends), and the lean
+core says to run code it is asked about (`test/evalApprover.test.ts`); (2)
+an ambiguous SEARCH comes back with each candidate and the line above it,
+ready to copy, since the blank-SEARCH redirect proved a small model follows
+text it can paste; (3) a lean seat gets at least four verify retries
+(`verifyRetries` per class in `profile.ts`, a project's own setting can only
+raise it), since the rename came within one line after three checks. A
+rolled-back edit also says plainly the file is unchanged and the replace
+must be complete code for the whole region. os-code 753 green (9 new). The
+convergence memo for the out-of-the-box path is
 `docs/premium-harness-first-seat-convergence.md`.
 
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors

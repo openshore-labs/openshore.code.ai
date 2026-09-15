@@ -44,16 +44,24 @@ export function applyEditBlocks(original: string, blocks: EditBlock[]): ApplyRes
     const lines = content.split('\n');
     const before = lines.slice(0, found.start);
     const after = lines.slice(found.end + 1);
-    const replacement =
-      found.strategy === 'fragment'
-        ? [
-            lines[found.start]!.slice(0, found.fragmentStart) +
-              block.replace +
-              lines[found.start]!.slice(found.fragmentEnd),
-          ]
-        : block.replace === ''
-          ? []
-          : block.replace.split('\n');
+    let replacement: string[];
+    if (found.strategy === 'fragment') {
+      replacement = [
+        lines[found.start]!.slice(0, found.fragmentStart) +
+          block.replace +
+          lines[found.start]!.slice(found.fragmentEnd),
+      ];
+    } else if (found.strategy === 'flattened') {
+      // The flattened match may begin or end part way through a line (the
+      // eval's 3B matched "subtract(a, b) { ... }" starting after "export
+      // function "); the text on those lines outside the match is kept.
+      const parts = block.replace === '' ? [''] : block.replace.split('\n');
+      parts[0] = found.prefix + parts[0]!;
+      parts[parts.length - 1] = parts[parts.length - 1]! + found.suffix;
+      replacement = parts.length === 1 && parts[0] === '' ? [] : parts;
+    } else {
+      replacement = block.replace === '' ? [] : block.replace.split('\n');
+    }
     content = [...before, ...replacement, ...after].join('\n');
     applied.push({
       index,
@@ -67,8 +75,18 @@ export function applyEditBlocks(original: string, blocks: EditBlock[]): ApplyRes
 }
 
 type Located =
-  | { start: number; end: number; strategy: Exclude<MatchStrategy, 'fragment'> }
+  | { start: number; end: number; strategy: Exclude<MatchStrategy, 'fragment' | 'flattened'> }
   | { start: number; end: number; strategy: 'fragment'; fragmentStart: number; fragmentEnd: number }
+  | {
+      start: number;
+      end: number;
+      strategy: 'flattened';
+      /** Original text on the first line before the match, and on the last
+       *  line after it, kept around the replacement. Empty when the match
+       *  falls on line boundaries. */
+      prefix: string;
+      suffix: string;
+    }
   | { reason: string };
 
 function locate(content: string, search: string): Located {
@@ -102,7 +120,7 @@ function locate(content: string, search: string): Located {
   }
   if (exact.length > 1) {
     return {
-      reason: `The SEARCH text appears ${exact.length} times (lines ${exact.map((i) => i + 1).join(', ')}). Add 2 or 3 surrounding lines so the location is unique.`,
+      reason: `The SEARCH text appears ${exact.length} times (lines ${exact.map((i) => i + 1).join(', ')}). Add 2 or 3 surrounding lines so the location is unique.${candidateHint(contentLines, exact, searchLines.length)}`,
     };
   }
 
@@ -113,7 +131,7 @@ function locate(content: string, search: string): Located {
   }
   if (trimmed.length > 1) {
     return {
-      reason: `The SEARCH text matches ${trimmed.length} places once indentation is ignored. Add surrounding lines to pin down which one.`,
+      reason: `The SEARCH text matches ${trimmed.length} places once indentation is ignored. Add surrounding lines to pin down which one.${candidateHint(contentLines, trimmed, searchLines.length)}`,
     };
   }
 
@@ -133,7 +151,7 @@ function locate(content: string, search: string): Located {
   }
   if (normalized.length > 1) {
     return {
-      reason: `The SEARCH text matches ${normalized.length} places once quote style and spacing are ignored. Add surrounding lines to pin down which one.`,
+      reason: `The SEARCH text matches ${normalized.length} places once quote style and spacing are ignored. Add surrounding lines to pin down which one.${candidateHint(contentLines, normalized, searchLines.length)}`,
     };
   }
 
@@ -235,11 +253,25 @@ function locate(content: string, search: string): Located {
       hits.push(at);
     }
     if (hits.length === 1) {
-      return {
-        start: lineAt(lineStarts, hits[0]!),
-        end: lineAt(lineStarts, hits[0]! + flatNeedle.length - 1),
-        strategy: 'flattened',
-      };
+      const hit = hits[0]!;
+      const start = lineAt(lineStarts, hit);
+      const end = lineAt(lineStarts, hit + flatNeedle.length - 1);
+      // The match can begin or end inside a line. Map the flattened text
+      // outside it on those two lines back to the original spelling so it is
+      // kept; if that cannot be done exactly, refuse rather than drop it.
+      const endOfEndLine = end + 1 < lineStarts.length ? lineStarts[end + 1]! - 1 : flat.length;
+      const prefix = originalPrefix(contentLines[start]!, flat.slice(lineStarts[start]!, hit));
+      const suffix = originalSuffix(
+        contentLines[end]!,
+        flat.slice(hit + flatNeedle.length, endOfEndLine),
+      );
+      if (prefix === undefined || suffix === undefined) {
+        return {
+          reason:
+            'The SEARCH text matches part way through a line in a way that could not be lined up exactly. Copy whole lines from the file into search.',
+        };
+      }
+      return { start, end, strategy: 'flattened', prefix, suffix };
     }
     if (hits.length > 1) {
       return {
@@ -275,6 +307,49 @@ function flattenLines(lines: string[]): { flat: string; lineStarts: number[] } {
     if (i < lines.length - 1) flat += ' ';
   }
   return { flat, lineStarts };
+}
+
+/** The shortest prefix of `line` whose normalized form is `normPrefix`
+ *  (whitespace after it included, so the spacing before the match survives),
+ *  or undefined when no prefix lines up exactly. */
+function originalPrefix(line: string, normPrefix: string): string | undefined {
+  const want = normPrefix.trim();
+  if (!want) return '';
+  for (let k = 1; k <= line.length; k++) {
+    if (norm(line.slice(0, k)) === want) {
+      let e = k;
+      while (e < line.length && /\s/.test(line[e]!)) e++;
+      return line.slice(0, e);
+    }
+  }
+  return undefined;
+}
+
+/** The shortest suffix of `line` whose normalized form is `normSuffix`
+ *  (whitespace before it included), or undefined when none lines up. */
+function originalSuffix(line: string, normSuffix: string): string | undefined {
+  const want = normSuffix.trim();
+  if (!want) return '';
+  for (let k = line.length - 1; k >= 0; k--) {
+    if (norm(line.slice(k)) === want) {
+      let s = k;
+      while (s > 0 && /\s/.test(line[s - 1]!)) s--;
+      return line.slice(s);
+    }
+  }
+  return undefined;
+}
+
+/** For an ambiguous SEARCH: each place it matched, with the line above it,
+ *  ready to copy as a search that is unique. A small model follows text it
+ *  can paste far better than an instruction to "add surrounding lines". */
+function candidateHint(contentLines: string[], starts: number[], len: number): string {
+  if (len > 8) return '';
+  const shown = starts.slice(0, 4).map((s, i) => {
+    const from = Math.max(0, s - 1);
+    return `[${i + 1}] lines ${from + 1} to ${s + len}:\n${contentLines.slice(from, s + len).join('\n')}`;
+  });
+  return `\nSend one of these as search instead (each includes the line above it; copy it exactly):\n${shown.join('\n')}`;
 }
 
 /** The original line index containing flattened-string offset `pos`. */

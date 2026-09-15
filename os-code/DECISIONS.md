@@ -1520,3 +1520,23 @@ execution contract. Newest at the bottom.
   each fix generalizes (tool shapes, matcher tolerance, repeat handling,
   verify in the loop). The next number comes from a stronger local seat on
   the same command, not another harness round.
+- **The deep eval lets a plain `node` command run; the answer task is run,
+  not reasoned (2026-09-15, round eleven).** The seat answered 20 * 2 + 2 as
+  82, 84, 16 across runs, and a coding agent asked what code returns should
+  execute it (tenet 3). The eval stays hermetic in every other respect: only
+  `node ...` with no chaining, redirection (an arrow's `=>` allowed, a bare
+  `>` not), substitution, or `..`, the same trust the verify step already
+  extends by running the task's own check with node; every other shell and
+  any push are still refused. Not tuning to the task: any real project's
+  agent has a shell, and the lean core's "run it" line is general.
+- **A flattened match keeps the text outside it on its boundary lines
+  (2026-09-15, round eleven).** The first cut swapped whole lines and could
+  drop a prefix such as `export function `; the structural check caught the
+  broken result, which is exactly what it is for. The prefix and suffix are
+  mapped back to the original spelling, and when that cannot be done exactly
+  the match is refused rather than guessed.
+- **Verify retries are per model class (2026-09-15, round eleven).** Small
+  and tiny seats get four goes at a failing check, mid and large two; a
+  project's `harness.verify.maxRetries` can only raise the number. The 3B
+  came within one line of a two-file rename at three checks; the lean seat
+  converges in small steps and the step rails still bound it.

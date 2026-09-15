@@ -47,6 +47,11 @@ export interface ModelClassPolicy {
   /** Compact history once usage passes this fraction of the context window. A
    *  smaller window is compacted more eagerly so the model keeps its footing. */
   compactAtContextFraction: number;
+  /** How many times a failing verify check goes back to a seat of this class
+   *  for another go, at least (a project's harness.verify.maxRetries can only
+   *  raise it). A small seat converges in small steps: the eval's 3B came
+   *  within one line of a two-file rename after the default three checks. */
+  verifyRetries: number;
 }
 
 export interface ModelClassProfile extends ModelClassPolicy {
@@ -64,6 +69,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     plans: false,
     codeMapContextFraction: 0.15,
     compactAtContextFraction: 0.6,
+    verifyRetries: 4,
   },
   small: {
     maxToolsShown: 10,
@@ -73,6 +79,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     plans: true,
     codeMapContextFraction: 0.2,
     compactAtContextFraction: 0.65,
+    verifyRetries: 4,
   },
   mid: {
     maxToolsShown: Infinity,
@@ -82,6 +89,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     plans: true,
     codeMapContextFraction: 0.25,
     compactAtContextFraction: 0.7,
+    verifyRetries: 2,
   },
   large: {
     maxToolsShown: Infinity,
@@ -91,6 +99,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     plans: true,
     codeMapContextFraction: 0.3,
     compactAtContextFraction: 0.7,
+    verifyRetries: 2,
   },
 };
 
