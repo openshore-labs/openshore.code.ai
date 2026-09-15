@@ -1549,3 +1549,11 @@ execution contract. Newest at the bottom.
   runs the same JS and JSON gate before writing: a coding agent writing a
   file that does not parse is a mistake worth refusing, and the message says
   the existing file is unchanged.
+- **The best-of-N picker is unlocked by a number (2026-09-15, round
+  thirteen).** `--attempts 2` on the reference box: one try 38%, best of 2
+  50%, about 13 points on the 3B. The proposal made the picker conditional
+  on exactly this gap, so it is next, in its minimal checkpoint form (touched
+  files recorded on first write, restored for a fresh attempt once verify
+  retries are spent, first verifying attempt wins, N per class, step rails
+  still bound it), not a general checkpoint system. Recorded as the current
+  small-class floor: 38% one try on CPU-only hardware.
