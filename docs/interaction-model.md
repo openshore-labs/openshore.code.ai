@@ -87,10 +87,12 @@ person using the app:
   what is waiting on whom, and no suggestion silently evaporates. Tenet 8.
 - **Advisory, and the founder decides; disagree and commit**: every advisor
   presses its case with evidence, then gets behind the call. This is why the
-  advisor team ships as a Crew preset (`app/src/lib/crewPresets.ts`): named
-  perspectives the Reasoning LLM brings in, in their voice, and the person
-  decides. The CTO reviews every build; the CMO, CFO, and Creative Studio
-  step in on their own when a decision needs them; the rest speak when asked.
+  advisor team ships as a Crew preset (`app/src/lib/crewPresets.ts`): named,
+  project-agnostic perspectives the Reasoning LLM brings in, in their voice, and
+  the person decides. The Technical Advisor reviews the work; the Marketing,
+  Finance, and Creative Studio advisors step in on their own when a decision
+  needs them; the rest speak when asked. (The names shipped as a startup C-suite
+  until 2026-09-15; see `docs/crew-page-redesign.md`.)
 - **Motion and polish are a standard**: calm, premium, smooth and slow feels
   premium, everything that animates in animates out, honest empty and error
   states, always the most premium-feeling option when choosing. Tenet 7, and
