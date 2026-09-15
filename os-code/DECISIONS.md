@@ -1260,6 +1260,16 @@ execution contract. Newest at the bottom.
   independent tries per task in fresh workspaces and reports one try next to
   best of n; a best-of-N picker in the loop (which needs checkpoints) is built
   only if that gap says it pays on the reference machine.
+- 2026-09-15: **The reference machine is the lowest common denominator, on
+  purpose (founder).** The founder's box is older, slower, and CPU-only (no
+  NVIDIA driver, `ollama ps` reads 100% CPU; a 7B prefills at about 6.7 tok/s
+  and generates at about 3.4 tok/s). Almost nobody who runs OpenShore will have
+  a slower machine, so a harness that feels premium here feels premium
+  everywhere, and a GPU only lifts it. Measure the floor on this box first and
+  build for it. This is also why qwen2.5-coder:7b timed out the deep eval on the
+  agent-loop (native tools, buffered, big prompt) while a one-shot answer was
+  fine: the loop is the hard case, and the fit is a smaller local seat (a 3B or
+  smaller) for a CPU box, which the harness should place automatically.
 - 2026-09-14: **A lean seat gets a lean prompt: fewer tools and a compact
   standards digest.** The discipline seam wired into `loop.ts` (gated by
   `harness.profiles.enabled`, default on) shows a tiny/small class only its

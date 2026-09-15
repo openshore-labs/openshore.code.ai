@@ -157,7 +157,11 @@ ships as Repositories. Build it to these five tenets so no session drifts:
    room, never a codename in copy. Grep the codename like the Currents nouns.
 2. **Nothing is claimed without eval.** Every feature ships behind config with a
    with-and-without number per model class on the reference machine (the
-   founder's own box). Copy says "remembers what worked", never "trains itself",
+   founder's own box). That box is deliberately the lowest common denominator
+   (founder, 2026-09-15): older, slower, CPU-only, no usable GPU, so a 7B runs
+   at 3 to 7 tokens per second. A number that holds there holds for almost
+   anyone, so measure the floor there first and build for it; a fat GPU only
+   makes it better. Copy says "remembers what worked", never "trains itself",
    until an adapter actually ships. `osc eval` is the spine.
 3. **The harness raises the floor, never the ceiling, and says so.** A tiny seat
    runs single steps and its pill says it; the harness does the mechanical work
