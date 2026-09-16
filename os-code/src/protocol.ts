@@ -65,7 +65,10 @@ export {
   normalizeSubject,
   readAssertion,
   tierOf,
+  nextActionFor,
+  BLOCK_NEXT_ACTION,
   REFUSALS,
+  SUPPORT_EMAIL,
   detectSignals,
   signalNames,
   StreamScreener,
@@ -84,6 +87,7 @@ export {
   sha256,
   TRUST_STATEMENT,
   TRUST_STATEMENT_LINES,
+  TRUST_STATEMENT_TIERS,
 } from './core/ethics/index.js';
 export type {
   AbuseReport,
@@ -151,6 +155,8 @@ export type {
 export {
   PRESET_ROUTINE,
   ROUTINE_LIMITS,
+  ROUTINE_NEEDS_LOCAL_MODEL,
+  routineCaps,
   nextSlotAfter,
   presenceOf,
   scheduleDaysLabel,

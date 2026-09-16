@@ -1,18 +1,27 @@
-// TS-P2-4: the desktop mints a per-device credential for the QR instead of
-// handing out the shared admin token, so a lost phone can be revoked on its
-// own. This pins the mint-once behavior (the Pair screen polls daemonInfo every
-// few seconds, so a poll must reuse the credential, never spawn a new one) and
-// the revoke-then-remint flow.
+// Per-device pairing (desktop half). The QR used to carry one shared admin
+// token, cached in the clear at ~/.os-code/pairing-device.token and reused for
+// every scan, so "revoke just that phone" was not true. Now the QR carries a
+// one-time CLAIM the daemon mints; the phone trades it for its own credential
+// at POST /pair/claim. This pins the desktop side: no clear token on disk, the
+// claim is held steady across polls and rotated only once it is spent or
+// expired, the shared credential is retired on first start, and revoke cuts
+// exactly one device.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensurePairingCredential, listPairedDevices } from '../electron/engineHost.js';
+import {
+  EngineHost,
+  listPairedDevices,
+  retireSharedPairingCredential,
+} from '../electron/engineHost.js';
 import {
   loadCredentials,
+  mintCredential,
   resolveDeviceCredential,
   revokeCredential,
 } from 'os-code/dist/src/core/security/credentials.js';
+import { PairClaimStore } from 'os-code/dist/src/daemon/pairClaims.js';
 
 let home: string;
 
@@ -25,46 +34,126 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-describe('pairing credential (TS-P2-4)', () => {
-  it('mints an admin credential the phone token resolves to', () => {
-    const { token } = ensurePairingCredential();
-    const ctx = resolveDeviceCredential(token);
-    expect(ctx?.role).toBe('admin');
-    expect(ctx?.label).toBe('iPhone via QR');
-    expect(ctx?.source).toBe('device');
-    // The QR token is a minted credential, not the shared daemon.token.
-    expect(existsSync(join(home, 'daemon.token'))).toBe(false);
+/** A daemon stand-in with a real claim store, so the host's claim handling is
+ *  exercised without a socket or a tailnet. */
+function fakeDaemonFactory(started: Array<{ bind: string }>) {
+  return async (opts: { bind: 'loopback' | 'tailscale'; port: number }) => {
+    started.push({ bind: opts.bind });
+    const claims = new PairClaimStore();
+    return {
+      host: opts.bind === 'tailscale' ? '100.64.0.9' : '127.0.0.1',
+      port: opts.port,
+      close() {},
+      mintPairClaim: () => claims.mint(),
+      pairClaimStatus: (c: string) => claims.status(c),
+      redeem: (c: string) => claims.redeem(c),
+    };
+  };
+}
+
+function hostWith(started: Array<{ bind: string }>, tailscale = { running: false, ip: undefined }) {
+  return new EngineHost(
+    () => {},
+    () => {},
+    () => {},
+    { startDaemon: fakeDaemonFactory(started) as never, tailscale: () => tailscale },
+  );
+}
+
+describe('pairing claim (desktop side)', () => {
+  it('daemonInfo carries a claim, never a credential, and writes no token file', async () => {
+    const host = hostWith([]);
+    await host.daemonStart();
+    const info = host.daemonInfo();
+    expect(info.running).toBe(true);
+    expect(info.claim?.startsWith('pc_')).toBe(true);
+    expect(Date.parse(info.claimExpiresAt ?? '')).toBeGreaterThan(Date.now());
+    expect('token' in info).toBe(false);
+    expect(existsSync(join(home, 'pairing-device.token'))).toBe(false);
+    // A claim mints no credential by itself.
+    expect(loadCredentials()).toHaveLength(0);
+    host.disposeAll();
   });
 
-  it('mints ONCE and reuses across polls (no credential spam)', () => {
-    const first = ensurePairingCredential();
-    const second = ensurePairingCredential();
-    const third = ensurePairingCredential();
-    expect(second.token).toBe(first.token);
-    expect(third.token).toBe(first.token);
-    // One credential in the store, not one per call.
-    expect(loadCredentials()).toHaveLength(1);
+  it('holds the same claim across polls, so the QR does not flicker', async () => {
+    const host = hostWith([]);
+    await host.daemonStart();
+    const a = host.daemonInfo().claim;
+    const b = host.daemonInfo().claim;
+    const c = host.daemonInfo().claim;
+    expect(a).toBeTruthy();
+    expect(b).toBe(a);
+    expect(c).toBe(a);
+    host.disposeAll();
   });
 
-  it('lists paired devices with an id, label, and createdAt', () => {
-    ensurePairingCredential();
+  it('rotates the claim once it has been spent', async () => {
+    const host = hostWith([]);
+    await host.daemonStart();
+    const first = host.daemonInfo().claim!;
+    // The phone redeems it (the daemon marks it used).
+    const daemon = (host as unknown as { daemon: { redeem(c: string): unknown } }).daemon;
+    daemon.redeem(first);
+    const next = host.daemonInfo().claim;
+    expect(next).toBeTruthy();
+    expect(next).not.toBe(first);
+    host.disposeAll();
+  });
+
+  it('offers no claim while the hub is off, but still lists paired devices', () => {
+    mintCredential({ role: 'admin', label: "Jordan's iPhone" });
+    const host = hostWith([]);
+    const info = host.daemonInfo();
+    expect(info.running).toBe(false);
+    expect(info.claim).toBeUndefined();
+    expect(info.devices?.map((d) => d.label)).toEqual(["Jordan's iPhone"]);
+    host.disposeAll();
+  });
+});
+
+describe('retiring the shared QR credential', () => {
+  it('deletes the clear-text token file and revokes the shared credential', () => {
+    const { token } = mintCredential({ role: 'admin', label: 'iPhone via QR' });
+    writeFileSync(join(home, 'pairing-device.token'), `${token}\n`);
+    mintCredential({ role: 'admin', label: "Jordan's iPhone" });
+    const result = retireSharedPairingCredential();
+    expect(result).toEqual({ fileRemoved: true, revoked: 1 });
+    expect(existsSync(join(home, 'pairing-device.token'))).toBe(false);
+    expect(resolveDeviceCredential(token)).toBeUndefined();
+    // A per-device credential minted the new way is untouched.
+    expect(loadCredentials().map((c) => c.label)).toEqual(["Jordan's iPhone"]);
+    // Idempotent.
+    expect(retireSharedPairingCredential()).toEqual({ fileRemoved: false, revoked: 0 });
+  });
+
+  it('runs on daemon start', async () => {
+    const { token } = mintCredential({ role: 'admin', label: 'iPhone via QR' });
+    writeFileSync(join(home, 'pairing-device.token'), `${token}\n`);
+    const host = hostWith([]);
+    await host.daemonStart();
+    expect(readdirSync(home)).not.toContain('pairing-device.token');
+    expect(resolveDeviceCredential(token)).toBeUndefined();
+    host.disposeAll();
+  });
+});
+
+describe('paired devices', () => {
+  it('lists each device with an id, label, and createdAt', () => {
+    mintCredential({ role: 'admin', label: "Jordan's iPhone" });
+    mintCredential({ role: 'admin', label: 'iPad' });
     const devices = listPairedDevices();
-    expect(devices).toHaveLength(1);
-    expect(devices[0]!.label).toBe('iPhone via QR');
+    expect(devices.map((d) => d.label)).toEqual(["Jordan's iPhone", 'iPad']);
     expect(devices[0]!.id).toHaveLength(64); // the token hash, the revoke handle
     expect(Date.parse(devices[0]!.createdAt)).not.toBeNaN();
   });
 
-  it('revoking a device cuts off only that credential; the next call re-mints', () => {
-    const first = ensurePairingCredential();
-    const { id } = listPairedDevices()[0]!;
+  it('revoking one device cuts off only that credential', () => {
+    const phone = mintCredential({ role: 'admin', label: "Jordan's iPhone" });
+    const tablet = mintCredential({ role: 'admin', label: 'iPad' });
+    const { id } = listPairedDevices().find((d) => d.label === "Jordan's iPhone")!;
     expect(revokeCredential(id)).toBe(1);
-    // The revoked token no longer resolves.
-    expect(resolveDeviceCredential(first.token)).toBeUndefined();
-    // A fresh poll finds no live credential and mints a new one (rotating the QR).
-    const next = ensurePairingCredential();
-    expect(next.token).not.toBe(first.token);
-    expect(resolveDeviceCredential(next.token)?.role).toBe('admin');
-    expect(loadCredentials()).toHaveLength(1);
+    expect(resolveDeviceCredential(phone.token)).toBeUndefined();
+    expect(resolveDeviceCredential(tablet.token)?.label).toBe('iPad');
+    expect(listPairedDevices().map((d) => d.label)).toEqual(['iPad']);
   });
 });

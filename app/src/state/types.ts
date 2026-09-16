@@ -118,6 +118,9 @@ export interface ThreadState {
   dollars: number;
   /** Tokens for the latest turn, shown in the turn footer. */
   lastTurn?: { promptTokens: number; completionTokens: number };
+  /** Tokens over the whole chat, for /cost on a chat billed to the person's
+   *  own provider account (where a dollar figure would be invented). */
+  totalTokens?: { promptTokens: number; completionTokens: number };
   pendingApprovals: ApprovalRequest[];
   /** The agent's live task list (todoWrite), replaced whole each update. */
   todos: TodoRow[];
@@ -195,6 +198,10 @@ export interface Conversation {
    *  sent by the attach itself, so the first message is never dropped by a
    *  timer. Cleared the moment it goes out. */
   pendingFirstMessage?: string;
+  /** Why the parked message has not gone out yet (the hub did not answer, no
+   *  key, and so on), in plain words, with a Retry beside the bubble. Session
+   *  state: never written to disk. */
+  pendingFirstError?: string;
 }
 
 // A project buckets related chats and keeps their context together. Repos can

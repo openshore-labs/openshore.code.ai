@@ -19,9 +19,45 @@ import type {
 } from 'os-code/protocol';
 import type { StoredFile, StoredFileMeta } from './gitos/providers.js';
 
+/** The machine in numbers, from the engine's own resource budget (the same
+ *  one osc init and doctor use), so a fit verdict never parses prose. `gpu` is
+ *  true only for a dedicated GPU worth budgeting around (4 GB VRAM or more);
+ *  `maxModelGB` is the largest model that runs comfortably here. */
+export interface DesktopHardware {
+  ramGB: number;
+  gpu: boolean;
+  platform: string;
+  vramGB: number;
+  maxModelGB: number;
+  summary: string;
+}
+
+/** Ollama as the desktop sees it: the API answered (running, with a version),
+ *  or a binary is on this machine (installed) but nothing is listening. */
+export interface OllamaStatus {
+  installed: boolean;
+  running: boolean;
+  version?: string;
+}
+
+/** What installing Ollama takes here. On Linux the official installer runs in
+ *  the built-in terminal (`termId` names it, `started` says it began); on
+ *  macOS and Windows the download page opens and the app polls ollamaStatus.
+ *  `command` is always present so it can be shown as a copy block. */
+export interface OllamaInstallResult {
+  started: boolean;
+  command: string;
+  mode: 'terminal' | 'download';
+  downloadUrl?: string;
+  termId?: string;
+  detail?: string;
+}
+
 export interface DesktopStatus {
   ollama: { up: boolean; detail: string; models: string[] };
   hardwareSummary: string;
+  /** Structured numbers behind hardwareSummary; absent on an older engine. */
+  hardware?: DesktopHardware;
   stack: {
     configured: boolean;
     description: string;
@@ -44,10 +80,12 @@ export interface DaemonInfo {
   running: boolean;
   host?: string;
   port: number;
-  /** A fresh per-device pairing credential (mint-once while the daemon runs),
-   *  NOT the shared admin token, so a lost phone can be revoked on its own.
-   *  Empty when the daemon is off. */
-  token: string;
+  /** The one-time pairing claim on the QR right now: not a credential. The
+   *  phone trades it at POST /pair/claim for its own per-device credential,
+   *  after which it is spent and the next poll carries a fresh one. Absent
+   *  while the hub is off. */
+  claim?: string;
+  claimExpiresAt?: string;
   /** Credentials paired to this desktop, for the revoke UI. */
   devices?: PairedDevice[];
   tailscaleIp?: string;
@@ -190,6 +228,21 @@ export interface OscodeBridge {
   /** Cut off one device by its credential id (a lost phone). Returns how many
    *  credentials were removed. Other paired devices stay connected. */
   revokeDeviceCredential(id: string): Promise<{ removed: number }>;
+  /** Start with your computer (opt-in). `supported` is false on a run from
+   *  source, which has no installed executable to register. Absent on an
+   *  older shell. */
+  launchAtLogin?(): Promise<{ on: boolean; supported: boolean }>;
+  setLaunchAtLogin?(on: boolean): Promise<{ on: boolean; detail?: string }>;
+
+  // Ollama from inside the app, and the machine in numbers. Optional because
+  // an older shell may not carry them; callers fall back to the Stack probe.
+  ollamaStatus?(): Promise<OllamaStatus>;
+  /** Start `ollama serve` on this machine and wait for it to answer. */
+  ollamaStart?(): Promise<boolean>;
+  /** Run the platform's install plan (see OllamaInstallResult). Call it only
+   *  after the person confirmed on a card that shows the command. */
+  ollamaInstall?(): Promise<OllamaInstallResult>;
+  hardware?(): Promise<DesktopHardware>;
 
   // Crew routines: the scheduled, unattended jobs that run on this computer.
   // The same surface the daemon serves a phone; validation and the workspace

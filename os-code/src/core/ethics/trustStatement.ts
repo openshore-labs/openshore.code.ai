@@ -22,6 +22,25 @@ export const TRUST_STATEMENT = [
   'What we guarantee is that this app, as shipped, does not assist misuse and does not help you strip these protections out.',
 ].join(' ');
 
+/** The three tiers, in the same words on the site and in Settings. The site
+ *  (oscode.js, trust.tiers) says these stay verbatim to the app; the app's
+ *  trustStatement test pins them against a vendored copy of the site text so
+ *  that promise holds in CI, not in memory. */
+export const TRUST_STATEMENT_TIERS: ReadonlyArray<{ name: string; body: string }> = [
+  {
+    name: 'Refused outright',
+    body: 'Child sexual abuse material. Sexual or nude imagery of a real, identifiable person. Concrete help building or deploying biological, chemical, nuclear, or high-yield explosive weapons. There is no consent option for any of these.',
+  },
+  {
+    name: 'Gated behind consent',
+    body: 'Synthesizing the face or voice of a real, identifiable person, as an image, a video, or a voice, allowed only when you state you are authorized for that specific person. Writing about a person in text is not gated. The assertion is recorded, and what comes out carries provenance metadata saying it was AI-generated.',
+  },
+  {
+    name: 'Left alone',
+    body: 'Legal adult content, dark and violent fiction, horror, edgy humor, satire and political parody, security research and red teaming, and unpopular opinions. No added refusal, no commentary. Over-blocking your legitimate work is a defect we treat as seriously as letting real harm through.',
+  },
+];
+
 /** The same statement as separate lines, for a surface that sets them apart. */
 export const TRUST_STATEMENT_LINES: string[] = [
   'This app enforces its ethical boundaries by default and will not help you remove them.',

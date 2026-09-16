@@ -114,9 +114,15 @@ describe('recommendMachine', () => {
 });
 
 describe('deviceRunsComfortably', () => {
-  it('is true with headroom, false when the model crowds memory', () => {
-    expect(deviceRunsComfortably(8, 16)).toBe(true); // 8 <= 16 * 0.6 = 9.6
-    expect(deviceRunsComfortably(12, 16)).toBe(false); // 12 > 9.6
+  it('reads the honest floor against physical memory, not a comfort fraction', () => {
+    // The catalog's minRamGB is already the honest floor, so the rule is that
+    // floor against the machine's memory. This is the review 3.2 fix: the 4B
+    // pick (floor 6) must read as fitting an 8 GB iPhone, not "better on your
+    // computer" while the pack calls it the iPhone pick.
+    expect(deviceRunsComfortably(6, 8)).toBe(true);
+    expect(deviceRunsComfortably(8, 16)).toBe(true);
+    // A 7B (floor about 9) does not fit an 8 GB phone.
+    expect(deviceRunsComfortably(9, 8)).toBe(false);
   });
 
   it('is false when device RAM is unknown', () => {
@@ -125,16 +131,16 @@ describe('deviceRunsComfortably', () => {
 });
 
 describe('runsWellOnDevice', () => {
-  it('a phone-class model runs well on a high memory phone', () => {
-    // A 4B pocket model (~6 GB wanted) on a 12 GB iPhone: 6 <= 12 * 0.6 = 7.2.
-    expect(runsWellOnDevice(6, 12)).toBe(true);
+  it('the 4B pick runs well on a real iPhone, at the floor and above', () => {
+    // The 4B (floor 6) on a 6 GB iPhone (at the floor) and an 8 GB iPhone.
+    expect(runsWellOnDevice(6, 6)).toBe(true);
+    expect(runsWellOnDevice(6, 8)).toBe(true);
   });
 
-  it('a bigger model does not run well on a small memory phone', () => {
-    // A 7B (~9 GB wanted) on a 6 GB phone: 9 > 3.6.
+  it('a 7B does not run well on a phone', () => {
+    // A 7B (floor about 9) on a 6 GB phone and an 8 GB phone: over the floor.
     expect(runsWellOnDevice(9, 6)).toBe(false);
-    // Even a 12 GB phone is over budget for a 9 GB model: 9 > 7.2.
-    expect(runsWellOnDevice(9, 12)).toBe(false);
+    expect(runsWellOnDevice(9, 8)).toBe(false);
   });
 
   it('reads as runs-well when device memory is unknown, so we never wrongly say no', () => {

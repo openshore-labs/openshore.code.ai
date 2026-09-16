@@ -81,7 +81,8 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   private connectHint(err: unknown): string {
     const msg = err instanceof Error ? err.message : String(err);
     if (/ECONNREFUSED|fetch failed|network|abort/i.test(msg)) {
-      return `Nothing is answering at ${this.baseUrl}. If this is Ollama, start it with: ollama serve`;
+      // The command on its own paragraph, never in the sentence (tenet 9).
+      return `Nothing is answering at ${this.baseUrl}. If this is Ollama, start it.\n\nollama serve`;
     }
     return `${this.label} at ${this.baseUrl} answered with an error: ${msg}`;
   }

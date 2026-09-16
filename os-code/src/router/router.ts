@@ -47,7 +47,7 @@ export class Router {
     return this.stack.orchestrator;
   }
 
-  /** The chat role used for a delegated subtask, with quarterback fallback. */
+  /** The chat role used for a delegated subtask, with Reasoning LLM fallback. */
   roleFor(role: DelegableRole): { resolved: ResolvedRole; fellBack: boolean } {
     if (this.config.routing.mode !== 'orchestrator-only') {
       const specialist = this.stack.specialists[role];
@@ -102,7 +102,7 @@ export class Router {
   ): Promise<string> {
     const { resolved, fellBack } = this.roleFor(role);
     if (fellBack) {
-      const note = `No ${role} specialist is enabled, so the quarterback handled it itself.`;
+      const note = `No ${role} specialist is enabled, so your Reasoning LLM handled it itself.`;
       this.notes.push({ role, message: note });
       log.info('delegation fell back to orchestrator', { role });
     }

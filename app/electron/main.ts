@@ -6,8 +6,12 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
+  nativeImage,
+  powerSaveBlocker,
   safeStorage,
   shell,
+  Tray,
   type IpcMainInvokeEvent,
 } from 'electron';
 import { dirname, join, relative, sep } from 'node:path';
@@ -34,6 +38,16 @@ import { isIP } from 'node:net';
 import { EngineHost } from './engineHost.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
 import { processVideoDesktop, type DesktopMediaOptions } from './media.js';
+import {
+  HIDDEN_LAUNCH_FLAG,
+  autostartEntry,
+  autostartEntryPath,
+  closeAction,
+  isHiddenLaunch,
+  launchAtLoginSupport,
+  powerBlockerNext,
+  trayMenuTemplate,
+} from './lifecycle.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -379,6 +393,162 @@ const host = new EngineHost(
   (payload) => win?.webContents.send('osc:terminal-data', payload),
 );
 
+// ------------------------------------------------------------ hub lifecycle
+// The hub (the daemon) starts with the app and lives in the tray: closing the
+// window hides it, Quit really quits. The rules are pure helpers in
+// lifecycle.ts; this is the wiring. `quitting` flips on Quit (tray or app
+// menu) so the window's close handler lets it go; `hubPaused` is the person's
+// own Pause, which the re-bind poll respects.
+let tray: Tray | undefined;
+let quitting = false;
+let hubPaused = false;
+let disposed = false;
+
+function trayIconPath(): string {
+  return join(here, '..', 'build', 'icon.png');
+}
+
+function showWindow(): void {
+  if (!win) {
+    createWindow();
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function refreshTrayMenu(): void {
+  if (!tray) return;
+  const template = trayMenuTemplate({ hubRunning: host.daemonRunning() });
+  tray.setContextMenu(
+    Menu.buildFromTemplate(
+      template.map((item) => ({ label: item.label, click: () => void onTrayAction(item.id) })),
+    ),
+  );
+}
+
+async function onTrayAction(id: 'open' | 'hub' | 'quit'): Promise<void> {
+  if (id === 'open') {
+    showWindow();
+  } else if (id === 'hub') {
+    if (host.daemonRunning()) {
+      await host.daemonStop();
+      hubPaused = true;
+    } else {
+      hubPaused = false;
+      const result = await host.daemonStart();
+      if ('error' in result) console.error(hubStartError(result.error));
+    }
+    refreshTrayMenu();
+  } else {
+    quitting = true;
+    app.quit();
+  }
+}
+
+/** A tray needs a status area; a desktop without one (some Wayland sessions,
+ *  a headless smoke run) gets the old behavior: closing the window quits. */
+function createTray(): boolean {
+  try {
+    const image = nativeImage.createFromPath(trayIconPath());
+    if (image.isEmpty()) return false;
+    tray = new Tray(image.resize({ width: 22, height: 22 }));
+    tray.setToolTip('OpenShore');
+    tray.on('click', () => showWindow());
+    refreshTrayMenu();
+    return true;
+  } catch (err) {
+    console.error(`OpenShore: no tray on this desktop (${(err as Error).message}).`);
+    tray = undefined;
+    return false;
+  }
+}
+
+function hubStartError(message: string): string {
+  return `OpenShore hub did not start: ${message}\nFor the whole picture, with one fix per line: npx osc doctor`;
+}
+
+// The power-save blocker holds only while a run is active; the re-bind poll
+// moves a loopback hub onto the tailnet once Tailscale comes up.
+let blockerId: number | undefined;
+
+function startLifecyclePolls(): void {
+  const power = setInterval(() => {
+    const next = powerBlockerNext({
+      active: blockerId !== undefined,
+      busyRuns: host.activeRuns(),
+    });
+    if (next === 'start') blockerId = powerSaveBlocker.start('prevent-app-suspension');
+    else if (next === 'stop' && blockerId !== undefined) {
+      powerSaveBlocker.stop(blockerId);
+      blockerId = undefined;
+    }
+  }, 5000);
+  power.unref();
+  const rebind = setInterval(() => {
+    if (hubPaused) return;
+    void host.daemonRebind().then((moved) => {
+      if (moved) refreshTrayMenu();
+    });
+  }, 15_000);
+  rebind.unref();
+}
+
+// Launch at login, opt-in from the Pair screen. Electron's login item covers
+// macOS and Windows; Linux gets an XDG autostart entry that starts the app
+// hidden (to the tray). A source run has no stable executable to register.
+function launchExecutable(): string | undefined {
+  if (process.env.APPIMAGE) return process.env.APPIMAGE;
+  return app.isPackaged ? process.execPath : undefined;
+}
+
+function launchAtLogin(): { on: boolean; supported: boolean } {
+  const supported = launchExecutable() !== undefined;
+  if (launchAtLoginSupport(process.platform) === 'native') {
+    return { on: app.getLoginItemSettings().openAtLogin, supported };
+  }
+  return { on: existsSync(autostartEntryPath(homedir())), supported };
+}
+
+function setLaunchAtLogin(on: boolean): { on: boolean; detail?: string } {
+  const execPath = launchExecutable();
+  if (!execPath) {
+    return {
+      on: false,
+      detail: 'Start with your computer needs the installed app, not a run from source.',
+    };
+  }
+  if (launchAtLoginSupport(process.platform) === 'native') {
+    app.setLoginItemSettings({ openAtLogin: on, openAsHidden: on, args: [HIDDEN_LAUNCH_FLAG] });
+    return { on: app.getLoginItemSettings().openAtLogin };
+  }
+  const path = autostartEntryPath(homedir());
+  try {
+    if (on) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, autostartEntry({ execPath }));
+    } else {
+      rmSync(path, { force: true });
+    }
+    return { on };
+  } catch (err) {
+    return { on: existsSync(path), detail: `Could not write ${path}: ${(err as Error).message}` };
+  }
+}
+
+function shutdown(): void {
+  if (disposed) return;
+  disposed = true;
+  embedded.close();
+  closeGdriveServer();
+  host.disposeAll();
+  if (blockerId !== undefined) powerSaveBlocker.stop(blockerId);
+  tray?.destroy();
+  tray = undefined;
+  app.quit();
+}
+
 // A contained third-party site (Codemagic today) hosted inside the window,
 // fenced to its own hosts. The renderer names the site; it never picks a URL.
 const embedded = new EmbeddedWeb(
@@ -447,17 +617,33 @@ function createWindow(): void {
   });
 
   // OSC_SMOKE=1 makes a headless CI run prove the page and bridge came up.
+  // The engine half of the proof is logged from whenReady (below); once both
+  // are in, the run quits by itself so scripts/package-smoke.mjs can judge it.
   if (process.env.OSC_SMOKE) {
     win.webContents.on('did-finish-load', () => {
       void win?.webContents
         .executeJavaScript('typeof window.oscode')
-        .then((kind) => console.log(`[smoke] page loaded; window.oscode is ${kind}`))
+        .then((kind) => {
+          console.log(`[smoke] page loaded; window.oscode is ${kind}`);
+          smokeStep();
+        })
         .catch((err) => console.error('[smoke] bridge probe failed', err));
     });
     win.webContents.on('console-message', (event) => {
       console.log(`[renderer] ${(event as unknown as { message: string }).message}`);
     });
   }
+
+  // Close hides to the tray while there is one; Quit sets `quitting` first.
+  win.on('close', (event) => {
+    if (closeAction({ quitting, trayReady: Boolean(tray) }) === 'hide') {
+      event.preventDefault();
+      win?.hide();
+    }
+  });
+  win.on('closed', () => {
+    win = undefined;
+  });
 
   // A deep link (oscode://auth-callback or oscode://checkout-success) may arrive
   // before the renderer has subscribed, on a cold start launched by the link
@@ -470,6 +656,18 @@ function createWindow(): void {
   });
 
   void win.loadFile(join(here, '..', 'dist', 'index.html'));
+}
+
+// The smoke run ends itself once the page and the engine both reported in.
+let smokeSteps = 0;
+function smokeStep(): void {
+  smokeSteps++;
+  if (smokeSteps < 2) return;
+  console.log('[smoke] done');
+  setTimeout(() => {
+    quitting = true;
+    shutdown();
+  }, 300);
 }
 
 // ------------------------------------------------------ deep links (oscode://)
@@ -646,10 +844,33 @@ guarded('osc:hermesNotes', () => host.hermesNotes());
 guarded('osc:hermesNote', (path: unknown) => host.hermesNote(str(path, 'path')));
 
 guarded('osc:daemonInfo', () => host.daemonInfo());
-guarded('osc:daemonStart', () => host.daemonStart());
-guarded('osc:daemonStop', () => host.daemonStop());
+guarded('osc:daemonStart', async () => {
+  hubPaused = false;
+  const result = await host.daemonStart();
+  refreshTrayMenu();
+  return result;
+});
+guarded('osc:daemonStop', async () => {
+  hubPaused = true;
+  await host.daemonStop();
+  refreshTrayMenu();
+});
 guarded('osc:listDeviceCredentials', () => host.listDeviceCredentials());
 guarded('osc:revokeDeviceCredential', (id: unknown) => host.revokeDeviceCredential(str(id, 'id')));
+guarded('osc:launchAtLogin', () => launchAtLogin());
+guarded('osc:setLaunchAtLogin', (on: unknown) => setLaunchAtLogin(bool(on)));
+
+// Ollama from inside the app, and the machine in numbers. A download-page
+// plan opens the page here (the renderer never picks a URL); the command is
+// returned in every case so the renderer shows it as a copy block.
+guarded('osc:ollamaStatus', () => host.ollamaStatus());
+guarded('osc:ollamaStart', () => host.ollamaStart());
+guarded('osc:ollamaInstall', async () => {
+  const plan = await host.ollamaInstall();
+  if (plan.mode === 'download' && plan.downloadUrl) void shell.openExternal(plan.downloadUrl);
+  return plan;
+});
+guarded('osc:hardware', () => host.hardware());
 
 // On-disk vault: the SAME markdown folder the agent's daemon tools write
 // (~/OSCode/Vault, or config vault.dir), so the app's Vault and the agent share
@@ -845,19 +1066,45 @@ if (!app.requestSingleInstanceLock()) {
     deliverDeepLink(url);
   });
 
-  void app.whenReady().then(() => {
-    createWindow();
+  void app.whenReady().then(async () => {
+    const trayReady = createTray();
+    // A login launch (--hidden) starts in the tray alone; without a tray to
+    // hide in, the window opens regardless.
+    if (!isHiddenLaunch(process.argv) || !trayReady) createWindow();
     // Cold start on Windows/Linux: the link is in this process's own argv.
     deliverDeepLink(deepLinkFromArgv(process.argv));
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
+    app.on('activate', () => showWindow());
+
+    // The hub starts with the app: the tailnet when it is up, else loopback
+    // (and it moves to the tailnet on its own once Tailscale appears).
+    const started = await host.daemonStart();
+    if ('error' in started) console.error(hubStartError(started.error));
+    refreshTrayMenu();
+    startLifecyclePolls();
+
+    if (process.env.OSC_SMOKE) {
+      try {
+        const status = await host.status();
+        console.log(
+          `[smoke] engine booted; hub ${host.daemonRunning() ? 'up' : 'down'}; ollama ${status.ollama.up ? 'up' : 'down'}`,
+        );
+      } catch (err) {
+        console.error(`[smoke] engine failed: ${(err as Error).message}`);
+      }
+      smokeStep();
+    }
   });
 }
 
-app.on('window-all-closed', () => {
-  embedded.close();
-  closeGdriveServer();
-  host.disposeAll();
-  app.quit();
+app.on('before-quit', () => {
+  quitting = true;
 });
+
+app.on('window-all-closed', () => {
+  // The hub lives in the tray: closing the last window keeps it serving. Only
+  // Quit (or a desktop with no tray) takes the process down.
+  if (!quitting && tray) return;
+  shutdown();
+});
+
+app.on('will-quit', () => shutdown());

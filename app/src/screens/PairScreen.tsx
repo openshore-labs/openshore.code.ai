@@ -6,7 +6,7 @@ import QRCode from 'qrcode';
 import { hubList, useApp, type HubRole } from '../state/store.js';
 import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
-import { daemonHealth } from '../drivers/remoteDriver.js';
+import { daemonHealth, redeemPairClaim } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import { QrScanner } from '../components/QrScanner.js';
 import { Switch } from '../components/Switch.js';
@@ -99,8 +99,8 @@ function DesktopPair() {
     setInfo(next);
     // Only publish a QR the phone can actually reach: a loopback-only fallback
     // (Tailscale down) would hand out an address that points at the phone itself.
-    if (next.running && next.host && next.mode !== 'loopback') {
-      const payload = JSON.stringify({ u: `http://${next.host}:${next.port}`, t: next.token });
+    if (next.running && next.host && next.mode !== 'loopback' && next.claim) {
+      const payload = JSON.stringify({ u: `http://${next.host}:${next.port}`, c: next.claim });
       setQr(
         await QRCode.toDataURL(payload, {
           margin: 1,
@@ -181,8 +181,14 @@ function DesktopPair() {
               onClick={() => setShowToken((s) => !s)}
               style={{ marginTop: 6 }}
             >
-              {showToken ? `Token: ${info.token}` : 'Show the pairing token'}
+              {showToken ? `Pairing code: ${info.claim}` : 'Show the pairing code'}
             </button>
+            {showToken ? (
+              <div className="sub" style={{ marginTop: 6 }}>
+                A one-time code, good for five minutes. The phone trades it for its own credential,
+                so this is safe to read aloud and never a lasting key.
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -325,10 +331,14 @@ function RemoteHubPanel() {
   );
 }
 
+function phoneDeviceName(): string {
+  return isDesktop() ? 'a computer' : 'iPhone';
+}
+
 function PhonePair() {
   const { settings, saveHub, removeHub, showToast, startGuideChat } = useApp();
   const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
-  const [token, setToken] = useState(settings.daemon?.token ?? '');
+  const [code, setCode] = useState('');
   const [testing, setTesting] = useState(false);
   const [state, setState] = useState<string | undefined>();
   const [scanning, setScanning] = useState(false);
@@ -337,28 +347,37 @@ function PhonePair() {
     const pair = parsePairingQr(text);
     if (!pair) return false;
     setAddress(pair.address);
-    setToken(pair.token);
+    setCode(pair.claim);
     return true;
   };
 
   // Connect with the fields as they stand, or with values handed in directly
-  // (a fresh QR scan, before React has re-rendered the inputs).
-  const connect = async (override?: { address: string; token: string }) => {
+  // (a fresh QR scan, before React has re-rendered the inputs). The code is a
+  // one-time pairing claim: we trade it for this device's own credential, then
+  // confirm the credential works before saving the hub.
+  const connect = async (override?: { address: string; claim: string }) => {
     const rawAddress = override?.address ?? address;
-    const rawToken = override?.token ?? token;
+    const rawClaim = override?.claim ?? code;
     const baseUrl = rawAddress.trim().replace(/\/$/, '');
-    if (!/^https?:\/\//.test(baseUrl) || !rawToken.trim()) {
-      setState('Enter the address and token shown on the desktop pairing screen.');
+    if (!/^https?:\/\//.test(baseUrl) || !rawClaim.trim()) {
+      setState('Enter the address and the pairing code shown on the desktop pairing screen.');
       return;
     }
     setTesting(true);
-    const health = await daemonHealth({ baseUrl, token: rawToken.trim() });
+    const claimed = await redeemPairClaim(baseUrl, rawClaim.trim(), phoneDeviceName());
+    if (!claimed.ok) {
+      setTesting(false);
+      setState(claimed.detail);
+      return;
+    }
+    const token = claimed.token;
+    const health = await daemonHealth({ baseUrl, token });
     setTesting(false);
     setState(health.detail);
     if (health.ok) {
       await saveHub(
-        { baseUrl, token: rawToken.trim() },
-        { role: (health as { role?: HubRole }).role },
+        { baseUrl, token },
+        { role: claimed.role ?? (health as { role?: HubRole }).role },
       );
       showToast('Connected. Pick your computer in the model menu to chat or code.');
     }
@@ -373,7 +392,7 @@ function PhonePair() {
       return;
     }
     setAddress(pair.address);
-    setToken(pair.token);
+    setCode(pair.claim);
     void connect(pair);
   };
 
@@ -435,7 +454,7 @@ function PhonePair() {
             Scan the QR on your computer
           </button>
           <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-            Or type the address and token it shows.
+            Or type the address and the pairing code it shows.
           </p>
           <div className="field">
             <label>Desktop address</label>
@@ -450,14 +469,14 @@ function PhonePair() {
             />
           </div>
           <div className="field">
-            <label>Pairing token</label>
+            <label>Pairing code</label>
             <input
-              placeholder="osc_..."
-              value={token}
+              placeholder="pc_..."
+              value={code}
               autoCapitalize="none"
               autoCorrect="off"
               onChange={(e) => {
-                if (!tryPasteJson(e.target.value)) setToken(e.target.value);
+                if (!tryPasteJson(e.target.value)) setCode(e.target.value);
               }}
             />
           </div>

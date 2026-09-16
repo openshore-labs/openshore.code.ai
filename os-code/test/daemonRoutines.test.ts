@@ -92,7 +92,7 @@ describe('daemon routine routes', () => {
       body: JSON.stringify(routineBody({ cwd: home })),
     });
     expect(outside.status).toBe(400);
-    expect(((await outside.json()) as { error: string }).error).toContain('workspace');
+    expect(((await outside.json()) as { error: string }).error).toContain('allow this folder');
 
     const badClock = await fetch(`${base}/routines`, {
       method: 'POST',

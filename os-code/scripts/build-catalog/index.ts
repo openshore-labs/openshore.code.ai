@@ -18,7 +18,7 @@ import { gatherMetadata, HuggingFaceSource } from './sources.js';
 import { derivePresets } from './presets.js';
 import { discoverModels, HuggingFaceDiscovery } from './discover.js';
 import { mergeCommunity, SupabaseReviewSource } from './reviews.js';
-import type { BuildInputs, ModelMetadata, Overlay } from './types.js';
+import type { BuildInputs, EvalEntries, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OSC_ROOT = resolve(HERE, '..', '..');
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
     join(CURATION_DIR, 'benchmarks.json'),
     {},
   );
-  const evals = readJson<Record<string, number>>(join(CURATION_DIR, 'eval.json'), {});
+  const evals = readJson<EvalEntries>(join(CURATION_DIR, 'eval.json'), {});
   const overlay = readJson<Overlay>(join(CURATION_DIR, 'recommended.json'), {});
 
   // Gather source metadata unless the run is explicitly offline. A source that

@@ -166,6 +166,15 @@ interface PastedChunk {
 
 let chunkSeq = 0;
 
+// The + never names a vendor and never mutes: a local-first product does not
+// send people to one cloud to attach a picture. Only an image (or a video,
+// which becomes images) is refused when the brain cannot see, and the fix is
+// the person's own Stack or any cloud model on their key that reads images.
+export const IMAGE_UNSUPPORTED =
+  'This model does not read images. Place one that does in your Stack, or connect a cloud model that reads images.';
+export const VIDEO_UNSUPPORTED =
+  'This model does not read images. To review a video, place one that does in your Stack, or connect a cloud model that reads images.';
+
 /** The @ token under the caret, if the person is typing one. */
 function mentionAt(value: string, caret: number): { start: number; query: string } | null {
   const before = value.slice(0, caret);
@@ -464,7 +473,7 @@ export function Composer({
     // send, so re-check here.
     const outgoing = visionSupported ? attachments : attachments.filter((a) => !a.isImage);
     if (!visionSupported && outgoing.length < attachments.length) {
-      showToast('This model reads text only. Switch to Claude to send images.');
+      showToast(IMAGE_UNSUPPORTED);
     }
     const body = pasted.length
       ? [text, ...pasted.map((p) => p.text)].filter(Boolean).join('\n\n')
@@ -482,10 +491,8 @@ export function Composer({
   };
 
   const addTap = () => {
-    if (!visionSupported) {
-      showToast('This model reads text only. Switch to Claude to send images.');
-      return;
-    }
+    // The tray always opens: text files and pasted snippets work on any brain,
+    // and an image is refused later, at drop and at send, never by muting the +.
     if (window.matchMedia('(pointer: coarse)').matches) {
       if (tray) {
         closeTray();
@@ -529,7 +536,7 @@ export function Composer({
     const texts = rest.filter((f) => !f.type.startsWith('image/'));
     if (videos.length) {
       if (!visionSupported) {
-        showToast('This model reads text only. Switch to Claude to review a video.');
+        showToast(VIDEO_UNSUPPORTED);
       } else {
         // Kick each video off; the chips show progress and settle on their own.
         for (const file of videos) void ingestVideo(file);
@@ -537,7 +544,7 @@ export function Composer({
     }
     if (images.length) {
       if (!visionSupported) {
-        showToast('This model reads text only. Switch to Claude to send images.');
+        showToast(IMAGE_UNSUPPORTED);
       } else {
         try {
           const next = await Promise.all(images.map(fileToAttachment));
@@ -890,7 +897,7 @@ export function Composer({
             onChange={(e) => void onFiles(e.target.files)}
           />
           <button
-            className={`composer-add press-fb${visionSupported ? '' : ' muted'}`}
+            className="composer-add press-fb"
             onClick={addTap}
             aria-label="Attach"
             aria-expanded={tray}

@@ -157,10 +157,13 @@ function pullViaCli(
     child.stdout.on('data', forward);
     child.stderr.on('data', forward);
     child.on('error', () => {
+      // The command rides on its own paragraph, never inside the sentence, so
+      // the app renders it as a copy block (tenet 9) and the CLI prints it on
+      // its own line.
       resolve({
         ok: false,
         detail:
-          'Could not run ollama. Install it first: curl -fsSL https://ollama.com/install.sh | sh',
+          'Could not run ollama. Install it first.\n\ncurl -fsSL https://ollama.com/install.sh | sh',
       });
     });
     child.on('close', (code) => {

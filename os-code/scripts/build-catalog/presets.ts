@@ -6,12 +6,11 @@
 // this after enrichment and the regression gate validates the output, so a
 // preset can never reference a model that is not in the catalog.
 import type { CatalogModel, CatalogPreset } from '../../src/market/schema.js';
+import { evalScore } from './evals.js';
+import type { EvalEntries } from './types.js';
 
-export function derivePresets(
-  models: CatalogModel[],
-  evals: Record<string, number>,
-): CatalogPreset[] {
-  const score = (m: CatalogModel) => evals[m.id] ?? 0;
+export function derivePresets(models: CatalogModel[], evals: EvalEntries): CatalogPreset[] {
+  const score = (m: CatalogModel) => evalScore(evals[m.id]) ?? 0;
   const bySizeThenScore = (a: CatalogModel, b: CatalogModel) =>
     score(b) - score(a) || a.sizeGB - b.sizeGB;
   const smallestFirst = (a: CatalogModel, b: CatalogModel) => a.sizeGB - b.sizeGB;

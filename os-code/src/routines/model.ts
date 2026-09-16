@@ -106,7 +106,27 @@ export const ROUTINE_LIMITS = {
   minMinutes: 5,
   maxMinutes: 60,
   defaultMinutes: 20,
+  /** Tool steps per run: the headless profile's own ceiling, passed through
+   *  bootstrapSession so the engine's rail and the scheduler's agree. */
+  maxSteps: 40,
 } as const;
+
+/** The one line a run fails with, at once, when the computer's orchestrator
+ *  is a cloud model: an unattended run can never approve cloud spend, so it
+ *  would sit on an approval nobody answers and fail 15 minutes late. Shared
+ *  with the app, which wears amber on it (spend) and points at the Stack. */
+export const ROUTINE_NEEDS_LOCAL_MODEL =
+  'Routines need a local model on this computer. Place one in your Stack.';
+
+/** The caps a routine's session runs under: its own time cap as the engine's
+ *  wall clock (the UI's 20/30/45/60 used to be a dead control above the
+ *  engine's fixed 900 seconds), and the step ceiling. */
+export function routineCaps(routine: { maxMinutes: number }): {
+  wallClockSeconds: number;
+  maxSteps: number;
+} {
+  return { wallClockSeconds: routine.maxMinutes * 60, maxSteps: ROUTINE_LIMITS.maxSteps };
+}
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
@@ -297,7 +317,7 @@ export const PRESET_ROUTINE = {
     'Advisory only: you review and recommend, the person decides.',
   ].join(' '),
   task: [
-    'Review what changed in this repository over the last day. Use the gitLog tool with since "1 day ago" and patch on to read the commits and their diffs, and gitStatus for anything uncommitted.',
+    'Review what changed in this repository since the last working day. Use the gitLog tool with since "1 day ago" (on a Monday use "3 days ago", so Friday is covered) and patch on to read the commits and their diffs, and gitStatus for anything uncommitted.',
     'Then leave a short report: what landed, anything that looks risky or unfinished, and a checklist of the decisions or fixes that need the person this morning.',
     'Keep it under 300 words. Lead with the one thing that matters most.',
   ].join(' '),

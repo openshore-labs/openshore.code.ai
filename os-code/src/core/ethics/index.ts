@@ -34,7 +34,10 @@ export {
   normalizeSubject,
   readAssertion,
   tierOf,
+  nextActionFor,
+  BLOCK_NEXT_ACTION,
   REFUSALS,
+  SUPPORT_EMAIL,
   type ClassifyContext,
   type ConsentAssertion,
   type EthicsAction,
@@ -95,4 +98,4 @@ export {
 
 export { sha256, sha256Bytes } from './hash.js';
 
-export { TRUST_STATEMENT, TRUST_STATEMENT_LINES } from './trustStatement.js';
+export { TRUST_STATEMENT, TRUST_STATEMENT_LINES, TRUST_STATEMENT_TIERS } from './trustStatement.js';

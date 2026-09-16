@@ -40,6 +40,8 @@ import { effectiveMode } from '../core/agent/modes.js';
 import { LocalDriver, deleteSession, listSessions, sealSessionsAtRest } from './session.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { PushNotifier, savePushConfig } from './push.js';
+import { PairClaimStore, deviceLabelFrom, type PairClaimStatus } from './pairClaims.js';
+import { mintCredential } from '../core/security/credentials.js';
 import { clone } from '../git/index.js';
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
 import { withKeyLock } from '../git/applyQueue.js';
@@ -110,6 +112,12 @@ export interface RunningDaemon {
   host: string;
   port: number;
   close(): void;
+  /** Mint a one-time pairing claim for the QR (see pairClaims.ts). The phone
+   *  trades it at POST /pair/claim for its own per-device credential. */
+  mintPairClaim(): { claim: string; expiresAt: string };
+  /** Whether a claim is still live, already used, expired, or unknown, so the
+   *  desktop can keep one on screen and rotate it only when it must. */
+  pairClaimStatus(claim: string): PairClaimStatus;
 }
 
 export function resolveBindHost(bind: 'loopback' | 'tailscale'): string {
@@ -140,6 +148,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   // no phone is watching.
   const egress = new EgressPolicy(options.config.egress);
   const notifier = new PushNotifier(egress);
+  // One-time pairing claims, in memory only. The desktop mints one for its
+  // QR; the phone redeems it below, before the bearer gate, and walks away
+  // with a credential it alone holds.
+  const pairClaims = new PairClaimStore();
   // The interactive PTY host (Phase 2 bridge). Terminals live here, outliving
   // phone connections; their raw bytes never enter a session journal. Its
   // readForSession backs the agent's readTerminal tool, wired into every
@@ -229,6 +241,53 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       res.end();
       return;
     }
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'daemon'}`);
+    const parts = url.pathname.split('/').filter(Boolean);
+
+    // ---- Pairing: trade a one-time claim for a per-device credential. ----
+    // The only route open without a bearer, because the phone has none yet.
+    // The claim is 96 random bits, lives a few minutes, and is spent on first
+    // use, so this is not a guessable door. The credential is minted under
+    // the phone's own name and returned exactly once; only its hash stays on
+    // disk. Every error is a readable JSON answer (with CORS) so the phone can
+    // say what happened instead of "connection failed".
+    if (req.method === 'POST' && url.pathname === '/pair/claim') {
+      const body = await readJson(req);
+      const presentedClaim = typeof body.claim === 'string' ? body.claim.trim() : '';
+      if (!presentedClaim) {
+        sendJson(res, 400, { error: 'Send {"claim": "pc_...", "deviceName": "..."}.' });
+        return;
+      }
+      const redeemed = pairClaims.redeem(presentedClaim);
+      if (!redeemed.ok) {
+        const answers: Record<typeof redeemed.reason, { status: number; error: string }> = {
+          used: {
+            status: 410,
+            error:
+              'That pairing code has already been used. Open Desktop + phone on the computer for a fresh one.',
+          },
+          expired: {
+            status: 410,
+            error:
+              'That pairing code expired. Open Desktop + phone on the computer for a fresh one.',
+          },
+          unknown: {
+            status: 401,
+            error:
+              'That is not a pairing code this computer handed out. Scan the QR on its Desktop + phone screen.',
+          },
+        };
+        const answer = answers[redeemed.reason];
+        sendJson(res, answer.status, { error: answer.error });
+        return;
+      }
+      const label = deviceLabelFrom(body.deviceName);
+      const minted = mintCredential({ role: 'admin', label });
+      log.info('paired a device', { label });
+      sendJson(res, 200, { token: minted.token, label, role: minted.credential.role });
+      return;
+    }
+
     const presented = bearerFrom(req.headers.authorization);
     const auth = resolveAuth(presented, token);
     if (!auth) {
@@ -237,7 +296,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         401,
         {
           error:
-            'Missing or wrong daemon credential. The shared token lives in ~/.os-code/daemon.token; per-user tokens come from `osc token mint`.',
+            'Missing or wrong daemon credential. Pair this device from the desktop app (Desktop + phone), or mint a credential with `osc token mint`. On the computer itself, run: npx osc doctor',
         },
         { cors: false },
       );
@@ -252,9 +311,6 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       sendJson(res, 403, { error: 'This needs an admin credential. Ask a company admin.' });
       return false;
     };
-
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'daemon'}`);
-    const parts = url.pathname.split('/').filter(Boolean);
 
     if (req.method === 'GET' && url.pathname === '/health') {
       sendJson(res, 200, {
@@ -1302,6 +1358,13 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       loopbackServer?.close();
       loopbackServer?.closeAllConnections();
     };
+    const running: RunningDaemon = {
+      host,
+      port: options.port,
+      close: closeAll,
+      mintPairClaim: () => pairClaims.mint(),
+      pairClaimStatus: (claim) => pairClaims.status(claim),
+    };
     server.listen(options.port, host, () => {
       log.info('daemon up', { host, port: options.port });
       if (loopbackServer) {
@@ -1311,14 +1374,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // the tailnet-only daemon, and carry on. resolve() is idempotent, so
           // the success path below is harmless if it also fires.
           log.warn('loopback listener failed', { err: String(err) });
-          resolve({ host, port: options.port, close: closeAll });
+          resolve(running);
         });
         loopbackServer.listen(options.port, '127.0.0.1', () => {
           log.info('daemon also on loopback', { port: options.port });
-          resolve({ host, port: options.port, close: closeAll });
+          resolve(running);
         });
       } else {
-        resolve({ host, port: options.port, close: closeAll });
+        resolve(running);
       }
     });
   });

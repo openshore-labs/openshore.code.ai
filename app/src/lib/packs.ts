@@ -37,7 +37,7 @@ export interface DevicePack {
 // current phone-class pick (a 2025 4B beats the 2024 7B class on the phone at
 // half the memory); Qwen 2.5 1.5B stays as the fallback so a catalog that has
 // not yet rated the 4B still installs something coherent.
-const POCKET_ANCHORS = ['qwen3-4b-phone', 'qwen2.5-1.5b-phone'];
+export const POCKET_ANCHORS = ['qwen3-4b-phone', 'qwen2.5-1.5b-phone'];
 const POCKET_CODERS = ['qwen2.5-coder-1.5b-phone'];
 
 export const DEVICE_PACKS: DevicePack[] = [

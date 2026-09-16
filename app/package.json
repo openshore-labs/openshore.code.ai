@@ -73,6 +73,7 @@
     "vite": "8.2.1",
     "vitest": "4.1.10"
   },
+  "author": "OpenShore Labs <hello@openshore.ai>",
   "build": {
     "appId": "ai.openshore.oscode",
     "productName": "OpenShore",
@@ -80,6 +81,11 @@
       "dist/**",
       "dist-electron/**",
       "electron/preload.cjs"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/node-pty/**",
+      "**/node_modules/os-code/**"
     ],
     "directories": {
       "output": "release"

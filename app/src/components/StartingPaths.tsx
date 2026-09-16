@@ -123,23 +123,60 @@ export function StartingPaths({
     </div>
   );
 
-  // Harbor Light is bundled with the app, so it is here the instant the app opens.
-  // Creative Studio direction "The Standing Light" (2026-09-04): it is not a
-  // thing you fetch, it is the guide already in the room, so it leads onboarding
-  // as the one hero card. No download states; "Say hello" opens its chat.
+  // Harbor Light is bundled with the app, so on a normal build it is here the
+  // instant the app opens, and "Say hello" opens its chat. But a build can ship
+  // without the file, or the copy-in can fail, so the hero is honest about its
+  // states: a live download shows progress, a failed one offers to fetch it,
+  // and only a present model says "already here" (never a claim over a missing
+  // file). Creative Studio "The Standing Light": the guide in the room.
   const harborMiniHeroCard = (
     <div className="card">
-      <h3>Harbor Light is already here</h3>
-      <div className="sub" style={{ marginBottom: 10 }}>
-        Your built-in guide. Works offline, the moment you open the app.
-      </div>
-      <button
-        className="btn primary"
-        style={{ width: '100%' }}
-        onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
-      >
-        Say hello
-      </button>
+      {harborMiniDownload && !harborMiniDownload.failed ? (
+        <>
+          <h3>Getting Harbor Light</h3>
+          <div className="progress-track" style={{ marginTop: 4 }}>
+            <div
+              className={`progress-fill${harborMiniDownload.indeterminate ? ' indeterminate' : ''}`}
+              style={
+                harborMiniDownload.indeterminate
+                  ? undefined
+                  : { width: `${harborMiniDownload.percent}%` }
+              }
+            />
+          </div>
+          <div className="hint" style={{ marginTop: 8 }}>
+            {harborMiniDownload.label}
+          </div>
+        </>
+      ) : harborMiniDownload?.failed ? (
+        <>
+          <h3>Get Harbor Light</h3>
+          <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+            {harborMiniDownload.label} Check your connection and try again.
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: '100%' }}
+            onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
+          >
+            Retry
+          </button>
+        </>
+      ) : (
+        <>
+          <h3>Harbor Light is already here</h3>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            Your built-in guide. Works offline, the moment you open the app.
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: '100%' }}
+            onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
+          >
+            Say hello
+          </button>
+        </>
+      )}
     </div>
   );
 
@@ -305,7 +342,7 @@ export function StartingPaths({
             <h3>Set up your local stack</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
               Point OpenShore at a model running on this machine through Ollama. It stays on your
-              desk. The full model marketplace is part of Personal.
+              desk, and the full model Marketplace is one tap away.
             </div>
             <button
               className="btn primary"

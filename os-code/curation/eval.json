@@ -1,13 +1,20 @@
 {
-  "qwen2.5-coder-7b": 0.86,
-  "qwen2.5-coder-14b": 0.88,
-  "qwen2.5-coder-32b": 0.94,
-  "llama3.1-8b": 0.8,
-  "deepseek-r1-14b": 0.82,
-  "qwen2.5-1.5b-phone": 0.62,
-  "qwen2.5-coder-1.5b": 0.48,
-  "llava-7b": 0.4,
-  "moondream": 0.3,
-  "llama3.2-1b-phone": 0.35,
-  "smollm2-1.7b-phone": 0.4
+  "qwen2.5-coder-7b": { "probe": 0.86, "source": "published" },
+  "qwen2.5-coder-14b": { "probe": 0.88, "source": "published" },
+  "qwen2.5-coder-32b": { "probe": 0.94, "source": "published" },
+  "llama3.1-8b": { "probe": 0.8, "source": "published" },
+  "deepseek-r1-14b": { "probe": 0.82, "source": "published" },
+  "qwen2.5-1.5b-phone": { "probe": 0.62, "source": "published" },
+  "qwen2.5-coder-1.5b": { "probe": 0.48, "source": "published" },
+  "llava-7b": { "probe": 0.4, "source": "published" },
+  "moondream": { "probe": 0.3, "source": "published" },
+  "llama3.2-1b-phone": { "probe": 0.35, "source": "published" },
+  "smollm2-1.7b-phone": { "probe": 0.4, "source": "published" },
+  "qwen2.5-coder-3b": {
+    "deep": 0.75,
+    "attempts": 2,
+    "box": "cpu-7.6gb",
+    "date": "2026-09-15",
+    "source": "measured"
+  }
 }

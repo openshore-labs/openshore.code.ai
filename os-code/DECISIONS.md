@@ -1583,3 +1583,28 @@ execution contract. Newest at the bottom.
   low-end tier's bigger local seat is a 4B (`qwen3:4b`), the next thing to
   measure; a 7B and up is the docked/hub tier (more RAM or a GPU). The 3B at
   75% stands as the floor seat for a machine this size.
+- **First Seat fit-curve fork (2026-09-16).** A stream's test encoded a fit
+  curve (3B fits 4GB, too-big at 2GB, 7B too-big through 12GB) that no single
+  honest RAM budget satisfies, so there were two sources of truth for "does it
+  fit." Resolved by keeping ONE honest source, the engine-parity `fitVerdict`,
+  and re-pinning the two edge assertions in `app/test/firstSeat.test.ts` to it,
+  rather than special-casing the model to match a hand-drawn curve.
+- **Guarded-driver preserves the inner seq (2026-09-16).** The app's guard used
+  to renumber every event from 1, which made a live status (seq 0) look like a
+  journal frame (seq >= 1) and wiped a reopened chat's snapshot. The guard now
+  carries the inner driver's seq through untouched. This is a production
+  correctness fix, not a test accommodation; it also fixed the reopen and fast-
+  send tests once a disposed driver was treated as absent.
+- **`package-linux` lives in `release.yml`, not on every PR (2026-09-16).**
+  Packaging downloads Electron, rebuilds node-pty, and builds an AppImage and
+  deb, which is minutes per run. So the smoke-tested package job runs on a `v*`
+  tag and on manual `workflow_dispatch`, not on every pull request; ci.yml keeps
+  the fast unit gates. A person can prove packaging any time without cutting a
+  release by running the workflow by hand.
+- **Linux packaging config authored, not build-verified here (2026-09-16).**
+  The electron-builder config (unpack the workspace engine and node-pty, author
+  metadata, AppImage + deb) and `scripts/package-smoke.mjs` are written to the
+  known-good pattern for a pnpm workspace, but the sandbox cannot fetch the
+  Electron binary, so `electron-builder --linux` was never run here. The release
+  job's headless smoke test (boot the packaged engine, assert it came up) is the
+  first real proof, deliberately placed where Electron is available.

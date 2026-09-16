@@ -82,6 +82,9 @@ export function ApprovalSheet({
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={() => answer(false)}>
       <div
         className={`sheet approval-sheet${closing ? ' closing' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Approval required"
         onClick={(e) => e.stopPropagation()}
       >
         <div key={request.id} className="approval-body">

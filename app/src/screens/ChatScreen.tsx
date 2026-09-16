@@ -19,6 +19,7 @@ import { ROOM_NAMES } from '../components/BackBar.js';
 import { RepoPicker } from '../components/RepoPicker.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
+import { FirstSeat } from '../components/FirstSeat.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
 import { Sheet } from '../components/Sheet.js';
@@ -528,65 +529,75 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         ) : resuming ? (
           <ResumeSkeleton count={conv?.lastItemCount} />
         ) : (
-          <div className="greeting">
-            <BrandMark size={40} />
-            {/* A heading that stays a heading for assistive tech, with a real
-                button inside for the tap and the keyboard (Enter and Space
-                click a button natively, so no key handler is needed). */}
-            <h1 className="greeting-heading">
-              <button
-                type="button"
-                className="greeting-line press-fb"
-                dir="auto"
-                lang={greeting.code}
-                aria-label={greeting.english}
-                onClick={() => {
-                  if (longPressFired.current) {
-                    longPressFired.current = false;
-                    return;
-                  }
-                  rotate();
-                }}
-                onPointerDown={startLangPress}
-                onPointerUp={endLangPress}
-                onPointerLeave={endLangPress}
-                onPointerCancel={endLangPress}
-              >
-                <span
-                  className={`greeting-swap-stack${hint ? ' greeting-hint' : ''}`}
-                  onAnimationEnd={(e) => {
-                    if (e.animationName === 'greet-hint') setHint(false);
-                  }}
-                >
-                  {layers.map((layer, i) => {
-                    const current = i === layers.length - 1;
-                    return (
-                      <span
-                        key={layer.id}
-                        className={current ? 'greeting-swap' : 'greeting-swap greeting-swap-out'}
-                        onAnimationEnd={
-                          current
-                            ? undefined
-                            : (e) => {
-                                if (e.animationName === 'greet-swap-out')
-                                  setLayers((ls) => ls.filter((l) => l.id !== layer.id));
-                              }
-                        }
-                      >
-                        {layer.g.native}
-                      </span>
-                    );
-                  })}
-                </span>
-                <span
-                  className={`greeting-lang-bubble${langBubbleVisible ? ' greeting-lang-bubble-visible' : ''}`}
-                  aria-hidden={!langBubbleVisible}
-                >
-                  {greeting.lang}
-                </span>
-              </button>
-            </h1>
-          </div>
+          // The First Seat owns the empty room until a brain on this device can
+          // answer; the moment one is ready it hands back to the greeting, which
+          // is its fallback. It reads readiness from the store, so it never
+          // guesses. See components/FirstSeat.tsx ("The Seat Fills").
+          <FirstSeat
+            fallback={
+              <div className="greeting">
+                <BrandMark size={40} />
+                {/* A heading that stays a heading for assistive tech, with a real
+                    button inside for the tap and the keyboard (Enter and Space
+                    click a button natively, so no key handler is needed). */}
+                <h1 className="greeting-heading">
+                  <button
+                    type="button"
+                    className="greeting-line press-fb"
+                    dir="auto"
+                    lang={greeting.code}
+                    aria-label={greeting.english}
+                    onClick={() => {
+                      if (longPressFired.current) {
+                        longPressFired.current = false;
+                        return;
+                      }
+                      rotate();
+                    }}
+                    onPointerDown={startLangPress}
+                    onPointerUp={endLangPress}
+                    onPointerLeave={endLangPress}
+                    onPointerCancel={endLangPress}
+                  >
+                    <span
+                      className={`greeting-swap-stack${hint ? ' greeting-hint' : ''}`}
+                      onAnimationEnd={(e) => {
+                        if (e.animationName === 'greet-hint') setHint(false);
+                      }}
+                    >
+                      {layers.map((layer, i) => {
+                        const current = i === layers.length - 1;
+                        return (
+                          <span
+                            key={layer.id}
+                            className={
+                              current ? 'greeting-swap' : 'greeting-swap greeting-swap-out'
+                            }
+                            onAnimationEnd={
+                              current
+                                ? undefined
+                                : (e) => {
+                                    if (e.animationName === 'greet-swap-out')
+                                      setLayers((ls) => ls.filter((l) => l.id !== layer.id));
+                                  }
+                            }
+                          >
+                            {layer.g.native}
+                          </span>
+                        );
+                      })}
+                    </span>
+                    <span
+                      className={`greeting-lang-bubble${langBubbleVisible ? ' greeting-lang-bubble-visible' : ''}`}
+                      aria-hidden={!langBubbleVisible}
+                    >
+                      {greeting.lang}
+                    </span>
+                  </button>
+                </h1>
+              </div>
+            }
+          />
         )}
 
         {/* First Moves: on a fresh Harbor Light chat (just the seeded greeting, not

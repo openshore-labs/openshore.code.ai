@@ -4,7 +4,15 @@
 // when to skip, one at a time, the approval timeout, the cap, the note), not
 // a model.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DriverEvent } from '../src/core/agent/types.js';
@@ -19,13 +27,24 @@ import {
   type Routine,
   type RoutineSchedule,
 } from '../src/routines/model.js';
+import { ROUTINE_NEEDS_LOCAL_MODEL, routineCaps } from '../src/routines/model.js';
 import {
+  RoutineRefused,
   RoutineScheduler,
+  WORKSPACE_NOT_ALLOWED,
   _resetRoutineScheduler,
+  defaultOpenSession,
   routineInstructions,
   summarize,
   type RoutineDriver,
 } from '../src/routines/scheduler.js';
+import {
+  acquireSchedulerLock,
+  pidAlive,
+  readSchedulerLock,
+  releaseSchedulerLock,
+} from '../src/routines/lock.js';
+import { spawn, type ChildProcess } from 'node:child_process';
 import * as store from '../src/routines/store.js';
 
 let home: string;
@@ -100,20 +119,33 @@ function input(overrides: Partial<Parameters<typeof store.createRoutine>[0]> = {
   };
 }
 
-function makeScheduler(clock: { now: Date }, opts: { approvalTimeoutMs?: number } = {}) {
+function makeScheduler(
+  clock: { now: Date },
+  opts: {
+    approvalTimeoutMs?: number;
+    openSession?: () => { driver: FakeDriver; warnings: string[] };
+    lock?: { acquire: () => { pid: number; startedAt: string }; release: () => void };
+    allowed?: Set<string>;
+  } = {},
+) {
   const opened: FakeDriver[] = [];
+  const allowed = opts.allowed ?? new Set<string>();
   const scheduler = new RoutineScheduler({
     now: () => clock.now.getTime(),
     autostart: false,
     graceMs: 10 * 60_000,
     approvalTimeoutMs: opts.approvalTimeoutMs ?? 1000,
     vaultRoot: () => vault,
-    allowedWorkspace: (cwd) => cwd.startsWith(workspace),
-    openSession: () => {
-      const driver = new FakeDriver();
-      opened.push(driver);
-      return { driver, warnings: [] };
-    },
+    allowedWorkspace: (cwd) => cwd.startsWith(workspace) || allowed.has(cwd),
+    persistAllowedRoot: (cwd) => allowed.add(cwd),
+    lock: opts.lock ?? { acquire: () => ({ pid: process.pid, startedAt: '' }), release: () => {} },
+    openSession:
+      opts.openSession ??
+      (() => {
+        const driver = new FakeDriver();
+        opened.push(driver);
+        return { driver, warnings: [] };
+      }),
   });
   return { scheduler, opened };
 }
@@ -356,7 +388,10 @@ describe('routine scheduler', () => {
     const outside = mkdtempSync(join(tmpdir(), 'osc-outside-'));
     try {
       const result = scheduler.create(input({ cwd: outside }));
-      expect('error' in result && result.error).toContain('workspace');
+      expect('error' in result && result.error).toBe(WORKSPACE_NOT_ALLOWED);
+      // Written for a solo person on their own box, not an admin.
+      expect(WORKSPACE_NOT_ALLOWED).not.toMatch(/admin/i);
+      expect(WORKSPACE_NOT_ALLOWED).toMatch(/allow this folder/i);
       const ok = scheduler.create(input());
       expect('error' in ok).toBe(false);
       const moved = scheduler.update((ok as { id: string }).id, { cwd: outside });
@@ -364,6 +399,157 @@ describe('routine scheduler', () => {
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it('"Allow this folder" remembers a folder outside ~/OSCode and then accepts it', () => {
+    const clock = { now: at(0, 12, 0) };
+    const { scheduler } = makeScheduler(clock);
+    const outside = mkdtempSync(join(tmpdir(), 'osc-outside2-'));
+    try {
+      expect(scheduler.workspaceAllowed(outside)).toBe(false);
+      expect(scheduler.allowWorkspace(join(outside, 'missing'))).toEqual({
+        error: 'That folder does not exist.',
+      });
+      expect(scheduler.allowWorkspace(outside)).toEqual({ ok: true });
+      expect(scheduler.workspaceAllowed(outside)).toBe(true);
+      expect('error' in scheduler.create(input({ cwd: outside }))).toBe(false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('records a refused run with its own line, so the person can act on it', () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 12, 0) };
+    const { scheduler } = makeScheduler(clock, {
+      openSession: () => {
+        throw new RoutineRefused(ROUTINE_NEEDS_LOCAL_MODEL);
+      },
+    });
+    scheduler.runNow(routine.id);
+    const run = scheduler.get(routine.id)?.lastRun;
+    expect(run?.state).toBe('failed');
+    expect(run?.summary).toBe(ROUTINE_NEEDS_LOCAL_MODEL);
+    // Any other start failure keeps the plain prefix. A later clock, so the
+    // newest run is unambiguous.
+    const { scheduler: other } = makeScheduler(
+      { now: at(0, 12, 5) },
+      {
+        openSession: () => {
+          throw new Error('no model configured');
+        },
+      },
+    );
+    other.runNow(routine.id);
+    expect(other.get(routine.id)?.lastRun?.summary).toBe('Could not start: no model configured');
+  });
+
+  it('refuses at once when the orchestrator is cloud, and passes the caps through', () => {
+    const routine = store.createRoutine(input({ maxMinutes: 45 }));
+    const disposed: string[] = [];
+    const seenCaps: unknown[] = [];
+    const boot = (options: { caps?: unknown }) => {
+      seenCaps.push(options.caps);
+      return {
+        driver: { id: 'd1', dispose: () => disposed.push('d1') },
+        warnings: [],
+        orchestratorKind: 'cloud' as const,
+      };
+    };
+    expect(() =>
+      defaultOpenSession(
+        routine,
+        'plan',
+        boot as unknown as Parameters<typeof defaultOpenSession>[2],
+      ),
+    ).toThrow(ROUTINE_NEEDS_LOCAL_MODEL);
+    expect(disposed).toEqual(['d1']);
+    expect(seenCaps[0]).toEqual({ wallClockSeconds: 45 * 60, maxSteps: 40 });
+    // A local orchestrator opens normally.
+    const local = () => ({
+      driver: { id: 'd2', dispose: () => {} },
+      warnings: [],
+      orchestratorKind: 'local' as const,
+    });
+    const opened = defaultOpenSession(
+      routine,
+      'plan',
+      local as unknown as Parameters<typeof defaultOpenSession>[2],
+    );
+    expect(opened.driver.id).toBe('d2');
+    expect(routineCaps({ maxMinutes: 20 })).toEqual({ wallClockSeconds: 1200, maxSteps: 40 });
+  });
+
+  it('covers Friday in the Monday morning review', () => {
+    expect(PRESET_ROUTINE.task).toMatch(/Monday/);
+    expect(PRESET_ROUTINE.task).toMatch(/3 days ago/);
+    expect(PRESET_ROUTINE.task).toMatch(/Friday/);
+  });
+
+  it('leaves its clock off when another live process holds the machine lock', async () => {
+    const routine = store.createRoutine(input({ schedule: { hour: 6, minute: 0, days: [] } }));
+    store.markSlot(routine.id, 'seed');
+    const clock = { now: at(0, 6, 1) };
+    const other = { pid: process.pid + 100_000, startedAt: '' };
+    const { scheduler, opened } = makeScheduler(clock, {
+      lock: { acquire: () => other, release: () => {} },
+    });
+    scheduler.start();
+    expect(scheduler.clockLive()).toBe(false);
+    expect(scheduler.clockHolder()).toBe(other.pid);
+    // No timer means no clock-driven firing from this process...
+    await scheduler.tick();
+    // (...tick itself still works when called by hand; the point is the
+    // interval never runs.) Run now still works in a passive process.
+    scheduler.stopRun(routine.id);
+    scheduler.runNow(routine.id);
+    expect(opened.length).toBeGreaterThan(0);
+    const { scheduler: mine } = makeScheduler(clock);
+    mine.start();
+    expect(mine.clockLive()).toBe(true);
+    mine.stop();
+  });
+});
+
+describe('the scheduler lock file', () => {
+  let child: ChildProcess | undefined;
+  afterEach(() => {
+    child?.kill('SIGKILL');
+    child = undefined;
+  });
+
+  it('is taken when absent, re-entrant for our own pid, and released only by its owner', () => {
+    const path = join(home, 'routines', 'scheduler.lock');
+    expect(readSchedulerLock(path)).toBeUndefined();
+    expect(acquireSchedulerLock(path).pid).toBe(process.pid);
+    expect(readSchedulerLock(path)?.pid).toBe(process.pid);
+    expect(acquireSchedulerLock(path).pid).toBe(process.pid);
+    releaseSchedulerLock(path);
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it('takes over a stale lock whose pid is dead', () => {
+    const path = join(home, 'routines', 'scheduler.lock');
+    mkdirSync(join(home, 'routines'), { recursive: true });
+    // pid_max is 2^22 on Linux; nothing runs there.
+    writeFileSync(path, JSON.stringify({ pid: 4_194_303, startedAt: '' }));
+    expect(pidAlive(4_194_303)).toBe(false);
+    expect(acquireSchedulerLock(path).pid).toBe(process.pid);
+  });
+
+  it('defers to a lock held by another live process', async () => {
+    const path = join(home, 'routines', 'scheduler.lock');
+    child = spawn('sleep', ['30'], { stdio: 'ignore' });
+    await new Promise((r) => setTimeout(r, 50));
+    const pid = child.pid!;
+    expect(pidAlive(pid)).toBe(true);
+    mkdirSync(join(home, 'routines'), { recursive: true });
+    writeFileSync(path, JSON.stringify({ pid, startedAt: '' }));
+    const held = acquireSchedulerLock(path);
+    expect(held.pid).toBe(pid);
+    // Not ours: release leaves it alone.
+    releaseSchedulerLock(path);
+    expect(readSchedulerLock(path)?.pid).toBe(pid);
   });
 
   it('marks a run the previous process left open as failed on startup', () => {

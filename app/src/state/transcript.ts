@@ -3,7 +3,23 @@
 // cloud, replayed journal: same events, same reducer, same UI. Kept free of
 // React so it is exhaustively testable.
 import type { DriverEvent } from 'os-code/protocol';
-import type { ChangedFile, ThreadItem, ThreadState } from './types.js';
+import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from './types.js';
+import { providerInfo } from '../lib/providers.js';
+
+/** The go-ahead the app sends when a plan is approved. The reducer reads it
+ *  back on replay: a task that starts with this line means the plan before
+ *  it was accepted, so a reopened chat never revives a settled plan card. */
+export const PLAN_APPROVAL_LINE = 'The plan is approved. Proceed with it.';
+
+/** The working row's note while a send is on its way to a paired computer
+ *  and the hub has not echoed it yet. Set by the store on an optimistic
+ *  task-start; the hub's own task-start (folded into the same bubble below)
+ *  turns it back into plain Thinking. */
+export const REACHING_COMPUTER = 'Reaching your computer';
+
+/** How many items of a desktop thread the phone keeps as a read-only tail, so
+ *  a reopen with the computer off still shows what was said. */
+export const SNAPSHOT_ITEMS = 50;
 
 let seq = 0;
 function uid(): string {
@@ -75,18 +91,39 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
   const next = atSeq !== undefined ? { ...state, lastSeq: Math.max(state.lastSeq, atSeq) } : state;
 
   switch (event.type) {
-    case 'task-start':
+    case 'task-start': {
+      // The hub's echo of a send the phone already painted (the store adds
+      // the user bubble the moment the text leaves, so the first turn is
+      // visible before the computer answers): the same text, while that
+      // local task is still open with nothing after it, is one bubble.
+      const last = next.items[next.items.length - 1];
+      if (next.busy && last && last.kind === 'user' && last.text === event.input) {
+        return { ...next, stepNote: 'Thinking' };
+      }
+      // The go-ahead line settles the plan it answers, live or on replay.
+      const items =
+        event.input === PLAN_APPROVAL_LINE
+          ? next.items.map((i) =>
+              i.kind === 'plan' && i.status === 'proposed'
+                ? { ...i, status: 'approved' as const }
+                : i,
+            )
+          : next.items;
       return push(
         {
           ...next,
+          items,
           busy: true,
           busySince: Date.now(),
           stepNote: 'Thinking',
           citations: [],
           changedFiles: [],
+          // The last task's list is done with; the new task writes its own.
+          todos: [],
         },
         { kind: 'user', text: event.input },
       );
+    }
 
     case 'turn-start':
       return { ...next, model: { name: event.model, kind: event.providerKind } };
@@ -255,8 +292,21 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         ]),
       };
 
-    case 'status':
-      return push(next, { kind: 'status', text: event.message });
+    case 'status': {
+      // While the thread waits on a first token (nothing writing, no tool
+      // running, no question pending) a status names the wait, so the working
+      // row reads "Warming up Harbor on this device" rather than a generic
+      // word. The line still lands in the transcript as the durable record.
+      const waiting =
+        next.busy &&
+        next.stepNote !== 'Writing' &&
+        next.pendingApprovals.length === 0 &&
+        !next.items.some((i) => i.kind === 'tool' && i.state === 'running');
+      return push(waiting ? { ...next, stepNote: waitNote(event.message) } : next, {
+        kind: 'status',
+        text: event.message,
+      });
+    }
 
     case 'note':
       return push(next, { kind: 'note', text: event.message });
@@ -285,6 +335,10 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         dollars: next.dollars + event.dollars,
         contextPercent: event.contextPercent,
         lastTurn: { promptTokens: event.promptTokens, completionTokens: event.completionTokens },
+        totalTokens: {
+          promptTokens: (next.totalTokens?.promptTokens ?? 0) + event.promptTokens,
+          completionTokens: (next.totalTokens?.completionTokens ?? 0) + event.completionTokens,
+        },
       };
 
     case 'model-switch':
@@ -382,6 +436,68 @@ export function titleFrom(state: ThreadState): string | undefined {
   if (state.title) return state.title;
   const user = state.items.find((i) => i.kind === 'user');
   return user && user.kind === 'user' ? user.text.slice(0, 48) : undefined;
+}
+
+/** A status line as a working-row note: the sentence without its full stop. */
+function waitNote(message: string): string {
+  return message.trim().replace(/\.$/, '');
+}
+
+/** The /cost line. A chat on the person's own cloud key is billed by that
+ *  provider, and OpenShore prices nothing, so it names the account and the
+ *  tokens instead of inventing a dollar figure. A chat that runs on the
+ *  person's own hardware says it is free. An engine session that reports real
+ *  spend (a cloud orchestrator) prints it. */
+export function costSummary(thread: ThreadState, source: ConversationSource): string {
+  const context = `Context ${thread.contextPercent}% full.`;
+  const turn = thread.lastTurn
+    ? ` Last turn: ${thread.lastTurn.promptTokens.toLocaleString()} in, ${thread.lastTurn.completionTokens.toLocaleString()} out.`
+    : '';
+  if (source.kind === 'cloud') {
+    const name =
+      source.provider === 'anthropic'
+        ? 'Claude'
+        : (providerInfo(source.provider)?.name ?? source.provider);
+    const total = thread.totalTokens ?? { promptTokens: 0, completionTokens: 0 };
+    return `Billed to your ${name} account. ${total.promptTokens.toLocaleString()} in, ${total.completionTokens.toLocaleString()} out this chat. ${context}`;
+  }
+  if (thread.dollars > 0) return `$${thread.dollars.toFixed(2)} this chat. ${context}${turn}`;
+  return `Free: this chat runs on your own hardware. ${context}${turn}`;
+}
+
+/** The bounded, read-only tail of a desktop thread the phone keeps on disk
+ *  and shows on reopen until the journal replays over it. Nothing in it is
+ *  live: no busy state, no open question, no streaming caret, no counter on
+ *  a tool that was mid-flight when the snapshot was taken. */
+export function snapshotThread(thread: ThreadState): ThreadState {
+  const items = thread.items.slice(-SNAPSHOT_ITEMS).map((item): ThreadItem => {
+    if ((item.kind === 'assistant' || item.kind === 'thinking') && item.streaming) {
+      return { ...item, streaming: false };
+    }
+    if (item.kind === 'tool' && item.state === 'running') {
+      const { startedAt: _live, ...rest } = item;
+      return rest;
+    }
+    return item;
+  });
+  return {
+    items,
+    citations: [],
+    busy: false,
+    contextPercent: thread.contextPercent,
+    dollars: thread.dollars,
+    lastTurn: thread.lastTurn,
+    totalTokens: thread.totalTokens,
+    pendingApprovals: [],
+    todos: [],
+    queued: [],
+    changedFiles: [],
+    repo: thread.repo,
+    mode: thread.mode,
+    model: thread.model,
+    title: thread.title,
+    lastSeq: 0,
+  };
 }
 
 // ---------------------------------------------------------------- summaries
