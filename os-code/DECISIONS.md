@@ -1601,10 +1601,22 @@ execution contract. Newest at the bottom.
   tag and on manual `workflow_dispatch`, not on every pull request; ci.yml keeps
   the fast unit gates. A person can prove packaging any time without cutting a
   release by running the workflow by hand.
-- **Linux packaging config authored, not build-verified here (2026-09-16).**
-  The electron-builder config (unpack the workspace engine and node-pty, author
-  metadata, AppImage + deb) and `scripts/package-smoke.mjs` are written to the
-  known-good pattern for a pnpm workspace, but the sandbox cannot fetch the
-  Electron binary, so `electron-builder --linux` was never run here. The release
-  job's headless smoke test (boot the packaged engine, assert it came up) is the
-  first real proof, deliberately placed where Electron is available.
+- **Linux packaging BUILT and smoke-verified in the sandbox (2026-09-16).** The
+  first attempt failed because the Electron binary download was skipped and the
+  policy blocks `www.electronjs.org`; but the binary itself lives on GitHub
+  release assets, which are reachable, so `node_modules/electron/install.js`
+  fetched it and `electron-builder --linux` then produced `OpenShore-0.1.0.AppImage`
+  (133 MB) and `oscode-app_0.1.0_amd64.deb` (102 MB). The packaged app booted its
+  engine headless under xvfb (the package-smoke check passed). Config settled at:
+  `homepage` and `repository` added (the deb's fpm target requires a homepage),
+  `npmRebuild: false` with `rebuild:native` moved into the package scripts (so the
+  native rebuild is one explicit, visible step, not electron-builder's fragile
+  implicit one), and `asarUnpack` for the workspace engine and node-pty.
+- **node-pty terminal rebuild is the one deferred piece (2026-09-16).** Its
+  native binary must be built against Electron's node headers, which live only on
+  `electronjs.org` mirrors that the sandbox policy blocks (GitHub and nodejs.org
+  do not carry the Electron-ABI headers). node-pty is optional and lazy-loaded
+  (terminal.ts wraps the import), so its absence disables only the in-app
+  terminal, never the app; the sandbox AppImage ships with it disabled. CI
+  (release.yml runs `rebuild:native` first) and the founder's own box, where
+  electronjs.org is reachable, produce a build with a working terminal.

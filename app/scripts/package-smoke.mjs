@@ -28,9 +28,11 @@ function findUnpackedBinary() {
   if (!existsSync(dir)) return undefined;
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
-    // The launcher is the one executable file at the top of linux-unpacked;
-    // the rest are chrome-sandbox, *.pak, .so files, and resources/.
-    if (name === 'chrome-sandbox' || name.includes('.')) continue;
+    // The launcher is the app's own executable at the top of linux-unpacked.
+    // Skip the Chromium helper binaries that also live here and are executable
+    // and dot-less (chrome-sandbox, chrome_crashpad_handler), plus *.pak, .so,
+    // .dat, .bin files and resources/.
+    if (name.startsWith('chrome') || name.includes('.')) continue;
     try {
       const s = statSync(full);
       if (s.isFile() && s.mode & 0o111) return full;

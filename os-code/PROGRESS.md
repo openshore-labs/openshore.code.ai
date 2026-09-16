@@ -57,9 +57,9 @@ PROGRESS shape guard, the app Vite build.
   and node-pty; `app/scripts/package-smoke.mjs` launches the packaged app
   headless (`OSC_SMOKE=1`) and asserts the engine booted; `.github/workflows/
 release.yml` builds the AppImage and deb on a `v*` tag (or a manual run),
-  smoke-tests them, and attaches them to a GitHub Release. NOT build-verified in
-  this sandbox: the Electron binary cannot be fetched here, so the release job's
-  own smoke test is the first real proof, on CI where Electron is available.
+  smoke-tests them, and attaches them to a GitHub Release. BUILT and smoke-
+  verified in the sandbox 2026-09-16 (AppImage 133 MB, deb 102 MB, engine booted
+  headless); only node-pty's terminal rebuild is deferred to CI (blocked headers).
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
@@ -993,6 +993,6 @@ handling, the graduated ethics ladder (migration 0018), and Linux packaging with
 a headless smoke test plus a tag-driven `release.yml`. Integrated inline after
 the parallel build agents hit a usage-credit limit mid-run; resolved the fit-
 curve fork by keeping one honest `fitVerdict` and re-pinning the two edge tests
-(see DECISIONS). Gates green across both packages. The one thing not verifiable
-here is the electron-builder run itself (the Electron binary cannot be fetched
-in the sandbox); the release workflow's smoke test is its proof on CI.
+(see DECISIONS). Gates green across both packages, and the Linux AppImage and
+deb built and smoke-verified in the sandbox that day (the packaged engine booted
+headless); only node-pty's terminal rebuild is deferred to CI (blocked headers).
