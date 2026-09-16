@@ -43,9 +43,28 @@ export interface MetadataSource {
  *  0..10. Curated input, committed under curation/benchmarks.json. */
 export type BenchmarkScores = Record<string, number>;
 
-/** The local eval average (0..1) from the harness, per model id. osCodeFit is
- *  round(average * 5). Committed under curation/eval.json. */
-export type EvalAverages = Record<string, number>;
+/** One eval entry with provenance. `probe` is the one-shot probe average
+ *  (0..1); `deep` is the agent-loop score from `osc eval --deep` (0..1), the
+ *  number a card may quote. `published` marks a seed number; `measured` marks a
+ *  run on a named box (`box`), on a date, with the best-of `attempts` used.
+ *  osCodeFit is round(score * 5) over the probe, else the deep score. */
+export interface EvalEntry {
+  probe?: number;
+  deep?: number;
+  source: 'published' | 'measured';
+  attempts?: number;
+  box?: string;
+  date?: string;
+}
+
+/** A bare number is an older file's published probe average. */
+export type EvalInput = number | EvalEntry;
+
+/** Per model id, committed under curation/eval.json. */
+export type EvalEntries = Record<string, EvalInput>;
+
+/** @deprecated the older bare-number shape; read through evals.ts instead. */
+export type EvalAverages = EvalEntries;
 
 /** One editorial overlay entry, from curation/recommended.json. */
 export interface OverlayEntry {
@@ -71,7 +90,7 @@ export interface BuildInputs {
    *  degrades (popularity and timestamps are optional). */
   metadata: Record<string, ModelMetadata>;
   benchmarks: Record<string, BenchmarkScores>;
-  evals: EvalAverages;
+  evals: EvalEntries;
   overlay: Overlay;
   /** The previously published catalog.json, for the regression gate. Undefined
    *  on the very first build (nothing to regress against yet). */

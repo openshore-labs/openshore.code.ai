@@ -134,7 +134,8 @@ export function ModelSheet({
   /** Which sub-sheet to open on. Defaults to root; the out-of-usage tap opens 'local'. */
   initialStage?: 'root' | 'effort' | 'cloud' | 'local';
 }) {
-  const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView } = useApp();
+  const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView, sourceReady } =
+    useApp();
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
   // Play the exit before a pick propagates (UI-4): the parent unmounts this
   // sheet the moment it learns the choice, so the choice is held until the
@@ -194,8 +195,11 @@ export function ModelSheet({
       ? desktopStatus.stack.orchestrator?.model
       : undefined;
 
-  const hasStack = Boolean(settings.stack);
-  const claudeReady = cloudKeyPresent || isDesktop();
+  // The same signal the send path checks, so a stack built after the per-profile
+  // stacks landed is pickable. The old read looked at the retired single-stack
+  // settings field and left "My Stack" greyed on every fresh device.
+  const hasStack = sourceReady({ kind: 'stack' });
+  const claudeReady = cloudKeyPresent;
   const otherProviders = PROVIDERS.filter((p) => p.id !== 'anthropic' && connectedProviders[p.id]);
   const cloudEmpty = !claudeReady && otherProviders.length === 0;
   const deviceModels = Object.entries(settings.deviceModels);
@@ -229,6 +233,9 @@ export function ModelSheet({
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
       <div
         className={`sheet model-sheet${closing ? ' closing' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Select model"
         onClick={(e) => e.stopPropagation()}
       >
         {stage === 'root' ? (
@@ -237,7 +244,12 @@ export function ModelSheet({
             {isDesktop() ? (
               <div className="ms-group">
                 {desktopStatus === undefined ? (
-                  <Row main="This computer" sub="Checking your engine..." onClick={() => {}} />
+                  <div className="ms-row ms-row-disabled">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">This computer</span>
+                      <span className="ms-row-sub">Checking your engine...</span>
+                    </span>
+                  </div>
                 ) : engineModel ? (
                   <Row
                     main="This computer"
@@ -267,7 +279,12 @@ export function ModelSheet({
                     onClick={() => goto('pair')}
                   />
                 ) : boxStack === undefined ? (
-                  <Row main="My computer" sub="Checking your connection..." onClick={() => {}} />
+                  <div className="ms-row ms-row-disabled">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">My computer</span>
+                      <span className="ms-row-sub">Checking your connection...</span>
+                    </span>
+                  </div>
                 ) : boxStack === 'error' ? (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
@@ -376,7 +393,7 @@ export function ModelSheet({
             <Header title="Cloud Providers" />
             {cloudEmpty ? (
               <button className="ms-empty press-fb" onClick={() => goto('connections')}>
-                No connected providers, add your API to get started.
+                No cloud model connected yet. Connect one on your own key.
               </button>
             ) : (
               <>
@@ -497,7 +514,7 @@ export function ModelSheet({
               </div>
             ) : (
               <button className="ms-empty press-fb" onClick={() => goto('marketplace')}>
-                No connected local LLMs, download a model from the Marketplace to get started.
+                No on-device model yet. Download one from the Marketplace to get started.
               </button>
             )}
           </>

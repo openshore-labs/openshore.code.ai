@@ -184,6 +184,19 @@ describe('the control distinction: set up and control only while docked', () => 
   });
 });
 
+describe('a run refused for want of a local model', () => {
+  it('is recognized by its exact line, so the card can wear amber and point at the Stack', async () => {
+    const { runNeedsLocalModel, ROUTINE_NEEDS_LOCAL_MODEL } =
+      await import('../src/lib/routines.js');
+    expect(ROUTINE_NEEDS_LOCAL_MODEL).toMatch(/local model on this computer/);
+    expect(ROUTINE_NEEDS_LOCAL_MODEL).toMatch(/Stack/);
+    expect(runNeedsLocalModel({ state: 'failed', summary: ROUTINE_NEEDS_LOCAL_MODEL })).toBe(true);
+    expect(runNeedsLocalModel({ state: 'failed', summary: 'Could not start: x' })).toBe(false);
+    expect(runNeedsLocalModel({ state: 'done', summary: ROUTINE_NEEDS_LOCAL_MODEL })).toBe(false);
+    expect(runNeedsLocalModel(undefined)).toBe(false);
+  });
+});
+
 describe('which client reaches the scheduler', () => {
   it('uses the bridge on the desktop, the daemon on a paired phone, nothing otherwise', () => {
     expect(routinesClient({})).toBeUndefined();

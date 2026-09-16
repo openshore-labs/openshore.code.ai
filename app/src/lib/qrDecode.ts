@@ -16,14 +16,15 @@ export function decodeQrFromImageData(img: PixelBuffer): string | undefined {
   return text ? text : undefined;
 }
 
-/** The desktop pairing QR carries JSON {u: address, t: token}. Returns the pair
- *  when the text is that shape, otherwise undefined (a foreign QR is ignored,
- *  never half-applied). */
-export function parsePairingQr(text: string): { address: string; token: string } | undefined {
+/** The desktop pairing QR carries JSON {u: address, c: claim}, a one-time claim
+ *  code the phone trades at POST /pair/claim for its own per-device credential,
+ *  never a credential itself. Returns the pair when the text is that shape,
+ *  otherwise undefined (a foreign QR is ignored, never half-applied). */
+export function parsePairingQr(text: string): { address: string; claim: string } | undefined {
   try {
-    const parsed = JSON.parse(text) as { u?: unknown; t?: unknown };
-    if (typeof parsed.u === 'string' && typeof parsed.t === 'string' && parsed.u && parsed.t) {
-      return { address: parsed.u, token: parsed.t };
+    const parsed = JSON.parse(text) as { u?: unknown; c?: unknown };
+    if (typeof parsed.u === 'string' && typeof parsed.c === 'string' && parsed.u && parsed.c) {
+      return { address: parsed.u, claim: parsed.c };
     }
   } catch {}
   return undefined;

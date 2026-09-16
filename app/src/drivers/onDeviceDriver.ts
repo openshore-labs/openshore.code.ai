@@ -53,6 +53,9 @@ export class OnDeviceDriver implements ChatDriver {
      *  Perplexity on the connected Perplexity key. Off falls back to the
      *  configured backend (Brave/Tavily) or DuckDuckGo. */
     private readonly researchOn = false,
+    /** The project's standing instructions and the chat's repo context, so
+     *  the pocket model works from the same brief as every other brain. */
+    private readonly extraSystem?: string,
   ) {
     this.searchable = isHarbor(modelId);
     this.guide = isHarborMini(modelId) || this.searchable;
@@ -62,9 +65,13 @@ export class OnDeviceDriver implements ChatDriver {
   }
 
   private systemPrompt(): string {
-    if (isHarborMini(this.modelId)) return buildHarborMiniSystemPrompt();
-    if (this.searchable) return buildHarborSystemPrompt();
-    return SYSTEM_PROMPT;
+    const base = isHarborMini(this.modelId)
+      ? buildHarborMiniSystemPrompt()
+      : this.searchable
+        ? buildHarborSystemPrompt()
+        : SYSTEM_PROMPT;
+    const extra = this.extraSystem?.trim();
+    return extra ? `${base}\n\n${extra}` : base;
   }
 
   private async attachListeners(): Promise<void> {

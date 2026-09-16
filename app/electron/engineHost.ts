@@ -1,9 +1,9 @@
 // The engine host: everything the renderer reaches through IPC, implemented
 // against the os-code engine in the Electron main process. One place, typed,
 // no Node in the renderer, keys never leave the machine.
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
 import {
@@ -25,13 +25,16 @@ import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
 import { clone } from 'os-code/dist/src/git/index.js';
 import { reconcileRepos, type ReconcileResult } from 'os-code/dist/src/git/reconcile.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
-import {
-  hashToken,
-  loadCredentials,
-  mintCredential,
-  revokeCredential,
-} from 'os-code/dist/src/core/security/credentials.js';
+import { loadCredentials, revokeCredential } from 'os-code/dist/src/core/security/credentials.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
+import { shouldRebind } from './lifecycle.js';
+import {
+  ollamaInstallPlan,
+  probeOllama,
+  startOllama,
+  type OllamaInstallPlan,
+  type OllamaStatus,
+} from './ollama.js';
 import { getRoutineScheduler, type RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
 import { validateRoutineInput } from 'os-code/dist/src/routines/model.js';
 import {
@@ -66,11 +69,12 @@ export interface PairedDeviceWire {
   expiresAt?: string;
 }
 
-// The label every QR-minted pairing credential carries. Kept stable so the
-// mint-once path can recognize its own credential across restarts.
-const PAIRING_LABEL = 'iPhone via QR';
+// The label the retired shared QR credential carried, and the file its clear
+// token sat in. Both are gone: the QR now carries a one-time claim and every
+// phone mints its own credential at POST /pair/claim.
+const SHARED_PAIRING_LABEL = 'iPhone via QR';
 
-function pairingTokenPath(): string {
+function sharedPairingTokenPath(): string {
   return join(oscHome(), 'pairing-device.token');
 }
 
@@ -84,33 +88,39 @@ export function listPairedDevices(): PairedDeviceWire[] {
   }));
 }
 
-// Mint the pairing credential ONCE, then reuse it. The Pair screen polls
-// daemonInfo every few seconds, so minting per call would spawn a fresh
-// credential on every tick. Instead the clear token is cached on disk (mode
-// 600) and reused as long as its credential still lives in the store; a poll
-// costs one file read, not a mint. Revoking the credential (a lost device) drops
-// it from the store, so the next call finds no live match and mints a new one,
-// which also rotates the QR. Only the hash is kept in the credential store, so
-// the clear token has to persist here to survive a daemon restart.
-export function ensurePairingCredential(): { token: string; devices: PairedDeviceWire[] } {
-  const path = pairingTokenPath();
-  let token: string | undefined;
+/** One-time migration, run on every daemon start (idempotent): delete the
+ *  clear-text pairing token file and revoke the shared "iPhone via QR"
+ *  credential it belonged to. That credential was one token for every phone,
+ *  written in the clear on disk, so it cannot stay; phones paired with it
+ *  re-pair once and get their own. */
+export function retireSharedPairingCredential(): { fileRemoved: boolean; revoked: number } {
+  const path = sharedPairingTokenPath();
+  let fileRemoved = false;
   if (existsSync(path)) {
     try {
-      token = readFileSync(path, 'utf8').trim();
+      rmSync(path, { force: true });
+      fileRemoved = true;
     } catch {}
   }
-  const live = token
-    ? loadCredentials().some((c) => c.tokenHash === hashToken(token as string))
-    : false;
-  if (!token || !live) {
-    const minted = mintCredential({ role: 'admin', label: PAIRING_LABEL });
-    token = minted.token;
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${token}\n`, { mode: 0o600 });
-    chmodSync(path, 0o600);
-  }
-  return { token, devices: listPairedDevices() };
+  const revoked = revokeCredential(SHARED_PAIRING_LABEL);
+  return { fileRemoved, revoked };
+}
+
+/** What the host needs from the world, injectable so the daemon lifecycle is
+ *  pinned by tests on a machine with no Tailscale and no Ollama. */
+export interface EngineHostDeps {
+  tailscale?: () => { running: boolean; ip: string | undefined };
+  startDaemon?: typeof startDaemon;
+  platform?: NodeJS.Platform;
+}
+
+export interface HardwareWire {
+  ramGB: number;
+  gpu: boolean;
+  platform: NodeJS.Platform;
+  vramGB: number;
+  maxModelGB: number;
+  summary: string;
 }
 
 export type EventForward = (payload: {
@@ -145,12 +155,20 @@ export class EngineHost {
   // runs whenever the app is open, daemon or no daemon; when the daemon is
   // started later it shares this same instance, so a routine fires once.
   private readonly scheduler: RoutineScheduler;
+  private readonly deps: Required<EngineHostDeps>;
 
   constructor(
     private readonly forwardEvent: EventForward,
     private readonly forwardInstall: InstallForward,
     private readonly forwardTerminal: TerminalForward,
+    deps: EngineHostDeps = {},
   ) {
+    this.deps = {
+      tailscale:
+        deps.tailscale ?? (() => ({ running: detectTailscale().running, ip: tailscaleIp() })),
+      startDaemon: deps.startDaemon ?? startDaemon,
+      platform: deps.platform ?? process.platform,
+    };
     // Reseal any pre-encryption sessions once the host is up. Off the launch
     // path and failure-tolerant: sealing protects data, it never blocks the app.
     setImmediate(() => {
@@ -438,6 +456,7 @@ export class EngineHost {
     return {
       ollama,
       hardwareSummary: budget.summary,
+      hardware: this.hardware(),
       stack: {
         configured: Boolean(orchestrator),
         description: orchestrator
@@ -452,6 +471,66 @@ export class EngineHost {
         github: isGithubConnected(),
       },
     };
+  }
+
+  /** The machine in numbers, from the engine's own budget (the same one osc
+   *  init and doctor use), so the app's fit verdicts never parse prose. */
+  hardware(): HardwareWire {
+    const { config } = loadConfig();
+    const hw = detectHardware();
+    const budget = budgetFor(
+      hw,
+      config.resourceBudget.vramProfile === 'auto' ? undefined : config.resourceBudget.vramProfile,
+    );
+    return {
+      ramGB: hw.systemRamGB,
+      gpu: hw.gpus.length > 0 && hw.totalVramGB >= 4,
+      platform: this.deps.platform,
+      vramGB: hw.totalVramGB,
+      maxModelGB: budget.maxModelGB,
+      summary: budget.summary,
+    };
+  }
+
+  // ------------------------------------------------------------------ ollama
+  // Ollama from inside the app (A3). Detection asks the API, then the binary;
+  // starting spawns `ollama serve` detached; installing follows the platform's
+  // plan (Linux: the official installer in the built-in terminal; macOS and
+  // Windows: the download page, then the app polls ollamaStatus). The command
+  // always comes back so the renderer can show it as a copy block.
+
+  async ollamaStatus(): Promise<OllamaStatus> {
+    return probeOllama({ baseUrl: firstLocalBaseUrl() });
+  }
+
+  async ollamaStart(): Promise<boolean> {
+    return startOllama({ baseUrl: firstLocalBaseUrl() });
+  }
+
+  async ollamaInstall(): Promise<
+    OllamaInstallPlan & { started: boolean; termId?: string; detail?: string }
+  > {
+    const plan = ollamaInstallPlan(this.deps.platform);
+    if (plan.mode !== 'terminal') {
+      // main.ts opens the download page; "started" means the page opened.
+      return { ...plan, started: true };
+    }
+    try {
+      const info = await this.terminals.ensure({
+        sessionId: 'ollama-install',
+        cwd: homedir(),
+        cols: 100,
+        rows: 30,
+      });
+      this.terminals.write(info.termId, `${plan.command}\r`);
+      return { ...plan, started: true, termId: info.termId };
+    } catch (err) {
+      const detail =
+        err instanceof TerminalUnavailable
+          ? 'The built-in terminal is not available on this machine. Run the command in any terminal.'
+          : (err as Error).message;
+      return { ...plan, started: false, detail };
+    }
   }
 
   // ------------------------------------------------------------- marketplace
@@ -734,34 +813,43 @@ export class EngineHost {
   // a short TTL to keep those spawns off the main process's hot path (TS-P2-9).
   private tsCache?: { at: number; running: boolean; ip: string | undefined };
 
-  private tailscaleState(): { running: boolean; ip: string | undefined } {
+  private tailscaleState(fresh = false): { running: boolean; ip: string | undefined } {
     const now = Date.now();
-    if (this.tsCache && now - this.tsCache.at < 3000) {
+    if (!fresh && this.tsCache && now - this.tsCache.at < 3000) {
       return { running: this.tsCache.running, ip: this.tsCache.ip };
     }
-    const running = detectTailscale().running;
-    const ip = tailscaleIp();
+    const { running, ip } = this.deps.tailscale();
     this.tsCache = { at: now, running, ip };
     return { running, ip };
+  }
+
+  // The claim on the QR right now. Held steady across the Pair screen's polls
+  // (a fresh claim per poll would make the QR flicker every few seconds) and
+  // rotated only once the daemon reports it spent or expired. The claim is a
+  // pointer to a credential the phone has yet to mint, never a credential.
+  private claim?: { claim: string; expiresAt: string };
+
+  private currentClaim(): { claim: string; expiresAt: string } | undefined {
+    if (!this.daemon) return undefined;
+    if (this.claim && this.daemon.pairClaimStatus(this.claim.claim) === 'live') return this.claim;
+    this.claim = this.daemon.mintPairClaim();
+    return this.claim;
   }
 
   daemonInfo() {
     const { config } = loadConfig();
     const ts = this.tailscaleState();
     const running = Boolean(this.daemon);
-    // The QR hands out a fresh per-device credential (mint-once), not the shared
-    // admin token, so a lost phone can be revoked on its own. Only mint while the
-    // daemon is actually up; when off, still surface the paired-device list so
-    // the revoke UI stays available.
-    const pairing = running
-      ? ensurePairingCredential()
-      : { token: '', devices: listPairedDevices() };
+    const claim = this.currentClaim();
     return {
       running,
       host: this.daemon?.host,
       port: this.daemon?.port ?? config.daemon.port,
-      token: pairing.token,
-      devices: pairing.devices,
+      // The one-time pairing claim for the QR, only while the hub is up. The
+      // paired-device list is always surfaced so the revoke UI stays available.
+      claim: claim?.claim,
+      claimExpiresAt: claim?.expiresAt,
+      devices: listPairedDevices(),
       tailscaleIp: ts.ip,
       tailscaleUp: ts.running,
       // With dual-bind, a tailnet daemon's host is the 100.x address; only the
@@ -772,26 +860,94 @@ export class EngineHost {
     };
   }
 
-  async daemonStart() {
-    if (this.daemon) return this.daemonInfo();
+  // Bind the tailnet when it is up, else loopback so the hub still serves this
+  // machine (and moves onto the tailnet later, see daemonRebind). A shared
+  // pairing credential from before per-device pairing is retired here.
+  private async bindDaemon(): Promise<{ error?: string; host?: string }> {
     const { config } = loadConfig();
-    try {
-      this.daemon = await startDaemon({ config, bind: 'tailscale', port: config.daemon.port });
-      return this.daemonInfo();
-    } catch (err) {
-      // Fall back to loopback so pairing on one machine still demos.
+    // A bind is rare (a tap, a re-bind poll), so it looks at the tailnet
+    // fresh; the cache serves the Pair screen's every-few-seconds poll.
+    const ts = this.tailscaleState(true);
+    let tailnetError: string | undefined;
+    if (ts.running && ts.ip) {
       try {
-        this.daemon = await startDaemon({ config, bind: 'loopback', port: config.daemon.port });
-        return this.daemonInfo();
-      } catch {
-        return { error: (err as Error).message };
+        this.daemon = await this.deps.startDaemon({
+          config,
+          bind: 'tailscale',
+          port: config.daemon.port,
+        });
+        return { host: this.daemon.host };
+      } catch (err) {
+        tailnetError = (err as Error).message;
       }
     }
+    try {
+      this.daemon = await this.deps.startDaemon({
+        config,
+        bind: 'loopback',
+        port: config.daemon.port,
+      });
+      return { host: this.daemon.host };
+    } catch (err) {
+      return { error: tailnetError ?? (err as Error).message };
+    }
+  }
+
+  async daemonStart() {
+    retireSharedPairingCredential();
+    if (this.daemon) {
+      // Already up: the only thing a second start can improve is the bind.
+      await this.daemonRebind();
+      return this.daemonInfo();
+    }
+    const bound = await this.bindDaemon();
+    if (bound.error) return { error: bound.error };
+    return this.daemonInfo();
+  }
+
+  /** Move a loopback daemon onto the tailnet once Tailscale is up. Polled by
+   *  the shell; a no-op when there is nothing to do. True when it moved. On a
+   *  failed move the hub comes back on loopback rather than going dark. */
+  async daemonRebind(): Promise<boolean> {
+    // Cheap exit first: only a loopback daemon can move, so a tailnet daemon
+    // or a paused hub never spawns the tailscale probe.
+    if (!this.daemon || this.daemon.host !== '127.0.0.1') return false;
+    const ts = this.tailscaleState(true);
+    if (
+      !shouldRebind({
+        running: Boolean(this.daemon),
+        host: this.daemon?.host,
+        tailscaleUp: ts.running,
+        ip: ts.ip,
+      })
+    ) {
+      return false;
+    }
+    this.daemon?.close();
+    this.daemon = undefined;
+    this.claim = undefined;
+    // Read the new host from bindDaemon's return, not from this.daemon: the
+    // guard above narrowed this.daemon and that narrowing outlives the
+    // reassignment inside bindDaemon, collapsing a bare re-read to never.
+    const bound = await this.bindDaemon();
+    return bound.host !== undefined && bound.host !== '127.0.0.1';
   }
 
   async daemonStop() {
     this.daemon?.close();
     this.daemon = undefined;
+    this.claim = undefined;
+  }
+
+  daemonRunning(): boolean {
+    return Boolean(this.daemon);
+  }
+
+  /** How many sessions are mid-run right now, for the power-save blocker. */
+  activeRuns(): number {
+    let n = 0;
+    for (const driver of this.drivers.values()) if (driver.busy) n++;
+    return n;
   }
 
   // Every paired device credential, for the desktop's revoke list.

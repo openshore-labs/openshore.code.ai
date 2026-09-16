@@ -25,20 +25,24 @@ import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
-import { loadConfig } from '../config/load.js';
+import { loadConfig, loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import type { LocalDriver } from '../daemon/session.js';
-import { isOutboxAllowedPath } from '../core/security/workspaces.js';
+import { profileFor } from '../core/security/profiles.js';
+import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
 import { logger } from '../util/log.js';
 import {
+  ROUTINE_NEEDS_LOCAL_MODEL,
   latestSlotAtOrBefore,
   nextSlotAfter,
   presenceOf,
+  routineCaps,
   slotKey,
   type Routine,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
 } from './model.js';
+import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
 import * as store from './store.js';
 
 const log = logger('routines');
@@ -66,6 +70,21 @@ export interface OpenedSession {
   warnings: string[];
 }
 
+/** A run refused before it started, for a reason the person can act on. The
+ *  message is recorded on the run verbatim (no "Could not start" prefix), so
+ *  the inbox line is the instruction itself. */
+export class RoutineRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RoutineRefused';
+  }
+}
+
+/** The plain line for a workspace the scheduler will not run in. Written for
+ *  a solo person on their own computer, not an admin. */
+export const WORKSPACE_NOT_ALLOWED =
+  'A routine runs only in a folder on this computer that OpenShore knows: a repository under ~/OSCode, or a folder you allowed. Pick one from Repositories, or allow this folder.';
+
 export interface SchedulerDeps {
   now?: () => number;
   tickMs?: number;
@@ -79,6 +98,12 @@ export interface SchedulerDeps {
   allowedWorkspace?: (cwd: string) => boolean;
   /** Scheduling only; a manual Run now never waits for the clock. */
   autostart?: boolean;
+  /** The machine-wide clock lock. Defaults to the lock file under
+   *  ~/.os-code/routines; a test hands in its own. */
+  lock?: { acquire: () => SchedulerLock; release: () => void };
+  /** Persist a folder as allowed for routines. Defaults to the global config's
+   *  daemon.outboxAllowedRoots; a test hands in its own. */
+  persistAllowedRoot?: (cwd: string) => void;
 }
 
 /** The framing every run receives as its standing instructions, ahead of the
@@ -125,6 +150,10 @@ export class RoutineScheduler {
   private readonly openSession: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
   private readonly vaultRoot: () => string;
   private readonly allowedWorkspace: (cwd: string) => boolean;
+  private readonly lock: { acquire: () => SchedulerLock; release: () => void };
+  private readonly persistAllowedRoot: (cwd: string) => void;
+  /** The pid of the other process whose clock is live, when ours is not. */
+  private clockHeldBy?: number;
   private timer?: ReturnType<typeof setInterval>;
   private active?: ActiveRun;
   private queue: QueuedRun[] = [];
@@ -141,6 +170,11 @@ export class RoutineScheduler {
     this.openSession = deps.openSession ?? defaultOpenSession;
     this.vaultRoot = deps.vaultRoot ?? defaultVaultRoot;
     this.allowedWorkspace = deps.allowedWorkspace ?? ((cwd) => isOutboxAllowedPath(cwd));
+    this.lock = deps.lock ?? {
+      acquire: () => acquireSchedulerLock(),
+      release: () => releaseSchedulerLock(),
+    };
+    this.persistAllowedRoot = deps.persistAllowedRoot ?? persistOutboxRoot;
     // A run the previous process left open can never finish now; say so
     // rather than show "working" forever. The journal is still on disk.
     for (const run of store.listRuns(MAX_ORPHANS)) {
@@ -164,8 +198,28 @@ export class RoutineScheduler {
     };
   }
 
+  /** Start the clock, unless another live process on this machine already
+   *  holds it (the desktop app beside `osc serve`): then this instance stays
+   *  passive, so a slot fires once per box, never once per process. Run now
+   *  and the roster still work here. */
   start(): void {
     if (this.timer) return;
+    let held: SchedulerLock;
+    try {
+      held = this.lock.acquire();
+    } catch (err) {
+      // An unwritable ~/.os-code is not a reason to leave the crew idle.
+      log.warn('scheduler lock unavailable; running the clock anyway', { err: String(err) });
+      held = { pid: process.pid, startedAt: new Date(this.now()).toISOString() };
+    }
+    if (held.pid !== process.pid) {
+      this.clockHeldBy = held.pid;
+      log.info('scheduler clock held by another process; this one stays passive', {
+        pid: held.pid,
+      });
+      return;
+    }
+    this.clockHeldBy = undefined;
     this.timer = setInterval(() => void this.tick(), this.tickMs);
     this.timer.unref?.();
     void this.tick();
@@ -174,6 +228,42 @@ export class RoutineScheduler {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    try {
+      this.lock.release();
+    } catch {
+      // Nothing to release.
+    }
+  }
+
+  /** True when this process's clock is live; false when another process on
+   *  this machine holds it (see start). */
+  clockLive(): boolean {
+    return Boolean(this.timer);
+  }
+
+  /** The pid holding the clock when it is not ours. */
+  clockHolder(): number | undefined {
+    return this.clockHeldBy;
+  }
+
+  // ---- workspaces -----------------------------------------------------------
+
+  /** Whether a routine may run in this folder. */
+  workspaceAllowed(cwd: string): boolean {
+    return this.allowedWorkspace(cwd);
+  }
+
+  /** "Allow this folder": remember a folder outside ~/OSCode as one routines
+   *  may run in. The folder has to exist; the person picked it themselves. */
+  allowWorkspace(cwd: string): { ok: true } | { error: string } {
+    if (!cwd || !existsSync(cwd)) return { error: 'That folder does not exist.' };
+    if (this.allowedWorkspace(cwd)) return { ok: true };
+    try {
+      this.persistAllowedRoot(cwd);
+    } catch (err) {
+      return { error: `Could not remember that folder: ${(err as Error).message}` };
+    }
+    return { ok: true };
   }
 
   /** The live driver behind a run's session, if that run is in flight. */
@@ -200,24 +290,14 @@ export class RoutineScheduler {
   }
 
   create(input: RoutineInput, ownerUserId?: string): RoutineView | { error: string } {
-    if (!this.allowedWorkspace(input.cwd)) {
-      return {
-        error:
-          'A routine runs only in a workspace on this computer: a repository cloned here, or a folder an admin allowed.',
-      };
-    }
+    if (!this.allowedWorkspace(input.cwd)) return { error: WORKSPACE_NOT_ALLOWED };
     if (!existsSync(input.cwd)) return { error: 'That workspace folder does not exist.' };
     return this.view(store.createRoutine(input, ownerUserId));
   }
 
   update(id: string, patch: Partial<RoutineInput>): RoutineView | { error: string } {
     if (patch.cwd !== undefined) {
-      if (!this.allowedWorkspace(patch.cwd)) {
-        return {
-          error:
-            'A routine runs only in a workspace on this computer: a repository cloned here, or a folder an admin allowed.',
-        };
-      }
+      if (!this.allowedWorkspace(patch.cwd)) return { error: WORKSPACE_NOT_ALLOWED };
       if (!existsSync(patch.cwd)) return { error: 'That workspace folder does not exist.' };
     }
     const next = store.updateRoutine(id, patch);
@@ -343,13 +423,17 @@ export class RoutineScheduler {
     try {
       opened = this.openSession(routine, permissionMode);
     } catch (err) {
+      // A refusal is recorded as its own line (the person can act on it); any
+      // other failure keeps the plain prefix.
+      const summary =
+        err instanceof RoutineRefused ? err.message : `Could not start: ${(err as Error).message}`;
       store.appendRun({
         routineId: routine.id,
         startedAt,
         finishedAt: startedAt,
         state: 'failed',
         trigger,
-        summary: `Could not start: ${(err as Error).message}`,
+        summary,
       });
       log.warn('routine failed to start', { id: routine.id, err: String(err) });
       void this.pump();
@@ -599,17 +683,50 @@ function defaultVaultRoot(): string {
   return config.vault?.dir ?? join(homedir(), 'OSCode', 'Vault');
 }
 
+/** Remember a folder in the global config's daemon.outboxAllowedRoots, the
+ *  same list the daemon's outbox routes honor. Arrays replace on merge, so
+ *  the whole list is written back. */
+function persistOutboxRoot(cwd: string): void {
+  const real = realOrResolve(cwd);
+  const roots = loadDaemonConfig().outboxAllowedRoots ?? [];
+  if (roots.some((r) => realOrResolve(r) === real)) return;
+  saveGlobalConfig({ daemon: { outboxAllowedRoots: [...roots, real] } });
+}
+
 /** A real run: a persisted, journaled session on the headless profile. The
  *  LocalDriver is a RoutineDriver structurally, so the daemon can put the very
- *  same object in its session map and a phone can attach to the run. */
-function defaultOpenSession(routine: Routine, permissionMode: PermissionMode): OpenedSession {
-  const { driver, warnings }: { driver: LocalDriver; warnings: string[] } = bootstrapSession({
+ *  same object in its session map and a phone can attach to the run.
+ *
+ *  Refuses at once, before any task is sent, when the box's orchestrator is a
+ *  cloud model: the headless profile can never auto-approve cloud spend, so
+ *  the run would sit on an approval nobody answers and fail 15 minutes late
+ *  (review 5, defect 3.1). The run's own caps ride into the engine's rails. */
+export function defaultOpenSession(
+  routine: Routine,
+  permissionMode: PermissionMode,
+  boot: typeof bootstrapSession = bootstrapSession,
+): OpenedSession {
+  const profile = profileFor('headless');
+  const {
+    driver,
+    warnings,
+    orchestratorKind,
+  }: { driver: LocalDriver; warnings: string[]; orchestratorKind: 'local' | 'cloud' } = boot({
     cwd: routine.cwd,
     profile: 'headless',
     instructions: routineInstructions(routine),
     projectName: routine.projectName,
     permissionMode,
+    caps: routineCaps(routine),
   });
+  if (orchestratorKind === 'cloud' && !profile.allowCloudAutoApprove) {
+    try {
+      driver.dispose();
+    } catch {
+      // The session never ran a turn; nothing to clean up beyond the handle.
+    }
+    throw new RoutineRefused(ROUTINE_NEEDS_LOCAL_MODEL);
+  }
   return { driver, warnings };
 }
 

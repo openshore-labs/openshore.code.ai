@@ -20,6 +20,7 @@ import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
 import { engineEthicsContext } from '../ethics/host.js';
+import { nextActionFor } from '../ethics/classify.js';
 import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles } from '../../currents/model.js';
@@ -75,6 +76,11 @@ export interface BootstrapOptions {
    *  tailnet, a CLI on the hub itself), not a secret that only lives on the
    *  phone. Undefined leaves every current tool out. */
   currents?: CurrentsHandles;
+  /** Per-session guardrail caps, over the project config's. A routine passes
+   *  its own time cap and step ceiling here so the engine's rails match what
+   *  the person set. Only tightening is honored: the profile's hard step
+   *  ceiling still applies on top. */
+  caps?: { wallClockSeconds?: number; maxSteps?: number };
 }
 
 export interface BootstrapResult {
@@ -84,6 +90,10 @@ export interface BootstrapResult {
   config: OscConfig;
   toolContext: ReturnType<typeof buildToolContext>;
   warnings: string[];
+  /** Where the orchestrator runs. An unattended host reads this before it
+   *  sends a task: a cloud orchestrator under a profile that cannot auto-
+   *  approve spend can never finish a turn. */
+  orchestratorKind: 'local' | 'cloud';
 }
 
 export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
@@ -120,12 +130,16 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const ethicsSink: { emit?: (event: AgentEvent) => void } = {};
   const ethics = engineEthicsContext({
     onBlock: (result) => {
+      // The block carries its next action (the appeal path on a hard block),
+      // so a transcript never ends a refusal with nowhere to go.
+      const refusal = result.decision.message ?? 'This request was not sent.';
+      const next = nextActionFor(result.decision.category);
       ethicsSink.emit?.({
         type: 'ethics-block',
         category: result.decision.category,
         tier: result.decision.tier,
         side: result.record?.side ?? 'input',
-        message: result.decision.message ?? 'This request was not sent.',
+        message: next ? `${refusal} ${next}` : refusal,
       });
     },
   });
@@ -166,7 +180,18 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
 
   const profile = profileFor(options.profile);
   const permissions = new PermissionEngine(config.permissions as PermissionConfig, profile);
-  const guardrails = new Guardrails(config.guardrails, profile.maxStepsCeiling);
+  const guardrails = new Guardrails(
+    options.caps
+      ? {
+          ...config.guardrails,
+          ...(options.caps.wallClockSeconds
+            ? { wallClockSeconds: options.caps.wallClockSeconds }
+            : {}),
+          ...(options.caps.maxSteps ? { maxSteps: options.caps.maxSteps } : {}),
+        }
+      : config.guardrails,
+    profile.maxStepsCeiling,
+  );
   const usage = new UsageTracker();
 
   let codeMap: string | undefined;
@@ -252,5 +277,5 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     }
   }
 
-  return { driver, agent, router, config, toolContext, warnings };
+  return { driver, agent, router, config, toolContext, warnings, orchestratorKind };
 }

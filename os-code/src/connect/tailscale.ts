@@ -18,7 +18,12 @@ export interface TailscaleStatus {
 // Candidate CLI locations, tried in order. Bare `tailscale` covers Linux and
 // any shell that has it on PATH; the app path covers macOS, where the GUI app
 // bundles the CLI and does not put it on the PATH a launched app inherits.
-const TAILSCALE_BINARIES = ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale'];
+const TAILSCALE_BINARIES = [
+  'tailscale',
+  '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+  // Windows installs the CLI beside the app and does not put it on PATH.
+  'C:\\Program Files\\Tailscale\\tailscale.exe',
+];
 
 // Run a tailscale subcommand against the first candidate binary that actually
 // exists. A missing binary sets `error` (ENOENT) and leaves `status` null, so
@@ -56,9 +61,21 @@ function interfaceCgnatIp(): string | undefined {
 }
 
 function installHint(): string {
-  return process.platform === 'darwin'
-    ? 'Tailscale is not installed. Install it from the Mac App Store.'
-    : 'Tailscale is not installed. Install it with: curl -fsSL https://tailscale.com/install.sh | sh';
+  if (process.platform === 'darwin') {
+    return 'Tailscale is not installed. Install it from the Mac App Store.';
+  }
+  if (process.platform === 'win32') {
+    return 'Tailscale is not installed. Download it from https://tailscale.com/download/windows and sign in.';
+  }
+  return 'Tailscale is not installed. Install it with: curl -fsSL https://tailscale.com/install.sh | sh';
+}
+
+/** The command that brings the tailnet up on this platform. Windows has no
+ *  sudo; the tray app or `tailscale up` in an ordinary terminal does it. */
+function upHint(): string {
+  return process.platform === 'win32'
+    ? 'Open the Tailscale app from the system tray and sign in, or run: tailscale up'
+    : 'sudo tailscale up';
 }
 
 export function detectTailscale(): TailscaleStatus {
@@ -78,7 +95,7 @@ export function detectTailscale(): TailscaleStatus {
     return {
       installed: true,
       running: false,
-      hint: 'Tailscale is installed but not responding. Start it with: sudo tailscale up',
+      hint: `Tailscale is installed but not responding. Start it with: ${upHint()}`,
     };
   }
   try {
@@ -90,7 +107,7 @@ export function detectTailscale(): TailscaleStatus {
       return {
         installed: true,
         running: false,
-        hint: `Tailscale is ${body.BackendState ?? 'stopped'}. Bring it up with: sudo tailscale up`,
+        hint: `Tailscale is ${body.BackendState ?? 'stopped'}. Bring it up with: ${upHint()}`,
       };
     }
     const ip = body.Self?.TailscaleIPs?.find((a) => isCgnatAddress(a));

@@ -121,7 +121,16 @@ describe('the wiring', () => {
     // remote machine. The repo context still reaches it via instructions.
     expect(store).toMatch(/daemonCreateSession\(settings\.daemon, cwd, \{/);
     expect(store).toMatch(/instructions: sessionOpts\.instructions/);
-    expect((store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length).toBe(4);
+    // Repo context reaches every driver. The shared helper carries it for the
+    // on-device and cloud drivers (one definition, no duplication), and the
+    // desktop and stack paths assemble it alongside their own session options.
+    expect(store).toMatch(
+      /function standingContext[\s\S]*?repoContextLine\(conv\.repoIds \?\? \[\]\)/,
+    );
+    expect((store.match(/standingContext\(conv\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(
+      (store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length,
+    ).toBeGreaterThanOrEqual(3);
     expect(read('drivers/cloudClaudeDriver.ts')).toMatch(
       /this\.extraSystem,?[\s\S]{0,40}\.filter\(Boolean\)/,
     );

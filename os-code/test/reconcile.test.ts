@@ -7,11 +7,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
 import {
+  DEFAULT_BRANCH_HELD,
+  defaultBranchOf,
   isNonFastForward,
   isOffline,
   reconcilePush,
   reconcileRepos,
 } from '../src/git/reconcile.js';
+
+/** The mechanics tests below push main; the default-branch policy (a repo's
+ *  default branch is never auto-pushed unless the project opts in) has its own
+ *  describe block, so here the opt-in is explicit. */
+const OPT_IN = { allowDefaultBranch: true };
 
 let dirs: string[] = [];
 function tmp(prefix: string): string {
@@ -78,7 +85,7 @@ describe('reconcilePush', () => {
   it('pushes unpushed commits (fast-forward)', async () => {
     const { remote, clone } = await remoteAndClone();
     await commitFile(clone, 'note.md', 'hello\n', 'add note');
-    const r = await reconcilePush(clone);
+    const r = await reconcilePush(clone, OPT_IN);
     expect(r.status).toBe('pushed');
     expect(r.ahead).toBe(1);
     // The remote now has the file (checked via a fresh clone).
@@ -97,7 +104,7 @@ describe('reconcilePush', () => {
     await simpleGit(other).push();
     // Our clone commits a different file, then reconciles.
     await commitFile(clone, 'local-only.md', 'from local\n', 'local change');
-    const r = await reconcilePush(clone);
+    const r = await reconcilePush(clone, OPT_IN);
     expect(r.status).toBe('merged');
     // The remote now carries both changes.
     const verify = tmp('osc-verify2-');
@@ -115,7 +122,7 @@ describe('reconcilePush', () => {
     await simpleGit(other).push();
     // Our clone edits the SAME file differently.
     await commitFile(clone, 'shared.md', 'local wins\n', 'local edit');
-    const r = await reconcilePush(clone);
+    const r = await reconcilePush(clone, OPT_IN);
     expect(r.status).toBe('conflict');
     // The merge was aborted: the working tree is clean and our commit stands.
     const status = await simpleGit(clone).status();
@@ -134,7 +141,7 @@ describe('reconcilePush', () => {
     await simpleGit(clone).checkoutLocalBranch('work');
     await simpleGit(clone).raw(['branch', '--set-upstream-to=origin/main', 'work']);
     await commitFile(clone, 'note.md', 'from work\n', 'work commit');
-    const r = await reconcilePush(clone);
+    const r = await reconcilePush(clone, OPT_IN);
     expect(r.status).toBe('pushed');
     // The commit landed on the remote's main, and no stray "work" branch exists.
     const verify = tmp('osc-verify-track-');
@@ -157,7 +164,7 @@ describe('reconcilePush', () => {
     await simpleGit(clone)
       .merge(['origin/main'])
       .catch(() => {});
-    const r = await reconcilePush(clone);
+    const r = await reconcilePush(clone, OPT_IN);
     expect(r.status).toBe('conflict');
     expect(r.message).toMatch(/unfinished merge/i);
   });
@@ -167,6 +174,74 @@ describe('reconcilePush', () => {
     const results = await reconcileRepos([clone, clone, tmp('osc-plain2-')]);
     expect(results).toHaveLength(2);
     expect(results.map((r) => r.status).sort()).toEqual(['clean', 'not-repo']);
+  });
+});
+
+describe('the default-branch policy (board call 5, 2026-09-16)', () => {
+  it('finds the default branch from origin/HEAD when the remote publishes one', async () => {
+    const { clone } = await remoteAndClone();
+    await simpleGit(clone).raw(['remote', 'set-head', 'origin', 'main']);
+    expect(await defaultBranchOf(clone, 'origin')).toBe('main');
+  });
+
+  it('falls back to main, then master, when origin/HEAD is unset', async () => {
+    const { clone } = await remoteAndClone();
+    // A bare remote cloned before its first commit never gets origin/HEAD set.
+    expect(await defaultBranchOf(clone, 'origin')).toBe('main');
+    const legacy = tmp('osc-remote-master-');
+    await simpleGit(legacy).raw(['init', '--bare', '-b', 'master']);
+    const old = tmp('osc-clone-master-');
+    await simpleGit().clone(legacy, old);
+    await configure(old);
+    await commitFile(old, 'README.md', 'base\n', 'base');
+    await simpleGit(old).push(['-u', 'origin', 'master']);
+    expect(await defaultBranchOf(old, 'origin')).toBe('master');
+  });
+
+  it('holds unpushed commits on the default branch and pushes nothing', async () => {
+    const { remote, clone } = await remoteAndClone();
+    await commitFile(clone, 'note.md', 'hello\n', 'add note');
+    const r = await reconcilePush(clone);
+    expect(r.status).toBe('held');
+    expect(r.branch).toBe('main');
+    expect(r.ahead).toBe(1);
+    expect(r.message).toBe(DEFAULT_BRANCH_HELD('main'));
+    const verify = tmp('osc-verify-held-');
+    await simpleGit().clone(remote, verify);
+    expect(existsSync(join(verify, 'note.md'))).toBe(false);
+  });
+
+  it('pushes the default branch once the project opts in', async () => {
+    const { clone } = await remoteAndClone();
+    await commitFile(clone, 'note.md', 'hello\n', 'add note');
+    const r = await reconcilePush(clone, { allowDefaultBranch: true });
+    expect(r.status).toBe('pushed');
+  });
+
+  it('keeps pushing other branches as before, with no opt-in', async () => {
+    const { remote, clone } = await remoteAndClone();
+    await simpleGit(clone).checkoutLocalBranch('feature/notes');
+    await commitFile(clone, 'note.md', 'hello\n', 'add note');
+    await simpleGit(clone).push(['-u', 'origin', 'feature/notes']);
+    await commitFile(clone, 'more.md', 'more\n', 'more');
+    const r = await reconcilePush(clone);
+    expect(r.status).toBe('pushed');
+    expect(r.branch).toBe('feature/notes');
+    const branches = await simpleGit(remote).raw(['branch', '--list']);
+    expect(branches).toMatch(/feature\/notes/);
+  });
+
+  it('reads the opt-in from the project config through reconcileRepos', async () => {
+    const { clone } = await remoteAndClone();
+    await commitFile(clone, 'note.md', 'hello\n', 'add note');
+    const [held] = await reconcileRepos([clone]);
+    expect(held?.status).toBe('held');
+    writeFileSync(
+      join(clone, 'os-code.config.json'),
+      JSON.stringify({ sync: { autoPushDefaultBranch: true } }),
+    );
+    const [pushed] = await reconcileRepos([clone]);
+    expect(pushed?.status).toBe('pushed');
   });
 });
 

@@ -19,6 +19,48 @@ always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
 
+### The premium front door, integrated (founder "build" go, 2026-09-16)
+
+The founder's build order: make the framework a premium human experience for
+vibe coding, so a person can connect a GitHub repo, download OpenShore on a
+normal computer and a normal iPhone, reach the hub over Tailscale, and code on
+the phone against free local models, keeping the look and the personality. Built
+across four streams and integrated here. Every gate is green: app 1025 tests,
+engine 819 tests, both typechecks, lint, Prettier, the em-dash guard and this
+PROGRESS shape guard, the app Vite build.
+
+- **Per-device pairing.** The desktop QR carries `{u, claim}`, a one-time short-
+  lived code; the phone redeems it at `POST /pair/claim` for its own labeled
+  credential, so revoke cuts one device and the old shared token is gone.
+  `os-code/src/daemon/pairClaims.ts`, `app/src/lib/qrDecode.ts`,
+  `app/src/screens/PairScreen.tsx`, `remoteDriver.redeemPairClaim`.
+- **The appliance.** The daemon starts on app-ready, binds the tailnet (else
+  loopback, and re-binds when Tailscale comes up), survives window close via a
+  tray, offers a login item, and holds a power-save blocker while a session runs
+  (`app/electron/lifecycle.ts`, the `engineHost` rebind fix). An in-app Ollama
+  bridge reports install/running/version and can start or install it on Linux
+  behind a one-tap card, never a toast (`app/electron/ollama.ts`).
+- **The First Seat.** When nothing on this device can answer, the empty chat is
+  one hardware-fit local pick with one tap to set it up and the Marketplace one
+  tap behind it; the greeting is its fallback the instant a brain is ready. It
+  is presence-aware, arrives on the "Seat Fills" tokens, and ticks once as the
+  card seats. `app/src/components/FirstSeat.tsx`, `app/src/lib/firstSeat.ts`,
+  the fit-aware starter in `starterModel.ts`, theme.css `.first-seat`.
+- **Honest guarded stream.** The app guard now preserves the inner driver's seq
+  instead of renumbering, so a reopened desktop chat keeps its journal snapshot
+  until the replay lands; a disposed driver is treated as absent so a fresh send
+  never reuses one (`app/src/drivers/guardedDriver.ts`, `state/store.ts`).
+- **Graduated ethics ladder.** The always-on layer (now archived) gained staged
+  enforcement with a next-action block, migration `0018_graduated_enforcement.sql`,
+  pinned by `test/graduatedEnforcement.test.ts`.
+- **Linux packaging and release.** electron-builder unpacks the workspace engine
+  and node-pty; `app/scripts/package-smoke.mjs` launches the packaged app
+  headless (`OSC_SMOKE=1`) and asserts the engine booted; `.github/workflows/
+release.yml` builds the AppImage and deb on a `v*` tag (or a manual run),
+  smoke-tests them, and attaches them to a GitHub Release. NOT build-verified in
+  this sandbox: the Electron binary cannot be fetched here, so the release job's
+  own smoke test is the first real proof, on CI where Electron is available.
+
 ### The premium harness (founder + advisor org, 2026-09-14)
 
 Latest (2026-09-15): the floor was measured for real, over ten rounds on the
@@ -458,61 +500,10 @@ is on", never "always on", and "works, then asks", never "unsupervised".
   box, the approval push arriving with the app closed, suspend and wake, and
   the room on an iPhone (TestFlight). See What remains.
 
-### The always-on ethical guardrail layer
-
-Founder brief: a safety-critical filter that wraps every model interaction,
-always on, not disableable in the app, blocking a narrow set of serious harms
-while staying out of the way of legitimate edgy work.
-
-- **One chokepoint, two install points.** `os-code/src/core/ethics/` holds the
-  layer (read `index.ts` first, it names the reading order). It is installed by
-  construction: `ProviderRegistry` wraps every provider in `GuardedProvider`
-  before anything can hold one, so the agent loop, `Router.delegate`,
-  `summarize`, the daemon `/chat`, and the eval harness are all covered; in the
-  app, `buildDriver` wraps every `ChatDriver` in `guardDriver`, covering cloud
-  Claude, every OpenAI-compatible provider, BYOM, the on-device models, the
-  paired desktop, and the demo. `register()` wraps too.
-- **Both sides.** Input screened before a model sees it, output before a person
-  does. `StreamScreener` releases text only after a screen that covered it came
-  back clean, so a blocked answer is never partially shown.
-- **Fail closed.** Any throw or timeout blocks. A check failure is recorded as
-  `check-failed` and never counts toward enforcement.
-- **The tiers.** Tier 1 (CSAM, non-consensual intimate imagery, concrete CBRN
-  and high-yield explosive uplift) is a hard block with no consent override.
-  Tier 2 (synthesizing a real person's face or voice) is gated behind an
-  authorization assertion, recorded, with provenance on the output. Tier 3 is
-  protected: legal adult content, dark fiction, horror, satire, security
-  research, dissenting opinion.
-- **No toggle exists.** The layer reads no configuration at all, and
-  `test/ethicsNoBypass.test.ts` greps the tracked source to keep it that way.
-- **Provenance.** Generated images carry a C2PA-vocabulary record as a PNG
-  `iTXt` chunk. It is unsigned and says so in its own text; a signer seam exists
-  for the day there is a certificate.
-- **Enforcement.** Migration `0016_guardrail_enforcement.sql` adds
-  `guardrail_events`, `likeness_consents`, `enforcement_actions`,
-  `abuse_reports`, and an `abuse_reviewers` allowlist. There is no IP address
-  anywhere in the product: no column, no header-reading function, and no
-  address-ban queue, because banning a network location is not a capability
-  this product has (founder call, 2026-09-05, superseding the earlier
-  block-only compromise). Enforcement is account termination plus a lawful
-  report, full stop.
-- Gates green: os-code and app typecheck, lint, test, build.
-
-**Reviewed by the CTO and CMO on 2026-09-05, then their findings worked to
-close.** Both ruled the layer safe to land and flagged the same top item first:
-the Terms asserted a data practice the product does not have (corrected before
-publish). The founder then asked to finish the thread per both advisors. Done in
-this pass: Tier 2 likeness precision (coding vocabulary no longer reads as a
-person, generation verbs and photoreal deepfake shapes now caught) and the gate
-made non-countable so a false gate never penalizes; the enforcement ladder
-moved server-side so it survives a reinstall and cannot be talked down by the
-client; provenance no longer dropped silently (keyword match, not a substring
-grep; a non-PNG Tier 2 output is refused rather than shipped unlabeled); and the
-honesty copy pass across Settings, README, and the ToU, plus the media-vs-text
-satire seam stated publicly. The founder then took the CMO's original
-recommendation on the IP question rather than the block-only compromise: IP
-capture is now removed from the product entirely (see the 2026-09-05 IP-removal
-log entry). Migration is now `0016`.
+The always-on ethical guardrail layer (2026-09-05, reviewed by the CTO and CMO)
+moved to `docs/progress-archive.md` on 2026-09-16; it still ships and was
+extended that day by the graduated enforcement ladder (migration
+`0018_graduated_enforcement.sql`), summarized in the front-door build above.
 
 ## What remains (known follow-ups, none blocking)
 
@@ -991,3 +982,17 @@ log entry). Migration is now `0016`.
       `/find` is the genuinely additive capability.
 
 ## Log
+
+### 2026-09-16, the premium front door integrated and the streams merged
+
+The four-stream "build" go landed on `claude/openshore-premium-agent-harness`:
+per-device pairing, the daemon appliance (tray, login item, power-save blocker,
+tailnet re-bind) and an in-app Ollama bridge, the First Seat empty state with a
+hardware-fit local pick, the honest guarded-stream seq fix and disposed-driver
+handling, the graduated ethics ladder (migration 0018), and Linux packaging with
+a headless smoke test plus a tag-driven `release.yml`. Integrated inline after
+the parallel build agents hit a usage-credit limit mid-run; resolved the fit-
+curve fork by keeping one honest `fitVerdict` and re-pinning the two edge tests
+(see DECISIONS). Gates green across both packages. The one thing not verifiable
+here is the electron-builder run itself (the Electron binary cannot be fetched
+in the sandbox); the release workflow's smoke test is its proof on CI.

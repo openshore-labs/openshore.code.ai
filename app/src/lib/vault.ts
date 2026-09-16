@@ -161,6 +161,54 @@ export function wikilinksToMarkdown(text: string, paths: string[]): string {
 /** The folder tree, computed from flat paths: top-level entries first
  *  (folders sorted before notes, both alphabetical), one level at a time so
  *  the UI can lazily disclose. */
+/** A team-vault conflict copy, as the server names it when two writers
+ *  collide: "name (conflict 2026-01-01 1200).md" (0010_org_vault.sql). The
+ *  original keeps the plain name; the copy is the other writer's version. */
+export function isConflictCopy(path: string): boolean {
+  return /\(conflict [^)]*\)\.md$/i.test(path);
+}
+
+export interface NoteHit {
+  path: string;
+  /** Where the query matched: the title, or the body (with a short excerpt). */
+  where: 'title' | 'body';
+  excerpt?: string;
+}
+
+/**
+ * Search notes by title and, when a body is on hand, by text. Title hits come
+ * first, then body hits, each in path order, so a note named for the query is
+ * never buried under notes that merely mention it. Case-insensitive; a blank
+ * query matches nothing (the list shows the tree instead).
+ */
+export function searchNotes(
+  query: string,
+  paths: string[],
+  bodies: ReadonlyMap<string, string> | Record<string, string> = new Map(),
+): NoteHit[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const bodyOf = (path: string): string | undefined =>
+    bodies instanceof Map ? bodies.get(path) : (bodies as Record<string, string>)[path];
+  const titles: NoteHit[] = [];
+  const texts: NoteHit[] = [];
+  for (const path of paths) {
+    if (noteTitle(path).toLowerCase().includes(q) || path.toLowerCase().includes(q)) {
+      titles.push({ path, where: 'title' });
+      continue;
+    }
+    const body = bodyOf(path);
+    if (!body) continue;
+    const at = body.toLowerCase().indexOf(q);
+    if (at < 0) continue;
+    const start = Math.max(0, at - 40);
+    const end = Math.min(body.length, at + q.length + 60);
+    const excerpt = `${start > 0 ? '...' : ''}${body.slice(start, end).replace(/\s+/g, ' ').trim()}${end < body.length ? '...' : ''}`;
+    texts.push({ path, where: 'body', excerpt });
+  }
+  return [...titles, ...texts];
+}
+
 export interface TreeEntry {
   kind: 'folder' | 'note';
   /** Folder path or note path, vault-relative. */

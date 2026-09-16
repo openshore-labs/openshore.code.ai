@@ -32,12 +32,12 @@ function rasterize(text: string, scale = 6, quiet = 4) {
 
 describe('QR pairing decode', () => {
   it('round-trips the desktop pairing payload through pixels', () => {
-    const payload = JSON.stringify({ u: 'http://100.101.102.103:4816', t: 'osc_abcdef123456' });
+    const payload = JSON.stringify({ u: 'http://100.101.102.103:4816', c: 'pc_abcdef123456' });
     const text = decodeQrFromImageData(rasterize(payload));
     expect(text).toBe(payload);
     expect(parsePairingQr(text!)).toEqual({
       address: 'http://100.101.102.103:4816',
-      token: 'osc_abcdef123456',
+      claim: 'pc_abcdef123456',
     });
   });
 
@@ -49,6 +49,8 @@ describe('QR pairing decode', () => {
   it('ignores a QR that is not a pairing payload, never half-applies it', () => {
     expect(parsePairingQr('https://example.com')).toBeUndefined();
     expect(parsePairingQr(JSON.stringify({ u: 'http://x' }))).toBeUndefined();
-    expect(parsePairingQr(JSON.stringify({ u: 1, t: 2 }))).toBeUndefined();
+    expect(parsePairingQr(JSON.stringify({ u: 1, c: 2 }))).toBeUndefined();
+    // The old scheme carried a live token on the QR; it must no longer parse.
+    expect(parsePairingQr(JSON.stringify({ u: 'http://x', t: 'osc_x' }))).toBeUndefined();
   });
 });

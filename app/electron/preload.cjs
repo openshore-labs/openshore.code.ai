@@ -72,6 +72,13 @@ contextBridge.exposeInMainWorld('oscode', {
   daemonStop: invoke('osc:daemonStop'),
   listDeviceCredentials: invoke('osc:listDeviceCredentials'),
   revokeDeviceCredential: invoke('osc:revokeDeviceCredential'),
+  launchAtLogin: invoke('osc:launchAtLogin'),
+  setLaunchAtLogin: invoke('osc:setLaunchAtLogin'),
+
+  ollamaStatus: invoke('osc:ollamaStatus'),
+  ollamaStart: invoke('osc:ollamaStart'),
+  ollamaInstall: invoke('osc:ollamaInstall'),
+  hardware: invoke('osc:hardware'),
 
   routinesList: invoke('osc:routinesList'),
   routineCreate: invoke('osc:routineCreate'),

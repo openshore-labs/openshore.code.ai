@@ -22,6 +22,37 @@ export interface LinkReport {
   fix?: string;
 }
 
+/** The one-line fixes doctor prints, per platform. Pure, so a Windows machine
+ *  is pinned to PowerShell and powercfg by a test on any box: it must never be
+ *  told apt, systemctl, or gsettings. */
+export function platformFixes(platform: NodeJS.Platform = process.platform): {
+  sshEnable: string;
+  sleepOff: string;
+  tailscaleInstall: string;
+} {
+  if (platform === 'win32') {
+    return {
+      sshEnable:
+        'Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0; Set-Service sshd -StartupType Automatic; Start-Service sshd',
+      sleepOff: 'powercfg /change standby-timeout-ac 0',
+      tailscaleInstall: 'Install Tailscale from https://tailscale.com/download/windows',
+    };
+  }
+  if (platform === 'darwin') {
+    return {
+      sshEnable: 'sudo systemsetup -setremotelogin on',
+      sleepOff: 'caffeinate -s osc serve',
+      tailscaleInstall: 'Install Tailscale from the Mac App Store.',
+    };
+  }
+  return {
+    sshEnable: 'sudo apt install openssh-server && sudo systemctl enable --now ssh',
+    sleepOff:
+      "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'",
+    tailscaleInstall: 'curl -fsSL https://tailscale.com/install.sh | sh',
+  };
+}
+
 export async function checkLinks(
   config: OscConfig,
   providers: ProviderRegistry,
@@ -90,10 +121,10 @@ export async function checkLinks(
     fix: ts.running
       ? undefined
       : ts.installed
-        ? 'sudo tailscale up'
-        : process.platform === 'darwin'
-          ? 'Install Tailscale from the Mac App Store.'
-          : 'curl -fsSL https://tailscale.com/install.sh | sh',
+        ? process.platform === 'win32'
+          ? 'Open the Tailscale app and sign in.'
+          : 'sudo tailscale up'
+        : platformFixes().tailscaleInstall,
   });
 
   // SSH server, the phone's way in.
@@ -130,6 +161,7 @@ export async function checkLinks(
 
 function checkSsh(): LinkReport {
   if (process.platform === 'darwin') return checkSshMac();
+  if (process.platform === 'win32') return checkSshWindows();
   for (const unit of ['sshd', 'ssh']) {
     const res = spawnSync('systemctl', ['is-active', unit], { encoding: 'utf8', timeout: 3000 });
     if (res.stdout?.trim() === 'active') {
@@ -141,7 +173,28 @@ function checkSsh(): LinkReport {
     label: 'SSH server',
     state: 'warn',
     detail: 'No sshd detected, so a phone cannot connect.',
-    fix: 'sudo apt install openssh-server && sudo systemctl enable --now ssh',
+    fix: platformFixes('linux').sshEnable,
+  };
+}
+
+// Windows ships OpenSSH Server as an optional capability and runs it as the
+// sshd service; PowerShell (not systemctl) is how it is asked and enabled.
+function checkSshWindows(): LinkReport {
+  const res = spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-Command', '(Get-Service sshd -ErrorAction SilentlyContinue).Status'],
+    { encoding: 'utf8', timeout: 5000 },
+  );
+  if (res.status === 0 && /running/i.test(res.stdout)) {
+    return { id: 'ssh', label: 'SSH server', state: 'ok', detail: 'OpenSSH Server is running.' };
+  }
+  return {
+    id: 'ssh',
+    label: 'SSH server',
+    state: 'warn',
+    detail:
+      'OpenSSH Server is not running, so a phone cannot connect. Run this in an admin PowerShell:',
+    fix: platformFixes('win32').sshEnable,
   };
 }
 
@@ -163,6 +216,7 @@ function checkSshMac(): LinkReport {
 
 function checkSleep(): LinkReport {
   if (process.platform === 'darwin') return checkSleepMac();
+  if (process.platform === 'win32') return checkSleepWindows();
   // GNOME: suspend on AC power kills in-flight runs for remote users.
   const res = spawnSync(
     'gsettings',
@@ -180,7 +234,7 @@ function checkSleep(): LinkReport {
         label: 'Desktop sleep',
         state: 'warn',
         detail: `This desktop suspends when idle (${value}), which kills runs mid-flight for phone users.`,
-        fix: "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'",
+        fix: platformFixes('linux').sleepOff,
       };
     }
     return { id: 'power', label: 'Desktop sleep', state: 'ok', detail: 'Stays awake on AC power.' };
@@ -191,6 +245,43 @@ function checkSleep(): LinkReport {
     state: 'skip',
     detail: 'Could not read power settings; if this desktop sleeps, remote runs will die with it.',
     fix: 'systemd-inhibit --what=sleep osc serve',
+  };
+}
+
+// Windows: powercfg reports the plugged-in sleep timeout in seconds (hex) for
+// the active scheme; 0 means never. The fix is powercfg too, never gsettings.
+function checkSleepWindows(): LinkReport {
+  const res = spawnSync('powercfg', ['/query', 'SCHEME_CURRENT', 'SUB_SLEEP', 'STANDBYIDLE'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  if (res.status === 0) {
+    const match = /Current AC Power Setting Index:\s*0x([0-9a-f]+)/i.exec(res.stdout);
+    const seconds = match ? parseInt(match[1]!, 16) : undefined;
+    if (seconds !== undefined && seconds > 0) {
+      return {
+        id: 'power',
+        label: 'Desktop sleep',
+        state: 'warn',
+        detail: `This PC sleeps after ${Math.round(seconds / 60)} min plugged in, which kills runs mid-flight for phone users.`,
+        fix: platformFixes('win32').sleepOff,
+      };
+    }
+    if (seconds === 0) {
+      return {
+        id: 'power',
+        label: 'Desktop sleep',
+        state: 'ok',
+        detail: 'Stays awake plugged in.',
+      };
+    }
+  }
+  return {
+    id: 'power',
+    label: 'Desktop sleep',
+    state: 'skip',
+    detail: 'Could not read power settings; if this PC sleeps, remote runs will die with it.',
+    fix: platformFixes('win32').sleepOff,
   };
 }
 

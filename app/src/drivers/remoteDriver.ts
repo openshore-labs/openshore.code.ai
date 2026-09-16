@@ -12,13 +12,22 @@ import type {
 import type {
   ChatDriver,
   DriverEventSink,
+  HubLinkState,
   HubRole,
   RunCommandResult,
   TerminalExit,
   TerminalOpen,
   TerminalWrite,
 } from './types.js';
+import { HUB_NO_ANSWER } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
+
+export { HUB_NO_ANSWER };
+export type { HubLinkState };
+
+/** How long a dropped stream may keep failing to reattach before the link
+ *  reads "off or away" rather than "reconnecting". */
+export const AWAY_AFTER_MS = 5000;
 
 /** Base64 -> raw bytes, for a terminal stream frame. atob exists in the WebView
  *  and every browser build target. */
@@ -120,6 +129,45 @@ export async function daemonHealth(
       ok: false,
       detail:
         'Could not reach the desktop, or it rejected the pairing token. Check that Tailscale is on for both devices and the desktop app is open, then re-copy the token.',
+    };
+  }
+}
+
+/** Trade a one-time pairing claim (from the desktop QR) for this device's own
+ *  credential. No bearer is sent: the claim is the proof, spent on first use,
+ *  so a photographed QR is worthless a moment later and every phone ends up
+ *  with a token it alone holds. Returns the minted token on success. */
+export async function redeemPairClaim(
+  baseUrl: string,
+  claim: string,
+  deviceName?: string,
+): Promise<{ ok: true; token: string; role?: HubRole } | { ok: false; detail: string }> {
+  try {
+    const res = await fetch(`${baseUrl}/pair/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ claim, deviceName }),
+      signal: AbortSignal.timeout(6000),
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      token?: unknown;
+      role?: unknown;
+      error?: unknown;
+    };
+    if (res.ok && typeof body.token === 'string') {
+      const role = roleOf(body);
+      return { ok: true, token: body.token, ...(role ? { role } : {}) };
+    }
+    const detail =
+      typeof body.error === 'string'
+        ? body.error
+        : `The desktop answered ${res.status} to the pairing code.`;
+    return { ok: false, detail };
+  } catch {
+    return {
+      ok: false,
+      detail:
+        'Could not reach the desktop to redeem the pairing code. Check that Tailscale is on for both devices and the desktop app is open, then scan the QR again.',
     };
   }
 }
@@ -299,6 +347,7 @@ export class RemoteDriver implements ChatDriver {
     readonly sessionId: string,
     private readonly target: DaemonTarget,
     resumeFromSeq = 0,
+    private readonly opts: { onLink?: (state: HubLinkState) => void } = {},
   ) {
     this.lastSeq = resumeFromSeq;
     this.hubRoleReady = daemonHealth(target)
@@ -310,14 +359,22 @@ export class RemoteDriver implements ChatDriver {
     void this.streamLoop();
   }
 
-  // G5: `outageBlipped` lives on the driver (outside the transcript), so an
-  // outage adds the "Connection blipped" status row exactly once, no matter how
-  // many reconnect attempts it takes. And a cleanly-closed stream backs off just
-  // like an error would, so a daemon that closes the SSE immediately cannot spin
-  // this in a zero-delay hot loop. Backoff resets only once a reconnection is
-  // productive (delivers a frame), so an unproductive close keeps stepping up.
-  private outageBlipped = false;
+  // G5, reshaped by B4: an outage is a link state, not a transcript row. The
+  // first failed reattach reports `reconnecting` (the banner's "Connection
+  // blipped"); once the failures have run past AWAY_AFTER_MS the link reads
+  // `away` (the banner's "off or away"); a stream that connects reports `live`.
+  // Each change is reported exactly once, however many attempts it takes. A
+  // cleanly-closed stream backs off just like an error would, so a daemon that
+  // closes the SSE immediately cannot spin this in a zero-delay hot loop.
+  private link: HubLinkState | undefined;
+  private outageSince?: number;
   private notFoundStreak = 0;
+
+  private setLink(state: HubLinkState): void {
+    if (this.link === state) return;
+    this.link = state;
+    this.opts.onLink?.(state);
+  }
 
   // A fatal answer is not a network blip: stop retrying and tell the user what
   // to do, instead of "Connection blipped" forever on a revoked token or a
@@ -365,9 +422,10 @@ export class RemoteDriver implements ChatDriver {
         if (!res.ok || !res.body) throw new Error(`daemon answered ${res.status}`);
         // A successful reconnect (even before the first frame, and even on an
         // idle session that only sends keepalives) means the outage is over.
-        // Reset here so backoff and the blip flag do not stay degraded on an
-        // idle stream that never emits a productive frame (TS-P2-3).
-        this.outageBlipped = false;
+        // Reset here so backoff and the link do not stay degraded on an idle
+        // stream that never emits a productive frame (TS-P2-3).
+        this.outageSince = undefined;
+        this.setLink('live');
         backoffMs = 600;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -381,9 +439,8 @@ export class RemoteDriver implements ChatDriver {
             const parsed = parseSseFrame(buffer.slice(0, idx));
             buffer = buffer.slice(idx + 2);
             if (!parsed) continue;
-            // A productive frame: the outage (if any) is over. Clear the blip
-            // flag and reset backoff so the next genuine outage gets one blip.
-            this.outageBlipped = false;
+            // A productive frame: the outage (if any) is over. Reset backoff
+            // so the next genuine outage steps up from the start again.
             backoffMs = 600;
             this.lastSeq = Math.max(this.lastSeq, parsed.seq);
             for (const sink of [...this.sinks]) sink(parsed.event, parsed.seq);
@@ -391,14 +448,12 @@ export class RemoteDriver implements ChatDriver {
         }
       } catch {
         if (this.closed) return;
-        if (!this.outageBlipped) {
-          this.outageBlipped = true;
-          for (const sink of [...this.sinks]) {
-            sink(
-              { type: 'status', message: 'Connection blipped. Reattaching to the run.' },
-              this.lastSeq,
-            );
-          }
+        const now = Date.now();
+        if (this.outageSince === undefined) {
+          this.outageSince = now;
+          this.setLink('reconnecting');
+        } else if (now - this.outageSince >= AWAY_AFTER_MS) {
+          this.setLink('away');
         }
         await stepBackoff();
         continue;
@@ -424,14 +479,11 @@ export class RemoteDriver implements ChatDriver {
       // hangs this for the OS default minute with no feedback.
       signal: AbortSignal.timeout(10_000),
     }).catch(() => {
+      // The store painted the user bubble and marked the thread busy the
+      // moment the text left (B3), so this ends that turn honestly: a stopped
+      // row with the plain sentence and a Retry, the bubble still on screen.
       for (const sink of [...this.sinks]) {
-        sink(
-          {
-            type: 'status',
-            message: 'Could not reach the desktop to send that. It will not be lost if you retry.',
-          },
-          this.lastSeq,
-        );
+        sink({ type: 'task-done', reason: 'error', message: HUB_NO_ANSWER }, this.lastSeq);
       }
     });
   }

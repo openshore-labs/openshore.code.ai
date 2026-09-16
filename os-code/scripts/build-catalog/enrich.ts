@@ -5,6 +5,7 @@
 // fixtures. index.ts gathers the inputs and writes the output.
 import { CatalogSchema, type Catalog, type CatalogModel } from '../../src/market/schema.js';
 import type { CapabilityCategory } from '../../src/router/roles.js';
+import { evalScore } from './evals.js';
 import { resolveLicense } from './licenses.table.js';
 import { osCodeFitFromEval, rateModel } from './stars.js';
 import type { BuildInputs, DropRecord } from './types.js';
@@ -158,9 +159,12 @@ function buildModel(
 
   // Ratings. osCodeFit needs a real eval report; without one there is no honest
   // fit to claim, so no ratings block is emitted. perCapability stars come from
-  // published benchmarks, only for categories the model targets.
-  const evalAvg = inputs.evals[base.id];
-  const hasEval = typeof evalAvg === 'number' && Number.isFinite(evalAvg);
+  // published benchmarks, only for categories the model targets. The report may
+  // be a published probe number or a measured deep (agent-loop) score from a
+  // named box; either is a real number, and a measured deep score alone is
+  // enough to clear the orchestrator bar below.
+  const evalAvg = evalScore(inputs.evals[base.id]);
+  const hasEval = evalAvg !== undefined;
   const scores = inputs.benchmarks[base.id] ?? {};
   const capStars = rateModel(base.categories, scores);
 
@@ -172,7 +176,7 @@ function buildModel(
       perCapability[s.capability] = s.stars;
       provenance[s.capability] = s.provenance as [string, ...string[]];
     }
-    ratings = { perCapability, osCodeFit: osCodeFitFromEval(evalAvg), provenance };
+    ratings = { perCapability, osCodeFit: osCodeFitFromEval(evalAvg!), provenance };
   }
 
   // Gate 3, quality: orchestrators clear on the eval bar, specialists on a
@@ -185,7 +189,7 @@ function buildModel(
   const clearsQuality = base.discovery
     ? !base.orchestratorCapable
     : base.orchestratorCapable
-      ? hasEval && osCodeFitFromEval(evalAvg) >= MIN_ORCHESTRATOR_FIT
+      ? hasEval && osCodeFitFromEval(evalAvg!) >= MIN_ORCHESTRATOR_FIT
       : maxCapStar >= MIN_SPECIALIST_STAR;
   if (!clearsQuality) {
     return {

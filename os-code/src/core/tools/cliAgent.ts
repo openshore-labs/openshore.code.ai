@@ -63,12 +63,33 @@ export const cliAgentTool: ToolDef<typeof schema> = {
       };
     }
     const timeoutSeconds = args.timeoutSeconds ?? 600;
-    const result = await runCommand({
+    if (ctx.signal?.aborted) {
+      return { ok: false, content: `${cli} was not started: the task was stopped.` };
+    }
+    const run = runCommand({
       command: cliCommandLine(cli, args.task),
       cwd: ctx.cwd,
       stdin: 'ignore',
       timeoutMs: timeoutSeconds * 1000,
-    }).done;
+    });
+    // Stop reaches the child: a `claude -p` that would otherwise keep running
+    // for up to the timeout after the person tapped Stop is killed with it.
+    const onAbort = () => run.kill();
+    ctx.signal?.addEventListener('abort', onAbort, { once: true });
+    let result;
+    try {
+      result = await run.done;
+    } finally {
+      ctx.signal?.removeEventListener('abort', onAbort);
+    }
+    if (ctx.signal?.aborted && !result.startError) {
+      return {
+        ok: false,
+        content: redactSecrets(
+          `${cli} was stopped.\noutput so far:\n${capContent(result.stdout, 8000)}\n${capContent(result.stderr, 4000)}`,
+        ),
+      };
+    }
     if (result.startError) {
       return { ok: false, content: `Could not start ${cli}: ${result.startError}` };
     }

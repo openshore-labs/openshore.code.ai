@@ -37,11 +37,16 @@ export function pathOfDriver(kind: ChatDriver['kind']): ModelPath {
 
 class GuardedDriver {
   private sinks = new Set<DriverEventSink>();
-  private seq = 0;
+  // The inner driver's seq is preserved, never renumbered: the store reads it
+  // to tell a journal frame (seq 1 and up) from a driver's own live row (seq 0
+  // on a fresh reopen), which is how a reopened desktop chat keeps its snapshot
+  // until the replay lands. Synthesized text the screen releases carries the
+  // seq of the event that triggered the release.
+  private currentSeq = 0;
   private unsubscribe?: () => void;
   /** True while a screen is in flight; everything behind it waits in backlog. */
   private busy = false;
-  private backlog: DriverEvent[] = [];
+  private backlog: Array<{ event: DriverEvent; seq: number }> = [];
   private screener?: StreamScreener;
   private released = '';
   private blocked = false;
@@ -52,14 +57,14 @@ class GuardedDriver {
   ) {}
 
   private emit(event: DriverEvent): void {
-    const seq = ++this.seq;
+    const seq = this.currentSeq;
     for (const sink of this.sinks) sink(event, seq);
   }
 
   subscribe(sink: DriverEventSink): () => void {
     this.sinks.add(sink);
     if (!this.unsubscribe) {
-      this.unsubscribe = this.inner.subscribe((event) => this.accept(event));
+      this.unsubscribe = this.inner.subscribe((event, seq) => this.accept(event, seq));
     }
     return () => {
       this.sinks.delete(sink);
@@ -79,11 +84,12 @@ class GuardedDriver {
    * flight everything behind it waits in `backlog`, so ordering is never at the
    * mercy of promise scheduling.
    */
-  private accept(event: DriverEvent): void {
+  private accept(event: DriverEvent, seq: number): void {
     if (this.busy) {
-      this.backlog.push(event);
+      this.backlog.push({ event, seq });
       return;
     }
+    this.currentSeq = seq;
     const work = this.handle(event);
     if (!work) return;
     this.busy = true;
@@ -98,7 +104,8 @@ class GuardedDriver {
   /** Feed the backlog through once a screen has settled. */
   private drain(): void {
     while (!this.busy && this.backlog.length) {
-      this.accept(this.backlog.shift()!);
+      const { event, seq } = this.backlog.shift()!;
+      this.accept(event, seq);
     }
   }
 

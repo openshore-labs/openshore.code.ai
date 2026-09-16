@@ -23,7 +23,12 @@ import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { uxStandardPrompt, humanizerStandardPrompt } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
-import { ensureDeviceModel, forgetDeviceModel } from './deviceModel.js';
+import {
+  ABORT_BEAT_MS,
+  STALL_TIMEOUT_MS,
+  ensureDeviceModel,
+  forgetDeviceModel,
+} from './deviceModel.js';
 import { platform, secretGet, storeGetJson } from '../lib/platform.js';
 import {
   CODEMAGIC_TOOL_NAME,
@@ -232,6 +237,11 @@ export class StackDriver implements ChatDriver {
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
   private abortController?: AbortController;
+  // B2 (UI-1 for the stack): a started device reply that goes quiet is ended
+  // from this side, and a stop the native runner never acknowledges is ended
+  // a beat later, so a "My Stack" chat on the phone can never stick busy.
+  private watchdog?: ReturnType<typeof setTimeout>;
+  private abortBeat?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly stack: AppStack,
@@ -945,6 +955,7 @@ export class StackDriver implements ChatDriver {
     this.deviceListeners.push(
       await Llama.addListener('token', ({ requestId, delta }) => {
         if (requestId !== this.activeRequestId) return;
+        this.armWatchdog(requestId);
         this.answer += delta;
         this.emit({ type: 'text-delta', text: delta });
       }),
@@ -952,6 +963,7 @@ export class StackDriver implements ChatDriver {
     this.deviceListeners.push(
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
         if (requestId !== this.activeRequestId) return;
+        this.clearDeviceTimers();
         this.activeRequestId = undefined;
         if (stopReason === 'error') {
           // Whatever the slot holds after an error is suspect; reload next time.
@@ -978,14 +990,52 @@ export class StackDriver implements ChatDriver {
       (message) => this.emit({ type: 'status', message }),
     );
     if (!ready.ok) throw new RouteUnavailable(ready.detail);
-    this.activeRequestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
-    await Llama.generate({
-      requestId: this.activeRequestId,
+    const requestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
+    this.activeRequestId = requestId;
+    const res = await Llama.generate({
+      requestId,
       system: this.systemFor(ref, placement),
       messages: this.history,
       maxTokens: isHarborMini(ref.modelId) ? 512 : 1024,
       temperature: 0.6,
     });
+    // A refused start already reported generationDone; only a started reply
+    // needs the watchdog.
+    if (res?.started === false) return;
+    this.armWatchdog(requestId);
+  }
+
+  // A started reply that produces no token for STALL_TIMEOUT_MS is over as far
+  // as this chat is concerned: the native side lost it (a memory warning
+  // unloaded the model mid-reply, another chat's load took the slot, or the
+  // runner wedged). Tell it to stop, drop the slot claim so the next send
+  // reloads, and end the task honestly.
+  private armWatchdog(requestId: string): void {
+    this.clearWatchdog();
+    this.watchdog = setTimeout(() => {
+      this.watchdog = undefined;
+      if (this.activeRequestId !== requestId) return;
+      this.activeRequestId = undefined;
+      this.clearAbortBeat();
+      void Llama.stop({ requestId }).catch(() => {});
+      forgetDeviceModel();
+      this.finish('error', 'The on-device model stopped answering. Try again.');
+    }, STALL_TIMEOUT_MS);
+  }
+
+  private clearWatchdog(): void {
+    if (this.watchdog) clearTimeout(this.watchdog);
+    this.watchdog = undefined;
+  }
+
+  private clearAbortBeat(): void {
+    if (this.abortBeat) clearTimeout(this.abortBeat);
+    this.abortBeat = undefined;
+  }
+
+  private clearDeviceTimers(): void {
+    this.clearWatchdog();
+    this.clearAbortBeat();
   }
 
   // ---- cloud backends -----------------------------------------------------
@@ -1472,7 +1522,23 @@ export class StackDriver implements ChatDriver {
   abort(): void {
     this.aborted = true;
     this.abortController?.abort();
-    if (this.activeRequestId) void Llama.stop({ requestId: this.activeRequestId });
+    const requestId = this.activeRequestId;
+    if (requestId) {
+      void Llama.stop({ requestId }).catch(() => {});
+      // The runner normally answers a stop with generationDone('stopped'),
+      // which finishes the turn. When it does not (the request was already
+      // lost), finish the turn from here a beat later rather than leave the
+      // chat busy with Stop unable to unstick it.
+      this.clearAbortBeat();
+      this.abortBeat = setTimeout(() => {
+        this.abortBeat = undefined;
+        if (this.activeRequestId !== requestId) return;
+        this.activeRequestId = undefined;
+        this.clearWatchdog();
+        forgetDeviceModel();
+        this.finish('aborted');
+      }, ABORT_BEAT_MS);
+    }
     // Stop any engine turn a tool step has running on the paired computer, and
     // settle the awaited turn so the play does not hang on a stopped run.
     this.engineDriver?.abort();
@@ -1487,6 +1553,9 @@ export class StackDriver implements ChatDriver {
 
   dispose(): void {
     this.abort();
+    // Nothing is listening after dispose; the timers armed above have no
+    // turn left to finish.
+    this.clearDeviceTimers();
     this.engineUnsub?.();
     this.engineDriver?.dispose();
     this.engineDriver = undefined;

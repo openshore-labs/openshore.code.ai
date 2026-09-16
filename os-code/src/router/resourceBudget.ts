@@ -84,6 +84,26 @@ export function detectHardware(): Hardware {
   return { gpus: [], totalVramGB: 0, systemRamGB, source: 'none' };
 }
 
+/** The machine in the person's units, for a screen: system memory in GB, whether
+ *  a usable dedicated GPU was found (the same floor budgetFor applies), its
+ *  memory, and the platform. The desktop bridge's `hardware()` returns exactly
+ *  this, and the app mirrors the shape (app/src/lib/firstSeat.ts). */
+export interface HardwareFacts {
+  ramGB: number;
+  gpu: boolean;
+  gpuVramGB: number;
+  platform: NodeJS.Platform;
+}
+
+export function hardwareFacts(hardware: Hardware): HardwareFacts {
+  return {
+    ramGB: hardware.systemRamGB,
+    gpu: hardware.totalVramGB >= DEDICATED_VRAM_FLOOR_GB,
+    gpuVramGB: hardware.totalVramGB,
+    platform: process.platform,
+  };
+}
+
 export function pickProfile(vramGB: number): VramProfile {
   if (vramGB >= 24) return 'fleet';
   if (vramGB >= 16) return 'dual';

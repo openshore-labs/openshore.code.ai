@@ -2513,6 +2513,65 @@ Layer status:
   search in both the TUI and plain renderers. All covered by
   `test/polish.test.ts`.
 
+### The always-on ethical guardrail layer (moved out of PROGRESS 2026-09-16; extended by the graduated ladder that day, migration 0018)
+
+Founder brief: a safety-critical filter that wraps every model interaction,
+always on, not disableable in the app, blocking a narrow set of serious harms
+while staying out of the way of legitimate edgy work.
+
+- **One chokepoint, two install points.** `os-code/src/core/ethics/` holds the
+  layer (read `index.ts` first, it names the reading order). It is installed by
+  construction: `ProviderRegistry` wraps every provider in `GuardedProvider`
+  before anything can hold one, so the agent loop, `Router.delegate`,
+  `summarize`, the daemon `/chat`, and the eval harness are all covered; in the
+  app, `buildDriver` wraps every `ChatDriver` in `guardDriver`, covering cloud
+  Claude, every OpenAI-compatible provider, BYOM, the on-device models, the
+  paired desktop, and the demo. `register()` wraps too.
+- **Both sides.** Input screened before a model sees it, output before a person
+  does. `StreamScreener` releases text only after a screen that covered it came
+  back clean, so a blocked answer is never partially shown.
+- **Fail closed.** Any throw or timeout blocks. A check failure is recorded as
+  `check-failed` and never counts toward enforcement.
+- **The tiers.** Tier 1 (CSAM, non-consensual intimate imagery, concrete CBRN
+  and high-yield explosive uplift) is a hard block with no consent override.
+  Tier 2 (synthesizing a real person's face or voice) is gated behind an
+  authorization assertion, recorded, with provenance on the output. Tier 3 is
+  protected: legal adult content, dark fiction, horror, satire, security
+  research, dissenting opinion.
+- **No toggle exists.** The layer reads no configuration at all, and
+  `test/ethicsNoBypass.test.ts` greps the tracked source to keep it that way.
+- **Provenance.** Generated images carry a C2PA-vocabulary record as a PNG
+  `iTXt` chunk. It is unsigned and says so in its own text; a signer seam exists
+  for the day there is a certificate.
+- **Enforcement.** Migration `0016_guardrail_enforcement.sql` adds
+  `guardrail_events`, `likeness_consents`, `enforcement_actions`,
+  `abuse_reports`, and an `abuse_reviewers` allowlist. There is no IP address
+  anywhere in the product: no column, no header-reading function, and no
+  address-ban queue, because banning a network location is not a capability
+  this product has (founder call, 2026-09-05, superseding the earlier
+  block-only compromise). Enforcement is account termination plus a lawful
+  report, full stop.
+- Gates green: os-code and app typecheck, lint, test, build.
+
+**Reviewed by the CTO and CMO on 2026-09-05, then their findings worked to
+close.** Both ruled the layer safe to land and flagged the same top item first:
+the Terms asserted a data practice the product does not have (corrected before
+publish). The founder then asked to finish the thread per both advisors. Done in
+this pass: Tier 2 likeness precision (coding vocabulary no longer reads as a
+person, generation verbs and photoreal deepfake shapes now caught) and the gate
+made non-countable so a false gate never penalizes; the enforcement ladder
+moved server-side so it survives a reinstall and cannot be talked down by the
+client; provenance no longer dropped silently (keyword match, not a substring
+grep; a non-PNG Tier 2 output is refused rather than shipped unlabeled); and the
+honesty copy pass across Settings, README, and the ToU, plus the media-vs-text
+satire seam stated publicly. The founder then took the CMO's original
+recommendation on the IP question rather than the block-only compromise: IP
+capture is now removed from the product entirely (see the 2026-09-05 IP-removal
+log entry). Migration is now `0016`. Extended 2026-09-16 by the graduated
+enforcement ladder (migration `0018_graduated_enforcement.sql`), which turns the
+repeated-abuse response into staged steps with a next-action block, pinned by
+`os-code/test/graduatedEnforcement.test.ts`.
+
 ## Resolved What remains items (moved out 2026-09-09)
 
 Kept as written, as the record of how each was closed.

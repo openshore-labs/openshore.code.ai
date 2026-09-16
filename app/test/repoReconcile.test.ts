@@ -55,13 +55,38 @@ describe('reconcileToast', () => {
     ).toBeUndefined();
   });
 
-  it('confirms a sync', () => {
-    expect(reconcileToast(summarizeReconcile([result('pushed')]))).toMatch(
-      /Synced your project notes/,
+  it('names what it pushed: the commits, the branch, the repository', () => {
+    const one = reconcileToast(
+      summarizeReconcile([
+        { cwd: '/home/me/my-app', status: 'pushed', branch: 'feature/notes', ahead: 2 },
+      ]),
     );
-    expect(reconcileToast(summarizeReconcile([result('pushed'), result('merged')]))).toMatch(
-      /2 repositories/,
+    expect(one).toBe('Pushed 2 commits on feature/notes in my-app.');
+    const two = reconcileToast(
+      summarizeReconcile([
+        { cwd: '/home/me/my-app', status: 'pushed', branch: 'feature/notes', ahead: 1 },
+        { cwd: '/home/me/other', status: 'merged', branch: 'work', ahead: 3 },
+      ]),
     );
+    expect(two).toMatch(/^Pushed 1 commit on feature\/notes in my-app, and 1 more repository\./);
+  });
+
+  it('never claims a push for a held default branch, and says whose it is', () => {
+    const held = reconcileToast(
+      summarizeReconcile([{ cwd: '/home/me/my-app', status: 'held', branch: 'main', ahead: 4 }]),
+    );
+    expect(held).toMatch(/^Not pushed: main in my-app\./);
+    expect(held).toMatch(/yours to push/);
+    expect(held).toMatch(/autoPushDefaultBranch/);
+    // A push beside a held branch names both.
+    const both = reconcileToast(
+      summarizeReconcile([
+        { cwd: '/home/me/my-app', status: 'pushed', branch: 'feature/x', ahead: 1 },
+        { cwd: '/home/me/site', status: 'held', branch: 'master', ahead: 2 },
+      ]),
+    );
+    expect(both).toMatch(/^Pushed 1 commit on feature\/x in my-app\. master stayed here/);
+    expect(summarizeReconcile([result('held')]).pushed).toBe(0);
   });
 
   it('states a conflict plainly and reassures', () => {

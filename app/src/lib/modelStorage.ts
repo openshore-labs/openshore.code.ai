@@ -119,11 +119,15 @@ export function recommendMachine(requiredRamGB: number): MachineRec {
   };
 }
 
-/** Does this device have the memory to run the model comfortably? A machine
- *  recommendation only earns its place on the card when the answer is no. */
+/** Does this device have the memory to run the model? The model's wanted RAM is
+ *  the catalog's honest floor (minRamGB) when published, so the rule is that
+ *  floor against physical memory, the same rule the packs and the First Seat
+ *  read (lib/firstSeat.ts phoneFits). The comfort fraction stays for the
+ *  machine recommendation only. A machine recommendation earns its place on
+ *  the card only when the answer is no. */
 export function deviceRunsComfortably(requiredRamGB: number, deviceRamGB: number): boolean {
   if (!deviceRamGB) return false;
-  return requiredRamGB <= deviceRamGB * COMFORT_FRACTION;
+  return requiredRamGB <= deviceRamGB;
 }
 
 /** Does an on-device model run WELL on THIS phone right now, given its physical

@@ -21,6 +21,11 @@ let slot: Slot | undefined;
  *  while before the first token, so this is generous. */
 export const STALL_TIMEOUT_MS = 120_000;
 
+/** How long a stop waits for the native runner's generationDone before the
+ *  driver ends the turn itself. A stop that the runner never acknowledges
+ *  (the request was already lost) must not leave the chat busy. */
+export const ABORT_BEAT_MS = 1500;
+
 export type EnsureDeviceModel = { ok: true } | { ok: false; detail: string };
 
 /** The model id in the slot right now, as far as the JS side knows. */

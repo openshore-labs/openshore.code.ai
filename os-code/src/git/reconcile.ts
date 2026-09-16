@@ -12,8 +12,15 @@
 //    person to resolve. Nothing is clobbered and nothing is lost.
 //  - Never merges over uncommitted work: a dirty tree on divergence is reported,
 //    not stepped on.
+//  - Never auto-pushes the repository's DEFAULT branch (the one origin/HEAD
+//    points at, else main, else master) unless the project opted in with
+//    sync.autoPushDefaultBranch in its os-code.config.json (board call 5,
+//    2026-09-16). A branch whose push deploys is the person's to push. Other
+//    branches keep the durable-outbox behavior. A held branch is reported as
+//    'held' so the app can name what it did not push.
 // No em dashes anywhere in this file (repo policy is total here).
 import { simpleGit, type SimpleGit } from 'simple-git';
+import { loadConfig } from '../config/load.js';
 
 /** A git handle for reconcile work, time-bounded so a stalled transfer (an
  *  unreachable remote, a credential prompt that never gets answered) gives up
@@ -36,6 +43,7 @@ export type ReconcileStatus =
   | 'not-repo' // the path is not a git repository
   | 'no-upstream' // the branch has no tracking remote; nothing to push safely to
   | 'clean' // no unpushed commits
+  | 'held' // unpushed commits on the default branch; the project has not opted in
   | 'pushed' // pushed the branch's unpushed commits (fast-forward)
   | 'merged' // the remote had advanced; merged it in and pushed
   | 'conflict' // divergence we could not merge automatically; nothing pushed, nothing lost
@@ -68,9 +76,69 @@ export function isOffline(message: string): boolean {
   );
 }
 
+/** The one line for a held default branch: what was not pushed, and why. */
+export function DEFAULT_BRANCH_HELD(branch: string): string {
+  return `${branch} is this repository's default branch, so it was not pushed for you. Push it yourself, or turn on sync.autoPushDefaultBranch in the project's os-code.config.json.`;
+}
+
+/** The branch a remote treats as its default: the one its HEAD points at
+ *  (origin/HEAD, set by clone or `git remote set-head`), else main, else master
+ *  when the remote has that branch. Undefined when none of those exist, which
+ *  is a remote with no branches yet. */
+export async function defaultBranchOf(cwd: string, remote: string): Promise<string | undefined> {
+  const g = reconcileGit(cwd);
+  try {
+    const head = (await g.raw(['symbolic-ref', '-q', `refs/remotes/${remote}/HEAD`])).trim();
+    const prefix = `refs/remotes/${remote}/`;
+    if (head.startsWith(prefix)) return head.slice(prefix.length);
+  } catch {
+    // No origin/HEAD. Fall through to the conventional names.
+  }
+  try {
+    const listed = await g.raw([
+      'for-each-ref',
+      '--format=%(refname)',
+      `refs/remotes/${remote}/main`,
+      `refs/remotes/${remote}/master`,
+    ]);
+    const have = new Set(
+      listed
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean),
+    );
+    for (const name of ['main', 'master']) {
+      if (have.has(`refs/remotes/${remote}/${name}`)) return name;
+    }
+  } catch {
+    // No refs to list; a remote with no branches yet.
+  }
+  return undefined;
+}
+
+export interface ReconcileOptions {
+  /** Push the repository's default branch too. Off unless the project opted
+   *  in; the caller passes the project's choice. */
+  allowDefaultBranch?: boolean;
+}
+
+/** Whether this clone's project opted in to auto-pushing its default branch
+ *  (sync.autoPushDefaultBranch in its os-code.config.json). Unreadable config
+ *  means the default: not opted in. */
+export function projectAllowsDefaultBranchPush(cwd: string): boolean {
+  try {
+    return loadConfig(cwd).config.sync?.autoPushDefaultBranch === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Push a clone's unpushed commits to its upstream, merging the remote in first
  *  when it has advanced. See the file header for the safety rails. */
-export async function reconcilePush(cwd: string): Promise<ReconcileResult> {
+export async function reconcilePush(
+  cwd: string,
+  options: ReconcileOptions = {},
+): Promise<ReconcileResult> {
   const g = reconcileGit(cwd);
   if (!(await g.checkIsRepo())) return { cwd, status: 'not-repo' };
 
@@ -92,6 +160,16 @@ export async function reconcilePush(cwd: string): Promise<ReconcileResult> {
   if (ahead === 0) return { cwd, status: 'clean', branch, ahead: 0 };
 
   const { remote, branch: upstreamBranch } = splitTracking(status.tracking);
+
+  // The default branch is the person's to push unless the project said
+  // otherwise. Judged by the branch actually tracked, so a local "work" branch
+  // tracking origin/main is held the same way main itself is.
+  if (!options.allowDefaultBranch) {
+    const def = await defaultBranchOf(cwd, remote);
+    if (def && def === upstreamBranch) {
+      return { cwd, status: 'held', branch, ahead, message: DEFAULT_BRANCH_HELD(upstreamBranch) };
+    }
+  }
 
   // First try a plain push of the current HEAD to the branch it tracks.
   try {
@@ -151,15 +229,20 @@ export async function reconcilePush(cwd: string): Promise<ReconcileResult> {
 }
 
 /** Reconcile several clones, in order. Deduplicates paths and never lets one
- *  repo's failure stop the rest. */
-export async function reconcileRepos(cwds: string[]): Promise<ReconcileResult[]> {
+ *  repo's failure stop the rest. Each clone's default-branch opt-in is read
+ *  from its own project config unless the caller decides per path. */
+export async function reconcileRepos(
+  cwds: string[],
+  options: { allowDefaultBranch?: (cwd: string) => boolean } = {},
+): Promise<ReconcileResult[]> {
   const seen = new Set<string>();
   const out: ReconcileResult[] = [];
+  const allow = options.allowDefaultBranch ?? projectAllowsDefaultBranchPush;
   for (const cwd of cwds) {
     if (seen.has(cwd)) continue;
     seen.add(cwd);
     try {
-      out.push(await reconcilePush(cwd));
+      out.push(await reconcilePush(cwd, { allowDefaultBranch: allow(cwd) }));
     } catch (err) {
       out.push({ cwd, status: 'error', message: String((err as Error)?.message ?? err) });
     }

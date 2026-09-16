@@ -94,6 +94,17 @@ export type RunCommandResult = { runId: string } | { refused: string } | undefin
 /** What a shared hub lets this device do. Absent on a hub that predates roles. */
 export type HubRole = 'admin' | 'member';
 
+/** The phone's line to a paired computer, as the chat banner reads it:
+ *  `reconnecting` while a dropped stream is actually being reattached,
+ *  `away` once that has clearly failed, `live` once the hub answers again. */
+export type HubLinkState = 'live' | 'reconnecting' | 'away';
+
+/** The one sentence for a hub that did not answer a request in time. Lives
+ *  here (never mocked) so the store can say it whether the failure surfaced in
+ *  the driver or in the session create before the driver existed. */
+export const HUB_NO_ANSWER =
+  'Your computer did not answer in 10 seconds. Is it on and on the same network?';
+
 /** Shared helper: a tiny fan-out emitter drivers can compose. */
 export class DriverEmitter {
   private sinks = new Set<DriverEventSink>();

@@ -9,7 +9,7 @@
 // interrupts a reply to talk, or sends what you have said. The whole surface is
 // presence-aware (it animates out, never snaps), honors reduced motion, and marks
 // its open and close with a haptic, per the house motion standard.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { doorExitMs } from '../lib/motion.js';
@@ -52,6 +52,11 @@ export function VoiceMode({
   onBreakToScreen: (brk: VoiceBreak) => void;
 }) {
   const { mounted, closing } = useExitPresence(open, doorExitMs());
+  // Voice mode is its own full-screen surface, not a `.sheet`, so the app-root
+  // focus trap does not cover it: it moves focus in on open and hands it back
+  // to whatever opened it on close, itself.
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<Element | null>(null);
   const settings = useApp((s) => s.settings);
   const saveSettings = useApp((s) => s.saveSettings);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -71,6 +76,19 @@ export function VoiceMode({
     rate,
     speakReplies,
   });
+
+  // Move focus in on open and return it to the opener on close, so a keyboard
+  // or screen-reader user is never stranded behind the overlay.
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement;
+    openerRef.current = opener;
+    const id = window.setTimeout(() => closeRef.current?.focus(), 0);
+    return () => {
+      window.clearTimeout(id);
+      if (openerRef.current instanceof HTMLElement) openerRef.current.focus();
+    };
+  }, [open]);
 
   // Mark the open, and pick a default voice the first time if none is chosen, so
   // the picker always shows a selection and the first reply has a voice.
@@ -108,6 +126,7 @@ export function VoiceMode({
     <div
       className={`voice-scrim${closing ? ' closing' : ''}`}
       role="dialog"
+      aria-modal="true"
       aria-label="Voice mode"
     >
       <div className={`voice-panel${closing ? ' closing' : ''}`}>
@@ -120,6 +139,7 @@ export function VoiceMode({
             {voiceName ? `Voice: ${voiceName}` : 'Choose a voice'}
           </button>
           <button
+            ref={closeRef}
             type="button"
             className="icon-btn press-fb"
             onClick={onClose}

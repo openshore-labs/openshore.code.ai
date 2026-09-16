@@ -2,7 +2,7 @@
 // CI, so spawnSync and networkInterfaces are mocked to stand in for the CLI and
 // the interface table. The cases pin the macOS-shaped behavior (app-path binary,
 // CLI-missing-but-interface-up) and the CGNAT range alignment.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type SpawnResult = { error?: Error; status: number | null; stdout: string; stderr: string };
 type SpawnFn = (cmd: string, args: readonly string[]) => SpawnResult;
@@ -35,6 +35,44 @@ function iface(address: string): NetFn {
 beforeEach(() => {
   h.spawnImpl = () => enoent;
   h.netImpl = () => ({});
+});
+
+describe('detectTailscale on Windows', () => {
+  const realPlatform = process.platform;
+  const setPlatform = (p: string) => Object.defineProperty(process, 'platform', { value: p });
+  afterEach(() => setPlatform(realPlatform));
+
+  it('sends a bare Windows box to the download page, never a curl pipe or sudo', () => {
+    setPlatform('win32');
+    h.spawnImpl = () => enoent;
+    const s = detectTailscale();
+    expect(s.installed).toBe(false);
+    expect(s.hint).toContain('https://tailscale.com/download/windows');
+    expect(s.hint).not.toMatch(/curl|sudo|App Store/);
+  });
+
+  it('tells a stopped Windows tailnet to use the tray app or tailscale up, without sudo', () => {
+    setPlatform('win32');
+    h.spawnImpl = (_cmd, args) => {
+      if (args[0] === 'version') return { status: 0, stdout: '1.80.0\n', stderr: '' };
+      if (args[0] === 'status') {
+        return { status: 0, stdout: JSON.stringify({ BackendState: 'Stopped' }), stderr: '' };
+      }
+      return enoent;
+    };
+    const s = detectTailscale();
+    expect(s.installed).toBe(true);
+    expect(s.running).toBe(false);
+    expect(s.hint).toMatch(/tailscale up/);
+    expect(s.hint).not.toMatch(/sudo/);
+    expect(s.hint).toMatch(/system tray/);
+  });
+
+  it('keeps the Linux install hint on Linux', () => {
+    setPlatform('linux');
+    h.spawnImpl = () => enoent;
+    expect(detectTailscale().hint).toMatch(/install\.sh/);
+  });
 });
 
 describe('detectTailscale (TS-P2-8 macOS)', () => {

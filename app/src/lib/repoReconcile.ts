@@ -26,6 +26,11 @@ export function projectWorkspaces(projects: Project[]): string[] {
 export interface ReconcileSummary {
   /** Repos whose unpushed commits reached the remote (pushed or merged+pushed). */
   pushed: number;
+  /** The pushes themselves, so the toast can name what left this device. */
+  pushes: ReconcileResult[];
+  /** Repos whose default branch had commits but was not pushed: the project
+   *  has not opted in (board call 5). Nothing left this device. */
+  held: ReconcileResult[];
   /** Repos that diverged and need a manual merge. Nothing was pushed or lost. */
   conflicts: ReconcileResult[];
   /** Repos whose remote was unreachable; worth retrying on the next reconnect. */
@@ -36,25 +41,52 @@ export interface ReconcileSummary {
 }
 
 export function summarizeReconcile(results: ReconcileResult[]): ReconcileSummary {
+  const pushes = results.filter((r) => r.status === 'pushed' || r.status === 'merged');
   return {
-    pushed: results.filter((r) => r.status === 'pushed' || r.status === 'merged').length,
+    pushed: pushes.length,
+    pushes,
+    held: results.filter((r) => r.status === 'held'),
     conflicts: results.filter((r) => r.status === 'conflict'),
     offline: results.filter((r) => r.status === 'offline').length,
     errors: results.filter((r) => r.status === 'error').length,
   };
 }
 
+/** The last path segment: the repository's folder name. */
+export function repoName(cwd: string): string {
+  return cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
+}
+
+/** "2 commits on feature/x in my-app", naming what a push actually carried. */
+function describePush(r: ReconcileResult): string {
+  const n = r.ahead ?? 0;
+  const commits = n === 1 ? '1 commit' : `${n} commits`;
+  const branch = r.branch ? ` on ${r.branch}` : '';
+  return `${commits}${branch} in ${repoName(r.cwd)}`;
+}
+
 /** The one-line status to surface, or undefined when nothing happened worth
  *  saying (everything was already in sync, offline, or had no upstream). A
- *  conflict is stated plainly and reassuringly (no work is ever lost). */
+ *  conflict is stated plainly and reassuringly (no work is ever lost). A push
+ *  names what it pushed; a held default branch says so and why. */
 export function reconcileToast(s: ReconcileSummary): string | undefined {
   if (s.conflicts.length > 0) {
     const n = s.conflicts.length;
     return `${n} project ${n === 1 ? 'repository needs' : 'repositories need'} a manual merge before syncing. Your work is safe on this device.`;
   }
   if (s.pushed > 0) {
-    const n = s.pushed;
-    return `Synced your project notes to ${n === 1 ? 'the repository' : `${n} repositories`}.`;
+    const first = s.pushes[0]!;
+    const rest = s.pushes.length - 1;
+    const named = describePush(first);
+    const more = rest > 0 ? `, and ${rest} more ${rest === 1 ? 'repository' : 'repositories'}` : '';
+    const held = s.held.length
+      ? ` ${s.held.map((h) => h.branch ?? 'the default branch').join(', ')} stayed here: a default branch is yours to push.`
+      : '';
+    return `Pushed ${named}${more}.${held}`;
+  }
+  if (s.held.length > 0) {
+    const names = s.held.map((h) => `${h.branch ?? 'the default branch'} in ${repoName(h.cwd)}`);
+    return `Not pushed: ${names.join(', ')}. A default branch is yours to push unless the project opts in (sync.autoPushDefaultBranch).`;
   }
   // Nothing pushed and nothing to merge, but something failed outright (usually
   // missing push credentials): tell the person their notes are not syncing.

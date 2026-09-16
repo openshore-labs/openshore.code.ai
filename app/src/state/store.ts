@@ -48,8 +48,14 @@ import {
   hydrateRepoCache,
   repoContextLine,
 } from '../lib/chatRepos.js';
-import { reduceEvent, titleFrom } from './transcript.js';
-import type { ChatDriver } from '../drivers/types.js';
+import {
+  PLAN_APPROVAL_LINE,
+  REACHING_COMPUTER,
+  reduceEvent,
+  snapshotThread,
+  titleFrom,
+} from './transcript.js';
+import { HUB_NO_ANSWER, type ChatDriver, type HubLinkState } from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
 import {
   RemoteDriver,
@@ -203,7 +209,9 @@ import {
   setOrgProjectAccess,
   updateOrgProject,
 } from '../lib/orgProjects.js';
-import { SETUP_GUIDES, guideOpening, type SetupGuideId } from '../lib/setupGuides.js';
+import { SETUP_GUIDES, type SetupGuideId } from '../lib/setupGuides.js';
+import { NO_BRAIN_GUIDE_NOTE, pacedOpeningFor } from '../lib/guidePacing.js';
+import { formatBytes } from '../lib/modelStorage.js';
 import {
   providerFor,
   probeReady,
@@ -424,6 +432,14 @@ export interface AppSettings {
    *  join sheet), so the question is asked once. Device local; cleared on
    *  sign-out. */
   declinedOrgIds?: string[];
+  /** A first message typed before any brain could answer, held while the
+   *  person sets one up (a download, a pairing, a key) and offered back on
+   *  their return. Text only; attachments live in memory for the session.
+   *  Device local. */
+  heldFirstMessage?: { text: string; at: string };
+  /** When each paired hub last answered this device, keyed by base URL, so a
+   *  chat banner can say "Last seen 2h ago" rather than nothing. Device local. */
+  hubLastSeen?: Record<string, string>;
 }
 
 /** What a hub says this device's pairing credential may do. */
@@ -557,6 +573,17 @@ async function readHubRole(daemon: DaemonTarget): Promise<HubRole | undefined> {
 // bytes with no durable form, so they wait here for this session only.
 const pendingSends = new Map<string, Attachment[] | undefined>();
 const unsubscribers = new Map<string, () => void>();
+// Chats whose driver is being built right now, so a send that lands mid-open
+// parks instead of starting a second build, and a reopen never double-builds.
+const building = new Set<string>();
+// Desktop chats showing their saved read-only snapshot (B4): the first journal
+// frame replaces the snapshot rather than stacking on top of it.
+const snapshotIds = new Set<string>();
+// The attachments of the held first message (settings keep only the text).
+let heldAttachments: Attachment[] | undefined;
+/** How long a reopened desktop chat waits for its first journal frame before
+ *  the resume skeleton gives way to whatever is on screen. */
+const RESUME_TIMEOUT_MS = 6000;
 // Guards against two interleaved outbox syncs (a double "Sync now" tap): the
 // second returns immediately rather than racing the first's snapshot save.
 let outboxSyncing = false;
@@ -728,8 +755,13 @@ interface AppState {
    *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
   paywall?: PaywallReason;
   /** A desktop chat whose journal is still being replayed after reopen, so
-   *  the screen shows a skeleton instead of the empty-state greeting. */
+   *  the screen shows a skeleton (or the saved snapshot) instead of the
+   *  empty-state greeting. Cleared by the first journal frame or a timeout. */
   resumingId?: string;
+  /** The phone's line to the active hub while it is not simply live:
+   *  `reconnecting` while a dropped stream is being reattached, `away` once
+   *  that has clearly failed. Absent means live (or no hub in play). */
+  hubLink?: { state: 'reconnecting' | 'away'; since: number };
 
   init(): Promise<void>;
   /** Go to a room. From the panel pass `{ root: true }` so the trail clears;
@@ -777,6 +809,9 @@ interface AppState {
       title?: string;
       /** The repositories the chat starts with; the project's when omitted. */
       repoIds?: string[];
+      /** The first message, parked on the chat before the driver exists so
+       *  the bubble is on screen at once and nothing waits on the hub. */
+      firstMessage?: { text: string; attachments?: Attachment[] };
     },
   ): Promise<string>;
   /** Replace the repositories a chat works with (the header picker). */
@@ -795,6 +830,15 @@ interface AppState {
   startNewChat(): void;
   /** Send text once the active conversation's driver has attached. */
   sendWhenAttached(conversationId: string, text: string, attachments?: Attachment[]): void;
+  /** Try again to deliver a chat's parked first message: rebuild the driver
+   *  if it failed to open (the hub did not answer), or flush if it exists. */
+  retryPending(conversationId: string): void;
+  /** Hold a first message typed before any brain could answer, persisted, so
+   *  a trip to the Marketplace or the pair room does not lose it. */
+  holdFirstMessage(text: string, attachments?: Attachment[]): Promise<void>;
+  /** Take the held message (clearing it) to send it now. */
+  takeHeldFirstMessage(): { text: string; attachments?: Attachment[] } | undefined;
+  discardHeldFirstMessage(): Promise<void>;
   /** Create a project and make it active. */
   createProject(name: string): Promise<string>;
   setActiveProject(id: string): void;
@@ -1375,6 +1419,22 @@ export const useApp = create<AppState>((set, get) => {
     unsubscribers.delete(conversationId);
   }
 
+  /** The conversation's driver, unless it has closed itself, in which case it
+   *  is dropped and treated as absent so the next open rebuilds it (and a
+   *  desktop reopen shows its snapshot first). A disposed driver still sitting
+   *  in the map is exactly what a relaunch looks like. */
+  function liveDriver(conversationId: string): ChatDriver | undefined {
+    const d = drivers.get(conversationId);
+    if (d && driverClosed(d)) {
+      dropDriver(conversationId);
+      return undefined;
+    }
+    return d;
+  }
+  function hasLiveDriver(conversationId: string): boolean {
+    return liveDriver(conversationId) !== undefined;
+  }
+
   /** APP-10: a message typed before the driver attached goes out now. */
   function flushPendingFirstMessage(conversationId: string, driver: ChatDriver): void {
     const text = get().conversations[conversationId]?.pendingFirstMessage;
@@ -1387,12 +1447,114 @@ export const useApp = create<AppState>((set, get) => {
       return {
         conversations: {
           ...state.conversations,
-          [conversationId]: { ...c, pendingFirstMessage: undefined },
+          [conversationId]: { ...c, pendingFirstMessage: undefined, pendingFirstError: undefined },
         },
       };
     });
-    driver.send(text, attachments);
+    deliver(conversationId, driver, text, attachments);
     void persistConversations(get());
+  }
+
+  /** A driver that talks to a paired computer over the network (the daemon
+   *  path), as opposed to this machine's own engine or a brain in the app. */
+  function isRemote(driver: ChatDriver): boolean {
+    if (driver.kind !== 'desktop') return false;
+    return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
+  }
+
+  /** The one way text leaves for a driver (B3). On the daemon path the user
+   *  bubble is painted here, the moment the text leaves, with the working row
+   *  naming the wait; the hub's own task-start for the same text folds into
+   *  that bubble in the reducer, so nothing shows twice. Every other driver
+   *  emits its task-start at once, so it needs no help. */
+  function deliver(
+    conversationId: string,
+    driver: ChatDriver,
+    text: string,
+    attachments?: Attachment[],
+  ): void {
+    if (isRemote(driver)) {
+      set((state) => {
+        const c = state.conversations[conversationId];
+        if (!c || c.thread.busy) return state;
+        const thread = {
+          ...reduceEvent(c.thread, { type: 'task-start', input: text }),
+          stepNote: REACHING_COMPUTER,
+        };
+        return {
+          conversations: {
+            ...state.conversations,
+            [conversationId]: { ...c, thread, updatedAt: new Date().toISOString() },
+          },
+        };
+      });
+    }
+    driver.send(text, attachments);
+  }
+
+  /** A driver build's failure in plain words: a hub that did not answer in
+   *  time is a sentence with a next step, never the platform's TimeoutError. */
+  function friendlyOpenError(err: unknown): string {
+    const name = (err as { name?: unknown } | null)?.name;
+    const message = err instanceof Error ? err.message : String(err);
+    if (name === 'TimeoutError' || /timed? ?out|due to timeout/i.test(message)) {
+      return HUB_NO_ANSWER;
+    }
+    return message;
+  }
+
+  /** The driver could not be built. Say so once, and if a message is parked
+   *  on the chat, pin the reason beside its bubble with a Retry. */
+  function failOpen(conversationId: string, err: unknown): void {
+    const message = friendlyOpenError(err);
+    set((state) => {
+      const c = state.conversations[conversationId];
+      if (!c || !c.pendingFirstMessage) return state;
+      return {
+        conversations: {
+          ...state.conversations,
+          [conversationId]: { ...c, pendingFirstError: message },
+        },
+      };
+    });
+    get().showToast(message);
+  }
+
+  /** Build and attach a chat's driver unless one exists or is on its way. A
+   *  send that lands mid-build parks on the chat and the attach delivers it. */
+  function ensureDriver(conversationId: string): void {
+    if (hasLiveDriver(conversationId) || building.has(conversationId)) return;
+    const conv = get().conversations[conversationId];
+    if (!conv) return;
+    building.add(conversationId);
+    // Desktop threads replay their journal into the UI, so they rebuild from
+    // the daemon with no seed. Chat brains (device/cloud/stack) live only in a
+    // module-level driver map that is empty after a reload, so a reopened chat
+    // MUST reseed the new driver from the persisted transcript, or the model
+    // has no memory of a conversation the user is looking at in full.
+    const seed = conv.source.kind === 'desktop' ? undefined : seedFromTranscript(conv.thread.items);
+    void buildDriver(conv, seed)
+      .then((driver) => attachDriver(conversationId, driver))
+      .catch((err) => failOpen(conversationId, err))
+      .finally(() => {
+        building.delete(conversationId);
+        if (!drivers.has(conversationId) && get().resumingId === conversationId) {
+          set({ resumingId: undefined });
+        }
+      });
+  }
+
+  /** The hub's link as the driver reports it: live clears the banner and
+   *  notes when the hub was last heard from; the rest is the banner's state. */
+  function noteHubLink(baseUrl: string, state: HubLinkState): void {
+    if (state === 'live') {
+      if (get().hubLink) set({ hubLink: undefined });
+      void get().saveSettings({
+        hubLastSeen: { ...(get().settings.hubLastSeen ?? {}), [baseUrl]: new Date().toISOString() },
+      });
+      return;
+    }
+    set({ hubLink: { state, since: Date.now() } });
   }
 
   function attachDriver(conversationId: string, driver: ChatDriver): void {
@@ -1408,10 +1570,18 @@ export const useApp = create<AppState>((set, get) => {
       scheduled = false;
       const batch = pending.splice(0);
       if (!batch.length) return;
+      // The first journaled frame (seq 1 and up; a driver's own status rows
+      // carry the last seen seq, 0 on a fresh reopen) is the replay landing:
+      // a saved snapshot gives way to it, and the resume is over.
+      const journaled = batch.some(({ seq }) => seq >= 1);
       set((state) => {
         const conv = state.conversations[conversationId];
         if (!conv) return state;
         let thread = conv.thread;
+        if (journaled && snapshotIds.has(conversationId)) {
+          snapshotIds.delete(conversationId);
+          thread = emptyThread();
+        }
         // The first user line names a new chat; the engine's generated title
         // then replaces that placeholder, unless the person named it by hand.
         let title = conv.title;
@@ -1426,7 +1596,10 @@ export const useApp = create<AppState>((set, get) => {
           title,
           updatedAt: new Date().toISOString(),
         };
-        return { conversations: { ...state.conversations, [conversationId]: next } };
+        return {
+          conversations: { ...state.conversations, [conversationId]: next },
+          ...(journaled && state.resumingId === conversationId ? { resumingId: undefined } : {}),
+        };
       });
       let celebrated = false;
       for (const { event } of batch) {
@@ -1534,7 +1707,8 @@ export const useApp = create<AppState>((set, get) => {
               },
             };
           });
-          drivers.get(conversationId)?.send(head!);
+          const next = drivers.get(conversationId);
+          if (next) deliver(conversationId, next, head!);
         }
       }
       // Funnel milestones (opt-in only; no-ops otherwise).
@@ -1558,7 +1732,12 @@ export const useApp = create<AppState>((set, get) => {
       }
     });
     unsubscribers.set(conversationId, off);
-    flushPendingFirstMessage(conversationId, driver);
+    // After the replay (if any) has folded: a journal handed over at subscribe
+    // is batched to the next microtask, and a parked message must land on the
+    // replayed thread, not on the snapshot the replay is about to replace.
+    queueMicrotask(() => {
+      if (drivers.get(conversationId) === driver) flushPendingFirstMessage(conversationId, driver);
+    });
   }
 
   /** APP-5: the daemon's session id is state, written through `set` and
@@ -1603,6 +1782,20 @@ export const useApp = create<AppState>((set, get) => {
    */
   async function buildDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
     return guardDriver(await buildUnguardedDriver(conv, seed));
+  }
+
+  /** The project's standing instructions and the chat's repo context, as one
+   *  system-prompt block. Every driver gets the same one (B6), so a project's
+   *  brief reaches the pocket model and a cloud key as surely as the engine. */
+  function standingContext(conv: Conversation): string | undefined {
+    const project = conv.projectId
+      ? get().settings.projects?.find((p) => p.id === conv.projectId)
+      : undefined;
+    return (
+      [project?.instructions?.trim(), repoContextLine(conv.repoIds ?? [])]
+        .filter(Boolean)
+        .join('\n\n') || undefined
+    );
   }
 
   async function buildUnguardedDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
@@ -1737,8 +1930,12 @@ export const useApp = create<AppState>((set, get) => {
         // Refresh what this hub says the credential may do, so the composer's
         // terminal affordance tracks the role the hub enforces (P0-1).
         void refreshHubRole(settings.daemon);
-        // Replay from zero so the transcript rebuilds exactly.
-        return new RemoteDriver(sessionId, settings.daemon, 0);
+        // Replay from zero so the transcript rebuilds exactly. The link
+        // callback feeds the chat banner (B4).
+        const hubUrl = settings.daemon.baseUrl;
+        return new RemoteDriver(sessionId, settings.daemon, 0, {
+          onLink: (state) => noteHubLink(hubUrl, state),
+        });
       }
       case 'desktop-chat': {
         // Free, read-only chat with the paired desktop's local models over the
@@ -1755,6 +1952,7 @@ export const useApp = create<AppState>((set, get) => {
           conv.source.modelName,
           seed,
           settings.perplexityResearch === true,
+          standingContext(conv),
         );
       case 'cloud': {
         // Claude runs on the Anthropic SDK; every other connected provider runs
@@ -1770,7 +1968,7 @@ export const useApp = create<AppState>((set, get) => {
             source.model,
             seed,
             settings.anthropicWorkspaceId,
-            repoContextLine(conv.repoIds ?? []),
+            standingContext(conv),
           );
         }
         const info = providerInfo(source.provider);
@@ -1786,7 +1984,7 @@ export const useApp = create<AppState>((set, get) => {
           source.model,
           info.name,
           seed,
-          repoContextLine(conv.repoIds ?? []),
+          standingContext(conv),
           contextWindow,
         );
       }
@@ -2260,8 +2458,12 @@ export const useApp = create<AppState>((set, get) => {
         if ((row as { ephemeral?: boolean }).ephemeral) continue;
         conversations[id] = {
           ...row,
-          // Desktop threads rebuild from the journal on open; local ones load as saved.
-          thread: row.source.kind === 'desktop' ? emptyThread() : (row.thread ?? emptyThread()),
+          // Desktop threads rebuild from the journal on open, from their saved
+          // read-only snapshot (B4); local ones load as saved.
+          thread:
+            row.source.kind === 'desktop'
+              ? snapshotThread(row.thread ?? emptyThread())
+              : (row.thread ?? emptyThread()),
         };
       }
       const cloudKeyPresent = Boolean(await secretGet(ANTHROPIC_KEY_KEY));
@@ -2896,24 +3098,33 @@ export const useApp = create<AppState>((set, get) => {
       }
       logEvent('source_chosen', { kind: source.kind });
       const id = newId();
-      // Every chat belongs to the active project (or the first one). If none
-      // exists yet, make a default so a chat is never orphaned from every bucket.
+      // Every chat belongs to the active project (or the first one). Resolve
+      // what exists synchronously; a missing default is created just below,
+      // AFTER the conversation is on screen, so a first message never waits on
+      // project setup to become visible (B3).
       const s0 = get().settings;
       let projectId = s0.activeProjectId ?? s0.projects?.[0]?.id;
-      if (!projectId) projectId = await get().createProject('My work');
       const seedItems = opts?.seedItems ?? [];
       // The chat's repositories: what the caller picked, else the project's.
       const project = get().settings.projects?.find((p) => p.id === projectId);
       const repoIds = opts?.repoIds ?? project?.repoIds ?? [];
+      // A first message rides in parked on the chat (B3): its bubble is on
+      // screen before the driver exists, the attach delivers it, and a hub
+      // that never answers leaves it there with the reason and a Retry. The
+      // conversation is set SYNCHRONOUSLY, before any await, so the bubble
+      // exists the instant the caller asks for it.
+      const first = opts?.firstMessage;
+      if (first?.attachments?.length) pendingSends.set(id, first.attachments);
       const conv: Conversation = {
         id,
         title: opts?.title ?? 'New chat',
         source,
-        projectId,
+        ...(projectId ? { projectId } : {}),
         repoIds,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         thread: { ...emptyThread(), items: seedItems },
+        ...(first ? { pendingFirstMessage: first.text } : {}),
       };
       set((s) => ({
         conversations: { ...s.conversations, [id]: conv },
@@ -2922,14 +3133,30 @@ export const useApp = create<AppState>((set, get) => {
         view: 'chat',
         drawerOpen: false,
       }));
+      if (first) void persistConversations(get());
+      building.add(id);
       try {
+        // Create the default bucket now, if none existed, and patch it onto the
+        // conversation before the driver is built (so its instructions carry the
+        // project's brief). The chat is already on screen throughout.
+        if (!projectId) {
+          projectId = await get().createProject('My work');
+          set((s) => {
+            const c = s.conversations[id];
+            if (!c) return s;
+            return { conversations: { ...s.conversations, [id]: { ...c, projectId } } };
+          });
+        }
+        const built = get().conversations[id] ?? conv;
         const driver = await buildDriver(
-          conv,
+          built,
           seedItems.length ? seedFromTranscript(seedItems) : undefined,
         );
         attachDriver(id, driver);
       } catch (err) {
-        get().showToast(err instanceof Error ? err.message : String(err));
+        failOpen(id, err);
+      } finally {
+        building.delete(id);
       }
       void persistConversations(get());
       return id;
@@ -3021,19 +3248,69 @@ export const useApp = create<AppState>((set, get) => {
       // the hub), or its build failed and the next open rebuilds it. Hold the
       // message on the chat, persisted, and let the attach deliver it. No
       // timer, so a slow open or a relaunch mid-open never drops the first
-      // message.
-      pendingSends.set(conversationId, attachments);
+      // message. A second message while one is already parked queues behind
+      // it, the same as a message typed mid-run.
       set((state) => {
         const c = state.conversations[conversationId];
         if (!c) return state;
+        if (c.pendingFirstMessage) {
+          return {
+            conversations: {
+              ...state.conversations,
+              [conversationId]: {
+                ...c,
+                thread: { ...c.thread, queued: [...c.thread.queued, text] },
+              },
+            },
+          };
+        }
+        pendingSends.set(conversationId, attachments);
         return {
           conversations: {
             ...state.conversations,
-            [conversationId]: { ...c, pendingFirstMessage: text },
+            [conversationId]: { ...c, pendingFirstMessage: text, pendingFirstError: undefined },
           },
         };
       });
       void persistConversations(get());
+    },
+
+    retryPending(conversationId) {
+      set((state) => {
+        const c = state.conversations[conversationId];
+        if (!c || !c.pendingFirstError) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [conversationId]: { ...c, pendingFirstError: undefined },
+          },
+        };
+      });
+      const driver = drivers.get(conversationId);
+      if (driver) {
+        flushPendingFirstMessage(conversationId, driver);
+        return;
+      }
+      ensureDriver(conversationId);
+    },
+
+    async holdFirstMessage(text, attachments) {
+      heldAttachments = attachments;
+      await get().saveSettings({ heldFirstMessage: { text, at: new Date().toISOString() } });
+    },
+
+    takeHeldFirstMessage() {
+      const held = get().settings.heldFirstMessage;
+      if (!held) return undefined;
+      const attachments = heldAttachments;
+      heldAttachments = undefined;
+      void get().saveSettings({ heldFirstMessage: undefined });
+      return { text: held.text, attachments };
+    },
+
+    async discardHeldFirstMessage() {
+      heldAttachments = undefined;
+      await get().saveSettings({ heldFirstMessage: undefined });
     },
 
     async createProject(name) {
@@ -4373,7 +4650,7 @@ export const useApp = create<AppState>((set, get) => {
           harborMiniDownload: {
             percent: total ? (completed / total) * 100 : 0,
             label: total
-              ? `${Math.round((completed / total) * 100)}% of ${(total / 1e9).toFixed(1)} GB`
+              ? `${Math.round((completed / total) * 100)}% of ${formatBytes(total)}`
               : 'Downloading',
             indeterminate: !total,
           },
@@ -4434,7 +4711,7 @@ export const useApp = create<AppState>((set, get) => {
           harborDownload: {
             percent: total ? (completed / total) * 100 : 0,
             label: total
-              ? `${Math.round((completed / total) * 100)}% of ${(total / 1e9).toFixed(1)} GB`
+              ? `${Math.round((completed / total) * 100)}% of ${formatBytes(total)}`
               : 'Downloading',
             indeterminate: !total,
           },
@@ -4551,19 +4828,23 @@ export const useApp = create<AppState>((set, get) => {
             modelName: HARBOR_MINI_MODEL_NAME,
           };
       }
-      if (!source) {
-        get().showToast('Set up a model first (Your stack), then the guide can chat with you.');
-        get().setView('stack');
-        return;
-      }
+      // No brain can answer here yet (a fresh desktop with no engine and no
+      // key): the guide still opens, seeded with the goal, the plan, and step
+      // one as plain text the person can follow by hand, plus an honest note
+      // that points at the model pill. The steps are static, so a guide never
+      // needs a model to be USEFUL, only to chat back (tenet 4, tenet 7).
+      const noBrain = !source;
+      const opened: ConversationSource = source ?? { kind: 'stack' };
+      const harborLight = opened.kind === 'device' && opened.modelId === HARBOR_MINI_MODEL_ID;
       logEvent('guide_chat', { guide: guideId });
+      const body = pacedOpeningFor(guide, { harborLight });
       const opening: ThreadItem = {
         kind: 'assistant',
         id: `${newId()}-guide`,
-        text: guideOpening(guide),
+        text: noBrain ? `${body}\n\n${NO_BRAIN_GUIDE_NOTE}` : body,
         streaming: false,
       };
-      await get().newConversation(source, { seedItems: [opening], title: guide.title });
+      await get().newConversation(opened, { seedItems: [opening], title: guide.title });
     },
 
     async startGuide(modelId = HARBOR_MODEL_ID) {
@@ -4951,33 +5232,28 @@ export const useApp = create<AppState>((set, get) => {
       const from = get().view;
       const viewTrail: ViewName[] = from === 'chats' || from === 'project' ? [from] : [];
       set({ activeId: id, view: 'chat', viewTrail, drawerOpen: false });
-      if (!drivers.has(id)) {
-        // Reattach lazily. Desktop threads replay their journal into the UI, so
-        // they reset the thread and rebuild from the daemon with no seed. Chat
-        // brains (device/cloud/stack) live only in a module-level driver map
-        // that is empty after a reload, so a reopened chat MUST reseed the new
-        // driver from the persisted transcript, or the model has no memory of a
-        // conversation the user is looking at in full.
-        if (conv.source.kind === 'desktop') {
+      if (!hasLiveDriver(id)) {
+        // Reattach lazily (ensureDriver). A desktop thread reopens on its
+        // saved read-only snapshot (B4): what was said stays on screen while
+        // the journal is fetched, the first journal frame replaces it, and if
+        // the computer is off or away the snapshot is simply what there is.
+        // The resume skeleton (no snapshot) gives way on that first frame or
+        // after a timeout, never on driver construction, since the journal
+        // arrives over the stream later than the driver exists.
+        if (conv.source.kind === 'desktop' && !building.has(id)) {
+          snapshotIds.add(id);
           set((s) => ({
             resumingId: id,
             conversations: {
               ...s.conversations,
-              [id]: { ...s.conversations[id]!, thread: emptyThread() },
+              [id]: { ...s.conversations[id]!, thread: snapshotThread(conv.thread) },
             },
           }));
-          void buildDriver(conv)
-            .then((driver) => attachDriver(id, driver))
-            .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)))
-            .finally(() => {
-              if (get().resumingId === id) set({ resumingId: undefined });
-            });
-        } else {
-          const seed = seedFromTranscript(conv.thread.items);
-          void buildDriver(conv, seed)
-            .then((driver) => attachDriver(id, driver))
-            .catch((err) => get().showToast(err instanceof Error ? err.message : String(err)));
+          setTimeout(() => {
+            if (get().resumingId === id) set({ resumingId: undefined });
+          }, RESUME_TIMEOUT_MS);
         }
+        ensureDriver(id);
       }
     },
 
@@ -4999,9 +5275,14 @@ export const useApp = create<AppState>((set, get) => {
     send(text, attachments) {
       const { activeId } = get();
       if (!activeId) return;
-      const driver = drivers.get(activeId);
+      const driver = liveDriver(activeId);
       if (!driver) {
-        get().showToast('This chat is not connected yet. Give it a second, or reopen it.');
+        // The driver is still building (a fast send after reopen) or its build
+        // failed. Park the message on the chat, visibly, and make sure a build
+        // is on its way; the attach delivers it. Never dropped (B3).
+        if (!text.trim() && !(attachments && attachments.length)) return;
+        get().sendWhenAttached(activeId, text, attachments);
+        ensureDriver(activeId);
         return;
       }
       // Mid-run: hold the message and send it when the task ends (attachDriver
@@ -5032,7 +5313,7 @@ export const useApp = create<AppState>((set, get) => {
           };
         });
       }
-      driver.send(text, attachments);
+      deliver(activeId, driver, text, attachments);
     },
 
     unqueue(index) {
@@ -5106,9 +5387,10 @@ export const useApp = create<AppState>((set, get) => {
         };
       });
       // Out of plan mode and into accept-edits, then the go-ahead, the same
-      // hand-off Claude Code makes when a plan is accepted.
+      // hand-off Claude Code makes when a plan is accepted. The line is the
+      // reducer's own constant, so a replay reads the approval back (B7).
       void get().setPermissionMode('acceptEdits');
-      get().send('The plan is approved. Proceed with it.');
+      get().send(PLAN_APPROVAL_LINE);
     },
 
     revisePlan() {
@@ -5722,10 +6004,16 @@ async function persistConversations(state: Pick<AppState, 'order' | 'conversatio
   for (const id of savedOrder) {
     const conv = state.conversations[id];
     if (!conv) continue;
+    // Why a parked message has not gone out is session state (the hub did
+    // not answer just now); the message itself is what must survive.
+    const { pendingFirstError: _session, ...saved } = conv;
     conversations[id] = {
-      ...conv,
-      // Desktop threads live in the engine journal; store metadata only.
-      thread: conv.source.kind === 'desktop' ? emptyThread() : trimThread(conv.thread),
+      ...saved,
+      // Desktop threads live in the engine journal; the phone keeps a bounded
+      // read-only tail so a reopen with the computer off still shows the
+      // conversation (B4). Everything else trims to the usual ceiling.
+      thread:
+        conv.source.kind === 'desktop' ? snapshotThread(conv.thread) : trimThread(conv.thread),
       ...(conv.source.kind === 'desktop' && conv.thread.items.length
         ? { lastItemCount: conv.thread.items.length }
         : {}),

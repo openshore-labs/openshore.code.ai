@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   backlinksTo,
+  isConflictCopy,
+  searchNotes,
   normalizeNotePath,
   noteFolder,
   noteTitle,
@@ -172,5 +174,46 @@ describe('wikilinkContext (editor [[ autocomplete)', () => {
   it('offers an empty query the instant "[[" is typed', () => {
     const text = 'x [[';
     expect(wikilinkContext(text, text.length)).toEqual({ start: 2, query: '' });
+  });
+});
+
+describe('searchNotes (review 6: a way to find a note)', () => {
+  const paths = ['Ideas.md', 'ideas/Launch plan.md', 'Journal/2026-09-16.md', 'Recipes.md'];
+  const bodies = new Map([
+    ['Journal/2026-09-16.md', 'Met the team about the launch. Decided to ship Friday.'],
+    ['Recipes.md', '# Soup\nOnions, stock, time.'],
+  ]);
+
+  it('matches nothing on a blank query so the tree shows instead', () => {
+    expect(searchNotes('', paths, bodies)).toEqual([]);
+    expect(searchNotes('   ', paths, bodies)).toEqual([]);
+  });
+
+  it('puts title hits first, then body hits with an excerpt, case-insensitively', () => {
+    const hits = searchNotes('launch', paths, bodies);
+    expect(hits.map((h) => h.path)).toEqual(['ideas/Launch plan.md', 'Journal/2026-09-16.md']);
+    expect(hits[0]?.where).toBe('title');
+    expect(hits[1]?.where).toBe('body');
+    expect(hits[1]?.excerpt).toContain('launch');
+  });
+
+  it('matches a folder name through the path', () => {
+    expect(searchNotes('journal', paths, bodies).map((h) => h.path)).toEqual([
+      'Journal/2026-09-16.md',
+    ]);
+  });
+
+  it('works with a plain object of bodies and without any bodies', () => {
+    expect(searchNotes('soup', paths, { 'Recipes.md': 'Soup time' })).toHaveLength(1);
+    expect(searchNotes('soup', paths)).toEqual([]);
+  });
+});
+
+describe('isConflictCopy', () => {
+  it("recognizes the server's conflict-copy name and nothing else", () => {
+    expect(isConflictCopy('Plan (conflict 2026-01-01 1200).md')).toBe(true);
+    expect(isConflictCopy('team/Plan (conflict 2026-01-01 1200).md')).toBe(true);
+    expect(isConflictCopy('Plan.md')).toBe(false);
+    expect(isConflictCopy('Conflict resolution.md')).toBe(false);
   });
 });

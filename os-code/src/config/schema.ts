@@ -248,6 +248,10 @@ const HumanizerSchema = z.object({
 // autoPush:false here and pushes on its own schedule.
 const SyncSchema = z.object({
   autoPush: z.boolean().default(true),
+  // The repository's default branch (origin/HEAD, else main, else master) is
+  // never auto-pushed unless the project opts in here (board call 5,
+  // 2026-09-16): a branch whose push deploys stays the person's to push.
+  autoPushDefaultBranch: z.boolean().default(false),
 });
 
 // The premium harness (founder + advisor org, 2026-09-14; see

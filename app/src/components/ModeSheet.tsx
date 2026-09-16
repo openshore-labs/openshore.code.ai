@@ -67,6 +67,9 @@ export function ModeSheet({ onClose }: { onClose: () => void }) {
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
       <div
         className={`sheet mode-sheet${closing ? ' closing' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Select mode"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mode-head">

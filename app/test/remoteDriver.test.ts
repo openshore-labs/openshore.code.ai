@@ -1,6 +1,8 @@
 // The phone's SSE wire format: frames in, protocol events out.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  AWAY_AFTER_MS,
+  HUB_NO_ANSWER,
   RemoteDriver,
   daemonApplyOutbox,
   daemonCloneRepo,
@@ -53,10 +55,12 @@ describe('SSE frame parsing', () => {
   });
 });
 
-// G5: an outage adds the "Connection blipped" status row exactly once, however
-// many reconnect attempts it takes, and the reconnect loop backs off instead of
-// spinning at zero delay.
-describe('RemoteDriver reconnect (G5)', () => {
+// G5, reshaped by B4: an outage is a link state the banner shows ("Connection
+// blipped" only while a reconnect is actually in progress, then "off or away"
+// once it has clearly failed), never a status row that sits in the transcript
+// forever; the reconnect loop still backs off instead of spinning at zero
+// delay, and the link reports each change exactly once.
+describe('RemoteDriver reconnect (G5, B4)', () => {
   const realFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -64,7 +68,7 @@ describe('RemoteDriver reconnect (G5)', () => {
     vi.useRealTimers();
   });
 
-  it('emits one blip per outage across many failed reconnects', async () => {
+  it('reports reconnecting, then away, once each, and no transcript row', async () => {
     vi.useFakeTimers();
     let calls = 0;
     globalThis.fetch = vi.fn(async () => {
@@ -72,18 +76,64 @@ describe('RemoteDriver reconnect (G5)', () => {
       throw new Error('daemon down');
     }) as unknown as typeof fetch;
 
-    const blips: string[] = [];
-    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    const rows: string[] = [];
+    const links: string[] = [];
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0, {
+      onLink: (state) => links.push(state),
+    });
     driver.subscribe((event) => {
-      if (event.type === 'status') blips.push(event.message);
+      if (event.type === 'status') rows.push(event.message);
     });
 
-    // Let several backoff cycles elapse (600 + 1200 + 2400 + ... ms).
-    await vi.advanceTimersByTimeAsync(6000);
+    // Let several backoff cycles elapse (600 + 1200 + 2400 + 4800 ms): the
+    // failure after AWAY_AFTER_MS is what flips the link to away.
+    await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS + 7000);
     driver.dispose();
 
     expect(calls).toBeGreaterThan(1); // it retried
-    expect(blips).toHaveLength(1); // but blipped only once for the outage
+    expect(rows).toEqual([]); // nothing sat in the transcript
+    expect(links).toEqual(['reconnecting', 'away']);
+  });
+
+  it('a stream that connects reports live and clears the outage', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      if (!String(url).includes('/events')) {
+        return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+      }
+      calls++;
+      if (calls === 1) throw new Error('daemon down');
+      return sseResponse(':ka\n\n');
+    }) as unknown as typeof fetch;
+    const links: string[] = [];
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0, {
+      onLink: (state) => links.push(state),
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    driver.dispose();
+    expect(links.slice(0, 2)).toEqual(['reconnecting', 'live']);
+  });
+
+  it('a send the hub never answers ends the turn with a plain sentence and a Retry', async () => {
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith('/input')) throw new Error('signal timed out');
+      if (String(url).includes('/events')) throw new Error('daemon down');
+      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const events: DriverEvent[] = [];
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    driver.subscribe((event) => events.push(event));
+    driver.send('hello');
+    await vi.advanceTimersByTimeAsync(50);
+    driver.dispose();
+    const done = events.find((e) => e.type === 'task-done');
+    expect(done).toMatchObject({ reason: 'error', message: HUB_NO_ANSWER });
+    expect(HUB_NO_ANSWER).toBe(
+      'Your computer did not answer in 10 seconds. Is it on and on the same network?',
+    );
+    expect(events.some((e) => e.type === 'status' && /not be lost/.test(e.message))).toBe(false);
   });
 
   it('stops retrying on a 401 and tells the user to re-pair (TS-P2-1)', async () => {

@@ -424,9 +424,9 @@
     {
       "id": "qwen2.5-coder-3b",
       "name": "Qwen 2.5 Coder 3B",
-      "tagline": "A tiny coder that still writes usable edits. Good on very light machines.",
+      "tagline": "A small coder that runs short plans on a computer with no GPU. Measured, not guessed.",
       "categories": ["coding", "fast"],
-      "orchestratorCapable": false,
+      "orchestratorCapable": true,
       "source": {
         "kind": "ollama",
         "ref": "qwen2.5-coder:3b",

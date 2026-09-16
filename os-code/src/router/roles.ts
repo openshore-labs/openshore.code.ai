@@ -5,7 +5,7 @@
 // Extend here as the standard evolves; everything else imports from here.
 
 export type CapabilityCategory =
-  | 'reasoning' // the quarterback dimension
+  | 'reasoning' // the Reasoning LLM dimension
   | 'coding'
   | 'writing'
   | 'analysis'
@@ -31,7 +31,7 @@ export const CAPABILITIES: Record<CapabilityCategory, CapabilityInfo> = {
     id: 'reasoning',
     plain: 'runs the show',
     blurb:
-      'The quarterback: plans, reasons, and decides which model gets each play. Every stack has exactly one in charge.',
+      'The Reasoning LLM: plans, reasons, and decides which model gets each task. Every stack has exactly one in charge.',
     benchmarks: ['MMLU', 'GPQA', 'ARC-AGI'],
     orchestratorDimension: true,
   },
@@ -86,7 +86,7 @@ export const CAPABILITIES: Record<CapabilityCategory, CapabilityInfo> = {
   },
 };
 
-/** The specialist slots a stack can fill (everything except the quarterback). */
+/** The specialist slots a stack can fill (everything except the Reasoning LLM). */
 export const SPECIALIST_ROLES = [
   'coding',
   'writing',

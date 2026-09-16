@@ -106,6 +106,22 @@ export type IntentCheck = (input: {
 // suggestions that read as a moral aside.
 // ---------------------------------------------------------------------------
 
+/** The next action on a hard block, kept apart from the refusal so the
+ *  refusal stays two short sentences. Over-blocking is a defect, so a block
+ *  names the appeal path: the app renders it as a card with a prefilled note to
+ *  support, and the engine appends it to the block event's message. */
+export const SUPPORT_EMAIL = 'support@openshore.ai';
+export const BLOCK_NEXT_ACTION = `If this was legitimate work, say so: write to ${SUPPORT_EMAIL} with the category and the time. Over-blocking is treated as a defect on our side.`;
+
+/** The next action for a block in this category: the appeal line on the three
+ *  hard-blocked categories, nothing on a failed check (retry) or a likeness
+ *  hold (authorize), whose refusals already say what to do. */
+export function nextActionFor(category: EthicsCategory): string | undefined {
+  return category === 'csam' || category === 'ncii' || category === 'weapons-uplift'
+    ? BLOCK_NEXT_ACTION
+    : undefined;
+}
+
 export const REFUSALS: Record<Exclude<EthicsCategory, 'permitted'>, string> = {
   csam: 'I will not help with sexual content involving minors. That limit does not move.',
   ncii: 'I will not help make sexual or nude imagery of a real, identifiable person.',

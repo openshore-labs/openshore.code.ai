@@ -125,6 +125,27 @@ function clampDim(value: number | undefined, fallback: number): number {
   return Math.max(1, Math.min(1000, Math.floor(value)));
 }
 
+/** The shell a new terminal runs: SHELL when the environment names one, else
+ *  PowerShell on Windows (SHELL is unset there, and /bin/bash does not exist)
+ *  and bash everywhere else. */
+export function defaultShell(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (env.SHELL) return env.SHELL;
+  return platform === 'win32' ? 'powershell.exe' : '/bin/bash';
+}
+
+/** The one retry when the default cannot spawn: cmd.exe (COMSPEC when set) on
+ *  Windows, nothing elsewhere, so a Linux spawn failure surfaces as itself. */
+export function fallbackShell(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  if (platform !== 'win32') return undefined;
+  return env.COMSPEC || 'cmd.exe';
+}
+
 /**
  * Owns the live PTYs for the daemon, keyed by termId, grouped by session so the
  * agent's readTerminal tool can find "this session's terminal" without a
@@ -138,11 +159,25 @@ export class TerminalManager {
   private readonly spawnFactory: PtyFactory;
   private readonly ringCap: number;
   private readonly exitGraceMs: number;
+  // The platform and environment the shell choice reads, injectable so the
+  // Windows fallback is pinned by a test on any machine.
+  private readonly platform: NodeJS.Platform;
+  private readonly env: NodeJS.ProcessEnv;
 
-  constructor(opts: { spawn?: PtyFactory; ringBytes?: number; exitGraceMs?: number } = {}) {
+  constructor(
+    opts: {
+      spawn?: PtyFactory;
+      ringBytes?: number;
+      exitGraceMs?: number;
+      platform?: NodeJS.Platform;
+      env?: NodeJS.ProcessEnv;
+    } = {},
+  ) {
     this.spawnFactory = opts.spawn ?? lazyNodePtyFactory;
     this.ringCap = opts.ringBytes ?? DEFAULT_RING_BYTES;
     this.exitGraceMs = opts.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS;
+    this.platform = opts.platform ?? process.platform;
+    this.env = opts.env ?? process.env;
   }
 
   /** The entry for termId, and only when it belongs to sessionId if one is
@@ -192,8 +227,18 @@ export class TerminalManager {
     }
 
     const termId = opts.termId ?? randomUUID().slice(0, 8);
-    const shell = opts.shell || process.env.SHELL || '/bin/bash';
-    const pty = await this.spawnFactory({ shell, cwd: opts.cwd, cols, rows, env: process.env });
+    const shell = opts.shell || defaultShell(this.platform, this.env);
+    let pty: TerminalPty;
+    try {
+      pty = await this.spawnFactory({ shell, cwd: opts.cwd, cols, rows, env: this.env });
+    } catch (err) {
+      // A missing backend is its own answer (503 upstream). A shell that will
+      // not spawn gets ONE platform-true retry: PowerShell absent or blocked on
+      // Windows falls back to cmd.exe; there is no second guess elsewhere.
+      const retry = opts.shell ? undefined : fallbackShell(this.platform, this.env);
+      if (err instanceof TerminalUnavailable || !retry || retry === shell) throw err;
+      pty = await this.spawnFactory({ shell: retry, cwd: opts.cwd, cols, rows, env: this.env });
+    }
 
     const entry: TerminalEntry = {
       termId,

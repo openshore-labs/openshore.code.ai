@@ -2980,6 +2980,183 @@ textarea {
   font-size: 14.5px;
 }
 
+/* The First Seat: the empty room's center when nothing on this device can
+   answer yet. "The Seat Fills" (Creative Studio): the room resolves into
+   readiness. The mark settles on the arrive curve, the line and the more-ways
+   list step in on the stagger, and the card seats on the glide over the door
+   clock with one soft teal bloom that says "local, and yours." It is
+   presence-aware, so it leaves on its own exit and never snaps out. */
+.first-seat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+}
+
+/* Each child arrives after the one before it, stepped by the stagger token:
+   the mark is --i:0, the line --i:1, the card --i:2, the more-ways list --i:3.
+   The mark and the card override the animation itself below (their own
+   entrances), but inherit this delay so the whole surface still steps. */
+.first-seat > * {
+  animation: seat-rise var(--dur-6) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+@keyframes seat-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.first-seat-mark {
+  display: inline-flex;
+  animation: seat-mark-in var(--dur-6) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+@keyframes seat-mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.first-seat-line {
+  color: var(--muted);
+  max-width: 360px;
+  font-size: 14.5px;
+  line-height: 1.4;
+}
+
+.first-seat-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  animation:
+    seat-card-in var(--dur-7) var(--ease-glide) backwards,
+    seat-bloom var(--dur-7) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+@keyframes seat-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The teal bloom around the card as it seats: a soft ring that grows out of the
+   seam and settles to nothing. box-shadow is neither layout nor a banned
+   transition, and it rides the same door clock as the card. */
+@keyframes seat-bloom {
+  from {
+    box-shadow: 0 0 0 0 var(--local-soft);
+  }
+  55% {
+    box-shadow: 0 0 0 12px var(--local-soft);
+  }
+  to {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+.first-seat-name {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.first-seat-class {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.first-seat-fit {
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.first-seat-more {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.first-seat-more-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.first-seat-more-row {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  text-align: center;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.first-seat-more-row:active {
+  background: var(--local-soft);
+}
+
+/* The whole surface leaves on its own exit when a brain becomes ready and the
+   greeting takes the room. It rides the accelerate curve over --dur-5, inside
+   the door hold useExitPresence keeps it mounted for. */
+.first-seat.closing {
+  animation: seat-out var(--dur-5) var(--ease-accel) forwards;
+}
+
+@keyframes seat-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+
+/* Per-animation kills alongside the global reduced-motion reset (house rule 6):
+   the seat simply appears, no rise, no bloom, no exit slide. */
+@media (prefers-reduced-motion: reduce) {
+  .first-seat-card,
+  .first-seat-mark,
+  .first-seat > *,
+  .first-seat.closing {
+    animation: none;
+  }
+}
+
 .suggestion-row {
   display: flex;
   flex-wrap: wrap;

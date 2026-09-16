@@ -12,6 +12,7 @@ import { bridge } from './electronBridge.js';
 import { isDesktop } from './platform.js';
 import {
   PRESET_ROUTINE,
+  ROUTINE_NEEDS_LOCAL_MODEL,
   nextSlotAfter,
   scheduleLabel,
   scheduleTimeLabel,
@@ -19,6 +20,17 @@ import {
   type RoutineRun,
   type RoutineView,
 } from 'os-code/protocol';
+
+export { ROUTINE_NEEDS_LOCAL_MODEL };
+
+/** True for a run the scheduler refused because the computer's orchestrator
+ *  is a cloud model. The card wears amber on it (spend, not local) and points
+ *  at the Stack instead of reading as a mystery failure. */
+export function runNeedsLocalModel(
+  run: Pick<RoutineRun, 'state' | 'summary'> | undefined,
+): boolean {
+  return run?.state === 'failed' && run.summary === ROUTINE_NEEDS_LOCAL_MODEL;
+}
 
 export type { RoutineInput, RoutineRun, RoutineView } from 'os-code/protocol';
 

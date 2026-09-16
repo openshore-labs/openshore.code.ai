@@ -40,7 +40,7 @@ function contentText(c: ChatCompletion): string {
 export const askHermesTool: ToolDef<typeof schema> = {
   name: 'askHermes',
   description:
-    "Hand a self-contained task to the person's Hermes Agent, an always-on agent on their own computer with its own memory, skills, and tools, and return its answer. Use it for work that benefits from what Hermes remembers or can do on its machine. Hermes acts on its own computer under its own rules; your approvals do not reach it, so say plainly when a result came from Hermes.",
+    "Hand a self-contained task to the person's Hermes Agent, an agent that runs on their own computer with its own memory, skills, and tools, and return its answer. Use it for work that benefits from what Hermes remembers or can do on its machine. Hermes acts on its own computer under its own rules; your approvals do not reach it, so say plainly when a result came from Hermes.",
   schema,
   risk: 'network',
   async preview(args) {
