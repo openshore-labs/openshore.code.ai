@@ -1574,3 +1574,12 @@ execution contract. Newest at the bottom.
   to 75% on a free local model through the harness alone. The 7B run stalled
   on Ollama/RAM on the box, not the harness, so it is a box-side check, not
   another round.
+- **The 7B does not run usefully on the 7.6 GB reference box (2026-09-16).**
+  Confirmed cold, 3B stopped, 4.8 GB free: 0%, "No bytes for 300s" on every
+  task. A 7B Q4 (~4.7 GB) plus context and ollama overhead exceeds real RAM,
+  swaps, and crawls past the prefill window. Not fixed by chasing it: raising
+  `streamFirstByteSeconds` could force a number but a swap-thrashing model is
+  not a usable seat, and the box measures what a real person feels. The
+  low-end tier's bigger local seat is a 4B (`qwen3:4b`), the next thing to
+  measure; a 7B and up is the docked/hub tier (more RAM or a GPU). The 3B at
+  75% stands as the floor seat for a machine this size.

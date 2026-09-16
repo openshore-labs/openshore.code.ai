@@ -136,6 +136,22 @@ milestone for the small class; the harness cycle that chased it, rounds one
 to fifteen, is done. The convergence memo for the out-of-the-box path is
 `docs/premium-harness-first-seat-convergence.md`.
 
+The 7B, measured 2026-09-16: it does NOT run usefully on this box, and that
+is the answer, not a bug to fix. Run cold with the 3B stopped, `free -h`
+showing 7.6 GB total and 4.8 GB free, the 7B stalled "No bytes for 300s" on
+all four tasks, 0%. A 7B at Q4 is about 4.7 GB of weights plus context and
+server overhead, so it does not fit in real memory on a 7.6 GB machine; it
+spills into swap and inference crawls past the prefill window. Raising
+`resourceBudget.streamFirstByteSeconds` could force a number eventually, but
+a model swapping on every token is not a usable seat, and the reference box
+exists to measure what a real person feels. So the honest tiering, which is
+the founder's own north star proving out: a 7.6 GB five-year-old-class box
+tops out around a great 3B (75%), a 4B fits with headroom as the realistic
+bigger local seat (`qwen3:4b`, ~2.5 to 3 GB, the next thing to measure), and
+a 7B and up belong to the docked/hub tier (a machine with more RAM, or a
+GPU). "Way more power" comes from docking, exactly as framed, not from
+forcing a 7B onto the floor machine.
+
 The plan is `docs/premium-harness-proposal.md`, reviewed by all eight advisors
 (`docs/premium-harness-advisory-memos.md`), and its five tenets are in
 `CLAUDE.md`. It ships with no room and no name (codename Keel, internal only),
