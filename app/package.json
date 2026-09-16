@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "description": "OpenShore: the native app. Chat and build with your own stack of local LLMs.",
+  "homepage": "https://openshore.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openshore-labs/openshore.code.ai.git"
+  },
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -17,9 +22,9 @@
     "postinstall": "node scripts/postinstall.mjs",
     "rebuild:native": "electron-rebuild -f -w node-pty -m ../os-code",
     "desktop": "vite build && tsc -p electron/tsconfig.json && node scripts/desktop-preflight.mjs && electron .",
-    "package:linux": "vite build && tsc -p electron/tsconfig.json && electron-builder --linux",
-    "package:mac": "vite build && tsc -p electron/tsconfig.json && electron-builder --mac",
-    "package:win": "vite build && tsc -p electron/tsconfig.json && electron-builder --win",
+    "package:linux": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --linux",
+    "package:mac": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --mac",
+    "package:win": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --win",
     "ios:sync": "vite build && cap sync ios"
   },
   "dependencies": {
@@ -87,6 +92,7 @@
       "**/node_modules/node-pty/**",
       "**/node_modules/os-code/**"
     ],
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
