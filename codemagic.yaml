@@ -168,3 +168,83 @@ workflows:
         # + Beta App Review contact details in App Store Connect, then set
         # this back to `true` (optionally add `beta_groups: [<group name>]`).
         submit_to_testflight: false
+
+  # macOS desktop build: a signed, notarized .dmg and .zip (arm64 and x64) a
+  # person can download from openshore.ai and open without a Gatekeeper warning.
+  # One-time setup (the Developer ID certificate, the notarization API key, and
+  # the Codemagic variable group this reads) is in docs/MAC-DESKTOP.md.
+  mac-desktop:
+    name: OpenShore macOS (desktop, Developer ID)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    # No `triggering:` block on purpose. This runs on demand from the Codemagic
+    # UI (or the API), never on every push to main, so it does not spend Mac
+    # minutes on iOS-bound commits and cannot fire and fail before the signing
+    # secrets exist. Start it by hand once the variable group below is filled.
+    environment:
+      # Match the version the lockfile was built on, same as the iOS workflow.
+      node: 22.22.2
+      groups:
+        # A variable group you create in the Codemagic UI (Team/App ->
+        # Environment variables), holding the six secrets in docs/MAC-DESKTOP.md:
+        # CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY_B64, APPLE_API_KEY_ID,
+        # APPLE_API_ISSUER, APPLE_TEAM_ID. Until it exists this workflow fails
+        # at the signing step, which is why it never runs automatically.
+        - openshore-mac-signing
+    scripts:
+      - name: Install workspace dependencies
+        script: |
+          set -euo pipefail
+          # Same corepack/pnpm dance the iOS workflow documents: the image's
+          # corepack pnpm shim dies on stale registry keys, so disable it and
+          # run the pnpm we install with npm.
+          export COREPACK_INTEGRITY_KEYS=0
+          corepack disable || true
+          npm install -g pnpm@10.33.0
+          pnpm --version
+          pnpm install --frozen-lockfile
+      - name: Gate the build on the test suite
+        script: |
+          set -euo pipefail
+          # Ship only known-good code, the same gate the iOS workflow runs. The
+          # engine builds first because the app imports its compiled types.
+          pnpm --filter os-code build
+          pnpm -r lint
+          pnpm -r typecheck
+          pnpm -r test
+      - name: Build the app (web bundle and Electron main)
+        script: |
+          set -euo pipefail
+          pnpm --filter oscode-app build
+      - name: Rebuild native modules for Electron
+        script: |
+          set -euo pipefail
+          # node-pty is compiled for Node's ABI on install; the packaged app
+          # runs Electron's ABI, so it must be rebuilt or the terminal cannot
+          # open. The headers download from electronjs.org, reachable here.
+          pnpm --filter oscode-app rebuild:native
+      - name: Decode the notarization API key
+        script: |
+          set -euo pipefail
+          # electron-builder's notarizer reads the key from a file named in
+          # APPLE_API_KEY. An App Store Connect .p8 is multiline, so it is
+          # stored base64-encoded in APPLE_API_KEY_B64; decode it to a file and
+          # publish the path to the later steps through Codemagic's env file.
+          echo "$APPLE_API_KEY_B64" | base64 --decode > /tmp/AuthKey.p8
+          echo "APPLE_API_KEY=/tmp/AuthKey.p8" >> "$CM_ENV"
+      - name: Package, sign, and notarize the macOS app
+        script: |
+          set -euo pipefail
+          # CSC_LINK (base64 of the Developer ID Application .p12) and
+          # CSC_KEY_PASSWORD sign the app; APPLE_API_KEY/_ID/_ISSUER plus the
+          # team id notarize it. hardenedRuntime and the entitlements come from
+          # package.json. --publish never keeps electron-builder from touching
+          # GitHub; the artifacts are collected below.
+          cd app
+          pnpm exec electron-builder --mac --publish never \
+            -c.mac.notarize.teamId="$APPLE_TEAM_ID"
+    artifacts:
+      - app/release/*.dmg
+      - app/release/*.zip
+      - app/release/*.blockmap
+      - app/release/latest-mac.yml
