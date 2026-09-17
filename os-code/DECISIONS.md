@@ -1620,3 +1620,41 @@ execution contract. Newest at the bottom.
   terminal, never the app; the sandbox AppImage ships with it disabled. CI
   (release.yml runs `rebuild:native` first) and the founder's own box, where
   electronjs.org is reachable, produce a build with a working terminal.
+- **The sandbox's earlier read that Electron cannot be fetched here was wrong
+  (2026-09-16, corrected same day).** Only `www.electronjs.org` itself is
+  policy-blocked; the actual binary lives on GitHub release assets, which are
+  reachable. Running `node_modules/electron/install.js` directly (bypassing
+  the `ELECTRON_SKIP_BINARY_DOWNLOAD` guard meant for CI) let the sandbox build
+  and smoke-test a real Linux AppImage and deb the same day, not just author
+  the packaging config for someone else to prove.
+- **macOS ships unsigned, matching Uki Music, over Developer ID plus
+  notarization (founder call, 2026-09-17).** The founder chose to skip the
+  Apple Developer certificate and notarization API key setup entirely,
+  accepting a one-time Gatekeeper right-click-to-open on a user's first
+  launch in exchange. `mac-desktop` (codemagic.yaml) was rewritten from the
+  signed/notarized version to a plain `electron-builder --mac`, which signs
+  ad-hoc on its own (required for Apple Silicon to execute the binary at all,
+  unrelated to Gatekeeper). Reversible later: `docs/MAC-DESKTOP.md` names
+  exactly what adding real signing back would need.
+- **Sign-in needed wiring into Linux and macOS, not just iOS (2026-09-17).**
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are Vite build-time values; iOS
+  had them through a Codemagic variable group, the other two workflows never
+  carried them, so sign-in silently didn't render there (the app's own
+  intended fallback for "unconfigured", just not what anyone wanted). Fixed:
+  Linux reads two new GitHub repository secrets, macOS imports the same
+  `Harbor-os-code` group iOS already uses. Confirmed compatible: the app's
+  Supabase client is hand-rolled over `fetch` (`app/src/lib/supabase.ts`), not
+  the SDK, so Supabase's newer `sb_publishable_...` key format works exactly
+  like the legacy anon key, since neither is ever parsed, only forwarded as a
+  raw header value.
+- **A release must stamp the app's version from its git tag (bug found and
+  fixed, 2026-09-17).** electron-builder names artifacts from
+  `app/package.json`'s version field, which was never bumped between tags;
+  `v0.1.0` and `v0.1.1` both shipped as `oscode-app_0.1.0_amd64.deb`. Beyond
+  the confusing name, this is a real correctness bug: `apt`/`dpkg` compare
+  package version numbers to decide whether a local-file install actually
+  overwrites anything, so an unchanged version can make a genuine update
+  silently no-op. `release.yml` now stamps the version from the tag
+  (`npm pkg set version=...`) before packaging on every tag build; a manual
+  `workflow_dispatch` run has no tag to derive one from and leaves the
+  committed version alone.
