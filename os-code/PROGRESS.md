@@ -53,21 +53,25 @@ PROGRESS shape guard, the app Vite build.
 - **Graduated ethics ladder.** The always-on layer (now archived) gained staged
   enforcement with a next-action block, migration `0018_graduated_enforcement.sql`,
   pinned by `test/graduatedEnforcement.test.ts`.
-- **Linux packaging and release: SHIPPED.** `.github/workflows/release.yml`
-  builds the AppImage and deb, smoke-tests the packaged engine headless
-  (`app/scripts/package-smoke.mjs`), and publishes to a GitHub Release on a
-  `v*` tag. `v0.1.1` is live with a working terminal and sign-in. A tag build
-  now stamps `app/package.json`'s version from the tag first, fixing a real
-  bug: v0.1.0 and v0.1.1 both shipped as `oscode-app_0.1.0_amd64.deb`, which
-  made `apt install ./file.deb` see "already newest" and skip the overwrite.
-- **macOS: unsigned, matching Uki Music (founder call), not yet run.** No
-  Developer ID certificate, no notarization, no new Codemagic setup beyond
-  the iOS build's `Harbor-os-code` group. Cost: one Gatekeeper right-click
-  Open on first launch. `docs/MAC-DESKTOP.md` has the download-page copy.
-- **Sign-in reaches every build.** Linux and macOS now carry
-  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` at Vite build time, like iOS
-  already had. The app's Supabase client is hand-rolled `fetch`, not the SDK,
-  so Supabase's newer `sb_publishable_...` key works like the legacy anon key.
+- **Linux and Windows: SHIPPED, sign-in everywhere, real auto-update.**
+  `release.yml` builds both, smoke-tests each engine headless, and publishes
+  atomically to one GitHub Release on a `v*` tag; `v0.1.1` is live. Every
+  desktop workflow now stamps `app/package.json`'s version from the tag first
+  (v0.1.0/v0.1.1 had shipped identically-versioned, which made
+  `apt install ./file.deb` see "already newest" and skip). All three carry
+  the Vite-build-time Supabase keys now, so sign-in works everywhere, not
+  just iOS; the app's `fetch`-based client takes a newer `sb_publishable_...`
+  key exactly like the legacy anon key. Windows/Linux get `electron-updater`
+  against that Release feed (background download, restart-to-install banner).
+- **macOS: unsigned, matching Uki Music (founder call).** No certificate, no
+  notarization; cost is one Gatekeeper right-click Open on first launch
+  (`docs/MAC-DESKTOP.md`). Can't self-update in place unsigned, so it gets a
+  version check that opens the latest Release instead; `mac-desktop`
+  (Codemagic) publishes into that same Release given a `GH_RELEASE_TOKEN`.
+- **Pairing names a real cause instead of a red herring.** A phone on a
+  pre-claim-rework build sent its old code straight to the bearer header, so
+  the daemon's wrong-credential 401 read like a Tailscale problem; it now
+  names "an out-of-date app," surfaced by `daemonHealth`.
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
@@ -981,18 +985,13 @@ curve fork by keeping one honest `fitVerdict` and re-pinning the two edge tests
 deb built and smoke-verified in the sandbox that day (the packaged engine booted
 headless); only node-pty's terminal rebuild is deferred to CI (blocked headers).
 
-### 2026-09-17, Linux v0.1.1 shipped, sign-in wired everywhere, macOS switched to unsigned
+### 2026-09-17, v0.1.1 shipped, sign-in and auto-update reach every platform
 
 Real Electron binary downloads turned out reachable (only `www.electronjs.org`
-itself is policy-blocked, not the GitHub release assets it points to), so the
-Linux AppImage and deb built for real, not just a sandbox smoke test: `v0.1.0`
-then `v0.1.1` published to GitHub Releases. Along the way: sign-in silently
-didn't render on Linux or the not-yet-built macOS workflow, since the two
-Vite-build-time Supabase values iOS already had were never carried by the
-other two; both now do. The founder chose an unsigned macOS build (matching
-Uki Music) over Developer ID plus notarization, trading a one-time Gatekeeper
-right-click for skipping an Apple certificate and API key setup; `mac-desktop`
-was rewritten for that, not yet run. Also found and fixed: the app's version
-was never bumped between tags, so `v0.1.0` and `v0.1.1` shipped an
-identically-versioned `.deb`, which could make a reinstall silently skip; a
-tag build now stamps the version first. Tag pushes still need the founder.
+is policy-blocked, not the GitHub release assets it points to), so Linux
+built for real, not just a sandbox smoke test, and `v0.1.0` then `v0.1.1`
+published. Three sessions then worked this in parallel on the same branch (a
+clean merge, no conflicts): sign-in and the version-stamp fix (this session),
+then Windows packaging, electron-updater, and the macOS publish/version-check
+split, then a pairing diagnosis, both from other sessions; see Current state
+above. One stale duplicate doc was retired reconciling the merge.

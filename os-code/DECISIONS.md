@@ -1658,3 +1658,18 @@ execution contract. Newest at the bottom.
   (`npm pkg set version=...`) before packaging on every tag build; a manual
   `workflow_dispatch` run has no tag to derive one from and leaves the
   committed version alone.
+- **Three concurrent sessions on the same branch merged clean (2026-09-17).**
+  While this session wired sign-in into Linux/macOS and fixed the version-
+  stamp bug, two other sessions independently pushed Windows packaging plus
+  electron-updater, the macOS publish-into-the-same-Release step with its
+  own version-check fallback, and a desktop-pairing diagnosis, all built on
+  top of this session's already-pushed commits rather than an older point.
+  `git merge origin/main` on this session's branch (never a force-push or a
+  rebase over the others' history) resolved with zero conflicts. One real
+  cleanup needed: both this session and one other had independently written
+  a macOS setup doc; the other session's `docs/MAC-DESKTOP.md` (root docs/,
+  the established convention, matching `TESTFLIGHT.md`) is the more current
+  and complete of the two (it documents the publish-into-Release step this
+  session's copy predates), so this session's own `os-code/docs/MAC-DESKTOP.md`
+  (the wrong location to begin with) was deleted rather than kept as a second,
+  drifting source of truth.
