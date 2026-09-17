@@ -63,11 +63,13 @@ PROGRESS shape guard, the app Vite build.
   just iOS; the app's `fetch`-based client takes a newer `sb_publishable_...`
   key exactly like the legacy anon key. Windows/Linux get `electron-updater`
   against that Release feed (background download, restart-to-install banner).
-- **macOS: unsigned, matching Uki Music (founder call).** No certificate, no
-  notarization; cost is one Gatekeeper right-click Open on first launch
-  (`docs/MAC-DESKTOP.md`). Can't self-update in place unsigned, so it gets a
-  version check that opens the latest Release instead; `mac-desktop`
-  (Codemagic) publishes into that same Release given a `GH_RELEASE_TOKEN`.
+- **macOS: unsigned, matching Uki Music (founder call). SHIPPED 2026-09-17.**
+  No certificate, no notarization; cost is one Gatekeeper right-click Open on
+  first launch (`docs/MAC-DESKTOP.md`). Can't self-update in place unsigned,
+  so it gets a version check that opens the latest Release instead;
+  `mac-desktop` (Codemagic) publishes into that same Release given
+  `GH_RELEASE_TOKEN`, confirmed live on `v0.1.2` against the release assets
+  themselves, not just a green build (see Log).
 - **Pairing names a real cause instead of a red herring.** A phone on a
   pre-claim-rework build sent its old code straight to the bearer header, so
   the daemon's wrong-credential 401 read like a Tailscale problem; it now
@@ -395,85 +397,10 @@ Video attachments (frame-by-frame vision, never the raw video) shipped and
 moved to `docs/progress-archive.md` on 2026-09-17; device and desktop-FFmpeg
 verification are still open in What remains below.
 
-### Crew routines (the botOS brief, shipped inside My Crew)
-
-**Crew routines are BUILT.** The founder's brief was "clone grokbot, call it
-botOS, local-first." Research corrected the premise: Grok Bot (xAI, beta
-2026-08-11) is always-on agent teammates with their own cloud computers, a bot
-roster with presence, routines that start without a prompt, results waiting
-when you return. The local-first version ships as **routines inside My Crew**
-(CMO ruling, founder agreed: botOS stays the codename, the way gitOS ships as
-Repositories): a crew member, a task, a workspace, and a clock; the daemon
-opens a normal journaled session on the headless profile when the clock
-strikes and the computer is on; the result lands as a dated markdown note in
-the vault with the transcript one tap away. The copy says "while your computer
-is on", never "always on", and "works, then asks", never "unsupervised".
-
-- **Engine.** `src/routines/model.ts` (pure model, schedule math, validation,
-  the preset; exported through `os-code/protocol`), `src/routines/store.ts`
-  (sealed `~/.os-code/routines.json`, atomic writes), `src/routines/scheduler.ts`
-  (a process singleton the daemon and the desktop shell share, so a routine
-  fires exactly once whichever surface is up). Contract as the CTO ruled it:
-  one run on the box at a time and one per routine; a slot the machine slept
-  through is recorded as skipped once and never replayed; an approval nobody
-  answers pauses the run (the existing approval push fires) and times out to a
-  denial with a reason after 15 minutes, never to an approval; a wall-clock cap
-  per routine (5 to 60 min) on top of the guardrails; read-only routines run in
-  plan mode, edit routines in acceptEdits; a routine runs only in an
-  admin-provisioned workspace or an outbox root (`core/security/workspaces.ts`,
-  shared with the daemon's own gates). New read-risk `gitLog` tool so a
-  read-only routine can review history without a shell.
-- **Headless hardening (CTO must-fix).** A configured permissions DEFAULT of
-  allow (not just a rule) can no longer make shell, push, or cloud spend silent
-  on the remote or headless profile; headless also blocks push auto-allow
-  (`allowPushAutoApprove` on the profile). Pinned by
-  `test/headlessPermissions.test.ts`.
-- **Daemon and desktop.** `/routines` routes (GET open to members scoped to
-  what they own, every change admin-only, workspace-gated for all); the same
-  surface over Electron IPC (`engineHost.routines*`, seven guarded handlers,
-  preload and bridge types). A run's live driver is adopted by whichever
-  surface attaches, never rehydrated twice.
-- **App.** `app/src/lib/routines.ts` (one client over the bridge or the paired
-  daemon, presence and copy helpers, the preset builder), a `routines` store
-  slice with the actions, and the **Crew command** room (`CrewCommandScreen`,
-  view `crewcommand`, a sub-page of My Crew): the live headline and four
-  counts, a Waiting-for-you list, the roster with each member's presence dot
-  (teal pulse working, amber waiting, green done), the routines with Run now,
-  Stop, Edit, and a pause switch, and the results inbox opening a result sheet
-  (the vault note rendered, Open transcript). The one preset, Morning review
-  (weekdays 06:00, read-only, so its first unattended run can never need an
-  approval), adds a Reviewer to the crew on setup; custom routines unlock after
-  the first run finishes (CX). Each Crew card shows its busiest routine's
-  presence line, and the room opens through a door card at the top of My Crew.
-  Copy for a phone with no paired desktop says so and offers pairing.
-- Gates at close: os-code typecheck, lint, 518 tests (57 files), tsc build,
-  Prettier; app typecheck (src and electron), lint, 699 tests (93 files), vite
-  build, Prettier; the repo-wide em-dash guard and the PROGRESS shape guard.
-  Pushed to `main` per the founder.
-- **Cross-device control model (founder, 2026-09-05: "it should all operate
-  seamlessly cross-device").** One clear distinction, on the same "docked"
-  reach the big models use: you SET UP and CONTROL routines only while
-  harnessed to the machine (docked over Tailscale, or on the machine itself);
-  you can always VIEW. Away from home the command center shows the last-known
-  dashboards from a cached snapshot (persisted at `oscode.routines.v1`), the
-  roster and dormant capabilities, and a Reconnect prompt; every control button
-  is hidden and the store refuses a mutation with "Reconnect to your main
-  machine over Tailscale to control your crew." Three header states, In control
-  / View only / Not set up, named by a badge. A `set-up-crew` guide walks the
-  mobile setup. Pure `crewControl()` in `app/src/lib/routines.ts` decides, and
-  both the screen (live, off connectivity) and the store guards call it. App
-  only: the daemon is already unreachable when not docked, so no server change.
-- **Polish pass (founder: "do all the polish").** A waiting-for-you row
-  breathes a soft amber halo on the working dot's clock; the results inbox
-  arrives row by row on `--stagger`; a sheet's heading rises in, keyed to the
-  routine it came from; routine cards swipe to delete through `SwipeRow` (the
-  Delete button is gone, the card's own buttons stay); the Next run tile is
-  tabular. Every animation dies under reduced motion. The pause switch keeps
-  the app-wide button tick (a component-level haptic is banned by the polish
-  guard, per the 2026-09-05 ruling).
-- **Not verifiable here:** a real scheduled fire under Ollama on the founder's
-  box, the approval push arriving with the app closed, suspend and wake, and
-  the room on an iPhone (TestFlight). See What remains.
+Crew routines (the botOS brief: a crew member, a task, a workspace, a clock,
+shipped inside My Crew) moved to `docs/progress-archive.md` on 2026-09-17;
+on-device verification (a real scheduled fire, the approval push with the app
+closed, suspend/wake, TestFlight) is still open in What remains below.
 
 The always-on ethical guardrail layer (2026-09-05, reviewed by the CTO and CMO)
 moved to `docs/progress-archive.md` on 2026-09-16; it still ships and was
@@ -996,3 +923,32 @@ auto-update work landed; and Windows failed compiling node-pty's bundled
 Windows both packaged, smoke-tested, artifacts uploaded clean. No tag pushed
 yet (a 403 on tag refs, a likely protection rule); a real `v0.1.2` publish,
 Windows included for the first time, needs the founder to push that tag.
+
+### 2026-09-17, macOS actually shipped: two green builds, two real silent failures
+
+`v0.1.2` published Linux and Windows clean (verified against the release
+assets directly, not the workflow's checkmark: a stale local checkout had put
+the founder's first tag on the wrong commit, caught by checking the triggered
+run's `head_sha` before it built anything). `mac-desktop` on Codemagic then
+came back green twice with nothing to show for it, each for a different
+reason, neither visible from build status alone. Attempt one: `gh` was not on
+that Codemagic image, so the version-stamp lookup and the publish upload both
+hit their own "not available" exit and skipped, silently, exactly as
+designed; the artifacts Codemagic still produced were labeled `0.1.0`, the
+tell. Fixed by having both steps install `gh` via Homebrew first if missing.
+Attempt two: still nothing on the release, both steps done in under a second.
+The GitHub check run Codemagic posts back gave exact per-step durations
+(`check-runs` API), confirming both were too fast to be real network calls;
+the actual step log (fetched by asking the founder to open the specific
+`?open-step=` deep link, not inferred) read `gh: To use GitHub CLI in
+automation, set the GH_TOKEN environment variable`, gh refuses anonymous
+access to even a public repo's release list when run non-interactively, an
+assumption the original comment had gotten backwards. Fixed by exporting
+`GH_TOKEN` from the already-required `GH_RELEASE_TOKEN` before the version
+lookup too, not just the upload. Third run: the publish step actually ran for
+6m46s (a real upload), confirmed against the release itself, arm64 and Intel
+dmg and zip, blockmaps, `latest-mac.yml`, all stamped `0.1.2`. `docs/MAC-DESKTOP.md`
+now carries both failures as dated cases so a third silent skip is not
+re-diagnosed from scratch. `openshore.ai`'s Get OpenShore section flipped Mac
+to live in the same piece of work, verified rendered (Playwright screenshot,
+correct href and `target="_blank"` on all three live tiles) before pushing.
