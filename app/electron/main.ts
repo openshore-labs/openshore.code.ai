@@ -35,7 +35,9 @@ import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server } from 'node:http';
 import { isIP } from 'node:net';
+import { autoUpdater } from 'electron-updater';
 import { EngineHost } from './engineHost.js';
+import { versionIsNewer } from './updateVersion.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
 import { processVideoDesktop, type DesktopMediaOptions } from './media.js';
 import {
@@ -616,6 +618,14 @@ function createWindow(): void {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
   });
 
+  // A found-but-not-yet-shown update (the check can resolve before the window
+  // finishes its first load, or the tray keeps the old window instance around
+  // across hide/show) reaches the renderer here instead of only at discovery
+  // time, so a fresh page is never out of sync with what main already knows.
+  win.webContents.on('did-finish-load', () => {
+    win?.webContents.send('osc:update-status', pendingUpdate);
+  });
+
   // OSC_SMOKE=1 makes a headless CI run prove the page and bridge came up.
   // The engine half of the proof is logged from whenReady (below); once both
   // are in, the run quits by itself so scripts/package-smoke.mjs can judge it.
@@ -1043,6 +1053,85 @@ guarded('osc:httpFetch', async (req: unknown) => {
   }
 });
 
+// ------------------------------------------------------------- auto-update
+// electron-updater against the same GitHub Releases release.yml already
+// publishes to (app/package.json's build.publish carries the feed, so no
+// setFeedURL call is needed here). Windows and Linux get the full silent
+// flow: download in the background, then the renderer's banner offers a
+// restart to install. macOS ships unsigned outside the App Store by design
+// (codemagic.yaml, "no Apple certs needed"), and electron-updater's in-place
+// install relies on Squirrel.Mac matching the running build's code signature
+// against the new one, which an unsigned build never holds consistently
+// (confirmed against electron-updater's own docs: unsigned apps cannot use
+// its auto-update path on macOS). So macOS gets a lighter check: compare the
+// running version against the latest GitHub release tag, and the banner's
+// click opens that release in the browser instead of reinstalling in place.
+const UPDATE_REPO = 'openshore-labs/openshore.code.ai';
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+let pendingUpdate: { version: string; mode: 'install' | 'download' } | undefined;
+
+function sendUpdateStatus(update: typeof pendingUpdate): void {
+  pendingUpdate = update;
+  win?.webContents.send('osc:update-status', update);
+}
+
+async function checkMacUpdate(): Promise<void> {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`);
+    if (!res.ok) return;
+    const release = (await res.json()) as { tag_name?: string };
+    const latest = release.tag_name?.replace(/^v/, '');
+    if (latest && versionIsNewer(latest, app.getVersion())) {
+      sendUpdateStatus({ version: latest, mode: 'download' });
+    }
+  } catch (err) {
+    console.error('[update] macOS version check failed', err);
+  }
+}
+
+if (process.platform !== 'darwin') {
+  autoUpdater.autoDownload = true;
+  // Never install on quit: the renderer's banner is the only trigger, so a
+  // person is never surprised by a relaunch they didn't ask for.
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateStatus({ version: info.version, mode: 'install' });
+  });
+  autoUpdater.on('error', (err) => {
+    console.error('[update] electron-updater error', err);
+  });
+}
+
+function scheduleUpdateChecks(): void {
+  // An unpackaged dev run (`pnpm desktop`) has no app-update.yml and nothing
+  // real to compare against; skip rather than log a check that can only fail.
+  if (!app.isPackaged) return;
+  const check =
+    process.platform === 'darwin'
+      ? checkMacUpdate
+      : async () => {
+          try {
+            await autoUpdater.checkForUpdates();
+          } catch (err) {
+            console.error('[update] checkForUpdates failed', err);
+          }
+        };
+  void check();
+  setInterval(() => void check(), UPDATE_CHECK_INTERVAL_MS);
+}
+
+guarded('osc:installUpdate', async () => {
+  if (!pendingUpdate) return;
+  if (pendingUpdate.mode === 'download') {
+    await shell.openExternal(
+      `https://github.com/${UPDATE_REPO}/releases/tag/v${pendingUpdate.version}`,
+    );
+    return;
+  }
+  autoUpdater.quitAndInstall();
+});
+
 // -------------------------------------------------------------- app lifecycle
 
 // Single-instance: a second launch (including one triggered by an oscode:// link
@@ -1081,6 +1170,7 @@ if (!app.requestSingleInstanceLock()) {
     if ('error' in started) console.error(hubStartError(started.error));
     refreshTrayMenu();
     startLifecyclePolls();
+    scheduleUpdateChecks();
 
     if (process.env.OSC_SMOKE) {
       try {

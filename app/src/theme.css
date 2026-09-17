@@ -5117,6 +5117,50 @@ textarea {
   }
 }
 
+/* Update banner: persistent (no auto-dismiss, no snooze) until the person
+   acts, since the whole point is nobody stays on a stale build. Top-anchored
+   so it never collides with the toast or the composer below. */
+.update-banner {
+  position: fixed;
+  left: 50%;
+  top: calc(14px + var(--safe-top));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 8px 10px 8px 18px;
+  font-size: 13.5px;
+  z-index: 80;
+  box-shadow: 0 10px 34px rgba(var(--shadow-rgb), 0.22);
+  animation: msg-in var(--dur-3) var(--ease-standard);
+  max-width: 90vw;
+  white-space: nowrap;
+}
+.update-banner button {
+  background: var(--bg);
+  color: var(--ink);
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.update-banner.closing {
+  animation: update-banner-out var(--dur-4) var(--ease-standard) forwards;
+}
+@keyframes update-banner-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+}
+
 /* --------------------------------------------------- connectivity profile */
 
 .profile-chip {
