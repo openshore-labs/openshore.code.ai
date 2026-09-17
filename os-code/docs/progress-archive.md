@@ -7,6 +7,19 @@ not a source of current truth. `PROGRESS.md` is.
 
 ## Current state sections (2026-08-20 to 2026-09-15)
 
+### The phone storefront (Marketplace, on iPhone; moved out of PROGRESS 2026-09-17, still shipped)
+
+On an iPhone the Marketplace now leads with three one-tap packs keyed to the
+connection status (Offline, Offshore, Docked), a browse-by-family rail with a
+family page split by where each size installs, the pocket shelf retitled "Runs
+on this iPhone" with the line that a new 4B beats the old 7B class at half the
+memory, and a "Desktop and home servers" divider below which no control ever
+says "Get" on a phone. The seed carries the phone-class pick `qwen3-4b-phone`;
+it reaches the live feed only once `osc eval` scores it (see What remains).
+Code: `app/src/lib/packs.ts`, `app/src/components/modelFamilies.ts`, `runsOn`
+and `installLabel` in `app/src/components/marketplace.ts`; the doc is
+`docs/MARKETPLACE.md`, "The phone storefront".
+
 ### Video attachments (reviewed frame by frame, never the video; moved out of PROGRESS 2026-09-17, still shipped)
 
 A model never receives a video. On attach, a clip is compressed toward the 25
