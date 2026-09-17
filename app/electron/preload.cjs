@@ -110,6 +110,9 @@ contextBridge.exposeInMainWorld('oscode', {
 
   onDeepLink: listen('osc:deep-link'),
 
+  onUpdateStatus: listen('osc:update-status'),
+  installUpdate: invoke('osc:installUpdate'),
+
   embeddedOpen: invoke('osc:embeddedOpen'),
   embeddedBounds: invoke('osc:embeddedBounds'),
   embeddedVisible: invoke('osc:embeddedVisible'),
