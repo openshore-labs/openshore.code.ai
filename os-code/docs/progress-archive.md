@@ -7,6 +7,34 @@ not a source of current truth. `PROGRESS.md` is.
 
 ## Current state sections (2026-08-20 to 2026-09-15)
 
+### Video attachments (reviewed frame by frame, never the video; moved out of PROGRESS 2026-09-17, still shipped)
+
+A model never receives a video. On attach, a clip is compressed toward the 25
+to 29MB band when it is over 30MB, then sampled into up to 12 downscaled JPEG
+frames tagged with order and timestamp; the frames ride to a vision model as
+image blocks and the composer shows one chip per video. Native work runs on
+AVFoundation on the phone (new `oscode-media` plugin) and FFmpeg on the desktop
+(`osc:mediaProcess`), with a canvas fallback so a clip always yields frames.
+Screenshots and screen recordings flow through with no approval. The cloud
+Claude driver leads the frames with a context header, labels each with its
+timestamp, and adds a system note so the model reads them as one clip and may
+say plainly it reviewed the video frame by frame. Vision is a placeable Stack
+category ("Image reading") with two slots: a local model (on-device or your own
+server) and a cloud model, each with its own effort, the cloud slot defaulting
+to the most capable cloud model until assigned (`visionSlots`,
+`defaultVisionCloudRef`, edited in `StackManager`). An image turn routes to the
+local slot when it can actually read images, else the cloud slot, else a
+connected cloud provider (`pickVisionRef`/`stackVisionReady`, wired in
+`StackDriver`); an on-device model is text-only on this build, so a device model
+placed for vision falls back to the cloud. My Stack is the source: a workflow
+run through the stack inherits the Vision position. The composer chip shows a
+determinate progress ring keyed to frames extracted. Code in
+`app/src/lib/{attachments,videoAttach,videoBackends,
+mediaPlugin,stack}.ts`, `Composer.tsx`, `cloudClaudeDriver.ts`,
+`drivers/stackDriver.ts`, `app/electron/media.ts`, and `app/plugins/oscode-media`;
+doc `docs/video-attachments.md`. Device and desktop-FFmpeg verification are in
+PROGRESS's What remains.
+
 ### Current state (2026-09-15, the 3B deep-eval rounds one to nine)
 
 Latest (2026-09-15): the floor produced its first real numbers, over six

@@ -53,13 +53,21 @@ PROGRESS shape guard, the app Vite build.
 - **Graduated ethics ladder.** The always-on layer (now archived) gained staged
   enforcement with a next-action block, migration `0018_graduated_enforcement.sql`,
   pinned by `test/graduatedEnforcement.test.ts`.
-- **Linux packaging and release.** electron-builder unpacks the workspace engine
-  and node-pty; `app/scripts/package-smoke.mjs` launches the packaged app
-  headless (`OSC_SMOKE=1`) and asserts the engine booted; `.github/workflows/
-release.yml` builds the AppImage and deb on a `v*` tag (or a manual run),
-  smoke-tests them, and attaches them to a GitHub Release. BUILT and smoke-
-  verified in the sandbox 2026-09-16 (AppImage 133 MB, deb 102 MB, engine booted
-  headless); only node-pty's terminal rebuild is deferred to CI (blocked headers).
+- **Linux packaging and release: SHIPPED.** `.github/workflows/release.yml`
+  builds the AppImage and deb, smoke-tests the packaged engine headless
+  (`app/scripts/package-smoke.mjs`), and publishes to a GitHub Release on a
+  `v*` tag. `v0.1.1` is live with a working terminal and sign-in. A tag build
+  now stamps `app/package.json`'s version from the tag first, fixing a real
+  bug: v0.1.0 and v0.1.1 both shipped as `oscode-app_0.1.0_amd64.deb`, which
+  made `apt install ./file.deb` see "already newest" and skip the overwrite.
+- **macOS: unsigned, matching Uki Music (founder call), not yet run.** No
+  Developer ID certificate, no notarization, no new Codemagic setup beyond
+  the iOS build's `Harbor-os-code` group. Cost: one Gatekeeper right-click
+  Open on first launch. `docs/MAC-DESKTOP.md` has the download-page copy.
+- **Sign-in reaches every build.** Linux and macOS now carry
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` at Vite build time, like iOS
+  already had. The app's Supabase client is hand-rolled `fetch`, not the SDK,
+  so Supabase's newer `sb_publishable_...` key works like the legacy anon key.
 
 ### The premium harness (founder + advisor org, 2026-09-14)
 
@@ -379,33 +387,9 @@ from the agent's `todoWrite`. Live plan quality, the engine hand-off, and the
 routine Plan note need a real reasoning model, a paired computer, and a device
 (unverifiable in a web session).
 
-### Video attachments (reviewed frame by frame, never the video)
-
-A model never receives a video. On attach, a clip is compressed toward the 25
-to 29MB band when it is over 30MB, then sampled into up to 12 downscaled JPEG
-frames tagged with order and timestamp; the frames ride to a vision model as
-image blocks and the composer shows one chip per video. Native work runs on
-AVFoundation on the phone (new `oscode-media` plugin) and FFmpeg on the desktop
-(`osc:mediaProcess`), with a canvas fallback so a clip always yields frames.
-Screenshots and screen recordings flow through with no approval. The cloud
-Claude driver leads the frames with a context header, labels each with its
-timestamp, and adds a system note so the model reads them as one clip and may
-say plainly it reviewed the video frame by frame. Vision is a placeable Stack
-category ("Image reading") with two slots: a local model (on-device or your own
-server) and a cloud model, each with its own effort, the cloud slot defaulting
-to the most capable cloud model until assigned (`visionSlots`,
-`defaultVisionCloudRef`, edited in `StackManager`). An image turn routes to the
-local slot when it can actually read images, else the cloud slot, else a
-connected cloud provider (`pickVisionRef`/`stackVisionReady`, wired in
-`StackDriver`); an on-device model is text-only on this build, so a device model
-placed for vision falls back to the cloud. My Stack is the source: a workflow
-run through the stack inherits the Vision position. The composer chip shows a
-determinate progress ring keyed to frames extracted. Code in
-`app/src/lib/{attachments,videoAttach,videoBackends,
-mediaPlugin,stack}.ts`, `Composer.tsx`, `cloudClaudeDriver.ts`,
-`drivers/stackDriver.ts`, `app/electron/media.ts`, and `app/plugins/oscode-media`;
-doc `docs/video-attachments.md`. Device and desktop-FFmpeg verification are in
-What remains.
+Video attachments (frame-by-frame vision, never the raw video) shipped and
+moved to `docs/progress-archive.md` on 2026-09-17; device and desktop-FFmpeg
+verification are still open in What remains below.
 
 ### The phone storefront (Marketplace, on iPhone)
 
@@ -996,3 +980,19 @@ curve fork by keeping one honest `fitVerdict` and re-pinning the two edge tests
 (see DECISIONS). Gates green across both packages, and the Linux AppImage and
 deb built and smoke-verified in the sandbox that day (the packaged engine booted
 headless); only node-pty's terminal rebuild is deferred to CI (blocked headers).
+
+### 2026-09-17, Linux v0.1.1 shipped, sign-in wired everywhere, macOS switched to unsigned
+
+Real Electron binary downloads turned out reachable (only `www.electronjs.org`
+itself is policy-blocked, not the GitHub release assets it points to), so the
+Linux AppImage and deb built for real, not just a sandbox smoke test: `v0.1.0`
+then `v0.1.1` published to GitHub Releases. Along the way: sign-in silently
+didn't render on Linux or the not-yet-built macOS workflow, since the two
+Vite-build-time Supabase values iOS already had were never carried by the
+other two; both now do. The founder chose an unsigned macOS build (matching
+Uki Music) over Developer ID plus notarization, trading a one-time Gatekeeper
+right-click for skipping an Apple certificate and API key setup; `mac-desktop`
+was rewritten for that, not yet run. Also found and fixed: the app's version
+was never bumped between tags, so `v0.1.0` and `v0.1.1` shipped an
+identically-versioned `.deb`, which could make a reinstall silently skip; a
+tag build now stamps the version first. Tag pushes still need the founder.
