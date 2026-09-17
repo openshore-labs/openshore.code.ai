@@ -305,6 +305,31 @@ describe('RemoteDriver command lane and hub role (P0-1)', () => {
     expect(health.ok).toBe(true);
     expect(health.role).toBeUndefined();
   });
+
+  it("surfaces the daemon's own reason on a 401, not a generic line (APP-9 follow-up)", async () => {
+    mockRoutes((u) =>
+      u.endsWith('/health')
+        ? {
+            status: 401,
+            body: {
+              error:
+                'That is a pairing code, not a credential; this app build is too old to trade it in. Update OpenShore on this device, then pair again from Desktop + phone.',
+            },
+          }
+        : undefined,
+    );
+    const health = await daemonHealth({ baseUrl: 'http://desktop', token: 'pc_stale' });
+    expect(health.ok).toBe(false);
+    expect(health.detail).toContain('too old to trade it in');
+
+    // A 401 with no readable body still falls back to the generic line.
+    mockRoutes((u) => (u.endsWith('/health') ? { status: 401 } : undefined));
+    const fallback = await daemonHealth({ baseUrl: 'http://desktop', token: 'osc_x' });
+    expect(fallback.ok).toBe(false);
+    expect(fallback.detail).toBe(
+      'The desktop rejected the pairing token. Re-copy it from the desktop app.',
+    );
+  });
 });
 
 // The Phase 2 terminal routes: the driver talks to its own PTY endpoints,

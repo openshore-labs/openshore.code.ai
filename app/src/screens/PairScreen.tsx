@@ -342,6 +342,11 @@ function PhonePair() {
   const [testing, setTesting] = useState(false);
   const [state, setState] = useState<string | undefined>();
   const [scanning, setScanning] = useState(false);
+  // The connected moment itself, separate from `state`'s text: a settled pill
+  // pop, not another line of hint copy. Cleared the instant the fields change
+  // again, so it never lingers as a stale claim of success once someone is
+  // clearly pairing a different desktop.
+  const [connected, setConnected] = useState(false);
 
   const tryPasteJson = (text: string) => {
     const pair = parsePairingQr(text);
@@ -364,6 +369,7 @@ function PhonePair() {
       return;
     }
     setTesting(true);
+    setConnected(false);
     const claimed = await redeemPairClaim(baseUrl, rawClaim.trim(), phoneDeviceName());
     if (!claimed.ok) {
       setTesting(false);
@@ -373,13 +379,16 @@ function PhonePair() {
     const token = claimed.token;
     const health = await daemonHealth({ baseUrl, token });
     setTesting(false);
-    setState(health.detail);
     if (health.ok) {
       await saveHub(
         { baseUrl, token },
         { role: claimed.role ?? (health as { role?: HubRole }).role },
       );
+      setState(undefined);
+      setConnected(true);
       showToast('Connected. Pick your computer in the model menu to chat or code.');
+    } else {
+      setState(health.detail);
     }
   };
 
@@ -391,9 +400,22 @@ function PhonePair() {
       setState('That QR is not an OpenShore pairing code. Try the one on the desktop screen.');
       return;
     }
+    setConnected(false);
     setAddress(pair.address);
     setCode(pair.claim);
     void connect(pair);
+  };
+
+  // Any further edit to either field walks away from the settled "Connected"
+  // pill: it answered for the pairing that was on screen a moment ago, not
+  // whatever gets typed next.
+  const editAddress = (value: string) => {
+    setConnected(false);
+    if (!tryPasteJson(value)) setAddress(value);
+  };
+  const editCode = (value: string) => {
+    setConnected(false);
+    if (!tryPasteJson(value)) setCode(value);
   };
 
   return (
@@ -463,9 +485,7 @@ function PhonePair() {
               value={address}
               autoCapitalize="none"
               autoCorrect="off"
-              onChange={(e) => {
-                if (!tryPasteJson(e.target.value)) setAddress(e.target.value);
-              }}
+              onChange={(e) => editAddress(e.target.value)}
             />
           </div>
           <div className="field">
@@ -475,9 +495,7 @@ function PhonePair() {
               value={code}
               autoCapitalize="none"
               autoCorrect="off"
-              onChange={(e) => {
-                if (!tryPasteJson(e.target.value)) setCode(e.target.value);
-              }}
+              onChange={(e) => editCode(e.target.value)}
             />
           </div>
           <button
@@ -486,10 +504,15 @@ function PhonePair() {
             disabled={testing}
             onClick={() => void connect()}
           >
-            {testing ? 'Checking...' : 'Connect'}
+            {testing ? 'Checking...' : connected ? 'Connected' : 'Connect'}
           </button>
           {scanning ? <QrScanner onDecode={onScanned} onClose={() => setScanning(false)} /> : null}
-          {state ? (
+          {connected ? (
+            <p className="hint" style={{ marginTop: 10 }}>
+              <span className="pill ok pill-pop">Paired</span> Pick your computer in the model menu
+              to chat or code.
+            </p>
+          ) : state ? (
             <p className="hint" style={{ marginTop: 10 }}>
               {state}
             </p>
