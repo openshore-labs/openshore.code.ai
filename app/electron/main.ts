@@ -35,7 +35,13 @@ import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server } from 'node:http';
 import { isIP } from 'node:net';
-import { autoUpdater } from 'electron-updater';
+// electron-updater ships CJS; Node's ESM/CJS interop cannot statically prove
+// `autoUpdater` as a named export from it, and a packaged app (real ESM, not
+// bundled) throws a SyntaxError on this at startup before anything else runs
+// (caught by the Linux package-smoke test, run 35178322792). The default
+// import always works, CJS or ESM.
+import electronUpdaterPkg from 'electron-updater';
+const { autoUpdater } = electronUpdaterPkg;
 import { EngineHost } from './engineHost.js';
 import { versionIsNewer } from './updateVersion.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
