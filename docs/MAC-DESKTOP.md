@@ -35,6 +35,13 @@ opens exactly that URL when a newer version exists; see
 
 Run the Linux/Windows release first (push a `v*` tag) so the release this
 step uploads into already exists, then trigger `mac-desktop` from Codemagic.
+This ordering matters for more than the upload: this job has no git tag to
+read a version from the way release.yml's Linux/Windows jobs do (it runs on
+demand, not on a tag push), so its first step looks up whichever release is
+currently latest and stamps `app/package.json` to match before packaging.
+Skip the ordering and the build stamps itself from an older release than the
+one it is about to ship, and `app.getVersion()` inside the packaged app will
+be wrong, which is exactly what the macOS update check compares against.
 
 This needs one secret Codemagic does not have by default, since Codemagic's
 own GitHub integration is read-only clone access, not a general API token:

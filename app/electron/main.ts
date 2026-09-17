@@ -1078,7 +1078,9 @@ function sendUpdateStatus(update: typeof pendingUpdate): void {
 
 async function checkMacUpdate(): Promise<void> {
   try {
-    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`);
+    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+      signal: AbortSignal.timeout(30000),
+    });
     if (!res.ok) return;
     const release = (await res.json()) as { tag_name?: string };
     const latest = release.tag_name?.replace(/^v/, '');
