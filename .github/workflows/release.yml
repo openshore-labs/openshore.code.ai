@@ -48,6 +48,23 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # electron-builder names the AppImage and .deb after app/package.json's own
+      # version field, not the git tag, so a tag build has to stamp it or every
+      # release ships an identically-named, identically-versioned file. That
+      # already happened once (v0.1.0 and v0.1.1 both produced
+      # oscode-app_0.1.0_amd64.deb): apt/dpkg compare package versions to decide
+      # whether to overwrite on `apt install ./file.deb`, so an unchanged version
+      # number can make a real update look like "already the newest version" and
+      # silently not install. A manual (workflow_dispatch) run has no tag to
+      # derive a version from, so it leaves the committed version alone.
+      - name: Stamp the app version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          (cd app && npm pkg set version="$VERSION")
+          echo "Stamped app/package.json version to $VERSION"
+
       # xvfb gives the headless runner a display for the smoke launch; the other
       # libraries are Electron's runtime shared-object deps, which the sandbox
       # runner does not all carry by default. Installing them here keeps the
