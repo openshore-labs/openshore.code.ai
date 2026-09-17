@@ -202,6 +202,45 @@ workflows:
         # no new Codemagic setup at all.
         - Harbor-os-code
     scripts:
+      - name: Determine and stamp the release version
+        script: |
+          set -euo pipefail
+          # This job has no `triggering:` block (see above) and so no git tag to
+          # read a version from the way release.yml's Linux/Windows jobs do: it
+          # runs on demand. Without this step, app.getVersion() keeps reporting
+          # whatever is committed in app/package.json forever (proven: that
+          # field has never changed from "0.1.0" across two real tags, v0.1.0
+          # and v0.1.1), which breaks the desktop app's own macOS update check
+          # (checkMacUpdate in app/electron/main.ts): it would show "Update
+          # available" permanently, even right after installing the actual
+          # latest release. So this build always targets and stamps whatever
+          # GitHub Release is currently latest, the exact same one it uploads
+          # into below (MAC_RELEASE_TAG, exported once here so both steps agree
+          # by construction rather than by two separate lookups). Run the
+          # Linux/Windows release first (push a v* tag) so there is one.
+          #
+          # A public repo's release list is readable with no token, so this
+          # only needs gh itself, not GH_RELEASE_TOKEN. Anything that keeps it
+          # from resolving a tag (no gh, no releases yet, a network hiccup)
+          # warns and leaves the committed version alone rather than failing
+          # the build; the macOS update check may misreport until it is fixed,
+          # but the build and its Codemagic artifacts are unaffected.
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh (GitHub CLI) is not on this image, so the release version" \
+                 "cannot be looked up. Packaging with whatever version is" \
+                 "committed in app/package.json."
+            exit 0
+          fi
+          if ! LATEST_TAG=$(gh release view --repo openshore-labs/openshore.code.ai \
+            --json tagName -q .tagName 2>&1); then
+            echo "Could not look up the latest GitHub release: $LATEST_TAG"
+            echo "Packaging with whatever version is committed in app/package.json."
+            exit 0
+          fi
+          VERSION="${LATEST_TAG#v}"
+          (cd app && npm pkg set version="$VERSION")
+          echo "Stamped app/package.json version to $VERSION (from $LATEST_TAG)"
+          echo "MAC_RELEASE_TAG=$LATEST_TAG" >> "$CM_ENV"
       - name: Install workspace dependencies
         script: |
           set -euo pipefail
@@ -255,10 +294,21 @@ workflows:
           # See docs/MAC-DESKTOP.md for the one-time setup. Codemagic's own
           # GitHub integration is read-only clone access, not an API token, so
           # publishing needs GH_RELEASE_TOKEN: a fine-grained PAT scoped to just
-          # this repo with Contents: Read and write. Neither an unset token nor
-          # a missing gh CLI fails the build: the dmg/zip are already safe as
-          # Codemagic's own artifacts (below) either way, so this step warns and
-          # exits clean rather than turning an optional step into a hard failure.
+          # this repo with Contents: Read and write. Reuses MAC_RELEASE_TAG from
+          # the stamp step above instead of looking the tag up again, so the
+          # version this build reports and the release it uploads into can
+          # never drift apart. A missing tag, a missing token, or a missing gh
+          # CLI all skip rather than fail: the dmg/zip are already safe as
+          # Codemagic's own artifacts (below) either way, so this step warns
+          # and exits clean rather than turning an optional step into a hard
+          # failure.
+          if [ -z "${MAC_RELEASE_TAG:-}" ]; then
+            echo "No release version was resolved earlier in this build (see the" \
+                 "'Determine and stamp the release version' step). Skipping the" \
+                 "GitHub Release publish. The dmg/zip are still attached as" \
+                 "Codemagic artifacts on this build."
+            exit 0
+          fi
           if [ -z "${GH_RELEASE_TOKEN:-}" ]; then
             echo "GH_RELEASE_TOKEN is not set. Skipping the GitHub Release publish;" \
                  "see docs/MAC-DESKTOP.md to enable it. The dmg/zip are still" \
@@ -273,8 +323,7 @@ workflows:
           fi
           export GH_TOKEN="$GH_RELEASE_TOKEN"
           cd app
-          LATEST_TAG=$(gh release view --repo openshore-labs/openshore.code.ai \
-            --json tagName -q .tagName)
+          LATEST_TAG="$MAC_RELEASE_TAG"
           echo "Publishing the macOS build to $LATEST_TAG"
           gh release upload "$LATEST_TAG" --repo openshore-labs/openshore.code.ai \
             --clobber release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml
