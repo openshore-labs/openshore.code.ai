@@ -291,12 +291,20 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     const presented = bearerFrom(req.headers.authorization);
     const auth = resolveAuth(presented, token);
     if (!auth) {
+      // A pairing CLAIM (pc_...) presented here, instead of a minted device
+      // credential (osc_...), means a phone traded no claim at all: an app
+      // build old enough to predate per-device pairing sends the QR/manual
+      // code straight to the bearer header. Name that mismatch outright
+      // rather than the generic "wrong credential", so the fix (update the
+      // app) is obvious instead of looking like a Tailscale or typo problem.
+      const looksLikeStaleClaim = presented?.startsWith('pc_') ?? false;
       sendJson(
         res,
         401,
         {
-          error:
-            'Missing or wrong daemon credential. Pair this device from the desktop app (Desktop + phone), or mint a credential with `osc token mint`. On the computer itself, run: npx osc doctor',
+          error: looksLikeStaleClaim
+            ? 'That is a pairing code, not a credential; this app build is too old to trade it in. Update OpenShore on this device, then pair again from Desktop + phone.'
+            : 'Missing or wrong daemon credential. Pair this device from the desktop app (Desktop + phone), or mint a credential with `osc token mint`. On the computer itself, run: npx osc doctor',
         },
         { cors: false },
       );

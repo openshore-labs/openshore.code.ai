@@ -232,7 +232,7 @@ import {
 import { normalizeNotePath } from '../lib/vault.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
-import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
+import { bridge, type DesktopStatus, type PendingUpdate } from '../lib/electronBridge.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   dataUnlockState,
@@ -762,6 +762,9 @@ interface AppState {
    *  `reconnecting` while a dropped stream is being reattached, `away` once
    *  that has clearly failed. Absent means live (or no hub in play). */
   hubLink?: { state: 'reconnecting' | 'away'; since: number };
+  /** A desktop update the main process has found, pushed over the bridge.
+   *  Undefined means nothing pending (or not on desktop at all). */
+  updateStatus?: PendingUpdate;
 
   init(): Promise<void>;
   /** Go to a room. From the panel pass `{ root: true }` so the trail clears;
@@ -775,6 +778,7 @@ interface AppState {
   goBack(): void;
   setDrawer(open: boolean): void;
   showToast(message: string): void;
+  setUpdateStatus(update: PendingUpdate | undefined): void;
   /** Show the Personal upgrade sheet for a locked surface. */
   openPaywall(reason: PaywallReason): void;
   closePaywall(): void;
@@ -3082,6 +3086,10 @@ export const useApp = create<AppState>((set, get) => {
     showToast(message) {
       set({ toast: message });
       setTimeout(() => set((s) => (s.toast === message ? { toast: undefined } : s)), 3200);
+    },
+
+    setUpdateStatus(update) {
+      set({ updateStatus: update });
     },
 
     async newConversation(source, opts) {

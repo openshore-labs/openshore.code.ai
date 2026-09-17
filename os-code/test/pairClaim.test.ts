@@ -153,4 +153,15 @@ describe('POST /pair/claim (per-device pairing)', () => {
     expect(error).toContain('Desktop + phone');
     expect(error).toContain('npx osc doctor');
   });
+
+  it('a claim string presented as a bearer names the real cause: an out-of-date app', async () => {
+    const { claim: code } = daemon.mintPairClaim();
+    // Never redeemed at /pair/claim: a build old enough to predate per-device
+    // pairing would hand this straight to the bearer header instead.
+    const res = await fetch(`${base}/health`, { headers: { authorization: `Bearer ${code}` } });
+    expect(res.status).toBe(401);
+    const { error } = (await res.json()) as { error: string };
+    expect(error).toContain('too old to trade it in');
+    expect(error).toContain('Update OpenShore');
+  });
 });

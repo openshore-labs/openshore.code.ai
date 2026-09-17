@@ -53,6 +53,18 @@ export interface OllamaInstallResult {
   detail?: string;
 }
 
+/** A desktop update the main process has found and is ready to hand off.
+ *  `install` (Windows, Linux) means electron-updater already downloaded it in
+ *  the background and a click quits and relaunches on the new version.
+ *  `download` (macOS, which ships unsigned outside the App Store by design)
+ *  means only a version check ran, since an unsigned build has no stable
+ *  signature for electron-updater's in-place install to verify against, so a
+ *  click opens the release in the browser instead. */
+export interface PendingUpdate {
+  version: string;
+  mode: 'install' | 'download';
+}
+
 export interface DesktopStatus {
   ollama: { up: boolean; detail: string; models: string[] };
   hardwareSummary: string;
@@ -319,6 +331,14 @@ export interface OscodeBridge {
   // auth callback, Stripe checkout return). The renderer subscribes and routes
   // each URL. Returns an unsubscribe function.
   onDeepLink(cb: (url: string) => void): () => void;
+
+  // Pushed unprompted whenever the main process finds (Windows, Linux) or
+  // detects (macOS) a newer release than the one running, and again whenever
+  // the window reloads, so a fresh renderer is never out of sync with what
+  // main already knows. undefined clears it. installUpdate() acts on
+  // whatever was last pushed (see PendingUpdate).
+  onUpdateStatus(cb: (update: PendingUpdate | undefined) => void): () => void;
+  installUpdate(): Promise<void>;
 
   // A contained third-party site inside the window (Codemagic in Launch).
   // The renderer names the site and places it by bounds in CSS pixels of the
