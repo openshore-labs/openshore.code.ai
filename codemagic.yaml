@@ -191,6 +191,12 @@ workflows:
         # APPLE_API_ISSUER, APPLE_TEAM_ID. Until it exists this workflow fails
         # at the signing step, which is why it never runs automatically.
         - openshore-mac-signing
+        # The same group the iOS workflow imports, so the desktop build gets the
+        # same VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (sign-in works here the
+        # same way it works on the iOS build) and any other VITE_-prefixed build
+        # value already set there. Its CERTIFICATE_PRIVATE_KEY (iOS-only) is
+        # simply unused by this workflow's own signing step above.
+        - Harbor-os-code
     scripts:
       - name: Install workspace dependencies
         script: |
