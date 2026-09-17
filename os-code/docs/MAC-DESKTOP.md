@@ -1,120 +1,77 @@
-# macOS desktop build (Codemagic, Developer ID)
+# macOS desktop build (Codemagic, unsigned)
 
-The `mac-desktop` workflow in `codemagic.yaml` produces a signed, notarized
-macOS app a person can download from openshore.ai and open with no Gatekeeper
-warning: a `.dmg` and a `.zip`, each for Apple Silicon (arm64) and Intel (x64).
+The `mac-desktop` workflow in `codemagic.yaml` produces a `.dmg` and a `.zip`,
+each for Apple Silicon (arm64) and Intel (x64), distributed straight from
+openshore.ai the same way the Uki Music desktop app ships, never through the
+Mac App Store.
 
-This is a Developer ID build (distributed from your own site), not a Mac App
-Store build, and it is separate from the iOS TestFlight pipeline. It reuses your
-Apple Developer account but needs its own certificate and its own Codemagic
-variable group.
+This build is unsigned in Apple's eyes: no Developer ID certificate, no
+notarization. That is a deliberate choice (founder, matching the Uki Music
+build) to skip the Apple Developer certificate and notarization setup
+entirely. Read "What this costs" below before shipping a download link, so the
+tradeoff is a decision, not a surprise.
 
-The workflow does not run on its own. It has no trigger, so it only runs when
-you start it by hand from the Codemagic UI. That is deliberate: it costs Mac
-minutes and it fails until the secrets below exist, so it should never fire on
-an ordinary push.
+## Setup: none beyond what already exists
 
-## One-time Apple setup
+The workflow imports `Harbor-os-code`, the same Codemagic variable group the
+iOS build already uses, for `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+(so sign-in works here exactly like it does on iOS). That group already
+exists. There is nothing new to create in Codemagic, no Apple certificate, no
+API key. Start the `mac-desktop` workflow from the Codemagic UI whenever you
+want a build.
 
-You need three things from Apple: a Developer ID Application certificate, an App
-Store Connect API key for notarization, and your Team ID.
+## What this costs: the Gatekeeper prompt
 
-### 1. Developer ID Application certificate
+The first time someone opens the app, macOS Gatekeeper shows "Apple could not
+verify that OpenShore is free of malware," with no plain "Open" button on that
+first dialog. They get past it one of two ways:
 
-This is the certificate that signs a desktop app for distribution outside the
-Mac App Store. It is not the same as the iOS distribution certificate the
-TestFlight build uses.
+- **Right-click (or Control-click) the app and choose Open.** That shows a
+  second dialog with an actual Open button. This is the one extra step,
+  compared to a notarized app's plain double-click, and it is only needed
+  once, the very first launch.
+- **Or, if that still refuses:** System Settings -> Privacy & Security,
+  scroll to the Security section, and click "Open Anyway" next to the
+  OpenShore mention that appears after the first blocked attempt.
 
-1. Go to developer.apple.com, Certificates, Identifiers and Profiles,
-   Certificates, and add one of type **Developer ID Application**.
-2. Follow the prompts (upload a certificate signing request, or let Xcode create
-   it), then download the resulting `.cer` and open it so it lands in your login
-   Keychain.
-3. In Keychain Access, find the certificate, expand it so its private key shows
-   under it, select both the certificate and the key, right click, and Export
-   the pair as a `.p12`. Set an export password and remember it.
-4. Base64 the `.p12` so it can live in an environment variable:
+Put a line like this on the download page or in the release notes, next to the
+macOS download, so it never reads as broken:
 
-   ```
-   base64 -i DeveloperID.p12 | pbcopy
-   ```
+> First launch: right-click the app and choose Open (this is normal for an
+> app distributed outside the App Store; every launch after the first is
+> ordinary).
 
-   That copies the value for `CSC_LINK`. The export password is
-   `CSC_KEY_PASSWORD`.
-
-### 2. App Store Connect API key (for notarization)
-
-1. Go to App Store Connect, Users and Access, Integrations, App Store Connect
-   API, and generate a team key. Access level **Developer** is enough to
-   notarize.
-2. Download the key file (`AuthKey_XXXXXXXXXX.p8`). App Store Connect lets you
-   download it only once, so keep it safe.
-3. Note the key's **Key ID** (the ten characters in the file name) and the
-   **Issuer ID** (a UUID shown at the top of the Keys page).
-4. Base64 the `.p8` (it is multiline, so it has to be encoded to fit one
-   variable):
-
-   ```
-   base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy
-   ```
-
-   That is the value for `APPLE_API_KEY_B64`.
-
-### 3. Team ID
-
-On developer.apple.com, Membership details, copy the ten-character **Team ID**.
-
-## The Codemagic variable group
-
-In Codemagic, open the app (or team) Environment variables and create a group
-named exactly `openshore-mac-signing`. Add these six variables and mark every
-one **Secure**:
-
-| Variable            | Value                                          |
-| ------------------- | ---------------------------------------------- |
-| `CSC_LINK`          | base64 of the Developer ID Application `.p12`  |
-| `CSC_KEY_PASSWORD`  | the password you set when exporting the `.p12` |
-| `APPLE_API_KEY_B64` | base64 of the `AuthKey_XXXXXXXXXX.p8`          |
-| `APPLE_API_KEY_ID`  | the API key's Key ID (ten characters)          |
-| `APPLE_API_ISSUER`  | the Issuer ID (a UUID)                         |
-| `APPLE_TEAM_ID`     | your ten-character Apple Team ID               |
-
-The workflow already imports this group by name, so nothing in `codemagic.yaml`
-changes once the group exists.
-
-## Sign-in comes along for free
-
-The workflow also imports `Harbor-os-code`, the same variable group the iOS
-build uses, so `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` reach this
-build's Vite compile too. Sign-in on the resulting desktop app works exactly
-like it does on iOS, with no extra setup here, as long as that group already
-has those two values (it does, since iOS sign-in works). Without them, sign-in
-quietly does not render (see the note on the Linux build in
-`.github/workflows/release.yml`) and the rest of the app is unaffected.
+electron-builder signs the app **ad-hoc** on its own during packaging (no
+certificate needed for this part): that is a separate, unrelated requirement
+Apple Silicon enforces just to execute any binary at all, and it has nothing
+to do with the Gatekeeper prompt above.
 
 ## Running it
 
 1. In Codemagic, pick the `mac-desktop` workflow and start a build on `main`.
 2. It installs, runs the full test gate, builds the app, rebuilds the native
-   terminal module for Electron, then signs and notarizes. First notarization
-   can take a few minutes while Apple's service processes the upload.
+   terminal module for Electron, then packages with electron-builder.
 3. When it finishes, the build's Artifacts list has the `.dmg` and `.zip` for
    both architectures.
 
 ## Getting it to users
 
-The signed files are the download. Host them the same way the Linux build is
+The built files are the download. Host them the same way the Linux build is
 hosted (a GitHub Release, or object storage) and point the "Get OpenShore"
-button on the marketing site at them. The files are too large for the marketing
-site's own static hosting (Cloudflare Pages caps a served file at 25 MiB).
+button on the marketing site at them, with the Gatekeeper line above nearby.
+The files are too large for the marketing site's own static hosting
+(Cloudflare Pages caps a served file at 25 MiB).
 
-## Notes
+## If you want to remove the Gatekeeper prompt later
 
-- The app id is `ai.openshore.oscode`, shared with the iOS build. That is fine:
-  a Developer ID desktop app and an App Store iOS app can share a bundle id.
-- If notarization ever fails with an authentication error, the API key values
-  are the first thing to check: `APPLE_API_KEY_B64` must decode to the exact
-  `.p8`, and the Key ID and Issuer ID must match that key.
-- The certificate must be a Developer ID Application certificate. An iOS or Mac
-  App Store certificate will sign but will not pass notarization for direct
-  distribution.
+That is exactly what a Developer ID certificate and notarization buy: a plain
+double-click with no warning at all. It needs an Apple Developer account (you
+already have one, from the iOS build), a Developer ID Application certificate,
+and an App Store Connect API key for notarization, none of which this workflow
+uses today. If that becomes worth the setup later, the pieces are: sign with
+`CSC_LINK`/`CSC_KEY_PASSWORD`, add `hardenedRuntime: true` and an entitlements
+plist back to the `mac` block in `app/package.json` (needed only once
+notarization is in the picture), and pass `-c.mac.notarize.teamId=...` to
+`electron-builder` with the App Store Connect key decoded to a file. Ask before
+building that back in, since it reintroduces the certificate and API key setup
+this doc exists to skip.
