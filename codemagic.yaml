@@ -220,13 +220,23 @@ workflows:
           # Linux/Windows release first (push a v* tag) so there is one.
           #
           # A public repo's release list is readable with no token, so this
-          # only needs gh itself, not GH_RELEASE_TOKEN. Anything that keeps it
-          # from resolving a tag (no gh, no releases yet, a network hiccup)
-          # warns and leaves the committed version alone rather than failing
-          # the build; the macOS update check may misreport until it is fixed,
-          # but the build and its Codemagic artifacts are unaffected.
+          # only needs gh itself, not GH_RELEASE_TOKEN. Confirmed 2026-09-17: a
+          # real build produced dmg/zip still labeled 0.1.0 against the v0.1.2
+          # tag, meaning gh was not actually on that Codemagic image and this
+          # step silently (and correctly, per its own design) skipped the
+          # stamp. Homebrew is standard on every macOS CI image, gh is not, so
+          # install it here rather than assume it. Anything that still keeps
+          # this from resolving a tag (brew missing too, no releases yet, a
+          # network hiccup) warns and leaves the committed version alone
+          # rather than failing the build; the macOS update check may
+          # misreport until it is fixed, but the build and its Codemagic
+          # artifacts are unaffected.
           if ! command -v gh >/dev/null 2>&1; then
-            echo "gh (GitHub CLI) is not on this image, so the release version" \
+            echo "gh (GitHub CLI) is not on this image; installing it via Homebrew."
+            brew install gh >/dev/null 2>&1 || true
+          fi
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "Could not install gh (GitHub CLI), so the release version" \
                  "cannot be looked up. Packaging with whatever version is" \
                  "committed in app/package.json."
             exit 0
@@ -316,7 +326,11 @@ workflows:
             exit 0
           fi
           if ! command -v gh >/dev/null 2>&1; then
-            echo "gh (GitHub CLI) is not on this image, so the GitHub Release" \
+            echo "gh (GitHub CLI) is not on this image; installing it via Homebrew."
+            brew install gh >/dev/null 2>&1 || true
+          fi
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "Could not install gh (GitHub CLI), so the GitHub Release" \
                  "publish step is skipped. The dmg/zip are still attached as" \
                  "Codemagic artifacts on this build."
             exit 0

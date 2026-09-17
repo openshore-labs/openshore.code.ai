@@ -57,3 +57,15 @@ own GitHub integration is read-only clone access, not a general API token:
 Without it, the build still succeeds and the dmg/zip are still attached as
 Codemagic's own build artifacts (downloadable from the Codemagic UI); the
 publish step just warns and skips rather than failing the build.
+
+**A green build is not proof this worked.** The first real run (2026-09-17)
+came back green with the token set, but the dmg/zip were still named
+`OpenShore-0.1.0...`, not the actual release version: `gh` (the GitHub CLI)
+turned out not to be on that Codemagic image at all, so both the version
+lookup and the upload silently skipped, exactly as designed, and exactly why
+that design is risky to trust from the build status alone. Both steps now
+install `gh` via Homebrew first if it is missing. To actually confirm a run
+published, check either the "Publish to the GitHub Release" step's own log
+for `Publishing the macOS build to vX.Y.Z`, or just check the release itself:
+`curl -s https://api.github.com/repos/openshore-labs/openshore.code.ai/releases/latest`
+and look for a `.dmg` in `assets`.
