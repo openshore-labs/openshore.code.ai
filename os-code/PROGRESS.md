@@ -395,19 +395,6 @@ Video attachments (frame-by-frame vision, never the raw video) shipped and
 moved to `docs/progress-archive.md` on 2026-09-17; device and desktop-FFmpeg
 verification are still open in What remains below.
 
-### The phone storefront (Marketplace, on iPhone)
-
-On an iPhone the Marketplace now leads with three one-tap packs keyed to the
-connection status (Offline, Offshore, Docked), a browse-by-family rail with a
-family page split by where each size installs, the pocket shelf retitled "Runs
-on this iPhone" with the line that a new 4B beats the old 7B class at half the
-memory, and a "Desktop and home servers" divider below which no control ever
-says "Get" on a phone. The seed carries the phone-class pick `qwen3-4b-phone`;
-it reaches the live feed only once `osc eval` scores it (see What remains).
-Code: `app/src/lib/packs.ts`, `app/src/components/modelFamilies.ts`, `runsOn`
-and `installLabel` in `app/src/components/marketplace.ts`; the doc is
-`docs/MARKETPLACE.md`, "The phone storefront".
-
 ### Crew routines (the botOS brief, shipped inside My Crew)
 
 **Crew routines are BUILT.** The founder's brief was "clone grokbot, call it
@@ -995,3 +982,17 @@ clean merge, no conflicts): sign-in and the version-stamp fix (this session),
 then Windows packaging, electron-updater, and the macOS publish/version-check
 split, then a pairing diagnosis, both from other sessions; see Current state
 above. One stale duplicate doc was retired reconciling the merge.
+
+### 2026-09-17, Windows packaging proven for real; the auto-update import bug
+
+The merged `release.yml` had never run end to end. A `workflow_dispatch` dry
+run (no tag, `publish` skips) caught two real failures no local check could:
+`import { autoUpdater } from 'electron-updater'` threw a SyntaxError at
+packaged-app startup (CJS/ESM interop cannot prove a named export; fixed with
+the default-import pattern), silently breaking every platform since the
+auto-update work landed; and Windows failed compiling node-pty's bundled
+`winpty.cc` (MSVC C2362, upstream microsoft/node-pty#683), fixed by bumping to
+1.1.0, which drops winpty for ConPTY. Re-run after both fixes: Linux and
+Windows both packaged, smoke-tested, artifacts uploaded clean. No tag pushed
+yet (a 403 on tag refs, a likely protection rule); a real `v0.1.2` publish,
+Windows included for the first time, needs the founder to push that tag.
