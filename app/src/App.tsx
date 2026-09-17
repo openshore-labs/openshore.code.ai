@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { useApp } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
+import { useAutoUpdate } from './hooks/useAutoUpdate.js';
 import { useSheetFocusTrap } from './hooks/useSheetFocusTrap.js';
 import { hapticTick } from './lib/haptics.js';
 import { platform } from './lib/platform.js';
@@ -12,6 +13,7 @@ import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { OrgJoinSheet } from './components/OrgJoinSheet.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
+import { UpdateBanner } from './components/UpdateBanner.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { ChatsScreen } from './screens/ChatsScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
@@ -70,6 +72,7 @@ export function App() {
     width: drawerWidth(),
   });
   useAuthDeepLink();
+  useAutoUpdate();
   useSheetFocusTrap();
 
   useEffect(() => {
@@ -273,6 +276,7 @@ export function App() {
           current is on. Both render nothing when none is on. */}
       <CurrentArrival />
       <CurrentWaterline />
+      <UpdateBanner />
       {toastPresence.mounted ? (
         <div
           className={`toast${toastPresence.closing ? ' closing' : ''}`}

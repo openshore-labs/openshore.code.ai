@@ -113,11 +113,19 @@ export async function daemonHealth(
       headers: headers(target),
       signal: AbortSignal.timeout(4000),
     });
-    if (res.status === 401)
+    if (res.status === 401) {
+      // The daemon's own error names the specific cause (a stale claim, a
+      // revoked device, a wrong token) when it can; only fall back to the
+      // generic line if that body did not come through.
+      const body = (await res.json().catch(() => ({}))) as { error?: unknown };
       return {
         ok: false,
-        detail: 'The desktop rejected the pairing token. Re-copy it from the desktop app.',
+        detail:
+          typeof body.error === 'string'
+            ? body.error
+            : 'The desktop rejected the pairing token. Re-copy it from the desktop app.',
       };
+    }
     if (!res.ok) return { ok: false, detail: `The desktop answered ${res.status}.` };
     const role = roleOf(await res.json().catch(() => ({})));
     return { ok: true, detail: 'Connected to your desktop.', ...(role ? { role } : {}) };

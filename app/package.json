@@ -38,6 +38,7 @@
     "@capacitor/preferences": "8.0.1",
     "@xterm/addon-fit": "0.10.0",
     "@xterm/xterm": "5.5.0",
+    "electron-updater": "6.8.9",
     "highlight.js": "11.12.0",
     "jsqr": "1.4.0",
     "os-code": "workspace:*",
@@ -82,6 +83,11 @@
   "build": {
     "appId": "ai.openshore.oscode",
     "productName": "OpenShore",
+    "publish": {
+      "provider": "github",
+      "owner": "openshore-labs",
+      "repo": "openshore.code.ai"
+    },
     "files": [
       "dist/**",
       "dist-electron/**",
