@@ -82,6 +82,16 @@ one **Secure**:
 The workflow already imports this group by name, so nothing in `codemagic.yaml`
 changes once the group exists.
 
+## Sign-in comes along for free
+
+The workflow also imports `Harbor-os-code`, the same variable group the iOS
+build uses, so `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` reach this
+build's Vite compile too. Sign-in on the resulting desktop app works exactly
+like it does on iOS, with no extra setup here, as long as that group already
+has those two values (it does, since iOS sign-in works). Without them, sign-in
+quietly does not render (see the note on the Linux build in
+`.github/workflows/release.yml`) and the rest of the app is unaffected.
+
 ## Running it
 
 1. In Codemagic, pick the `mac-desktop` workflow and start a build on `main`.

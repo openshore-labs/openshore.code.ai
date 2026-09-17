@@ -67,7 +67,20 @@ jobs:
       - name: Build the engine
         run: pnpm --filter os-code build
 
+      # VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are Vite build-time values
+      # (baked into the bundle by `import.meta.env`, never read at runtime), so
+      # they have to be present at THIS step, not after packaging. With both
+      # unset, sign-in simply does not render (app/src/lib/supabase.ts) and the
+      # rest of the app is unaffected, exactly as the iOS build behaves before
+      # its own copy of these two repository secrets is set. To make sign-in
+      # work on this build, add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as
+      # repository secrets (Settings -> Secrets and variables -> Actions), using
+      # the same values as the app's own Supabase project (Settings -> API) or
+      # the iOS build's Codemagic variable group.
       - name: Build the app (web bundle and Electron main)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: pnpm --filter oscode-app build
 
       # node-pty is a native module compiled for Node's ABI on install; the
