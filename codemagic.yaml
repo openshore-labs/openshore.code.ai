@@ -172,15 +172,17 @@ workflows:
   # macOS desktop build: an unsigned .dmg and .zip (arm64 and x64) distributed
   # straight from openshore.ai, the same way the Uki Music desktop app ships,
   # never through the Mac App Store. Needs no Apple Developer certificate and
-  # no notarization credentials, so there is no Codemagic secrets setup beyond
-  # what the iOS workflow already has. The tradeoff, in full: the first time
+  # no notarization credentials. The tradeoff, in full: the first time
   # someone opens it, Gatekeeper shows "Apple could not verify this app is free
   # of malware," and they right-click the app and choose Open (once) instead of
   # a plain double-click; every launch after that is normal. electron-builder
   # signs it ad-hoc automatically (required for the app to even launch on
   # Apple Silicon, unrelated to Gatekeeper), which needs no certificate either.
   # Details and the exact download-page copy to pair with this are in
-  # docs/MAC-DESKTOP.md.
+  # docs/MAC-DESKTOP.md, including the one OPTIONAL secret (GH_RELEASE_TOKEN)
+  # that publishes the build to the same GitHub Release Linux and Windows use
+  # (release.yml); without it this job still succeeds and the dmg/zip are
+  # still Codemagic build artifacts, just not on GitHub.
   mac-desktop:
     name: OpenShore macOS (desktop, unsigned)
     max_build_duration: 90
@@ -243,6 +245,39 @@ workflows:
           # are collected below.
           cd app
           pnpm exec electron-builder --mac --publish never
+      - name: Publish to the GitHub Release
+        script: |
+          set -euo pipefail
+          # nullglob: if any one pattern below matches nothing (say, a build
+          # that skips the blockmap), it drops out of the argument list instead
+          # of being passed to `gh` as a literal, nonexistent filename.
+          shopt -s nullglob
+          # See docs/MAC-DESKTOP.md for the one-time setup. Codemagic's own
+          # GitHub integration is read-only clone access, not an API token, so
+          # publishing needs GH_RELEASE_TOKEN: a fine-grained PAT scoped to just
+          # this repo with Contents: Read and write. Neither an unset token nor
+          # a missing gh CLI fails the build: the dmg/zip are already safe as
+          # Codemagic's own artifacts (below) either way, so this step warns and
+          # exits clean rather than turning an optional step into a hard failure.
+          if [ -z "${GH_RELEASE_TOKEN:-}" ]; then
+            echo "GH_RELEASE_TOKEN is not set. Skipping the GitHub Release publish;" \
+                 "see docs/MAC-DESKTOP.md to enable it. The dmg/zip are still" \
+                 "attached as Codemagic artifacts on this build."
+            exit 0
+          fi
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh (GitHub CLI) is not on this image, so the GitHub Release" \
+                 "publish step is skipped. The dmg/zip are still attached as" \
+                 "Codemagic artifacts on this build."
+            exit 0
+          fi
+          export GH_TOKEN="$GH_RELEASE_TOKEN"
+          cd app
+          LATEST_TAG=$(gh release view --repo openshore-labs/openshore.code.ai \
+            --json tagName -q .tagName)
+          echo "Publishing the macOS build to $LATEST_TAG"
+          gh release upload "$LATEST_TAG" --repo openshore-labs/openshore.code.ai \
+            --clobber release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml
     artifacts:
       - app/release/*.dmg
       - app/release/*.zip
