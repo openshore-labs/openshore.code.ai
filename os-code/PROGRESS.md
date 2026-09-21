@@ -19,7 +19,7 @@ always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
 
-### Harbor Master, the third out-of-the-box model (founder brief, 2026-09-21)
+### DeepBlue, the third out-of-the-box model (founder brief, 2026-09-21)
 
 The founder wanted a compact, open, most-capable model "like Harbor Light and
 Harbor", downloadable from the start without the Marketplace, so a home-lab
@@ -28,7 +28,7 @@ Harbor family, on the desktop: `app/src/lib/harborMaster.ts` (id
 `harbor-master`, a stable slot over the catalog's own Qwen 2.5 Coder sizes,
 the display name in one constant for the CMO); `ensureHarborMaster` in the
 store (pull the size that fits by catalog id through the engine, seat its
-Ollama ref, refresh the gate); the First Seat card named Harbor Master and
+Ollama ref, refresh the gate); the First Seat card named DeepBlue and
 installing in place; the Stack starter on the same action; a desktop Settings
 > Harbor row (Install, percent, Retry, Installed; no cancel or uninstall, since
 Ollama owns the weights) plus the attribution. `starterModel.ts` and the
@@ -429,9 +429,9 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Harbor Master on a real desktop (built 2026-09-21, unverified off the
+- [ ] **DeepBlue on a real desktop (built 2026-09-21, unverified off the
       sandbox).** On the founder's box with Ollama up: the First Seat card reads
-      "Harbor Master", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
+      "DeepBlue", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
       computer (8 GB, no GPU)."; Set up pulls it with a percent on the button,
       the card leaves, a chat opens; Settings > Harbor reads Installed. A 16 GB
       or GPU machine gets the 7B, a hub with room the 14B. Then pair the phone
@@ -926,7 +926,7 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
-### 2026-09-21, Harbor Master: the third out-of-the-box model, on the desktop
+### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
 
 The founder's brief came in two beats. First, "my own open-source, more
 compact Opus 4.8 for a home lab, the featured model you download to your hub

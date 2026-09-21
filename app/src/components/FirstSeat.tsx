@@ -6,7 +6,7 @@
 // the card seats with a soft teal bloom and a single tick. The whole surface is
 // presence-aware (it animates out, never snaps) and honors reduced motion.
 //
-// On the desktop the seat is Harbor Master, the third and most capable member
+// On the desktop the seat is DeepBlue, the third and most capable member
 // of the Harbor family, sized to this computer, and the one tap installs it
 // right here (the pull rides the store's ensureHarborMaster, progress on the
 // button). On the phone the seat routes to the Marketplace, where the pocket
@@ -93,7 +93,7 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
   const starter = resolveStarter(hardware);
   const pick = starter.pick;
   const desktop = isDesktop();
-  // The card's name: Harbor Master on the desktop (what is really behind it is
+  // The card's name: DeepBlue on the desktop (what is really behind it is
   // named on the size line), the weights' own name on the phone.
   const seatName = desktop ? HARBOR_MASTER_MODEL_NAME : pick.name;
   const sizeLine = desktop

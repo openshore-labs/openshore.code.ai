@@ -46,10 +46,15 @@ export const STACK_BUNDLES: StackBundle[] = [
       'One coding model that does everything, sized to this computer. The right first stack.',
     platform: 'desktop',
     orchestrator: 'qwen2.5-coder-7b',
-    // The same preference list as Harbor Master (lib/harborMaster.ts): the 14B
-    // on a hub with room, the 7B where it fits, the 3B on a CPU box under
-    // about 12 GB. Pinned equal by harborMaster.test.ts.
-    orchestratorCandidates: ['qwen2.5-coder-14b', 'qwen2.5-coder-7b', 'qwen2.5-coder-3b'],
+    // The same preference list as DeepBlue (lib/harborMaster.ts): the 32B on a
+    // big hub, the 14B on a hub with room, the 7B where it fits, the 3B on a CPU
+    // box under about 12 GB. Pinned equal by harborMaster.test.ts.
+    orchestratorCandidates: [
+      'qwen2.5-coder-32b',
+      'qwen2.5-coder-14b',
+      'qwen2.5-coder-7b',
+      'qwen2.5-coder-3b',
+    ],
     specialists: {},
     minVramGB: 0,
   },

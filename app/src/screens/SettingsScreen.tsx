@@ -169,7 +169,7 @@ function platformLabel(): string {
  *  percent (tap to cancel) while it downloads, Retry after a failure, Uninstall
  *  once it is on the device. A bundled model (Harbor Light) ships with the app
  *  and cannot be removed, so it shows a plain "Built in" status instead. A
- *  model Ollama holds (Harbor Master) has no cancel and no uninstall here, so
+ *  model Ollama holds (DeepBlue) has no cancel and no uninstall here, so
  *  its progress is a plain status and, once present, it reads "Installed". */
 function HarborInstallButton({
   bundled,
@@ -368,7 +368,7 @@ export function SettingsScreen() {
     await removeHarbor();
     showToast('Harbor removed. You can reinstall it any time.');
   };
-  // Harbor Master lives in the engine's Ollama, so presence is read from the
+  // DeepBlue lives in the engine's Ollama, so presence is read from the
   // engine's own list, never remembered by the app.
   const harborMasterPresent = Boolean(harborMasterInstalled(desktopStatus?.ollama.models));
   const installHarborMaster = async () => {
@@ -507,8 +507,8 @@ export function SettingsScreen() {
             <h3 className="settings-sheet-head">Local models, honestly</h3>
             <p>
               Harbor and Harbor Light, and any model you run on this device, are AI. They can be
-              confidently wrong, and neither guide is a coder. For real work, use Harbor Master on
-              your computer or connect a bigger model. What you type to a local model stays on this
+              confidently wrong, and neither guide is a coder. For real work, use DeepBlue on your
+              computer or connect a bigger model. What you type to a local model stays on this
               device. Harbor is Qwen3-1.7B and Harbor Light is SmolLM2-135M-Instruct, both used
               under the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
             </p>
@@ -782,7 +782,7 @@ export function SettingsScreen() {
           ) : null}
           {isDesktop() ? (
             <SettingsRow
-              label="Harbor Master"
+              label="DeepBlue"
               sub={HARBOR_MASTER_BYLINE}
               subWrap
               trailing={

@@ -109,8 +109,9 @@ describe('fitVerdict mirrors the engine budget exactly', () => {
 });
 
 describe('resolveStarter is a preference list resolved by fit', () => {
-  it('is Harbor Master: the 14B where there is room, the 7B, then the 3B as the floor seat', () => {
+  it('is DeepBlue: the 32B on a big hub, the 14B, the 7B, then the 3B floor seat', () => {
     expect(STARTER_CANDIDATES.map((c) => c.catalogId)).toEqual([
+      'qwen2.5-coder-32b',
       'qwen2.5-coder-14b',
       'qwen2.5-coder-7b',
       'qwen2.5-coder-3b',
@@ -177,8 +178,10 @@ describe('the class line comes from the engine, never invented on the card', () 
     expect(modelClassFor(32)).toBe('large');
   });
 
-  it('the 7B and 3B picks are small, so the card says short plans; the 14B is mid', () => {
-    for (const c of STARTER_CANDIDATES.filter((c) => c.catalogId !== 'qwen2.5-coder-14b')) {
+  it('the 7B and 3B picks are small, the 14B is mid, and the 32B is large', () => {
+    for (const c of STARTER_CANDIDATES.filter(
+      (c) => c.catalogId === 'qwen2.5-coder-7b' || c.catalogId === 'qwen2.5-coder-3b',
+    )) {
       expect(classLineFor(c.ollamaRef)).toBe(
         'Runs short plans. The harness carries the checklist.',
       );
@@ -186,6 +189,7 @@ describe('the class line comes from the engine, never invented on the card', () 
     expect(classLineFor('qwen2.5-coder:14b')).toBe(
       'Plans and runs multi-step work with subagents.',
     );
+    expect(classLineFor('qwen2.5-coder:32b')).toBe('Full planning and delegation.');
   });
 });
 

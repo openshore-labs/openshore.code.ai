@@ -103,7 +103,7 @@ export function StackScreen() {
     }
   };
 
-  // One tap from "no model" to a working stack: Harbor Master, sized to this
+  // One tap from "no model" to a working stack: DeepBlue, sized to this
   // computer, pulled through the engine and seated as the orchestrator by the
   // store (ensureHarborMaster owns the progress and the failure line, so the
   // Settings row and the First Seat card show the same state). The gate's copy

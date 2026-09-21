@@ -1,11 +1,11 @@
-# Harbor, Harbor Light, and Harbor Master: the out-of-the-box models
+# Harbor, Harbor Light, and DeepBlue: the out-of-the-box models
 
 OpenShore ships three models out of the box, never behind the Marketplace: two
 on-device guides for the phone, and one real coding agent for the computer.
 The guides are grounded in this repository, so they are experts on the app:
 they explain any front-end feature or setup step in as much depth as the person
 wants, and they never reveal backend build internals, infrastructure, or how
-OpenShore is implemented under the hood. Harbor Master (below) is the third and
+OpenShore is implemented under the hood. DeepBlue (below) is the third and
 final member, the most capable, and the one a home-lab hub runs.
 
 - **Harbor Light** (SmolLM2-135M-Instruct, Apache-2.0). The small, fast guide.
@@ -17,7 +17,7 @@ final member, the most capable, and the one a home-lab hub runs.
   coding agent and the app's own expert, with real reasoning and web search. It
   is a real download (about 1.1 GB) from Hugging Face, installed and uninstalled
   from Settings.
-- **Harbor Master** (Qwen 2.5 Coder, sized to the computer: 14B, 7B, or 3B,
+- **DeepBlue** (Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 3B,
   Apache-2.0). The third and most capable: a real coding agent that plans and
   edits repositories on the desktop engine. It is pulled through Ollama on the
   person's own computer, straight from the Ollama library, and seated as the
@@ -27,12 +27,11 @@ final member, the most capable, and the one a home-lab hub runs.
 In the code each is a reserved model id (`harbor-mini`, `harbor`, and
 `harbor-master`, see `app/src/lib/harborMini.ts`, `app/src/lib/harbor.ts`, and
 `app/src/lib/harborMaster.ts`). The two guides flow through the normal
-on-device driver and the llama plugin; Harbor Master lives in the desktop
+on-device driver and the llama plugin; DeepBlue lives in the desktop
 engine's config (its Ollama ref is the orchestrator), so the app never keeps a
 copy of its presence: the Settings row reads the engine's Ollama list.
 
-Every id is a stable slot decoupled from the weights it points at. Harbor
-Master's sizes are stock Qwen 2.5 Coder today, the catalog's own picks; when
+Every id is a stable slot decoupled from the weights it points at. DeepBlue's sizes are stock Qwen 2.5 Coder today, the catalog's own picks; when
 OpenShore's tuned weights ship (`docs/house-model-proposal.md`), the refs, the
 size labels, and the attribution change, never the id.
 
@@ -49,7 +48,7 @@ whose label follows the model's state:
   Uninstall deletes the weights and re-heals any stack whose Reasoning anchor
   was Harbor to Harbor Light (which is always present). Re-installable any time.
 
-- **Harbor Master** (desktop only): **Install** when absent, its live percent as
+- **DeepBlue** (desktop only): **Install** when absent, its live percent as
   a plain status while it pulls (Ollama owns the pull, so there is no cancel),
   **Retry** after a failure, **Installed** once the engine's Ollama list holds a
   size. No uninstall here: `ollama rm` is the honest remove, since the weights
@@ -125,17 +124,18 @@ reach the network, so that check is a manual pre-build step. If a filename or
 casing has changed upstream, update the constant. The Harbor Light URL is also
 the source of the bundled weights file.
 
-## Desktop: Harbor Master
+## Desktop: DeepBlue
 
 On the desktop the on-device path runs through Ollama, not llama.cpp, so the
 two guides are not offered there (their rows stay gated to the phone). The
-desktop's out-of-the-box model is Harbor Master:
+desktop's out-of-the-box model is DeepBlue:
 
 - **Sized to the computer.** `resolveHarborMaster(hw)` picks the largest size
   that is not too big by the engine's own budget (`fitVerdict`): the 3B on the
   CPU-only reference box (measured 75% on the coding loop, best of 2), the 7B
-  on a 16 GB laptop or an 8 GB GPU, the 14B on a hub with room. Before the
-  machine is read it offers the 7B, never the biggest on a guess. The First
+  on a 16 GB laptop or an 8 GB GPU, the 14B on a hub with room, and the 32B on
+  a big hub (a 48 GB GPU class). Before the machine is read it offers the 7B,
+  never the biggest on a guess. The First
   Seat card and the Settings row name what is really behind the slot ("On Qwen
   2.5 Coder 7B. 4.7 GB download.") and the engine's class line.
 - **One tap.** `ensureHarborMaster` pulls the size by catalog id through the
@@ -143,13 +143,13 @@ desktop's out-of-the-box model is Harbor Master:
   orchestrator, then refreshes the gate so a chat opens at once. The First
   Seat card, the Stack screen's starter button, and the Settings row all ride
   this one action, so they show the same state.
-- **Docked.** Pair the phone under Desktop + phone and Harbor Master is "My
+- **Docked.** Pair the phone under Desktop + phone and DeepBlue is "My
   computer" in the model menu, for chat and for coding on repositories.
 - **Claim ladder.** The copy says "the most capable Harbor" and "a real coding
   agent"; never "as smart as Claude", "a compact Opus", "trains itself", or
   "always on". "Tuned for OpenShore" is written only when an adapter ships.
 
-Harbor Master is the same list the Starter bundle and the Stack screen already
+DeepBlue is the same list the Starter bundle and the Stack screen already
 used (`starterModel.ts` now derives from `harborMaster.ts`), given its name and
 its front-door place.
 
@@ -165,7 +165,7 @@ open, backend private boundary. Full retrieval over docs is a later upgrade.
 
 All three are Apache-2.0 as the catalog records them. Harbor downloads from the
 source (we do not redistribute its weights), the same posture as any pocket
-model; Harbor Master is pulled from the Ollama library by the person's own
+model; DeepBlue is pulled from the Ollama library by the person's own
 engine, the same posture as any desktop model. Harbor Light's
 weights are redistributed inside the app bundle; Apache-2.0 permits that,
 provided the license and attribution ship with it. The in-app attribution and
