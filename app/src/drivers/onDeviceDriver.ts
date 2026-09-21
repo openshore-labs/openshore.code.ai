@@ -139,7 +139,7 @@ export class OnDeviceDriver implements ChatDriver {
     try {
       // The phone has one model slot shared by every device chat (APP-3), so
       // confirm this chat's model is the one loaded before every reply.
-      // Harbor Light only writes short guidance, so a small context keeps the
+      // Harbor Lite only writes short guidance, so a small context keeps the
       // KV cache and load time down. Harbor is bigger and does an extra
       // search round-trip, so it gets the full window like a chosen pocket
       // model does.

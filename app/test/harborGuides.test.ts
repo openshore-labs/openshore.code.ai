@@ -1,4 +1,4 @@
-// The two Harbor guides as they appear in Settings: Harbor Light bundled with
+// The two Harbor guides as they appear in Settings: Harbor Lite bundled with
 // the app (Built in, not removable) and Harbor as a real install/uninstall
 // download. Plus the disclosure boundary both guides carry: open about every
 // front-end feature, silent on backend build internals. Kept in tests so a copy
@@ -34,7 +34,7 @@ function oneSentence(s: string): boolean {
   return s.trim().endsWith('.') && (s.match(/\./g) ?? []).length === 1;
 }
 
-describe('Harbor Light is bundled (native with the app)', () => {
+describe('Harbor Lite is bundled (native with the app)', () => {
   it('declares itself bundled', () => {
     expect(HARBOR_MINI_BUNDLED).toBe(true);
   });
@@ -71,11 +71,11 @@ describe('the Harbor rows in Settings', () => {
   const screen = readFileSync(join(process.cwd(), 'src/screens/SettingsScreen.tsx'), 'utf8');
 
   it('renders both guide rows under the Harbor group', () => {
-    expect(screen).toContain('label="Harbor Light"');
+    expect(screen).toContain('label="Harbor Lite"');
     expect(screen).toContain('label="Harbor"');
   });
 
-  it('gives Harbor Light the built-in status and Harbor the install toggle', () => {
+  it('gives Harbor Lite the built-in status and Harbor the install toggle', () => {
     expect(screen).toContain('bundled={HARBOR_MINI_BUNDLED}');
     expect(screen).toContain('onInstall={() => void installHarbor()}');
     expect(screen).toContain('onUninstall={() => void uninstallHarbor()}');
@@ -96,7 +96,7 @@ describe('the guide bylines', () => {
     expect(HARBOR_BYLINE.toLowerCase()).toContain('coding agent');
   });
 
-  it('gives Harbor Light its "always on" promise (Creative Studio)', () => {
+  it('gives Harbor Lite its "always on" promise (Creative Studio)', () => {
     const b = HARBOR_MINI_BYLINE.toLowerCase();
     expect(b).toContain('built in');
     expect(b).toContain('offline');
@@ -118,14 +118,14 @@ describe('the front-end open, backend private disclosure boundary', () => {
     }
   });
 
-  it('has Harbor Light own its limits and point to a bigger model', () => {
+  it('has Harbor Lite own its limits and point to a bigger model', () => {
     const mini = buildHarborMiniSystemPrompt().toLowerCase();
     expect(mini).toContain('know your limits');
     expect(mini).toContain('bigger model');
   });
 });
 
-describe('Harbor Light is optimized for guiding, not building', () => {
+describe('Harbor Lite is optimized for guiding, not building', () => {
   const prompt = buildHarborMiniSystemPrompt();
 
   it('scopes it to navigation plus honest handoff, not real work', () => {
@@ -163,9 +163,9 @@ describe('a get-harbor walkthrough exists and is accurate to the Settings row', 
   });
 });
 
-describe('the rename to Harbor Light keeps a stable slot', () => {
-  it('shows "Harbor Light" but keeps the id and bundle on harbor-mini', () => {
-    expect(HARBOR_MINI_MODEL_NAME).toBe('Harbor Light');
+describe('the rename to Harbor Lite keeps a stable slot', () => {
+  it('shows "Harbor Lite" but keeps the id and bundle on harbor-mini', () => {
+    expect(HARBOR_MINI_MODEL_NAME).toBe('Harbor Lite');
     // The wire id is the stable slot: persisted settings, stack refs, and the
     // bundled harbor-mini.gguf ride it, so it never changes on a rename.
     expect(HARBOR_MINI_MODEL_ID).toBe('harbor-mini');
@@ -185,7 +185,7 @@ describe('the rename to Harbor Light keeps a stable slot', () => {
 });
 
 describe('the remaining Creative Studio microcopy is wired', () => {
-  it('gives a Harbor Light chat its "always here" resting prompt', () => {
+  it('gives a Harbor Lite chat its "always here" resting prompt', () => {
     expect(HARBOR_MINI_EMPTY_HINT).not.toMatch(NO_EM_DASH);
     const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
     expect(chat).toContain('HARBOR_MINI_EMPTY_HINT');
@@ -217,7 +217,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     }
   });
 
-  it('wires the First Moves into a fresh Harbor Light chat', () => {
+  it('wires the First Moves into a fresh Harbor Lite chat', () => {
     const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
     expect(chat).toContain('MiniFirstMoves');
     expect(chat).toContain('HARBOR_MINI_MODEL_ID');
@@ -225,7 +225,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
 
   it('makes the built-in guide the onboarding hero, others a "go further" tier', () => {
     const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
-    expect(paths).toContain('Harbor Light is already here');
+    expect(paths).toContain('Harbor Lite is already here');
     expect(paths).toContain('Say hello');
     expect(paths).toContain("When you're ready to go further");
   });

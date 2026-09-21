@@ -167,7 +167,7 @@ function platformLabel(): string {
 /** The one control on the right of a Harbor row. A single button whose label
  *  and action follow the model's state: Install when it is absent, its live
  *  percent (tap to cancel) while it downloads, Retry after a failure, Uninstall
- *  once it is on the device. A bundled model (Harbor Light) ships with the app
+ *  once it is on the device. A bundled model (Harbor Lite) ships with the app
  *  and cannot be removed, so it shows a plain "Built in" status instead. A
  *  model Ollama holds (DeepBlue) has no cancel and no uninstall here, so
  *  its progress is a plain status and, once present, it reads "Installed". */
@@ -357,7 +357,7 @@ export function SettingsScreen() {
   }, [settings.voiceId]);
 
   const installHarbor = async () => {
-    // Harbor Light's voice on the handoff: the guide stays beside you while the
+    // Harbor Lite's voice on the handoff: the guide stays beside you while the
     // bigger model comes down. Only when a download actually starts (not when
     // Harbor is already here and ensureHarbor is an instant no-op).
     if (!settings.harborReady) showToast(HARBOR_MINI_HANDOFF_LINE);
@@ -506,10 +506,10 @@ export function SettingsScreen() {
             {facts ? <LiveSeal facts={facts} /> : null}
             <h3 className="settings-sheet-head">Local models, honestly</h3>
             <p>
-              Harbor and Harbor Light, and any model you run on this device, are AI. They can be
+              Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
               confidently wrong, and neither guide is a coder. For real work, use DeepBlue on your
               computer or connect a bigger model. What you type to a local model stays on this
-              device. Harbor is Qwen3-1.7B and Harbor Light is SmolLM2-135M-Instruct, both used
+              device. Harbor is Qwen3-1.7B and Harbor Lite is SmolLM2-135M-Instruct, both used
               under the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
             </p>
             <p>
@@ -759,7 +759,7 @@ export function SettingsScreen() {
           {!isDesktop() ? (
             <>
               <SettingsRow
-                label="Harbor Light"
+                label="Harbor Lite"
                 sub={HARBOR_MINI_BYLINE}
                 subWrap
                 trailing={<HarborInstallButton bundled={HARBOR_MINI_BUNDLED} />}
@@ -840,7 +840,7 @@ export function SettingsScreen() {
             </p>
             <p>
               Two things it does not touch. A project can keep its own setting in its config, and
-              that always wins. And the small on-device guides (Harbor and Harbor Light) are left as
+              that always wins. And the small on-device guides (Harbor and Harbor Lite) are left as
               they are, to protect their limited context.
             </p>
           </InfoSheet>

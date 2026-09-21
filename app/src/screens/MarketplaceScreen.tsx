@@ -2785,7 +2785,7 @@ export function MarketplaceScreen() {
               <div className="card-row">
                 <div className="grow">
                   <h3>
-                    Harbor Light <span className="sub">(smaller guide)</span>
+                    Harbor Lite <span className="sub">(smaller guide)</span>
                   </h3>
                   <div className="sub">The first model in your stack. Built to be replaced.</div>
                 </div>

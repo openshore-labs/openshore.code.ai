@@ -17,7 +17,7 @@ describe('First Seat in the chat empty state', () => {
   it('mounts in ChatScreen with the greeting as its fallback', () => {
     expect(CHAT).toContain("import { FirstSeat } from '../components/FirstSeat.js'");
     expect(CHAT).toMatch(/<FirstSeat\s+fallback=\{/);
-    // The Harbor Light First Moves stay for that case.
+    // The Harbor Lite First Moves stay for that case.
     expect(CHAT).toContain('<MiniFirstMoves');
   });
 
@@ -83,12 +83,12 @@ describe('the arrival rides the tokens (The Seat Fills)', () => {
   });
 });
 
-describe('the Harbor Light hero is honest about its states', () => {
+describe('the Harbor Lite hero is honest about its states', () => {
   it('has download, progress, and failure states, not only "already here"', () => {
-    expect(PATHS).toContain('Harbor Light is already here');
+    expect(PATHS).toContain('Harbor Lite is already here');
     expect(PATHS).toContain('harborMiniDownload');
     expect(PATHS).toMatch(/harborMiniDownload\?\.failed/);
-    expect(PATHS).toContain('Get Harbor Light');
+    expect(PATHS).toContain('Get Harbor Lite');
   });
   it('drops the "part of Personal" claim while gates are off', () => {
     expect(PATHS).not.toContain('part of Personal');
