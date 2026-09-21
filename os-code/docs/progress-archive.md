@@ -2788,7 +2788,36 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-16)
+## Log entries (2026-08-18 to 2026-09-17)
+
+### 2026-09-17, macOS actually shipped: two green builds, two real silent failures
+
+`v0.1.2` published Linux and Windows clean (verified against the release
+assets directly, not the workflow's checkmark: a stale local checkout had put
+the founder's first tag on the wrong commit, caught by checking the triggered
+run's `head_sha` before it built anything). `mac-desktop` on Codemagic then
+came back green twice with nothing to show for it, each for a different
+reason, neither visible from build status alone. Attempt one: `gh` was not on
+that Codemagic image, so the version-stamp lookup and the publish upload both
+hit their own "not available" exit and skipped, silently, exactly as
+designed; the artifacts Codemagic still produced were labeled `0.1.0`, the
+tell. Fixed by having both steps install `gh` via Homebrew first if missing.
+Attempt two: still nothing on the release, both steps done in under a second.
+The GitHub check run Codemagic posts back gave exact per-step durations
+(`check-runs` API), confirming both were too fast to be real network calls;
+the actual step log (fetched by asking the founder to open the specific
+`?open-step=` deep link, not inferred) read `gh: To use GitHub CLI in
+automation, set the GH_TOKEN environment variable`, gh refuses anonymous
+access to even a public repo's release list when run non-interactively, an
+assumption the original comment had gotten backwards. Fixed by exporting
+`GH_TOKEN` from the already-required `GH_RELEASE_TOKEN` before the version
+lookup too, not just the upload. Third run: the publish step actually ran for
+6m46s (a real upload), confirmed against the release itself, arm64 and Intel
+dmg and zip, blockmaps, `latest-mac.yml`, all stamped `0.1.2`. `docs/MAC-DESKTOP.md`
+now carries both failures as dated cases so a third silent skip is not
+re-diagnosed from scratch. `openshore.ai`'s Get OpenShore section flipped Mac
+to live in the same piece of work, verified rendered (Playwright screenshot,
+correct href and `target="_blank"` on all three live tiles) before pushing.
 
 ### 2026-09-16, the premium front door integrated and the streams merged
 

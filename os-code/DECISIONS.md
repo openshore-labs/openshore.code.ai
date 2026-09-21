@@ -523,7 +523,7 @@ execution contract. Newest at the bottom.
   only primary button), demoting Harbor/cloud/Marketplace to a "go further"
   tier. Creative Studio direction "The Standing Light." Mini is instant now, so
   making it the front door is honest, not hype.
-- 2026-09-04: Renamed the guide to "Harbor Light" (display only). Kept the code
+- 2026-09-04: Renamed the guide to "Harbor Lite" (display only). Kept the code
   identifiers HARBOR*MINI*\* and the model id "harbor-mini" as the stable slot:
   the id is persisted in settings, stack refs, and the bundled harbor-mini.gguf,
   so moving it would strand state and the bundle for no user gain. Same slot
@@ -1675,7 +1675,7 @@ execution contract. Newest at the bottom.
   drifting source of truth.
 - **DeepBlue is the third and final out-of-the-box model, and it lives on
   the desktop (founder, 2026-09-21).** The founder's brief: a compact, open,
-  most-capable model "like Harbor Light and Harbor", downloadable from the start
+  most-capable model "like Harbor Lite and Harbor", downloadable from the start
   without the Marketplace, so a hub gets started Docked in one tap. It ships
   as the third member of the Harbor family, not as a Marketplace featured pick
   and not as a new room: id `harbor-master` (a stable slot, the Harbor pattern),
