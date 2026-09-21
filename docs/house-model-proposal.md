@@ -394,6 +394,7 @@ The gates, each a kill:
   ```
 
   If Bonsai plus the harness does not beat the 14B here, nothing below runs.
+  The full step-by-step is `docs/air-program-runbook.md`.
 
 - **Gate A, the adapter, still on the Mac.** Train it, then measure how much
   of the gap to FP16 Qwen 27B it closes on the same eval. The teacher and the
