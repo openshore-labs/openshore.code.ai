@@ -439,16 +439,16 @@ extended that day by the graduated enforcement ladder (migration
       computer" when docked; an engine-side uninstall if `ollama rm` is too
       much to ask; the 14B's loop score on a hub-class box (only the 3B has a
       measured deep number).
-- [ ] **OpenShore's own weights behind the Harbor Master slot (founder brief,
-      2026-09-21).** Proposal in `docs/house-model-proposal.md`. It is not a
-      compact Opus (closed weights, and distilling from Claude is barred by the
-      terms); it is the harness's discipline baked into the Apache-2.0 base
-      behind each size, chosen and gated by `osc eval --deep --attempts 3` on a
-      hub-class reference box, with a training-versus-held-out split, and
-      swapped in by changing only the refs and the attribution. Step 0 needs
-      the founder: name the hub reference box (the home lab), run the stock
-      sizes there, and check the 3B seed's license against its model card. The
-      trainer is Lessons Tier 2's sidecar, built once.
+- [ ] **OpenShore's own weights, and the Air program (founder go, 2026-09-21).**
+      Both in `docs/house-model-proposal.md`. Not a compact Opus (closed
+      weights; distilling from Claude is barred by the terms): the harness's
+      discipline baked into an open base, gated by `osc eval --deep` on a
+      hub-class box. The Air program: Bonsai 2 27B (ternary, 5.95 GB) plus a
+      recovery adapter distilled from the open Qwen3.8-27B, Harbor as the
+      speculative draft, a prefix KV cache, CoreML palettization or the fork
+      as the runtime, gated to 12 GB phones. Gate 0 is the founder's: serve
+      Bonsai from PrismML's fork on the Mac mini and run the deep eval against
+      the 14B and 32B (the config and command are in the memo).
 
 - [ ] **Bring the work-first cover to the desktop `StackScreen` (optional).** The
       Quarterback rename to Reasoning LLM is done (2026-09-15); the older desktop
