@@ -3456,7 +3456,8 @@ textarea {
 }
 
 /* The small "Personal" pill on a locked nav item. */
-.nav-lock-pill {
+.nav-lock-pill,
+.nav-soon-pill {
   margin-left: auto;
   font-size: 10px;
   font-weight: 600;
@@ -3466,6 +3467,17 @@ textarea {
   background: var(--code-surface);
   border: 1px solid var(--border);
   color: var(--muted);
+}
+
+/* A coming-soon nav room: dimmed, non-interactive, and it never lights on
+   hover. The "Coming soon" pill carries the reason. */
+.nav-item--soon {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nav-item--soon:hover {
+  background: transparent;
 }
 
 .sheet-detail {
