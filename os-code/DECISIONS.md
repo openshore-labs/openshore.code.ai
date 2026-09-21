@@ -1700,3 +1700,18 @@ execution contract. Newest at the bottom.
   Claude", "a compact Opus", "trains itself", or "always on"; "tuned for
   OpenShore" is written only when OpenShore's own adapter ships, at which point
   only the refs and the attribution change (`docs/house-model-proposal.md`).
+- **The Air program is the plan of record for Bonsai 2 on a phone (founder
+  go, 2026-09-21).** Bonsai's ternary kernels are not in mainline llama.cpp,
+  so neither the Ollama desktop path nor the pinned on-device LLM.swift can
+  load it; on-device is a native program, not a config entry. The design:
+  Bonsai as the base, a recovery adapter distilled from the open Qwen3.8-27B
+  (Apache-2.0; Claude outputs never enter it), Harbor (Qwen3-1.7B, already on
+  the phone) as the speculative-decoding draft, a prompt-prefix KV cache on
+  flash, and CoreML 2-bit palettization on the Neural Engine as the runtime
+  spike with PrismML's fork as the fallback. Gates, each a kill: Gate 0 on the
+  Mac mini (beat the 14B on the deep eval or stop), the adapter measured on
+  the Mac, the runtime, the Air load test, then speed and the lean-by-host
+  harness change. Scope stated honestly: bounded coding un-docked, the test
+  oracle stays Docked by physics, and copy climbs the claim ladder only on the
+  Air's own deep-eval number. It lands as a 12 GB-gated pocket entry, never as
+  a Harbor Master size. Full text in `docs/house-model-proposal.md`.

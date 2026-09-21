@@ -323,3 +323,113 @@ yardstick, never the teacher: its outputs never enter training data (terms).
 Order: the 32B size now; name the hub reference box and measure every size
 there; the memory-gated fifth size once one big open model is measured on that
 box; the printed gap; then the tuning loop where the gap is largest.
+
+## The Air program: Bonsai 2 un-docked on an iPhone Air (founder go, 2026-09-21)
+
+Founder: "Yes let's do that." The frame: the capability Bonsai lost is a small,
+systematic error between the ternary weights and the original Qwen, so it is
+recovered by adding a correction on top of the compressed base, never by
+decompressing (a 27B at Q4 is 16 GB, dead on a phone). Apple's own on-device
+foundation model is the precedent: 2-bit palettized weights plus accuracy
+recovery adapters. Same design at 27B, with PrismML having done the expensive
+half.
+
+The five moves:
+
+1. **Base: Bonsai as-is.** The 5.95 GB PTQ1_0 file. Never redo their work.
+2. **Recovery adapter, distilled from the open Qwen itself.** The original
+   Qwen3.8-27B in FP16 on the Mac mini is the teacher; a low-rank FP16
+   residual on every linear layer is trained so Bonsai plus adapter matches
+   the teacher's outputs on our distribution (harness trajectories, the edit
+   format, tool calls, repository code). Legal because Qwen is Apache-2.0 and
+   Bonsai is itself a Qwen derivative; Claude outputs never enter it. Target
+   the residual where it matters (agentic coding), 300 to 600 MB by rank,
+   shipped as a separate swappable file.
+3. **Speed: speculative decoding with Harbor as the draft.** The phone's cost
+   is bandwidth (6 GB read per token); a small draft proposes, the 27B
+   verifies in a batch, typically 2 to 3x on code. Harbor (Qwen3-1.7B) is
+   already on the phone and the same family, so the draft ships for free.
+   Verify the tokenizers match; a mismatch is the one thing that breaks it.
+4. **Pay prefill once: a prompt-prefix KV cache on flash.** The harness prefix
+   is computed once and restored every turn (llama.cpp can save and restore
+   KV state). Cheap, and the largest felt win on a phone.
+5. **Runtime: let Apple run the ternary.** Ternary weights with a per-group
+   scale are, value for value, a 2-bit palette with three used entries and a
+   per-group lookup table, which is what CoreML palettization expresses and
+   what the Neural Engine runs natively on recent chips. A CoreML stateful
+   model (iOS 18 handles the KV cache) runs on Apple's own compressed-weight
+   kernels with no fork and better thermals. The deciding checks: whether
+   CoreML's grouping axis matches Bonsai's group-128 layout, and whether a 27B
+   stateful CoreML model is practical at all (a spike, not a plan). Fallback:
+   PrismML's fork built as an iOS xcframework under a forked LLM.swift, or a
+   thin direct llama.cpp binding if the fork's API diverged.
+
+The memory budget on the Air (reported 12 GB): weights 5.95 GB (memory-mapped,
+clean file-backed pages, the reason it has a chance), adapter 0.3 to 0.6 GB,
+KV at 4K context 8-bit about 0.5 GB, Harbor as draft 1.1 GB, app about 0.4 GB;
+total 8.3 to 8.6 GB, inside what the Increased Memory Limit and Extended
+Virtual Addressing entitlements can grant on a 12 GB device. A 0.6B draft buys
+back 0.7 GB if needed.
+
+The gates, each a kill:
+
+- **Gate 0, the Mac mini, a day, no app work.** Serve Bonsai from PrismML's
+  fork (llama.cpp server, OpenAI-compatible) or their MLX build, add a
+  provider to `~/.os-code/config.json`, and run the deep eval against the
+  14B and 32B, weighting edit and refactor:
+
+  ```json
+  {
+    "providers": {
+      "bonsai": {
+        "kind": "openai-compatible",
+        "baseUrl": "http://localhost:8080"
+      }
+    }
+  }
+  ```
+
+  ```
+  osc eval --deep --attempts 3 --provider bonsai --model <served name>
+  ```
+
+  If Bonsai plus the harness does not beat the 14B here, nothing below runs.
+
+- **Gate A, the adapter, still on the Mac.** Train it, then measure how much
+  of the gap to FP16 Qwen 27B it closes on the same eval. The teacher and the
+  reference line are the same open model, a clean experiment.
+- **Gate 1, the runtime.** The CoreML spike and the fork xcframework in
+  parallel; whichever loads PTQ1_0 on the Air first wins.
+- **Gate 2, the device load test (TestFlight).** Three full replies in a row
+  at 4K context with the draft and the prefix cache, no jetsam kill, the
+  memory-warning unload path proven to fire cleanly.
+- **Gate 3, speed and heat, plus one harness change.** A 27B derives the
+  "mid" class and gets the full prompt; the phone host must force the lean
+  profile by host budget, not parameter count (tenet 5). Prefix cache makes
+  the rest bearable.
+
+What this honestly delivers un-docked, if every gate clears: a real coding
+agent on the phone for bounded work (quick fixes, small changes, drafts,
+answering questions about the code), with the harness carrying the checklist,
+structural checks on every edit, and the class pill saying what it can do.
+Premium in this repo's sense: calm, honest, the mechanical work done for the
+seat. Three limits no part of this plan removes: (1) speed, 5 to 15 tokens per
+second and slower under best-of-N, so long multi-file work feels slow and the
+phone throttles after minutes; (2) the oracle lives on a computer: an iPhone
+cannot run most projects' test suites, so verify-in-the-loop against the
+project's own checks stays Docked by physics, and un-docked verification is
+syntax and structure, not the tests; (3) the phone tool slice (the pure-core
+phone host, step 7 of the harness plan) is not built yet, so this program
+lands as chat-side coding first and grows into repository tools as that host
+lands. "Sonnet-grade" and "as smart as Claude" stay off the copy until the
+deep eval on the Air says so; the number, per tier, is the claim.
+
+If it clears, where it lands: a pocket model entry in the catalog with an
+on-device URL, gated to 12 GB phones, hand-seeded (the builder rejects unknown
+publishers), honest "tight" fit copy, a measured deep score before any ribbon,
+and the 4B stays the default phone seat until the number says otherwise. Not a
+Harbor Master size: that slot is desktop and Ollama.
+
+The cheapest route may still be to wait: the llama.cpp discussion on adding
+Bonsai's group-128 ternary format upstream, if it lands, makes the runtime a
+catalog entry with zero native work. Watch it while Gate 0 runs.
