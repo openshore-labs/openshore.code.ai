@@ -285,3 +285,40 @@ Light, Harbor, Pocket, and Offline), not a way to learn from users (nothing
 leaves a person's machine, ever), and not a compact Opus. It is the harness's
 discipline baked into open weights, measured before it is claimed, and slid
 in behind a door that is already open.
+
+## Think big: Opus 4.8 at home, as close as it honestly gets (founder, 2026-09-21)
+
+Founder: "Can we take an existing model and iterate it to mirror Opus 4.8 as
+closely as possible. I just want Opus 4.8 locally however we can make that
+happen." Four rungs, cheapest to biggest, each measured on the deep eval
+against an Opus 4.8 reference run on the founder's own task set. Opus is the
+yardstick, never the teacher: its outputs never enter training data (terms).
+
+1. **Harbor Master, one size up.** The catalog's Qwen 2.5 Coder 32B (probe
+   0.94, about 20 GB at Q4, a 24 GB GPU or a 48 GB Mac) becomes a fourth size.
+   An edit; the card picks it when it fits.
+2. **The open frontier on a real hub.** Open-weights mixture-of-experts models
+   on the allow-list licenses (the Qwen3 coder family at 480B total and 35B
+   active, Qwen3 235B, GLM 4.5 and later, DeepSeek V3.x, Kimi K2 and later,
+   gpt-oss-120b; verify the exact cards and sizes at build time, the top moves
+   monthly). Hardware money, not engineering: 96 GB to 512 GB of memory (a
+   Mac Studio with 512 GB unified memory, a multi-GPU rig, or a RAM-heavy
+   server running experts on CPU at a few tokens per second). A fifth Harbor
+   Master size, offered only when the machine reports the memory, blessed
+   only when measured on the hub reference box. Honest phrase: "a generation
+   behind the frontier, on your own machine."
+3. **Opus itself, for the hardest step only.** The hand, as planned: local by
+   default, an amber card with the spend estimate when the seat is out of its
+   depth, on the person's own key, "No" a full answer. The closest true
+   sentence to "Opus locally": Opus for one step in twenty, the hub for the
+   other nineteen.
+4. **The flywheel.** Run Opus 4.8 once on the founder's task set with the
+   existing frontier reference run to draw the ceiling line; print the gap in
+   points on every scorecard. Each turn: record traces, generate verified
+   trajectories from open teachers (the biggest open model in the seat,
+   rejection-sampled by the project's tests), tune the smaller sizes, measure
+   again. The gap is the product metric.
+
+Order: the 32B size now; name the hub reference box and measure every size
+there; the memory-gated fifth size once one big open model is measured on that
+box; the printed gap; then the tuning loop where the gap is largest.
