@@ -309,7 +309,7 @@ export interface AppSettings {
   /** gitOS resources: repos and vaults, each pointing at a storage provider.
    *  Metadata only; the bytes live behind the provider seam. */
   gitosResources?: GitosResource[];
-  /** Whether the small built-in guide (Harbor Light) has been downloaded to this device. */
+  /** Whether the small built-in guide (Harbor Lite) has been downloaded to this device. */
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
@@ -717,7 +717,7 @@ interface AppState {
    *  with no org. The unified paid-access resolver (personalUnlocked) treats an
    *  individual OR org entitlement as unlocking. */
   userEntitlement?: Entitlement;
-  /** Live progress while Harbor Light downloads for the first time. */
+  /** Live progress while Harbor Lite downloads for the first time. */
   harborMiniDownload?: HarborDownload;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
@@ -828,7 +828,7 @@ interface AppState {
   setConversationRepos(id: string, repoIds: string[]): Promise<void>;
   /** Open a chat with a setup guide: the goal, the plan, and step one, seeded
    *  and ready, on whatever brain can answer here (this computer's engine, a
-   *  cloud key, or Harbor Light on the phone). The Walk me through it button. */
+   *  cloud key, or Harbor Lite on the phone). The Walk me through it button. */
   startGuideChat(guideId: SetupGuideId): Promise<void>;
   /** Switch the model of the OPEN conversation, Claude-style: keep the thread,
    *  reseed the new brain with the transcript, and let the next turn run on it.
@@ -1020,23 +1020,23 @@ interface AppState {
   createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
   updateCrewAgent(id: string, patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>): Promise<void>;
   deleteCrewAgent(id: string): Promise<void>;
-  /** Download the Harbor Light guide model if it is not here yet. Returns success. */
+  /** Download the Harbor Lite guide model if it is not here yet. Returns success. */
   ensureHarborMini(): Promise<boolean>;
-  /** Cancel an in-progress Harbor Light download (returning users can skip it). */
+  /** Cancel an in-progress Harbor Lite download (returning users can skip it). */
   cancelHarborMini(): void;
   /** Download the Harbor guide model if it is not here yet. Returns success. */
   ensureHarbor(): Promise<boolean>;
   /** Cancel an in-progress Harbor download. */
   cancelHarbor(): void;
   /** Remove Harbor's weights from this device and drop its ready flag. Harbor
-   *  is a real download (about 1.1 GB), so it is uninstallable; Harbor Light is
+   *  is a real download (about 1.1 GB), so it is uninstallable; Harbor Lite is
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through
    *  the engine (Ollama) and seat it as the Reasoning LLM. Returns success. An
    *  install already running returns false without starting another. */
   ensureHarborMaster(): Promise<boolean>;
-  /** First-run: start Harbor Light's download and open the LLM Library intro. */
+  /** First-run: start Harbor Lite's download and open the LLM Library intro. */
   beginHarborMiniWithIntro(): void;
   /** First-run: start Harbor's download and open the LLM Library intro. */
   beginHarborWithIntro(): void;
@@ -1316,7 +1316,7 @@ export function stackAdmin(account?: Account): boolean {
   return isOrgAdmin(account);
 }
 
-/** The device StackModelRef for the flagship guide (Harbor). Harbor Light has
+/** The device StackModelRef for the flagship guide (Harbor). Harbor Lite has
  *  its own harborRef() in stack.js; this is its bigger sibling. */
 function harborFullRef(): StackModelRef {
   return { kind: 'device', modelId: HARBOR_MODEL_ID, modelName: HARBOR_MODEL_NAME };
@@ -1326,7 +1326,7 @@ function harborFullRef(): StackModelRef {
  * Decide whether a freshly downloaded guide should become the stack's Reasoning
  * anchor, so "My Stack" chat can start right away. Promote when there is no
  * anchor yet, or the current anchor is a built-in guide that is not actually on
- * this device. The preferred guide (Harbor) also upgrades a ready Harbor Light;
+ * this device. The preferred guide (Harbor) also upgrades a ready Harbor Lite;
  * Mini never demotes a ready guide, and neither ever overrides a cloud, BYOM,
  * or user-chosen device model the user deliberately set. `ref` is assumed to be
  * a guide that is already downloaded.
@@ -2577,7 +2577,7 @@ export const useApp = create<AppState>((set, get) => {
       // Heal each configured status's Reasoning anchor: a built-in guide that is
       // not actually on this device is promoted to whichever guide IS downloaded,
       // so "My Stack" chat starts right away instead of failing with "download it
-      // first." This is exactly the case a fresh stack (seeded with Harbor Light)
+      // first." This is exactly the case a fresh stack (seeded with Harbor Lite)
       // hits when the user only downloaded Harbor. A cloud, BYOM, or user-chosen
       // device anchor is left alone.
       for (const p of PROFILE_ORDER) {
@@ -4680,7 +4680,7 @@ export const useApp = create<AppState>((set, get) => {
         set({ harborMiniDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborMiniReady: true });
         logEvent('harbor_mini_ready');
-        // Make Harbor Light the Reasoning anchor when the stack has none or its
+        // Make Harbor Lite the Reasoning anchor when the stack has none or its
         // anchor is a guide that is not on the device, so My Stack chat works
         // right away. Never demotes a ready Harbor.
         const miniProfile = activeProfile(get().connectivity, get().settings.profileOverride);
@@ -4742,7 +4742,7 @@ export const useApp = create<AppState>((set, get) => {
         await get().saveSettings({ harborReady: true });
         logEvent('harbor_ready');
         // Make Harbor the Reasoning anchor when the stack has none, its anchor
-        // is a guide not on the device, or the anchor is Harbor Light (Harbor is
+        // is a guide not on the device, or the anchor is Harbor Lite (Harbor is
         // the preferred pick). So My Stack chat works right away. Never
         // overrides a cloud, BYOM, or user-chosen device model.
         const harborProfile = activeProfile(get().connectivity, get().settings.profileOverride);
@@ -4783,7 +4783,7 @@ export const useApp = create<AppState>((set, get) => {
     async removeHarbor() {
       // Delete the weights from disk, then drop the ready flag. Any status
       // whose Reasoning anchor was Harbor is healed to whichever guide is still
-      // present (Harbor Light is bundled, so it always is), so "My Stack" chat
+      // present (Harbor Lite is bundled, so it always is), so "My Stack" chat
       // keeps working instead of pointing at a model that is gone. Harbor is
       // re-downloadable from the same row, so nothing is lost for good.
       await Llama.deleteModel({ id: HARBOR_MODEL_ID }).catch(() => {});
@@ -4895,7 +4895,7 @@ export const useApp = create<AppState>((set, get) => {
       const guide = SETUP_GUIDES[guideId];
       const s = get();
       // Whatever brain can answer here, best first: this computer's engine on
-      // desktop, a connected Claude key anywhere, else Harbor Light on the phone
+      // desktop, a connected Claude key anywhere, else Harbor Lite on the phone
       // (downloaded on the spot if needed). Never a brain that cannot answer.
       let source: ConversationSource | undefined;
       if (isDesktop() && s.sourceReady({ kind: 'desktop' })) source = { kind: 'desktop' };

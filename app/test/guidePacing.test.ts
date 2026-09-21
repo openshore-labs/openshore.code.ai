@@ -1,7 +1,7 @@
 // One-step pacing (tenet 4): a guide chat opens with the goal, the plan in one
 // line, and step one, and advances on the person's reply. Pacing is only
 // honest where the answering model actually holds the remaining steps, which
-// today is Harbor Light with its three scripted walkthroughs; everywhere else
+// today is Harbor Lite with its three scripted walkthroughs; everywhere else
 // the full plan stays visible so nothing is invented.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,7 +36,7 @@ describe('guideOpeningPaced', () => {
 });
 
 describe('where pacing is honest', () => {
-  it('names exactly the guides Harbor Light recites verbatim', () => {
+  it('names exactly the guides Harbor Lite recites verbatim', () => {
     const mini = readFileSync(join(process.cwd(), 'src/lib/harborMini.ts'), 'utf8');
     for (const id of GUIDES_PACED_BY_HARBOR_LIGHT) {
       expect(mini).toContain(`guideStepsCompact('${id}')`);
@@ -46,7 +46,7 @@ describe('where pacing is honest', () => {
     expect([...scripted].sort()).toEqual([...GUIDES_PACED_BY_HARBOR_LIGHT].sort());
   });
 
-  it('pacedOpeningFor paces only a scripted guide on Harbor Light', () => {
+  it('pacedOpeningFor paces only a scripted guide on Harbor Lite', () => {
     const g = SETUP_GUIDES['get-harbor'];
     expect(pacedOpeningFor(g, { harborLight: true })).toBe(guideOpeningPaced(g));
     expect(pacedOpeningFor(g, { harborLight: false })).not.toBe(guideOpeningPaced(g));

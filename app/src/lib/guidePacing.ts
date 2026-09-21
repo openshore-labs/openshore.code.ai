@@ -2,14 +2,14 @@
 // and step one, then advance on the person's reply. A seeded turn is also the
 // model's history, so hiding steps two onward from the screen hides them from
 // the model too. Pacing is therefore only honest where the answering model
-// already holds the remaining steps: Harbor Light recites three walkthroughs
+// already holds the remaining steps: Harbor Lite recites three walkthroughs
 // verbatim from its system prompt (harborMini.ts). Everywhere else the full
 // plan stays visible, and when no model can answer at all, the plan is the
 // whole guide and a plain note says so.
 import type { SetupGuide, SetupGuideId } from './setupGuides.js';
 import { guideOpening } from './setupGuides.js';
 
-/** The guides Harbor Light carries verbatim (guideStepsCompact in its prompt),
+/** The guides Harbor Lite carries verbatim (guideStepsCompact in its prompt),
  *  so it can give step two without inventing it. guidePacing.test.ts pins this
  *  list against the prompt source. */
 export const GUIDES_PACED_BY_HARBOR_LIGHT: readonly SetupGuideId[] = [

@@ -123,7 +123,7 @@ export function StartingPaths({
     </div>
   );
 
-  // Harbor Light is bundled with the app, so on a normal build it is here the
+  // Harbor Lite is bundled with the app, so on a normal build it is here the
   // instant the app opens, and "Say hello" opens its chat. But a build can ship
   // without the file, or the copy-in can fail, so the hero is honest about its
   // states: a live download shows progress, a failed one offers to fetch it,
@@ -133,7 +133,7 @@ export function StartingPaths({
     <div className="card">
       {harborMiniDownload && !harborMiniDownload.failed ? (
         <>
-          <h3>Getting Harbor Light</h3>
+          <h3>Getting Harbor Lite</h3>
           <div className="progress-track" style={{ marginTop: 4 }}>
             <div
               className={`progress-fill${harborMiniDownload.indeterminate ? ' indeterminate' : ''}`}
@@ -150,7 +150,7 @@ export function StartingPaths({
         </>
       ) : harborMiniDownload?.failed ? (
         <>
-          <h3>Get Harbor Light</h3>
+          <h3>Get Harbor Lite</h3>
           <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
             {harborMiniDownload.label} Check your connection and try again.
           </div>
@@ -164,7 +164,7 @@ export function StartingPaths({
         </>
       ) : (
         <>
-          <h3>Harbor Light is already here</h3>
+          <h3>Harbor Lite is already here</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
             Your built-in guide. Works offline, the moment you open the app.
           </div>
@@ -257,7 +257,7 @@ export function StartingPaths({
         {!isDesktop()
           ? guideRow(
               HARBOR_MINI_MODEL_ID,
-              'Harbor Light',
+              'Harbor Lite',
               HARBOR_MINI_APPROX_LABEL,
               settings.harborMiniReady,
               harborMiniDownload,

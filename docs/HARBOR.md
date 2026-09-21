@@ -1,4 +1,4 @@
-# Harbor, Harbor Light, and DeepBlue: the out-of-the-box models
+# Harbor, Harbor Lite, and DeepBlue: the out-of-the-box models
 
 OpenShore ships three models out of the box, never behind the Marketplace: two
 on-device guides for the phone, and one real coding agent for the computer.
@@ -8,7 +8,7 @@ wants, and they never reveal backend build internals, infrastructure, or how
 OpenShore is implemented under the hood. DeepBlue (below) is the third and
 final member, the most capable, and the one a home-lab hub runs.
 
-- **Harbor Light** (SmolLM2-135M-Instruct, Apache-2.0). The small, fast guide.
+- **Harbor Lite** (SmolLM2-135M-Instruct, Apache-2.0). The small, fast guide.
   It knows its own limits and, when a question needs real reasoning or real
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
@@ -41,12 +41,12 @@ The Settings > Harbor group carries one row per guide, below the web-search row.
 Each row is a name, a one-sentence byline, and a single control on the right
 whose label follows the model's state:
 
-- **Harbor Light**: shows **Built in**. It ships inside the app and cannot be
+- **Harbor Lite**: shows **Built in**. It ships inside the app and cannot be
   removed, so there is no install/uninstall toggle, just an honest status.
 - **Harbor**: **Install** when absent, its live percent (tap to cancel) while it
   downloads, **Retry** after a failure, **Uninstall** once it is on the device.
   Uninstall deletes the weights and re-heals any stack whose Reasoning anchor
-  was Harbor to Harbor Light (which is always present). Re-installable any time.
+  was Harbor to Harbor Lite (which is always present). Re-installable any time.
 
 - **DeepBlue** (desktop only): **Install** when absent, its live percent as
   a plain status while it pulls (Ollama owns the pull, so there is no cancel),
@@ -58,9 +58,9 @@ The store actions are `ensureHarbor` / `removeHarbor` and `ensureHarborMaster`
 (`app/src/state/store.ts`); `test/harborGuides.test.ts` pins the guide rows and
 the disclosure boundary, `test/harborMaster.test.ts` pins the third.
 
-## How Harbor Light is bundled (native with the app)
+## How Harbor Lite is bundled (native with the app)
 
-Harbor Light's weights ship inside the app bundle rather than downloading on
+Harbor Lite's weights ship inside the app bundle rather than downloading on
 first launch. The native `ModelStore` (`ModelStore.swift`) treats any id in
 `bundledModelIds` as always present:
 
@@ -121,7 +121,7 @@ still install over a mobile network.
 Confirm each resolves (`curl -I` returns 200) and that the chat template is
 embedded in the file (the runner reads it from the file). This sandbox cannot
 reach the network, so that check is a manual pre-build step. If a filename or
-casing has changed upstream, update the constant. The Harbor Light URL is also
+casing has changed upstream, update the constant. The Harbor Lite URL is also
 the source of the bundled weights file.
 
 ## Desktop: DeepBlue
@@ -166,7 +166,7 @@ open, backend private boundary. Full retrieval over docs is a later upgrade.
 All three are Apache-2.0 as the catalog records them. Harbor downloads from the
 source (we do not redistribute its weights), the same posture as any pocket
 model; DeepBlue is pulled from the Ollama library by the person's own
-engine, the same posture as any desktop model. Harbor Light's
+engine, the same posture as any desktop model. Harbor Lite's
 weights are redistributed inside the app bundle; Apache-2.0 permits that,
 provided the license and attribution ship with it. The in-app attribution and
 the on-device-content disclaimer live in Settings; keep them in step with

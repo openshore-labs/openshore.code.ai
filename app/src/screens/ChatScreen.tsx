@@ -600,7 +600,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           />
         )}
 
-        {/* First Moves: on a fresh Harbor Light chat (just the seeded greeting, not
+        {/* First Moves: on a fresh Harbor Lite chat (just the seeded greeting, not
             yet busy), offer tappable openers so a new person is never staring at
             a blank box. They vanish the moment a first message is sent. */}
         {conv &&
