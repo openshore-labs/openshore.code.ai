@@ -16,12 +16,19 @@ the mini plus Docked stays the answer.
 
 ## Steps
 
-1. **Build the engine.**
+1. **Build the engine.** Run these one line at a time. If the repo is already on
+   this machine (likely on a dev box), use the existing clone instead of a
+   second one: `cd` into it, `git fetch origin`, then check out the branch. The
+   build script lives in the `os-code` package, so `pnpm build` must run from
+   inside `os-code`, never the repo root.
 
    ```
-   git clone <repo> && cd openshore.code.ai/os-code
+   git clone git@github.com:openshore-labs/openshore.code.ai.git ~/openshore.code.ai
+   cd ~/openshore.code.ai
    git checkout claude/compact-opus-open-source-aluth4
-   pnpm install && pnpm build
+   pnpm install
+   cd os-code
+   pnpm build
    ```
 
 2. **Serve Bonsai as an OpenAI-compatible endpoint.** Follow PrismML-Eng/Bonsai-demo
