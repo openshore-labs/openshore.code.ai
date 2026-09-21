@@ -68,14 +68,14 @@ size only switches when its own number clears.
 
 ## The slot is built; the weights are the work
 
-| Piece                   | State                                                                                                                                                                                                             |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Piece                   | State                                                                                                                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | DeepBlue                | BUILT 2026-09-21. `app/src/lib/harborMaster.ts`: id `harbor-master`, four sizes over the catalog's own Qwen 2.5 Coder entries, `resolveHarborMaster(hw)` picks the largest that fits by the engine's own budget. |
-| One tap, out of the box | BUILT. The First Seat card installs it in place; the Stack screen's starter and the desktop Settings > Harbor row ride the same store action (`ensureHarborMaster`: pull by catalog id, seat by Ollama ref).      |
-| Docked                  | BUILT. Pair the phone under Desktop + phone; DeepBlue is "My computer" in the model menu, for chat and for coding on repositories.                                                                                |
-| Weights delivery        | BUILT. The engine pulls Ollama refs straight from the Ollama library, never through OpenShore. An OpenShore-published Ollama model is a ref like any.                                                             |
-| The measuring stick     | BUILT. `osc eval --deep --attempts <n>`, per-task traces, the frontier reference run, the with-and-without discipline (tenet 2), `curation/eval.json` with `measured` provenance.                                 |
-| The trainer             | DESIGNED, not built. Lessons Tier 2 in the harness proposal: a PEFT-style LoRA sidecar, promotion only when eval v2 scores the adapted model at or above the base, an Ollama Modelfile as a new tag.              |
+| One tap, out of the box | BUILT. The First Seat card installs it in place; the Stack screen's starter and the desktop Settings > Harbor row ride the same store action (`ensureHarborMaster`: pull by catalog id, seat by Ollama ref).     |
+| Docked                  | BUILT. Pair the phone under Desktop + phone; DeepBlue is "My computer" in the model menu, for chat and for coding on repositories.                                                                               |
+| Weights delivery        | BUILT. The engine pulls Ollama refs straight from the Ollama library, never through OpenShore. An OpenShore-published Ollama model is a ref like any.                                                            |
+| The measuring stick     | BUILT. `osc eval --deep --attempts <n>`, per-task traces, the frontier reference run, the with-and-without discipline (tenet 2), `curation/eval.json` with `measured` provenance.                                |
+| The trainer             | DESIGNED, not built. Lessons Tier 2 in the harness proposal: a PEFT-style LoRA sidecar, promotion only when eval v2 scores the adapted model at or above the base, an Ollama Modelfile as a new tag.             |
 
 So the swap, when it comes, is one commit: the three `ollamaRef`s in
 `HARBOR_MASTER_SIZES` point at `openshore/harbor-master:<size>` (or the
