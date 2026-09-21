@@ -409,6 +409,17 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **The house model (founder brief, 2026-09-21): an open-weights coder
+      tuned for OpenShore, the featured pick for the hub tier.** Proposal in
+      `docs/house-model-proposal.md`. It is not a compact Opus (closed weights,
+      and distilling from Claude is barred by the terms); it is the harness's
+      discipline baked into an Apache-2.0 base, chosen and gated by
+      `osc eval --deep --attempts 3` on a hub-class reference box, with a
+      training-versus-held-out split. Step 0 needs the founder: name the hub
+      reference box (the home lab), run the stock candidates there, and check
+      the 3B seed's license against its model card. The trainer is Lessons
+      Tier 2's sidecar, built once. Name is a CMO call; Harbor stays the phone.
+
 - [ ] **Bring the work-first cover to the desktop `StackScreen` (optional).** The
       Quarterback rename to Reasoning LLM is done (2026-09-15); the older desktop
       stack screen is still the flat list and could get the same cover if wanted.
