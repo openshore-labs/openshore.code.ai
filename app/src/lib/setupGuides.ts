@@ -6,6 +6,7 @@
 // small model; the model's job is to answer questions and adapt. No em dashes.
 export type SetupGuideId =
   | 'get-harbor'
+  | 'get-harbor-master'
   | 'connect-cloud-key'
   | 'pair-computer'
   | 'install-ollama'
@@ -41,6 +42,17 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
       'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
     ],
     done: 'Harbor answers with real reasoning and can search the web. For heavier work, add a cloud key or a bigger pocket model.',
+  },
+  'get-harbor-master': {
+    id: 'get-harbor-master',
+    title: 'Get Harbor Master',
+    goal: 'Add Harbor Master, the most capable Harbor, running on my own computer.',
+    steps: [
+      'On your computer, open OpenShore. If nothing is set up yet, the chat opens on a card that says Set up Harbor Master: tap it and you are done. Otherwise open Settings and find the Harbor section.',
+      'On the Harbor Master row, tap Install. It picks the size that fits your computer and pulls it through Ollama, straight from the Ollama library. Keep using the app while it lands.',
+      'When it finishes, the row reads Installed and Harbor Master is your Reasoning model on that computer. To reach it from this phone, pair the two under Desktop + phone; it then appears as My computer.',
+    ],
+    done: 'Harbor Master plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and it always asks before it spends.',
   },
   'connect-cloud-key': {
     id: 'connect-cloud-key',

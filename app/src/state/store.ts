@@ -159,6 +159,8 @@ import {
   HARBOR_MODEL_URL,
   isHarbor,
 } from '../lib/harbor.js';
+import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
+import { hardwareFromSummary } from '../lib/firstSeat.js';
 import { SEARCH_SECRET_KEY, type SearchBackend } from '../lib/webSearch.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import {
@@ -719,6 +721,10 @@ interface AppState {
   harborMiniDownload?: HarborDownload;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
+  /** Live progress while Harbor Master is pulled through the desktop engine.
+   *  Presence itself is never remembered here: the Settings row reads it from
+   *  the engine's Ollama list (harborMasterInstalled over desktopStatus). */
+  harborMasterDownload?: HarborDownload;
   /** Whether a custom search key (Brave/Tavily) is set; keeps the key itself
    *  out of state, same pattern as codemagicConnected. */
   searchKeyConfigured: boolean;
@@ -1026,6 +1032,10 @@ interface AppState {
    *  is a real download (about 1.1 GB), so it is uninstallable; Harbor Light is
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
+  /** Desktop only. Pull the Harbor Master size that fits this computer through
+   *  the engine (Ollama) and seat it as the Reasoning LLM. Returns success. An
+   *  install already running returns false without starting another. */
+  ensureHarborMaster(): Promise<boolean>;
   /** First-run: start Harbor Light's download and open the LLM Library intro. */
   beginHarborMiniWithIntro(): void;
   /** First-run: start Harbor's download and open the LLM Library intro. */
@@ -4792,6 +4802,69 @@ export const useApp = create<AppState>((set, get) => {
           }
         }
         if (changed) await get().saveSettings({ stacks: next });
+      }
+    },
+
+    async ensureHarborMaster() {
+      // The desktop's own model lives in the engine config, not in an app-side
+      // stack ref, so this is the Stack screen's one-tap starter as a store
+      // action: the size is resolved against this computer with the engine's
+      // own budget, pulled by catalog id (progress rides the install channel),
+      // then seated with its Ollama ref. Ollama owns the weights, so there is
+      // no cancel and no uninstall here; `ollama rm` is the honest remove.
+      const b = isDesktop() ? bridge() : undefined;
+      if (!b) return false;
+      const running = get().harborMasterDownload;
+      if (running && !running.failed) return false;
+      set({ harborMasterDownload: { percent: 0, label: 'Connecting', indeterminate: true } });
+      let status: DesktopStatus | undefined;
+      try {
+        status = await b.status();
+      } catch {
+        status = get().desktopStatus;
+      }
+      if (status && !status.ollama.up) {
+        set({ harborMasterDownload: { percent: 0, label: status.ollama.detail, failed: true } });
+        return false;
+      }
+      const hw = status
+        ? (status.hardware ?? hardwareFromSummary(status.hardwareSummary))
+        : undefined;
+      const { size } = resolveHarborMaster(hw);
+      logEvent('harbor_master_install_start', { size: size.ollamaRef });
+      const off = b.onInstallProgress((p) => {
+        if (p.modelId !== size.catalogId) return;
+        set({
+          harborMasterDownload:
+            p.percent != null
+              ? { percent: p.percent, label: `${Math.round(p.percent)}%`, indeterminate: false }
+              : { percent: 0, label: p.line || 'Downloading', indeterminate: true },
+        });
+      });
+      try {
+        const pulled = await b.installModel(size.catalogId);
+        if (!pulled.ok) throw new Error(pulled.detail);
+        set({ harborMasterDownload: { percent: 100, label: 'Seating', indeterminate: true } });
+        const seated = await b.setOrchestrator(size.ollamaRef);
+        if (!seated.ok) throw new Error(seated.detail);
+        await get().refreshDesktopStatus();
+        logEvent('harbor_master_ready', { size: size.ollamaRef });
+        set({ harborMasterDownload: undefined });
+        return true;
+      } catch (err) {
+        set({
+          harborMasterDownload: {
+            percent: 0,
+            label:
+              err instanceof Error && err.message
+                ? err.message
+                : `Could not get ${HARBOR_MASTER_MODEL_NAME}.`,
+            failed: true,
+          },
+        });
+        return false;
+      } finally {
+        off();
       }
     },
 

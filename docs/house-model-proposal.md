@@ -1,23 +1,32 @@
-# The house model: an open-weights coder tuned for OpenShore
+# The house model: OpenShore's own weights behind Harbor Master
 
-Status: PROPOSAL, 2026-09-21. Founder brief: "I love using Opus 4.8. I think
-it's such a solid model. I wanted to try to create my own open source version
-that is more compact and something that could feasibly be integrated into a
-home lab set up. I would want it to be the featured model in OpenShore that you
-could download to your hub and get started Docked super quick and basically
-start building anything in a real way." This memo grounds that brief in what the
-code and the eval record already say, names the one thing it cannot be, and
-lays out the build in the order the tenets require (`CLAUDE.md`, the premium
-harness). It extends `premium-harness-proposal.md` (Lessons Tier 2, adapters)
-and `premium-harness-first-seat-convergence.md` (the hardware-fit table, the
-claim ladder, the Home bundle). It replaces neither.
+Status: PROPOSAL, 2026-09-21, revised the same day after the founder set the
+shape. Founder brief, first beat: "I love using Opus 4.8. I think it's such a
+solid model. I wanted to try to create my own open source version that is more
+compact and something that could feasibly be integrated into a home lab set
+up. I would want it to be the featured model in OpenShore that you could
+download to your hub and get started Docked super quick and basically start
+building anything in a real way." Second beat, the correction: "something that
+is as capable and acts like Opus 4.8, accessible to download from the start
+for users without even having to go to the marketplace. Like Harbor Lite and
+Harbor. This would be a third and final more advanced out-of-the-box model."
+
+The second beat is BUILT: **Harbor Master** is the third member of the Harbor
+family, on the desktop, out of the box, one tap (`docs/HARBOR.md`, the Desktop
+section; `app/src/lib/harborMaster.ts`; DECISIONS 2026-09-21). Today it runs
+on stock Qwen 2.5 Coder weights, sized to the computer. This memo is the first
+beat: how OpenShore's own tuned weights get made and swapped in behind that
+slot, in the order the tenets require (`CLAUDE.md`, the premium harness). It
+extends `premium-harness-proposal.md` (Lessons Tier 2, adapters) and
+`premium-harness-first-seat-convergence.md` (the hardware-fit table, the claim
+ladder). It replaces neither.
 
 ## The brief in one line
 
-An open-weights coding model, compact enough for a home-lab hub, tuned to
-OpenShore's own harness so it follows the loop natively, published as weights
-anyone can pull, and offered as the one featured pick a person installs on
-their hub and starts building on, Docked, in one tap.
+Behind the Harbor Master slot, replace the stock weights with OpenShore's own
+open weights, tuned so the model speaks the harness natively, published as
+weights anyone can pull, and swapped in by changing only the refs and the
+attribution, once a number on a hub-class box says they are better.
 
 ## What it can honestly be, and what it cannot
 
@@ -28,125 +37,106 @@ outputs, is barred by Anthropic's terms (the commercial terms prohibit using
 the services or their outputs to develop or train a competing model; verify the
 current wording before any data plan is written, but plan on it being so). This
 repo's honesty bar would not let the copy say it anyway: "as smart as Claude"
-is a rung the claim ladder marks as never.
+is a rung the claim ladder marks as never, and `test/harborMaster.test.ts`
+fails the build on "Opus" in the slot's copy.
 
-**It can be the best small model at OpenShore's job.** The eval record is the
-argument. On the reference box, qwen2.5-coder:3b went from 0% to 75% on the
-deep benchmark between 2026-09-14 and 2026-09-15 with no change to the
-weights: every point came from the harness (the edit matcher, verify in the
-loop, the lean prompt, best-of-N). What still misses at the end of that cycle
-is not intelligence, it is discipline: the seat copies a line it changed
-instead of the line it was shown, drops a parameter in a two-file rename, and
-will not take the "run it" instruction. Those are exactly the behaviors that
-supervised fine-tuning fixes cheaply and reliably. Raw reasoning is what it
-does not fix. So the target is a model that speaks the harness as its native
-tongue: the SEARCH and REPLACE edit shape, the tool-or-answer schema, the
-verify observation and what to do with it, running code it is asked about,
-the compact standards digest. A model that never fights the loop is worth
-more points on the deep eval than a model that is a little smarter and does.
+**"Acts like Opus" is mostly the harness, and the harness is built.** What
+makes a frontier coding agent feel the way it does in a loop: it plans before
+it edits, it runs the tests, it reads the failure and fixes it, it does not
+lose a two-file change halfway, it says what it did. The engine already does
+the mechanical half of that for any seat (plan mode, verify in the loop,
+best-of-N judged by tests, the lean prompt, structural checks), and the eval
+record shows how much that is worth: qwen2.5-coder:3b went from 0% to 75% on
+the deep benchmark between 2026-09-14 and 2026-09-15 with no change to the
+weights. What still misses at the end of that cycle is not intelligence, it is
+discipline: the seat copies a line it changed instead of the line it was
+shown, drops a parameter in a rename, will not take the "run it" instruction.
+Those are exactly the behaviors supervised fine-tuning fixes cheaply and
+reliably. Raw reasoning is what it does not fix. So the target for OpenShore's
+own weights is a model that speaks the harness as its native tongue: the
+SEARCH and REPLACE edit shape, the tool-or-answer schema, the verify
+observation and what to do with it, running code it is asked about, the
+compact standards digest. A model that never fights the loop is worth more
+points on the deep eval than a model that is a little smarter and does.
 
 **"Compact" means the Home class, not the phone.** A home-lab hub is a machine
 with more memory than the reference box (16 to 32 GB, or an 8 to 24 GB GPU).
 That is the docked tier the progress notes already describe: "a 7B and up
-belong to the docked/hub tier". The phone keeps Harbor, Pocket, and Offline;
-the CPU-only floor keeps the 3B. The house model is what Docked adds.
+belong to the docked/hub tier". Harbor Master already sizes itself to the
+machine (the 14B, the 7B, the 3B); the tuned weights ship per size, and a
+size only switches when its own number clears.
 
-## Where it lands: nothing new to build in the rooms
+## The slot is built; the weights are the work
 
-The founder's "download to your hub and get started Docked" is the built path.
-The house model rides it as data, not as a feature.
+| Piece                   | State                                                                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Harbor Master           | BUILT 2026-09-21. `app/src/lib/harborMaster.ts`: id `harbor-master`, three sizes over the catalog's own Qwen 2.5 Coder entries, `resolveHarborMaster(hw)` picks the largest that fits by the engine's own budget. |
+| One tap, out of the box | BUILT. The First Seat card installs it in place; the Stack screen's starter and the desktop Settings > Harbor row ride the same store action (`ensureHarborMaster`: pull by catalog id, seat by Ollama ref).      |
+| Docked                  | BUILT. Pair the phone under Desktop + phone; Harbor Master is "My computer" in the model menu, for chat and for coding on repositories.                                                                           |
+| Weights delivery        | BUILT. The engine pulls Ollama refs straight from the Ollama library, never through OpenShore. An OpenShore-published Ollama model is a ref like any.                                                             |
+| The measuring stick     | BUILT. `osc eval --deep --attempts <n>`, per-task traces, the frontier reference run, the with-and-without discipline (tenet 2), `curation/eval.json` with `measured` provenance.                                 |
+| The trainer             | DESIGNED, not built. Lessons Tier 2 in the harness proposal: a PEFT-style LoRA sidecar, promotion only when eval v2 scores the adapted model at or above the base, an Ollama Modelfile as a new tag.              |
 
-| Piece                  | State today                                                                                                                                                                                         |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docked                 | BUILT. The desktop daemon binds the tailnet, the phone scans a QR and claims a per-device credential, "My computer" appears in the model menu. `app/src/lib/profiles.ts`, `PairScreen.tsx`.         |
-| The hub's model runner | BUILT. Ollama on the desktop, with an in-app bridge that reports and can install or start it behind a one-tap card (`app/electron/ollama.ts`). A box-hosted model routes through the daemon.        |
-| The featured pick      | BUILT as a mechanism. `os-code/curation/recommended.json` (rank, note), `curation/eval.json` (a measured `deep` score is what a card may quote), `blessed` in the catalog, the license allow-list.  |
-| One-tap install        | BUILT. The First Seat card offers one hardware-fit local pick with one tap (`FirstSeat.tsx`, `starterModel.ts`); the Marketplace bundles (Starter, Home) fill a stack in one tap.                   |
-| Weights delivery       | BUILT. Catalog sources are `ollama` refs or `huggingface` GGUF URLs; weights download from their source, never through OpenShore. An OpenShore-published repo on Hugging Face is a source like any. |
-| The measuring stick    | BUILT. `osc eval --deep --attempts <n>`, per-task traces, the frontier reference run, and the with-and-without discipline (tenet 2).                                                                |
-| The trainer            | DESIGNED, not built. Lessons Tier 2 in the proposal: a PEFT-style LoRA sidecar, promotion only when eval v2 scores the adapted model at or above the base, an Ollama Modelfile as a new tag.        |
+So the swap, when it comes, is one commit: the three `ollamaRef`s in
+`HARBOR_MASTER_SIZES` point at `openshore/harbor-master:<size>` (or the
+Hugging Face GGUF the Modelfile wraps), the size labels and
+`HARBOR_MASTER_ATTRIBUTION` name the new weights and their license,
+`MODEL-LICENSES.md` and `docs/HARBOR.md` follow, and the word "tuned" is
+allowed into the copy for the first time. The id, the rows, the card, and the
+action do not change. That is the whole point of the slot.
 
-So "featured" is: a catalog entry, a rank-1 curation note for the hub tier, a
-measured deep score in `eval.json`, the Home bundle's pick, and the First Seat
-card choosing it on a machine that fits. No room, no new screen, no codename in
-copy (tenet 1). The stable-id rule from Harbor applies: the id is a slot
-decoupled from the weights (`harbor-mini` kept its id across a weights swap),
-so a v2 of the model is a URL and size change, never an id churn.
-
-## What the code says back: four things to change when it ships
+## What the code says back: three things to change when the weights ship
 
 The repo holds a promise, "a catalog, not a weight host", in code, docs, the
-guide facts, and on the site. The house model keeps that promise as long as
-OpenShore publishes weights to a public source and the app downloads from
+guide facts, and on the site. OpenShore's own weights keep that promise as
+long as they are published to a public source and the engine pulls them from
 that source like any other model: OpenShore never proxies inference and never
-rehosts another maker's weights. But four places assume no model is
-OpenShore's own, and each is a small, deliberate change in the same piece of
-work as the catalog entry:
+rehosts another maker's weights. Three places assume no model is OpenShore's
+own, and each is a small, deliberate change in the swap commit:
 
 1. **The install notice.** `os-code/src/market/install.ts` prints "Weights
    come straight from the Ollama library, never from OpenShore." For the house
-   model that line reads wrong. It becomes "Weights come straight from the
+   weights that line reads wrong. It becomes "Weights come straight from the
    Ollama library. This one is published by OpenShore." The promise (straight
    from the source, never proxied) is unchanged.
 2. **The engine installs Ollama refs only.** A `huggingface` source is printed
-   as a command for the person to run, not pulled. So the house model ships
-   as an Ollama model first (`ollama pull openshore/coder:7b` or similar); the
-   Hugging Face repo is the canonical home for the weights, the model card,
-   and other runtimes.
+   as a command for the person to run, not pulled. So the house weights ship
+   as an Ollama model first; the Hugging Face repo is the canonical home for
+   the weights, the model card, and other runtimes.
 3. **The catalog builder's trust list.** Live discovery admits only the lab
-   families in `TRUSTED_PUBLISHERS` and rejects unknown uploads by name, so
-   an OpenShore organization is either added to that list or the entry is a
-   hand-written seed in `catalog.sample.json`. The seed is the honest first
-   step: the builder never invents a star, and the deep score is entered by
-   hand as `measured`.
-4. **The one-exception line.** `app/MODEL-LICENSES.md` opens with "with one
-   exception, OpenShore does not ship model weights inside the app". That
-   stays true: the house model is a download, never bundled. The iOS bundle
-   has about 65 MB of headroom under the 170 MB cap, and a 7B does not fit in
-   any case.
+   families in `TRUSTED_PUBLISHERS` and rejects unknown uploads by name, so an
+   OpenShore organization is either added to that list or the sizes stay
+   hand-written seed entries in `catalog.sample.json` (they are today). The
+   builder never invents a star; the deep score is entered by hand as
+   `measured`.
 
-Everything else the founder asked for is already a mechanism, not a change:
-`featuredModels()` leads the Marketplace hero row with the editorial picks and
-the card's eyebrow already reads "OpenShore pick".
-
-## The name
-
-Harbor is taken (the phone family), Home is the machine, Keel is the internal
-harness codename and never copy, and "the anchor" already means the reasoning
-seat in My Stack. The house model needs one display name and one stable id:
-
-- **Id:** `openshore-coder-7b` (and `-14b` if a second size ships). Plain,
-  sortable, tells the truth about what it is.
-- **Display name:** a CMO and Creative Studio call, in the nautical vocabulary
-  the rooms already speak. Working handle for this memo: Helm. Not a ruling.
-
-Copy may say "tuned for OpenShore", because the weights really are tuned. That
-is a deliberate step past the Harbor guides, which are stock weights and are
-framed as "grounded in" the repo (DECISIONS, 2026-09-04). The two framings
-must not blur: Harbor is grounded, Helm is tuned.
+Nothing is ever bundled: `app/MODEL-LICENSES.md`'s "with one exception" stays
+true, the iOS bundle has about 65 MB of headroom under the 170 MB cap, and a
+7B does not fit in any case.
 
 ## The base: chosen by a number, not a belief
 
-Candidates, all on the license allow-list (Apache-2.0) or to be checked
-against it before they are considered:
+Harbor Master's three sizes are the candidates, plus one worth measuring. All
+on the license allow-list (Apache-2.0) or to be checked against it first:
 
 | Candidate                            | Why it is on the list                                                                                                                                        | Check first                                                                                                                                                               |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| qwen2.5-coder:7b                     | Rank 1 today, probe 0.86, "follows tools well", 4.7 GB at Q4. The 16 GB laptop and 8 GB GPU pick in the hardware-fit table.                                  | Its loop score on a hub-class box (never measured; the reference box swaps it).                                                                                           |
-| qwen2.5-coder:14b                    | "The one to grow into", probe 0.88, about 9 GB at Q4. Multi-file headroom.                                                                                   | Same. Fits 32 GB RAM or a 12 GB GPU.                                                                                                                                      |
+| qwen2.5-coder:7b                     | Rank 1 today, probe 0.86, "follows tools well", 4.7 GB at Q4. Harbor Master's 16 GB laptop and 8 GB GPU size.                                                | Its loop score on a hub-class box (never measured; the reference box swaps it).                                                                                           |
+| qwen2.5-coder:14b                    | "The one to grow into", probe 0.88, 9 GB at Q4. Harbor Master's size for a hub with room.                                                                    | Same. Fits a 24 GB GPU; tight on 32 GB of CPU memory by the engine's rule.                                                                                                |
+| qwen2.5-coder:3b                     | The floor seat, measured 75% (best of 2) on the CPU-only reference box.                                                                                      | Its license (below).                                                                                                                                                      |
 | Qwen3 coder family, small-active MoE | A 30B-total, about 3B-active mixture runs at small-model speed on CPU RAM while carrying big-model knowledge; the phone memo's "MoE-first" idea, on the hub. | It exists and is Apache-2.0 to the best of this memo's knowledge; confirm the exact card, size at Q4 (about 18 GB), and that Ollama serves it, before it enters the eval. |
 
-The choice is the candidate with the best `osc eval --deep --attempts 3` score
-per GB of memory on the hub reference machine, run cold, stock weights. That
-run is also the baseline the tuned model must beat. A base is disqualified if
-its license is not on the allow-list, whatever its score.
+The choice per size is the candidate with the best `osc eval --deep --attempts
+3` score per GB of memory on the hub reference machine, run cold, stock
+weights. That run is also the baseline the tuned weights must beat. A base is
+disqualified if its license is not on the allow-list, whatever its score.
 
 One license check falls out of this for free and should be done regardless:
 the 3B seed entry reads Apache-2.0, but Qwen published the 3B sizes of the
 Qwen2.5 family under a separate research license. If that is so, the floor
-pick's "Commercial use is fine" note is wrong today and the catalog gate
-should drop it. Verify on the model card (egress to Hugging Face is blocked
-from the sandbox, so this is a founder or desktop check).
+size's attribution is wrong today and the catalog gate should drop it. Verify
+on the model card (egress to Hugging Face is blocked from the sandbox, so
+this is a founder or desktop check).
 
 ## The data: what goes in, and what never does
 
@@ -178,8 +168,8 @@ What never enters the corpus: Claude or any other closed model's outputs
 (terms, and the honesty bar); anything from a person's machine (no telemetry,
 ever; nothing leaves the machine; the PARKED cross-user ruling stands);
 machine-wide lessons on a shared hub (the CTO must-fix on owner and workspace
-keying). The house model is trained on open tasks and open models' verified
-work, and says so in its model card.
+keying). The house weights are trained on open tasks and open models' verified
+work, and say so in their model card.
 
 ## Training and publishing
 
@@ -188,15 +178,15 @@ work, and says so in its model card.
   pairs, which step 2 yields for free). Merge the adapter, quantize to GGUF
   (Q4_K_M as the default, Q8_0 for GPU hubs), publish to a Hugging Face repo
   under an OpenShore organization and as an Ollama model with a Modelfile
-  carrying the chat template the loop expects. The catalog entry points at
-  those, `source.kind: ollama` first (the bridge already pulls it).
+  carrying the chat template the loop expects. `HARBOR_MASTER_SIZES` then
+  points at those refs.
 - **Compute.** Not the reference box. One rented GPU with 24 to 80 GB for a
   few hours per iteration, or an Apple Silicon machine with 32 GB and up
   through MLX for the 7B. The home lab itself can be the hub reference box
   for measuring and, with a 24 GB GPU, the trainer.
 - **The trainer is Lessons Tier 2, built once.** The proposal's "Practice"
   sidecar (PEFT-style LoRA, promotion on eval, an Ollama tag, one-tap revert)
-  is the same tooling. Build it once to make the house model centrally, and
+  is the same tooling. Build it once to make the house weights centrally, and
   the person's own nightly adapter later is the same code pointed at their
   own accepted diffs. One trainer, two uses, in that order.
 - **Contamination guard.** The held-out tasks and the four fixture tasks in
@@ -205,95 +195,93 @@ work, and says so in its model card.
 
 ## The gate (tenet 2, nothing claimed without eval)
 
-The house model becomes the featured pick for the hub tier only when all of
+A size's stock weights are replaced by the house weights only when all of
 these hold, on the hub reference machine, cold, `--attempts 3`:
 
-- It beats the stock base it was tuned from, with-and-without, by more than
-  the run-to-run variance the eval already reports (best of n versus one try).
-- It clears the held-out tasks it never saw, not only the training set.
-- It does not regress the small-class floor: the 3B's 75% stays the CPU
-  floor's number, and the house model is never offered there.
+- They beat the stock base they were tuned from, with-and-without, by more
+  than the run-to-run variance the eval already reports (best of n versus one
+  try).
+- They clear the held-out tasks they never saw, not only the training set.
+- They do not regress the small-class floor: the 3B's 75% stays the CPU
+  floor's number, and a size is never swapped on a size it was not measured
+  on.
 - The numbers land in `curation/eval.json` as `measured`, with `box` and
   `date`, the way the 3B's did.
 
 Losing to the stock base is a real outcome and a useful one: it means the
 harness already extracts what tuning would, and the effort goes to a bigger
-base or to the harness instead. The featured slot stays with the stock pick
-until the number says otherwise.
+base or to the harness instead. The slot keeps its stock weights until the
+number says otherwise, and nobody using Harbor Master has to know.
 
-## The claim ladder for this model
+## The claim ladder for this slot
 
-The convergence memo's ladder applies unchanged; only the first rung gains a
-word the guides may not use.
+The convergence memo's ladder applies unchanged; the first rung is what the
+copy says today, the word "tuned" arrives with the swap.
 
-1. **Now, at ship:** "An open coder tuned for OpenShore. Runs on your own
-   machine. Free, private, yours."
-2. **When its hub-tier deep score clears 0.8 on the bounded tasks:** "Fixes
-   bugs and ships small changes on its own, checked against your own tests."
-3. **When local plus judge, or local plus hand, lands within about ten points
+1. **Now, stock weights:** "The most capable Harbor. A real coding agent that
+   plans and edits your repositories, running on your computer through
+   Ollama." The attribution names Qwen 2.5 Coder.
+2. **At the swap:** "Tuned for OpenShore" joins the attribution, and only
+   there, because the weights really are.
+3. **When a size's hub-tier deep score clears 0.8 on the bounded tasks:**
+   "Fixes bugs and ships small changes on its own, checked against your own
+   tests."
+4. **When local plus judge, or local plus hand, lands within about ten points
    of the Sonnet 5 reference line on the hub tier:** "Sonnet-grade results for
    everyday coding. Your own key, only when it truly needs it."
-4. **Never:** "a compact Opus", "as smart as Claude", "trained on Claude",
+5. **Never:** "a compact Opus", "as smart as Claude", "trained on Claude",
    "always on". "Trains itself" stays out until the person's own nightly
    adapter (Lessons Tier 2 on their box) actually ships, which this work makes
    possible but is not.
 
-## Docked in one tap: the path, and the two gaps
+## The one gap left in the front door
 
-The path today: install the desktop app; the daemon starts and binds the
-tailnet; the phone scans the QR; the reach pill reads Docked; the First Seat
-card on the desktop offers one hardware-fit pick; Install pulls it through
-Ollama and seats it as the orchestrator; the first real answer follows. The
-house model rides that path once it is a catalog entry. Two gaps stand between
-"a catalog entry" and "the featured pick on a hub":
-
-1. **Hardware-aware curation** (ruling 2 of the convergence memo, not yet
-   built): `deriveDeviceTier()` in `os-code/src/harness/` plus `fits` in
-   `recommended.json`, so the hub tier gets the house model while the CPU floor
-   keeps the 3B and the phone keeps its own. Today the rank is global and the
-   starter list is a two-entry preference in `starterModel.ts`.
-2. **A hub reference machine.** The reference box is deliberately the floor,
-   and the floor cannot run the Home class. The founder's home lab is that
-   machine: record its RAM, GPU, and free storage as the hub tier's reference
-   row, the way `cpu-7.6gb` names the floor, and every hub-tier number is
-   measured there.
+Harbor Master already picks a size by memory. What it cannot do yet is bless
+a size per machine class with a loop number: only the 3B has a measured deep
+score, the 7B and the 14B ride their published probe. That is ruling 2 of the
+convergence memo (hardware-aware curation blessed by the deep eval per tier),
+and it needs one thing the sandbox cannot supply: **a hub reference machine.**
+The reference box is deliberately the floor, and the floor cannot run the
+Home class. The founder's home lab is that machine: record its RAM, GPU, and
+free storage as the hub tier's reference row, the way `cpu-7.6gb` names the
+floor, and every hub-tier number is measured there.
 
 ## The order, each step unlocked by a number
 
-0. **Name the hub reference box and draw the baseline.** Run the stock
-   candidates on it with `osc eval --deep --attempts 3`; commit the scores to
-   `eval.json`. Pick the base. Do the 3B license check in the same sitting.
+0. **Name the hub reference box and draw the baseline.** Run Harbor Master's
+   stock sizes on it with `osc eval --deep --attempts 3`; commit the scores to
+   `eval.json`. Do the 3B license check in the same sitting.
 1. **Widen the task set, with the split.** Training and held-out manifests, a
    CI guard that they never overlap.
 2. **Trace recording and the verify-filtered generator.** A `--record` on the
    deep eval that writes the loop's real prompts and the model's real turns;
    rejection sampling with a larger open model in the seat.
-3. **The trainer, built once** (Lessons Tier 2's sidecar). Train v0, merge,
-   quantize, publish, Modelfile.
-4. **Measure with-and-without.** Ship as a catalog entry and the hub tier's
-   rank 1 only if the gate holds; the Home bundle and the First Seat pick
-   follow from the curation, not from code.
-5. **Copy and record.** The rung-1 line on the card and the site, a model card
-   that names its data, a DECISIONS line for the name, and the mirror rule for
-   any new on-device record.
+3. **The trainer, built once** (Lessons Tier 2's sidecar). Train v0 per size,
+   merge, quantize, publish, Modelfile.
+4. **Measure with-and-without.** Swap a size's refs only if the gate holds;
+   the card, the row, and the action do not change.
+5. **Copy and record.** "Tuned for OpenShore" in the attribution, a model card
+   that names its data, the install-notice line, a DECISIONS line, and the
+   mirror rule for any new on-device record.
 6. **Later, the same pipeline pointed at one person's box** is Lessons Tier 2
    proper: nightly Practice on their own accepted diffs, local only, cleared
    with the chats.
 
 Rough cost of the first iteration, so the Board gate has a number to weigh:
 
-| Item                                 | Estimate                                   |
-| ------------------------------------ | ------------------------------------------ |
-| Engineering to the first tuned model | About one engineer-month                   |
-| GPU rental per training iteration    | Tens of dollars to low hundreds            |
-| Hub reference box                    | The home lab; a 24 GB GPU also trains      |
-| Publishing                           | A Hugging Face org and an Ollama namespace |
+| Item                                   | Estimate                                   |
+| -------------------------------------- | ------------------------------------------ |
+| Engineering to the first tuned weights | About one engineer-month                   |
+| GPU rental per training iteration      | Tens of dollars to low hundreds            |
+| Hub reference box                      | The home lab; a 24 GB GPU also trains      |
+| Publishing                             | A Hugging Face org and an Ollama namespace |
 
 ## What this is not
 
-Not a new room, not a name in the rooms (the featured pick renders through the
-curation like every other model), not a chatbot, not a phone model (the 7B
-class is hub-only; the phone keeps Harbor, Pocket, and Offline), not a way to
-learn from users (nothing leaves a person's machine, ever), and not a compact
-Opus. It is the harness's discipline baked into open weights, measured before
-it is claimed, and the featured door into Docked once the number says so.
+Not a new room, not a new name (Harbor Master is already the name, and the
+CMO can change the display constant without touching the slot), not a
+chatbot, not a phone model (the 7B class is hub-only; the phone keeps Harbor
+Light, Harbor, Pocket, and Offline), not a way to learn from users (nothing
+leaves a person's machine, ever), and not a compact Opus. It is the harness's
+discipline baked into open weights, measured before it is claimed, and slid
+in behind a door that is already open.

@@ -20,7 +20,8 @@ export interface StackBundle {
   /** Catalog id of the Reasoning LLM (orchestrator). */
   orchestrator: string;
   /** A preference list for the orchestrator, best first, resolved against the
-   *  machine's memory by resolveBundle. `orchestrator` is the first entry. */
+   *  machine's memory by resolveBundle. `orchestrator` is the pick before the
+   *  machine has been read (never the biggest on a guess). */
   orchestratorCandidates?: string[];
   /** Catalog ids of specialists, by engine role. */
   specialists: Partial<Record<BundleRole, string>>;
@@ -45,9 +46,10 @@ export const STACK_BUNDLES: StackBundle[] = [
       'One coding model that does everything, sized to this computer. The right first stack.',
     platform: 'desktop',
     orchestrator: 'qwen2.5-coder-7b',
-    // The same preference list as the one-tap starter (lib/starterModel.ts):
-    // the 7B where it fits, the 3B on a CPU box under about 12 GB.
-    orchestratorCandidates: ['qwen2.5-coder-7b', 'qwen2.5-coder-3b'],
+    // The same preference list as Harbor Master (lib/harborMaster.ts): the 14B
+    // on a hub with room, the 7B where it fits, the 3B on a CPU box under
+    // about 12 GB. Pinned equal by harborMaster.test.ts.
+    orchestratorCandidates: ['qwen2.5-coder-14b', 'qwen2.5-coder-7b', 'qwen2.5-coder-3b'],
     specialists: {},
     minVramGB: 0,
   },

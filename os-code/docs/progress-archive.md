@@ -2788,7 +2788,21 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-15)
+## Log entries (2026-08-18 to 2026-09-16)
+
+### 2026-09-16, the premium front door integrated and the streams merged
+
+The four-stream "build" go landed on `claude/openshore-premium-agent-harness`:
+per-device pairing, the daemon appliance (tray, login item, power-save blocker,
+tailnet re-bind) and an in-app Ollama bridge, the First Seat empty state with a
+hardware-fit local pick, the honest guarded-stream seq fix and disposed-driver
+handling, the graduated ethics ladder (migration 0018), and Linux packaging with
+a headless smoke test plus a tag-driven `release.yml`. Integrated inline after
+the parallel build agents hit a usage-credit limit mid-run; resolved the fit-
+curve fork by keeping one honest `fitVerdict` and re-pinning the two edge tests
+(see DECISIONS). Gates green across both packages, and the Linux AppImage and
+deb built and smoke-verified in the sandbox that day (the packaged engine booted
+headless); only node-pty's terminal rebuild is deferred to CI (blocked headers).
 
 - **2026-09-15: My Crew reframed to project-agnostic advisors, and a command-door
   overlap bug fixed (founder, CTO + Creative Studio + CX).** The founder asked to

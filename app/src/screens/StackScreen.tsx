@@ -8,7 +8,8 @@ import { isDesktop } from '../lib/platform.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import { StackManager } from '../components/StackManager.js';
-import { STARTER_MODEL } from '../lib/starterModel.js';
+import { hardwareFromSummary } from '../lib/firstSeat.js';
+import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { presetMemberIds, presetSpecialists, presetTotalGB } from '../lib/presets.js';
 import type { Catalog } from 'os-code/protocol';
@@ -25,7 +26,7 @@ const ROLES: Array<{ role: string; plain: string }> = [
 ];
 
 export function StackScreen() {
-  const { settings, showToast, setView } = useApp();
+  const { settings, showToast, setView, ensureHarborMaster, harborMasterDownload } = useApp();
   const [status, setStatus] = useState<DesktopStatus | undefined>();
   const [remote, setRemote] = useState<DaemonStackInfo | undefined>();
   const [pickFor, setPickFor] = useState<string | undefined>(); // 'orchestrator' or a role
@@ -102,37 +103,25 @@ export function StackScreen() {
     }
   };
 
-  // One tap from "no model" to a working stack: pull the curated starter
-  // through the engine (progress lines come back over the install channel),
-  // then make it the orchestrator. The gate's copy of the engine status is
-  // refreshed at the end so a chat opens right away.
-  const [starter, setStarter] = useState<{ line: string } | undefined>();
+  // One tap from "no model" to a working stack: Harbor Master, sized to this
+  // computer, pulled through the engine and seated as the orchestrator by the
+  // store (ensureHarborMaster owns the progress and the failure line, so the
+  // Settings row and the First Seat card show the same state). The gate's copy
+  // of the engine status is refreshed by the store so a chat opens right away.
+  const starterPulling = Boolean(harborMasterDownload && !harborMasterDownload.failed);
+  const starterSize = resolveHarborMaster(
+    status ? (status.hardware ?? hardwareFromSummary(status.hardwareSummary)) : undefined,
+  ).size;
   const getStarter = async () => {
-    const b = bridge();
-    if (!b || starter) return;
-    setStarter({ line: `Getting ${STARTER_MODEL.name} (${STARTER_MODEL.sizeGB} GB)...` });
-    const off = b.onInstallProgress((p) => {
-      if (p.modelId !== STARTER_MODEL.catalogId) return;
-      setStarter({
-        line: p.percent != null ? `${p.line} ${Math.round(p.percent)}%` : p.line,
-      });
-    });
-    try {
-      const pulled = await b.installModel(STARTER_MODEL.catalogId);
-      if (!pulled.ok) {
-        showToast(pulled.detail);
-        return;
-      }
-      const set = await b.setOrchestrator(STARTER_MODEL.ollamaRef);
-      showToast(set.ok ? `${STARTER_MODEL.name} is your model. Ready to chat.` : set.detail);
+    if (starterPulling) return;
+    const ok = await ensureHarborMaster();
+    if (ok) {
+      showToast(`${HARBOR_MASTER_MODEL_NAME} is your model. Ready to chat.`);
       setPickFor(undefined);
       await refresh();
-      await useApp.getState().refreshDesktopStatus();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not get the starter model.');
-    } finally {
-      off();
-      setStarter(undefined);
+    } else {
+      const why = useApp.getState().harborMasterDownload;
+      if (why?.failed) showToast(why.label);
     }
   };
 
@@ -333,12 +322,12 @@ export function StackScreen() {
                   {status.ollama.up && pickFor === 'orchestrator' ? (
                     <button
                       className="btn primary press-fb"
-                      disabled={Boolean(starter)}
+                      disabled={starterPulling}
                       onClick={() => void getStarter()}
                     >
-                      {starter
-                        ? starter.line
-                        : `Get the starter model (${STARTER_MODEL.name}, ${STARTER_MODEL.sizeGB} GB)`}
+                      {starterPulling
+                        ? `${harborMasterDownload!.label} of ${HARBOR_MASTER_MODEL_NAME}`
+                        : `Get ${HARBOR_MASTER_MODEL_NAME} (${starterSize.weightsName}, ${starterSize.sizeGB} GB)`}
                     </button>
                   ) : null}
                 </>
