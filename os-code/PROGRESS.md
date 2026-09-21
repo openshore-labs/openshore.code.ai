@@ -19,12 +19,15 @@ always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
 
-### DeepBlue, the third out-of-the-box model (founder brief, 2026-09-21)
+### Scope simplified to three curated models (founder, 2026-09-21)
 
-The founder wanted a compact, open, most-capable model "like Harbor Light and
-Harbor", downloadable from the start without the Marketplace, so a home-lab
-hub gets started Docked in one tap. Built as the third and final member of the
-Harbor family, on the desktop: `app/src/lib/harborMaster.ts` (id
+Three curated, harness-trained models, and the Marketplace grayed to "Coming
+soon" (Sidebar, desktop and phone). The lineup: Harbor Lite (built-in phone
+guide), Harbor (recast from the Qwen3-1.7B guide to a Qwen2.5-Coder-3B mobile
+coder, web search kept, Harbor Lite now the sole guide), and DeepBlue (the
+desktop coder, the rename of the Harbor Master slot with Qwen 2.5 Coder 32B as
+the flagship over 14B/7B/3B). Stock Qwen today, each a harness training target.
+DeepBlue on the desktop: `app/src/lib/harborMaster.ts` (id
 `harbor-master`, a stable slot over the catalog's own Qwen 2.5 Coder sizes,
 the display name in one constant for the CMO); `ensureHarborMaster` in the
 store (pull the size that fits by catalog id through the engine, seat its
@@ -32,12 +35,13 @@ Ollama ref, refresh the gate); the First Seat card named DeepBlue and
 installing in place; the Stack starter on the same action; a desktop Settings
 > Harbor row (Install, percent, Retry, Installed; no cancel or uninstall, since
 Ollama owns the weights) plus the attribution. `starterModel.ts` and the
-Starter bundle derive from the one list, which gained the 14B for a hub with
-room (the 7B before the machine is read, the 3B on the CPU floor). Harbor
-Light recites `get-harbor-master`; `APP_KNOWLEDGE` names the family.
-`test/harborMaster.test.ts` pins the ids, the fit table, the honesty bar on
-the copy, the desktop-only row, and the docs. The weights are stock today; the
-plan for OpenShore's own behind the same slot is `docs/house-model-proposal.md`.
+Starter bundle derive from the one list, which gained the 32B flagship (the
+7B before the machine is read, never the biggest on a guess). Internal slot
+identifiers stay (`harborMaster`, `harbor-master`); only the display name and
+copy carry DeepBlue. `test/harborMaster.test.ts` and `test/harborGuides.test.ts`
+pin the ids, the fit table, the honesty bar, the rows, and the docs. Gates
+green across all three passes; the plan for the tuned weights behind the slots
+is `docs/house-model-proposal.md`.
 
 ### The premium front door, integrated (founder "build" go, 2026-09-16)
 
@@ -594,7 +598,7 @@ extended that day by the graduated enforcement ladder (migration
       TestFlight on a high-memory iPhone: a 4B loads and sustains a full reply
       without a jetsam kill; the memory-warning unload recovers (reply ends,
       next send reloads cleanly); the control group is unregressed (bundled
-      Harbor Light still loads and streams, and the memory-warning observer
+      Harbor Lite still loads and streams, and the memory-warning observer
       does not fire spuriously on memory-tight phones).
 - [ ] **Crew routines on the founder's machine and TestFlight (built
       2026-09-05, unverified off the sandbox).** Set up Morning review on the
@@ -933,7 +937,7 @@ compact Opus 4.8 for a home lab, the featured model you download to your hub
 and get started Docked." A memo (`docs/house-model-proposal.md`) grounded it:
 not a compact Opus (closed weights, and distilling from Claude is barred by
 the terms), but an open coder tuned to the harness, gated by the deep eval on
-a hub-class box. Second, the correction that set the shape: "like Harbor Light
+a hub-class box. Second, the correction that set the shape: "like Harbor Lite
 and Harbor, a third and final more advanced out-of-the-box model", accessible
 from the start without the Marketplace. So the slot shipped now, on stock
 weights, the Harbor pattern exactly (id decoupled from weights, name in one
@@ -967,32 +971,3 @@ auto-update work landed; and Windows failed compiling node-pty's bundled
 Windows both packaged, smoke-tested, artifacts uploaded clean. No tag pushed
 yet (a 403 on tag refs, a likely protection rule); a real `v0.1.2` publish,
 Windows included for the first time, needs the founder to push that tag.
-
-### 2026-09-17, macOS actually shipped: two green builds, two real silent failures
-
-`v0.1.2` published Linux and Windows clean (verified against the release
-assets directly, not the workflow's checkmark: a stale local checkout had put
-the founder's first tag on the wrong commit, caught by checking the triggered
-run's `head_sha` before it built anything). `mac-desktop` on Codemagic then
-came back green twice with nothing to show for it, each for a different
-reason, neither visible from build status alone. Attempt one: `gh` was not on
-that Codemagic image, so the version-stamp lookup and the publish upload both
-hit their own "not available" exit and skipped, silently, exactly as
-designed; the artifacts Codemagic still produced were labeled `0.1.0`, the
-tell. Fixed by having both steps install `gh` via Homebrew first if missing.
-Attempt two: still nothing on the release, both steps done in under a second.
-The GitHub check run Codemagic posts back gave exact per-step durations
-(`check-runs` API), confirming both were too fast to be real network calls;
-the actual step log (fetched by asking the founder to open the specific
-`?open-step=` deep link, not inferred) read `gh: To use GitHub CLI in
-automation, set the GH_TOKEN environment variable`, gh refuses anonymous
-access to even a public repo's release list when run non-interactively, an
-assumption the original comment had gotten backwards. Fixed by exporting
-`GH_TOKEN` from the already-required `GH_RELEASE_TOKEN` before the version
-lookup too, not just the upload. Third run: the publish step actually ran for
-6m46s (a real upload), confirmed against the release itself, arm64 and Intel
-dmg and zip, blockmaps, `latest-mac.yml`, all stamped `0.1.2`. `docs/MAC-DESKTOP.md`
-now carries both failures as dated cases so a third silent skip is not
-re-diagnosed from scratch. `openshore.ai`'s Get OpenShore section flipped Mac
-to live in the same piece of work, verified rendered (Playwright screenshot,
-correct href and `target="_blank"` on all three live tiles) before pushing.
