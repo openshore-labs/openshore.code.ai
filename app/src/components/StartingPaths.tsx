@@ -56,7 +56,7 @@ export function StartingPaths({
         <>
           <h3>Chat with Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            The bigger guide is ready. It runs on this iPhone and can search the web.
+            The coder is ready. It runs on this iPhone and can search the web.
           </div>
           <button
             className="btn ghost"
@@ -108,8 +108,8 @@ export function StartingPaths({
         <>
           <h3>Get Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            The bigger on-device guide. Real reasoning, web search, a first coding hand. About{' '}
-            {HARBOR_APPROX_LABEL}.
+            A coding model that runs on this iPhone. Real reasoning, web search, writes real code.
+            About {HARBOR_APPROX_LABEL}.
           </div>
           <button
             className="btn ghost"

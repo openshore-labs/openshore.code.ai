@@ -21,9 +21,9 @@ attribution ship in the app.
 
 ## Harbor (downloaded)
 
-- **Weights:** Qwen3-1.7B (GGUF, Q4_K_M quantization).
-- **Source:** via Hugging Face (`unsloth/Qwen3-1.7B-GGUF`), downloaded on demand
-  (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
+- **Weights:** Qwen2.5-Coder-3B-Instruct (GGUF, Q4_K_M quantization).
+- **Source:** via Hugging Face (`unsloth/Qwen2.5-Coder-3B-Instruct-GGUF`),
+  downloaded on demand (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
 - **License:** Apache License 2.0. Downloaded from the source, not redistributed
   by us, the same posture as any pocket model.
 

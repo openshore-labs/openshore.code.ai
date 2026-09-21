@@ -1,22 +1,23 @@
 # Harbor, Harbor Lite, and DeepBlue: the out-of-the-box models
 
-OpenShore ships three models out of the box, never behind the Marketplace: two
-on-device guides for the phone, and one real coding agent for the computer.
-The guides are grounded in this repository, so they are experts on the app:
-they explain any front-end feature or setup step in as much depth as the person
-wants, and they never reveal backend build internals, infrastructure, or how
-OpenShore is implemented under the hood. DeepBlue (below) is the third and
-final member, the most capable, and the one a home-lab hub runs.
+OpenShore ships three curated models out of the box, never behind the
+Marketplace: Harbor Lite, the tiny built-in guide for the phone; Harbor, a
+coder that runs on the phone; and DeepBlue, the coder that runs on the
+computer. All three are grounded in this repository, so they answer app
+questions from the front end without ever revealing backend build internals,
+infrastructure, or how OpenShore is implemented under the hood. DeepBlue is
+the most capable, and the one a home-lab hub runs.
 
 - **Harbor Lite** (SmolLM2-135M-Instruct, Apache-2.0). The small, fast guide.
   It knows its own limits and, when a question needs real reasoning or real
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
   the app is installed, with nothing to download, and works offline.
-- **Harbor** (Qwen3-1.7B, Apache-2.0). The step up: a reasonably capable first
-  coding agent and the app's own expert, with real reasoning and web search. It
-  is a real download (about 1.1 GB) from Hugging Face, installed and uninstalled
-  from Settings.
+- **Harbor** (Qwen 2.5 Coder 3B, Apache-2.0). The mobile coder: a coding agent
+  that runs fully on the phone, writing and explaining real code, with real
+  reasoning and web search. It can also answer app questions, but it leads as a
+  coder (Harbor Lite is the guide). A real download (about 1.9 GB) from Hugging
+  Face, installed and uninstalled from Settings.
 - **DeepBlue** (Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 3B,
   Apache-2.0). The third and most capable: a real coding agent that plans and
   edits repositories on the desktop engine. It is pulled through Ollama on the
@@ -26,7 +27,7 @@ final member, the most capable, and the one a home-lab hub runs.
 
 In the code each is a reserved model id (`harbor-mini`, `harbor`, and
 `harbor-master`, see `app/src/lib/harborMini.ts`, `app/src/lib/harbor.ts`, and
-`app/src/lib/harborMaster.ts`). The two guides flow through the normal
+`app/src/lib/harborMaster.ts`). Harbor Lite and Harbor flow through the normal
 on-device driver and the llama plugin; DeepBlue lives in the desktop
 engine's config (its Ollama ref is the orchestrator), so the app never keeps a
 copy of its presence: the Settings row reads the engine's Ollama list.

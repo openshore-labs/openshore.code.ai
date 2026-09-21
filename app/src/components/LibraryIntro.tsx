@@ -36,7 +36,7 @@ function beatsFor(guideName: string): Beat[] {
       id: 'harbor',
       eyebrow: `Meet ${guideName}`,
       headline: 'Your first model is on its way.',
-      body: `${guideName} is a guide, downloading now. It runs on your device, helps you get set up, and is built to be replaced by the bigger models you add.`,
+      body: `${guideName} is downloading now. It runs on your device, helps you get moving, and works alongside the bigger models you add.`,
       art: 'harbor',
     },
     {
