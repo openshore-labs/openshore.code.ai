@@ -4,7 +4,7 @@ Status: RUNBOOK for the founder, 2026-09-21. Gate 0 of the Air program
 (`docs/house-model-proposal.md`, "The Air program"): does Bonsai 2 27B plus the
 OpenShore harness beat Qwen 2.5 Coder 14B on the deep eval? It runs entirely on
 the Mac mini, all local, no cloud spend. If Bonsai does not beat the 14B here,
-none of the adapter, runtime, or on-device work starts, and Harbor Master on
+none of the adapter, runtime, or on-device work starts, and DeepBlue on
 the mini plus Docked stays the answer.
 
 ## Prerequisites (once)
@@ -90,7 +90,7 @@ the mini plus Docked stays the answer.
 Bonsai plus the harness must beat the 14B on the edit and refactor tasks. If it
 does, Gate A begins: train the recovery adapter distilled from the open
 Qwen3.8-27B on the mini and measure how much of the gap to the FP16 Qwen it
-closes. If Bonsai ties or loses, stop; Harbor Master plus Docked is the answer,
+closes. If Bonsai ties or loses, stop; DeepBlue plus Docked is the answer,
 and weeks of native work were saved. Either way, record all three scorecards in
 `os-code/curation/eval.json` provenance style (a `measured` entry with `box` and
 `date`) and bring them back so the next gate can be planned on the number.

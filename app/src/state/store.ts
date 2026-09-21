@@ -721,7 +721,7 @@ interface AppState {
   harborMiniDownload?: HarborDownload;
   /** Live progress while Harbor downloads for the first time. */
   harborDownload?: HarborDownload;
-  /** Live progress while Harbor Master is pulled through the desktop engine.
+  /** Live progress while DeepBlue is pulled through the desktop engine.
    *  Presence itself is never remembered here: the Settings row reads it from
    *  the engine's Ollama list (harborMasterInstalled over desktopStatus). */
   harborMasterDownload?: HarborDownload;
@@ -1032,7 +1032,7 @@ interface AppState {
    *  is a real download (about 1.1 GB), so it is uninstallable; Harbor Light is
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
-  /** Desktop only. Pull the Harbor Master size that fits this computer through
+  /** Desktop only. Pull the DeepBlue size that fits this computer through
    *  the engine (Ollama) and seat it as the Reasoning LLM. Returns success. An
    *  install already running returns false without starting another. */
   ensureHarborMaster(): Promise<boolean>;
@@ -1846,7 +1846,8 @@ export const useApp = create<AppState>((set, get) => {
         // this device and only ever runs on this device.
         let codemagicToken: string | undefined;
         let codemagicTarget:
-          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
+          | { appId: string; workflowId: string; branch: string; platform?: string }
+          | undefined;
         if (settings.codemagicAccess) {
           const tok = await secretGet(CODEMAGIC_SECRET_KEY);
           if (tok) {

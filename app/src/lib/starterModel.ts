@@ -1,5 +1,5 @@
 // The one-tap starter for a desktop with no model yet. Since 2026-09-21 the
-// starter IS Harbor Master (lib/harborMaster.ts): the same preference list,
+// starter IS DeepBlue (lib/harborMaster.ts): the same preference list,
 // largest size that fits this computer, resolved with the engine's own budget.
 // This module keeps the older StarterCandidate shape for its callers (the
 // Starter bundle, the Stack screen's pick sheet) so nothing that pinned it has
@@ -36,7 +36,7 @@ function asCandidate(size: HarborMasterSize): StarterCandidate {
   };
 }
 
-/** Harbor Master's sizes, largest first, in the starter shape. */
+/** DeepBlue's sizes, largest first, in the starter shape. */
 export const STARTER_CANDIDATES: readonly StarterCandidate[] = HARBOR_MASTER_SIZES.map(asCandidate);
 
 /** The default pick, for callers that only need a name to pin: the size offered

@@ -1,4 +1,4 @@
-# The house model: OpenShore's own weights behind Harbor Master
+# The house model: OpenShore's own weights behind DeepBlue
 
 Status: PROPOSAL, 2026-09-21, revised the same day after the founder set the
 shape. Founder brief, first beat: "I love using Opus 4.8. I think it's such a
@@ -11,7 +11,7 @@ is as capable and acts like Opus 4.8, accessible to download from the start
 for users without even having to go to the marketplace. Like Harbor Lite and
 Harbor. This would be a third and final more advanced out-of-the-box model."
 
-The second beat is BUILT: **Harbor Master** is the third member of the Harbor
+The second beat is BUILT: **DeepBlue** is the third member of the Harbor
 family, on the desktop, out of the box, one tap (`docs/HARBOR.md`, the Desktop
 section; `app/src/lib/harborMaster.ts`; DECISIONS 2026-09-21). Today it runs
 on stock Qwen 2.5 Coder weights, sized to the computer. This memo is the first
@@ -23,7 +23,7 @@ ladder). It replaces neither.
 
 ## The brief in one line
 
-Behind the Harbor Master slot, replace the stock weights with OpenShore's own
+Behind the DeepBlue slot, replace the stock weights with OpenShore's own
 open weights, tuned so the model speaks the harness natively, published as
 weights anyone can pull, and swapped in by changing only the refs and the
 attribution, once a number on a hub-class box says they are better.
@@ -62,17 +62,17 @@ points on the deep eval than a model that is a little smarter and does.
 **"Compact" means the Home class, not the phone.** A home-lab hub is a machine
 with more memory than the reference box (16 to 32 GB, or an 8 to 24 GB GPU).
 That is the docked tier the progress notes already describe: "a 7B and up
-belong to the docked/hub tier". Harbor Master already sizes itself to the
-machine (the 14B, the 7B, the 3B); the tuned weights ship per size, and a
+belong to the docked/hub tier". DeepBlue already sizes itself to the
+machine (the 32B, the 14B, the 7B, the 3B); the tuned weights ship per size, and a
 size only switches when its own number clears.
 
 ## The slot is built; the weights are the work
 
 | Piece                   | State                                                                                                                                                                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Harbor Master           | BUILT 2026-09-21. `app/src/lib/harborMaster.ts`: id `harbor-master`, three sizes over the catalog's own Qwen 2.5 Coder entries, `resolveHarborMaster(hw)` picks the largest that fits by the engine's own budget. |
+| DeepBlue                | BUILT 2026-09-21. `app/src/lib/harborMaster.ts`: id `harbor-master`, four sizes over the catalog's own Qwen 2.5 Coder entries, `resolveHarborMaster(hw)` picks the largest that fits by the engine's own budget. |
 | One tap, out of the box | BUILT. The First Seat card installs it in place; the Stack screen's starter and the desktop Settings > Harbor row ride the same store action (`ensureHarborMaster`: pull by catalog id, seat by Ollama ref).      |
-| Docked                  | BUILT. Pair the phone under Desktop + phone; Harbor Master is "My computer" in the model menu, for chat and for coding on repositories.                                                                           |
+| Docked                  | BUILT. Pair the phone under Desktop + phone; DeepBlue is "My computer" in the model menu, for chat and for coding on repositories.                                                                                |
 | Weights delivery        | BUILT. The engine pulls Ollama refs straight from the Ollama library, never through OpenShore. An OpenShore-published Ollama model is a ref like any.                                                             |
 | The measuring stick     | BUILT. `osc eval --deep --attempts <n>`, per-task traces, the frontier reference run, the with-and-without discipline (tenet 2), `curation/eval.json` with `measured` provenance.                                 |
 | The trainer             | DESIGNED, not built. Lessons Tier 2 in the harness proposal: a PEFT-style LoRA sidecar, promotion only when eval v2 scores the adapted model at or above the base, an Ollama Modelfile as a new tag.              |
@@ -116,13 +116,13 @@ true, the iOS bundle has about 65 MB of headroom under the 170 MB cap, and a
 
 ## The base: chosen by a number, not a belief
 
-Harbor Master's three sizes are the candidates, plus one worth measuring. All
+DeepBlue's three sizes are the candidates, plus one worth measuring. All
 on the license allow-list (Apache-2.0) or to be checked against it first:
 
 | Candidate                            | Why it is on the list                                                                                                                                                                                                                                                   | Check first                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| qwen2.5-coder:7b                     | Rank 1 today, probe 0.86, "follows tools well", 4.7 GB at Q4. Harbor Master's 16 GB laptop and 8 GB GPU size.                                                                                                                                                           | Its loop score on a hub-class box (never measured; the reference box swaps it).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| qwen2.5-coder:14b                    | "The one to grow into", probe 0.88, 9 GB at Q4. Harbor Master's size for a hub with room.                                                                                                                                                                               | Same. Fits a 24 GB GPU; tight on 32 GB of CPU memory by the engine's rule.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| qwen2.5-coder:7b                     | Rank 1 today, probe 0.86, "follows tools well", 4.7 GB at Q4. DeepBlue's 16 GB laptop and 8 GB GPU size.                                                                                                                                                                | Its loop score on a hub-class box (never measured; the reference box swaps it).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| qwen2.5-coder:14b                    | "The one to grow into", probe 0.88, 9 GB at Q4. DeepBlue's size for a hub with room.                                                                                                                                                                                    | Same. Fits a 24 GB GPU; tight on 32 GB of CPU memory by the engine's rule.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | qwen2.5-coder:3b                     | The floor seat, measured 75% (best of 2) on the CPU-only reference box.                                                                                                                                                                                                 | Its license (below).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Qwen3 coder family, small-active MoE | A 30B-total, about 3B-active mixture runs at small-model speed on CPU RAM while carrying big-model knowledge; the phone memo's "MoE-first" idea, on the hub.                                                                                                            | It exists and is Apache-2.0 to the best of this memo's knowledge; confirm the exact card, size at Q4 (about 18 GB), and that Ollama serves it, before it enters the eval.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Bonsai 2 27B (PrismML, ternary)      | A 27B on a Qwen3.8 base compressed to ternary weights (about 1.76 bits each), roughly 6 GB total, Apache-2.0, long context. If the quality holds it collapses the fit table: a 27B-class seat that fits from 8 GB up, not only on a hub. Founder flagged it 2026-09-21. | EVAL FIRST, and be skeptical. The 83.9 aggregate and "98.2% retention" are the vendor's and blog numbers, not an agentic-coding run; ternary compression is exactly where precise multi-line edits, two-file refactors, and exact SEARCH/REPLACE slip. An independent tester already questioned whether v1's lead held at suite level and whether v2's agentic-coding claim holds. RUNTIME BLOCKER, found 2026-09-21: the ternary kernels are NOT in mainline llama.cpp; PrismML ships its own llama.cpp fork and an MLX fork for Apple Silicon. So our Ollama desktop path (mainline llama.cpp) likely cannot serve it as is, and the on-device iOS path (pinned mainline LLM.swift) cannot load it at all, so on-device on a phone, iPhone Air included, is a native project (bring the kernels into the plugin or move that path to MLX), not a config entry. The realistic way to try it today is PrismML's own fork or MLX on the Mac mini, reached from the phone by Docking. Measure it there on the deep eval against the 14B and 32B, weighting the edit and refactor tasks, before it is offered as a size. Packings: PTQ1_0 about 5.95 GB, PQ2_0 about 7.21 GB. |
@@ -212,7 +212,7 @@ these hold, on the hub reference machine, cold, `--attempts 3`:
 Losing to the stock base is a real outcome and a useful one: it means the
 harness already extracts what tuning would, and the effort goes to a bigger
 base or to the harness instead. The slot keeps its stock weights until the
-number says otherwise, and nobody using Harbor Master has to know.
+number says otherwise, and nobody using DeepBlue has to know.
 
 ## The claim ladder for this slot
 
@@ -237,7 +237,7 @@ copy says today, the word "tuned" arrives with the swap.
 
 ## The one gap left in the front door
 
-Harbor Master already picks a size by memory. What it cannot do yet is bless
+DeepBlue already picks a size by memory. What it cannot do yet is bless
 a size per machine class with a loop number: only the 3B has a measured deep
 score, the 7B and the 14B ride their published probe. That is ruling 2 of the
 convergence memo (hardware-aware curation blessed by the deep eval per tier),
@@ -249,7 +249,7 @@ floor, and every hub-tier number is measured there.
 
 ## The order, each step unlocked by a number
 
-0. **Name the hub reference box and draw the baseline.** Run Harbor Master's
+0. **Name the hub reference box and draw the baseline.** Run DeepBlue's
    stock sizes on it with `osc eval --deep --attempts 3`; commit the scores to
    `eval.json`. Do the 3B license check in the same sitting.
 1. **Widen the task set, with the split.** Training and held-out manifests, a
@@ -279,7 +279,7 @@ Rough cost of the first iteration, so the Board gate has a number to weigh:
 
 ## What this is not
 
-Not a new room, not a new name (Harbor Master is already the name, and the
+Not a new room, not a new name (DeepBlue is already the name, and the
 CMO can change the display constant without touching the slot), not a
 chatbot, not a phone model (the 7B class is hub-only; the phone keeps Harbor
 Light, Harbor, Pocket, and Offline), not a way to learn from users (nothing
@@ -295,7 +295,7 @@ happen." Four rungs, cheapest to biggest, each measured on the deep eval
 against an Opus 4.8 reference run on the founder's own task set. Opus is the
 yardstick, never the teacher: its outputs never enter training data (terms).
 
-1. **Harbor Master, one size up.** The catalog's Qwen 2.5 Coder 32B (probe
+1. **DeepBlue, one size up.** The catalog's Qwen 2.5 Coder 32B (probe
    0.94, about 20 GB at Q4, a 24 GB GPU or a 48 GB Mac) becomes a fourth size.
    An edit; the card picks it when it fits.
 2. **The open frontier on a real hub.** Open-weights mixture-of-experts models
@@ -304,8 +304,7 @@ yardstick, never the teacher: its outputs never enter training data (terms).
    gpt-oss-120b; verify the exact cards and sizes at build time, the top moves
    monthly). Hardware money, not engineering: 96 GB to 512 GB of memory (a
    Mac Studio with 512 GB unified memory, a multi-GPU rig, or a RAM-heavy
-   server running experts on CPU at a few tokens per second). A fifth Harbor
-   Master size, offered only when the machine reports the memory, blessed
+   server running experts on CPU at a few tokens per second). A fifth DeepBlue size, offered only when the machine reports the memory, blessed
    only when measured on the hub reference box. Honest phrase: "a generation
    behind the frontier, on your own machine."
 3. **Opus itself, for the hardest step only.** The hand, as planned: local by
@@ -429,7 +428,7 @@ If it clears, where it lands: a pocket model entry in the catalog with an
 on-device URL, gated to 12 GB phones, hand-seeded (the builder rejects unknown
 publishers), honest "tight" fit copy, a measured deep score before any ribbon,
 and the 4B stays the default phone seat until the number says otherwise. Not a
-Harbor Master size: that slot is desktop and Ollama.
+DeepBlue size: that slot is desktop and Ollama.
 
 The cheapest route may still be to wait: the llama.cpp discussion on adding
 Bonsai's group-128 ternary format upstream, if it lands, makes the runtime a

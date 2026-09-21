@@ -1673,20 +1673,20 @@ execution contract. Newest at the bottom.
   session's copy predates), so this session's own `os-code/docs/MAC-DESKTOP.md`
   (the wrong location to begin with) was deleted rather than kept as a second,
   drifting source of truth.
-- **Harbor Master is the third and final out-of-the-box model, and it lives on
+- **DeepBlue is the third and final out-of-the-box model, and it lives on
   the desktop (founder, 2026-09-21).** The founder's brief: a compact, open,
   most-capable model "like Harbor Light and Harbor", downloadable from the start
   without the Marketplace, so a hub gets started Docked in one tap. It ships
   as the third member of the Harbor family, not as a Marketplace featured pick
   and not as a new room: id `harbor-master` (a stable slot, the Harbor pattern),
-  display name "Harbor Master" in one constant (a CMO rename touches copy only),
+  display name "DeepBlue" in one constant (a CMO rename touches copy only),
   code in `app/src/lib/harborMaster.ts`, a Settings > Harbor row on the desktop,
   and the First Seat card installing it in place. This supersedes the 2026-09-04
   "Harbor rows are gated to non-desktop" ruling for this row only: the two
   guides stay phone-only, the third is desktop-only. The convergence memo's
   "Harbor is taken" concern was heard; the founder chose the family name, and
   the word still means one thing, the out-of-the-box models.
-- **Harbor Master's weights are stock Qwen 2.5 Coder, sized to the computer
+- **DeepBlue's weights are stock Qwen 2.5 Coder, sized to the computer
   (2026-09-21).** Largest size that is not too big by the engine's own budget:
   the 14B on a hub with room, the 7B on a 16 GB laptop or an 8 GB GPU, the 3B on
   the CPU-only reference box; before the machine is read, the 7B, never the
@@ -1714,4 +1714,19 @@ execution contract. Newest at the bottom.
   harness change. Scope stated honestly: bounded coding un-docked, the test
   oracle stays Docked by physics, and copy climbs the claim ladder only on the
   Air's own deep-eval number. It lands as a 12 GB-gated pocket entry, never as
-  a Harbor Master size. Full text in `docs/house-model-proposal.md`.
+  a DeepBlue size. Full text in `docs/house-model-proposal.md`.
+- **Scope simplified to three curated, harness-trained models; Marketplace
+  goes Coming soon (founder, 2026-09-21).** The lineup is Harbor Lite (the
+  built-in phone guide, pocket), Harbor (a Qwen coder for mobile), and DeepBlue
+  (the desktop coder, Qwen 2.5 Coder 32B flagship with 14B/7B/3B fallbacks).
+  The open Marketplace is grayed out with a Coming soon tag in the nav
+  (Sidebar, desktop and phone drawer) while the scope narrows; other entry
+  points into it are left for the follow-up. DeepBlue is the rename of the
+  Harbor Master slot built earlier the same day: the internal identifiers stay
+  (`harborMaster.ts`, `HARBOR_MASTER_*`, `harbor-master`, the stable-slot
+  pattern), only the display name and copy carry "DeepBlue", and the 32B is
+  added as the flagship size (the catalog's `qwen2.5-coder-32b`, 20 GB, Apache
+  2.0). All three become the training targets for the harness (Gate 0 and the
+  adapter program), stock Qwen today, tuned weights swapped in behind the slots
+  when a number clears. The Harbor recast (guide to mobile coder) and the
+  Harbor Lite rename are separate follow-up passes.

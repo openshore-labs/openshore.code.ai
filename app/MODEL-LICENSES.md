@@ -27,11 +27,11 @@ attribution ship in the app.
 - **License:** Apache License 2.0. Downloaded from the source, not redistributed
   by us, the same posture as any pocket model.
 
-## Harbor Master (pulled through Ollama, on the desktop)
+## DeepBlue (pulled through Ollama, on the desktop)
 
-- **Weights:** Qwen 2.5 Coder, sized to the computer: 14B, 7B, or 3B (Ollama's
-  Q4_K_M builds). The slot id is `harbor-master`; the sizes are the catalog's
-  own entries (`HARBOR_MASTER_SIZES` in `app/src/lib/harborMaster.ts`).
+- **Weights:** Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 3B
+  (Ollama's Q4_K_M builds). The slot id is `harbor-master`; the sizes are the
+  catalog's own entries (`HARBOR_MASTER_SIZES` in `app/src/lib/harborMaster.ts`).
 - **Source:** the Ollama library, pulled by the desktop engine on the person's
   own machine (`ollama pull qwen2.5-coder:<size>`), never through OpenShore.
 - **License:** Apache License 2.0 as the catalog records it for each size.

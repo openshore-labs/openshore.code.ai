@@ -1,4 +1,4 @@
-// Harbor Master, the third and most capable member of the Harbor family, the
+// DeepBlue, the third and most capable member of the Harbor family, the
 // one that runs on your computer: a stable slot over catalog weights, sized to
 // the machine, out of the box (Settings > Harbor and the First Seat card), never
 // behind the Marketplace. Pinned here so a catalog rename, a copy drift, or a
@@ -44,10 +44,10 @@ interface CatalogModel {
 const catalog = JSON.parse(read('../os-code/catalog.sample.json')) as { models: CatalogModel[] };
 const byId = new Map(catalog.models.map((m) => [m.id, m]));
 
-describe('Harbor Master is a stable slot over catalog weights', () => {
+describe('DeepBlue is a stable slot over catalog weights', () => {
   it('keeps the id and the display name apart, the Harbor pattern', () => {
     expect(HARBOR_MASTER_MODEL_ID).toBe('harbor-master');
-    expect(HARBOR_MASTER_MODEL_NAME).toBe('Harbor Master');
+    expect(HARBOR_MASTER_MODEL_NAME).toBe('DeepBlue');
   });
 
   it('every size exists in the bundled catalog with the same ref, name, and size, pulled via Ollama', () => {
@@ -61,7 +61,7 @@ describe('Harbor Master is a stable slot over catalog weights', () => {
     }
   });
 
-  it('lists sizes largest first, the 3B floor last, and defaults to the middle size', () => {
+  it('lists sizes largest first, the 3B floor last, and defaults to the 7B', () => {
     const gbs = HARBOR_MASTER_SIZES.map((s) => s.sizeGB);
     expect([...gbs].sort((a, b) => b - a)).toEqual(gbs);
     expect(HARBOR_MASTER_SIZES[HARBOR_MASTER_SIZES.length - 1]!.ollamaRef).toBe('qwen2.5-coder:3b');
@@ -79,7 +79,7 @@ describe('Harbor Master is a stable slot over catalog weights', () => {
   });
 });
 
-describe('Harbor Master is sized to the computer with the engine budget', () => {
+describe('DeepBlue is sized to the computer with the engine budget', () => {
   it('the 3B on the reference box, the 7B on a 16 GB laptop or an 8 GB GPU, the 14B on a hub with room', () => {
     expect(resolveHarborMaster(cpu(8)).size.ollamaRef).toBe('qwen2.5-coder:3b');
     expect(resolveHarborMaster(cpu(8)).fit).toBe('fits');
@@ -119,7 +119,7 @@ describe('Harbor Master is sized to the computer with the engine budget', () => 
       'On Qwen 2.5 Coder 7B. 4.7 GB download.',
     );
     for (const s of HARBOR_MASTER_SIZES) {
-      expect(classLineFor(s.ollamaRef)).toMatch(/^Runs short plans|^Plans and runs/);
+      expect(classLineFor(s.ollamaRef)).toMatch(/^Runs short plans|^Plans and runs|^Full planning/);
     }
   });
 });
@@ -157,26 +157,26 @@ describe('the copy keeps the honesty bar', () => {
   });
 });
 
-describe('Harbor Master is out of the box on the desktop', () => {
+describe('DeepBlue is out of the box on the desktop', () => {
   const settings = read('src/screens/SettingsScreen.tsx');
   const seat = read('src/components/FirstSeat.tsx');
   const stack = read('src/screens/StackScreen.tsx');
   const store = read('src/state/store.ts');
 
   it('has a Settings > Harbor row on the desktop, read from the engine, with Install only', () => {
-    expect(settings).toContain('label="Harbor Master"');
+    expect(settings).toContain('label="DeepBlue"');
     expect(settings).toContain('sub={HARBOR_MASTER_BYLINE}');
     expect(settings).toContain('harborMasterInstalled(desktopStatus?.ollama.models)');
     expect(settings).toContain('onInstall={() => void installHarborMaster()}');
     // Ollama owns the weights: no app-side uninstall or cancel on this row.
-    const row = settings.slice(settings.indexOf('label="Harbor Master"'));
+    const row = settings.slice(settings.indexOf('label="DeepBlue"'));
     const rowEnd = row.indexOf('/>', row.indexOf('<HarborInstallButton'));
     expect(row.slice(0, rowEnd)).not.toContain('onUninstall');
     expect(row.slice(0, rowEnd)).not.toContain('onCancel');
     // The desktop row sits outside the phone-only gate.
     const phoneGate = settings.indexOf('{!isDesktop() ? (', settings.indexOf('title="Harbor"'));
-    expect(settings.indexOf('label="Harbor Master"')).toBeGreaterThan(phoneGate);
-    expect(settings.indexOf('label="Harbor Master"')).toBeGreaterThan(
+    expect(settings.indexOf('label="DeepBlue"')).toBeGreaterThan(phoneGate);
+    expect(settings.indexOf('label="DeepBlue"')).toBeGreaterThan(
       settings.indexOf(') : null}', phoneGate),
     );
   });
@@ -221,14 +221,14 @@ describe('the guides know the third Harbor', () => {
 
   it('Harbor Light recites it and the shared facts name the family', () => {
     expect(buildHarborMiniSystemPrompt()).toContain(guideStepsCompact('get-harbor-master'));
-    expect(APP_KNOWLEDGE).toContain('Harbor Master');
+    expect(APP_KNOWLEDGE).toContain('DeepBlue');
     expect(APP_KNOWLEDGE).toContain('never through the Marketplace');
   });
 });
 
 describe('the docs carry the third entry', () => {
-  it('MODEL-LICENSES.md and docs/HARBOR.md name Harbor Master', () => {
-    expect(read('MODEL-LICENSES.md')).toContain('Harbor Master');
-    expect(read('../docs/HARBOR.md')).toContain('Harbor Master');
+  it('MODEL-LICENSES.md and docs/HARBOR.md name DeepBlue', () => {
+    expect(read('MODEL-LICENSES.md')).toContain('DeepBlue');
+    expect(read('../docs/HARBOR.md')).toContain('DeepBlue');
   });
 });
