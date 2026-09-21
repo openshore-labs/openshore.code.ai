@@ -1673,3 +1673,30 @@ execution contract. Newest at the bottom.
   session's copy predates), so this session's own `os-code/docs/MAC-DESKTOP.md`
   (the wrong location to begin with) was deleted rather than kept as a second,
   drifting source of truth.
+- **Harbor Master is the third and final out-of-the-box model, and it lives on
+  the desktop (founder, 2026-09-21).** The founder's brief: a compact, open,
+  most-capable model "like Harbor Light and Harbor", downloadable from the start
+  without the Marketplace, so a hub gets started Docked in one tap. It ships
+  as the third member of the Harbor family, not as a Marketplace featured pick
+  and not as a new room: id `harbor-master` (a stable slot, the Harbor pattern),
+  display name "Harbor Master" in one constant (a CMO rename touches copy only),
+  code in `app/src/lib/harborMaster.ts`, a Settings > Harbor row on the desktop,
+  and the First Seat card installing it in place. This supersedes the 2026-09-04
+  "Harbor rows are gated to non-desktop" ruling for this row only: the two
+  guides stay phone-only, the third is desktop-only. The convergence memo's
+  "Harbor is taken" concern was heard; the founder chose the family name, and
+  the word still means one thing, the out-of-the-box models.
+- **Harbor Master's weights are stock Qwen 2.5 Coder, sized to the computer
+  (2026-09-21).** Largest size that is not too big by the engine's own budget:
+  the 14B on a hub with room, the 7B on a 16 GB laptop or an 8 GB GPU, the 3B on
+  the CPU-only reference box; before the machine is read, the 7B, never the
+  biggest on a guess. The same list the Starter bundle and the Stack screen's
+  one-tap starter already used, so `starterModel.ts` now derives from
+  `harborMaster.ts` rather than carrying a second copy. Presence is read from
+  the engine's Ollama list, never remembered by the app, so the row cannot
+  drift from what Ollama holds; there is no app-side uninstall or cancel,
+  since Ollama owns the pull (`ollama rm` is the honest remove). Copy says
+  "the most capable Harbor" and "a real coding agent", never "as smart as
+  Claude", "a compact Opus", "trains itself", or "always on"; "tuned for
+  OpenShore" is written only when OpenShore's own adapter ships, at which point
+  only the refs and the attribution change (`docs/house-model-proposal.md`).

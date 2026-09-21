@@ -19,6 +19,26 @@ always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
 
+### Harbor Master, the third out-of-the-box model (founder brief, 2026-09-21)
+
+The founder wanted a compact, open, most-capable model "like Harbor Light and
+Harbor", downloadable from the start without the Marketplace, so a home-lab
+hub gets started Docked in one tap. Built as the third and final member of the
+Harbor family, on the desktop: `app/src/lib/harborMaster.ts` (id
+`harbor-master`, a stable slot over the catalog's own Qwen 2.5 Coder sizes,
+the display name in one constant for the CMO); `ensureHarborMaster` in the
+store (pull the size that fits by catalog id through the engine, seat its
+Ollama ref, refresh the gate); the First Seat card named Harbor Master and
+installing in place; the Stack starter on the same action; a desktop Settings
+> Harbor row (Install, percent, Retry, Installed; no cancel or uninstall, since
+Ollama owns the weights) plus the attribution. `starterModel.ts` and the
+Starter bundle derive from the one list, which gained the 14B for a hub with
+room (the 7B before the machine is read, the 3B on the CPU floor). Harbor
+Light recites `get-harbor-master`; `APP_KNOWLEDGE` names the family.
+`test/harborMaster.test.ts` pins the ids, the fit table, the honesty bar on
+the copy, the desktop-only row, and the docs. The weights are stock today; the
+plan for OpenShore's own behind the same slot is `docs/house-model-proposal.md`.
+
 ### The premium front door, integrated (founder "build" go, 2026-09-16)
 
 The founder's build order: make the framework a premium human experience for
@@ -409,16 +429,26 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **The house model (founder brief, 2026-09-21): an open-weights coder
-      tuned for OpenShore, the featured pick for the hub tier.** Proposal in
-      `docs/house-model-proposal.md`. It is not a compact Opus (closed weights,
-      and distilling from Claude is barred by the terms); it is the harness's
-      discipline baked into an Apache-2.0 base, chosen and gated by
-      `osc eval --deep --attempts 3` on a hub-class reference box, with a
-      training-versus-held-out split. Step 0 needs the founder: name the hub
-      reference box (the home lab), run the stock candidates there, and check
-      the 3B seed's license against its model card. The trainer is Lessons
-      Tier 2's sidecar, built once. Name is a CMO call; Harbor stays the phone.
+- [ ] **Harbor Master on a real desktop (built 2026-09-21, unverified off the
+      sandbox).** On the founder's box with Ollama up: the First Seat card reads
+      "Harbor Master", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
+      computer (8 GB, no GPU)."; Set up pulls it with a percent on the button,
+      the card leaves, a chat opens; Settings > Harbor reads Installed. A 16 GB
+      or GPU machine gets the 7B, a hub with room the 14B. Then pair the phone
+      and confirm My computer. Follow-ups: a phone-side row reading "On your
+      computer" when docked; an engine-side uninstall if `ollama rm` is too
+      much to ask; the 14B's loop score on a hub-class box (only the 3B has a
+      measured deep number).
+- [ ] **OpenShore's own weights behind the Harbor Master slot (founder brief,
+      2026-09-21).** Proposal in `docs/house-model-proposal.md`. It is not a
+      compact Opus (closed weights, and distilling from Claude is barred by the
+      terms); it is the harness's discipline baked into the Apache-2.0 base
+      behind each size, chosen and gated by `osc eval --deep --attempts 3` on a
+      hub-class reference box, with a training-versus-held-out split, and
+      swapped in by changing only the refs and the attribution. Step 0 needs
+      the founder: name the hub reference box (the home lab), run the stock
+      sizes there, and check the 3B seed's license against its model card. The
+      trainer is Lessons Tier 2's sidecar, built once.
 
 - [ ] **Bring the work-first cover to the desktop `StackScreen` (optional).** The
       Quarterback rename to Reasoning LLM is done (2026-09-15); the older desktop
@@ -896,19 +926,22 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
-### 2026-09-16, the premium front door integrated and the streams merged
+### 2026-09-21, Harbor Master: the third out-of-the-box model, on the desktop
 
-The four-stream "build" go landed on `claude/openshore-premium-agent-harness`:
-per-device pairing, the daemon appliance (tray, login item, power-save blocker,
-tailnet re-bind) and an in-app Ollama bridge, the First Seat empty state with a
-hardware-fit local pick, the honest guarded-stream seq fix and disposed-driver
-handling, the graduated ethics ladder (migration 0018), and Linux packaging with
-a headless smoke test plus a tag-driven `release.yml`. Integrated inline after
-the parallel build agents hit a usage-credit limit mid-run; resolved the fit-
-curve fork by keeping one honest `fitVerdict` and re-pinning the two edge tests
-(see DECISIONS). Gates green across both packages, and the Linux AppImage and
-deb built and smoke-verified in the sandbox that day (the packaged engine booted
-headless); only node-pty's terminal rebuild is deferred to CI (blocked headers).
+The founder's brief came in two beats. First, "my own open-source, more
+compact Opus 4.8 for a home lab, the featured model you download to your hub
+and get started Docked." A memo (`docs/house-model-proposal.md`) grounded it:
+not a compact Opus (closed weights, and distilling from Claude is barred by
+the terms), but an open coder tuned to the harness, gated by the deep eval on
+a hub-class box. Second, the correction that set the shape: "like Harbor Light
+and Harbor, a third and final more advanced out-of-the-box model", accessible
+from the start without the Marketplace. So the slot shipped now, on stock
+weights, the Harbor pattern exactly (id decoupled from weights, name in one
+constant): the First Seat card, the Stack starter, and a desktop Settings row
+ride one store action that pulls the size that fits and seats it; the tuned
+weights, when they clear the gate, replace the refs under the same name. Gates
+green: app 1050 tests, typecheck, lint, Prettier, the Vite build, os-code
+em-dash and PROGRESS shape guards. Two DECISIONS.
 
 ### 2026-09-17, v0.1.1 shipped, sign-in and auto-update reach every platform
 

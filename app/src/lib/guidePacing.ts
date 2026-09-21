@@ -14,6 +14,7 @@ import { guideOpening } from './setupGuides.js';
  *  list against the prompt source. */
 export const GUIDES_PACED_BY_HARBOR_LIGHT: readonly SetupGuideId[] = [
   'get-harbor',
+  'get-harbor-master',
   'connect-cloud-key',
   'pick-a-model',
 ];

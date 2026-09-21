@@ -6,9 +6,15 @@
 // the card seats with a soft teal bloom and a single tick. The whole surface is
 // presence-aware (it animates out, never snaps) and honors reduced motion.
 //
+// On the desktop the seat is Harbor Master, the third and most capable member
+// of the Harbor family, sized to this computer, and the one tap installs it
+// right here (the pull rides the store's ensureHarborMaster, progress on the
+// button). On the phone the seat routes to the Marketplace, where the pocket
+// picks live.
+//
 // When a brain IS ready this renders its fallback (the greeting, and Harbor
 // Light's First Moves on the phone), so the seat only ever owns an empty room.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, platform } from '../lib/platform.js';
@@ -24,10 +30,18 @@ import {
   type HardwareRead,
 } from '../lib/firstSeat.js';
 import { resolveStarter } from '../lib/starterModel.js';
+import { HARBOR_MASTER_MODEL_NAME, harborMasterSizeLine } from '../lib/harborMaster.js';
 import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 
 export function FirstSeat({ fallback }: { fallback: ReactNode }) {
-  const { settings, cloudKeyPresent, sourceReady, setView } = useApp();
+  const {
+    settings,
+    cloudKeyPresent,
+    sourceReady,
+    setView,
+    ensureHarborMaster,
+    harborMasterDownload,
+  } = useApp();
   const [desktopStatus, setDesktopStatus] = useState<
     | {
         hardwareSummary?: string;
@@ -38,11 +52,12 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
     | undefined
   >(isDesktop() ? undefined : 'error');
 
-  // On the desktop, read the engine once: whether a model is configured, and
-  // this computer's hardware so the pick is sized to it. On the phone there is
+  // On the desktop, read the engine: whether a model is configured, and this
+  // computer's hardware so the pick is sized to it. Read again after an install
+  // so the seat can leave once the engine is configured. On the phone there is
   // no engine to read, so this stays out of the way.
-  useEffect(() => {
-    if (!isDesktop() || !bridge()) return;
+  const readEngine = useCallback(() => {
+    if (!isDesktop() || !bridge()) return () => {};
     let live = true;
     bridge()!
       .status()
@@ -52,6 +67,7 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
       live = false;
     };
   }, []);
+  useEffect(() => readEngine(), [readEngine]);
 
   const engineModel =
     desktopStatus && desktopStatus !== 'error'
@@ -76,6 +92,30 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
 
   const starter = resolveStarter(hardware);
   const pick = starter.pick;
+  const desktop = isDesktop();
+  // The card's name: Harbor Master on the desktop (what is really behind it is
+  // named on the size line), the weights' own name on the phone.
+  const seatName = desktop ? HARBOR_MASTER_MODEL_NAME : pick.name;
+  const sizeLine = desktop
+    ? harborMasterSizeLine({
+        catalogId: pick.catalogId,
+        ollamaRef: pick.ollamaRef,
+        weightsName: pick.name,
+        sizeGB: pick.sizeGB,
+      })
+    : `${pick.sizeGB} GB download.`;
+  const pulling = Boolean(harborMasterDownload && !harborMasterDownload.failed);
+  const failed = Boolean(harborMasterDownload?.failed);
+
+  const setUp = () => {
+    if (!desktop) {
+      setView('marketplace');
+      return;
+    }
+    void ensureHarborMaster().then((ok) => {
+      if (ok) readEngine();
+    });
+  };
 
   return (
     <div className={`first-seat${closing ? ' closing' : ''}`}>
@@ -94,16 +134,22 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
           if (e.animationName === 'seat-card-in') hapticTick();
         }}
       >
-        <h2 className="first-seat-name">{pick.name}</h2>
+        <h2 className="first-seat-name">{seatName}</h2>
         <p className="first-seat-class">{classLineFor(pick.ollamaRef)}</p>
         <p className="first-seat-fit">
-          {pick.sizeGB} GB download. {fitLine(starter.fit, hardware)}
+          {sizeLine} {fitLine(starter.fit, hardware)}
         </p>
-        <button
-          className="btn primary press-fb"
-          onClick={() => setView(isDesktop() ? 'stack' : 'marketplace')}
-        >
-          Set up {pick.name}
+        {failed ? (
+          <p className="first-seat-fit" role="status">
+            {harborMasterDownload!.label}
+          </p>
+        ) : null}
+        <button className="btn primary press-fb" disabled={pulling} onClick={setUp}>
+          {pulling
+            ? `${harborMasterDownload!.label} of ${seatName}`
+            : failed
+              ? `Retry ${seatName}`
+              : `Set up ${seatName}`}
         </button>
       </div>
       <div className="first-seat-more" style={{ '--i': 3 } as React.CSSProperties}>

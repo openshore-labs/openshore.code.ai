@@ -109,11 +109,13 @@ describe('fitVerdict mirrors the engine budget exactly', () => {
 });
 
 describe('resolveStarter is a preference list resolved by fit', () => {
-  it('prefers the 7B, keeps the 3B as the floor seat', () => {
+  it('is Harbor Master: the 14B where there is room, the 7B, then the 3B as the floor seat', () => {
     expect(STARTER_CANDIDATES.map((c) => c.catalogId)).toEqual([
+      'qwen2.5-coder-14b',
       'qwen2.5-coder-7b',
       'qwen2.5-coder-3b',
     ]);
+    // The default pick, before the machine is read, is never the biggest.
     expect(STARTER_MODEL.catalogId).toBe('qwen2.5-coder-7b');
   });
 
@@ -175,12 +177,15 @@ describe('the class line comes from the engine, never invented on the card', () 
     expect(modelClassFor(32)).toBe('large');
   });
 
-  it('the starter picks are both small, so the card says short plans', () => {
-    for (const c of STARTER_CANDIDATES) {
+  it('the 7B and 3B picks are small, so the card says short plans; the 14B is mid', () => {
+    for (const c of STARTER_CANDIDATES.filter((c) => c.catalogId !== 'qwen2.5-coder-14b')) {
       expect(classLineFor(c.ollamaRef)).toBe(
         'Runs short plans. The harness carries the checklist.',
       );
     }
+    expect(classLineFor('qwen2.5-coder:14b')).toBe(
+      'Plans and runs multi-step work with subagents.',
+    );
   });
 });
 
