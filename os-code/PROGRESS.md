@@ -33,15 +33,16 @@ the display name in one constant for the CMO); `ensureHarborMaster` in the
 store (pull the size that fits by catalog id through the engine, seat its
 Ollama ref, refresh the gate); the First Seat card named DeepBlue and
 installing in place; the Stack starter on the same action; a desktop Settings
+
 > Harbor row (Install, percent, Retry, Installed; no cancel or uninstall, since
-Ollama owns the weights) plus the attribution. `starterModel.ts` and the
-Starter bundle derive from the one list, which gained the 32B flagship (the
-7B before the machine is read, never the biggest on a guess). Internal slot
-identifiers stay (`harborMaster`, `harbor-master`); only the display name and
-copy carry DeepBlue. `test/harborMaster.test.ts` and `test/harborGuides.test.ts`
-pin the ids, the fit table, the honesty bar, the rows, and the docs. Gates
-green across all three passes; the plan for the tuned weights behind the slots
-is `docs/house-model-proposal.md`.
+> Ollama owns the weights) plus the attribution. `starterModel.ts` and the
+> Starter bundle derive from the one list, which gained the 32B flagship (the
+> 7B before the machine is read, never the biggest on a guess). Internal slot
+> identifiers stay (`harborMaster`, `harbor-master`); only the display name and
+> copy carry DeepBlue. `test/harborMaster.test.ts` and `test/harborGuides.test.ts`
+> pin the ids, the fit table, the honesty bar, the rows, and the docs. Gates
+> green across all three passes; the plan for the tuned weights behind the slots
+> is `docs/house-model-proposal.md`.
 
 ### The premium front door, integrated (founder "build" go, 2026-09-16)
 
