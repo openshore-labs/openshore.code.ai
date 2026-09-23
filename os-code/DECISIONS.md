@@ -1730,6 +1730,22 @@ execution contract. Newest at the bottom.
   adapter program), stock Qwen today, tuned weights swapped in behind the slots
   when a number clears. The Harbor recast (guide to mobile coder) and the
   Harbor Lite rename are separate follow-up passes.
+- **No OpenShore relay; phone-to-computer stays serverless (founder,
+  2026-09-22).** The founder asked for a built-in terminal reached through the
+  account instead of Termius plus Tailscale. The native Terminal room already
+  exists (PTY on the desktop, xterm.js on the phone), so the only open question
+  was the transport. An account-based relay (the desktop dials out to an
+  OpenShore server, end-to-end encrypted) went to the eight advisors: seven
+  said build with conditions, the Chief of Staff said not now. The founder
+  declined it on principle: no OpenShore server sits in the path of a person's
+  work, so the experience stays truly private and local and the site's "never
+  reach an OpenShore server" and "no background pings" promises stay true. The
+  phone reaches the computer directly, over Tailscale or the local network, and
+  pairing stays device-to-device (the QR claim). A hosted cloud computer is
+  also out. Do not re-propose a relay, a TURN fallback, or account-based
+  discovery that stores devices on a server; friction is fixed on the device
+  (a post-pairing "Open a terminal" card, a plain home-folder shell when no
+  repo is open, split "can't reach" vs "pairing expired" errors).
 - **Harness Currents (Jev), founder 2026-09-23:** the "add Jev" ask resolved
   to a new, independent Settings group above Agentic Currents, not an Agentic
   Current (Jev is a decision model, not a chat seat, so it fails the agentic

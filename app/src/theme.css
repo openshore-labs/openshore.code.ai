@@ -1805,6 +1805,19 @@ textarea {
   animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 
+/* After a phone pairs: the next step, arriving in place of the connect hint. */
+.pair-next {
+  margin-top: 10px;
+  animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
+}
+
+/* The "No session open" card's two ways in: a plain shell, or a repository. */
+.tc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* A calm status dot beside the host name on the live terminal. */
 .tc-running {
   display: flex;

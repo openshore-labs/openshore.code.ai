@@ -13,6 +13,7 @@ import {
 } from 'os-code/dist/src/daemon/session.js';
 import { startDaemon, type RunningDaemon } from 'os-code/dist/src/daemon/serve.js';
 import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/terminal.js';
+import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
 import { getAnthropicKey, loginWithApiKey, logoutClaude } from 'os-code/dist/src/auth/claude.js';
 import { loginWithPat, logoutGithub, isGithubConnected } from 'os-code/dist/src/auth/github.js';
@@ -372,6 +373,16 @@ export class EngineHost {
   ): Promise<
     { termId: string; cols: number; rows: number } | { unavailable: true; error: string }
   > {
+    // The plain home shell belongs to no session: it opens in the home folder
+    // and reopens the shell it left running, the same rule as the daemon's.
+    if (sessionId === HOME_SHELL_ID) {
+      try {
+        const termId = this.terminals.liveTermId(HOME_SHELL_ID);
+        return await this.terminals.ensure({ sessionId, termId, cwd: homedir(), cols, rows });
+      } catch (err) {
+        return { unavailable: true, error: (err as Error).message };
+      }
+    }
     const driver = this.drivers.get(sessionId);
     if (!driver) return { unavailable: true, error: 'That session is not open.' };
     try {

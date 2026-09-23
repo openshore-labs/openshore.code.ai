@@ -406,35 +406,9 @@ overlay in `VoiceMode.tsx` and the picker in `VoicePicker.tsx`, a voice button i
 `docs/voice-mode.md`, rulings in `DECISIONS.md`. Like dictation, the native speech
 path is only provable on a device (What remains).
 
-### The plan-first workflow (My Stack as the anchor, the reasoning LLM draws a play)
-
-The founder's explicit workflow: a prompt flows through the harness (always-on
-ethics plus curatable filters), starts in My Stack, and the reasoning LLM frames
-it (asking clarifying questions only when genuinely ambiguous), composes a play
-(an ordered set of handoffs to specialist models with dependencies), briefs the
-user (a short checklist of steps and their owner models, live), runs it in
-dependency order handing each step to its owner, re-plans at bounded
-checkpoints, and streams a final synthesis. Any category with no placed
-specialist is run by the reasoning LLM; a step can also target a specific model
-by id for a particular subject or decision (the level-deeper routing). The flow
-degrades to a single routed turn when the anchor is a weak or unreachable model,
-the plan will not parse, or the play is one step, so a modest stack still just
-answers. It is app-native (works on the phone alone); a repo/tool step is marked
-to run on the paired computer's engine when docked (engine execution from this
-flow is a seam, a follow-up). Pure core in `app/src/lib/play.ts` (scheduling,
-re-plan merge, owner resolution, the brief, planner/re-plan prompts and robust
-JSON parse), fully tested in `app/test/play.test.ts` (30 cases); the runner is
-`app/src/drivers/stackDriver.ts`; the brief renders as todos-with-owners
-(`TodoItem`/`TodoRow` gained `owner`, shown in `TodoCard`). Doc and a diagram in
-`docs/workflow.md`. The three follow-ups then landed (CTO-guided, 2026-09-06):
-the clarifying questions are a tappable picker (`ClarifyCard`, a `clarify`
-driver event); a repo/tool step runs on the paired computer's engine when docked
-over one shared `RemoteDriver` session with real approvals surfaced (describe
-only when not docked or no local workspace is bound); and crew routines, which
-keep the engine's own ReAct loop, now write a Plan section into their vault note
-from the agent's `todoWrite`. Live plan quality, the engine hand-off, and the
-routine Plan note need a real reasoning model, a paired computer, and a device
-(unverifiable in a web session).
+The plan-first workflow (My Stack as the anchor, the reasoning LLM draws a play)
+moved to `docs/progress-archive.md` on 2026-09-23; it still ships, and its
+live-quality, engine hand-off, and routine Plan-note checks stay open.
 
 Video attachments (frame-by-frame vision, never the raw video) shipped and
 moved to `docs/progress-archive.md` on 2026-09-17; device and desktop-FFmpeg
@@ -464,6 +438,14 @@ extended that day by the graduated enforcement ladder (migration
       (`ProjectDetailScreen`): confirm two projects run different currents at
       once and a shared project carries the selection. Follow-up: a dedicated
       card, not a note.
+- [ ] **The terminal without the back-and-forth, on real devices (built
+      2026-09-23, unverified off the sandbox).** On the founder's box and
+      iPhone over Tailscale: pair, tap "Open a terminal on your computer" on
+      the Paired card, land in the Terminal room with no first-run intro; with
+      no repo open, "Open a shell" starts a shell in the home folder; leave the
+      room and come back to the same shell. Turn Tailscale off on the phone and
+      read "Can't reach your computer"; revoke the phone on the desktop and read
+      "no longer accepts this device". A member phone must not see Open a shell.
 - [ ] **DeepBlue on a real desktop (built 2026-09-21, unverified off the
       sandbox).** On the founder's box with Ollama up: the First Seat card reads
       "DeepBlue", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
@@ -963,26 +945,39 @@ extended that day by the graduated enforcement ladder (migration
 
 ### 2026-09-23, Harness Currents: Jev, a cost-saving decision layer
 
-The founder's "add Jev availability" resolved through a design pass: Jev is
-TypeSafe AI's System One decision model, not a chat seat, so it could not sit
-on the Bench like the other providers. It became a new, independent Settings
-group above Agentic Currents. A Harness Current layers a cheap decision method
-into the harness (steer which seat answers, skip steps that need no model), on
-alongside any agentic current, one at a time within its own group, same arrival
-animation and two-part gate. Jev is scoped to a paid/cloud seat and does three
-jobs: the escalation gate and the task classifier in one `JevAdvisor.steer`
-call in the app stack driver (replacing the regex `classifyTask` when on), and
-the verify judge in the engine loop, each an amber card with a pill. Built:
-protocol wire shapes + the reusable Jev client (`os-code/src/harness/jev.ts`),
-the app pure core, store, Settings group, connect sheet, pill, water-line,
-transcript card, and the handle threaded through the daemon and electron
-bridge. Copy claims no saving until `osc eval` measures it (tenet 2); tenet 1's
-"no name" is a deliberate founder supersede for this one group. Then, same day,
-BOTH current groups moved from app Settings to a per-project choice
+"add Jev availability" resolved through a design pass: Jev is TypeSafe AI's
+System One decision model, not a chat seat, so it became a new, independent
+currents group (Harness Currents) rather than a Bench model. It layers a cheap
+decision method into the harness: scoped to a paid/cloud seat, it does the
+escalation gate and the task classifier in one `JevAdvisor.steer` call in the
+app stack driver and the verify judge in the engine loop, each an amber card
+with a pill. Copy claims no saving until `osc eval` measures it (tenet 2); tenet
+1's "no name" is a deliberate founder supersede for this one group. Then, same
+day, BOTH current groups moved from app Settings to a per-project choice
 (`Project.agenticCurrent`/`harnessCurrent`, UI `components/ProjectCurrents.tsx`),
 so different projects run different currents at once; connecting one stays
 device-local, and the rooms and each session read the active project via
-`agenticView`/`harnessView`. Gates green both packages (838 + 1071 tests, etc).
+`agenticView`/`harnessView`. Detail in Current state above; DECISIONS x2. Gates
+green both packages (838 + 1071 tests).
+
+### 2026-09-23, the terminal without Termius: fixed on the device, no relay
+
+The founder asked for OpenShore's own terminal, reached through the account
+instead of Termius plus Tailscale. The native Terminal room already existed, so
+the question was the transport. An account relay went to the eight advisors
+(seven: build with conditions; the Chief of Staff: not now), and the founder
+declined it on principle: no OpenShore server in the path of a person's work
+(DECISIONS). CX's finding was that most of the pain was reaching the room, not
+Tailscale, so that is what shipped. The Paired card now offers "Open a terminal
+on your computer"; a device that already reaches a computer skips the Terminal
+room's first-run intro; with no session open the room offers a plain shell in
+the home folder (`HOME_SHELL_ID`, admin-only on the daemon, reopens the running
+shell, never read by the agent; `os-code/src/daemon/serve.ts`
+`handleTerminalRoute`, `app/src/lib/homeShell.ts`); and a failed `/health`
+now tells "can't reach your computer" from "it no longer accepts this device"
+with a credential-free empty-claim probe. The phone's main menu already listed
+Terminal. Gates green: app 1056 tests, engine 824, both typechecks, lint, the
+Vite build.
 
 ### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
 

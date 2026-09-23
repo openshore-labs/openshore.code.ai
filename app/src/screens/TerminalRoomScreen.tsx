@@ -8,7 +8,11 @@
 // attached over the tailnet), so on a one machine setup there is never a choice
 // to make. Reaching a second desktop's own hub is a separate, approved
 // follow-up; for now this room shows the local engine and any attached hub.
-import type { CSSProperties } from 'react';
+//
+// With no coding session open, the room offers the plain home shell: a shell in
+// the target computer's home folder, no repository needed. The model stays out
+// of it (it only reads a session's own terminal).
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { driverFor, isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -16,6 +20,7 @@ import { hapticApproval } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { Switch } from '../components/Switch.js';
 import { DesktopTerminal } from '../components/DesktopTerminal.js';
+import { canOpenHomeShell, homeShellHost } from '../lib/homeShell.js';
 import {
   canControlTerminal,
   terminalControlOn,
@@ -43,10 +48,33 @@ export function TerminalRoomScreen() {
   const controlOn = terminalControlOn(settings.terminalControl, targetId);
   const seen = settings.terminalRoomSeen === true;
 
+  // The plain home shell, opened on a tap when no session is. A member device
+  // is never offered it: the hub keeps a raw shell admin-only. The host is
+  // built once per target and disposed when the target changes or the room
+  // closes; the shell itself keeps running on the computer.
+  const daemon = settings.daemon;
+  const shellInput = {
+    desktopLocal,
+    daemon: desktopLocal ? undefined : daemon,
+    member: !desktopLocal && serverRole === 'member',
+  };
+  const shellOffered = canOpenHomeShell(shellInput);
+  const [homeShellOpen, setHomeShellOpen] = useState(false);
+  const shellKey = `${desktopLocal ? 'local' : (daemon?.baseUrl ?? '')}|${shellInput.member}`;
+  const homeHost = useMemo(
+    () => (homeShellOpen && !hasTerminal ? homeShellHost(shellInput) : undefined),
+    // shellKey carries the target; shellInput is rebuilt every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [homeShellOpen, hasTerminal, shellKey],
+  );
+  useEffect(() => () => homeHost?.dispose(), [homeHost]);
+
   // First run: name the one requirement (a hub reachable over Tailscale) and
   // point at the flow that actually installs it, rather than a second copy of
-  // those steps. "Got it" retires the intro on this device.
-  if (!seen) {
+  // those steps. "Got it" retires the intro on this device. A device that
+  // already reaches a computer (this desktop, or a paired phone) has done both
+  // steps, so it skips straight to the terminal.
+  if (!seen && !targetId) {
     return (
       <div className="screen">
         <BackBar title="Terminal" />
@@ -151,16 +179,41 @@ export function TerminalRoomScreen() {
               <DesktopTerminal key={activeId} driver={driver} />
             </div>
           </div>
+        ) : homeHost ? (
+          <div className="tc-section" style={{ '--i': 1 } as CSSProperties}>
+            <div className="tc-running">
+              <span className="tc-dot" aria-hidden="true" />
+              Home folder on <span className="tc-host">{targetLabel}</span>
+            </div>
+            <div className="terminal-room-live">
+              <DesktopTerminal key={shellKey} driver={homeHost} />
+            </div>
+            <p className="hint" style={{ marginTop: 10 }}>
+              A plain shell, no repository needed. The model stays out of this one.{' '}
+              <button className="linklike" onClick={() => setView('repos')}>
+                Open a repository
+              </button>{' '}
+              to code with it.
+            </p>
+          </div>
         ) : targetId ? (
           <div className="card tc-section" style={{ '--i': 1 } as CSSProperties}>
             <h3 style={{ marginTop: 0 }}>No session open</h3>
             <p className="hint" style={{ marginBottom: 10 }}>
-              The terminal follows your active coding session. Open a repository to start one on{' '}
-              {targetLabel}.
+              {shellOffered
+                ? `Open a plain shell in the home folder on ${targetLabel}, or open a repository to code with the model there.`
+                : `The terminal follows your active coding session. Open a repository to start one on ${targetLabel}.`}
             </p>
-            <button className="btn press-fb" onClick={() => setView('repos')}>
-              Open a repository
-            </button>
+            <div className="tc-actions">
+              {shellOffered ? (
+                <button className="btn primary press-fb" onClick={() => setHomeShellOpen(true)}>
+                  Open a shell
+                </button>
+              ) : null}
+              <button className="btn press-fb" onClick={() => setView('repos')}>
+                Open a repository
+              </button>
+            </div>
           </div>
         ) : (
           <div className="card tc-section" style={{ '--i': 0 } as CSSProperties}>
