@@ -2820,6 +2820,23 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-23)
 
+### 2026-09-23, Harness Currents: Jev, a cost-saving decision layer
+
+"add Jev availability" resolved through a design pass: Jev is TypeSafe AI's
+System One decision model, not a chat seat, so it became a new, independent
+currents group (Harness Currents) rather than a Bench model. It layers a cheap
+decision method into the harness: scoped to a paid/cloud seat, it does the
+escalation gate and the task classifier in one `JevAdvisor.steer` call in the
+app stack driver and the verify judge in the engine loop, each an amber card
+with a pill. Copy claims no saving until `osc eval` measures it (tenet 2); tenet
+1's "no name" is a deliberate founder supersede for this one group. Then, same
+day, BOTH current groups moved from app Settings to a per-project choice
+(`Project.agenticCurrent`/`harnessCurrent`, UI `components/ProjectCurrents.tsx`),
+so different projects run different currents at once; connecting one stays
+device-local, and the rooms and each session read the active project via
+`agenticView`/`harnessView`. Detail in Current state above; DECISIONS x2. Gates
+green both packages (838 + 1071 tests).
+
 ### 2026-09-23, the terminal without Termius: fixed on the device, no relay
 
 The founder asked for OpenShore's own terminal, reached through the account

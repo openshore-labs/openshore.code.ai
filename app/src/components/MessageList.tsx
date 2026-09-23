@@ -1,5 +1,6 @@
-// The transcript: user bubbles, assistant prose with a live caret while
-// streaming, the model's folded reasoning, tool cards, the plan card, the
+// The transcript: user bubbles, assistant prose that arrives a few words at a
+// time, each group fading up from light to full ink the way Claude's does, the
+// model's folded reasoning, tool cards, the plan card, the
 // changed-files record, quiet status lines, and citations at the end. A
 // working row fills the gap between a send and the first token, and a "new
 // messages" pill offers the way back when the person has scrolled up.
@@ -7,6 +8,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
+import { WORD_FADE_MS } from '../lib/streamSmoothing.js';
 import { hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
 import { Markdown } from './Markdown.js';
@@ -41,17 +43,16 @@ function AssistantBubble({
   useEffect(() => {
     onReveal?.();
   }, [shown.length, onReveal]);
-  // The caret stays while any text is still on its way (the stream may have
-  // ended with the tail still typing) and fades once the last character lands.
-  // It rides inside the markdown as a pseudo-element on the last line, so it
-  // sits at the end of the text rather than as its own block beneath it.
+  // No caret: like Claude, the arrival itself is the signal. Words stay split
+  // into fading spans while any text is on its way, and for one fade after the
+  // last word lands (so the tail finishes its fade instead of popping to ink).
+  // A settled reply renders plain.
   const live = streaming || settling;
-  const { mounted: caretMounted, closing: caretClosing } = useExitPresence(live, 300);
-  const caret = caretMounted ? (caretClosing ? 'out' : 'on') : 'off';
+  const { mounted: fading } = useExitPresence(live, WORD_FADE_MS);
   return (
     <div className="msg-assistant">
       {showModel && model ? <div className="msg-model">{model}</div> : null}
-      <Markdown text={shown} streaming={live} caret={caret} />
+      <Markdown text={shown} streaming={live} fade={fading} />
     </div>
   );
 }

@@ -943,6 +943,17 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-23, replies arrive like Claude's: whole words that fade in
+
+From the founder's screen recording of the Claude app: a reply lands a few
+whole words at a time, each group light gray and fading up to full ink over
+about 400ms, with no caret. The reveal now paces on word boundaries and holds
+back a word still arriving (`revealLimit`/`toWordEnd` in
+`app/src/lib/streamSmoothing.ts`); a rehype plugin (`app/src/lib/fadeWords.ts`)
+splits a live reply's prose into word spans that fade on mount (`.md-live .w`,
+`--dur-6`), so words already on screen never replay. Code blocks are not split;
+a settled reply renders plain. The breathing caret and its CSS are gone.
+
 ### 2026-09-23, first open is the chat; Personal or Business only at sign-up
 
 Founder: assume personal until sign-in, ask Personal or Business only when a
@@ -975,20 +986,7 @@ in CI here).
 
 ### 2026-09-23, Harness Currents: Jev, a cost-saving decision layer
 
-"add Jev availability" resolved through a design pass: Jev is TypeSafe AI's
-System One decision model, not a chat seat, so it became a new, independent
-currents group (Harness Currents) rather than a Bench model. It layers a cheap
-decision method into the harness: scoped to a paid/cloud seat, it does the
-escalation gate and the task classifier in one `JevAdvisor.steer` call in the
-app stack driver and the verify judge in the engine loop, each an amber card
-with a pill. Copy claims no saving until `osc eval` measures it (tenet 2); tenet
-1's "no name" is a deliberate founder supersede for this one group. Then, same
-day, BOTH current groups moved from app Settings to a per-project choice
-(`Project.agenticCurrent`/`harnessCurrent`, UI `components/ProjectCurrents.tsx`),
-so different projects run different currents at once; connecting one stays
-device-local, and the rooms and each session read the active project via
-`agenticView`/`harnessView`. Detail in Current state above; DECISIONS x2. Gates
-green both packages (838 + 1071 tests).
+Moved to `docs/progress-archive.md` on 2026-09-23 to keep the log lean.
 
 ### 2026-09-23, the terminal without Termius: fixed on the device, no relay
 

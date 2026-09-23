@@ -45,3 +45,28 @@ export function ticksToDrain(backlog: number): number {
   }
   return ticks;
 }
+
+/**
+ * Word pacing (founder, 2026-09-23: "like in Claude"). A reply arrives in whole
+ * words, never a half-typed one, and each new group fades in. Two helpers:
+ * `revealLimit` is how far the reveal may go right now (while the stream is
+ * live, only up to the last complete word, so a word still arriving is held
+ * back rather than shown and then grown), and `toWordEnd` rounds a paced
+ * length forward to the end of the word it lands in.
+ */
+/** How long one word takes to fade up to full ink. Mirrors `--dur-6`, the
+ *  token the `.md-live .w` animation rides; the bubble keeps its words split
+ *  this long after the last one lands so the tail finishes its fade. */
+export const WORD_FADE_MS = 420;
+
+export function revealLimit(text: string, streaming: boolean): number {
+  if (!streaming) return text.length;
+  const m = /\s\S*$/.exec(text);
+  return m ? m.index : 0;
+}
+
+export function toWordEnd(text: string, len: number, limit: number): number {
+  if (len >= limit) return limit;
+  const rest = text.slice(len, limit).search(/\s/);
+  return rest === -1 ? limit : len + rest;
+}
