@@ -25,7 +25,8 @@
     "package:linux": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --linux",
     "package:mac": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --mac",
     "package:win": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --win",
-    "ios:sync": "vite build && cap sync ios"
+    "ios:sync": "vite build && cap sync ios",
+    "release:mac": "bash scripts/mac-release.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",

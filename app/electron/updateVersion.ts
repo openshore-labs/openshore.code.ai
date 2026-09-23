@@ -17,10 +17,11 @@ export function versionIsNewer(latest: string, current: string): boolean {
 // ---- macOS in-place update: which release, which file ----------------------
 // macOS ships unsigned (codemagic.yaml), so electron-updater's Squirrel path is
 // out, and the desktop app updates itself instead (electron/macUpdate.ts): it
-// downloads the release's .zip for this Mac's architecture, swaps the bundle,
+// downloads the release's zip (or dmg) for this Mac's architecture, swaps the bundle,
 // and relaunches. The Mac build runs on Codemagic after the Linux and Windows
 // release, so the newest release can briefly have no Mac zip yet; the check
-// takes the newest release that actually carries one, never an empty promise.
+// takes the newest release that actually carries a Mac build, never an empty
+// promise.
 
 export interface ReleaseAsset {
   name: string;
@@ -35,13 +36,19 @@ export interface ReleaseInfo {
   assets: ReleaseAsset[];
 }
 
-/** The release's zip for this Mac. electron-builder names them
- *  `OpenShore-<v>-arm64-mac.zip` and `OpenShore-<v>-mac.zip` (x64). */
-export function pickMacZip(assets: ReleaseAsset[], arch: string): ReleaseAsset | undefined {
-  const zips = assets.filter((a) => /-mac\.zip$/i.test(a.name));
-  return arch === 'arm64'
-    ? zips.find((a) => /-arm64-mac\.zip$/i.test(a.name))
-    : zips.find((a) => !/-arm64-mac\.zip$/i.test(a.name));
+/** The release's file for this Mac. electron-builder names them
+ *  `OpenShore-<v>-arm64-mac.zip` / `OpenShore-<v>-mac.zip` (x64) and
+ *  `OpenShore-<v>-arm64.dmg` / `OpenShore-<v>.dmg`. The zip is preferred (no
+ *  disk image to mount), but a release built on the founder's own Mac may
+ *  carry only the dmg, so that works too. */
+export function pickMacAsset(assets: ReleaseAsset[], arch: string): ReleaseAsset | undefined {
+  const forArch = (re: RegExp, arm: RegExp) => {
+    const all = assets.filter((a) => re.test(a.name));
+    return arch === 'arm64'
+      ? all.find((a) => arm.test(a.name))
+      : all.find((a) => !arm.test(a.name));
+  };
+  return forArch(/-mac\.zip$/i, /-arm64-mac\.zip$/i) ?? forArch(/\.dmg$/i, /-arm64\.dmg$/i);
 }
 
 /** The newest published release, newer than `current`, that carries a zip
@@ -57,7 +64,7 @@ export function newestMacUpdate(
     const version = r.tag_name.replace(/^v/, '');
     if (!versionIsNewer(version, current)) continue;
     if (best && !versionIsNewer(version, best.version)) continue;
-    const asset = pickMacZip(r.assets ?? [], arch);
+    const asset = pickMacAsset(r.assets ?? [], arch);
     if (asset) best = { version, tag: r.tag_name, asset };
   }
   return best;
