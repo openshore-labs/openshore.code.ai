@@ -433,6 +433,14 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **The terminal without the back-and-forth, on real devices (built
+      2026-09-23, unverified off the sandbox).** On the founder's box and
+      iPhone over Tailscale: pair, tap "Open a terminal on your computer" on
+      the Paired card, land in the Terminal room with no first-run intro; with
+      no repo open, "Open a shell" starts a shell in the home folder; leave the
+      room and come back to the same shell. Turn Tailscale off on the phone and
+      read "Can't reach your computer"; revoke the phone on the desktop and read
+      "no longer accepts this device". A member phone must not see Open a shell.
 - [ ] **DeepBlue on a real desktop (built 2026-09-21, unverified off the
       sandbox).** On the founder's box with Ollama up: the First Seat card reads
       "DeepBlue", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
@@ -930,6 +938,25 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-23, the terminal without Termius: fixed on the device, no relay
+
+The founder asked for OpenShore's own terminal, reached through the account
+instead of Termius plus Tailscale. The native Terminal room already existed, so
+the question was the transport. An account relay went to the eight advisors
+(seven: build with conditions; the Chief of Staff: not now), and the founder
+declined it on principle: no OpenShore server in the path of a person's work
+(DECISIONS). CX's finding was that most of the pain was reaching the room, not
+Tailscale, so that is what shipped. The Paired card now offers "Open a terminal
+on your computer"; a device that already reaches a computer skips the Terminal
+room's first-run intro; with no session open the room offers a plain shell in
+the home folder (`HOME_SHELL_ID`, admin-only on the daemon, reopens the running
+shell, never read by the agent; `os-code/src/daemon/serve.ts`
+`handleTerminalRoute`, `app/src/lib/homeShell.ts`); and a failed `/health`
+now tells "can't reach your computer" from "it no longer accepts this device"
+with a credential-free empty-claim probe. The phone's main menu already listed
+Terminal. Gates green: app 1056 tests, engine 824, both typechecks, lint, the
+Vite build.
+
 ### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
 
 The founder's brief came in two beats. First, "my own open-source, more
@@ -957,17 +984,3 @@ clean merge, no conflicts): sign-in and the version-stamp fix (this session),
 then Windows packaging, electron-updater, and the macOS publish/version-check
 split, then a pairing diagnosis, both from other sessions; see Current state
 above. One stale duplicate doc was retired reconciling the merge.
-
-### 2026-09-17, Windows packaging proven for real; the auto-update import bug
-
-The merged `release.yml` had never run end to end. A `workflow_dispatch` dry
-run (no tag, `publish` skips) caught two real failures no local check could:
-`import { autoUpdater } from 'electron-updater'` threw a SyntaxError at
-packaged-app startup (CJS/ESM interop cannot prove a named export; fixed with
-the default-import pattern), silently breaking every platform since the
-auto-update work landed; and Windows failed compiling node-pty's bundled
-`winpty.cc` (MSVC C2362, upstream microsoft/node-pty#683), fixed by bumping to
-1.1.0, which drops winpty for ConPTY. Re-run after both fixes: Linux and
-Windows both packaged, smoke-tested, artifacts uploaded clean. No tag pushed
-yet (a 403 on tag refs, a likely protection rule); a real `v0.1.2` publish,
-Windows included for the first time, needs the founder to push that tag.
