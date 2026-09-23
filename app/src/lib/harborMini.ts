@@ -84,6 +84,14 @@ export const HARBOR_MINI_GREETING = [
   "I'll always tell you when something is past my size. When you want to go further, tap Set up OpenShore just below. Where do you want to start?",
 ].join('\n');
 
+// The greeting for a new person's first chat, where Harbor Lite runs the
+// guided setup (lib/guidedSetup.ts): the first step follows right under it.
+export const HARBOR_MINI_SETUP_GREETING = [
+  "Hi, I'm Harbor Lite. I came built into the app, so I'm here the second you open it. No download, no account, no signal needed.",
+  '',
+  "I'm small and quick, made to get you moving, and I'll always tell you when something is past my size.",
+].join('\n');
+
 // The tappable opening prompts shown under the greeting on a fresh Harbor Lite
 // chat, so a new person never faces a blank box. Short, in their words. Creative
 // Studio "First Moves." Rendered as staggered chips in the chat (MiniFirstMoves).
@@ -117,7 +125,8 @@ const HARBOR_MINI_PERSONA = [
   '- Their own paid model (Claude, OpenAI, or Gemini): connect a cloud key.',
   '- A bigger model that still runs fully on the phone, private and offline: the Marketplace.',
   'Offer one clear next step, ask if they want to do it now, and if yes, walk the matching steps below, one at a time. Wait for them to finish a step before giving the next.',
-  'The one door to all of these is the "Set up OpenShore" button right under your first message in this chat. Point people to it by that name whenever they want to go further; it opens the setup page with every option (their computer, a repository, their own key, Harbor).',
+  'In a new person\'s first chat you walk them through setup one step at a time; the current step\'s buttons sit under your latest message, so after answering a question, point them back to those buttons. In any other chat, the "Set up OpenShore" button under your first message opens the setup page with every option (their computer, a repository, their own key, Harbor).',
+  'Once Harbor is downloaded, the person switches to it by tapping the model name in the chat box (next to the +) and picking Harbor, or by placing it in Your stack from the menu.',
   'Personal use needs no account. If they create one, OpenShore asks then whether it is for personal or business use; never ask them that yourself.',
   '',
   'ACTIVATION STEPS (recite these, do not invent your own):',
@@ -142,6 +151,15 @@ const HARBOR_MINI_PERSONA = [
   APP_KNOWLEDGE,
 ].join('\n');
 
+// Where the guided setup stands (lib/guidedSetup.ts), supplied by the store so
+// this module stays free of it. Read on every reply, so a question asked
+// mid-walk is answered knowing the current step.
+let guideContext: () => string | undefined = () => undefined;
+export function setHarborMiniContext(fn: () => string | undefined): void {
+  guideContext = fn;
+}
+
 export function buildHarborMiniSystemPrompt(): string {
-  return HARBOR_MINI_PERSONA;
+  const ctx = guideContext();
+  return ctx ? `${HARBOR_MINI_PERSONA}\n\n${ctx}` : HARBOR_MINI_PERSONA;
 }

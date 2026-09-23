@@ -943,6 +943,21 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
+
+Founder: the setup steps are run by Harbor Lite, one at a time, in the first
+chat, with the buttons to connect; a step's page returns to the chat once the
+connection lands; questions can go off script; the walk ends by inviting
+questions about the app, and says how to switch to Harbor if it came down. Pure
+core `app/src/lib/guidedSetup.ts` (order Harbor, computer, repository, key; the
+repository waits on the computer; the words; `guideContextLine` for the model),
+effects in the store (`beginGuidedSetup`, `openSetupStep`, `skipSetupStep`, and
+`advanceGuidedSetup` on a store subscription and after each reply), buttons in
+`components/SetupStepActions.tsx` under the guide's latest message. Harbor Lite
+reads the current step through `setHarborMiniContext`. Progress lives on
+`settings.guidedSetup`. Guards in `app/test/guidedSetup.test.ts`, including the
+whole walk through the real store.
+
 ### 2026-09-23, replies arrive like Claude's: whole words that fade in
 
 From the founder's screen recording of the Claude app: a reply lands a few
@@ -983,11 +998,3 @@ session the daemon already pushes for. Taps (local and the desktop push) route
 through one `noticeTap` event. Core `app/src/lib/notices.ts`, guards
 `app/test/notices.test.ts`. Open: verify on a real iPhone (Swift not compiled
 in CI here).
-
-### 2026-09-23, Harness Currents: Jev, a cost-saving decision layer
-
-Moved to `docs/progress-archive.md` on 2026-09-23 to keep the log lean.
-
-### 2026-09-23, the terminal without Termius: fixed on the device, no relay
-
-Moved to `docs/progress-archive.md` on 2026-09-23 to keep the log lean.

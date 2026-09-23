@@ -7,10 +7,17 @@
 import type { CSSProperties } from 'react';
 import { HARBOR_MINI_FIRST_MOVES } from '../lib/harborMini.js';
 
-export function MiniFirstMoves({ onPick }: { onPick: (text: string) => void }) {
+export function MiniFirstMoves({
+  onPick,
+  moves = HARBOR_MINI_FIRST_MOVES,
+}: {
+  onPick: (text: string) => void;
+  /** Openers to offer; the guided setup's wrap-up passes its own. */
+  moves?: readonly string[];
+}) {
   return (
     <div className="first-moves" role="group" aria-label="Try one of these">
-      {HARBOR_MINI_FIRST_MOVES.map((move, i) => (
+      {moves.map((move, i) => (
         <button
           key={move}
           type="button"

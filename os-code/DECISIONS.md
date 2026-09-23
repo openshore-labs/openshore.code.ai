@@ -1782,3 +1782,11 @@ execution contract. Newest at the bottom.
   asked (it cannot be told apart from a returning sign-in client-side); the
   choice stays in Settings. The setup page is reached from a button under
   Harbor Lite's greeting, so its Harbor Lite hero card was dropped as redundant.
+- **Harbor Lite runs setup, founder 2026-09-23:** the steps are scripted lines,
+  not model output, so a small model cannot garble the walk; the model answers
+  only the off-script questions, told the current step in one short prompt line.
+  Order is Harbor first (a long download that runs while the rest is set up),
+  then computer, repository (skipped until a computer is connected, since a
+  phone's repositories live there), and key. Coming back to the chat happens
+  only for the step whose page the walk sent the person to, so a key added from
+  Settings a week later never yanks them into the guide's chat.

@@ -156,8 +156,20 @@ import { StackDriver } from '../drivers/stackDriver.js';
 import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
 import {
+  HARBOR_READY_MESSAGE,
+  advanceMessage,
+  guideContextLine,
+  nextStep,
+  openingMessage,
+  stepHandled,
+  type GuidedSetupProgress,
+  type SetupFacts,
+} from '../lib/guidedSetup.js';
+import {
   HARBOR_MINI_BUNDLED,
   HARBOR_MINI_GREETING,
+  HARBOR_MINI_SETUP_GREETING,
+  setHarborMiniContext,
   HARBOR_MINI_MODEL_ID,
   HARBOR_MINI_MODEL_NAME,
   HARBOR_MINI_MODEL_URL,
@@ -417,6 +429,9 @@ export interface AppSettings {
   /** Notices: a banner when a reply lands, or a chat stops for your approval,
    *  while you are away. On by default; undefined means on. Device local. */
   noticeReplies?: boolean;
+  /** Guided setup (lib/guidedSetup.ts): Harbor Lite walking a new person
+   *  through setup in its first chat. Device local. */
+  guidedSetup?: GuidedSetupProgress;
   /** Voice mode: speak replies aloud during a spoken conversation. On by default
    *  (undefined means on); off keeps voice mode as listen-and-send, with replies
    *  read on screen. Device local (a per-device output preference). */
@@ -1086,6 +1101,14 @@ interface AppState {
   /** Open a fresh chat with a guide, downloading it first if needed. Defaults
    *  to Harbor, the preferred pick. */
   startGuide(modelId?: string): Promise<string | undefined>;
+  /** First open on the phone: open Harbor Lite's chat and start the guided
+   *  setup walk in it (lib/guidedSetup.ts). */
+  beginGuidedSetup(): Promise<void>;
+  /** The current setup step's button: start Harbor's download in place, or
+   *  open the step's page (the app comes back to the chat once it lands). */
+  openSetupStep(): void;
+  /** The current setup step's "Skip for now". */
+  skipSetupStep(): void;
   /** Bring your own Brave or Tavily key for Harbor's web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
@@ -1504,7 +1527,7 @@ function driverClosed(driver: ChatDriver): boolean {
   return d.terminated === true || d.closed === true;
 }
 
-export const useApp = create<AppState>((set, get) => {
+export const useApp = create<AppState>((set, get, api) => {
   /** Detach and release a conversation's driver, if any. */
   function dropDriver(conversationId: string): void {
     drivers.get(conversationId)?.dispose();
@@ -1779,6 +1802,10 @@ export const useApp = create<AppState>((set, get) => {
         // back while the app is in front, so a journal replay on open (always
         // foreground) never fires one; a desktop session the daemon already
         // pushes for is left to that push.
+        if (conversationId === get().settings.guidedSetup?.conversationId) {
+          // A question asked mid-walk was answered; pick the walk back up.
+          setTimeout(() => advanceGuidedSetup(), 0);
+        }
         if (conv && !daemonPushes(conversationId)) {
           void postChatNotice(
             'reply',
@@ -1867,6 +1894,104 @@ export const useApp = create<AppState>((set, get) => {
     });
     await persistConversations(get());
   }
+
+  // ---- Guided setup (lib/guidedSetup.ts) --------------------------------------
+
+  // What the walk can see right now.
+  function setupFacts(): SetupFacts {
+    const s = get();
+    return {
+      harborReady: Boolean(s.settings.harborReady),
+      harborDownloading: Boolean(s.harborDownload && !s.harborDownload.failed),
+      computer: Boolean(s.settings.daemon),
+      repo:
+        Object.values(s.connectedRepoPlatforms).some(Boolean) || Boolean(s.settings.repo?.homeRepo),
+      key: s.cloudKeyPresent || Object.values(s.connectedProviders).some(Boolean),
+    };
+  }
+
+  let guideSeq = 0;
+  // Add one of the guide's scripted lines to its chat. It mounts as streaming
+  // and settles a tick later, so it arrives like a reply (a few words at a
+  // time, fading in) rather than landing as a block. Never while the guide is
+  // mid-reply: the walk resumes when that reply ends.
+  function appendGuideMessage(conversationId: string, text: string): boolean {
+    const conv = get().conversations[conversationId];
+    if (!conv || conv.thread.busy) return false;
+    const id = `${conversationId}-setup-${Date.now().toString(36)}${(guideSeq++).toString(36)}`;
+    const patch = (streaming: boolean) =>
+      set((st) => {
+        const c = st.conversations[conversationId];
+        if (!c) return st;
+        const items = streaming
+          ? [...c.thread.items, { kind: 'assistant' as const, id, text, streaming: true }]
+          : c.thread.items.map((i) =>
+              i.id === id && i.kind === 'assistant' ? { ...i, streaming: false } : i,
+            );
+        return {
+          conversations: {
+            ...st.conversations,
+            [conversationId]: { ...c, thread: { ...c.thread, items } },
+          },
+        };
+      });
+    patch(true);
+    setTimeout(() => {
+      patch(false);
+      void persistConversations(get());
+    }, 0);
+    return true;
+  }
+
+  // Move the walk along when the world changed: a step's connection landed
+  // (say so, bring the person back to the chat if they went to its page, and
+  // bring up the next step), or Harbor finished downloading (say how to switch
+  // to it, once). Called on every relevant state change and after each reply.
+  function advanceGuidedSetup(): void {
+    const s = get();
+    const p = s.settings.guidedSetup;
+    if (!p) return;
+    const conv = s.conversations[p.conversationId];
+    if (!conv || conv.thread.busy) return;
+    const facts = setupFacts();
+    let next: GuidedSetupProgress = p;
+    if (!p.finished && p.current && stepHandled(p.current, facts)) {
+      const done = p.current;
+      const after = nextStep(p, facts);
+      if (!appendGuideMessage(p.conversationId, advanceMessage(done, 'done', after, facts))) return;
+      next = {
+        ...next,
+        current: after,
+        finished: !after,
+        awaiting: undefined,
+        harborAnnounced: next.harborAnnounced || facts.harborReady,
+      };
+      if (p.awaiting === done && (s.view !== 'chat' || s.activeId !== p.conversationId)) {
+        s.openConversation(p.conversationId);
+      }
+    } else if (facts.harborReady && !p.harborAnnounced) {
+      if (!appendGuideMessage(p.conversationId, HARBOR_READY_MESSAGE)) return;
+      next = { ...next, harborAnnounced: true };
+    }
+    if (next !== p) void get().saveSettings({ guidedSetup: next });
+  }
+
+  // The walk moves on the moment a step's connection lands or Harbor
+  // finishes, wherever in the app that happened.
+  api.subscribe((st, prev) => {
+    if (!st.settings.guidedSetup) return;
+    if (
+      st.settings.daemon !== prev.settings.daemon ||
+      st.settings.harborReady !== prev.settings.harborReady ||
+      st.settings.repo?.homeRepo !== prev.settings.repo?.homeRepo ||
+      st.harborDownload !== prev.harborDownload ||
+      st.connectedRepoPlatforms !== prev.connectedRepoPlatforms ||
+      st.cloudKeyPresent !== prev.cloudKeyPresent ||
+      st.connectedProviders !== prev.connectedProviders
+    ) {
+      advanceGuidedSetup();
+    }
+  });
 
   // A desktop session on a daemon this phone registered with pushes its own
   // completion and approval banners (lib/push.ts), so the local notice stands
@@ -2857,7 +2982,7 @@ export const useApp = create<AppState>((set, get) => {
       if (!settings.onboarded && !stored && !locked) {
         void get().saveSettings({ onboarded: true });
         logEvent('onboarding_done', { next: 'chat' });
-        if (isPhone()) void get().startGuide(HARBOR_MINI_MODEL_ID);
+        if (isPhone()) void get().beginGuidedSetup();
       }
       // The live half of the currents gate: probe what the paired computer can
       // host and whether each saved connection answers. Best effort, off the
@@ -2957,6 +3082,16 @@ export const useApp = create<AppState>((set, get) => {
       // On every app open, check for local project work that never reached the
       // remote and push it, so nothing important is stranded on this device.
       void get().reconcileProjectRepos('open');
+
+      // Guided setup: Harbor Lite reads where the walk stands on every reply,
+      // only in the walk's own chat.
+      setHarborMiniContext(() => {
+        const st = get();
+        const p = st.settings.guidedSetup;
+        return p && st.activeId === p.conversationId
+          ? guideContextLine(p, setupFacts())
+          : undefined;
+      });
 
       // Notices: mirror the Downloads toggle to the native side (it reads it on
       // a background relaunch) and open whatever a tapped notice is about. A
@@ -5150,6 +5285,76 @@ export const useApp = create<AppState>((set, get) => {
       });
       void persistConversations(get());
       return id;
+    },
+
+    async beginGuidedSetup() {
+      if (!isPhone()) return;
+      const id = await get().startGuide(HARBOR_MINI_MODEL_ID);
+      if (!id) return;
+      // The walk's chat opens on its own hello, then the first step under it.
+      set((st) => {
+        const c = st.conversations[id];
+        if (!c) return st;
+        const items = c.thread.items.map((i) =>
+          i.id === `${id}-hello` && i.kind === 'assistant'
+            ? { ...i, text: HARBOR_MINI_SETUP_GREETING }
+            : i,
+        );
+        return {
+          conversations: { ...st.conversations, [id]: { ...c, thread: { ...c.thread, items } } },
+        };
+      });
+      const facts = setupFacts();
+      const first = nextStep({ skipped: [] }, facts);
+      await get().saveSettings({
+        guidedSetup: {
+          conversationId: id,
+          current: first,
+          skipped: [],
+          finished: !first,
+          harborAnnounced: facts.harborReady,
+        },
+      });
+      logEvent('guided_setup_start', { first: first ?? 'none' });
+      // A beat after the hello, so the step reads as the guide's next thought.
+      setTimeout(() => appendGuideMessage(id, openingMessage(first, facts)), 700);
+    },
+
+    openSetupStep() {
+      const p = get().settings.guidedSetup;
+      if (!p?.current || p.finished) return;
+      logEvent('guided_setup_open', { step: p.current });
+      if (p.current === 'harbor') {
+        // Stays in the chat: the download runs in the background and the walk
+        // moves on the moment it starts.
+        void get().ensureHarbor();
+        return;
+      }
+      const view: ViewName =
+        p.current === 'computer' ? 'pair' : p.current === 'repo' ? 'repos' : 'connections';
+      void get().saveSettings({ guidedSetup: { ...p, awaiting: p.current } });
+      get().setView(view);
+    },
+
+    skipSetupStep() {
+      const p = get().settings.guidedSetup;
+      if (!p?.current || p.finished) return;
+      const facts = setupFacts();
+      const skipped = [...p.skipped, p.current];
+      const after = nextStep({ skipped }, facts);
+      if (!appendGuideMessage(p.conversationId, advanceMessage(p.current, 'skipped', after, facts)))
+        return;
+      logEvent('guided_setup_skip', { step: p.current });
+      void get().saveSettings({
+        guidedSetup: {
+          ...p,
+          skipped,
+          current: after,
+          finished: !after,
+          awaiting: undefined,
+          harborAnnounced: p.harborAnnounced || (!after && facts.harborReady),
+        },
+      });
     },
 
     async setSearchBackend(backend, apiKey) {
