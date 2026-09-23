@@ -4,7 +4,7 @@
 // and ink rather than anyone else's dark theme. Design: the studio's "Paper
 // Study" direction.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../state/store.js';
+import { agenticView, useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import {
@@ -64,7 +64,7 @@ export function VaultScreen() {
   // The Agentic Current's notes (a Hermes home's memory and skills), listed
   // once the current is on and read one at a time into a sheet. Undefined
   // while reading or unreachable; an answered listing may be empty.
-  const current = activeContribution(settings);
+  const current = activeContribution(agenticView(settings));
   const currentVault = current && !slotNone(current.vault) ? current.vault : undefined;
   const [currentNotes, setCurrentNotes] = useState<
     { home: string; notes: HermesNoteMeta[] } | undefined

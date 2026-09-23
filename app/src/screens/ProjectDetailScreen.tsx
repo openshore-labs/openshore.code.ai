@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useApp, stackAdmin } from '../state/store.js';
 import type { Conversation, Project, ProjectAccess, ProjectPermission } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
+import { ProjectCurrents } from '../components/ProjectCurrents.js';
 import { Sheet } from '../components/Sheet.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { isGithubRepoId, repoLabel } from '../lib/chatRepos.js';
@@ -338,6 +339,12 @@ export function ProjectDetailScreen() {
             </p>
           )}
         </section>
+
+        {/* Currents chosen for this project: the workflow's cheap decision
+            method (Harness) and its agent modality (Agentic). Per project so
+            different projects run different currents at once. Connecting one is
+            device-local, reached from its row. Editors only. */}
+        {mayEdit ? <ProjectCurrents projectId={project.id} index={2} /> : null}
 
         {/* Context that rides into every chat: repositories and their files. */}
         <section className="card project-section" style={{ '--i': 2 } as CSSProperties}>

@@ -3,7 +3,7 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop } from '../lib/platform.js';
@@ -41,32 +41,7 @@ import { InfoSheet } from '../components/InfoSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
-import { CurrentConnectSheet } from '../components/CurrentConnectSheet.js';
-import { HarnessCurrentConnectSheet } from '../components/HarnessCurrentConnectSheet.js';
-import {
-  AGENTIC_CURRENTS,
-  AGENTIC_CURRENTS_BETA_LINE,
-  WAYFINDING,
-  WAYFINDING_IDS,
-  activeCurrent,
-  currentConfigured,
-  currentInfo,
-  currentState,
-  currentStateLabel,
-  currentStateLine,
-  wayfindingOn,
-  type AgenticCurrentId,
-} from '../lib/currents.js';
-import {
-  HARNESS_CURRENTS,
-  HARNESS_CURRENTS_BETA_LINE,
-  activeHarnessCurrent,
-  harnessCurrentConfigured,
-  harnessCurrentInfo,
-  harnessCurrentState,
-  harnessCurrentStateLine,
-  type HarnessCurrentId,
-} from '../lib/harnessCurrents.js';
+import { WAYFINDING, WAYFINDING_IDS, wayfindingOn } from '../lib/currents.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
@@ -253,106 +228,6 @@ function HarborInstallButton({
 
 type SheetName = 'account' | 'log' | 'search' | 'clear';
 
-/** One Agentic Current row: the label, the honest state line, a small text
- *  action to open its connect sheet, and the switch. The switch reports where
- *  it sits so the arrival can flow from it to the edges of the screen. A
- *  current with no integration surface yet wears an Arriving pill at full
- *  opacity, never disabled-looking, per the roster ruling. */
-function CurrentRow({
-  id,
-  onOpen,
-  onFlip,
-}: {
-  id: AgenticCurrentId;
-  onOpen: () => void;
-  onFlip: (on: boolean, at: { x: number; y: number }) => void;
-}) {
-  const { settings, currentProbes } = useApp();
-  const info = currentInfo(id);
-  const state = currentState(id, settings, currentProbes);
-  const on = activeCurrent(settings) === id;
-  const anchor = useRef<HTMLSpanElement>(null);
-  const flip = (next: boolean) => {
-    const rect = anchor.current?.getBoundingClientRect();
-    const at = rect
-      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-      : { x: window.innerWidth - 40, y: window.innerHeight / 2 };
-    onFlip(next, at);
-  };
-  return (
-    <SettingsRow
-      label={info.label}
-      sub={currentStateLine(id, settings, currentProbes)}
-      subWrap
-      value={
-        <span className="settings-row-actions">
-          {!info.available && state !== 'on' ? (
-            <span className="pill muted" title={info.needs}>
-              Arriving
-            </span>
-          ) : state === 'ready' ? (
-            <span className="pill ok">{currentStateLabel(state)}</span>
-          ) : null}
-          <button type="button" className="linklike press-fb" onClick={onOpen}>
-            {currentConfigured(id, settings) ? 'Edit' : 'Set up'}
-          </button>
-        </span>
-      }
-      trailing={
-        <span ref={anchor} className="settings-row-switch">
-          <Switch checked={on} label={info.label} onChange={flip} />
-        </span>
-      }
-    />
-  );
-}
-
-// A Harness Current row. Same shape and gate as CurrentRow, its own group. A
-// harness current has no Arriving-only state (it always has an integration
-// surface), so the pill is just the Ready state; everything else mirrors.
-function HarnessCurrentRow({
-  id,
-  onOpen,
-  onFlip,
-}: {
-  id: HarnessCurrentId;
-  onOpen: () => void;
-  onFlip: (on: boolean, at: { x: number; y: number }) => void;
-}) {
-  const { settings, harnessCurrentProbes } = useApp();
-  const info = harnessCurrentInfo(id);
-  const state = harnessCurrentState(id, settings, harnessCurrentProbes);
-  const on = activeHarnessCurrent(settings) === id;
-  const anchor = useRef<HTMLSpanElement>(null);
-  const flip = (next: boolean) => {
-    const rect = anchor.current?.getBoundingClientRect();
-    const at = rect
-      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-      : { x: window.innerWidth - 40, y: window.innerHeight / 2 };
-    onFlip(next, at);
-  };
-  return (
-    <SettingsRow
-      label={info.label}
-      sub={harnessCurrentStateLine(id, settings, harnessCurrentProbes)}
-      subWrap
-      value={
-        <span className="settings-row-actions">
-          {state === 'ready' ? <span className="pill ok">{currentStateLabel(state)}</span> : null}
-          <button type="button" className="linklike press-fb" onClick={onOpen}>
-            {harnessCurrentConfigured(id, settings) ? 'Edit' : 'Set up'}
-          </button>
-        </span>
-      }
-      trailing={
-        <span ref={anchor} className="settings-row-switch">
-          <Switch checked={on} label={info.label} onChange={flip} />
-        </span>
-      }
-    />
-  );
-}
-
 export function SettingsScreen() {
   const {
     order,
@@ -376,8 +251,6 @@ export function SettingsScreen() {
     codemagicConnected,
     serverRole,
     setWayfinding,
-    setAgenticCurrent,
-    setHarnessCurrent,
     setPerplexityResearch,
     connectedProviders,
   } = useApp();
@@ -394,11 +267,6 @@ export function SettingsScreen() {
   const facts = useSeal();
   const sealed = facts ? facts.every((f) => f.state === 'good') : false;
   const close = () => setSheet(undefined);
-
-  // The connect sheet for one Agentic Current, opened from its row.
-  const [currentSheet, setCurrentSheet] = useState<AgenticCurrentId | undefined>();
-  // The connect sheet for one Harness Current (Jev), opened from its row.
-  const [harnessSheet, setHarnessSheet] = useState<HarnessCurrentId | undefined>();
 
   // Voice mode's settings: the chosen voice (resolved to a name for the row), the
   // speaking speed, and whether replies are spoken aloud.
@@ -1006,53 +874,11 @@ export function SettingsScreen() {
           />
         </SettingsGroup>
 
-        {/* Harness Currents: a cheap decision method layered INTO the harness
-            (Jev is the first), one at a time within this group but independent
-            of Agentic Currents, so one of each can be on. Above Agentic
-            Currents on purpose: it changes how any seat is used, not which
-            agent you reach. A BETA. The names live in the roster, never here. */}
-        <SettingsGroup
-          title="Harness Currents"
-          badge="BETA"
-          intro={HARNESS_CURRENTS_BETA_LINE}
-          index={group++}
-        >
-          {HARNESS_CURRENTS.map((c) => (
-            <HarnessCurrentRow
-              key={c.id}
-              id={c.id}
-              onOpen={() => setHarnessSheet(c.id)}
-              onFlip={(on, at) => {
-                if (on) hapticApproval();
-                void setHarnessCurrent(c.id, on, at);
-                if (on && !harnessCurrentConfigured(c.id, settings)) setHarnessSheet(c.id);
-              }}
-            />
-          ))}
-        </SettingsGroup>
-
-        {/* Agentic Currents: opt-in modalities for agent work, one at a time,
-            a BETA. Each row is the two-part gate made visible: the switch and
-            the honest state line. The names live in the roster, never here. */}
-        <SettingsGroup
-          title="Agentic Currents"
-          badge="BETA"
-          intro={AGENTIC_CURRENTS_BETA_LINE}
-          index={group++}
-        >
-          {AGENTIC_CURRENTS.map((c) => (
-            <CurrentRow
-              key={c.id}
-              id={c.id}
-              onOpen={() => setCurrentSheet(c.id)}
-              onFlip={(on, at) => {
-                if (on) hapticApproval();
-                void setAgenticCurrent(c.id, on, at);
-                if (on && !currentConfigured(c.id, settings)) setCurrentSheet(c.id);
-              }}
-            />
-          ))}
-        </SettingsGroup>
+        {/* Currents (Agentic and Harness) moved to per-project settings
+            (founder, 2026-09-23): a current is a workflow choice, so it lives
+            on the project (ProjectDetailScreen), where different projects run
+            different currents at once. Connecting one stays device-local, on
+            its connect sheet, reached from the project row. */}
 
         <SettingsGroup index={group++}>
           <SettingsRow
@@ -1069,9 +895,6 @@ export function SettingsScreen() {
           Familiar where it should be, yours where it matters.
         </p>
       </div>
-
-      <CurrentConnectSheet id={currentSheet} onClose={() => setCurrentSheet(undefined)} />
-      <HarnessCurrentConnectSheet id={harnessSheet} onClose={() => setHarnessSheet(undefined)} />
 
       <Sheet open={sheet === 'account'} onClose={close}>
         <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />

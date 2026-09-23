@@ -128,21 +128,40 @@ stricter than the Uki repos by design, because OS Code started under the rule.
 ## Agentic Currents and Wayfinding are BUILT (BETA, 2026-09-09)
 
 The founder's frame: OpenShore takes on new agent tech by connecting to it and
-layering it in, never by reshaping the familiar rooms. Two Settings groups hold
-that promise, doc in `docs/agentic-currents.md`. **Wayfinding** (memory,
-skills, browser) is how the agent finds its way, default on. **Agentic
-Currents** (Hermes Agent, CLI Pairing, Vellum, OpenAGI, A2A) are opt-in
-modalities for agent work, default off, a BETA, ONE on at a time everywhere:
-flip one on and the same rooms gain rows for it; flip it off and every trace
-is gone. The rules are code, not memory: the pure core is
-`app/src/lib/currents.ts`, the engine side is `os-code/src/currents/` plus the
-`askHermes`, `askAgent`, and `cliAgent` tools, and `app/test/currents.test.ts`
-holds the guards (one at a time, the two-part gate, every current fills every
-contribution slot, and no room names a current itself). Do NOT add a room for
-a current, do NOT hardcode a current's name in a room (render through
-`activeContribution`), and do NOT call a current "always on". "Currents" is
-the CMO and Creative Studio's name; "Layers" was retired; "frontier" stays
-reserved for cloud models. Open follow-ups are in `os-code/PROGRESS.md`.
+layering it in, never by reshaping the familiar rooms. **Wayfinding** (memory,
+skills, browser) is how the agent finds its way, default on, an app-level
+Settings group. **Agentic Currents** (Hermes Agent, CLI Pairing, Vellum,
+OpenAGI, A2A) are opt-in modalities for agent work, default off, a BETA, ONE on
+at a time WITHIN A PROJECT: flip one on and the same rooms gain rows for it;
+flip it off and every trace is gone. The rules are code, not memory: the pure
+core is `app/src/lib/currents.ts`, the engine side is `os-code/src/currents/`
+plus the `askHermes`, `askAgent`, and `cliAgent` tools, and
+`app/test/currents.test.ts` holds the guards (the two-part gate, every current
+fills every contribution slot, no room names a current itself, and per-project
+selection). Do NOT add a room for a current, do NOT hardcode a current's name
+in a room (render through `activeContribution`), and do NOT call a current
+"always on". "Currents" is the CMO and Creative Studio's name; "Layers" was
+retired; "frontier" stays reserved for cloud models. Open follow-ups are in
+`os-code/PROGRESS.md`.
+
+## Currents are chosen PER PROJECT (founder, 2026-09-23)
+
+Both current groups (Agentic and Harness) are a per-project choice, not an app
+setting: a current is a workflow requirement, so different projects run
+simultaneously with different currents. The SELECTION lives on the project
+(`Project.agenticCurrent`, `Project.harnessCurrent`); CONNECTING one (its
+endpoint + key) stays device-local and connect-once (`settings.currentConnections`,
+`settings.harnessCurrentConnections`, the same secret keys), reached from the
+project row's connect sheet. The UI is `app/src/components/ProjectCurrents.tsx`,
+rendered in `ProjectDetailScreen` (editors only), and is GONE from
+`SettingsScreen`. Every global room (the pill, water-line, Bench, Crew, Vault)
+and each session's handle read the ACTIVE project's selection via
+`agenticView(settings)` / `harnessView(settings)` (both derive from
+`activeProjectOf(settings)`, since `projects` and `activeProjectId` live in
+settings). Forgetting a device-local connection sweeps that current off every
+project. Do NOT reintroduce an app-level current selection; keep the pure
+functions taking a `CurrentsSettings`/`HarnessCurrentsSettings` view built from
+the project.
 
 ## Harness Currents are BUILT (BETA, founder 2026-09-23)
 
@@ -151,9 +170,11 @@ Current is a modality for agent work (an external agent you hand a task to), a
 **Harness Current** layers a cheap decision method INTO the harness: it does
 not answer for a seat, it steers which seat answers and whether a step is
 needed, so you use any of your models with the method applied. The two groups
-are independent, so one of each can be on at once; WITHIN the harness group it
+are independent, so one of each can be on at once; within the harness group it
 is one at a time, the same rule the agentic group holds, with the same arrival
-animation, water-line, and two-part gate.
+animation, water-line, and two-part gate. Like the agentic group, the SELECTION
+is per project (`Project.harnessCurrent`, 2026-09-23); the connection is
+device-local and connect-once. See "Currents are chosen PER PROJECT" above.
 
 The first (and only, today) Harness Current is **Jev**, TypeSafe AI's System
 One decision model (`api.typesafe.ai`, `POST /v1/systemone`, model `jev-latest`;
@@ -168,9 +189,10 @@ The classifier and gate run in the app stack driver as ONE Jev call
 an amber (cloud spend) card in the transcript, and a pill sits beside the reach
 pill.
 
-The rules are code: the pure core is `app/src/lib/harnessCurrents.ts` (its own
-`settings.harnessCurrent` scalar, roster, gate, contribution, handle); the wire
-shapes and the reusable client are `os-code/src/currents/model.ts` and
+The rules are code: the pure core is `app/src/lib/harnessCurrents.ts` (its
+roster, gate, contribution, handle, and `projectHarnessSettings`; the selection
+is `Project.harnessCurrent`); the wire shapes and the reusable client are
+`os-code/src/currents/model.ts` and
 `os-code/src/harness/jev.ts` (exported through `os-code/protocol`);
 `app/test/harnessCurrents.test.ts` and `os-code/test/jev.test.ts` hold the
 guards (one-at-a-time within the group, coexists with an agentic current, the

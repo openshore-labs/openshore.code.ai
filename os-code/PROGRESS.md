@@ -21,7 +21,8 @@ remains).
 
 ### Harness Currents, the first: Jev (BETA, founder 2026-09-23)
 
-A second, independent Settings group above Agentic Currents. A Harness Current
+A second, independent currents group above Agentic Currents, chosen PER PROJECT
+(both groups moved out of app Settings the same day, below). A Harness Current
 layers a cheap decision method INTO the harness rather than being an agent you
 hand work to, so you use any of your seats with it applied; the two groups are
 independent (one of each may be on), one at a time within the harness group,
@@ -459,7 +460,10 @@ extended that day by the graduated enforcement ladder (migration
       (`jev-latest`), and key page against the live API before a distribution
       build (from web docs; egress-blocked here), and on a device confirm the
       arrival, the amber pill, the steer/judge cards on a paid-seat turn, and
-      that off leaves no trace. Follow-up: a dedicated card, not a note.
+      that off leaves no trace. Currents are now per project
+      (`ProjectDetailScreen`): confirm two projects run different currents at
+      once and a shared project carries the selection. Follow-up: a dedicated
+      card, not a note.
 - [ ] **DeepBlue on a real desktop (built 2026-09-21, unverified off the
       sandbox).** On the founder's box with Ollama up: the First Seat card reads
       "DeepBlue", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
@@ -973,25 +977,16 @@ protocol wire shapes + the reusable Jev client (`os-code/src/harness/jev.ts`),
 the app pure core, store, Settings group, connect sheet, pill, water-line,
 transcript card, and the handle threaded through the daemon and electron
 bridge. Copy claims no saving until `osc eval` measures it (tenet 2); tenet 1's
-"no name" is a deliberate founder supersede for this one group. Gates green
-across both packages (838 + 1065 tests, typechecks, lint, Prettier, guards).
+"no name" is a deliberate founder supersede for this one group. Then, same day,
+BOTH current groups moved from app Settings to a per-project choice
+(`Project.agenticCurrent`/`harnessCurrent`, UI `components/ProjectCurrents.tsx`),
+so different projects run different currents at once; connecting one stays
+device-local, and the rooms and each session read the active project via
+`agenticView`/`harnessView`. Gates green both packages (838 + 1071 tests, etc).
 
 ### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
 
-The founder's brief came in two beats. First, "my own open-source, more
-compact Opus 4.8 for a home lab, the featured model you download to your hub
-and get started Docked." A memo (`docs/house-model-proposal.md`) grounded it:
-not a compact Opus (closed weights, and distilling from Claude is barred by
-the terms), but an open coder tuned to the harness, gated by the deep eval on
-a hub-class box. Second, the correction that set the shape: "like Harbor Lite
-and Harbor, a third and final more advanced out-of-the-box model", accessible
-from the start without the Marketplace. So the slot shipped now, on stock
-weights, the Harbor pattern exactly (id decoupled from weights, name in one
-constant): the First Seat card, the Stack starter, and a desktop Settings row
-ride one store action that pulls the size that fits and seats it; the tuned
-weights, when they clear the gate, replace the refs under the same name. Gates
-green: app 1050 tests, typecheck, lint, Prettier, the Vite build, os-code
-em-dash and PROGRESS shape guards. Two DECISIONS.
+Moved to `docs/progress-archive.md` on 2026-09-23 to keep the log lean.
 
 ### 2026-09-17, the platform ship wave (v0.1.1, packaging, macOS, pairing)
 

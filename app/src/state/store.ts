@@ -187,30 +187,32 @@ import {
 } from '../lib/stack.js';
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
 import {
-  activeCurrent,
   currentBenchId,
   currentInfo,
   currentSecretKey,
   currentsHandles,
   nextActiveCurrent,
+  projectCurrentsSettings,
   type AgenticCurrentId,
   type CurrentConnection,
   type CurrentConnections,
   type CurrentProbes,
+  type CurrentsSettings,
   type WayfindingId,
   type WayfindingSettings,
 } from '../lib/currents.js';
 import { currentsHost, probeCurrent, probeOpenAiCompatible } from '../lib/currentsProbe.js';
 import {
-  activeHarnessCurrent,
   harnessCurrentInfo,
   harnessCurrentSecretKey,
   harnessCurrentsHandle,
   nextActiveHarnessCurrent,
+  projectHarnessSettings,
   type HarnessCurrentConnection,
   type HarnessCurrentConnections,
   type HarnessCurrentId,
   type HarnessCurrentProbes,
+  type HarnessCurrentsSettings,
 } from '../lib/harnessCurrents.js';
 import {
   normalizeHermesBaseUrl,
@@ -429,27 +431,15 @@ export interface AppSettings {
    *  to paste, and does nothing until that key exists. Device local. See
    *  lib/webSearch.ts (resolveSearchKey). */
   perplexityResearch?: boolean;
-  /** The Agentic Current that is on, or none. ONE at a time everywhere
-   *  (founder, 2026-09-09): turning one on turns the other off, so this is a
-   *  single id rather than a map of booleans. Device local, never synced: a
-   *  current names a box or a CLI reachable from THIS device's pairing. BETA. */
-  agenticCurrent?: AgenticCurrentId | null;
-  /** What the person saved per current (an address, a model, a CLI). Metadata
-   *  only; an API key lives in the secret store under currentSecretKey(id).
-   *  Kept when a current is turned off so turning it back on is one tap; the
-   *  rooms never read it while the current is off. Device local. */
+  /** What the person saved per Agentic Current (an address, a model, a CLI).
+   *  Metadata only; an API key lives under currentSecretKey(id). Device-local:
+   *  a current is CONNECTED once here and reused, while WHICH current is active
+   *  is a per-project choice (Project.agenticCurrent), so different projects run
+   *  different currents at once. Kept when unselected so re-selecting is one tap. */
   currentConnections?: CurrentConnections;
-  /** The Harness Current that is on, or none (Jev is the first). Its own group
-   *  above Agentic Currents, independent of it: one on at a time WITHIN the
-   *  harness group, but one of each group may be on together. A Harness Current
-   *  layers a cheap decision method into the harness rather than being an agent
-   *  you hand work to. Device local, never synced. BETA. See
-   *  lib/harnessCurrents.ts. */
-  harnessCurrent?: HarnessCurrentId | null;
-  /** What the person saved per harness current (an address, a model). Metadata
-   *  only; the API key lives in the secret store under
-   *  harnessCurrentSecretKey(id). Kept when a current is turned off so turning
-   *  it back on is one tap. Device local. */
+  /** What the person saved per Harness Current (an address, a model). Metadata
+   *  only; the API key lives under harnessCurrentSecretKey(id). Device-local,
+   *  connected once; the per-project selection is Project.harnessCurrent. */
   harnessCurrentConnections?: HarnessCurrentConnections;
   /** The role each paired hub reported for this device's credential (from the
    *  hub's /health), keyed by base URL. Read at pair time and refreshed when a
@@ -1181,11 +1171,12 @@ interface AppState {
   /** Research (Perplexity): ground web search in Sonar on the connected
    *  Perplexity key. Off by default; reuses the Cloud Connections key. */
   setPerplexityResearch(on: boolean): Promise<void>;
-  /** Flip an Agentic Current. One at a time everywhere: turning one on turns
-   *  the other off. `at` is where the switch sits, for the arrival gesture that
-   *  flows from it to the edges of the screen. Turning the active one off
-   *  purges its bench entry from every stack, so off leaves no trace. */
+  /** Flip an Agentic Current for a project. One at a time within the project;
+   *  different projects select independently. `at` is where the switch sits,
+   *  for the arrival gesture. When no project still selects the prior current,
+   *  its bench entry is purged from every stack, so off leaves no trace. */
   setAgenticCurrent(
+    projectId: string,
     id: AgenticCurrentId,
     on: boolean,
     at?: { x: number; y: number },
@@ -1205,10 +1196,11 @@ interface AppState {
   clearCurrentArrival(): void;
 
   // Harness Currents (lib/harnessCurrents.ts): a second, independent group.
-  /** Flip a Harness Current (Jev). One at a time WITHIN the harness group, but
-   *  independent of the agentic group, so one of each may be on. `at` drives the
-   *  same arrival gesture the agentic switches use. */
+  /** Flip a Harness Current (Jev) for a project. One at a time WITHIN the
+   *  harness group, but independent of the agentic group, so one of each may be
+   *  on; different projects select independently. `at` drives the arrival. */
   setHarnessCurrent(
+    projectId: string,
     id: HarnessCurrentId,
     on: boolean,
     at?: { x: number; y: number },
@@ -1307,9 +1299,26 @@ function purgeBenchId(
   return out;
 }
 
-/** The active current's API key, if one is saved. */
-async function currentSecretForActive(settings: AppSettings): Promise<string | null> {
-  const id = activeCurrent(settings);
+/** The project the person is currently in (activeProjectId, else the first), so
+ *  the global rooms read its per-project current selections. */
+export function activeProjectOf(settings: AppSettings): Project | undefined {
+  const id = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  return id ? settings.projects?.find((p) => p.id === id) : undefined;
+}
+
+/** The Agentic Currents view for the active project: its selection plus the
+ *  device-local connections. The rooms render currents through this. */
+export function agenticView(settings: AppSettings): CurrentsSettings {
+  return projectCurrentsSettings(activeProjectOf(settings), settings.currentConnections);
+}
+
+/** The Harness Currents view for the active project. */
+export function harnessView(settings: AppSettings): HarnessCurrentsSettings {
+  return projectHarnessSettings(activeProjectOf(settings), settings.harnessCurrentConnections);
+}
+
+/** An Agentic Current's saved API key, if one is saved. */
+async function currentSecretFor(id: AgenticCurrentId | null): Promise<string | null> {
   return id ? secretGet(currentSecretKey(id)) : null;
 }
 
@@ -1913,23 +1922,21 @@ export const useApp = create<AppState>((set, get) => {
             }
           }
         }
-        // The Agentic Current that is on, as the handle its engine tool needs.
-        // Unlike the Codemagic token this rides to a remote hub too: a current
-        // names a box or a CLI the person chose to reach FROM the hub, and the
-        // key is that box's own key, not a secret bound to this device.
+        // The currents ride from THIS conversation's project (per-project
+        // selection), with the device-local connection and its key. Unlike the
+        // Codemagic token they ride to a remote hub too: a current names a box
+        // or a service the person chose to reach FROM the hub, and the key is
+        // that service's own key, not a secret bound to this device.
         const currents = currentsHandles(
-          settings,
-          (await currentSecretForActive(settings)) ?? undefined,
+          projectCurrentsSettings(project, settings.currentConnections),
+          (await currentSecretFor(project?.agenticCurrent ?? null)) ?? undefined,
           get().currentsHost,
         );
-        // The Harness Current that is on (Jev), as its own per-session handle.
-        // Independent of the agentic current, so both can ride the same session.
-        const activeHarness = activeHarnessCurrent(settings);
-        const harnessCurrents = activeHarness
+        const harnessId = project?.harnessCurrent ?? null;
+        const harnessCurrents = harnessId
           ? harnessCurrentsHandle(
-              settings,
-              (await secretGet(harnessCurrentSecretKey(activeHarness)).catch(() => null)) ??
-                undefined,
+              projectHarnessSettings(project, settings.harnessCurrentConnections),
+              (await secretGet(harnessCurrentSecretKey(harnessId)).catch(() => null)) ?? undefined,
             )
           : undefined;
         const sessionOpts = {
@@ -2080,15 +2087,14 @@ export const useApp = create<AppState>((set, get) => {
             (a.projectIds.length === 0 ||
               (conv.projectId != null && a.projectIds.includes(conv.projectId))),
         );
-        // The Harness Current (Jev) with its resolved key, when one is on, so
-        // the stack can let it steer a paid-seat turn. Absent leaves routing
-        // exactly as it was.
-        const activeHarness = activeHarnessCurrent(s.settings);
-        const harnessCurrents = activeHarness
+        // The Harness Current (Jev) for THIS conversation's project, with its
+        // resolved key, so the stack can let it steer a paid-seat turn. Absent
+        // leaves routing exactly as it was.
+        const harnessId = project?.harnessCurrent ?? null;
+        const harnessCurrents = harnessId
           ? harnessCurrentsHandle(
-              s.settings,
-              (await secretGet(harnessCurrentSecretKey(activeHarness)).catch(() => null)) ??
-                undefined,
+              projectHarnessSettings(project, s.settings.harnessCurrentConnections),
+              (await secretGet(harnessCurrentSecretKey(harnessId)).catch(() => null)) ?? undefined,
             )
           : undefined;
         return new StackDriver(
@@ -5775,25 +5781,32 @@ export const useApp = create<AppState>((set, get) => {
       logEvent('perplexity_research_toggle', { on });
     },
 
-    async setAgenticCurrent(id, on, at) {
+    async setAgenticCurrent(projectId, id, on, at) {
       const s = get();
-      const prior = activeCurrent(s.settings);
+      const project = s.settings.projects?.find((p) => p.id === projectId);
+      if (!project) return;
+      const prior = project.agenticCurrent ?? null;
       const next = nextActiveCurrent(prior, id, on);
       if (next === prior) return;
-      // Off leaves no trace: a current's bench entry is pulled from EVERY
-      // status's stack the moment it stops being the active current, the same
-      // sweep a disconnected BYOM endpoint gets. Placements are not kept
-      // across an off/on, on purpose: the person places it again, in one tap.
-      const stacks = prior
-        ? purgeBenchId(s.settings.stacks, currentBenchId(prior))
-        : s.settings.stacks;
-      await get().saveSettings({ agenticCurrent: next, stacks });
+      const projects = (s.settings.projects ?? []).map((p) =>
+        p.id === projectId ? { ...p, agenticCurrent: next } : p,
+      );
+      // Off leaves no trace: a current's bench entry is pulled from every stack
+      // once NO project still selects it (the bench is global, shared across
+      // projects), the same sweep a disconnected BYOM endpoint gets. Placements
+      // are not kept across an off/on, on purpose: place it again in one tap.
+      const stillUsed = prior && projects.some((p) => p.agenticCurrent === prior);
+      const stacks =
+        prior && !stillUsed
+          ? purgeBenchId(s.settings.stacks, currentBenchId(prior))
+          : s.settings.stacks;
+      await get().saveSettings({ projects, stacks });
       const seq = (s.currentArrival?.seq ?? 0) + 1;
       const label = next ? currentInfo(next).label : prior ? currentInfo(prior).label : '';
       set({
         currentArrival: at ? { seq, x: at.x, y: at.y, ebb: next === null, label } : undefined,
       });
-      logEvent(next ? 'current_on' : 'current_off', { id: next ?? prior ?? id });
+      logEvent(next ? 'current_on' : 'current_off', { id: next ?? prior ?? id, projectId });
       if (next) void get().refreshCurrents();
     },
 
@@ -5833,12 +5846,16 @@ export const useApp = create<AppState>((set, get) => {
       const s = get();
       const currentConnections = { ...(s.settings.currentConnections ?? {}) };
       delete currentConnections[id];
-      const wasOn = activeCurrent(s.settings) === id;
+      // A connection is device-global, so forgetting it clears that current
+      // from every project that selected it and pulls its bench entry, so off
+      // leaves no trace anywhere.
+      const projects = (s.settings.projects ?? []).map((p) =>
+        p.agenticCurrent === id ? { ...p, agenticCurrent: null } : p,
+      );
       await get().saveSettings({
         currentConnections,
-        ...(wasOn
-          ? { agenticCurrent: null, stacks: purgeBenchId(s.settings.stacks, currentBenchId(id)) }
-          : {}),
+        projects,
+        stacks: purgeBenchId(s.settings.stacks, currentBenchId(id)),
       });
       set({ currentProbes: { ...get().currentProbes, [id]: false } });
       logEvent('current_disconnected', { id });
@@ -5885,16 +5902,21 @@ export const useApp = create<AppState>((set, get) => {
 
     // ---------------------------------------------------- harness currents
 
-    async setHarnessCurrent(id, on, at) {
+    async setHarnessCurrent(projectId, id, on, at) {
       const s = get();
-      const prior = activeHarnessCurrent(s.settings);
+      const project = s.settings.projects?.find((p) => p.id === projectId);
+      if (!project) return;
+      const prior = project.harnessCurrent ?? null;
       const next = nextActiveHarnessCurrent(prior, id, on);
       if (next === prior) return;
-      // The agentic group is untouched: a harness current is independent, so
-      // one of each may be on. No bench sweep, because a harness current places
-      // no model on the bench; off leaves no trace because the rooms read it
-      // only through activeHarnessContribution.
-      await get().saveSettings({ harnessCurrent: next });
+      // Per project and independent of the agentic group, so one of each may be
+      // on. No bench sweep, because a harness current places no model on the
+      // bench; off leaves no trace because the rooms read it only through
+      // activeHarnessContribution of the active project.
+      const projects = (s.settings.projects ?? []).map((p) =>
+        p.id === projectId ? { ...p, harnessCurrent: next } : p,
+      );
+      await get().saveSettings({ projects });
       const seq = (s.currentArrival?.seq ?? 0) + 1;
       const label = next
         ? harnessCurrentInfo(next).label
@@ -5904,7 +5926,10 @@ export const useApp = create<AppState>((set, get) => {
       set({
         currentArrival: at ? { seq, x: at.x, y: at.y, ebb: next === null, label } : undefined,
       });
-      logEvent(next ? 'harness_current_on' : 'harness_current_off', { id: next ?? prior ?? id });
+      logEvent(next ? 'harness_current_on' : 'harness_current_off', {
+        id: next ?? prior ?? id,
+        projectId,
+      });
       if (next) void get().refreshHarnessCurrents();
     },
 
@@ -5933,11 +5958,12 @@ export const useApp = create<AppState>((set, get) => {
       const s = get();
       const harnessCurrentConnections = { ...(s.settings.harnessCurrentConnections ?? {}) };
       delete harnessCurrentConnections[id];
-      const wasOn = activeHarnessCurrent(s.settings) === id;
-      await get().saveSettings({
-        harnessCurrentConnections,
-        ...(wasOn ? { harnessCurrent: null } : {}),
-      });
+      // Device-global connection, so forgetting it clears the selection from
+      // every project that had it, so off leaves no trace anywhere.
+      const projects = (s.settings.projects ?? []).map((p) =>
+        p.harnessCurrent === id ? { ...p, harnessCurrent: null } : p,
+      );
+      await get().saveSettings({ harnessCurrentConnections, projects });
       set({ harnessCurrentProbes: { ...get().harnessCurrentProbes, [id]: false } });
       logEvent('harness_current_disconnected', { id });
     },

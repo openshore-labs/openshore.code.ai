@@ -112,6 +112,18 @@ export interface HarnessCurrentsSettings {
 /** Live facts a probe established: whether the saved connection answered. */
 export type HarnessCurrentProbes = Partial<Record<HarnessCurrentId, boolean>>;
 
+/** Build the HarnessCurrentsSettings view for a project: its selection plus the
+ *  device-local connections (connect once, select per project). */
+export function projectHarnessSettings(
+  project: { harnessCurrent?: HarnessCurrentId | null } | undefined,
+  connections: HarnessCurrentConnections | undefined,
+): HarnessCurrentsSettings {
+  return {
+    harnessCurrent: project?.harnessCurrent ?? null,
+    harnessCurrentConnections: connections,
+  };
+}
+
 export function activeHarnessCurrent(settings: HarnessCurrentsSettings): HarnessCurrentId | null {
   const id = settings.harnessCurrent;
   return id && (HARNESS_CURRENT_IDS as readonly string[]).includes(id) ? id : null;

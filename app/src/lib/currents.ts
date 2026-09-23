@@ -192,6 +192,18 @@ export interface CurrentsSettings {
 /** Live facts a probe established: whether the saved connection answered. */
 export type CurrentProbes = Partial<Record<AgenticCurrentId, boolean>>;
 
+/** Build the CurrentsSettings view for a project: its selection plus the
+ *  device-local connections. Currents are a per-project choice, but a
+ *  connection is connected once (device-local), so the selection comes from the
+ *  project and the connections stay global. A minimal project shape keeps this
+ *  free of the app's Project type. */
+export function projectCurrentsSettings(
+  project: { agenticCurrent?: AgenticCurrentId | null } | undefined,
+  connections: CurrentConnections | undefined,
+): CurrentsSettings {
+  return { agenticCurrent: project?.agenticCurrent ?? null, currentConnections: connections };
+}
+
 export function activeCurrent(settings: CurrentsSettings): AgenticCurrentId | null {
   const id = settings.agenticCurrent;
   return id && (AGENTIC_CURRENT_IDS as readonly string[]).includes(id) ? id : null;

@@ -2,7 +2,20 @@
 
 How OpenShore takes on new agent tech without reshaping the familiar app. The
 founder's frame (2026-09-09): the app evolves by connecting to new features and
-layering them in. Two groups in Settings hold that promise.
+layering them in.
+
+**Currents are chosen per project (founder, 2026-09-23).** Both current groups
+(Agentic and Harness) are a per-project choice, not an app setting: a current is
+a workflow requirement, so different projects run simultaneously with different
+currents. The selection lives on the project (`Project.agenticCurrent`,
+`Project.harnessCurrent`) and its UI is in the project's detail screen
+(`components/ProjectCurrents.tsx`). Connecting a current (its endpoint + key) is
+still a device-local, connect-once step reached from the project row, so a
+shared team project can carry the selection while each teammate connects their
+own box or key. The global rooms (the header pill, the water-line, the Bench,
+Crew, and Vault) and every session read the ACTIVE project's selection through
+`agenticView(settings)` / `harnessView(settings)`. Wayfinding stays an
+app-level Settings group.
 
 ## Wayfinding (default on)
 
@@ -44,9 +57,10 @@ connected product name, the way Hermes is named in the agentic group.
 
 ### The rules the code holds (harness group)
 
-1. **Its own scalar.** `settings.harnessCurrent` is a single id or none,
-   independent of `settings.agenticCurrent`, so a harness current and an agentic
-   current can be on together while each group stays one-at-a-time.
+1. **Its own per-project scalar.** `Project.harnessCurrent` is a single id or
+   none, independent of `Project.agenticCurrent`, so a harness current and an
+   agentic current can be on together per project while each group stays
+   one-at-a-time.
 2. **The two-part gate.** Same as the agentic group: On only when the toggle is
    on AND a live probe answered (Jev answers `GET /v1/models` under its base).
 3. **No room names a harness current.** Rooms render it only through
@@ -64,14 +78,16 @@ connected product name, the way Hermes is named in the agentic group.
   (`HARNESS_CURRENT_IDS`, `JevHandle`, `parseHarnessCurrentsHandle`) and
   `os-code/src/harness/jev.ts` (`JevAdvisor` with `steer`/`judge`, the System
   One client), both exported through `os-code/protocol`.
-- App: the group and `HarnessCurrentRow` in `SettingsScreen.tsx`,
-  `HarnessCurrentConnectSheet.tsx`, the amber pill in `ProfileStatus.tsx`, the
-  water-line OR-in in `CurrentArrival.tsx`, the `harness-current` card in
-  `transcript.ts`, the store state/actions (`harnessCurrent`,
-  `harnessCurrentConnections`, `harnessCurrentProbes`,
-  `setHarnessCurrent`/`connectHarnessCurrent`/`disconnectHarnessCurrent`/
-  `refreshHarnessCurrents`), and the steer in `stackDriver.ts`. The handle rides
-  a session through the daemon and the electron bridge like the agentic one.
+- App: the per-project rows and groups in `components/ProjectCurrents.tsx`
+  (rendered by `ProjectDetailScreen`), `HarnessCurrentConnectSheet.tsx`, the
+  amber pill in `ProfileStatus.tsx`, the water-line OR-in in
+  `CurrentArrival.tsx`, the `harness-current` card in `transcript.ts`, the
+  device-local connections + probes and the project-scoped actions in the store
+  (`harnessCurrentConnections`, `harnessCurrentProbes`,
+  `setHarnessCurrent(projectId, ...)`/`connectHarnessCurrent`/
+  `disconnectHarnessCurrent`/`refreshHarnessCurrents`), and the steer in
+  `stackDriver.ts`. The handle rides a session through the daemon and the
+  electron bridge like the agentic one.
 - Engine: the verify judge in `core/agent/loop.ts` (`maybeJevJudge`, cloud seat
   only, dropped under egress lockdown), threaded through `bootstrap.ts` and the
   daemon `POST /sessions`.
@@ -96,8 +112,9 @@ reserved for cloud models on a paid key.
 
 ### The rules the code holds
 
-1. **One at a time, everywhere.** `settings.agenticCurrent` is a single id or
-   none, so exclusivity is structural. Turning one on turns the other off.
+1. **One at a time, per project.** A project's `agenticCurrent` is a single id
+   or none, so exclusivity is structural within the project. Turning one on
+   turns the other off for that project; different projects choose independently.
 2. **The two-part gate.** A current is On only when its toggle is on AND a
    live probe answered (`currentState`): on, arriving, ready, or off. Nothing
    is a hardcoded flag; iCloud's runtime probe is the precedent.
@@ -141,8 +158,9 @@ are exploring. One on at a time. Off leaves no trace."
 
 - Pure core: `app/src/lib/currents.ts` (rosters, the gate, the contribution
   contract, the handles). Probes and read clients: `app/src/lib/currentsProbe.ts`.
-- Settings: `SettingsScreen.tsx` (the Wayfinding group and the Agentic
-  Currents group with `CurrentRow`), `components/CurrentConnectSheet.tsx`.
+- Selection UI: `components/ProjectCurrents.tsx` (both groups, per project),
+  rendered by `ProjectDetailScreen`; `components/CurrentConnectSheet.tsx` for the
+  device-local connect. `SettingsScreen.tsx` keeps only the Wayfinding group.
 - The arrival and the water-line: `components/CurrentArrival.tsx`, mounted in
   `App.tsx`; the header pill in `components/ProfileStatus.tsx`; CSS at the end
   of `theme.css`.
@@ -150,11 +168,13 @@ are exploring. One on at a time. Off leaves no trace."
   `current-<id>`, with the Hermes session header added in `stackDriver.ts`),
   the roster and the jobs section in `CrewCommandScreen.tsx`, the folder and
   the read-only note sheet in `VaultScreen.tsx`.
-- Store: `wayfinding`, `agenticCurrent`, `currentConnections` (device local),
-  `currentProbes`, `currentsHost`, `currentArrival`; actions `setWayfinding`,
-  `setAgenticCurrent`, `connectCurrent`, `disconnectCurrent`, `refreshCurrents`.
-  The active current's handle rides into every session (desktop bridge and
-  daemon alike) as `currents`.
+- Store: `wayfinding`, `currentConnections` (device local, connect-once),
+  `currentProbes`, `currentsHost`, `currentArrival`; the selection is
+  `Project.agenticCurrent`, read through `agenticView(settings)` off
+  `activeProjectOf`. Actions `setWayfinding`, `setAgenticCurrent(projectId, ...)`,
+  `connectCurrent`, `disconnectCurrent` (sweeps every project), `refreshCurrents`.
+  The active project's current handle rides into every session (desktop bridge
+  and daemon alike) as `currents`.
 - Engine: `os-code/src/currents/model.ts` (shapes, exported through
   `os-code/protocol`), `os-code/src/currents/host.ts` (the host probe and the
   jailed, markdown-only Hermes home reader), tools `askHermes`, `askAgent`

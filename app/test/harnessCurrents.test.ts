@@ -22,6 +22,7 @@ import {
   harnessCurrentStateLine,
   harnessCurrentsHandle,
   nextActiveHarnessCurrent,
+  projectHarnessSettings,
 } from '../src/lib/harnessCurrents.js';
 import { SETUP_GUIDES } from '../src/lib/setupGuides.js';
 
@@ -80,6 +81,28 @@ describe('one at a time within the group, coexisting with agentic', () => {
     };
     expect(activeHarnessCurrent(both)).toBe('jev');
     expect(activeHarnessContribution(both)?.label).toBe('Jev');
+  });
+});
+
+describe('per-project selection (connect once, select per project)', () => {
+  const connections = { jev: { endpoint: 'https://api.typesafe.ai' } };
+
+  it('reads the selection from the project, with the device-local connections', () => {
+    const view = projectHarnessSettings({ harnessCurrent: 'jev' }, connections);
+    expect(view.harnessCurrent).toBe('jev');
+    expect(view.harnessCurrentConnections).toBe(connections);
+    expect(activeHarnessCurrent(view)).toBe('jev');
+  });
+
+  it('two projects can differ while sharing the one connection', () => {
+    const a = projectHarnessSettings({ harnessCurrent: 'jev' }, connections);
+    const b = projectHarnessSettings({ harnessCurrent: null }, connections);
+    expect(activeHarnessContribution(a)?.label).toBe('Jev');
+    expect(activeHarnessContribution(b)).toBeUndefined();
+  });
+
+  it('a project with no selection is off even when a connection exists', () => {
+    expect(activeHarnessCurrent(projectHarnessSettings(undefined, connections))).toBeNull();
   });
 });
 
@@ -170,7 +193,7 @@ describe('no room names a harness current itself', () => {
     const ALLOWED = new Set([
       'lib/harnessCurrents.ts',
       'lib/setupGuides.ts',
-      'screens/SettingsScreen.tsx',
+      'components/ProjectCurrents.tsx',
       'components/HarnessCurrentConnectSheet.tsx',
     ]);
     const names = /\b(Jev|Harness Currents)\b/;

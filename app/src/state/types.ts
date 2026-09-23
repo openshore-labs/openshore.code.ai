@@ -1,6 +1,11 @@
 // App-level models. Every conversation, whatever powers it, renders through
 // the same ThreadState so the UI has exactly one chat implementation.
-import type { ApprovalRequest, PermissionMode } from 'os-code/protocol';
+import type {
+  AgenticCurrentId,
+  ApprovalRequest,
+  HarnessCurrentId,
+  PermissionMode,
+} from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
@@ -211,6 +216,16 @@ export interface Project {
   name: string;
   /** Standing instructions/context injected into every chat in the project. */
   instructions?: string;
+  /** The Agentic Current selected for THIS project, or none. Currents are a
+   *  per-project workflow choice (founder, 2026-09-23): different projects run
+   *  simultaneously with different currents. One at a time within the project.
+   *  The selection may sync with a shared project; the connection (endpoint +
+   *  key) stays device-local (connect once, in Settings), so a teammate picks
+   *  up the selection and connects their own box/key. */
+  agenticCurrent?: AgenticCurrentId | null;
+  /** The Harness Current selected for THIS project, or none (Jev). Independent
+   *  of the agentic selection, so one of each may be on per project. */
+  harnessCurrent?: HarnessCurrentId | null;
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
   /** Enterprise: per-teammate access grants, keyed by email, that decide who
