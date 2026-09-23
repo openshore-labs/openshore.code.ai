@@ -38,6 +38,9 @@ export interface GuidedSetupProgress {
    *  back to the chat. Cleared once they are back. */
   awaiting?: SetupStepId;
   finished?: boolean;
+  /** The person said they would rather just chat for now. The step buttons
+   *  go away and the guide stops raising setup until they ask to resume. */
+  paused?: boolean;
   /** Harbor's "ready, here is how to switch" line has been said. */
   harborAnnounced?: boolean;
 }
@@ -149,7 +152,7 @@ export function stepNumber(id: SetupStepId): { n: number; of: number } {
 /** The first message of the walk, right under the greeting. */
 export function openingMessage(first: SetupStepId | undefined, facts: SetupFacts): string {
   if (!first) return finishMessage(facts);
-  return `Let's get you set up. For each step I'll tell you what it is, why it helps, and how it works. Then you can connect it, skip it, or ask me more first. Skip anything you don't need; you can always come back to it.\n\n${stepIntro(first)}`;
+  return `Let's get you set up. For each step I'll tell you what it is, why it helps, and how it works. Then you can connect it, skip it, or ask me more first. Skip anything you don't need; you can always come back to it. And if you'd rather just chat for now, say so. I'm happy to talk about anything.\n\n${stepIntro(first)}`;
 }
 
 /** The guide's message when the walk moves on: what just happened, then the
@@ -196,6 +199,53 @@ export const ASK_ANYTHING = [
   'How do Projects work?',
 ];
 
+/** The first chat's first goal, above setup (founder, 2026-09-23). */
+export const FIRST_CHAT_GOAL =
+  'FIRST CHAT: your first goal is a pleasant, genuinely useful conversation that shows the person you are a capable chat companion. Setup is offered, never pushed.';
+
+/** What a message in the walk's chat asks of the walk itself, read before it
+ *  goes to the model:
+ *  - pause: they would rather just chat ("not now", "I just want to chat").
+ *    The walk steps back and the message still goes to the guide, who
+ *    answers it knowing setup is off the table for now.
+ *  - resume: they want to set up after all ("let's set up"). Only a short,
+ *    plain request; the walk picks up with the current step.
+ *  - skip: a bare "skip" or "next" skips the current step.
+ *  Undefined means an ordinary message. */
+export type SetupIntent = 'pause' | 'resume' | 'skip';
+
+const SETUP_WORD = String.raw`set(?:ting)?[\s-]*(?:it\s+|things\s+|me\s+)?up|setup`;
+const PAUSE = [
+  new RegExp(
+    String.raw`\b(?:don'?t|do not|doesn'?t|no|not)\b[^.?!]{0,30}\b(?:${SETUP_WORD})\b`,
+    'i',
+  ),
+  new RegExp(
+    String.raw`\b(?:skip|stop|pause|cancel|forget)\b[^.?!]{0,12}\b(?:${SETUP_WORD})\b`,
+    'i',
+  ),
+  /\bjust (?:want to |wanna |like to )?(?:chat|talk)\b/i,
+  /\b(?:rather|prefer to) (?:just )?(?:chat|talk)\b/i,
+  /^\s*(?:not now|not right now|maybe later|later|no thanks)[\s.!]*$/i,
+];
+const RESUME = new RegExp(
+  String.raw`^\s*(?:ok(?:ay)?,?\s*)?(?:let'?s|let us|i'?m ready to|ready to|i want to|resume|continue|start|back to)\s+(?:the\s+)?(?:${SETUP_WORD})(?:\s+now)?[\s.!]*$|^\s*set me up[\s.!]*$`,
+  'i',
+);
+const SKIP = /^\s*(?:skip|skip (?:this|it|that)(?: one| step)?|next|next step|pass)[\s.!]*$/i;
+
+export function setupIntent(text: string): SetupIntent | undefined {
+  if (PAUSE.some((re) => re.test(text))) return 'pause';
+  if (RESUME.test(text)) return 'resume';
+  if (SKIP.test(text)) return 'skip';
+  return undefined;
+}
+
+/** Said when the walk picks back up. */
+export function resumeMessage(current: SetupStepId): string {
+  return `Happy to. Here's where we left off.\n\n${stepIntro(current)}`;
+}
+
 /** One line for Harbor Lite's system prompt, so a question asked mid-walk is
  *  answered knowing where the person is. Short: the guide is a small model. */
 export function guideContextLine(
@@ -203,12 +253,16 @@ export function guideContextLine(
   facts: SetupFacts,
 ): string | undefined {
   if (!progress) return undefined;
+  const harbor = facts.harborReady
+    ? ` Harbor is downloaded; if asked how to use it: ${HARBOR_SWITCH_HINT}`
+    : '';
   if (progress.finished || !progress.current) {
-    return facts.harborReady
-      ? `SETUP: finished. Harbor is downloaded; if asked how to use it: ${HARBOR_SWITCH_HINT}`
-      : 'SETUP: finished. Invite questions about the app.';
+    return `${FIRST_CHAT_GOAL} SETUP: finished.${harbor} Invite questions about the app.`;
+  }
+  if (progress.paused) {
+    return `${FIRST_CHAT_GOAL} SETUP: paused. The person wants to just chat for now. Do not bring setup up again unless they ask; if they do, tell them to say "let's set up".${harbor}`;
   }
   const step = STEP_COPY[progress.current];
   const { n, of } = stepNumber(progress.current);
-  return `SETUP: you are walking the person through setup, step ${n} of ${of}: "${step.title}". What it is: ${step.what} How it works: ${step.how} Its buttons ("${step.action}", "Ask about this", and "Skip for now") sit under your latest message. Answer their question from this, then point them back to those buttons. Never invent other steps.`;
+  return `${FIRST_CHAT_GOAL} SETUP: step ${n} of ${of}, "${step.title}". What it is: ${step.what} How it works: ${step.how} Its buttons ("${step.action}", "Ask about this", and "Skip for now") sit under your latest message. Answer setup questions from this. If they ask about something else, answer that fully and well, and mention the buttons at most briefly. If they say they want to just chat, drop setup and chat. Never invent other steps.`;
 }

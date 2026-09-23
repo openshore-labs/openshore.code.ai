@@ -14,6 +14,7 @@ import {
   guideContextLine,
   nextStep,
   openingMessage,
+  setupIntent,
   stepIntro,
   type SetupFacts,
 } from '../src/lib/guidedSetup.js';
@@ -45,6 +46,62 @@ describe('the walk order', () => {
 
   it('ends when every step is done or skipped', () => {
     expect(nextStep({ skipped: ['harbor', 'computer', 'key'] }, NONE)).toBeUndefined();
+  });
+});
+
+describe('reading the person (setup is offered, never pushed)', () => {
+  it('hears "I would rather just chat" in its many forms', () => {
+    for (const t of [
+      "I don't want to set up right now, I just want to chat",
+      'no setup please',
+      'can we skip the setup?',
+      'not now',
+      'Maybe later.',
+      "I'd rather just talk",
+      'I just wanna chat for a bit',
+      'stop setting things up',
+    ]) {
+      expect(setupIntent(t), t).toBe('pause');
+    }
+  });
+
+  it('hears a plain "let\'s set up" as picking the walk back up', () => {
+    for (const t of ["let's set up", 'OK, lets set up now', 'resume setup', 'set me up']) {
+      expect(setupIntent(t), t).toBe('resume');
+    }
+  });
+
+  it('takes a bare "skip" or "next" as skipping the step', () => {
+    for (const t of ['skip', 'skip this one', 'next', 'Next step.']) {
+      expect(setupIntent(t), t).toBe('skip');
+    }
+  });
+
+  it('leaves ordinary conversation alone', () => {
+    for (const t of [
+      'What is the Vault?',
+      'How do I set up a repository on my computer?',
+      'Tell me a joke about boats',
+      'I set up Tailscale already',
+      'what comes next in the fibonacci sequence',
+      'Tell me more about connecting my computer.',
+    ]) {
+      expect(setupIntent(t), t).toBeUndefined();
+    }
+  });
+
+  it('puts a pleasant conversation first in every state of the walk', () => {
+    const walking = guideContextLine(
+      { conversationId: 'c', current: 'harbor', skipped: [] },
+      NONE,
+    )!;
+    const paused = guideContextLine(
+      { conversationId: 'c', current: 'harbor', skipped: [], paused: true },
+      NONE,
+    )!;
+    for (const line of [walking, paused]) expect(line).toMatch(/pleasant, genuinely useful/);
+    expect(walking).toMatch(/just chat, drop setup and chat/);
+    expect(paused).toMatch(/Do not bring setup up again unless they ask/);
   });
 });
 
@@ -251,5 +308,36 @@ describe('the guided walk in the store', () => {
     await wait(1600);
     expect(useApp.getState().settings.harborReady).toBe(true);
     expect(texts().at(-1)).toContain(HARBOR_SWITCH_HINT);
+  });
+
+  it('steps back when the person would rather chat, and picks up when asked', async () => {
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    const id = guided().conversationId;
+    useApp.setState({ activeId: id });
+    useApp.getState().send('Not now, I just want to chat');
+    await wait(5);
+    expect(guided().paused).toBe(true);
+    expect(guided().current).toBe('harbor');
+    // The message went to the guide as an ordinary turn (the store appends no
+    // scripted reply for a pause).
+    expect(texts().at(-1)).not.toContain("Here's where we left off");
+    // A connection landing while paused says nothing and does not move the walk.
+    useApp.setState((s) => ({
+      settings: { ...s.settings, daemon: { baseUrl: 'http://box', token: 't' } as never },
+    }));
+    await wait(5);
+    expect(guided().current).toBe('harbor');
+
+    useApp.getState().send("let's set up");
+    await wait(5);
+    expect(guided().paused).toBe(false);
+    expect(texts().at(-1)).toContain("Here's where we left off");
+    expect(texts().at(-1)).toContain(stepIntro('harbor'));
+
+    useApp.getState().send('skip');
+    await wait(5);
+    // The computer connected while paused, so the walk passes it by.
+    expect(guided().current).toBe('repo');
   });
 });

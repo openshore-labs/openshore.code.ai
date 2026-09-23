@@ -1790,3 +1790,10 @@ execution contract. Newest at the bottom.
   phone's repositories live there), and key. Coming back to the chat happens
   only for the step whose page the walk sent the person to, so a key added from
   Settings a week later never yanks them into the guide's chat.
+- **The first chat is a conversation first, founder 2026-09-23:** Harbor Lite
+  wants to set a new person up and has the buttons to, but its first goal is a
+  pleasant, useful chat. "Not now" or "I just want to chat" is read by a pure
+  phrase matcher (`setupIntent`, not the model, so it is reliable on a small
+  seat) and pauses the walk; the message still goes to the guide, whose prompt
+  now says setup is off the table until asked. A resume or a bare "skip" is
+  answered by the walk itself, not the model.
