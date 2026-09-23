@@ -131,13 +131,38 @@ export async function daemonHealth(
     return { ok: true, detail: 'Connected to your desktop.', ...(role ? { role } : {}) };
   } catch {
     // A rejected credential answers 401 with no CORS headers (DAE-15), which a
-    // WebView reports as a failed fetch, the same as an unreachable hub. Name
-    // both causes rather than blame the network for a wrong token.
-    return {
-      ok: false,
-      detail:
-        'Could not reach the desktop, or it rejected the pairing token. Check that Tailscale is on for both devices and the desktop app is open, then re-copy the token.',
-    };
+    // WebView reports as a failed fetch, the same as an unreachable hub. Tell
+    // the two apart with the one route that needs no credential: an empty
+    // pairing claim is refused with a readable 400 (with CORS) and redeems
+    // nothing, so any answer at all means the computer is there and it is this
+    // device's pairing that was turned down.
+    return (await hubAnswers(target.baseUrl))
+      ? { ok: false, detail: PAIRING_REJECTED }
+      : { ok: false, detail: HUB_UNREACHABLE };
+  }
+}
+
+/** The computer answered, but not to this device's credential. */
+export const PAIRING_REJECTED =
+  'Your computer answered, but it no longer accepts this device. The pairing was revoked or has expired. Pair again from Desktop + phone on the computer.';
+
+/** Nothing answered at the computer's address. */
+export const HUB_UNREACHABLE =
+  "Can't reach your computer. Check that it is awake with OpenShore open, and that Tailscale is on for both devices.";
+
+/** Whether anything at this address answers as an OpenShore daemon, using the
+ *  credential-free pairing route with an empty claim (a 400, never a redeem). */
+async function hubAnswers(baseUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl}/pair/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(4000),
+    });
+    return res.status === 400;
+  } catch {
+    return false;
   }
 }
 
@@ -355,9 +380,18 @@ export class RemoteDriver implements ChatDriver {
     readonly sessionId: string,
     private readonly target: DaemonTarget,
     resumeFromSeq = 0,
-    private readonly opts: { onLink?: (state: HubLinkState) => void } = {},
+    private readonly opts: {
+      onLink?: (state: HubLinkState) => void;
+      /** Drive only the terminal routes (the plain home shell): no session
+       *  event stream and no role probe, since there is no session behind it. */
+      terminalOnly?: boolean;
+    } = {},
   ) {
     this.lastSeq = resumeFromSeq;
+    if (opts.terminalOnly) {
+      this.hubRoleReady = Promise.resolve(undefined);
+      return;
+    }
     this.hubRoleReady = daemonHealth(target)
       .then((h) => {
         this.hubRole = h.role;

@@ -14,7 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   isAdminProvisionedWorkspace,
@@ -29,6 +29,7 @@ import {
   type PtyFactory,
   type TerminalPty,
 } from '../src/daemon/terminal.js';
+import { HOME_SHELL_ID } from '../src/daemon/homeShellId.js';
 
 // The test daemon runs with node-pty simulated ABSENT, whether or not the
 // native module is built on this machine, so the 503 path is reproducible
@@ -722,6 +723,94 @@ describe('terminal exit and session scoping (DAE-5, DAE-14)', () => {
       headers: auth(adminToken),
     });
     expect(killed.status).toBe(404);
+  });
+});
+
+describe('the plain home shell (no session behind it)', () => {
+  let shellDaemon: RunningDaemon;
+  let shellBase: string;
+  let pty: RoutePty;
+  let spawnCwds: string[];
+
+  beforeEach(async () => {
+    pty = new RoutePty();
+    spawnCwds = [];
+    const spawn: PtyFactory = async (opts) => {
+      spawnCwds.push(opts.cwd);
+      return pty;
+    };
+    shellDaemon = await startOnFreePort({
+      terminals: new TerminalManager({ spawn, exitGraceMs: 60_000 }),
+    });
+    shellBase = `http://127.0.0.1:${shellDaemon.port}`;
+  });
+  afterEach(() => shellDaemon.close());
+
+  async function openHome(token = adminToken): Promise<Response> {
+    return fetch(`${shellBase}/sessions/${HOME_SHELL_ID}/term`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ cols: 80, rows: 24 }),
+    });
+  }
+
+  it('opens a shell in the home folder with no session, and reopening lands in the same one', async () => {
+    const first = await openHome();
+    expect(first.status).toBe(201);
+    const { termId } = (await first.json()) as { termId: string };
+    expect(spawnCwds).toEqual([homedir()]);
+
+    const again = await openHome();
+    expect(again.status).toBe(201);
+    expect(((await again.json()) as { termId: string }).termId).toBe(termId);
+    expect(spawnCwds).toHaveLength(1);
+
+    const stdin = await fetch(`${shellBase}/sessions/${HOME_SHELL_ID}/term/${termId}/stdin`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ dataBase64: Buffer.from('ls\n').toString('base64') }),
+    });
+    expect(stdin.status).toBe(200);
+    expect(pty.writes).toEqual(['ls\n']);
+  });
+
+  it('a shell that exited is replaced by a fresh one on the next open', async () => {
+    const first = await openHome();
+    const { termId } = (await first.json()) as { termId: string };
+    pty.exit(0);
+    const next = await openHome();
+    expect(((await next.json()) as { termId: string }).termId).not.toBe(termId);
+    expect(spawnCwds).toHaveLength(2);
+  });
+
+  it('a member cannot open the home shell', async () => {
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
+    const res = await openHome(token);
+    expect(res.status).toBe(403);
+    expect(spawnCwds).toEqual([]);
+  });
+
+  it('answers only its terminal routes, and a session cannot reach its shell', async () => {
+    const events = await fetch(`${shellBase}/sessions/${HOME_SHELL_ID}/events?since=0`, {
+      headers: auth(adminToken),
+    });
+    expect(events.status).toBe(404);
+
+    const opened = await openHome();
+    const { termId } = (await opened.json()) as { termId: string };
+    const created = await fetch(`${shellBase}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const stdin = await fetch(`${shellBase}/sessions/${id}/term/${termId}/stdin`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ dataBase64: Buffer.from('x').toString('base64') }),
+    });
+    expect(stdin.status).toBe(404);
+    expect(pty.writes).toEqual([]);
   });
 });
 

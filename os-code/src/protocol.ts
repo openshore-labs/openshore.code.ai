@@ -15,6 +15,8 @@ export type {
 export { PERMISSION_MODES } from './core/agent/types.js';
 import type { PermissionMode } from './core/agent/types.js';
 export { INIT_PROMPT } from './core/agent/initPrompt.js';
+// The reserved terminal scope for the plain home-folder shell (no session).
+export { HOME_SHELL_ID } from './daemon/homeShellId.js';
 
 // Repo reconcile result (push unpushed commits, merge a moved-on remote). Type
 // only: the reconcile engine itself pulls Node/simple-git, but its result shape

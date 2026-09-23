@@ -336,7 +336,7 @@ function phoneDeviceName(): string {
 }
 
 function PhonePair() {
-  const { settings, saveHub, removeHub, showToast, startGuideChat } = useApp();
+  const { settings, saveHub, removeHub, showToast, startGuideChat, setView } = useApp();
   const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
   const [code, setCode] = useState('');
   const [testing, setTesting] = useState(false);
@@ -386,7 +386,7 @@ function PhonePair() {
       );
       setState(undefined);
       setConnected(true);
-      showToast('Connected. Pick your computer in the model menu to chat or code.');
+      showToast('Connected. Your computer is in the model menu, and its terminal is one tap away.');
     } else {
       setState(health.detail);
     }
@@ -508,10 +508,19 @@ function PhonePair() {
           </button>
           {scanning ? <QrScanner onDecode={onScanned} onClose={() => setScanning(false)} /> : null}
           {connected ? (
-            <p className="hint" style={{ marginTop: 10 }}>
-              <span className="pill ok pill-pop">Paired</span> Pick your computer in the model menu
-              to chat or code.
-            </p>
+            <div className="pair-next">
+              <p className="hint" style={{ margin: 0 }}>
+                <span className="pill ok pill-pop">Paired</span> Pick your computer in the model
+                menu to chat or code, or go straight to its shell.
+              </p>
+              <button
+                className="btn press-fb"
+                style={{ width: '100%', marginTop: 10 }}
+                onClick={() => setView('terminalroom')}
+              >
+                Open a terminal on your computer
+              </button>
+            </div>
           ) : state ? (
             <p className="hint" style={{ marginTop: 10 }}>
               {state}
