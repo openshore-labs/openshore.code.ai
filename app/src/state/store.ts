@@ -114,6 +114,15 @@ import {
 } from '../lib/authSession.js';
 import { beatDesktopSession, registerPushForDaemon } from '../lib/push.js';
 import {
+  approvalNotice,
+  askForNotices,
+  decodeTap,
+  downloadNoticeCopy,
+  postChatNotice,
+  replyNotice,
+  syncNoticePrefs,
+} from '../lib/notices.js';
+import {
   autoProfile,
   effectiveProfile,
   locationAllowed,
@@ -401,6 +410,12 @@ export interface AppSettings {
    *  writing). On by default; undefined means on. Off drops the standard from
    *  the prompt, so a model runs a little faster on a shorter prompt. */
   humanizeWriting?: boolean;
+  /** Notices (lib/notices.ts): a banner when a model download finishes while
+   *  you are away. On by default; undefined means on. Device local. */
+  noticeDownloads?: boolean;
+  /** Notices: a banner when a reply lands, or a chat stops for your approval,
+   *  while you are away. On by default; undefined means on. Device local. */
+  noticeReplies?: boolean;
   /** Voice mode: speak replies aloud during a spoken conversation. On by default
    *  (undefined means on); off keeps voice mode as listen-and-send, with replies
    *  read on screen. Device local (a per-device output preference). */
@@ -1737,6 +1752,12 @@ export const useApp = create<AppState>((set, get) => {
         // 'sheet': leave the approval request on the sheet for the person. A
         // desktop non-shell tool (an always-ask vaultWrite included) is never
         // client-auto-approved; the engine already decided to ask.
+        else if (!daemonPushes(conversationId)) {
+          const conv = get().conversations[conversationId];
+          if (conv) {
+            void postChatNotice('approval', approvalNotice(conversationId, conv.title), s.settings);
+          }
+        }
       }
       // The task ended: a message typed mid-run goes out now, in order. (A
       // completed task's success tap is fired once per batch by flush.)
@@ -1749,6 +1770,17 @@ export const useApp = create<AppState>((set, get) => {
           return;
         }
         const conv = get().conversations[conversationId];
+        // Tell a person who walked away that the turn ended. The gate holds it
+        // back while the app is in front, so a journal replay on open (always
+        // foreground) never fires one; a desktop session the daemon already
+        // pushes for is left to that push.
+        if (conv && !daemonPushes(conversationId)) {
+          void postChatNotice(
+            'reply',
+            replyNotice(conversationId, conv.title, event.reason),
+            get().settings,
+          );
+        }
         // Activation: the first time a model produces a working reply on this
         // device (once per model, persisted via logOnce). CX's funnel
         // denominator, so we can later measure whether the community layer helps
@@ -1829,6 +1861,40 @@ export const useApp = create<AppState>((set, get) => {
       };
     });
     await persistConversations(get());
+  }
+
+  // A desktop session on a daemon this phone registered with pushes its own
+  // completion and approval banners (lib/push.ts), so the local notice stands
+  // down for it rather than doubling up.
+  function daemonPushes(conversationId: string): boolean {
+    const s = get();
+    const conv = s.conversations[conversationId];
+    const daemon = s.settings.daemon;
+    return (
+      conv?.source.kind === 'desktop' &&
+      Boolean(daemon && (s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl))
+    );
+  }
+
+  // A tapped notice opens the thing it is about: the chat, the guide, the
+  // Stack. A desktop completion push carries the daemon's session id, which
+  // maps back to the chat that runs it.
+  function openNoticeTap(data: { route?: string; sessionId?: string }): void {
+    const route = decodeTap(data);
+    if (!route) return;
+    const s = get();
+    if (route.to === 'chat') {
+      if (s.conversations[route.conversationId]) s.openConversation(route.conversationId);
+    } else if (route.to === 'guide') {
+      void s.startGuide(route.modelId);
+    } else if (route.to === 'view') {
+      s.setView(route.view);
+    } else {
+      const hit = Object.entries(s.conversations).find(
+        ([, c]) => c.source.kind === 'desktop' && c.source.sessionId === route.sessionId,
+      );
+      if (hit) s.openConversation(hit[0]);
+    }
   }
 
   // Register this device for completion push with the connected daemon, once per
@@ -2876,6 +2942,14 @@ export const useApp = create<AppState>((set, get) => {
       // On every app open, check for local project work that never reached the
       // remote and push it, so nothing important is stranded on this device.
       void get().reconcileProjectRepos('open');
+
+      // Notices: mirror the Downloads toggle to the native side (it reads it on
+      // a background relaunch) and open whatever a tapped notice is about. A
+      // tap that cold-launched the app is retained until this listener lands.
+      if (isPhone()) {
+        void syncNoticePrefs(get().settings);
+        void Llama.addListener('noticeTap', (data) => openNoticeTap(data)).catch(() => {});
+      }
 
       // While the phone is foreground on a desktop chat, beat the daemon so it
       // knows the user is watching and holds the completion push back. The
@@ -4757,7 +4831,12 @@ export const useApp = create<AppState>((set, get) => {
         });
       });
       try {
-        await Llama.downloadModel({ id: HARBOR_MINI_MODEL_ID, url: HARBOR_MINI_MODEL_URL });
+        void askForNotices();
+        await Llama.downloadModel({
+          id: HARBOR_MINI_MODEL_ID,
+          url: HARBOR_MINI_MODEL_URL,
+          notice: downloadNoticeCopy('Harbor Lite', HARBOR_MINI_MODEL_ID),
+        });
         set({ harborMiniDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborMiniReady: true });
         logEvent('harbor_mini_ready');
@@ -4818,7 +4897,12 @@ export const useApp = create<AppState>((set, get) => {
         });
       });
       try {
-        await Llama.downloadModel({ id: HARBOR_MODEL_ID, url: HARBOR_MODEL_URL });
+        void askForNotices();
+        await Llama.downloadModel({
+          id: HARBOR_MODEL_ID,
+          url: HARBOR_MODEL_URL,
+          notice: downloadNoticeCopy('Harbor', HARBOR_MODEL_ID),
+        });
         set({ harborDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborReady: true });
         logEvent('harbor_ready');
@@ -5477,6 +5561,9 @@ export const useApp = create<AppState>((set, get) => {
         });
       }
       deliver(activeId, driver, text, attachments);
+      // The Claude pattern: ask for notices the first time you send something
+      // you might walk away from. iOS prompts once; later calls just read it.
+      if (isPhone()) void askForNotices();
     },
 
     unqueue(index) {

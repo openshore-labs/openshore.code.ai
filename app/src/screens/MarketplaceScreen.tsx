@@ -92,6 +92,7 @@ import {
 import { PROFILES, type ProfileId } from '../lib/profiles.js';
 import { stackForProfile } from '../lib/stack.js';
 import { Sheet } from '../components/Sheet.js';
+import { askForNotices, downloadNoticeCopy } from '../lib/notices.js';
 
 interface DownloadState {
   percent: number;
@@ -493,7 +494,13 @@ export function MarketplaceScreen() {
       },
     }));
     try {
-      await Llama.downloadModel({ id: model.id, url: model.onDevice.url, target });
+      void askForNotices();
+      await Llama.downloadModel({
+        id: model.id,
+        url: model.onDevice.url,
+        target,
+        notice: downloadNoticeCopy(model.name),
+      });
       setDownloads((d) => ({
         ...d,
         [model.id]: { percent: 100, label: 'Verifying', indeterminate: true },

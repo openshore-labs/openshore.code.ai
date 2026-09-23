@@ -6,7 +6,9 @@
 import { useEffect, useState } from 'react';
 import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { platform, isDesktop } from '../lib/platform.js';
+import { platform, isDesktop, isPhone } from '../lib/platform.js';
+import { noticeEnabled, noticePermission, syncNoticePrefs } from '../lib/notices.js';
+import type { NoticePermission } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { HARBOR_BYLINE } from '../lib/harbor.js';
 import {
@@ -257,6 +259,12 @@ export function SettingsScreen() {
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
   const humanizeOn = settings.humanizeWriting !== false;
+  // Notices are an iPhone surface; read the standing permission once so a "no"
+  // in iOS Settings is said plainly instead of toggles that do nothing.
+  const [noticeStatus, setNoticeStatus] = useState<NoticePermission | undefined>();
+  useEffect(() => {
+    if (isPhone()) void noticePermission().then(setNoticeStatus);
+  }, []);
   const account = settings.account;
   const org = account?.org;
   const [sheet, setSheet] = useState<SheetName | undefined>();
@@ -827,6 +835,45 @@ export function SettingsScreen() {
             }
           />
         </SettingsGroup>
+
+        {/* Notices: a banner for what finished while you were away. iPhone only. */}
+        {isPhone() ? (
+          <SettingsGroup title="Notifications" index={group++}>
+            {noticeStatus === 'denied' ? (
+              <SettingsRow
+                label="Notifications are off for OpenShore"
+                sub="Turn them on in iOS Settings, then OpenShore, then Notifications."
+                subWrap
+              />
+            ) : null}
+            <SettingsRow
+              label="Downloads"
+              sub="When a model finishes downloading while you are away."
+              trailing={
+                <Switch
+                  checked={noticeEnabled('download', settings)}
+                  label="Download notifications"
+                  onChange={(next) => {
+                    void saveSettings({ noticeDownloads: next }).then(() =>
+                      syncNoticePrefs({ ...settings, noticeDownloads: next }),
+                    );
+                  }}
+                />
+              }
+            />
+            <SettingsRow
+              label="Replies"
+              sub="When a reply is ready, or a chat needs your approval, while you are away."
+              trailing={
+                <Switch
+                  checked={noticeEnabled('reply', settings)}
+                  label="Reply notifications"
+                  onChange={(next) => void saveSettings({ noticeReplies: next })}
+                />
+              }
+            />
+          </SettingsGroup>
+        ) : null}
 
         {/* Wayfinding: how the agent finds its way. On by default. */}
         <SettingsGroup title="Wayfinding" index={group++}>

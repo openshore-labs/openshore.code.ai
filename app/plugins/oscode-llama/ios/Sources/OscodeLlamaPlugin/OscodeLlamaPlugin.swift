@@ -62,6 +62,10 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPushPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPushToken", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "noticePermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestNoticePermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "postNotice", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setNoticePrefs", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureGet", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureSet", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureDelete", returnType: CAPPluginReturnPromise)
@@ -113,6 +117,22 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         return aps == "development" ? "sandbox" : "production"
     }()
 
+    /// A notice (local or remote) was tapped. The AppDelegate forwards its
+    /// string payload here; the event is retained until the JS listener
+    /// attaches, so a tap that cold-launches the app still lands.
+    public static func deliverNoticeTap(_ userInfo: [AnyHashable: Any]) {
+        var data = [String: Any]()
+        for (key, value) in userInfo {
+            if let key = key as? String, let text = value as? String { data[key] = text }
+        }
+        pendingNoticeTap = data
+        if let live {
+            live.notifyListeners("noticeTap", data: data, retainUntilConsumed: true)
+            pendingNoticeTap = nil
+        }
+    }
+    private static var pendingNoticeTap: [String: Any]?
+
     public static func deliverPushToken(_ token: String) {
         cachedPushToken = token
         live?.notifyListeners("pushToken", data: ["token": token, "environment": apsEnvironment])
@@ -120,6 +140,10 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
 
     override public func load() {
         Self.live = self
+        if let tap = Self.pendingNoticeTap {
+            Self.pendingNoticeTap = nil
+            self.notifyListeners("noticeTap", data: tap, retainUntilConsumed: true)
+        }
         // If the token already arrived before the bridge was up, surface it now.
         if let token = Self.cachedPushToken {
             self.notifyListeners("pushToken", data: ["token": token, "environment": Self.apsEnvironment])
@@ -242,6 +266,13 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("iCloud is not available on this iPhone. Sign in to iCloud, or download to this device instead.")
             return
         }
+        // The words for the "your download finished" notice, handed over now so
+        // a transfer that ends after a background relaunch can still post it.
+        if let notice = call.getObject("notice") {
+            var copy = [String: String]()
+            for (key, value) in notice { if let text = value as? String { copy[key] = text } }
+            Notices.setDownloadCopy(id: id, copy: copy)
+        }
         call.keepAlive = true
         downloadsLock.lock()
         pendingDownloads[id, default: []].append(call)
@@ -278,6 +309,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         store.cancel(id: id)
+        Notices.forgetDownload(id: id)
         downloadsLock.lock()
         let pending = pendingDownloads.removeValue(forKey: id) ?? []
         downloadsLock.unlock()
@@ -412,6 +444,44 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             "token": Self.cachedPushToken ?? NSNull(),
             "environment": Self.apsEnvironment
         ])
+    }
+
+    // ---------------------------------------------------------------- notices
+
+    @objc func noticePermission(_ call: CAPPluginCall) {
+        Notices.status { call.resolve(["status": $0]) }
+    }
+
+    /// Ask for notice permission (alerts and sounds, no APNs registration). Only
+    /// an undecided app shows the system prompt; otherwise this reports the
+    /// standing answer, so the JS side may call it at every worthwhile moment.
+    @objc func requestNoticePermission(_ call: CAPPluginCall) {
+        Notices.status { status in
+            guard status == "prompt" else {
+                call.resolve(["status": status])
+                return
+            }
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                call.resolve(["status": granted ? "granted" : "denied"])
+            }
+        }
+    }
+
+    @objc func postNotice(_ call: CAPPluginCall) {
+        guard let id = call.getString("id"), let title = call.getString("title"),
+              let body = call.getString("body")
+        else {
+            call.reject("postNotice needs an id, a title, and a body.")
+            return
+        }
+        Notices.post(id: id, title: title, body: body,
+                     route: call.getString("route"), thread: call.getString("thread"))
+        call.resolve()
+    }
+
+    @objc func setNoticePrefs(_ call: CAPPluginCall) {
+        if let downloads = call.getBool("downloads") { Notices.downloadsEnabled = downloads }
+        call.resolve()
     }
 
     // ---------------------------------------------------------------- secrets

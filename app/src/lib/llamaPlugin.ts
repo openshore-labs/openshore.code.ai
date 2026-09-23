@@ -20,6 +20,19 @@ export interface DeviceModelInfo {
  *  phone still has a home and is pulled back on demand when you are online. */
 export type StorageTarget = 'device' | 'icloud';
 
+/** The notice permission: 'prompt' until the person has been asked. */
+export type NoticePermission = 'prompt' | 'granted' | 'denied';
+
+/** The words (and tap route) for a download's finished or failed notice. Kept
+ *  flat and all strings so the native side can stash it across a relaunch. */
+export interface DownloadNoticeCopy {
+  doneTitle: string;
+  doneBody: string;
+  failTitle: string;
+  failBody: string;
+  route: string;
+}
+
 /** This device's live storage and memory, for the capacity monitor. Bytes for
  *  storage; ramBytes is the physical memory, used to size a machine
  *  recommendation. A zero anywhere means "could not read it" (older native
@@ -47,6 +60,9 @@ export interface LlamaPluginContract {
     id: string;
     url: string;
     target?: StorageTarget;
+    /** The words for the "download finished" notice, posted natively when the
+     *  app is not in front (see lib/notices.ts and Notices.swift). */
+    notice?: DownloadNoticeCopy;
   }): Promise<{ path: string; location: StorageTarget }>;
   /** Make an iCloud-stored model's bytes present on this device, downloading
    *  them if they were evicted. A no-op for a device model or one already
@@ -78,6 +94,23 @@ export interface LlamaPluginContract {
    *  `environment` selects which APNs host the token is valid against. */
   getPushToken(): Promise<{ token: string | null; environment: 'sandbox' | 'production' }>;
 
+  /** Local notices (lib/notices.ts). The status of the notice permission;
+   *  'prompt' means the person has not been asked yet. */
+  noticePermission(): Promise<{ status: NoticePermission }>;
+  /** Ask for notice permission when undecided; otherwise report the answer. */
+  requestNoticePermission(): Promise<{ status: NoticePermission }>;
+  /** Post a notice now. The same id replaces an earlier notice; `route` rides
+   *  the tap back through the 'noticeTap' event. */
+  postNotice(options: {
+    id: string;
+    title: string;
+    body: string;
+    route?: string;
+    thread?: string;
+  }): Promise<void>;
+  /** Mirror the notice toggles the native side reads with no web layer. */
+  setNoticePrefs(options: { downloads: boolean }): Promise<void>;
+
   /** Keychain-backed secret storage (iOS). Off iOS, unused (see platform.ts). */
   secureGet(options: { key: string }): Promise<{ value: string | null }>;
   secureSet(options: { key: string; value: string }): Promise<void>;
@@ -102,6 +135,12 @@ export interface LlamaPluginContract {
   addListener(
     eventName: 'pushToken',
     listener: (data: { token: string; environment: 'sandbox' | 'production' }) => void,
+  ): Promise<PluginListenerHandle>;
+  /** A notice was tapped: `route` for a local notice, `sessionId` and `kind`
+   *  for a desktop completion push. */
+  addListener(
+    eventName: 'noticeTap',
+    listener: (data: { route?: string; sessionId?: string; kind?: string }) => void,
   ): Promise<PluginListenerHandle>;
   /** The native side unloaded the loaded model on its own, e.g. after an iOS
    *  memory warning. The JS slot owner listens and forgets its claim so the
@@ -209,6 +248,19 @@ class LlamaWeb {
   async getPushToken() {
     return { token: null as string | null, environment: 'production' as const };
   }
+
+  async noticePermission() {
+    // No notices off a real iPhone; every notice path treats this as "off here".
+    return { status: 'denied' as NoticePermission };
+  }
+
+  async requestNoticePermission() {
+    return { status: 'denied' as NoticePermission };
+  }
+
+  async postNotice() {}
+
+  async setNoticePrefs() {}
 
   async secureGet({ key }: { key: string }) {
     return { value: localStorage.getItem(key) };
