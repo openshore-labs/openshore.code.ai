@@ -1768,3 +1768,9 @@ execution contract. Newest at the bottom.
   `harnessView` off `activeProjectOf(settings)`. Forgetting a connection sweeps
   it off every project. UI is `components/ProjectCurrents.tsx` in
   `ProjectDetailScreen` (editors only), removed from `SettingsScreen`.
+- **Notices on the phone, founder 2026-09-23:** the Claude app's pattern is the
+  baseline (away only, asked in context, tap opens the thing, per-kind toggles).
+  Download notices post natively from `ModelStore`, not JS, because the web
+  layer may never wake on a background relaunch. Reply and approval notices
+  stand down for a desktop session the daemon already pushes for, so no
+  doubles. No reply text in a notice, matching `push-send`'s privacy line.

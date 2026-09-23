@@ -469,6 +469,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
                 domain: "OscodeLlama", code: http.statusCode,
                 userInfo: [NSLocalizedDescriptionKey: "The source answered \(http.statusCode). The model may have moved."])))
             clear(id: id, taskId: downloadTask.taskIdentifier)
+            Notices.downloadFinished(id: id, ok: false)
             return
         }
 
@@ -479,8 +480,10 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         do {
             let dest = try place(temp: location, id: id, target: target)
             complete?(id, target.rawValue, .success(dest))
+            Notices.downloadFinished(id: id, ok: true)
         } catch {
             complete?(id, target.rawValue, .failure(error))
+            Notices.downloadFinished(id: id, ok: false)
         }
         clear(id: id, taskId: downloadTask.taskIdentifier)
     }
@@ -534,6 +537,9 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         lock.unlock()
         if (error as NSError).code != NSURLErrorCancelled {
             complete?(id, target.rawValue, .failure(error))
+            Notices.downloadFinished(id: id, ok: false)
+        } else {
+            Notices.forgetDownload(id: id)
         }
         clear(id: id, taskId: task.taskIdentifier)
     }
