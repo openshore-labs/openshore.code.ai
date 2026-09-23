@@ -1,7 +1,7 @@
 // The wait-then-answer moment (founder, 2026-09-03): the OpenShore mark rolls
 // as surf while the app waits on a first token, the word beside it turns over
-// through an honest lexicon, the reply types out at a calm pace and finishes
-// its tail instead of snapping, and the row eases out over the first line.
+// through an honest lexicon, the reply arrives a few words at a time, each group fading
+// in, and finishes its tail instead of snapping, and the row eases out over the first line.
 // Pinned here so the next session keeps the feel without remembering it.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -108,19 +108,20 @@ describe('the seam', () => {
     expect(theme).toMatch(/\.thread-inner \{[^}]*gap: var\(--thread-gap\)/);
   });
 
-  it('keeps the caret while the tail settles and fades it, never a hard unmount', () => {
+  // Founder, 2026-09-23: the reply arrives like Claude's, a few words at a
+  // time, each group fading up from light to full ink, with no caret.
+  it('fades words in while live and holds the split through the last fade', () => {
     expect(list).toMatch(/const live = streaming \|\| settling/);
-    expect(list).toMatch(/useExitPresence\(live/);
-    expect(theme).toMatch(/\.md-caret-out[\s\S]*?::after[\s\S]*?animation: caret-out/);
+    expect(list).toMatch(/useExitPresence\(live, WORD_FADE_MS\)/);
+    expect(list).toContain('fade={fading}');
+    expect(read('components/Markdown.tsx')).toContain('rehypeFadeWords');
+    expect(theme).toMatch(/\.md-live \.w \{[^}]*animation: word-in var\(--dur-6\)/);
     expect(theme).not.toContain('steps(1)');
   });
 
-  it('renders the caret inline at the end of the last line, not as its own block', () => {
-    // A pseudo-element on the reply's last text block, breathing while live;
-    // the old sibling <span className="cursor-caret"> hung under the paragraph.
-    expect(list).toContain('caret={caret}');
+  it('shows no caret at all, like Claude', () => {
+    expect(list).not.toContain('caret=');
     expect(list).not.toContain('cursor-caret');
-    expect(read('components/Markdown.tsx')).toMatch(/caret === 'on' \? ' md-caret'/);
-    expect(theme).toMatch(/\.md-caret > p:last-child::after[\s\S]*?animation: caret-breathe/);
+    expect(theme).not.toContain('md-caret');
   });
 });

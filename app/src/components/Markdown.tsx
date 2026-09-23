@@ -13,6 +13,7 @@ import rehypeHighlight from 'rehype-highlight';
 import { useApp } from '../state/store.js';
 import { copyText } from '../lib/clipboard.js';
 import { DiffBlock } from './ToolCard.js';
+import { rehypeFadeWords } from '../lib/fadeWords.js';
 
 function extractText(node: ReactNode): string {
   if (typeof node === 'string') return node;
@@ -97,20 +98,19 @@ export function closeOpenFence(text: string, streaming: boolean): string {
 export function Markdown({
   text,
   streaming = false,
-  caret = 'off',
+  fade = false,
 }: {
   text: string;
   streaming?: boolean;
-  /** The live typing caret, rendered inline at the end of the last line via a
-   *  pseudo-element on `.md`: 'on' breathes, 'out' fades, 'off' shows none. */
-  caret?: 'on' | 'out' | 'off';
+  /** A live reply: split prose into word spans so each new word fades in
+   *  (lib/fadeWords.ts, `.md-live .w`). Off renders plain text. */
+  fade?: boolean;
 }) {
-  const caretClass = caret === 'on' ? ' md-caret' : caret === 'out' ? ' md-caret md-caret-out' : '';
   return (
-    <div className={`md${caretClass}`}>
+    <div className={`md${fade ? ' md-live' : ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={fade ? [rehypeHighlight, rehypeFadeWords] : [rehypeHighlight]}
         components={{
           pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
           // Links leave the app rather than navigating the WebView away from it.
