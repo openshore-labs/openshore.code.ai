@@ -2820,6 +2820,21 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-23)
 
+### 2026-09-23, notices on the phone: downloads, replies, approvals
+
+The founder asked for a notice when a model finishes downloading, with the
+Claude app's notification pattern as the baseline for the rest: only when you
+are away, permission asked in context (first download or first message, never
+at launch), a tap opens the thing, no reply text on the lock screen, per-kind
+toggles (Settings > Notifications: Downloads, Replies; both on). Download
+notices post natively (`Notices.swift`, called by `ModelStore`) so one still
+fires when iOS relaunches the app in the background to finish the transfer;
+reply and approval notices post from the store, and stand down for a desktop
+session the daemon already pushes for. Taps (local and the desktop push) route
+through one `noticeTap` event. Core `app/src/lib/notices.ts`, guards
+`app/test/notices.test.ts`. Open: verify on a real iPhone (Swift not compiled
+in CI here).
+
 ### 2026-09-23, Harness Currents: Jev, a cost-saving decision layer
 
 "add Jev availability" resolved through a design pass: Jev is TypeSafe AI's
