@@ -1741,3 +1741,14 @@ execution contract. Newest at the bottom.
   engine loop, and its copy never claims a dollar saving until `osc eval`
   shows the number (tenet 2). The harness tenet 1 ("no room, no name") is
   deliberately superseded for this one visible group name; Keel stays barred.
+- **Currents are per-project, founder 2026-09-23:** both current groups (Agentic
+  and Harness) moved from app Settings to a project's settings, because a
+  current is a workflow requirement and different projects must run different
+  currents at once. The SELECTION lives on the Project
+  (`Project.agenticCurrent`/`harnessCurrent`); the CONNECTION (endpoint + key)
+  stays device-local and connect-once (a shared team project carries the
+  selection, each teammate connects their own box/key). The global rooms and
+  each session read the active project's selection via `agenticView`/
+  `harnessView` off `activeProjectOf(settings)`. Forgetting a connection sweeps
+  it off every project. UI is `components/ProjectCurrents.tsx` in
+  `ProjectDetailScreen` (editors only), removed from `SettingsScreen`.

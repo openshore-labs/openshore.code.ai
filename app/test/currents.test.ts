@@ -25,6 +25,7 @@ import {
   currentsHandles,
   isCurrentBenchId,
   nextActiveCurrent,
+  projectCurrentsSettings,
   slotNone,
   wayfindingOn,
 } from '../src/lib/currents.js';
@@ -208,6 +209,28 @@ describe('the mirrored pattern', () => {
   });
 });
 
+describe('per-project selection (connect once, select per project)', () => {
+  const connections = { hermes: { endpoint: 'http://box/v1', model: 'h' } };
+
+  it('reads the selection from the project, with the device-local connections', () => {
+    const view = projectCurrentsSettings({ agenticCurrent: 'hermes' }, connections);
+    expect(view.agenticCurrent).toBe('hermes');
+    expect(view.currentConnections).toBe(connections);
+    expect(activeCurrent(view)).toBe('hermes');
+  });
+
+  it('two projects differ while sharing one connection; a bench ref rides the selection', () => {
+    const a = projectCurrentsSettings({ agenticCurrent: 'hermes' }, connections);
+    const b = projectCurrentsSettings({ agenticCurrent: null }, connections);
+    expect(currentBenchRefs(a)).toHaveLength(1);
+    expect(currentBenchRefs(b)).toEqual([]);
+  });
+
+  it('no selection is off even when a connection exists', () => {
+    expect(activeCurrent(projectCurrentsSettings(undefined, connections))).toBeNull();
+  });
+});
+
 describe('off leaves no trace', () => {
   it('with none on there is no contribution and no bench ref', () => {
     expect(activeContribution({})).toBeUndefined();
@@ -225,7 +248,7 @@ describe('off leaves no trace', () => {
       'lib/currents.ts',
       'lib/currentsProbe.ts',
       'lib/setupGuides.ts',
-      'screens/SettingsScreen.tsx',
+      'components/ProjectCurrents.tsx',
       'components/CurrentConnectSheet.tsx',
     ]);
     const names = /\b(Hermes|Vellum|OpenAGI|CLI Pairing|Agentic Currents)\b/;

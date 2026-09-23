@@ -6,7 +6,7 @@
 // containing block; it slides in, drags to dismiss, and always animates out.
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useApp } from '../state/store.js';
+import { agenticView, harnessView, useApp } from '../state/store.js';
 import {
   PROFILES,
   PROFILE_ORDER,
@@ -111,11 +111,13 @@ export function ProfileStatus() {
   // The Agentic Current that is on, named beside the reach pill on every
   // screen, so the modality reads as whole without one room changing shape.
   // Rendered only through the contribution: with none on, nothing is here.
-  const current = activeContribution(settings);
+  // The currents named beside the reach pill are the ACTIVE project's, since a
+  // current is now a per-project choice.
+  const current = activeContribution(agenticView(settings));
   // The Harness Current that is on (Jev) sits beside it as its own pill. It is
   // cloud spend, so it reads amber (harness-pill), never teal. Independent of
   // the agentic pill, so both can show at once.
-  const harness = activeHarnessContribution(settings);
+  const harness = activeHarnessContribution(harnessView(settings));
 
   return (
     <>

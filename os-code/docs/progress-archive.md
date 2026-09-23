@@ -2788,7 +2788,24 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-17)
+## Log entries (2026-08-18 to 2026-09-21)
+
+### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
+
+The founder's brief came in two beats. First, "my own open-source, more
+compact Opus 4.8 for a home lab, the featured model you download to your hub
+and get started Docked." A memo (`docs/house-model-proposal.md`) grounded it:
+not a compact Opus (closed weights, and distilling from Claude is barred by
+the terms), but an open coder tuned to the harness, gated by the deep eval on
+a hub-class box. Second, the correction that set the shape: "like Harbor Lite
+and Harbor, a third and final more advanced out-of-the-box model", accessible
+from the start without the Marketplace. So the slot shipped now, on stock
+weights, the Harbor pattern exactly (id decoupled from weights, name in one
+constant): the First Seat card, the Stack starter, and a desktop Settings row
+ride one store action that pulls the size that fits and seats it; the tuned
+weights, when they clear the gate, replace the refs under the same name. Gates
+green: app 1050 tests, typecheck, lint, Prettier, the Vite build, os-code
+em-dash and PROGRESS shape guards. Two DECISIONS.
 
 ### 2026-09-17, v0.1.1 shipped, sign-in and auto-update reach every platform
 

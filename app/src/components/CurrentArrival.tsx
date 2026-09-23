@@ -14,7 +14,7 @@
 // Honesty: the arrival is a gesture, about three door clocks, not a progress
 // bar. Whether the box answered is the row's own state line.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { useApp } from '../state/store.js';
+import { agenticView, harnessView, useApp } from '../state/store.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { durationMs } from '../lib/motion.js';
 import { hapticApproval } from '../lib/haptics.js';
@@ -83,9 +83,11 @@ export function CurrentArrival() {
  *  off. */
 export function CurrentWaterline() {
   const { settings } = useApp();
-  // The single ring frames the screen when EITHER group has a current on. The
-  // two groups are independent, so one ring stands for whichever is active.
-  const on = Boolean(activeContribution(settings)) || Boolean(activeHarnessContribution(settings));
+  // The single ring frames the screen when the ACTIVE project has EITHER group
+  // on (currents are a per-project choice). One ring stands for whichever is on.
+  const on =
+    Boolean(activeContribution(agenticView(settings))) ||
+    Boolean(activeHarnessContribution(harnessView(settings)));
   const presence = useExitPresence(on, durationMs('--dur-6', 420));
   if (!presence.mounted) return null;
   return (

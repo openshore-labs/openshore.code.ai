@@ -5,7 +5,7 @@
 // can move back to the Bench keeping their metadata, and everything is editable
 // from the ellipses.
 import { useState } from 'react';
-import { stackAdmin, useApp } from '../state/store.js';
+import { agenticView, stackAdmin, useApp } from '../state/store.js';
 import { BackBar } from './BackBar.js';
 import {
   PROFILES,
@@ -116,10 +116,11 @@ export function StackManager() {
   // The bench holds the person's own endpoints plus the model an Agentic
   // Current contributes while it is on (none when none is on). Both are
   // BYOM-shaped, so they place and run through the same path.
-  const current = activeContribution(settings);
+  const agentic = agenticView(settings);
+  const current = activeContribution(agentic);
   const byomRefs: StackModelRef[] = [
     ...(settings.byomModels ?? []).map(byomRef),
-    ...currentBenchRefs(settings),
+    ...currentBenchRefs(agentic),
   ];
   const cloudRefs: StackModelRef[] = PROVIDERS.filter((p) => connectedProviders[p.id]).flatMap(
     (p) =>

@@ -10,7 +10,7 @@
 // with the transcript one tap away. Copy stays honest: "while your computer
 // is on", never "always on"; "works, then asks", never "unsupervised".
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { useApp } from '../state/store.js';
+import { agenticView, useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SwipeRow } from '../components/SwipeRow.js';
@@ -215,7 +215,7 @@ export function CrewCommandScreen() {
   // The Agentic Current that is on, and its own box's scheduled jobs when it
   // has any to read (view only). Undefined while reading; empty when the box
   // did not answer or has none.
-  const current = activeContribution(settings);
+  const current = activeContribution(agenticView(settings));
   const currentEndpoint = current ? settings.currentConnections?.[current.id]?.endpoint : undefined;
   const [currentJobs, setCurrentJobs] = useState<HermesJob[] | undefined>();
   useEffect(() => {
