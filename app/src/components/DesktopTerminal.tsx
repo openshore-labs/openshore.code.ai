@@ -15,7 +15,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { exitLine, terminalTheme } from './terminalTheme.js';
-import type { ChatDriver } from '../drivers/types.js';
+import type { TerminalHost } from '../drivers/types.js';
 
 // Keys a soft keyboard cannot send. A separate Ctrl toggle arms the next letter
 // as its control code. Each sends the raw bytes a terminal expects.
@@ -33,7 +33,7 @@ const ACCESSORY_KEYS: Array<{ label: string; send: string }> = [
 
 type Status = 'connecting' | 'ready' | 'unavailable' | 'exited';
 
-export function DesktopTerminal({ driver }: { driver: ChatDriver }) {
+export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const termIdRef = useRef<string>('');

@@ -71,6 +71,13 @@ export interface ChatDriver {
   terminalKill?(termId: string): void;
 }
 
+/** The slice of a driver the terminal view drives. A session's driver is one;
+ *  so is the plain home shell's host, which has no session behind it. */
+export type TerminalHost = Pick<
+  ChatDriver,
+  'openTerminal' | 'terminalStream' | 'terminalStdin' | 'terminalResize' | 'terminalKill'
+>;
+
 /** The result of opening a terminal: its id and starting size, or a clean
  *  "no PTY on this machine" marker the UI shows instead of a blank panel. */
 export type TerminalOpen =

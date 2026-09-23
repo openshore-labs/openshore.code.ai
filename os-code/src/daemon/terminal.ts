@@ -280,6 +280,18 @@ export class TerminalManager {
     return this.lookup(termId, sessionId) !== undefined;
   }
 
+  /** The newest terminal in a scope whose shell is still running, if any. The
+   *  plain home shell reopens this one instead of spawning a second shell, so
+   *  leaving the Terminal room and coming back lands in the same shell. */
+  liveTermId(sessionId: string): string | undefined {
+    const list = this.bySession.get(sessionId) ?? [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const entry = this.terminals.get(list[i]!);
+      if (entry && !entry.exited) return entry.termId;
+    }
+    return undefined;
+  }
+
   /** True when the terminal exists but its shell has exited (DAE-5): the
    *  routes answer 409 "exited" rather than 404 "no terminal". */
   isExited(termId: string, sessionId?: string): boolean {

@@ -7,6 +7,36 @@ not a source of current truth. `PROGRESS.md` is.
 
 ## Current state sections (2026-08-20 to 2026-09-15)
 
+### The plan-first workflow (My Stack as the anchor; moved out of PROGRESS 2026-09-23, still shipped)
+
+The founder's explicit workflow: a prompt flows through the harness (always-on
+ethics plus curatable filters), starts in My Stack, and the reasoning LLM frames
+it (asking clarifying questions only when genuinely ambiguous), composes a play
+(an ordered set of handoffs to specialist models with dependencies), briefs the
+user (a short checklist of steps and their owner models, live), runs it in
+dependency order handing each step to its owner, re-plans at bounded
+checkpoints, and streams a final synthesis. Any category with no placed
+specialist is run by the reasoning LLM; a step can also target a specific model
+by id for a particular subject or decision (the level-deeper routing). The flow
+degrades to a single routed turn when the anchor is a weak or unreachable model,
+the plan will not parse, or the play is one step, so a modest stack still just
+answers. It is app-native (works on the phone alone); a repo/tool step is marked
+to run on the paired computer's engine when docked (engine execution from this
+flow is a seam, a follow-up). Pure core in `app/src/lib/play.ts` (scheduling,
+re-plan merge, owner resolution, the brief, planner/re-plan prompts and robust
+JSON parse), fully tested in `app/test/play.test.ts` (30 cases); the runner is
+`app/src/drivers/stackDriver.ts`; the brief renders as todos-with-owners
+(`TodoItem`/`TodoRow` gained `owner`, shown in `TodoCard`). Doc and a diagram in
+`docs/workflow.md`. The three follow-ups then landed (CTO-guided, 2026-09-06):
+the clarifying questions are a tappable picker (`ClarifyCard`, a `clarify`
+driver event); a repo/tool step runs on the paired computer's engine when docked
+over one shared `RemoteDriver` session with real approvals surfaced (describe
+only when not docked or no local workspace is bound); and crew routines, which
+keep the engine's own ReAct loop, now write a Plan section into their vault note
+from the agent's `todoWrite`. Live plan quality, the engine hand-off, and the
+routine Plan note need a real reasoning model, a paired computer, and a device
+(unverifiable in a web session).
+
 ### Crew routines (the botOS brief, shipped inside My Crew; moved out of PROGRESS 2026-09-17, still shipped)
 
 **Crew routines are BUILT.** The founder's brief was "clone grokbot, call it
@@ -2817,6 +2847,20 @@ clean merge, no conflicts): sign-in and the version-stamp fix (this session),
 then Windows packaging, electron-updater, and the macOS publish/version-check
 split, then a pairing diagnosis, both from other sessions; see Current state
 above. One stale duplicate doc was retired reconciling the merge.
+
+### 2026-09-17, Windows packaging proven for real; the auto-update import bug
+
+The merged `release.yml` had never run end to end. A `workflow_dispatch` dry
+run (no tag, `publish` skips) caught two real failures no local check could:
+`import { autoUpdater } from 'electron-updater'` threw a SyntaxError at
+packaged-app startup (CJS/ESM interop cannot prove a named export; fixed with
+the default-import pattern), silently breaking every platform since the
+auto-update work landed; and Windows failed compiling node-pty's bundled
+`winpty.cc` (MSVC C2362, upstream microsoft/node-pty#683), fixed by bumping to
+1.1.0, which drops winpty for ConPTY. Re-run after both fixes: Linux and
+Windows both packaged, smoke-tested, artifacts uploaded clean. No tag pushed
+yet (a 403 on tag refs, a likely protection rule); a real `v0.1.2` publish,
+Windows included for the first time, needs the founder to push that tag.
 
 ### 2026-09-17, Windows packaging proven for real; the auto-update import bug
 
