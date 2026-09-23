@@ -42,6 +42,7 @@ import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { CurrentConnectSheet } from '../components/CurrentConnectSheet.js';
+import { HarnessCurrentConnectSheet } from '../components/HarnessCurrentConnectSheet.js';
 import {
   AGENTIC_CURRENTS,
   AGENTIC_CURRENTS_BETA_LINE,
@@ -56,6 +57,16 @@ import {
   wayfindingOn,
   type AgenticCurrentId,
 } from '../lib/currents.js';
+import {
+  HARNESS_CURRENTS,
+  HARNESS_CURRENTS_BETA_LINE,
+  activeHarnessCurrent,
+  harnessCurrentConfigured,
+  harnessCurrentInfo,
+  harnessCurrentState,
+  harnessCurrentStateLine,
+  type HarnessCurrentId,
+} from '../lib/harnessCurrents.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
@@ -296,6 +307,52 @@ function CurrentRow({
   );
 }
 
+// A Harness Current row. Same shape and gate as CurrentRow, its own group. A
+// harness current has no Arriving-only state (it always has an integration
+// surface), so the pill is just the Ready state; everything else mirrors.
+function HarnessCurrentRow({
+  id,
+  onOpen,
+  onFlip,
+}: {
+  id: HarnessCurrentId;
+  onOpen: () => void;
+  onFlip: (on: boolean, at: { x: number; y: number }) => void;
+}) {
+  const { settings, harnessCurrentProbes } = useApp();
+  const info = harnessCurrentInfo(id);
+  const state = harnessCurrentState(id, settings, harnessCurrentProbes);
+  const on = activeHarnessCurrent(settings) === id;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const flip = (next: boolean) => {
+    const rect = anchor.current?.getBoundingClientRect();
+    const at = rect
+      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : { x: window.innerWidth - 40, y: window.innerHeight / 2 };
+    onFlip(next, at);
+  };
+  return (
+    <SettingsRow
+      label={info.label}
+      sub={harnessCurrentStateLine(id, settings, harnessCurrentProbes)}
+      subWrap
+      value={
+        <span className="settings-row-actions">
+          {state === 'ready' ? <span className="pill ok">{currentStateLabel(state)}</span> : null}
+          <button type="button" className="linklike press-fb" onClick={onOpen}>
+            {harnessCurrentConfigured(id, settings) ? 'Edit' : 'Set up'}
+          </button>
+        </span>
+      }
+      trailing={
+        <span ref={anchor} className="settings-row-switch">
+          <Switch checked={on} label={info.label} onChange={flip} />
+        </span>
+      }
+    />
+  );
+}
+
 export function SettingsScreen() {
   const {
     order,
@@ -320,6 +377,7 @@ export function SettingsScreen() {
     serverRole,
     setWayfinding,
     setAgenticCurrent,
+    setHarnessCurrent,
     setPerplexityResearch,
     connectedProviders,
   } = useApp();
@@ -339,6 +397,8 @@ export function SettingsScreen() {
 
   // The connect sheet for one Agentic Current, opened from its row.
   const [currentSheet, setCurrentSheet] = useState<AgenticCurrentId | undefined>();
+  // The connect sheet for one Harness Current (Jev), opened from its row.
+  const [harnessSheet, setHarnessSheet] = useState<HarnessCurrentId | undefined>();
 
   // Voice mode's settings: the chosen voice (resolved to a name for the row), the
   // speaking speed, and whether replies are spoken aloud.
@@ -509,8 +569,8 @@ export function SettingsScreen() {
               Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
               confidently wrong, and neither guide is a coder. For real work, use DeepBlue on your
               computer or connect a bigger model. What you type to a local model stays on this
-              device. Harbor is Qwen3-1.7B and Harbor Lite is SmolLM2-135M-Instruct, both used
-              under the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
+              device. Harbor is Qwen3-1.7B and Harbor Lite is SmolLM2-135M-Instruct, both used under
+              the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
             </p>
             <p>
               OpenShore does not editorialize what a model says. Three narrow limits are enforced on
@@ -946,6 +1006,31 @@ export function SettingsScreen() {
           />
         </SettingsGroup>
 
+        {/* Harness Currents: a cheap decision method layered INTO the harness
+            (Jev is the first), one at a time within this group but independent
+            of Agentic Currents, so one of each can be on. Above Agentic
+            Currents on purpose: it changes how any seat is used, not which
+            agent you reach. A BETA. The names live in the roster, never here. */}
+        <SettingsGroup
+          title="Harness Currents"
+          badge="BETA"
+          intro={HARNESS_CURRENTS_BETA_LINE}
+          index={group++}
+        >
+          {HARNESS_CURRENTS.map((c) => (
+            <HarnessCurrentRow
+              key={c.id}
+              id={c.id}
+              onOpen={() => setHarnessSheet(c.id)}
+              onFlip={(on, at) => {
+                if (on) hapticApproval();
+                void setHarnessCurrent(c.id, on, at);
+                if (on && !harnessCurrentConfigured(c.id, settings)) setHarnessSheet(c.id);
+              }}
+            />
+          ))}
+        </SettingsGroup>
+
         {/* Agentic Currents: opt-in modalities for agent work, one at a time,
             a BETA. Each row is the two-part gate made visible: the switch and
             the honest state line. The names live in the roster, never here. */}
@@ -986,6 +1071,7 @@ export function SettingsScreen() {
       </div>
 
       <CurrentConnectSheet id={currentSheet} onClose={() => setCurrentSheet(undefined)} />
+      <HarnessCurrentConnectSheet id={harnessSheet} onClose={() => setHarnessSheet(undefined)} />
 
       <Sheet open={sheet === 'account'} onClose={close}>
         <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />

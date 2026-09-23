@@ -44,6 +44,8 @@ import type {
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
 import { runVerify, verifyRetryPrompt } from '../../harness/verify.js';
 import { deriveProfile, classBlurb, type ModelClassProfile } from '../../harness/profile.js';
+import { JevAdvisor, type FetchLike } from '../../harness/jev.js';
+import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
 import { logger } from '../../util/log.js';
 
@@ -75,11 +77,38 @@ export interface AgentDeps {
   /** Persist an allow rule for this tool in the workspace ("don't ask again
    *  for this in this project"). Returns false when nothing could be written. */
   persistRule?: (rule: ProjectRule) => boolean;
+  /** The Harness Current the person turned on, as a per-session handle (Jev is
+   *  the first). A Harness Current layers a cheap decision method into the
+   *  loop; the engine uses it here for the verify judge when there is no check
+   *  command to run. Undefined leaves the harness current off for this session.
+   *  Bootstrap drops it under egress lockdown, so it never fires while project
+   *  secrets are present. */
+  harnessCurrents?: HarnessCurrentsHandle;
+  /** Injectable fetch for the Jev advisor, so tests drive it with no network.
+   *  Defaults to the global fetch. */
+  jevFetch?: FetchLike;
 }
 
 /** Capitalize a model-class name for a sentence ("small" -> "Small"). */
 function cap(s: string): string {
   return s.length ? s[0]!.toUpperCase() + s.slice(1) : s;
+}
+
+/** The first user turn's text, for the Jev judge's task side. */
+function firstUserText(history: ChatMessage[]): string | undefined {
+  const m = history.find((x) => x.role === 'user');
+  return typeof m?.content === 'string' && m.content.trim() ? m.content : undefined;
+}
+
+/** The last assistant turn's text, for the Jev judge's result side. */
+function lastAssistantText(history: ChatMessage[]): string | undefined {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]!;
+    if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
+      return m.content;
+    }
+  }
+  return undefined;
 }
 
 /** The shape of a rule the loop asks to persist for a project. */
@@ -181,6 +210,9 @@ export class AgentSession {
   /** The task's own first message, kept so a fresh attempt starts from it
    *  with a clean history, the way the eval's independent tries do. */
   private taskMessage: ChatMessage | undefined;
+  /** The active Harness Current's Jev advisor, built lazily from the handle,
+   *  or undefined when no harness current is on. Cached across a task. */
+  private jev: JevAdvisor | undefined | null = null;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -329,6 +361,47 @@ export class AgentSession {
       content: verifyRetryPrompt(result, round, maxRetries),
     });
     return 'retry';
+  }
+
+  // A Harness Current (Jev) layers a cheap decision method into the loop. The
+  // engine uses it here for the verify JUDGE: when there is no check command to
+  // run (no oracle), and the seat is a paid cloud model (scoped to where there
+  // is spend to steer, founder 2026-09-23), ask Jev cheaply whether the result
+  // satisfies the task and show the answer as a card. This never overrides a
+  // real check (that path returns a verdict other than 'skipped'), and it never
+  // blocks the task: the card is advisory. Off leaves no trace, so with no
+  // harness current on `jevAdvisor()` is undefined and nothing fires.
+  private jevAdvisor(): JevAdvisor | undefined {
+    if (this.jev === null) {
+      const fetchImpl =
+        this.deps.jevFetch ??
+        (typeof fetch === 'function'
+          ? (((url, init) => fetch(url, init as RequestInit)) as FetchLike)
+          : undefined);
+      this.jev = JevAdvisor.from(this.deps.harnessCurrents, fetchImpl);
+    }
+    return this.jev ?? undefined;
+  }
+
+  private async maybeJevJudge(verdict: 'retry' | 'passed' | 'failed' | 'skipped'): Promise<void> {
+    if (verdict !== 'skipped') return; // A real check already spoke.
+    if (!this.wroteThisTask) return;
+    if (this.active.provider.kind !== 'cloud') return; // Only where spend is steered.
+    const advisor = this.jevAdvisor();
+    if (!advisor) return;
+    const task = firstUserText(this.history);
+    const result = lastAssistantText(this.history);
+    if (!task || !result) return;
+    const judged = await advisor.judge(task, result);
+    if (!judged) return;
+    this.emit({
+      type: 'harness-current',
+      current: 'jev',
+      label: 'Jev',
+      job: 'judge',
+      line: judged.line,
+      spend: true,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -812,6 +885,7 @@ export class AgentSession {
           verifyRounds = 0;
           continue;
         }
+        await this.maybeJevJudge(verdict);
         this.emit({ type: 'task-done', reason: 'complete' });
         return;
       }

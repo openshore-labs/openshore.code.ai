@@ -200,8 +200,23 @@ import {
   type WayfindingId,
   type WayfindingSettings,
 } from '../lib/currents.js';
-import { currentsHost, probeCurrent } from '../lib/currentsProbe.js';
-import { normalizeHermesBaseUrl, type CurrentsHostProbe } from 'os-code/protocol';
+import { currentsHost, probeCurrent, probeOpenAiCompatible } from '../lib/currentsProbe.js';
+import {
+  activeHarnessCurrent,
+  harnessCurrentInfo,
+  harnessCurrentSecretKey,
+  harnessCurrentsHandle,
+  nextActiveHarnessCurrent,
+  type HarnessCurrentConnection,
+  type HarnessCurrentConnections,
+  type HarnessCurrentId,
+  type HarnessCurrentProbes,
+} from '../lib/harnessCurrents.js';
+import {
+  normalizeHermesBaseUrl,
+  normalizeJevBaseUrl,
+  type CurrentsHostProbe,
+} from 'os-code/protocol';
 import {
   createOrgProject,
   deleteOrgProject,
@@ -424,6 +439,18 @@ export interface AppSettings {
    *  Kept when a current is turned off so turning it back on is one tap; the
    *  rooms never read it while the current is off. Device local. */
   currentConnections?: CurrentConnections;
+  /** The Harness Current that is on, or none (Jev is the first). Its own group
+   *  above Agentic Currents, independent of it: one on at a time WITHIN the
+   *  harness group, but one of each group may be on together. A Harness Current
+   *  layers a cheap decision method into the harness rather than being an agent
+   *  you hand work to. Device local, never synced. BETA. See
+   *  lib/harnessCurrents.ts. */
+  harnessCurrent?: HarnessCurrentId | null;
+  /** What the person saved per harness current (an address, a model). Metadata
+   *  only; the API key lives in the secret store under
+   *  harnessCurrentSecretKey(id). Kept when a current is turned off so turning
+   *  it back on is one tap. Device local. */
+  harnessCurrentConnections?: HarnessCurrentConnections;
   /** The role each paired hub reported for this device's credential (from the
    *  hub's /health), keyed by base URL. Read at pair time and refreshed when a
    *  session attaches. Missing means the hub predates roles and decides per
@@ -672,6 +699,10 @@ interface AppState {
    *  connection answered the last probe. Never persisted; re-probed on open,
    *  on connect, and on demand. */
   currentProbes: CurrentProbes;
+  /** The live half of each Harness Current's two-part gate: whether its saved
+   *  connection answered the last probe. Never persisted; re-probed like the
+   *  agentic ones. */
+  harnessCurrentProbes: HarnessCurrentProbes;
   /** What the paired computer (or this desktop) can host for currents: a
    *  Hermes home present, a coding CLI on PATH. Undefined until reachable. */
   currentsHost?: CurrentsHostProbe;
@@ -1172,6 +1203,26 @@ interface AppState {
   refreshCurrents(): Promise<void>;
   /** The arrival overlay reports that it settled. */
   clearCurrentArrival(): void;
+
+  // Harness Currents (lib/harnessCurrents.ts): a second, independent group.
+  /** Flip a Harness Current (Jev). One at a time WITHIN the harness group, but
+   *  independent of the agentic group, so one of each may be on. `at` drives the
+   *  same arrival gesture the agentic switches use. */
+  setHarnessCurrent(
+    id: HarnessCurrentId,
+    on: boolean,
+    at?: { x: number; y: number },
+  ): Promise<void>;
+  /** Save what a harness current needs (an address, a model, a key) and probe
+   *  it. Returns whether it answered. */
+  connectHarnessCurrent(
+    id: HarnessCurrentId,
+    input: { endpoint?: string; model?: string; apiKey?: string },
+  ): Promise<boolean>;
+  /** Forget a harness current's connection and key, and turn it off if on. */
+  disconnectHarnessCurrent(id: HarnessCurrentId): Promise<void>;
+  /** Re-probe the saved harness connections. Never throws. */
+  refreshHarnessCurrents(): Promise<void>;
   /** Save a hub (upsert by base URL) and make it the active one. The role the
    *  hub reported at pairing rides along; when absent it is read from the hub. */
   saveHub(target: DaemonTarget, opts?: { role?: HubRole }): Promise<void>;
@@ -1846,8 +1897,7 @@ export const useApp = create<AppState>((set, get) => {
         // this device and only ever runs on this device.
         let codemagicToken: string | undefined;
         let codemagicTarget:
-          | { appId: string; workflowId: string; branch: string; platform?: string }
-          | undefined;
+          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
         if (settings.codemagicAccess) {
           const tok = await secretGet(CODEMAGIC_SECRET_KEY);
           if (tok) {
@@ -1872,6 +1922,16 @@ export const useApp = create<AppState>((set, get) => {
           (await currentSecretForActive(settings)) ?? undefined,
           get().currentsHost,
         );
+        // The Harness Current that is on (Jev), as its own per-session handle.
+        // Independent of the agentic current, so both can ride the same session.
+        const activeHarness = activeHarnessCurrent(settings);
+        const harnessCurrents = activeHarness
+          ? harnessCurrentsHandle(
+              settings,
+              (await secretGet(harnessCurrentSecretKey(activeHarness)).catch(() => null)) ??
+                undefined,
+            )
+          : undefined;
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -1887,6 +1947,7 @@ export const useApp = create<AppState>((set, get) => {
           codemagicToken,
           codemagicTarget,
           currents,
+          harnessCurrents,
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -1935,6 +1996,7 @@ export const useApp = create<AppState>((set, get) => {
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
             currents: sessionOpts.currents,
+            harnessCurrents: sessionOpts.harnessCurrents,
           });
           await bindSessionId(conv.id, sessionId);
         }
@@ -2018,11 +2080,23 @@ export const useApp = create<AppState>((set, get) => {
             (a.projectIds.length === 0 ||
               (conv.projectId != null && a.projectIds.includes(conv.projectId))),
         );
+        // The Harness Current (Jev) with its resolved key, when one is on, so
+        // the stack can let it steer a paid-seat turn. Absent leaves routing
+        // exactly as it was.
+        const activeHarness = activeHarnessCurrent(s.settings);
+        const harnessCurrents = activeHarness
+          ? harnessCurrentsHandle(
+              s.settings,
+              (await secretGet(harnessCurrentSecretKey(activeHarness)).catch(() => null)) ??
+                undefined,
+            )
+          : undefined;
         return new StackDriver(
           stackForProfile(s.settings.stacks, profile),
           profile,
           {
             projectName: project?.name,
+            harnessCurrents,
             projectInstructions:
               [project?.instructions?.trim(), repoContextLine(conv.repoIds ?? [])]
                 .filter(Boolean)
@@ -2417,6 +2491,7 @@ export const useApp = create<AppState>((set, get) => {
     arrivedBack: false,
     codemagicConnected: false,
     currentProbes: {},
+    harnessCurrentProbes: {},
     searchKeyConfigured: false,
     vaultFiles: [],
     vaultScope: 'personal',
@@ -5806,6 +5881,84 @@ export const useApp = create<AppState>((set, get) => {
 
     clearCurrentArrival() {
       set({ currentArrival: undefined });
+    },
+
+    // ---------------------------------------------------- harness currents
+
+    async setHarnessCurrent(id, on, at) {
+      const s = get();
+      const prior = activeHarnessCurrent(s.settings);
+      const next = nextActiveHarnessCurrent(prior, id, on);
+      if (next === prior) return;
+      // The agentic group is untouched: a harness current is independent, so
+      // one of each may be on. No bench sweep, because a harness current places
+      // no model on the bench; off leaves no trace because the rooms read it
+      // only through activeHarnessContribution.
+      await get().saveSettings({ harnessCurrent: next });
+      const seq = (s.currentArrival?.seq ?? 0) + 1;
+      const label = next
+        ? harnessCurrentInfo(next).label
+        : prior
+          ? harnessCurrentInfo(prior).label
+          : '';
+      set({
+        currentArrival: at ? { seq, x: at.x, y: at.y, ebb: next === null, label } : undefined,
+      });
+      logEvent(next ? 'harness_current_on' : 'harness_current_off', { id: next ?? prior ?? id });
+      if (next) void get().refreshHarnessCurrents();
+    },
+
+    async connectHarnessCurrent(id, input) {
+      const s = get();
+      const prior = s.settings.harnessCurrentConnections?.[id] ?? {};
+      const conn: HarnessCurrentConnection = { ...prior };
+      const raw = (input.endpoint ?? prior.endpoint ?? '').trim();
+      conn.endpoint = raw ? normalizeJevBaseUrl(raw) : undefined;
+      conn.model = input.model?.trim() || prior.model;
+      if (input.apiKey !== undefined) {
+        const key = input.apiKey.trim();
+        if (key) await secretSet(harnessCurrentSecretKey(id), key);
+        else await secretDelete(harnessCurrentSecretKey(id));
+      }
+      await get().saveSettings({
+        harnessCurrentConnections: { ...(s.settings.harnessCurrentConnections ?? {}), [id]: conn },
+      });
+      logEvent('harness_current_connected', { id });
+      await get().refreshHarnessCurrents();
+      return get().harnessCurrentProbes[id] === true;
+    },
+
+    async disconnectHarnessCurrent(id) {
+      await secretDelete(harnessCurrentSecretKey(id));
+      const s = get();
+      const harnessCurrentConnections = { ...(s.settings.harnessCurrentConnections ?? {}) };
+      delete harnessCurrentConnections[id];
+      const wasOn = activeHarnessCurrent(s.settings) === id;
+      await get().saveSettings({
+        harnessCurrentConnections,
+        ...(wasOn ? { harnessCurrent: null } : {}),
+      });
+      set({ harnessCurrentProbes: { ...get().harnessCurrentProbes, [id]: false } });
+      logEvent('harness_current_disconnected', { id });
+    },
+
+    async refreshHarnessCurrents() {
+      const s = get();
+      const probes: HarnessCurrentProbes = { ...get().harnessCurrentProbes };
+      const saved = Object.keys(s.settings.harnessCurrentConnections ?? {}) as HarnessCurrentId[];
+      await Promise.all(
+        saved.map(async (id) => {
+          const info = harnessCurrentInfo(id);
+          const conn = s.settings.harnessCurrentConnections?.[id];
+          const base = normalizeJevBaseUrl((conn?.endpoint || info.apiBase).trim());
+          const key = (await secretGet(harnessCurrentSecretKey(id)).catch(() => null)) ?? undefined;
+          // Jev answers GET /v1/models under its base, like an OpenAI-compatible
+          // server, so the same probe applies. Never throws: false is Arriving.
+          const answered = await probeOpenAiCompatible(`${base}/v1`, key).catch(() => false);
+          probes[id] = answered;
+        }),
+      );
+      set({ harnessCurrentProbes: probes });
     },
 
     async saveHub(target, opts) {

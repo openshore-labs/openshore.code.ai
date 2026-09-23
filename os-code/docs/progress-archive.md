@@ -2790,6 +2790,31 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-17)
 
+### 2026-09-17, v0.1.1 shipped, sign-in and auto-update reach every platform
+
+Real Electron binary downloads turned out reachable (only `www.electronjs.org`
+is policy-blocked, not the GitHub release assets it points to), so Linux
+built for real, not just a sandbox smoke test, and `v0.1.0` then `v0.1.1`
+published. Three sessions then worked this in parallel on the same branch (a
+clean merge, no conflicts): sign-in and the version-stamp fix (this session),
+then Windows packaging, electron-updater, and the macOS publish/version-check
+split, then a pairing diagnosis, both from other sessions; see Current state
+above. One stale duplicate doc was retired reconciling the merge.
+
+### 2026-09-17, Windows packaging proven for real; the auto-update import bug
+
+The merged `release.yml` had never run end to end. A `workflow_dispatch` dry
+run (no tag, `publish` skips) caught two real failures no local check could:
+`import { autoUpdater } from 'electron-updater'` threw a SyntaxError at
+packaged-app startup (CJS/ESM interop cannot prove a named export; fixed with
+the default-import pattern), silently breaking every platform since the
+auto-update work landed; and Windows failed compiling node-pty's bundled
+`winpty.cc` (MSVC C2362, upstream microsoft/node-pty#683), fixed by bumping to
+1.1.0, which drops winpty for ConPTY. Re-run after both fixes: Linux and
+Windows both packaged, smoke-tested, artifacts uploaded clean. No tag pushed
+yet (a 403 on tag refs, a likely protection rule); a real `v0.1.2` publish,
+Windows included for the first time, needs the founder to push that tag.
+
 ### 2026-09-17, macOS actually shipped: two green builds, two real silent failures
 
 `v0.1.2` published Linux and Windows clean (verified against the release

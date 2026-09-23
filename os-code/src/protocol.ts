@@ -176,17 +176,39 @@ export type {
   CliHandle,
   CurrentsHandles,
   CurrentsHostProbe,
+  HarnessCurrentId,
+  HarnessCurrentsHandle,
   HermesHandle,
   HermesNote,
   HermesNoteMeta,
+  JevHandle,
 } from './currents/model.js';
 export {
   AGENTIC_CURRENT_IDS,
   CURRENTS_LIMITS,
+  HARNESS_CURRENT_IDS,
   isAgenticCurrentId,
+  isHarnessCurrentId,
+  JEV_DEFAULT_MODEL,
   normalizeHermesBaseUrl,
+  normalizeJevBaseUrl,
   parseCurrentsHandles,
+  parseHarnessCurrentsHandle,
 } from './currents/model.js';
+
+// The Jev decision client and the harness advisor, browser-safe (fetch only,
+// no Node built-ins), so the app can reuse the same tested jobs the engine
+// uses instead of a second implementation.
+export type {
+  ClassifyInput,
+  ClassifyResult,
+  FetchLike,
+  GateResult,
+  JevAnswers,
+  JevQuestions,
+  JudgeResult,
+} from './harness/jev.js';
+export { JevAdvisor, JEV_SYSTEMONE_PATH } from './harness/jev.js';
 
 /** Wire shapes the daemon serves that are not agent events. */
 export interface DaemonSessionInfo {

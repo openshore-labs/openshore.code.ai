@@ -17,7 +17,8 @@ export type SetupGuideId =
   | 'set-up-crew'
   | 'connect-hermes'
   | 'cli-pairing'
-  | 'connect-a2a';
+  | 'connect-a2a'
+  | 'connect-jev';
 
 export interface SetupGuide {
   id: SetupGuideId;
@@ -206,6 +207,18 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
       'In a chat, ask for something the agent is good at. Your model hands it over with the askAgent tool and says plainly when an answer came from it.',
     ],
     done: 'The A2A row reads On and names the agent from its card, and a chat can hand it a task.',
+  },
+  'connect-jev': {
+    id: 'connect-jev',
+    title: 'Turn on Jev',
+    goal: 'Layer Jev, a cheap decision model, into the harness so it steers which of my seats answers and skips steps that do not need a model.',
+    steps: [
+      'Harness Currents are a beta. Jev does not answer for a seat; it makes the small decisions around your seats. It is a cloud call that costs a little per turn, so it only ever runs when a paid seat is in play, never against a free local model.',
+      'Get a TypeSafe API key from your TypeSafe account, the same way you would copy a key for any cloud model.',
+      'In OpenShore, open Settings, then Harness Currents, and turn on Jev. The address is filled in for you; paste your key.',
+      'Now when a turn would spend on a paid seat, Jev first checks whether a cheaper local seat can carry it, routes the turn to the seat placed for that kind of work, and, when there is no check to run, judges whether the result satisfies the task. Each decision shows as a card in the chat.',
+    ],
+    done: 'The Jev row reads On, a faint water-line frames every screen, and a pill names it beside the reach pill.',
   },
 };
 

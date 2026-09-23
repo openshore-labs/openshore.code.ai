@@ -131,6 +131,21 @@ export type AgentEvent =
       tier: 1 | 2 | 3;
       side: 'input' | 'output';
       message: string;
+    }
+  // A Harness Current made a decision this task. Harness Currents (Jev is the
+  // first) layer a cheap decision method INTO the harness: they do not answer
+  // for a seat, they steer which seat answers or whether a step is needed.
+  // Additive and advisory, and off leaves no trace: with no harness current on
+  // this never fires. `job` names which mechanical decision it did, `line` is
+  // the honest one-liner for the card, and `spend` is true when a cloud call
+  // was made so a client can render it amber (tenet 4: cloud is amber spend).
+  | {
+      type: 'harness-current';
+      current: string;
+      label: string;
+      job: 'gate' | 'classify' | 'judge';
+      line: string;
+      spend: boolean;
     };
 
 export type EventSink = (event: AgentEvent) => void;

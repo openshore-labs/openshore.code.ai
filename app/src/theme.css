@@ -10671,6 +10671,13 @@ button.settings-row:active {
   animation: fade-in var(--dur-4) var(--ease-arrive) backwards;
 }
 
+/* A Harness Current (Jev) is cloud spend, so its pill reads amber, not teal,
+   the same signal the rest of the app uses for a paid cloud call. */
+.pill.current-pill.harness-pill {
+  background: var(--cloud-soft);
+  color: var(--cloud);
+}
+
 /* The BETA badge after a settings group head, and the group's intro line. */
 .settings-group-badge {
   margin-left: 8px;
