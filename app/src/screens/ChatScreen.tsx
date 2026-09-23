@@ -20,6 +20,8 @@ import { RepoPicker } from '../components/RepoPicker.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
 import { GuideSetupLink } from '../components/GuideSetupLink.js';
+import { SetupStepActions } from '../components/SetupStepActions.js';
+import { ASK_ANYTHING } from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
@@ -186,6 +188,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
+  // Guided setup (lib/guidedSetup.ts): where the walk stands, and the guide's
+  // latest message, which carries the current step's buttons.
+  const guided = settings.guidedSetup;
+  const lastItemId = thread?.items[thread.items.length - 1]?.id;
+  const lastAssistantId = thread
+    ? [...thread.items].reverse().find((i) => i.kind === 'assistant')?.id
+    : undefined;
   // The room this chat was opened from, when it is a sub-page (the Chats list,
   // or a project's detail room). Names the way-back button in the header; a
   // project uses its own name, so the button reads "‹ Uki Audio", not "‹ Project".
@@ -526,13 +535,25 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               setFocusSignal((n) => n + 1);
             }}
             onClarifyPick={(text) => send(text)}
-            afterItem={(itemId) =>
-              conv?.source.kind === 'device' &&
-              conv.source.modelId === HARBOR_MINI_MODEL_ID &&
-              itemId === `${conv.id}-hello` ? (
+            afterItem={(itemId) => {
+              if (!conv || conv.source.kind !== 'device') return null;
+              if (conv.source.modelId !== HARBOR_MINI_MODEL_ID) return null;
+              // The guided setup's chat: the current step's buttons follow the
+              // guide's latest message, and the wrap-up offers questions to ask.
+              if (guided && guided.conversationId === conv.id) {
+                if (thread?.busy || itemId !== lastAssistantId) return null;
+                if (guided.current && !guided.finished) {
+                  return <SetupStepActions step={guided.current} />;
+                }
+                return lastItemId === itemId && itemId.includes('-setup-') ? (
+                  <MiniFirstMoves moves={ASK_ANYTHING} onPick={(text) => send(text)} />
+                ) : null;
+              }
+              // Any other Harbor Lite chat: the door to the setup page.
+              return itemId === `${conv.id}-hello` ? (
                 <GuideSetupLink onOpen={() => setView('onboarding')} />
-              ) : null
-            }
+              ) : null;
+            }}
           />
         ) : resuming ? (
           <ResumeSkeleton count={conv?.lastItemCount} />
