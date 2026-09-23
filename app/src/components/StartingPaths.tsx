@@ -1,5 +1,5 @@
-// The "starting paths" rows: Harbor / bigger pocket model / desktop / Claude on
-// the phone, or local stack / repository / Claude on the desktop. Shown on
+// The "starting paths" rows: Harbor / desktop / repository / Claude on the
+// phone, or local stack / repository / Claude on the desktop. Shown on
 // first-run onboarding and, as a permanent shortcut, in Settings, from one
 // source so the two never drift. In onboarding, choosing a path also marks
 // onboarding done; in Settings we are already in, so it just navigates.
@@ -286,9 +286,9 @@ export function StartingPaths({
               onClick={() => void go('pair')}
             />
             <SettingsRow
-              label="Browse pocket models"
-              sub="A bigger model that runs on this iPhone"
-              onClick={() => void go('marketplace')}
+              label="Set up a repository"
+              sub="Connect GitHub and pick a home repo"
+              onClick={() => void go('repos')}
             />
           </>
         )}
@@ -322,17 +322,17 @@ export function StartingPaths({
             </button>
           </div>
           <div className="card">
-            <h3>Browse pocket models</h3>
+            <h3>Set up a repository</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              When you want more than a guide, download a larger model that runs fully on this
-              iPhone. Private by construction, works in airplane mode.
+              Connect GitHub or another platform on your own token and pick a home repo. OpenShore
+              reads, edits, and commits there with your approval.
             </div>
             <button
               className="btn ghost"
               style={{ width: '100%' }}
-              onClick={() => void go('marketplace')}
+              onClick={() => void go('repos')}
             >
-              Open the Marketplace
+              Set up a repo
             </button>
           </div>
         </>
