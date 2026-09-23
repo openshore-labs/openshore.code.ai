@@ -33,6 +33,7 @@ import { PairScreen } from './screens/PairScreen.js';
 import { TerminalScreen } from './screens/TerminalScreen.js';
 import { TerminalRoomScreen } from './screens/TerminalRoomScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
+import { AccountSetup } from './components/AccountSetup.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
 import { useCompact } from './hooks/useCompact.js';
 import { useExitPresence } from './hooks/useExitPresence.js';
@@ -43,7 +44,8 @@ import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { drawerExitMs, drawerWidth } from './lib/motion.js';
 
 export function App() {
-  const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground } = useApp();
+  const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground, accountChoice } =
+    useApp();
   const theme = useApp((s) => s.settings.theme);
   const compact = useCompact();
   // The keyboard inset listener lives here, from boot, so no screen can
@@ -180,10 +182,13 @@ export function App() {
 
   if (!ready) return <div className="shell" />;
 
-  if (view === 'onboarding') {
+  // The setup page (reached from Harbor Lite's greeting) and the Personal or
+  // Business choice (asked once, right after a new account is created) are
+  // full-screen, over the rest of the app.
+  if (view === 'onboarding' || accountChoice) {
     return (
       <div className="shell">
-        <OnboardingScreen />
+        {accountChoice ? <AccountSetup /> : <OnboardingScreen />}
         {toastPresence.mounted ? (
           <div
             className={`toast${toastPresence.closing ? ' closing' : ''}`}

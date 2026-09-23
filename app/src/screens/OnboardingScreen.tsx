@@ -1,21 +1,21 @@
-// First run: three warm paths in, none required, all skippable. The point is
-// a working chat in minutes, complexity strictly opt-in. The path rows are the
-// shared StartingPaths component, also reused in Settings so they never drift.
+// The setup page: the ways to go further than the built-in guide, none
+// required. A new person never lands here first; they open into Harbor Lite's
+// chat, and its greeting carries the button that brings them here (founder,
+// 2026-09-23). No Personal-or-Business question either: with no account,
+// OpenShore runs as personal, and the choice is asked when an account is made.
+// The path rows are the shared StartingPaths component, also reused in
+// Settings so they never drift.
 import { useApp } from '../state/store.js';
 import { logEvent } from '../lib/insights.js';
 import { BrandMark } from '../components/BrandMark.js';
-import { AccountSetup } from '../components/AccountSetup.js';
 import { StartingPaths } from '../components/StartingPaths.js';
 
 export function OnboardingScreen() {
-  const { setView, saveSettings, settings } = useApp();
+  const { setView, saveSettings } = useApp();
 
-  // First of all, choose Personal or Commercial. Everything else follows.
-  if (!settings.account) return <AccountSetup />;
-
-  const skip = async () => {
+  const back = async () => {
     await saveSettings({ onboarded: true });
-    logEvent('onboarding_done', { next: 'chat' });
+    logEvent('setup_page_back', { next: 'chat' });
     setView('chat');
   };
 
@@ -44,9 +44,9 @@ export function OnboardingScreen() {
           <button
             className="btn quiet"
             style={{ width: '100%', marginTop: 6 }}
-            onClick={() => void skip()}
+            onClick={() => void back()}
           >
-            Skip for now
+            Back to chat
           </button>
         </div>
       </div>

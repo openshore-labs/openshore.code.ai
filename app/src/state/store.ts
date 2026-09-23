@@ -156,6 +156,7 @@ import { StackDriver } from '../drivers/stackDriver.js';
 import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
 import {
+  HARBOR_MINI_BUNDLED,
   HARBOR_MINI_GREETING,
   HARBOR_MINI_MODEL_ID,
   HARBOR_MINI_MODEL_NAME,
@@ -786,6 +787,10 @@ interface AppState {
   vaultScope: 'personal' | 'team';
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
+  /** When true, a brand-new account was just created on a device that never
+   *  chose Personal or Business, so the choice shows (AccountSetup). Until an
+   *  account exists, OpenShore simply runs as personal and never asks. */
+  accountChoice?: boolean;
   /** Live reach signals that drive the active connectivity profile. */
   connectivity: Connectivity;
   /** Project repos whose local commits diverged from the remote and need a
@@ -2839,11 +2844,21 @@ export const useApp = create<AppState>((set, get) => {
         authSession: stored ?? get().authSession,
         hubRole: activeHubRole(settings),
         dataLocked: locked || undefined,
-        // A locked device is not a new one: never route it into onboarding,
-        // whose writes could not land anyway.
-        view: settings.onboarded || stored || locked ? 'chat' : 'onboarding',
+        // Everyone opens into the chat. A new person is met there by Harbor
+        // Lite (below), whose greeting carries the button to the setup page;
+        // the page is never a wall in front of the first chat.
+        view: 'chat',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
+      // First open: no Personal-or-Business question (no account means
+      // personal) and no setup wall. On the phone, open the built-in guide's
+      // chat with its seeded hello; the desktop's empty chat is the First Seat.
+      // A locked device is not a new one, and its writes could not land anyway.
+      if (!settings.onboarded && !stored && !locked) {
+        void get().saveSettings({ onboarded: true });
+        logEvent('onboarding_done', { next: 'chat' });
+        if (isPhone()) void get().startGuide(HARBOR_MINI_MODEL_ID);
+      }
       // The live half of the currents gate: probe what the paired computer can
       // host and whether each saved connection answers. Best effort, off the
       // launch path; an unreachable box simply reads as Arriving.
@@ -3929,6 +3944,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async setupAccount(input) {
+      set({ accountChoice: undefined });
       if (input.type === 'personal') {
         await get().saveSettings({ account: { type: 'personal' } });
         logEvent('account_setup', { type: 'personal' });
@@ -4098,6 +4114,9 @@ export const useApp = create<AppState>((set, get) => {
       // Pass the app's own deep-link origin so the confirmation link returns
       // into the app, not onto a generic dashboard page.
       const session = await supabaseSignUp(email.trim(), password, authRedirectTo());
+      // A new account is the moment to ask Personal or Business, and only when
+      // this device never answered (a company already set up stays as it is).
+      if (!get().settings.account) set({ accountChoice: true });
       if (session) {
         await onSignedIn(session);
         return { needsConfirmation: false };
@@ -4831,7 +4850,9 @@ export const useApp = create<AppState>((set, get) => {
         });
       });
       try {
-        void askForNotices();
+        // A bundled Harbor Lite is a copy-in at first open, not a wait, so it
+        // never asks for notices (never at launch); a real fetch does.
+        if (!HARBOR_MINI_BUNDLED) void askForNotices();
         await Llama.downloadModel({
           id: HARBOR_MINI_MODEL_ID,
           url: HARBOR_MINI_MODEL_URL,

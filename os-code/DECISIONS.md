@@ -1774,3 +1774,11 @@ execution contract. Newest at the bottom.
   layer may never wake on a background relaunch. Reply and approval notices
   stand down for a desktop session the daemon already pushes for, so no
   doubles. No reply text in a notice, matching `push-send`'s privacy line.
+- **First open is the chat, founder 2026-09-23:** no setup wall and no
+  Personal-or-Business question in front of the first chat. With no account,
+  OpenShore runs as personal (`isOrgAdmin` already read it that way); the choice
+  is asked once, right after `signUpAccount`, and only when the device never
+  answered. A magic-link sign-in that happens to create an account is not
+  asked (it cannot be told apart from a returning sign-in client-side); the
+  choice stays in Settings. The setup page is reached from a button under
+  Harbor Lite's greeting, so its Harbor Lite hero card was dropped as redundant.

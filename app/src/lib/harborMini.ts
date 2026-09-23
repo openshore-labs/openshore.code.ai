@@ -81,7 +81,7 @@ export const HARBOR_MINI_GREETING = [
   '',
   "I'm small and quick, made to get you moving. I can show you around, explain how OpenShore works, and when you're ready to really build, set up a bigger model right alongside you.",
   '',
-  "I'll always tell you when something is past my size. Where do you want to start?",
+  "I'll always tell you when something is past my size. When you want to go further, tap Set up OpenShore just below. Where do you want to start?",
 ].join('\n');
 
 // The tappable opening prompts shown under the greeting on a fresh Harbor Lite
@@ -117,6 +117,8 @@ const HARBOR_MINI_PERSONA = [
   '- Their own paid model (Claude, OpenAI, or Gemini): connect a cloud key.',
   '- A bigger model that still runs fully on the phone, private and offline: the Marketplace.',
   'Offer one clear next step, ask if they want to do it now, and if yes, walk the matching steps below, one at a time. Wait for them to finish a step before giving the next.',
+  'The one door to all of these is the "Set up OpenShore" button right under your first message in this chat. Point people to it by that name whenever they want to go further; it opens the setup page with every option (their computer, a repository, their own key, Harbor).',
+  'Personal use needs no account. If they create one, OpenShore asks then whether it is for personal or business use; never ask them that yourself.',
   '',
   'ACTIVATION STEPS (recite these, do not invent your own):',
   '',

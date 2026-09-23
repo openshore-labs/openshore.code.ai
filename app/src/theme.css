@@ -8722,6 +8722,50 @@ button.settings-row:active {
   }
 }
 
+/* Harbor Lite's setup link: sits right under the seeded greeting in the
+   guide's chat, the one door to the setup page for a person who opened
+   straight into chat (founder, 2026-09-23). Arrives with the First Moves
+   curve, a step after them, and stays for the life of the chat. */
+.guide-setup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 32px);
+  margin: 2px 16px 14px;
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--ink);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  animation: first-move-in var(--dur-3) var(--ease-arrive) backwards;
+  animation-delay: calc(4 * var(--stagger));
+}
+.guide-setup .grow {
+  flex: 1;
+  min-width: 0;
+}
+.guide-setup strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+.guide-setup span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.guide-setup .chev {
+  color: var(--muted);
+  font-size: 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-setup {
+    animation: none;
+  }
+}
+
 /* Onboarding: the quiet divider that marks the "go further" tier under the
    Harbor Mini hero card, so four cards read as one front door and a second
    tier, not five equal choices. */

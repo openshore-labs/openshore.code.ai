@@ -123,63 +123,6 @@ export function StartingPaths({
     </div>
   );
 
-  // Harbor Lite is bundled with the app, so on a normal build it is here the
-  // instant the app opens, and "Say hello" opens its chat. But a build can ship
-  // without the file, or the copy-in can fail, so the hero is honest about its
-  // states: a live download shows progress, a failed one offers to fetch it,
-  // and only a present model says "already here" (never a claim over a missing
-  // file). Creative Studio "The Standing Light": the guide in the room.
-  const harborMiniHeroCard = (
-    <div className="card">
-      {harborMiniDownload && !harborMiniDownload.failed ? (
-        <>
-          <h3>Getting Harbor Lite</h3>
-          <div className="progress-track" style={{ marginTop: 4 }}>
-            <div
-              className={`progress-fill${harborMiniDownload.indeterminate ? ' indeterminate' : ''}`}
-              style={
-                harborMiniDownload.indeterminate
-                  ? undefined
-                  : { width: `${harborMiniDownload.percent}%` }
-              }
-            />
-          </div>
-          <div className="hint" style={{ marginTop: 8 }}>
-            {harborMiniDownload.label}
-          </div>
-        </>
-      ) : harborMiniDownload?.failed ? (
-        <>
-          <h3>Get Harbor Lite</h3>
-          <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
-            {harborMiniDownload.label} Check your connection and try again.
-          </div>
-          <button
-            className="btn primary"
-            style={{ width: '100%' }}
-            onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
-          >
-            Retry
-          </button>
-        </>
-      ) : (
-        <>
-          <h3>Harbor Lite is already here</h3>
-          <div className="sub" style={{ marginBottom: 10 }}>
-            Your built-in guide. Works offline, the moment you open the app.
-          </div>
-          <button
-            className="btn primary"
-            style={{ width: '100%' }}
-            onClick={() => void getGuideAndGo(HARBOR_MINI_MODEL_ID)}
-          >
-            Say hello
-          </button>
-        </>
-      )}
-    </div>
-  );
-
   if (variant === 'rows') {
     const guideRow = (
       id: string,
@@ -304,10 +247,10 @@ export function StartingPaths({
   return (
     <>
       {!isDesktop() ? (
-        // The built-in guide leads; everything else is a clearly secondary "go
-        // further" tier. Creative Studio "The Standing Light" (2026-09-04).
+        // The built-in guide is the chat a new person opens into, and its
+        // greeting links here, so this page is only the "go further" tier.
+        // Creative Studio "The Standing Light" (2026-09-04; founder 2026-09-23).
         <>
-          {harborMiniHeroCard}
           <p className="paths-further-head">When you're ready to go further</p>
           {harborCard}
           <div className="card">

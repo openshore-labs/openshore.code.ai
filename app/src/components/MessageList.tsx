@@ -3,7 +3,7 @@
 // changed-files record, quiet status lines, and citations at the end. A
 // working row fills the gap between a send and the first token, and a "new
 // messages" pill offers the way back when the person has scrolled up.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
@@ -70,6 +70,7 @@ export function MessageList({
   onRevisePlan,
   onClarifyPick,
   onUnqueue,
+  afterItem,
 }: {
   thread: ThreadState;
   /** Open the Local LLMs sheet, offered when a turn stopped for no account usage. */
@@ -82,6 +83,9 @@ export function MessageList({
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
   onUnqueue?: (index: number) => void;
+  /** Extra content rendered right under one assistant message, keyed by its
+   *  id: Harbor Lite's greeting carries the setup button this way. */
+  afterItem?: (id: string) => ReactNode;
 }) {
   const threadRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -195,7 +199,8 @@ export function MessageList({
             case 'assistant': {
               const showModel = Boolean(item.model && item.model !== lastModel);
               if (item.model) lastModel = item.model;
-              return (
+              const after = afterItem?.(item.id);
+              const bubble = (
                 <AssistantBubble
                   key={item.id}
                   text={item.text}
@@ -204,6 +209,14 @@ export function MessageList({
                   showModel={showModel}
                   onReveal={followReveal}
                 />
+              );
+              return after ? (
+                <Fragment key={item.id}>
+                  {bubble}
+                  {after}
+                </Fragment>
+              ) : (
+                bubble
               );
             }
             case 'thinking':

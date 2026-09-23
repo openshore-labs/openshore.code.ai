@@ -223,10 +223,33 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(chat).toContain('HARBOR_MINI_MODEL_ID');
   });
 
-  it('makes the built-in guide the onboarding hero, others a "go further" tier', () => {
+  // Founder, 2026-09-23: a new person opens straight into Harbor Lite's chat,
+  // not a setup wall and not a Personal-or-Business question. The setup page
+  // is the "go further" tier, reached from a button under the greeting.
+  it('opens a new person into the built-in guide chat, with setup one tap away', () => {
+    const store = readFileSync(join(process.cwd(), 'src/state/store.ts'), 'utf8');
+    expect(store).toContain("view: 'chat',");
+    expect(store).not.toMatch(/\? 'chat' : 'onboarding'/);
+    expect(store).toContain('startGuide(HARBOR_MINI_MODEL_ID)');
+    const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
+    expect(chat).toContain('<GuideSetupLink');
+    expect(chat).toContain("setView('onboarding')");
+    expect(HARBOR_MINI_GREETING).toContain('Set up OpenShore');
     const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
-    expect(paths).toContain('Harbor Lite is already here');
-    expect(paths).toContain('Say hello');
+    expect(paths).not.toContain('Say hello');
     expect(paths).toContain("When you're ready to go further");
+  });
+
+  it('asks Personal or Business only when an account is created', () => {
+    const onboarding = readFileSync(
+      join(process.cwd(), 'src/screens/OnboardingScreen.tsx'),
+      'utf8',
+    );
+    expect(onboarding).not.toContain('AccountSetup');
+    const store = readFileSync(join(process.cwd(), 'src/state/store.ts'), 'utf8');
+    const signUp = store.slice(store.indexOf('async signUpAccount('));
+    expect(signUp.slice(0, 800)).toContain('accountChoice: true');
+    const setup = readFileSync(join(process.cwd(), 'src/components/AccountSetup.tsx'), 'utf8');
+    expect(setup).toContain('<h3>Business</h3>');
   });
 });

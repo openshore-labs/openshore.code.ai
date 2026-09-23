@@ -19,6 +19,7 @@ import { ROOM_NAMES } from '../components/BackBar.js';
 import { RepoPicker } from '../components/RepoPicker.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
+import { GuideSetupLink } from '../components/GuideSetupLink.js';
 import { FirstSeat } from '../components/FirstSeat.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
@@ -525,6 +526,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               setFocusSignal((n) => n + 1);
             }}
             onClarifyPick={(text) => send(text)}
+            afterItem={(itemId) =>
+              conv?.source.kind === 'device' &&
+              conv.source.modelId === HARBOR_MINI_MODEL_ID &&
+              itemId === `${conv.id}-hello` ? (
+                <GuideSetupLink onOpen={() => setView('onboarding')} />
+              ) : null
+            }
           />
         ) : resuming ? (
           <ResumeSkeleton count={conv?.lastItemCount} />

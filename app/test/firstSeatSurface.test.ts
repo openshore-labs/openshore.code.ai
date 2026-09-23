@@ -84,11 +84,15 @@ describe('the arrival rides the tokens (The Seat Fills)', () => {
 });
 
 describe('the Harbor Lite hero is honest about its states', () => {
-  it('has download, progress, and failure states, not only "already here"', () => {
-    expect(PATHS).toContain('Harbor Lite is already here');
+  // The hero card left the setup page (founder, 2026-09-23: a new person opens
+  // into Harbor Lite's chat instead). Its honest states live on in the
+  // Settings rows, which still show progress, failure, and a real "Get".
+  it('keeps download, progress, and failure states in the Settings rows', () => {
+    expect(PATHS).not.toContain('Harbor Lite is already here');
     expect(PATHS).toContain('harborMiniDownload');
-    expect(PATHS).toMatch(/harborMiniDownload\?\.failed/);
-    expect(PATHS).toContain('Get Harbor Lite');
+    expect(PATHS).toMatch(/dl\?\.failed/);
+    expect(PATHS).toContain("'Harbor Lite'");
+    expect(PATHS).toContain('label={`Get ${name}`}');
   });
   it('drops the "part of Personal" claim while gates are off', () => {
     expect(PATHS).not.toContain('part of Personal');
