@@ -50,6 +50,17 @@ describe('curation/eval.json provenance', () => {
     for (const id of Object.keys(evals)) expect(id).not.toMatch(/(?<!\d)4b/i);
   });
 
+  it('attaches no coding eval number to the Harbor Lite guide (DECISIONS 2026-09-23)', () => {
+    // Harbor Lite (SmolLM2-135M, the harbor-mini slot) is a guide, not a coding
+    // seat, so the coding deep eval does not apply to it and no number is quoted
+    // for it. Guards against a future stray entry under the guide's own weights
+    // (the 135M) or its slot id. Narrow on purpose: a larger SmolLM2 that is a
+    // real seat (e.g. smollm2-1.7b-phone) keeps its published number.
+    for (const id of Object.keys(evals)) {
+      expect(id, id).not.toMatch(/harbor-mini|135m/i);
+    }
+  });
+
   it('the existing seed numbers are marked published', () => {
     for (const id of ['qwen2.5-coder-7b', 'qwen2.5-coder-14b', 'qwen2.5-1.5b-phone']) {
       expect(evalSource(evals[id]), id).toBe('published');

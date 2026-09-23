@@ -1730,3 +1730,18 @@ execution contract. Newest at the bottom.
   adapter program), stock Qwen today, tuned weights swapped in behind the slots
   when a number clears. The Harbor recast (guide to mobile coder) and the
   Harbor Lite rename are separate follow-up passes.
+- **Harbor Lite is out of the coding harness eval, by design (2026-09-23).**
+  Of the three curated models, only two are coding seats the deep eval measures.
+  Harbor Lite (SmolLM2-135M, the `harbor-mini` slot) is a bundled guide and
+  concierge, never a stack member, orchestrator, or coding seat (`harborMini.ts`:
+  it does not write real code, edit files, run commands, or reason multi-step).
+  The premium harness deep eval (`osc eval --deep`) measures a coding agent loop,
+  so pointing it at Harbor Lite would score near zero and mean nothing. So Harbor
+  Lite carries no `curation/eval.json` entry, no coding score is quoted for it
+  anywhere, and it is never gated as an orchestrator. Any future quality bar for
+  the guide is a separate guide-quality eval (does it route and recite the setup
+  steps correctly), not this coding benchmark. Harbor (Qwen 2.5 Coder 3B) and
+  DeepBlue (Qwen 2.5 Coder, sized) are the two that go through the coding harness.
+  Guarded in `test/curationEval.test.ts`. The DeepBlue per-size run plan and the
+  finding that no card quotes a coding number today are in
+  `docs/deepblue-eval-runbook.md`.
