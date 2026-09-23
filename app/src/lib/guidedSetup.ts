@@ -44,10 +44,17 @@ export interface GuidedSetupProgress {
 
 export interface SetupStepCopy {
   title: string;
-  /** What the guide says when the step comes up. */
-  intro: string;
+  /** What it is, in a sentence. */
+  what: string;
+  /** Why it helps. */
+  why: string;
+  /** How it works: what the button does and what happens next. */
+  how: string;
   /** The primary button. */
   action: string;
+  /** Sent as the person's message by "Ask about this", so the guide
+   *  answers it with the step in mind. */
+  ask: string;
   /** Said when the step completes. */
   done: string;
 }
@@ -61,33 +68,48 @@ export const HARBOR_READY_MESSAGE = `Harbor is ready on your iPhone. ${HARBOR_SW
 export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
-    intro:
-      "First, a bigger model. Harbor is a coding model that runs right here on your iPhone: real reasoning, web search, and it writes real code. It's a one-time download of about 1.9 GB, and it keeps going in the background while we set up the rest.",
+    what: 'Harbor is a coding model that runs right here on your iPhone.',
+    why: 'I am a guide; Harbor does the real work. It reasons, searches the web, and writes real code, all on this phone, even in airplane mode.',
+    how: 'Tap Get Harbor. It downloads straight from its source, about 1.9 GB, a couple of minutes on wifi, and keeps going in the background while we set up the rest. I will tell you when it is ready and how to switch to it.',
     action: 'Get Harbor',
+    ask: 'Tell me more about Harbor before I download it.',
     done: 'Harbor is downloading in the background. I will tell you when it is ready.',
   },
   computer: {
     title: 'Connect your computer',
-    intro:
-      'Next, your computer. Run your model there and reach it from your phone over your private Tailscale network. Your machine does the heavy work, so it will not drain your battery, and a long answer keeps going even when you close the app.',
+    what: 'Pair this phone with OpenShore on your own computer, over your private Tailscale network.',
+    why: 'Your computer runs bigger models and works on your code. It does the heavy lifting, so your battery lasts, and a long answer keeps going even when you close the app.',
+    how: 'Install Tailscale on both devices and sign in to the same account (free for personal use). On your computer, open OpenShore, then Desktop + phone, and tap Turn on to show a QR code. Tap Connect your computer here and scan it. I will bring you back here once you are connected.',
     action: 'Connect your computer',
+    ask: 'Tell me more about connecting my computer.',
     done: 'Your computer is connected.',
   },
   repo: {
     title: 'Set up a repository',
-    intro:
-      'Now a repository. Connect GitHub or another platform on your own token and pick a home repo. OpenShore reads, edits, and commits there, always with your approval.',
+    what: 'Connect GitHub or another platform, and pick a home repo for OpenShore to work in.',
+    why: 'This is where building happens: OpenShore reads your code, edits it, runs its tests, and commits, always with your approval.',
+    how: 'Tap Set up a repository, choose your platform, and connect it with your own token. Then set your home repo. Every edit shows you a diff first, and every command asks before it runs. I will bring you back here once it is connected.',
     action: 'Set up a repository',
+    ask: 'Tell me more about setting up a repository.',
     done: 'Your repository is connected.',
   },
   key: {
     title: 'Connect your own key',
-    intro:
-      "Last one: your own key, if you have one. Add a key for Claude, OpenAI, or Gemini and go further at your provider's price. Chat stays free either way, and your key stays on this device.",
+    what: 'Add an API key for Claude, OpenAI, or Gemini.',
+    why: "For the hardest work, a frontier model on your own account goes further than anything on a phone, at your provider's price. Chat stays free either way.",
+    how: "Create a key on your provider's site, then tap Add a key, paste it, and save. OpenShore checks it with the provider before it says connected, and the key never leaves this device. I will bring you back here once it is saved.",
     action: 'Add a key',
+    ask: 'Tell me more about using my own key.',
     done: 'Your key is connected.',
   },
 };
+
+/** How the guide introduces a step: what it is, why it helps, how it works. */
+export function stepIntro(id: SetupStepId): string {
+  const c = STEP_COPY[id];
+  const { n, of } = stepNumber(id);
+  return `**Step ${n} of ${of}: ${c.title}.** ${c.what}\n\n**Why:** ${c.why}\n\n**How:** ${c.how}`;
+}
 
 /** Whether the step is already taken care of, so the walk passes it by. */
 export function stepHandled(id: SetupStepId, facts: SetupFacts): boolean {
@@ -127,7 +149,7 @@ export function stepNumber(id: SetupStepId): { n: number; of: number } {
 /** The first message of the walk, right under the greeting. */
 export function openingMessage(first: SetupStepId | undefined, facts: SetupFacts): string {
   if (!first) return finishMessage(facts);
-  return `Let's get you set up. I'll take it one step at a time, and you can skip anything you don't need or ask me about it first.\n\n${STEP_COPY[first].intro}`;
+  return `Let's get you set up. For each step I'll tell you what it is, why it helps, and how it works. Then you can connect it, skip it, or ask me more first. Skip anything you don't need; you can always come back to it.\n\n${stepIntro(first)}`;
 }
 
 /** The guide's message when the walk moves on: what just happened, then the
@@ -145,7 +167,7 @@ export function advanceMessage(
         ? HARBOR_READY_MESSAGE
         : STEP_COPY[finished].done
     : '';
-  const body = next ? STEP_COPY[next].intro : finishMessage(facts);
+  const body = next ? stepIntro(next) : finishMessage(facts);
   return lead ? `${lead}\n\n${body}` : body;
 }
 
@@ -188,5 +210,5 @@ export function guideContextLine(
   }
   const step = STEP_COPY[progress.current];
   const { n, of } = stepNumber(progress.current);
-  return `SETUP: you are walking the person through setup, step ${n} of ${of}: "${step.title}". Its buttons ("${step.action}" and "Skip for now") sit under your latest message. Answer their question, then point them back to those buttons. Never invent other steps.`;
+  return `SETUP: you are walking the person through setup, step ${n} of ${of}: "${step.title}". What it is: ${step.what} How it works: ${step.how} Its buttons ("${step.action}", "Ask about this", and "Skip for now") sit under your latest message. Answer their question from this, then point them back to those buttons. Never invent other steps.`;
 }

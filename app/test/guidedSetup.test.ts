@@ -3,6 +3,8 @@
 // one. A step's page brings them back to the chat once the connection lands,
 // questions can be asked off script, and the walk ends by inviting questions
 // about the app (and saying how to switch to Harbor if it came down).
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   HARBOR_SWITCH_HINT,
@@ -12,6 +14,7 @@ import {
   guideContextLine,
   nextStep,
   openingMessage,
+  stepIntro,
   type SetupFacts,
 } from '../src/lib/guidedSetup.js';
 
@@ -46,8 +49,30 @@ describe('the walk order', () => {
 });
 
 describe('what the guide says', () => {
+  it('tells what each step is, why it helps, and how it works', () => {
+    for (const id of ['harbor', 'computer', 'repo', 'key'] as const) {
+      const intro = stepIntro(id);
+      expect(intro).toContain(STEP_COPY[id].what);
+      expect(intro).toContain(`**Why:** ${STEP_COPY[id].why}`);
+      expect(intro).toContain(`**How:** ${STEP_COPY[id].how}`);
+      expect(STEP_COPY[id].ask.endsWith('.') || STEP_COPY[id].ask.endsWith('?')).toBe(true);
+    }
+    expect(openingMessage('harbor', NONE)).toMatch(/connect it, skip it, or ask me more/);
+  });
+
+  it('offers connect, ask, and skip on every step', () => {
+    const actions = readFileSync(
+      join(process.cwd(), 'src/components/SetupStepActions.tsx'),
+      'utf8',
+    );
+    expect(actions).toContain('{STEP_COPY[step].action}');
+    expect(actions).toContain('send(STEP_COPY[step].ask)');
+    expect(actions).toContain('Ask about this');
+    expect(actions).toContain('Skip for now');
+  });
+
   it('opens on the first step and closes by inviting questions', () => {
-    expect(openingMessage('harbor', NONE)).toContain(STEP_COPY.harbor.intro);
+    expect(openingMessage('harbor', NONE)).toContain(stepIntro('harbor'));
     expect(finishMessage(NONE)).toMatch(/ask me anything about OpenShore/i);
   });
 
@@ -63,7 +88,7 @@ describe('what the guide says', () => {
   it('acknowledges a finished step before the next one', () => {
     const m = advanceMessage('computer', 'done', 'repo', { ...NONE, computer: true });
     expect(m.startsWith(STEP_COPY.computer.done)).toBe(true);
-    expect(m).toContain(STEP_COPY.repo.intro);
+    expect(m).toContain(stepIntro('repo'));
   });
 
   it('tells the model where the walk stands, so off-script answers lead back', () => {
@@ -171,12 +196,12 @@ describe('the guided walk in the store', () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
     expect(guided().current).toBe('harbor');
-    expect(texts().at(-1)).toContain(STEP_COPY.harbor.intro);
+    expect(texts().at(-1)).toContain(stepIntro('harbor'));
 
     useApp.getState().skipSetupStep();
     await wait(5);
     expect(guided().current).toBe('computer');
-    expect(texts().at(-1)).toContain(STEP_COPY.computer.intro);
+    expect(texts().at(-1)).toContain(stepIntro('computer'));
 
     // The button opens the step's page...
     useApp.getState().openSetupStep();

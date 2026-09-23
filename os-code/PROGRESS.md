@@ -954,7 +954,9 @@ repository waits on the computer; the words; `guideContextLine` for the model),
 effects in the store (`beginGuidedSetup`, `openSetupStep`, `skipSetupStep`, and
 `advanceGuidedSetup` on a store subscription and after each reply), buttons in
 `components/SetupStepActions.tsx` under the guide's latest message. Harbor Lite
-reads the current step through `setHarborMiniContext`. Progress lives on
+reads the current step through `setHarborMiniContext`. Each step says what it
+is, why it helps, and how it works, with three choices: connect, "Ask about
+this" (sends a question the guide answers), or "Skip for now". Progress lives on
 `settings.guidedSetup`. Guards in `app/test/guidedSetup.test.ts`, including the
 whole walk through the real store.
 
