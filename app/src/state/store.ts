@@ -161,6 +161,8 @@ import {
   guideContextLine,
   nextStep,
   openingMessage,
+  resumeMessage,
+  setupIntent,
   stepHandled,
   type GuidedSetupProgress,
   type SetupFacts,
@@ -1109,6 +1111,8 @@ interface AppState {
   openSetupStep(): void;
   /** The current setup step's "Skip for now". */
   skipSetupStep(): void;
+  /** Pick a paused setup walk back up at its current step. */
+  resumeGuidedSetup(): void;
   /** Bring your own Brave or Tavily key for Harbor's web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
@@ -1943,6 +1947,58 @@ export const useApp = create<AppState>((set, get, api) => {
     return true;
   }
 
+  // Show the person's own line in the guide's chat without sending it to the
+  // model: used when the walk itself answers it ("let's set up", "skip").
+  function appendUserLine(conversationId: string, text: string): void {
+    const id = `${conversationId}-u-${Date.now().toString(36)}${(guideSeq++).toString(36)}`;
+    set((st) => {
+      const c = st.conversations[conversationId];
+      if (!c) return st;
+      return {
+        conversations: {
+          ...st.conversations,
+          [conversationId]: {
+            ...c,
+            thread: {
+              ...c.thread,
+              items: [...c.thread.items, { kind: 'user' as const, id, text }],
+            },
+          },
+        },
+      };
+    });
+  }
+
+  // A message typed in the walk's chat may be about the walk itself. "I just
+  // want to chat" pauses it and still goes to the guide, who answers knowing
+  // setup is off the table; a plain "let's set up" or "skip" is answered by
+  // the walk. Returns true when the message was handled here.
+  function interceptSetupMessage(conversationId: string, text: string): boolean {
+    const p = get().settings.guidedSetup;
+    if (!p || p.conversationId !== conversationId) return false;
+    const intent = setupIntent(text);
+    if (!intent) return false;
+    const walking = Boolean(p.current && !p.finished);
+    if (intent === 'pause') {
+      if (walking && !p.paused) {
+        logEvent('guided_setup_pause', { step: p.current ?? 'none' });
+        void get().saveSettings({ guidedSetup: { ...p, paused: true, awaiting: undefined } });
+      }
+      return false; // the guide still answers it, now knowing
+    }
+    if (!walking) return false;
+    if (intent === 'resume') {
+      if (!p.paused) return false; // already walking: let the guide answer
+      appendUserLine(conversationId, text);
+      get().resumeGuidedSetup();
+      return true;
+    }
+    if (p.paused) return false; // "next" while just chatting is ordinary talk
+    appendUserLine(conversationId, text);
+    get().skipSetupStep();
+    return true;
+  }
+
   // Move the walk along when the world changed: a step's connection landed
   // (say so, bring the person back to the chat if they went to its page, and
   // bring up the next step), or Harbor finished downloading (say how to switch
@@ -1955,7 +2011,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!conv || conv.thread.busy) return;
     const facts = setupFacts();
     let next: GuidedSetupProgress = p;
-    if (!p.finished && p.current && stepHandled(p.current, facts)) {
+    if (!p.finished && !p.paused && p.current && stepHandled(p.current, facts)) {
       const done = p.current;
       const after = nextStep(p, facts);
       if (!appendGuideMessage(p.conversationId, advanceMessage(done, 'done', after, facts))) return;
@@ -5336,6 +5392,23 @@ export const useApp = create<AppState>((set, get, api) => {
       get().setView(view);
     },
 
+    resumeGuidedSetup() {
+      const p = get().settings.guidedSetup;
+      if (!p?.current || p.finished || !p.paused) return;
+      // Anything connected while paused is passed by: resume at the step
+      // that is actually next.
+      const facts = setupFacts();
+      const current = stepHandled(p.current, facts) ? nextStep(p, facts) : p.current;
+      logEvent('guided_setup_resume', { step: current ?? 'none' });
+      if (!current) {
+        void get().saveSettings({ guidedSetup: { ...p, paused: false, current, finished: true } });
+        appendGuideMessage(p.conversationId, advanceMessage(undefined, 'done', undefined, facts));
+        return;
+      }
+      if (!appendGuideMessage(p.conversationId, resumeMessage(current))) return;
+      void get().saveSettings({ guidedSetup: { ...p, paused: false, current } });
+    },
+
     skipSetupStep() {
       const p = get().settings.guidedSetup;
       if (!p?.current || p.finished) return;
@@ -5757,6 +5830,11 @@ export const useApp = create<AppState>((set, get, api) => {
         get().sendWhenAttached(activeId, text, attachments);
         ensureDriver(activeId);
         return;
+      }
+      // The guided setup's chat: a "not now", "let's set up", or "skip" is
+      // about the walk (see interceptSetupMessage).
+      if (!(attachments && attachments.length) && !get().conversations[activeId]?.thread.busy) {
+        if (interceptSetupMessage(activeId, text)) return;
       }
       // Mid-run: hold the message and send it when the task ends (attachDriver
       // flushes on task-done). Attachments do not queue; they need a live turn.

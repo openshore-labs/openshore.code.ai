@@ -134,6 +134,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     activeIsAgent,
     resumingId,
     settings,
+    resumeGuidedSetup,
     unqueue,
     addNote,
     setConversationRepos,
@@ -541,6 +542,19 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               // The guided setup's chat: the current step's buttons follow the
               // guide's latest message, and the wrap-up offers questions to ask.
               if (guided && guided.conversationId === conv.id) {
+                // Paused ("I'd rather just chat"): no buttons following the
+                // talk, just a quiet way back in, up under the hello.
+                if (guided.paused && !guided.finished) {
+                  return itemId === `${conv.id}-hello` ? (
+                    <button
+                      type="button"
+                      className="btn quiet press-fb setup-resume"
+                      onClick={resumeGuidedSetup}
+                    >
+                      Pick up setup
+                    </button>
+                  ) : null;
+                }
                 if (thread?.busy || itemId !== lastAssistantId) return null;
                 if (guided.current && !guided.finished) {
                   return <SetupStepActions step={guided.current} />;

@@ -956,7 +956,11 @@ effects in the store (`beginGuidedSetup`, `openSetupStep`, `skipSetupStep`, and
 `components/SetupStepActions.tsx` under the guide's latest message. Harbor Lite
 reads the current step through `setHarborMiniContext`. Each step says what it
 is, why it helps, and how it works, with three choices: connect, "Ask about
-this" (sends a question the guide answers), or "Skip for now". Progress lives on
+this" (sends a question the guide answers), or "Skip for now". Setup is
+offered, never pushed: the first chat's first goal is a pleasant, useful
+conversation (`FIRST_CHAT_GOAL`); "I just want to chat" pauses the walk
+(`setupIntent`, buttons hidden, the guide stops raising it), "let's set up" or
+"Pick up setup" resumes it, and a bare "skip" skips the step. Progress lives on
 `settings.guidedSetup`. Guards in `app/test/guidedSetup.test.ts`, including the
 whole walk through the real store.
 

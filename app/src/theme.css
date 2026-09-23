@@ -10795,3 +10795,11 @@ button.settings-row:active {
     animation: none;
   }
 }
+
+/* A paused setup walk's way back in: quiet, up under Harbor Lite's hello, so
+   it never follows the conversation around. */
+.setup-resume {
+  margin: 0 16px 10px;
+  padding: 6px 0;
+  font-size: 13.5px;
+}
