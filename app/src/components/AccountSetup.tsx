@@ -1,5 +1,7 @@
-// The first choice at signup: Personal or Commercial. Personal is a normal
-// account for your own work. Commercial sets up a company umbrella with an
+// Asked once, right after a new account is created (never on first open: with
+// no account, OpenShore simply runs as personal). Personal or Business.
+// Personal is a normal account for your own work. Business (the 'commercial'
+// account type underneath) sets up a company umbrella with an
 // admin, members you add by email, and a plan priced by how many people use it.
 // Everything about the app is identical either way; commercial just adds the
 // admin controls and the shared, admin-owned stack.
@@ -30,10 +32,11 @@ export function AccountSetup() {
               </span>
             </span>
             <h1 style={{ marginTop: 14, fontFamily: 'var(--font-display)', fontWeight: 500 }}>
-              How will you use OpenShore?
+              Personal or business?
             </h1>
             <p className="lead" style={{ marginTop: 8 }}>
-              Pick one to start. You can change this later in Settings.
+              Your account is made. Tell us how you will use it; you can change this later in
+              Settings.
             </p>
           </div>
 
@@ -55,7 +58,7 @@ export function AccountSetup() {
               </div>
 
               <div className="card account-card">
-                <h3>Commercial</h3>
+                <h3>Business</h3>
                 <div className="sub" style={{ marginBottom: 10 }}>
                   For a team. You become the admin: add people by email, and own the shared stack
                   and where everything lives. Priced by how many people use it.
@@ -72,7 +75,7 @@ export function AccountSetup() {
                   style={{ width: '100%', marginTop: 12 }}
                   onClick={() => setChoice('commercial')}
                 >
-                  Set up a company
+                  Set up a business
                 </button>
               </div>
             </>

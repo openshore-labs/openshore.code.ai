@@ -2818,7 +2818,26 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-21)
+## Log entries (2026-08-18 to 2026-09-23)
+
+### 2026-09-23, the terminal without Termius: fixed on the device, no relay
+
+The founder asked for OpenShore's own terminal, reached through the account
+instead of Termius plus Tailscale. The native Terminal room already existed, so
+the question was the transport. An account relay went to the eight advisors
+(seven: build with conditions; the Chief of Staff: not now), and the founder
+declined it on principle: no OpenShore server in the path of a person's work
+(DECISIONS). CX's finding was that most of the pain was reaching the room, not
+Tailscale, so that is what shipped. The Paired card now offers "Open a terminal
+on your computer"; a device that already reaches a computer skips the Terminal
+room's first-run intro; with no session open the room offers a plain shell in
+the home folder (`HOME_SHELL_ID`, admin-only on the daemon, reopens the running
+shell, never read by the agent; `os-code/src/daemon/serve.ts`
+`handleTerminalRoute`, `app/src/lib/homeShell.ts`); and a failed `/health`
+now tells "can't reach your computer" from "it no longer accepts this device"
+with a credential-free empty-claim probe. The phone's main menu already listed
+Terminal. Gates green: app 1056 tests, engine 824, both typechecks, lint, the
+Vite build.
 
 ### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
 
