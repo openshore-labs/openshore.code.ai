@@ -1745,3 +1745,29 @@ execution contract. Newest at the bottom.
   Guarded in `test/curationEval.test.ts`. The DeepBlue per-size run plan and the
   finding that no card quotes a coding number today are in
   `docs/deepblue-eval-runbook.md`.
+- **DeepBlue's target weights become Bonsai 2, served, not a Qwen Ollama ladder
+  (founder, 2026-09-23). Supersedes the Air-program line that Bonsai is "never a
+  DeepBlue size".** The founder's call: the featured desktop model is Bonsai 2
+  (PrismML, a 27B on a Qwen3.8 base compressed to ternary, about 5.95 GB PTQ1_0
+  or 7.21 GB PQ2_0, Apache-2.0), chosen so DeepBlue is compact from the start.
+  The founder chose FULL replacement, served only (2026-09-23): the Qwen ladder
+  is removed as DeepBlue's weights, not kept as a fallback. Consequences held
+  honestly, not papered over. (1) Runtime: Ollama (mainline llama.cpp) has no
+  ternary kernels, so DeepBlue is a SERVED OpenAI-compatible endpoint (PrismML's
+  fork or an MLX build on the hub, reached Docked), not a one-tap `ollama pull`.
+  The Qwen 2.5 Coder sizes survive only as the eval baseline and ceiling the
+  Bonsai number is measured against, never as a shipping DeepBlue size. (2)
+  Onboarding: full replacement removes the one-tap desktop starter (there is no
+  weight to auto-pull), so the person stands up the Bonsai endpoint first, and
+  the First Seat, the Starter bundle, and `starterModel.ts` change to a connect
+  flow rather than an install. (3) Claim bar: Bonsai has no agentic-coding number
+  yet, and ternary is exactly where precise multi-line edits and SEARCH/REPLACE
+  slip, so the copy stays size-honest and capability-neutral (no "premium
+  coding", no "tuned") until Gate 0 clears (`osc eval --deep` against the 14B and
+  32B, weighted on edit and refactor); tenet 2 holds. (4) DeepBlue rides zero
+  measured eval in the interim, which the runbook and the eval-gate guard
+  reflect. Implementation gap logged: the desktop engine must accept a served
+  OpenAI-compatible orchestrator (the Gate 0 provider); wiring and verification
+  belong on the hub where Bonsai actually serves. Plan of record and the kill
+  gates are in `docs/house-model-proposal.md` (the Air program) and
+  `docs/deepblue-eval-runbook.md`.

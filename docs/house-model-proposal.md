@@ -424,11 +424,25 @@ lands as chat-side coding first and grows into repository tools as that host
 lands. "Sonnet-grade" and "as smart as Claude" stay off the copy until the
 deep eval on the Air says so; the number, per tier, is the claim.
 
-If it clears, where it lands: a pocket model entry in the catalog with an
-on-device URL, gated to 12 GB phones, hand-seeded (the builder rejects unknown
-publishers), honest "tight" fit copy, a measured deep score before any ribbon,
-and the 4B stays the default phone seat until the number says otherwise. Not a
-DeepBlue size: that slot is desktop and Ollama.
+If it clears on the phone, where the on-device build lands: a pocket model entry
+in the catalog with an on-device URL, gated to 12 GB phones, hand-seeded (the
+builder rejects unknown publishers), honest "tight" fit copy, a measured deep
+score before any ribbon, and the 4B stays the default phone seat until the number
+says otherwise.
+
+UPDATE, founder, 2026-09-23: Bonsai 2 also becomes the DESKTOP DeepBlue model,
+full replacement, served only. This reverses the line above ("Not a DeepBlue
+size") for the desktop slot: DeepBlue's Qwen 2.5 Coder ladder is replaced by
+Bonsai 2 served over an OpenAI-compatible endpoint (PrismML's fork or MLX on the
+hub, reached Docked), since Ollama cannot serve ternary. The Qwen sizes stay only
+as the eval baseline the Bonsai number is measured against. Held honestly: full
+replacement removes the one-tap desktop starter (no weight to auto-pull, so the
+person stands up the endpoint first), the copy stays capability-neutral until
+Gate 0 clears, and DeepBlue rides zero measured eval until then. The remaining
+work is (a) the desktop engine accepting a served OpenAI-compatible orchestrator
+(the Gate 0 provider), (b) the app connect flow that replaces the install button,
+and (c) Gate 0 itself on the hub. See `DECISIONS.md` (2026-09-23) and
+`deepblue-eval-runbook.md`. The phone Air program above is unchanged.
 
 The cheapest route may still be to wait: the llama.cpp discussion on adding
 Bonsai's group-128 ternary format upstream, if it lands, makes the runtime a

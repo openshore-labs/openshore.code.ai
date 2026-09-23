@@ -9,6 +9,30 @@ numbers.
 Companion decisions: `DECISIONS.md` (Harbor Lite is out of the coding eval; only
 Harbor and DeepBlue go through the harness).
 
+## Direction change (founder, 2026-09-23): DeepBlue becomes Bonsai 2, served
+
+DeepBlue's target weights are now Bonsai 2 (PrismML, 27B ternary, about 5.95 GB
+PTQ1_0), served over an OpenAI-compatible endpoint, full replacement. See
+`DECISIONS.md` and `docs/house-model-proposal.md` (the Air program update). That
+recasts this runbook:
+
+- **Bonsai is the model under test now (Gate 0).** Serve it from PrismML's fork
+  or an MLX build on the hub, add it as a provider, and run the deep eval against
+  the 14B and 32B, weighting edit and refactor:
+
+  ```
+  osc eval --deep --attempts 3 --provider bonsai --model <served name>
+  ```
+
+  The full step-by-step is `docs/air-program-runbook.md`. If Bonsai plus the
+  harness does not beat the 14B here, the swap does not proceed.
+
+- **The Qwen runs below are now the BASELINE and ceiling**, the numbers Bonsai is
+  measured against, not shipping DeepBlue sizes. They are still worth having on a
+  hub box for the comparison, so the rest of this runbook stands as the baseline
+  procedure. Only a measured Bonsai number clears the slot; the Qwen numbers just
+  say how high the bar is.
+
 ## Current state (2026-09-23)
 
 | Size  | Ollama ref            | eval.json key          | Number today                | Through the harness? |
