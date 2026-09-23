@@ -943,6 +943,21 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-23, every push to main reaches the desktops, with a one-click update bar
+
+Founder: a desktop that is behind main shows a permanent bar at the top, and
+one click downloads and updates. `release.yml` now publishes on every push to
+main that touches the app or engine (a `version` job picks the next patch
+after the newest tag; tags and hand runs work as before) and, when the
+`CODEMAGIC_API_TOKEN`/`CODEMAGIC_APP_ID` secrets are set, starts the Mac build.
+The bar (`components/UpdateBanner.tsx`) is a full-width row above the app in
+an `.app-frame`, no dismiss. Windows and Linux: shows on `update-available`,
+downloads in the background, one click installs (at once, or the moment the
+download lands). macOS, unsigned: one click downloads the newest release that
+has a zip for this Mac, swaps the bundle, relaunches (`electron/macUpdate.ts`,
+pure picks in `electron/updateVersion.ts`), falling back to the release page.
+Checks every 30 minutes. Not yet run on a real packaged build.
+
 ### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
 
 Founder: the setup steps are run by Harbor Lite, one at a time, in the first
@@ -974,18 +989,3 @@ back a word still arriving (`revealLimit`/`toWordEnd` in
 splits a live reply's prose into word spans that fade on mount (`.md-live .w`,
 `--dur-6`), so words already on screen never replay. Code blocks are not split;
 a settled reply renders plain. The breathing caret and its CSS are gone.
-
-### 2026-09-23, first open is the chat; Personal or Business only at sign-up
-
-Founder: assume personal until sign-in, ask Personal or Business only when a
-new account is created, and open a new person straight into the chat, with the
-setup page one tap from Harbor Lite's greeting. Init now always lands on
-`chat`; a fresh phone opens Harbor Lite's chat (`startGuide`), a fresh desktop
-its First Seat. `OnboardingScreen` lost its `AccountSetup` gate (no account
-already reads as personal everywhere) and became the setup page ("Back to
-chat"), without the old Harbor Lite hero card. `signUpAccount` raises
-`accountChoice` when the device never chose, and `App.tsx` shows `AccountSetup`
-(now "Personal or business?") full-screen. The greeting and persona point to a
-"Set up OpenShore" button under the hello (`components/GuideSetupLink.tsx`,
-through a new `MessageList.afterItem` slot). A bundled Harbor Lite copy-in no
-longer asks for notices, so nothing prompts at launch.

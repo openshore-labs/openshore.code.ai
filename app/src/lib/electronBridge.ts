@@ -54,16 +54,20 @@ export interface OllamaInstallResult {
   detail?: string;
 }
 
-/** A desktop update the main process has found and is ready to hand off.
- *  `install` (Windows, Linux) means electron-updater already downloaded it in
- *  the background and a click quits and relaunches on the new version.
- *  `download` (macOS, which ships unsigned outside the App Store by design)
- *  means only a version check ran, since an unsigned build has no stable
- *  signature for electron-updater's in-place install to verify against, so a
- *  click opens the release in the browser instead. */
+/** A newer desktop version the main process found (electron/main.ts). Every
+ *  push to main publishes one, and the bar across the top of the window
+ *  (UpdateBanner) shows it until the app updates. `phase`:
+ *  - downloading: Windows and Linux, fetching in the background; a click
+ *    installs the moment it lands.
+ *  - ready: downloaded; a click restarts onto it.
+ *  - available: macOS, found; a click downloads, swaps, and relaunches.
+ *  - installing: the person clicked; `percent` tracks it until the restart.
+ *  - failed: it did not finish; a click tries again. */
 export interface PendingUpdate {
   version: string;
-  mode: 'install' | 'download';
+  phase: 'downloading' | 'ready' | 'available' | 'installing' | 'failed';
+  percent?: number;
+  detail?: string;
 }
 
 export interface DesktopStatus {

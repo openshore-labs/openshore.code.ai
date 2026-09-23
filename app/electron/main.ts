@@ -46,7 +46,8 @@ import { isIP } from 'node:net';
 import electronUpdaterPkg from 'electron-updater';
 const { autoUpdater } = electronUpdaterPkg;
 import { EngineHost } from './engineHost.js';
-import { versionIsNewer } from './updateVersion.js';
+import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
+import { canReplace, installMacUpdate } from './macUpdate.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
 import { processVideoDesktop, type DesktopMediaOptions } from './media.js';
 import {
@@ -1065,22 +1066,39 @@ guarded('osc:httpFetch', async (req: unknown) => {
 });
 
 // ------------------------------------------------------------- auto-update
-// electron-updater against the same GitHub Releases release.yml already
-// publishes to (app/package.json's build.publish carries the feed, so no
-// setFeedURL call is needed here). Windows and Linux get the full silent
-// flow: download in the background, then the renderer's banner offers a
-// restart to install. macOS ships unsigned outside the App Store by design
-// (codemagic.yaml, "no Apple certs needed"), and electron-updater's in-place
-// install relies on Squirrel.Mac matching the running build's code signature
-// against the new one, which an unsigned build never holds consistently
-// (confirmed against electron-updater's own docs: unsigned apps cannot use
-// its auto-update path on macOS). So macOS gets a lighter check: compare the
-// running version against the latest GitHub release tag, and the banner's
-// click opens that release in the browser instead of reinstalling in place.
+// Every push to main publishes a desktop release (.github/workflows/release.yml),
+// so a desktop that is behind finds out here and says so in a bar across the
+// top of the window (components/UpdateBanner.tsx) that stays until it updates.
+// One click does the rest.
+//
+// Windows and Linux: electron-updater against the GitHub Releases feed
+// (app/package.json's build.publish). The bar appears the moment a new version
+// is found, the download runs in the background, and a click installs and
+// restarts, at once if the download is done, or the moment it finishes.
+//
+// macOS ships unsigned outside the App Store by design (codemagic.yaml), and
+// electron-updater's in-place install relies on Squirrel.Mac matching code
+// signatures, which an unsigned build never holds (per electron-updater's own
+// docs). So the Mac updates itself (electron/macUpdate.ts): the click
+// downloads the release's zip for this Mac, swaps the bundle, and relaunches.
+// Where that cannot finish (running from a disk image, a folder it cannot
+// write), the click opens the release page instead.
 const UPDATE_REPO = 'openshore-labs/openshore.code.ai';
-const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
-let pendingUpdate: { version: string; mode: 'install' | 'download' } | undefined;
+let pendingUpdate: PendingUpdateStatus | undefined;
+/** The person clicked while the download was still running: install the
+ *  moment it lands. */
+let installWhenReady = false;
+/** macOS: the release file behind the pending update. */
+let macAsset: ReleaseAsset | undefined;
+
+interface PendingUpdateStatus {
+  version: string;
+  phase: 'downloading' | 'ready' | 'available' | 'installing' | 'failed';
+  percent?: number;
+  detail?: string;
+}
 
 function sendUpdateStatus(update: typeof pendingUpdate): void {
   pendingUpdate = update;
@@ -1088,61 +1106,141 @@ function sendUpdateStatus(update: typeof pendingUpdate): void {
 }
 
 async function checkMacUpdate(): Promise<void> {
+  // Never interrupt an update the person already started.
+  if (pendingUpdate?.phase === 'installing') return;
   try {
-    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases?per_page=15`, {
       signal: AbortSignal.timeout(30000),
+      headers: { accept: 'application/vnd.github+json' },
     });
     if (!res.ok) return;
-    const release = (await res.json()) as { tag_name?: string };
-    const latest = release.tag_name?.replace(/^v/, '');
-    if (latest && versionIsNewer(latest, app.getVersion())) {
-      sendUpdateStatus({ version: latest, mode: 'download' });
+    const releases = (await res.json()) as ReleaseInfo[];
+    const next = newestMacUpdate(releases, app.getVersion(), process.arch);
+    if (!next) return;
+    macAsset = next.asset;
+    if (pendingUpdate?.version !== next.version || pendingUpdate.phase === 'failed') {
+      sendUpdateStatus({ version: next.version, phase: 'available' });
     }
   } catch (err) {
     console.error('[update] macOS version check failed', err);
   }
 }
 
+async function installOnMac(): Promise<void> {
+  if (!pendingUpdate) return;
+  const version = pendingUpdate.version;
+  const releasePage = `https://github.com/${UPDATE_REPO}/releases/tag/v${version}`;
+  const bundle = bundleOf(app.getPath('exe'));
+  if (!macAsset || !(await canReplace(bundle))) {
+    await shell.openExternal(releasePage);
+    return;
+  }
+  sendUpdateStatus({ version, phase: 'installing', percent: 0 });
+  try {
+    await installMacUpdate(macAsset, bundle!, (percent) =>
+      sendUpdateStatus({ version, phase: 'installing', percent }),
+    );
+    app.quit();
+  } catch (err) {
+    console.error('[update] macOS in-place update failed', err);
+    sendUpdateStatus({
+      version,
+      phase: 'failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
+    await shell.openExternal(releasePage);
+  }
+}
+
 if (process.platform !== 'darwin') {
   autoUpdater.autoDownload = true;
-  // Never install on quit: the renderer's banner is the only trigger, so a
-  // person is never surprised by a relaunch they didn't ask for.
+  // Never install on quit: the bar is the only trigger, so a person is never
+  // surprised by a relaunch they didn't ask for.
   autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.on('update-available', (info) => {
+    sendUpdateStatus({
+      version: info.version,
+      phase: installWhenReady ? 'installing' : 'downloading',
+      percent: 0,
+    });
+  });
+  autoUpdater.on('download-progress', (p) => {
+    if (!pendingUpdate) return;
+    sendUpdateStatus({
+      ...pendingUpdate,
+      phase: installWhenReady ? 'installing' : 'downloading',
+      percent: Math.round(p.percent),
+    });
+  });
   autoUpdater.on('update-downloaded', (info) => {
-    sendUpdateStatus({ version: info.version, mode: 'install' });
+    if (installWhenReady) {
+      sendUpdateStatus({ version: info.version, phase: 'installing', percent: 100 });
+      autoUpdater.quitAndInstall();
+      return;
+    }
+    sendUpdateStatus({ version: info.version, phase: 'ready' });
   });
   autoUpdater.on('error', (err) => {
     console.error('[update] electron-updater error', err);
+    if (pendingUpdate) {
+      installWhenReady = false;
+      sendUpdateStatus({
+        ...pendingUpdate,
+        phase: 'failed',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
+}
+
+async function checkForUpdatesNow(): Promise<void> {
+  if (process.platform === 'darwin') return checkMacUpdate();
+  // A download already underway or waiting is not re-checked.
+  if (pendingUpdate && pendingUpdate.phase !== 'failed') return;
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    console.error('[update] checkForUpdates failed', err);
+  }
 }
 
 function scheduleUpdateChecks(): void {
   // An unpackaged dev run (`pnpm desktop`) has no app-update.yml and nothing
   // real to compare against; skip rather than log a check that can only fail.
   if (!app.isPackaged) return;
-  const check =
-    process.platform === 'darwin'
-      ? checkMacUpdate
-      : async () => {
-          try {
-            await autoUpdater.checkForUpdates();
-          } catch (err) {
-            console.error('[update] checkForUpdates failed', err);
-          }
-        };
-  void check();
-  setInterval(() => void check(), UPDATE_CHECK_INTERVAL_MS);
+  void checkForUpdatesNow();
+  setInterval(() => void checkForUpdatesNow(), UPDATE_CHECK_INTERVAL_MS);
 }
 
 guarded('osc:installUpdate', async () => {
   if (!pendingUpdate) return;
-  if (pendingUpdate.mode === 'download') {
-    await shell.openExternal(
-      `https://github.com/${UPDATE_REPO}/releases/tag/v${pendingUpdate.version}`,
-    );
+  if (process.platform === 'darwin') {
+    await installOnMac();
     return;
   }
-  autoUpdater.quitAndInstall();
+  if (pendingUpdate.phase === 'ready') {
+    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 100 });
+    autoUpdater.quitAndInstall();
+    return;
+  }
+  installWhenReady = true;
+  if (pendingUpdate.phase === 'failed') {
+    // Try again from the top: a fresh check re-downloads, then installs.
+    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 0, detail: undefined });
+    pendingUpdate = { ...pendingUpdate, phase: 'installing' };
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      installWhenReady = false;
+      sendUpdateStatus({
+        ...pendingUpdate,
+        phase: 'failed',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+  sendUpdateStatus({ ...pendingUpdate, phase: 'installing' });
 });
 
 // -------------------------------------------------------------- app lifecycle

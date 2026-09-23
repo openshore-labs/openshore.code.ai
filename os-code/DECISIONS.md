@@ -1797,3 +1797,11 @@ execution contract. Newest at the bottom.
   seat) and pauses the walk; the message still goes to the guide, whose prompt
   now says setup is off the table until asked. A resume or a bare "skip" is
   answered by the walk itself, not the model.
+- **Every push to main is a desktop release, founder 2026-09-23:** versions are
+  the next patch after the newest `v<major>.<minor>.*` tag, cut by CI, so
+  nobody has to tag by hand and a desktop is never quietly behind. Pushes that
+  touch only the iOS project or Markdown do not release. macOS updates in place
+  by swapping its own unsigned bundle (Squirrel.Mac cannot verify an unsigned
+  build) and only to a release that carries a Mac zip, since the Mac build
+  lands after Linux and Windows; the bar never promises an update a Mac cannot
+  fetch.
