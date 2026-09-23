@@ -244,53 +244,57 @@ export function App() {
     );
 
   return (
-    <div className="shell">
-      {!compact ? <Sidebar /> : null}
-      {/* Keyed on the view so switching rooms replays a soft fade-in instead of
+    // The frame stacks the desktop's update bar (when one is showing) above the
+    // app, in the layout, so it never covers a screen's header.
+    <div className="app-frame">
+      <UpdateBanner />
+      <div className="shell">
+        {!compact ? <Sidebar /> : null}
+        {/* Keyed on the view so switching rooms replays a soft fade-in instead of
           a hard cut. Same view (e.g. opening another chat) keeps the key, so a
           live transcript is never remounted mid-stream. */}
-      <div className="shell-main room-swap" key={view} ref={mainRef}>
-        {room}
-      </div>
-      <div className="room-ghost-host" ref={ghostRef} aria-hidden="true" />
-      {/* The zone must outlive the gesture it started: it holds the pointer
+        <div className="shell-main room-swap" key={view} ref={mainRef}>
+          {room}
+        </div>
+        <div className="room-ghost-host" ref={ghostRef} aria-hidden="true" />
+        {/* The zone must outlive the gesture it started: it holds the pointer
           capture, and an element removed mid-gesture loses it, so its release
           handler would never fire and the scrim would stay up, invisible,
           eating every tap. Hence `|| gesture.peek`, never `&& !gesture.peek`. */}
-      {compact && (!drawerOpen || gesture.peek) ? (
-        <div className="edge-swipe-zone" {...gesture.edgeProps} aria-hidden="true" />
-      ) : null}
-      {compact && (drawer.mounted || gesture.peek) ? (
-        <Sidebar
-          drawer
-          closing={drawer.closing && !gesture.peek}
-          dragX={gesture.dragX}
-          settleMs={gesture.settleMs}
-          exitMs={gesture.exitMs}
-          dragging={gesture.dragging}
-          viaGesture={gesture.viaGesture}
-          progress={gesture.progress}
-          dragProps={gesture.drawerProps}
-        />
-      ) : null}
-      <Paywall />
-      <AuthConfirmSheet />
-      <OrgJoinSheet />
-      {/* Agentic Currents: the arrival that flows from the switch to the
+        {compact && (!drawerOpen || gesture.peek) ? (
+          <div className="edge-swipe-zone" {...gesture.edgeProps} aria-hidden="true" />
+        ) : null}
+        {compact && (drawer.mounted || gesture.peek) ? (
+          <Sidebar
+            drawer
+            closing={drawer.closing && !gesture.peek}
+            dragX={gesture.dragX}
+            settleMs={gesture.settleMs}
+            exitMs={gesture.exitMs}
+            dragging={gesture.dragging}
+            viaGesture={gesture.viaGesture}
+            progress={gesture.progress}
+            dragProps={gesture.drawerProps}
+          />
+        ) : null}
+        <Paywall />
+        <AuthConfirmSheet />
+        <OrgJoinSheet />
+        {/* Agentic Currents: the arrival that flows from the switch to the
           edges, and the faint water-line that frames every screen while a
           current is on. Both render nothing when none is on. */}
-      <CurrentArrival />
-      <CurrentWaterline />
-      <UpdateBanner />
-      {toastPresence.mounted ? (
-        <div
-          className={`toast${toastPresence.closing ? ' closing' : ''}`}
-          role="status"
-          aria-live="polite"
-        >
-          {toast ?? lastToast.current}
-        </div>
-      ) : null}
+        <CurrentArrival />
+        <CurrentWaterline />
+        {toastPresence.mounted ? (
+          <div
+            className={`toast${toastPresence.closing ? ' closing' : ''}`}
+            role="status"
+            aria-live="polite"
+          >
+            {toast ?? lastToast.current}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -304,6 +304,19 @@ textarea {
   position: relative;
 }
 
+/* The app's outer frame: the desktop update bar (when showing) over the shell,
+   so the bar takes its own row instead of covering a header. */
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.app-frame > .shell {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
 /* The outgoing room's snapshot (useRoomGhost): a static clone, laid over the
    room's box, that fades and lifts away while the new room fades in. Inert,
    and any animation the clone inherited is stilled so nothing replays. */
@@ -5119,23 +5132,23 @@ textarea {
    acts, since the whole point is nobody stays on a stale build. Top-anchored
    so it never collides with the toast or the composer below. */
 .update-banner {
-  position: fixed;
-  left: 50%;
-  top: calc(14px + var(--safe-top));
-  transform: translateX(-50%);
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: 14px;
+  min-height: 40px;
+  padding: calc(6px + var(--safe-top)) 16px 6px;
   background: var(--ink);
-  border: 1px solid var(--ink);
   color: var(--bg);
-  border-radius: 999px;
-  padding: 8px 10px 8px 18px;
   font-size: 13.5px;
   z-index: 80;
-  box-shadow: 0 10px 34px rgba(var(--shadow-rgb), 0.22);
-  animation: msg-in var(--dur-3) var(--ease-standard);
-  max-width: 90vw;
+  animation: update-banner-in var(--dur-5) var(--ease-arrive) backwards;
+}
+.update-banner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .update-banner button {
@@ -5143,19 +5156,39 @@ textarea {
   color: var(--ink);
   border: none;
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 5px 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
 }
+.update-banner-track {
+  position: relative;
+  flex: 0 0 140px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+}
+.update-banner-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  transform-origin: left center;
+  transition: transform var(--dur-4) var(--ease-standard);
+}
 .update-banner.closing {
   animation: update-banner-out var(--dur-4) var(--ease-standard) forwards;
+}
+@keyframes update-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
 }
 @keyframes update-banner-out {
   to {
     opacity: 0;
-    transform: translateX(-50%) translateY(-8px);
   }
 }
 

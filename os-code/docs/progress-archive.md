@@ -2820,6 +2820,21 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-23)
 
+### 2026-09-23, first open is the chat; Personal or Business only at sign-up
+
+Founder: assume personal until sign-in, ask Personal or Business only when a
+new account is created, and open a new person straight into the chat, with the
+setup page one tap from Harbor Lite's greeting. Init now always lands on
+`chat`; a fresh phone opens Harbor Lite's chat (`startGuide`), a fresh desktop
+its First Seat. `OnboardingScreen` lost its `AccountSetup` gate (no account
+already reads as personal everywhere) and became the setup page ("Back to
+chat"), without the old Harbor Lite hero card. `signUpAccount` raises
+`accountChoice` when the device never chose, and `App.tsx` shows `AccountSetup`
+(now "Personal or business?") full-screen. The greeting and persona point to a
+"Set up OpenShore" button under the hello (`components/GuideSetupLink.tsx`,
+through a new `MessageList.afterItem` slot). A bundled Harbor Lite copy-in no
+longer asks for notices, so nothing prompts at launch.
+
 ### 2026-09-23, notices on the phone: downloads, replies, approvals
 
 The founder asked for a notice when a model finishes downloading, with the

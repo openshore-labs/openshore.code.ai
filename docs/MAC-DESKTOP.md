@@ -87,3 +87,25 @@ log itself. Either check the "Publish to the GitHub Release" step's own log
 for `Publishing the macOS build to vX.Y.Z`, or just check the release itself:
 `curl -s https://api.github.com/repos/openshore-labs/openshore.code.ai/releases/latest`
 and look for a `.dmg` in `assets` with the current version in its filename.
+
+## Updates on every push to main (2026-09-23)
+
+Every push to `main` that touches the app or the engine publishes a desktop
+release (`.github/workflows/release.yml`, next patch after the newest tag).
+A desktop that is behind shows a bar across the top of its window within half
+an hour, and one click updates it. On a Mac, that click downloads this
+release's `-mac.zip` for the Mac's architecture, swaps the app in place, and
+relaunches (`app/electron/macUpdate.ts`); if the app runs from somewhere it
+cannot write (a mounted disk image, a folder it has no rights to), the click
+opens the release page instead.
+
+A Mac only sees a release once this Codemagic build has uploaded its zip into
+it. To have every release carry a Mac build without starting it by hand, add
+two repository secrets (GitHub, Settings, Secrets and variables, Actions):
+
+- `CODEMAGIC_API_TOKEN`: Codemagic, Teams, Integrations, Codemagic API.
+- `CODEMAGIC_APP_ID`: the app's id from its Codemagic URL.
+
+The release workflow's last step then starts `mac-desktop` right after it
+publishes. Without them the step skips, and Macs update to the newest release
+that has a Mac build.

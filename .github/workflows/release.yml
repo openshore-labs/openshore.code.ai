@@ -11,7 +11,12 @@
 # founder decision, so it is not part of electron-updater's silent install
 # path; the desktop app's update check handles that platform separately.)
 #
-# Two ways in:
+# Three ways in:
+#   - push to main (founder, 2026-09-23: every push to main reaches the
+#     desktops) -> the `version` job picks the next patch after the newest
+#     v<major>.<minor>.* tag, then build, smoke, AND publish that Release. A
+#     desktop that is behind shows its update bar within half an hour
+#     (electron/main.ts). Pushes that only touch the iOS project or docs skip.
 #   - push a tag like v0.1.0  -> build, smoke, AND publish a Release
 #   - run it by hand (Actions -> Release -> Run workflow) -> build and smoke
 #     only, so packaging can be proven any time without cutting a release.
@@ -28,8 +33,20 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
+    # Path filters apply to the branch push only; a tag push always runs.
+    paths:
+      - "app/**"
+      - "os-code/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/release.yml"
+      - "!app/ios/**"
+      - "!**/*.md"
   workflow_dispatch:
 
 # The publish job creates a GitHub Release, which writes to the repo. Nothing
@@ -37,12 +54,54 @@ on:
 permissions:
   contents: write
 
+# One release run per ref at a time, never cancelled mid-publish: pushes that
+# land while one runs wait their turn (the newest waiting one wins), and each
+# picks its version from the tags as they stand when it starts.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  # The version this run ships, and whether it publishes. A tag names its own
+  # version; a push to main takes the next patch after the newest tag in the
+  # same major.minor as app/package.json (0.1.x today); a hand run publishes
+  # nothing and keeps the committed version.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Pick the version
+        id: pick
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            BASE=$(node -p "require('./app/package.json').version")
+            MM="${BASE%.*}"
+            BASE_PATCH="${BASE##*.}"
+            LAST=$(git ls-remote --tags origin \
+              | awk '{print $2}' \
+              | sed -n "s#^refs/tags/v${MM//./\\.}\\.\([0-9][0-9]*\)\$#\1#p" \
+              | sort -n | tail -1)
+            NEXT=$(( ${LAST:-$BASE_PATCH} + 1 ))
+            if (( NEXT <= BASE_PATCH )); then NEXT=$(( BASE_PATCH + 1 )); fi
+            VERSION="${MM}.${NEXT}"
+          else
+            echo "A hand run publishes nothing; keeping the committed version."
+            exit 0
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "This run ships v$VERSION"
+
   package-linux:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
@@ -70,11 +129,12 @@ jobs:
       # version this build stamps is the version its own update-metadata YAML
       # advertises. A manual (workflow_dispatch) run has no tag to derive a
       # version from, so it leaves the committed version alone.
-      - name: Stamp the app version from the tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Stamp the app version
+        if: needs.version.outputs.version != ''
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
           (cd app && npm pkg set version="$VERSION")
           echo "Stamped app/package.json version to $VERSION"
 
@@ -147,6 +207,7 @@ jobs:
           if-no-files-found: error
 
   package-windows:
+    needs: version
     runs-on: windows-latest
     steps:
       - name: Check out the repo
@@ -167,12 +228,13 @@ jobs:
       # the script uses bash parameter expansion and the runner's default shell
       # on Windows is PowerShell. GitHub's windows-latest image ships Git for
       # Windows, which is where this bash comes from.
-      - name: Stamp the app version from the tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Stamp the app version
+        if: needs.version.outputs.version != ''
         shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
           (cd app && npm pkg set version="$VERSION")
           echo "Stamped app/package.json version to $VERSION"
 
@@ -222,13 +284,13 @@ jobs:
             app/release/latest.yml
           if-no-files-found: error
 
-  # Only a tag publishes. Waits for both platforms so the release is created
+  # A tag or a push to main publishes; a hand run does not. Waits for both platforms so the release is created
   # once, complete, rather than Linux and Windows racing to create/upload onto
   # the same tag separately. `gh` is first-party and preinstalled on the
   # runner, so no third-party release action is trusted with the write token.
   publish:
-    needs: [package-linux, package-windows]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, package-linux, package-windows]
+    if: needs.version.outputs.tag != ''
     runs-on: ubuntu-latest
     steps:
       - name: Download the Linux packages
@@ -243,12 +305,40 @@ jobs:
           name: openshore-windows
           path: release
 
+      # A push to main has no tag yet: --target creates it on this exact commit.
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "$TAG" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "OpenShore ${GITHUB_REF_NAME}" \
+            --target "${GITHUB_SHA}" \
+            --title "OpenShore $TAG" \
             --generate-notes \
             release/*
+
+      # The Mac build runs on Codemagic (codemagic.yaml, mac-desktop) and
+      # uploads into the newest release, which is this one. Starting it here
+      # means Macs get every release too. Optional: with the two repository
+      # secrets unset this step says so and skips, and Macs keep updating to
+      # the newest release that has a Mac build (electron/main.ts looks for
+      # one). Set CODEMAGIC_API_TOKEN (Codemagic, Teams, Integrations,
+      # Codemagic API) and CODEMAGIC_APP_ID (the app's id in its Codemagic
+      # URL) to turn it on; see docs/MAC-DESKTOP.md.
+      - name: Start the macOS build on Codemagic
+        env:
+          CODEMAGIC_API_TOKEN: ${{ secrets.CODEMAGIC_API_TOKEN }}
+          CODEMAGIC_APP_ID: ${{ secrets.CODEMAGIC_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEMAGIC_API_TOKEN:-}" ] || [ -z "${CODEMAGIC_APP_ID:-}" ]; then
+            echo "CODEMAGIC_API_TOKEN or CODEMAGIC_APP_ID is not set; skipping the Mac build."
+            exit 0
+          fi
+          BODY=$(printf '{"appId":"%s","workflowId":"mac-desktop","branch":"main"}' "$CODEMAGIC_APP_ID")
+          curl -fsS -X POST https://api.codemagic.io/builds \
+            -H "Content-Type: application/json" \
+            -H "x-auth-access-token: ${CODEMAGIC_API_TOKEN}" \
+            -d "$BODY" \
+            || echo "Could not start the Codemagic Mac build; Macs stay on the newest release with a Mac build."
