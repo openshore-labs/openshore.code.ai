@@ -20,8 +20,13 @@
 // pairing.
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
-import type { ApprovalAnswer } from 'os-code/protocol';
-import { uxStandardPrompt, humanizerStandardPrompt } from 'os-code/protocol';
+import type { ApprovalAnswer, FetchLike, HarnessCurrentsHandle } from 'os-code/protocol';
+import { uxStandardPrompt, humanizerStandardPrompt, JevAdvisor } from 'os-code/protocol';
+import {
+  activeHarnessId,
+  harnessCurrentInfo,
+  type HarnessCurrentId,
+} from '../lib/harnessCurrents.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
@@ -113,6 +118,12 @@ export interface StackContext {
    *  on another service (a Hermes box, via its session header) continues the
    *  same thread turn after turn instead of starting over per call. */
   conversationId?: string;
+  /** The Harness Current that is on (Jev), as its handle with the resolved key.
+   *  When present, a paid/cloud turn is steered by Jev: it may re-route to a
+   *  cheaper reachable seat (the gate) or to the seat placed for the work kind
+   *  (the classifier), in one cloud call. Absent leaves routing exactly as it
+   *  was. Scoped to a paid seat, so a free local turn never spends on Jev. */
+  harnessCurrents?: HarnessCurrentsHandle;
 }
 
 /** The extra request headers a bench model carries. An Agentic Current's model
@@ -242,6 +253,12 @@ export class StackDriver implements ChatDriver {
   // a beat later, so a "My Stack" chat on the phone can never stick busy.
   private watchdog?: ReturnType<typeof setTimeout>;
   private abortBeat?: ReturnType<typeof setTimeout>;
+  // The Harness Current advisor, when one is on. Built once; undefined leaves
+  // every turn routed exactly as before. Its calls go through the native HTTP
+  // layer, the same path every other cloud call takes. The id and label come
+  // from the roster, never hardcoded here (a room renders a current through the
+  // roster, the same rule the agentic currents hold).
+  private readonly harness?: { id: HarnessCurrentId; label: string; advisor: JevAdvisor };
 
   constructor(
     private readonly stack: AppStack,
@@ -251,6 +268,15 @@ export class StackDriver implements ChatDriver {
   ) {
     // A mid-chat switch seeds the prior turns so the stack continues the thread.
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+    const jevFetch: FetchLike = (url, init) =>
+      nativeFetch(url, {
+        method: init.method as 'GET' | 'POST',
+        headers: init.headers,
+        body: init.body,
+      });
+    const id = activeHarnessId(context.harnessCurrents);
+    const advisor = JevAdvisor.from(context.harnessCurrents, jevFetch);
+    if (id && advisor) this.harness = { id, label: harnessCurrentInfo(id).label, advisor };
     this.listenersReady = this.attachDeviceListeners();
   }
 
@@ -290,6 +316,79 @@ export class StackDriver implements ChatDriver {
     const anyActive = this.stack.active.find((m) => this.reachable(m.ref));
     if (anyActive) return { ref: anyActive.ref, placement: anyActive.placement, category };
     return { ref: reasoning, category }; // will surface an unreachable error
+  }
+
+  /** Let the Harness Current (Jev) steer a turn that would otherwise spend on a
+   *  paid/cloud seat, in ONE cheap decision call. The gate may send it to a
+   *  reachable local seat instead; the classifier may send it to the seat
+   *  placed for the work kind. Each decision shows as a card. Never throws and
+   *  never blocks: with Jev off, the target unreachable-checked seat is device
+   *  (local), or the call failing, the routed target is returned unchanged. */
+  private async jevSteer(
+    text: string,
+    target: { ref: StackModelRef; placement?: Placement; category: StackCategory | 'reasoning' },
+  ): Promise<typeof target> {
+    // Only steer where there is spend to steer: the seat about to answer is a
+    // paid/cloud one. A device (free, local) seat is left alone.
+    if (!this.harness || target.ref.kind === 'device') return target;
+    const categories = this.placedCategories();
+    const decision = await this.harness.advisor
+      .steer({ request: text, categories })
+      .catch(() => undefined);
+    if (!decision) return target;
+    // The gate first: a local seat that can carry this saves the paid call.
+    if (decision.gate && !decision.gate.escalate) {
+      const local = this.stack.active.find((m) => m.ref.kind === 'device' && this.reachable(m.ref));
+      const localReasoning =
+        this.stack.reasoning?.kind === 'device' && this.reachable(this.stack.reasoning)
+          ? this.stack.reasoning
+          : undefined;
+      const seat = localReasoning ?? local?.ref;
+      if (seat) {
+        this.emitHarness('gate', decision.gate.line);
+        return { ref: seat, category: target.category };
+      }
+    }
+    // Then the classifier: the seat placed for this kind of work, when it is a
+    // different reachable seat than the one routing picked.
+    if (decision.classify) {
+      const specialist = this.stack.active.find(
+        (m) => m.placement.category === decision.classify!.category && this.reachable(m.ref),
+      );
+      if (specialist && specialist.ref !== target.ref) {
+        this.emitHarness('classify', decision.classify.line);
+        return {
+          ref: specialist.ref,
+          placement: specialist.placement,
+          category: decision.classify.category as StackCategory,
+        };
+      }
+    }
+    return target;
+  }
+
+  /** The reachable placed specialists as a {category: description} map, for the
+   *  Jev classifier to choose among. Only categories with a seat behind them,
+   *  so a route never points at an empty position. */
+  private placedCategories(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const m of this.stack.active) {
+      if (this.reachable(m.ref))
+        out[m.placement.category] = `work best handled by the ${m.placement.category} seat`;
+    }
+    return out;
+  }
+
+  private emitHarness(job: 'gate' | 'classify', line: string): void {
+    if (!this.harness) return;
+    this.emit({
+      type: 'harness-current',
+      current: this.harness.id,
+      label: this.harness.label,
+      job,
+      line,
+      spend: true,
+    });
   }
 
   private systemFor(ref: StackModelRef, placement?: Placement): string {
@@ -430,6 +529,11 @@ export class StackDriver implements ChatDriver {
         });
         return;
       }
+      // Harness Current: when a paid/cloud seat would answer and Jev is on, let
+      // it steer this turn (a cheaper local seat, or the seat placed for the
+      // work kind). Scoped to a cloud target so a free local turn never spends
+      // on Jev, and safe: any failure leaves the routed target as it was.
+      target = await this.jevSteer(text, target);
     }
 
     this.emit({

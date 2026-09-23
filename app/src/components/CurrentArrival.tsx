@@ -19,6 +19,7 @@ import { useExitPresence } from '../hooks/useExitPresence.js';
 import { durationMs } from '../lib/motion.js';
 import { hapticApproval } from '../lib/haptics.js';
 import { activeContribution } from '../lib/currents.js';
+import { activeHarnessContribution } from '../lib/harnessCurrents.js';
 
 /** The door clock, read from the tokens at play time. */
 function doorMs(): number {
@@ -82,7 +83,9 @@ export function CurrentArrival() {
  *  off. */
 export function CurrentWaterline() {
   const { settings } = useApp();
-  const on = Boolean(activeContribution(settings));
+  // The single ring frames the screen when EITHER group has a current on. The
+  // two groups are independent, so one ring stands for whichever is active.
+  const on = Boolean(activeContribution(settings)) || Boolean(activeHarnessContribution(settings));
   const presence = useExitPresence(on, durationMs('--dur-6', 420));
   if (!presence.mounted) return null;
   return (

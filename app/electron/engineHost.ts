@@ -48,6 +48,7 @@ import type {
   CurrentsHandles,
   CurrentsHostProbe,
   DriverEvent,
+  HarnessCurrentsHandle,
   HermesNote,
   HermesNoteMeta,
   PermissionMode,
@@ -226,6 +227,7 @@ export class EngineHost {
       codemagicToken?: string;
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
       currents?: CurrentsHandles;
+      harnessCurrents?: HarnessCurrentsHandle;
     } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
@@ -249,6 +251,7 @@ export class EngineHost {
       codemagicToken: opts.codemagicToken,
       codemagicTarget: opts.codemagicTarget,
       currents,
+      harnessCurrents: opts.harnessCurrents,
     });
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };

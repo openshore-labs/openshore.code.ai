@@ -125,6 +125,75 @@ export function parseCurrentsHandles(v: unknown): CurrentsHandles | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
+// --------------------------------------------------------- harness currents
+//
+// A second, independent group of currents (founder, 2026-09-23). Where an
+// Agentic Current is a modality for agent work (an external agent you hand a
+// task to), a Harness Current layers a cost-saving decision method INTO the
+// harness itself: it does not answer for a seat, it steers which seat answers
+// and whether a step is even needed. The two groups are independent, so one of
+// each can be on at once; within the harness group it is one at a time, the
+// same rule the agentic group holds. The first is Jev, TypeSafe AI's System One
+// decision model: a call sends state plus typed questions and gets back typed
+// answers (a choice, a yes/no probability, a score), never chat.
+
+/** The Harness Currents roster. Fixed here so every side agrees on the ids. */
+export const HARNESS_CURRENT_IDS = ['jev'] as const;
+export type HarnessCurrentId = (typeof HARNESS_CURRENT_IDS)[number];
+
+export function isHarnessCurrentId(v: unknown): v is HarnessCurrentId {
+  return typeof v === 'string' && (HARNESS_CURRENT_IDS as readonly string[]).includes(v);
+}
+
+/** TypeSafe AI's default Jev model alias. `jev-latest` tracks the flagship
+ *  (jev-1.13.0 as of 2026-09); a project may pin a specific id in the handle. */
+export const JEV_DEFAULT_MODEL = 'jev-latest';
+
+/** A connected Jev decision model. The endpoint is the TypeSafe base URL; the
+ *  System One call is POSTed to `${baseUrl}/v1/systemone` (see harness/jev.ts).
+ *  The key lives in the device secret store, handed over per session like a
+ *  BYOM key, never persisted on the wire shape. */
+export interface JevHandle {
+  /** e.g. https://api.typesafe.ai (no trailing /v1 or /v1/systemone). */
+  baseUrl: string;
+  apiKey?: string;
+  /** The model id to send; empty means JEV_DEFAULT_MODEL. */
+  model?: string;
+}
+
+/** What a session was handed for the harness current that is on. One at a time
+ *  within the group, so at most one field is set; the shape still names each so
+ *  the jobs stay independent as the roster grows. */
+export interface HarnessCurrentsHandle {
+  jev?: JevHandle;
+}
+
+/** Trim a pasted TypeSafe base URL: no trailing slash, and a pasted
+ *  /v1/systemone or /v1 is dropped so only the host base remains. */
+export function normalizeJevBaseUrl(raw: string): string {
+  let url = raw.trim().replace(/\/+$/, '');
+  url = url.replace(/\/v1\/systemone$/, '').replace(/\/v1$/, '');
+  return url.replace(/\/+$/, '');
+}
+
+/** Validate a wire payload into a HarnessCurrentsHandle, dropping anything
+ *  malformed rather than refusing the session: a bad handle simply leaves the
+ *  harness current off for that session. Only http(s) URLs pass. */
+export function parseHarnessCurrentsHandle(v: unknown): HarnessCurrentsHandle | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const o = v as Record<string, unknown>;
+  const out: HarnessCurrentsHandle = {};
+  const j = o.jev as Record<string, unknown> | undefined;
+  if (j && typeof j === 'object' && isHttpUrl(j.baseUrl)) {
+    out.jev = {
+      baseUrl: normalizeJevBaseUrl(j.baseUrl),
+      apiKey: optString(j.apiKey),
+      model: optString(j.model),
+    };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function isHttpUrl(v: unknown): v is string {
   if (typeof v !== 'string') return false;
   try {

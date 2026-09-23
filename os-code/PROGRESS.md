@@ -19,6 +19,23 @@ always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
 
+### Harness Currents, the first: Jev (BETA, founder 2026-09-23)
+
+A second, independent Settings group above Agentic Currents. A Harness Current
+layers a cheap decision method INTO the harness rather than being an agent you
+hand work to, so you use any of your seats with it applied; the two groups are
+independent (one of each may be on), one at a time within the harness group,
+same animation and two-part gate. The first is Jev, TypeSafe AI's System One
+decision model (`api.typesafe.ai`), scoped to a paid/cloud seat: an escalation
+gate and a task classifier run as one `JevAdvisor.steer` call in the app stack
+driver, and a verify judge runs in the engine loop, each shown as an amber
+(cloud spend) card with a pill beside the reach pill. Copy claims no dollar
+saving until `osc eval` measures it (tenet 2); the harness "no room, no name"
+tenet is a deliberate founder supersede for this one named group (Keel stays
+barred). Pure core `app/src/lib/harnessCurrents.ts`, client
+`os-code/src/harness/jev.ts` (via `os-code/protocol`), doc
+`docs/agentic-currents.md`, rulings in `DECISIONS.md`. Gates green both packages.
+
 ### Scope simplified to three curated models (founder, 2026-09-21)
 
 Three curated, harness-trained models, and the Marketplace grayed to "Coming
@@ -33,15 +50,16 @@ the display name in one constant for the CMO); `ensureHarborMaster` in the
 store (pull the size that fits by catalog id through the engine, seat its
 Ollama ref, refresh the gate); the First Seat card named DeepBlue and
 installing in place; the Stack starter on the same action; a desktop Settings
+
 > Harbor row (Install, percent, Retry, Installed; no cancel or uninstall, since
-Ollama owns the weights) plus the attribution. `starterModel.ts` and the
-Starter bundle derive from the one list, which gained the 32B flagship (the
-7B before the machine is read, never the biggest on a guess). Internal slot
-identifiers stay (`harborMaster`, `harbor-master`); only the display name and
-copy carry DeepBlue. `test/harborMaster.test.ts` and `test/harborGuides.test.ts`
-pin the ids, the fit table, the honesty bar, the rows, and the docs. Gates
-green across all three passes; the plan for the tuned weights behind the slots
-is `docs/house-model-proposal.md`.
+> Ollama owns the weights) plus the attribution. `starterModel.ts` and the
+> Starter bundle derive from the one list, which gained the 32B flagship (the
+> 7B before the machine is read, never the biggest on a guess). Internal slot
+> identifiers stay (`harborMaster`, `harbor-master`); only the display name and
+> copy carry DeepBlue. `test/harborMaster.test.ts` and `test/harborGuides.test.ts`
+> pin the ids, the fit table, the honesty bar, the rows, and the docs. Gates
+> green across all three passes; the plan for the tuned weights behind the slots
+> is `docs/house-model-proposal.md`.
 
 ### The premium front door, integrated (founder "build" go, 2026-09-16)
 
@@ -206,7 +224,7 @@ star hit in miniature: a free 3B anyone can download, on a CPU-only
 five-year-old-class box, went from 0% (2026-09-14) to 75% (2026-09-15)
 through the harness alone, no model change. The only remaining zero is the
 arithmetic answer task (the seat reads the code and guesses rather than run
-it, and cannot do 20 * 2 + 2 in its head), which is the model's ceiling at
+it, and cannot do 20 \* 2 + 2 in its head), which is the model's ceiling at
 this size, not a harness gap; a stronger seat that takes the "run it"
 instruction closes it. The 7B run in the same pass stalled ("No bytes for
 300s" on every task): Ollama or RAM contention on the box after the 3B, not
@@ -433,6 +451,15 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Harness Currents (Jev): the eval number and a device pass (built
+      2026-09-23).** The seam ships, but tenet 2 means no copy claims a dollar
+      saving until `osc eval --deep` measures the gate/classifier/judge with and
+      without Jev on the reference box (does a cheap decision net out against the
+      retry a wrong route costs). Also verify the TypeSafe API base, model id
+      (`jev-latest`), and key page against the live API before a distribution
+      build (from web docs; egress-blocked here), and on a device confirm the
+      arrival, the amber pill, the steer/judge cards on a paid-seat turn, and
+      that off leaves no trace. Follow-up: a dedicated card, not a note.
 - [ ] **DeepBlue on a real desktop (built 2026-09-21, unverified off the
       sandbox).** On the founder's box with Ollama up: the First Seat card reads
       "DeepBlue", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
@@ -930,6 +957,25 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-23, Harness Currents: Jev, a cost-saving decision layer
+
+The founder's "add Jev availability" resolved through a design pass: Jev is
+TypeSafe AI's System One decision model, not a chat seat, so it could not sit
+on the Bench like the other providers. It became a new, independent Settings
+group above Agentic Currents. A Harness Current layers a cheap decision method
+into the harness (steer which seat answers, skip steps that need no model), on
+alongside any agentic current, one at a time within its own group, same arrival
+animation and two-part gate. Jev is scoped to a paid/cloud seat and does three
+jobs: the escalation gate and the task classifier in one `JevAdvisor.steer`
+call in the app stack driver (replacing the regex `classifyTask` when on), and
+the verify judge in the engine loop, each an amber card with a pill. Built:
+protocol wire shapes + the reusable Jev client (`os-code/src/harness/jev.ts`),
+the app pure core, store, Settings group, connect sheet, pill, water-line,
+transcript card, and the handle threaded through the daemon and electron
+bridge. Copy claims no saving until `osc eval` measures it (tenet 2); tenet 1's
+"no name" is a deliberate founder supersede for this one group. Gates green
+across both packages (838 + 1065 tests, typechecks, lint, Prettier, guards).
+
 ### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
 
 The founder's brief came in two beats. First, "my own open-source, more
@@ -947,27 +993,6 @@ weights, when they clear the gate, replace the refs under the same name. Gates
 green: app 1050 tests, typecheck, lint, Prettier, the Vite build, os-code
 em-dash and PROGRESS shape guards. Two DECISIONS.
 
-### 2026-09-17, v0.1.1 shipped, sign-in and auto-update reach every platform
+### 2026-09-17, the platform ship wave (v0.1.1, packaging, macOS, pairing)
 
-Real Electron binary downloads turned out reachable (only `www.electronjs.org`
-is policy-blocked, not the GitHub release assets it points to), so Linux
-built for real, not just a sandbox smoke test, and `v0.1.0` then `v0.1.1`
-published. Three sessions then worked this in parallel on the same branch (a
-clean merge, no conflicts): sign-in and the version-stamp fix (this session),
-then Windows packaging, electron-updater, and the macOS publish/version-check
-split, then a pairing diagnosis, both from other sessions; see Current state
-above. One stale duplicate doc was retired reconciling the merge.
-
-### 2026-09-17, Windows packaging proven for real; the auto-update import bug
-
-The merged `release.yml` had never run end to end. A `workflow_dispatch` dry
-run (no tag, `publish` skips) caught two real failures no local check could:
-`import { autoUpdater } from 'electron-updater'` threw a SyntaxError at
-packaged-app startup (CJS/ESM interop cannot prove a named export; fixed with
-the default-import pattern), silently breaking every platform since the
-auto-update work landed; and Windows failed compiling node-pty's bundled
-`winpty.cc` (MSVC C2362, upstream microsoft/node-pty#683), fixed by bumping to
-1.1.0, which drops winpty for ConPTY. Re-run after both fixes: Linux and
-Windows both packaged, smoke-tested, artifacts uploaded clean. No tag pushed
-yet (a 403 on tag refs, a likely protection rule); a real `v0.1.2` publish,
-Windows included for the first time, needs the founder to push that tag.
+Moved to `docs/progress-archive.md` on 2026-09-23 to keep the log lean.

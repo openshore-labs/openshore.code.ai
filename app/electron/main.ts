@@ -27,7 +27,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
-import { parseCurrentsHandles } from 'os-code/dist/src/currents/model.js';
+import {
+  parseCurrentsHandles,
+  parseHarnessCurrentsHandle,
+} from 'os-code/dist/src/currents/model.js';
 import { loadConfig } from 'os-code/dist/src/config/load.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
@@ -735,6 +738,8 @@ function sessionOpts(v: unknown) {
     // The Agentic Current's handle: the shared parser drops anything malformed,
     // so a bad shape leaves the tool out rather than failing the session.
     currents: parseCurrentsHandles(o.currents),
+    // The Harness Current's handle (Jev), parsed the same way.
+    harnessCurrents: parseHarnessCurrentsHandle(o.harnessCurrents),
   };
 }
 

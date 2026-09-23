@@ -322,6 +322,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         text: event.willRetry ? `${event.summary} Handing it back to the model.` : event.summary,
       });
 
+    case 'harness-current':
+      // A Harness Current (Jev) made a cheap decision this turn. Shown as a
+      // note carrying the honest line; a client may style it as spend when
+      // `spend` is true. A dedicated card is a fast follow.
+      return push(next, { kind: 'note', text: event.line });
+
     case 'clarify':
       return push(next, {
         kind: 'clarify',

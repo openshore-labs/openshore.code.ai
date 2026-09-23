@@ -1515,13 +1515,13 @@ execution contract. Newest at the bottom.
   recorded as the small-class floor rather than chased further: every
   harness gap the traces showed across ten rounds is fixed and pinned, and
   the remaining misses (a one-line rename left undone with the correct line
-  in view, and 20 * 2 + 2 answered as 82) are the model, not the harness.
+  in view, and 20 \* 2 + 2 answered as 82) are the model, not the harness.
   Not tuned to the tasks: no fixture-specific rule was added at any point,
   each fix generalizes (tool shapes, matcher tolerance, repeat handling,
   verify in the loop). The next number comes from a stronger local seat on
   the same command, not another harness round.
 - **The deep eval lets a plain `node` command run; the answer task is run,
-  not reasoned (2026-09-15, round eleven).** The seat answered 20 * 2 + 2 as
+  not reasoned (2026-09-15, round eleven).** The seat answered 20 \* 2 + 2 as
   82, 84, 16 across runs, and a coding agent asked what code returns should
   execute it (tenet 3). The eval stays hermetic in every other respect: only
   `node ...` with no chaining, redirection (an arrow's `=>` allowed, a bare
@@ -1730,3 +1730,14 @@ execution contract. Newest at the bottom.
   adapter program), stock Qwen today, tuned weights swapped in behind the slots
   when a number clears. The Harbor recast (guide to mobile coder) and the
   Harbor Lite rename are separate follow-up passes.
+- **Harness Currents (Jev), founder 2026-09-23:** the "add Jev" ask resolved
+  to a new, independent Settings group above Agentic Currents, not an Agentic
+  Current (Jev is a decision model, not a chat seat, so it fails the agentic
+  mirrored-slot contract and must coexist with an agentic current rather than
+  be mutually exclusive with it). One at a time WITHIN the harness group. Jev
+  is scoped to a paid/cloud seat (nothing to save on a free local seat, and a
+  cloud call would break the offline floor), does the gate + classifier in one
+  `JevAdvisor.steer` call in the app stack driver and the verify judge in the
+  engine loop, and its copy never claims a dollar saving until `osc eval`
+  shows the number (tenet 2). The harness tenet 1 ("no room, no name") is
+  deliberately superseded for this one visible group name; Keel stays barred.

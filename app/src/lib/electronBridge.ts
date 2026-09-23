@@ -7,6 +7,7 @@ import type {
   CurrentsHandles,
   CurrentsHostProbe,
   DriverEvent,
+  HarnessCurrentsHandle,
   HermesNote,
   HermesNoteMeta,
   PermissionMode,
@@ -142,6 +143,9 @@ export interface OscodeBridge {
       /** The Agentic Current the person turned on, as the handle its engine
        *  tool needs (a Hermes box, an A2A agent, a paired coding CLI). */
       currents?: CurrentsHandles;
+      /** The Harness Current the person turned on (Jev), as its per-session
+       *  handle for the engine's verify judge. */
+      harnessCurrents?: HarnessCurrentsHandle;
     },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the

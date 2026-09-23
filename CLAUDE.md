@@ -144,6 +144,46 @@ a current, do NOT hardcode a current's name in a room (render through
 the CMO and Creative Studio's name; "Layers" was retired; "frontier" stays
 reserved for cloud models. Open follow-ups are in `os-code/PROGRESS.md`.
 
+## Harness Currents are BUILT (BETA, founder 2026-09-23)
+
+A second, independent Settings group ABOVE Agentic Currents. Where an Agentic
+Current is a modality for agent work (an external agent you hand a task to), a
+**Harness Current** layers a cheap decision method INTO the harness: it does
+not answer for a seat, it steers which seat answers and whether a step is
+needed, so you use any of your models with the method applied. The two groups
+are independent, so one of each can be on at once; WITHIN the harness group it
+is one at a time, the same rule the agentic group holds, with the same arrival
+animation, water-line, and two-part gate.
+
+The first (and only, today) Harness Current is **Jev**, TypeSafe AI's System
+One decision model (`api.typesafe.ai`, `POST /v1/systemone`, model `jev-latest`;
+it returns typed decisions, never chat). It is scoped to a paid/cloud seat
+(there is nothing to save against a free local seat and a cloud call would only
+add latency and break the offline floor), and it does three jobs: an escalation
+gate (can a cheaper local seat carry this turn), a task classifier (route to the
+seat placed for this kind of work, replacing the regex `classifyTask`), and a
+verify judge (does the result satisfy the task when there is no check to run).
+The classifier and gate run in the app stack driver as ONE Jev call
+(`JevAdvisor.steer`); the judge runs in the engine loop. Each decision shows as
+an amber (cloud spend) card in the transcript, and a pill sits beside the reach
+pill.
+
+The rules are code: the pure core is `app/src/lib/harnessCurrents.ts` (its own
+`settings.harnessCurrent` scalar, roster, gate, contribution, handle); the wire
+shapes and the reusable client are `os-code/src/currents/model.ts` and
+`os-code/src/harness/jev.ts` (exported through `os-code/protocol`);
+`app/test/harnessCurrents.test.ts` and `os-code/test/jev.test.ts` hold the
+guards (one-at-a-time within the group, coexists with an agentic current, the
+two-part gate, no room names a harness current, and the client's job readers).
+Do NOT re-scope Jev as a chat model on the Bench (it cannot chat); do NOT make
+Harness Currents mutually exclusive with Agentic Currents; do NOT claim a dollar
+saving in copy until `osc eval` shows the number on the reference box (tenet 2).
+**Naming supersede (founder 2026-09-23):** the harness's tenet 1 ("no room and
+no name") is deliberately overridden for this ONE visible group named "Harness
+Currents"; the internal codename Keel is still barred from copy, and Jev is a
+real connected product name, named like Hermes in the agentic group. Open
+follow-ups are in `os-code/PROGRESS.md`.
+
 ## The premium harness: five tenets (standing rule, founder + advisor org 2026-09-14)
 
 The plan for making OpenShore's coding agent premium on any model, dev, creative,

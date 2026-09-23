@@ -23,7 +23,7 @@ import { engineEthicsContext } from '../ethics/host.js';
 import { nextActionFor } from '../ethics/classify.js';
 import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
-import type { CurrentsHandles } from '../../currents/model.js';
+import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -76,6 +76,13 @@ export interface BootstrapOptions {
    *  tailnet, a CLI on the hub itself), not a secret that only lives on the
    *  phone. Undefined leaves every current tool out. */
   currents?: CurrentsHandles;
+  /** The Harness Current the person turned on (Jev is the first), as a
+   *  per-session handle. Like an Agentic Current it travels over the daemon,
+   *  because it names a service the person chose to reach (a decision API), not
+   *  a device secret. Dropped under egress lockdown below, so it never fires
+   *  while project secrets are present. Undefined leaves the harness current
+   *  off for this session. */
+  harnessCurrents?: HarnessCurrentsHandle;
   /** Per-session guardrail caps, over the project config's. A routine passes
    *  its own time cap and step ceiling here so the engine's rails match what
    *  the person set. Only tightening is honored: the profile's hard step
@@ -246,6 +253,9 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     repoInstructions,
     instructions: options.instructions,
     projectSecrets,
+    // A Harness Current makes a cloud decision call, so it is dropped under
+    // egress lockdown exactly like cloud escalation and the currents tools.
+    harnessCurrents: egressLockdown ? undefined : options.harnessCurrents,
     permissionMode: options.permissionMode,
     persistRule: (rule) => {
       try {

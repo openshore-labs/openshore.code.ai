@@ -19,6 +19,64 @@ The name is the Creative Studio's: "Navigation" already means the side panel
 in this codebase, and memory, skills, and a browser are how the agent finds
 its way.
 
+## Harness Currents (default off, BETA, one at a time, above Agentic Currents)
+
+A second, independent group, sitting above Agentic Currents. Where an Agentic
+Current is a modality for agent work (an external agent you hand a task to), a
+Harness Current layers a cheap decision method INTO the harness. It does not
+answer for a seat; it steers which seat answers and whether a step is needed,
+so you use any of your models with the method applied. The two groups are
+independent, so one of each can be on at once; within the harness group it is
+one at a time, with the same arrival animation, water-line, and two-part gate.
+
+| Current | What it does                                                                                                                                                                                                                                                                                                                   | What lights up when on                                                                                                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Jev     | TypeSafe AI's System One decision model. Only when a paid/cloud seat would answer, it does three jobs: an escalation gate (can a cheaper local seat carry this turn), a task classifier (route to the seat placed for this kind of work), and a verify judge (does the result satisfy the task when there is no check to run). | A pill beside the reach pill, and each decision as an amber (cloud spend) card in the transcript. No Bench, Crew, or Vault row: it is not a model or an agent. |
+
+Jev is a cloud call that costs a little per turn, so it is scoped to a paid seat
+on purpose: there is nothing to save against a free local model, and a cloud
+call would only add latency and break the offline floor. The copy never claims a
+dollar saving until `osc eval` shows the number on the reference box (harness
+tenet 2). Naming: the harness ordinarily ships with no room and no name (tenet
+1); this one visible group is a deliberate, founder-approved supersede
+(2026-09-23). The internal codename Keel stays out of copy; Jev is a real
+connected product name, the way Hermes is named in the agentic group.
+
+### The rules the code holds (harness group)
+
+1. **Its own scalar.** `settings.harnessCurrent` is a single id or none,
+   independent of `settings.agenticCurrent`, so a harness current and an agentic
+   current can be on together while each group stays one-at-a-time.
+2. **The two-part gate.** Same as the agentic group: On only when the toggle is
+   on AND a live probe answered (Jev answers `GET /v1/models` under its base).
+3. **No room names a harness current.** Rooms render it only through
+   `activeHarnessContribution`; `app/test/harnessCurrents.test.ts` greps the
+   source and the stack driver names Jev through the roster, never as a literal.
+4. **Off leaves no trace.** With none on, `activeHarnessContribution` is
+   undefined and nothing (pill, water-line, routing, card) is added.
+
+### The code (harness group)
+
+- Pure core: `app/src/lib/harnessCurrents.ts` (roster, the gate, the
+  contribution, the handle, `activeHarnessId`). Probe reuses
+  `probeOpenAiCompatible` in `currentsProbe.ts`.
+- Wire shapes and the reusable client: `os-code/src/currents/model.ts`
+  (`HARNESS_CURRENT_IDS`, `JevHandle`, `parseHarnessCurrentsHandle`) and
+  `os-code/src/harness/jev.ts` (`JevAdvisor` with `steer`/`judge`, the System
+  One client), both exported through `os-code/protocol`.
+- App: the group and `HarnessCurrentRow` in `SettingsScreen.tsx`,
+  `HarnessCurrentConnectSheet.tsx`, the amber pill in `ProfileStatus.tsx`, the
+  water-line OR-in in `CurrentArrival.tsx`, the `harness-current` card in
+  `transcript.ts`, the store state/actions (`harnessCurrent`,
+  `harnessCurrentConnections`, `harnessCurrentProbes`,
+  `setHarnessCurrent`/`connectHarnessCurrent`/`disconnectHarnessCurrent`/
+  `refreshHarnessCurrents`), and the steer in `stackDriver.ts`. The handle rides
+  a session through the daemon and the electron bridge like the agentic one.
+- Engine: the verify judge in `core/agent/loop.ts` (`maybeJevJudge`, cloud seat
+  only, dropped under egress lockdown), threaded through `bootstrap.ts` and the
+  daemon `POST /sessions`.
+- Guide: `connect-jev` in `setupGuides.ts`.
+
 ## Agentic Currents (default off, BETA, one at a time)
 
 Opt-in modalities for agent work. Flip one on and the same rooms gain rows for

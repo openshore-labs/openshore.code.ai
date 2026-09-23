@@ -7,6 +7,7 @@ import type {
   CurrentsHandles,
   DaemonSessionInfo,
   DriverEvent,
+  HarnessCurrentsHandle,
   PermissionMode,
 } from 'os-code/protocol';
 import type {
@@ -189,6 +190,8 @@ export async function daemonCreateSession(
     humanize?: boolean;
     /** The Agentic Current that is on, as the handle its engine tool needs. */
     currents?: CurrentsHandles;
+    /** The Harness Current that is on (Jev), as its per-session handle. */
+    harnessCurrents?: HarnessCurrentsHandle;
   } = {},
 ): Promise<string> {
   const res = await fetch(`${target.baseUrl}/sessions`, {
@@ -200,6 +203,7 @@ export async function daemonCreateSession(
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
+      ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
     }),
     signal: AbortSignal.timeout(10_000),
   });

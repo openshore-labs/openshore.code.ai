@@ -25,7 +25,7 @@ import { profileFor } from '../core/security/profiles.js';
 import { isAdminProvisionedWorkspace, isOutboxAllowedPath } from '../core/security/workspaces.js';
 import { getRoutineScheduler } from '../routines/scheduler.js';
 import { validateRoutineInput, type RoutineInput } from '../routines/model.js';
-import { parseCurrentsHandles } from '../currents/model.js';
+import { parseCurrentsHandles, parseHarnessCurrentsHandle } from '../currents/model.js';
 import {
   cliCommandAvailable,
   hermesHome,
@@ -889,6 +889,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         const { cli: _dropped, ...rest } = currents;
         currents = Object.keys(rest).length ? rest : undefined;
       }
+      const harnessCurrents = parseHarnessCurrentsHandle(body.harnessCurrents);
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
         sendJson(res, 403, {
           error:
@@ -906,6 +907,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           permissionMode,
           humanize,
           currents,
+          harnessCurrents,
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);
