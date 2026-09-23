@@ -109,3 +109,22 @@ two repository secrets (GitHub, Settings, Secrets and variables, Actions):
 The release workflow's last step then starts `mac-desktop` right after it
 publishes. Without them the step skips, and Macs update to the newest release
 that has a Mac build.
+
+### Building the Mac release by hand (offline, as a dmg)
+
+The Mac build can also be made on your own Mac instead of Codemagic:
+
+```sh
+pnpm --filter oscode-app release:mac            # for the newest release
+pnpm --filter oscode-app release:mac v0.1.7     # for a specific release
+pnpm --filter oscode-app release:mac --no-upload  # build only, no network
+```
+
+`app/scripts/mac-release.sh` stamps the app with the release's version (so an
+installed Mac's update bar compares correctly and clears after it updates),
+builds it unsigned the same way the Codemagic job does, and uploads the dmg and
+zip into that release with your own `gh` login. Offline, or with
+`--no-upload`, the files stay in `app/release/` to hand out directly and upload
+later. The desktop updater takes the zip when a release has one and the dmg
+when that is all there is: it mounts the image quietly, copies the app out, and
+swaps it in the same way.

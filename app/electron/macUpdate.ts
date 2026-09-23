@@ -1,8 +1,8 @@
 // The macOS in-place update. The Mac build ships unsigned outside the App Store
 // (codemagic.yaml), so electron-updater's Squirrel.Mac path, which checks the
 // new build's code signature against the running one, cannot be used. Instead,
-// on the person's click: download the release's zip for this Mac, unpack it
-// with ditto (which keeps the bundle's symlinks and permissions intact), clear
+// on the person's click: download the release's zip (or dmg) for this Mac,
+// unpack it (or mount the dmg and copy the app out) with ditto (which keeps the bundle's symlinks and permissions intact), clear
 // the quarantine flag, then hand off to a tiny detached script that waits for
 // this app to quit, swaps the old bundle for the new one, and opens it again.
 //
@@ -53,7 +53,8 @@ export async function installMacUpdate(
   onProgress: (percent: number) => void,
 ): Promise<void> {
   const work = await mkdtemp(join(tmpdir(), 'openshore-update-'));
-  const zip = join(work, 'update.zip');
+  const isDmg = /\.dmg$/i.test(asset.name);
+  const zip = join(work, isDmg ? 'update.dmg' : 'update.zip');
 
   const res = await fetch(asset.browser_download_url, { redirect: 'follow' });
   if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`);
@@ -73,7 +74,29 @@ export async function installMacUpdate(
   await pipeline(body, createWriteStream(zip));
 
   const unpacked = join(work, 'unpacked');
-  await run('/usr/bin/ditto', ['-x', '-k', zip, unpacked]);
+  if (isDmg) {
+    // A disk image (a release built on the founder's own Mac may carry only
+    // this): mount it quietly, copy the app out with ditto, and detach.
+    const mnt = join(work, 'mnt');
+    await run('/usr/bin/hdiutil', [
+      'attach',
+      '-nobrowse',
+      '-noautoopen',
+      '-readonly',
+      '-mountpoint',
+      mnt,
+      zip,
+    ]);
+    try {
+      const inImage = (await readdir(mnt)).find((n) => n.endsWith('.app'));
+      if (!inImage) throw new Error('The disk image did not contain the app.');
+      await run('/usr/bin/ditto', [join(mnt, inImage), join(unpacked, inImage)]);
+    } finally {
+      await run('/usr/bin/hdiutil', ['detach', mnt, '-force']).catch(() => {});
+    }
+  } else {
+    await run('/usr/bin/ditto', ['-x', '-k', zip, unpacked]);
+  }
   const app = (await readdir(unpacked)).find((n) => n.endsWith('.app'));
   if (!app) throw new Error('The download did not contain the app.');
   const staged = join(unpacked, app);

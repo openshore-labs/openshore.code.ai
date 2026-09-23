@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { versionIsNewer } from '../electron/updateVersion.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { bundleOf, newestMacUpdate, pickMacZip } from '../electron/updateVersion.js';
+import { bundleOf, newestMacUpdate, pickMacAsset } from '../electron/updateVersion.js';
 import { updateBarCopy } from '../src/components/UpdateBanner.js';
 
 describe('versionIsNewer', () => {
@@ -41,8 +41,27 @@ describe('picking the Mac update', () => {
       asset('OpenShore-0.1.4-arm64-mac.zip'),
       asset('OpenShore-0.1.4-mac.zip'),
     ];
-    expect(pickMacZip(assets, 'arm64')?.name).toBe('OpenShore-0.1.4-arm64-mac.zip');
-    expect(pickMacZip(assets, 'x64')?.name).toBe('OpenShore-0.1.4-mac.zip');
+    expect(pickMacAsset(assets, 'arm64')?.name).toBe('OpenShore-0.1.4-arm64-mac.zip');
+    expect(pickMacAsset(assets, 'x64')?.name).toBe('OpenShore-0.1.4-mac.zip');
+  });
+
+  it('falls back to the dmg when a release has no zip (a build made by hand)', () => {
+    const assets = [asset('OpenShore-0.1.4-arm64.dmg'), asset('OpenShore-0.1.4.dmg')];
+    expect(pickMacAsset(assets, 'arm64')?.name).toBe('OpenShore-0.1.4-arm64.dmg');
+    expect(pickMacAsset(assets, 'x64')?.name).toBe('OpenShore-0.1.4.dmg');
+    const releases = [release('v0.1.5', ['OpenShore-0.1.5-arm64.dmg'])];
+    expect(newestMacUpdate(releases, '0.1.4', 'arm64')?.asset.name).toBe(
+      'OpenShore-0.1.4-arm64.dmg'.replace('0.1.4', '0.1.5'),
+    );
+  });
+
+  it('ships a local Mac release script that stamps the version and uploads the dmg', () => {
+    const script = readFileSync(join(process.cwd(), 'scripts/mac-release.sh'), 'utf8');
+    expect(script).toContain('npm pkg set version="$VERSION"');
+    expect(script).toContain('release/*.dmg');
+    expect(script).toContain('gh release upload');
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+    expect(pkg.scripts['release:mac']).toBe('bash scripts/mac-release.sh');
   });
 
   it('takes the newest release that actually has a Mac build', () => {

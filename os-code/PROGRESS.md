@@ -956,7 +956,10 @@ downloads in the background, one click installs (at once, or the moment the
 download lands). macOS, unsigned: one click downloads the newest release that
 has a zip for this Mac, swaps the bundle, relaunches (`electron/macUpdate.ts`,
 pure picks in `electron/updateVersion.ts`), falling back to the release page.
-Checks every 30 minutes. Not yet run on a real packaged build.
+Checks every 30 minutes. A Mac build made by hand offline works too:
+`pnpm --filter oscode-app release:mac` stamps the release version, builds, and
+uploads the dmg and zip; the updater installs from either. Not yet run on a
+real packaged build.
 
 ### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
 
