@@ -16,8 +16,10 @@ import { freshSession } from './authSession.js';
 import type { ReviewRow, ReviewSummary } from './reviewsMath.js';
 
 const REVIEWS = 'model_reviews';
+/** The public read surface (migration 0020): visible rows, the reader's blocks
+ *  applied, no author id, and the server-set staff flag. */
+const REVIEWS_PUBLIC = 'model_reviews_public';
 const REPORTS = 'review_reports';
-const BLOCKS = 'user_blocks';
 const EULA = 'review_eula_acceptance';
 
 /** The EULA version a reviewer must accept before their first review. Bump this
@@ -25,7 +27,7 @@ const EULA = 'review_eula_acceptance';
 export const REVIEW_EULA_VERSION = '2026-09-03';
 
 const REVIEW_COLS =
-  'id,user_id,model_id,rating,body,use_cases,hardware,ram_gb,tokens_per_sec,quant,felt_speed,created_at';
+  'id,model_id,rating,body,use_cases,hardware,ram_gb,tokens_per_sec,quant,felt_speed,created_at,is_staff,is_mine';
 
 /** Whether the community layer can function on this build at all. */
 export function reviewsAvailable(): boolean {
@@ -41,8 +43,9 @@ async function tokenFor(session?: Session): Promise<string | undefined> {
   }
 }
 
-/** The visible reviews for a model, newest first, bounded. A signed-in reader's
- *  token is passed so their blocks are applied by the read policy. */
+/** The visible reviews for a model, newest first, bounded, from the public
+ *  view (no author ids). A signed-in reader's token is passed so the view
+ *  applies their blocks and marks their own review. */
 export async function fetchReviews(
   modelId: string,
   session?: Session,
@@ -54,7 +57,7 @@ export async function fetchReviews(
     `select=${REVIEW_COLS}&model_id=eq.${encodeURIComponent(modelId)}` +
     `&order=created_at.desc&limit=${limit}`;
   try {
-    return await selectPublic<ReviewRow>(REVIEWS, q, token);
+    return await selectPublic<ReviewRow>(REVIEWS_PUBLIC, q, token);
   } catch {
     return [];
   }
@@ -189,15 +192,14 @@ export async function reportReview(
   });
 }
 
-/** Block a reviewer, so their reviews no longer appear for this user (Apple
- *  1.2). Enforced at read time by the reviews select policy. */
-export async function blockUser(session: Session, blockedId: string): Promise<void> {
+/** Block the author of a review, so their reviews no longer appear for this
+ *  user (Apple 1.2). The reader names the review and the server looks up the
+ *  author (migration 0020), since readers never see author ids. Enforced at
+ *  read time by the public view. */
+export async function blockUser(session: Session, reviewId: string): Promise<void> {
   const token = await tokenFor(session);
   if (!token) throw new Error('Sign in to block a user.');
-  await insert(BLOCKS, token, {
-    blocker_id: session.user.id,
-    blocked_id: blockedId,
-  });
+  await rpcPublic('block_review_author', { p_review_id: reviewId }, token);
 }
 
 /** Whether this user has accepted the current review EULA. */
@@ -220,6 +222,8 @@ export async function hasAcceptedEula(session: Session): Promise<boolean> {
 
 /** One row in the moderation queue: a review plus its status and flag count. */
 export interface ModeratedReview extends ReviewRow {
+  /** Moderators read the base table through admin_list_reviews, id included. */
+  user_id?: string;
   status: 'visible' | 'reported' | 'hidden';
   flag_count: number;
 }

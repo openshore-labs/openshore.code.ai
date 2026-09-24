@@ -58,6 +58,8 @@ import {
   type AgenticCurrentId,
 } from '../lib/currents.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { DeleteAccountSheet } from '../components/DeleteAccountSheet.js';
+import { exportMyData, saveExport } from '../lib/accountDeletion.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
 import type { SearchBackend } from '../lib/webSearch.js';
@@ -241,7 +243,7 @@ function HarborInstallButton({
   );
 }
 
-type SheetName = 'account' | 'log' | 'search' | 'clear';
+type SheetName = 'account' | 'log' | 'search' | 'clear' | 'delete';
 
 /** One Agentic Current row: the label, the honest state line, a small text
  *  action to open its connect sheet, and the switch. The switch reports where
@@ -323,8 +325,11 @@ export function SettingsScreen() {
     setAgenticCurrent,
     setPerplexityResearch,
     connectedProviders,
+    authSession,
+    accountDeleted,
   } = useApp();
-  const { configured, signedIn, email } = useAuth();
+  const { configured, signedIn, email, signOut } = useAuth();
+  const [exporting, setExporting] = useState(false);
   const insightsOn = Boolean(settings.insightsOptIn);
   const humanizeOn = settings.humanizeWriting !== false;
   const account = settings.account;
@@ -456,6 +461,21 @@ export function SettingsScreen() {
     isOrgAdmin(settings.account) || serverRole === 'admin',
   );
 
+  // Download my data: everything the server holds for this account, saved the
+  // way this platform saves a file.
+  const downloadMyData = async () => {
+    if (!authSession || exporting) return;
+    setExporting(true);
+    try {
+      const data = await exportMyData(authSession);
+      showToast(await saveExport(data));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not export your data. Try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   let group = 0;
 
   return (
@@ -511,8 +531,8 @@ export function SettingsScreen() {
               Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
               confidently wrong, and neither guide is a coder. For real work, use DeepBlue on your
               computer or connect a bigger model. What you type to a local model stays on this
-              device. Harbor is Qwen3-1.7B and Harbor Lite is SmolLM2-135M-Instruct, both used
-              under the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
+              device. Harbor is Qwen3-1.7B and Harbor Lite is SmolLM2-135M-Instruct, both used under
+              the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
             </p>
             <p>
               OpenShore does not editorialize what a model says. Three narrow limits are enforced on
@@ -1021,6 +1041,20 @@ export function SettingsScreen() {
           </p>
         ) : null}
         <SignInCard />
+        {signedIn ? (
+          <div className="sheet-actions account-data-actions">
+            <button
+              className="btn ghost press-fb"
+              disabled={exporting}
+              onClick={() => void downloadMyData()}
+            >
+              {exporting ? 'Preparing your data' : 'Download my data'}
+            </button>
+            <button className="btn danger press-fb" onClick={() => setSheet('delete')}>
+              Delete account
+            </button>
+          </div>
+        ) : null}
         {signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
           <button
             className="btn ghost"
@@ -1034,6 +1068,28 @@ export function SettingsScreen() {
           </button>
         ) : null}
       </Sheet>
+
+      <DeleteAccountSheet
+        open={sheet === 'delete'}
+        session={authSession}
+        email={email}
+        onClose={close}
+        showToast={showToast}
+        onDeleted={() => {
+          void accountDeleted().then(() => {
+            showToast('Account deleted.');
+            // The device keeps its chats; offer the existing clear confirm.
+            setSheet('clear');
+          });
+        }}
+        onSignInAgain={() => {
+          void signOut().then(() => setSheet('account'));
+        }}
+        onOpenAdmin={() => {
+          close();
+          setView('admin');
+        }}
+      />
 
       <Sheet open={sheet === 'log'} onClose={close}>
         <SheetHead title="Activity log" onClose={close} />

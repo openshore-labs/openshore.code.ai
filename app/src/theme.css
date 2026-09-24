@@ -3559,6 +3559,10 @@ textarea {
   flex-direction: column;
   gap: 8px;
 }
+/* Settings, Your account: Download my data and Delete account under the card. */
+.account-data-actions {
+  margin: 12px 0;
+}
 
 .btn {
   padding: 12px 16px;
@@ -3820,6 +3824,36 @@ textarea {
 
 .confirm-row .btn {
   flex: 1;
+}
+
+/* Account deletion (DeleteAccountSheet): the Apple note, the error line, and
+   one block per team that needs a choice. */
+.delete-apple {
+  margin-bottom: 14px;
+}
+.delete-apple p {
+  margin-bottom: 8px;
+}
+.confirm-card .delete-error {
+  color: var(--danger);
+}
+.delete-teams {
+  display: grid;
+  gap: 14px;
+}
+.delete-team {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.delete-team-name {
+  font-weight: 650;
+}
+.delete-team .confirm-row {
+  margin-top: 10px;
+}
+.delete-team-renewal {
+  width: 100%;
+  margin-top: 8px;
 }
 
 /* The confirm card leaves the way it came: the scrim fades, the card settles
@@ -5063,6 +5097,12 @@ a.linklike {
   color: var(--voice-ink);
   font-weight: 600;
 }
+/* Set by the server from its staff list, never by the reviewer. */
+.review-staff {
+  font-size: 11px;
+  color: var(--wave-ink);
+  font-weight: 600;
+}
 .review-more {
   margin-left: auto;
   color: var(--muted);
@@ -5912,8 +5952,9 @@ a.linklike {
 }
 .osfit {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
 }
 .osfit-label {
   font-size: 12px;

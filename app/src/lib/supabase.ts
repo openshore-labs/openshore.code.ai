@@ -354,3 +354,26 @@ export async function invokeFunction<T>(
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as T;
 }
+
+/** Invoke an Edge Function and hand back the status and parsed body whatever
+ *  the status, for a caller that branches on it (delete-account answers 401
+ *  for a stale sign-in and 409 when a team needs a choice). A network failure
+ *  still throws. */
+export async function invokeFunctionRaw(
+  name: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(`${base()}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(body),
+  });
+  let parsed: unknown;
+  try {
+    parsed = await res.json();
+  } catch {
+    parsed = undefined;
+  }
+  return { status: res.status, body: parsed };
+}

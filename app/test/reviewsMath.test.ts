@@ -1,11 +1,14 @@
-// Community review math. The load-bearing contract: an average is hidden below
-// the count floor, shrinks toward the benchmark prior when sparse, always
-// travels with its count, and the hardware signal only speaks for comparable
-// machines. None of it touches the benchmark ratings.
+// Community review math. The load-bearing contract (DECISIONS.md 2026-09-24,
+// "Community ratings show the raw average"): the number is the raw mean of user
+// stars, hidden below five reviews, always with its count, never blended with
+// the benchmark fit; and the hardware signal only speaks for comparable
+// machines.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  BENCHMARK_FIT_LABEL,
   MIN_REPORTS_FOR_AVERAGE,
-  PRIOR_WEIGHT,
   communityScore,
   containsObjectionable,
   hardwareSignal,
@@ -22,7 +25,6 @@ function summary(count: number, average: number): ReviewSummary {
 function review(over: Partial<ReviewRow> & { id: string }): ReviewRow {
   return {
     id: over.id,
-    user_id: `u-${over.id}`,
     model_id: 'm',
     rating: 5,
     created_at: '2026-09-03T00:00:00Z',
@@ -31,36 +33,51 @@ function review(over: Partial<ReviewRow> & { id: string }): ReviewRow {
 }
 
 describe('communityScore', () => {
-  it('hides the average below the count floor', () => {
-    const s = communityScore(summary(MIN_REPORTS_FOR_AVERAGE - 1, 5), 3);
+  it('shows no average below five reviews, but keeps the count', () => {
+    expect(MIN_REPORTS_FOR_AVERAGE).toBe(5);
+    const s = communityScore(summary(4, 5));
     expect(s.hasAverage).toBe(false);
-    expect(s.count).toBe(MIN_REPORTS_FOR_AVERAGE - 1);
+    expect(s.count).toBe(4);
   });
 
-  it('shows and shrinks the average toward the benchmark prior when sparse', () => {
-    // 5 reports at 5.0, prior 3.0 with weight 8: (5*5 + 3*8)/(5+8) = 49/13 ≈ 3.8
-    const s = communityScore(summary(5, 5), 3);
+  it('shows the raw mean from the fifth review on, with nothing blended in', () => {
+    const s = communityScore(summary(5, 5));
     expect(s.hasAverage).toBe(true);
-    expect(s.average).toBeCloseTo((5 * 5 + 3 * PRIOR_WEIGHT) / (5 + PRIOR_WEIGHT), 1);
-    expect(s.average).toBeLessThan(5);
-    expect(s.rawAverage).toBe(5);
+    expect(s.average).toBe(5);
+    expect(s.count).toBe(5);
   });
 
-  it('lets the crowd dominate as reports pile up', () => {
-    const sparse = communityScore(summary(5, 5), 3).average;
-    const many = communityScore(summary(500, 5), 3).average;
-    expect(many).toBeGreaterThan(sparse);
-    expect(many).toBeGreaterThan(4.9);
-  });
-
-  it('does not shrink when the model has no benchmark prior (discovered model)', () => {
-    const s = communityScore(summary(10, 4.2), undefined);
-    expect(s.average).toBe(4.2);
+  it('rounds the raw mean to one decimal and never pulls it toward a prior', () => {
+    expect(communityScore(summary(7, 2.14)).average).toBe(2.1);
+    expect(communityScore(summary(500, 4.96)).average).toBe(5);
+    // The function takes no benchmark at all: the axes cannot mix here.
+    expect(communityScore.length).toBe(1);
   });
 
   it('is empty and numberless with no summary', () => {
-    const s = communityScore(undefined, 4);
+    const s = communityScore(undefined);
     expect(s).toMatchObject({ hasAverage: false, count: 0 });
+  });
+
+  it('keeps the benchmark on its own labeled axis', () => {
+    expect(BENCHMARK_FIT_LABEL).toBe('OpenShore fit (benchmark, not user reviews)');
+    const market = readFileSync(
+      join(process.cwd(), 'src', 'screens', 'MarketplaceScreen.tsx'),
+      'utf8',
+    );
+    expect(market).toMatch(/<span className="osfit-label">\{BENCHMARK_FIT_LABEL\}<\/span>/);
+    expect(market).not.toMatch(/communityScore\([^)]*osCodeFit/);
+  });
+
+  it('says "Rated by people who ran it." only over a real user average', () => {
+    const section = readFileSync(
+      join(process.cwd(), 'src', 'components', 'ReviewsSection.tsx'),
+      'utf8',
+    );
+    expect(section).toMatch(
+      /score\.hasAverage \? 'Rated by people who ran it\.' : 'Run reports from people who ran it\.'/,
+    );
+    expect(section).not.toMatch(/benchmarkStars/);
   });
 });
 

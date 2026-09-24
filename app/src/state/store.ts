@@ -951,6 +951,9 @@ interface AppState {
   declineOrg(): Promise<void>;
   /** Sign out and forget the session. */
   signOutAccount(): Promise<void>;
+  /** After the server deleted the account: forget the session and the pending
+   *  Apple link on this device, with no sign-out call (the account is gone). */
+  accountDeleted(): Promise<void>;
   /** Re-read the signed-in user's server role into serverRole. */
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
@@ -1846,8 +1849,7 @@ export const useApp = create<AppState>((set, get) => {
         // this device and only ever runs on this device.
         let codemagicToken: string | undefined;
         let codemagicTarget:
-          | { appId: string; workflowId: string; branch: string; platform?: string }
-          | undefined;
+          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
         if (settings.codemagicAccess) {
           const tok = await secretGet(CODEMAGIC_SECRET_KEY);
           if (tok) {
@@ -4074,6 +4076,14 @@ export const useApp = create<AppState>((set, get) => {
       if (session) await supabaseSignOut(session.accessToken);
       await forgetSession();
       logEvent('auth_sign_out');
+    },
+
+    async accountDeleted() {
+      await forgetSession();
+      // A receipt waiting to be linked belonged to the deleted account; left
+      // here, the next foreground would link it to whoever signs in next.
+      await storeDelete(PENDING_APPLE_LINK_KEY);
+      logEvent('account_deleted');
     },
 
     async refreshOrgRole() {

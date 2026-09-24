@@ -54,7 +54,7 @@ import { LibraryIntro } from '../components/LibraryIntro.js';
 import { Stars, CapabilityLane, NotRated, CommunityStars } from '../components/Stars.js';
 import { ReviewsSection } from '../components/ReviewsSection.js';
 import { fetchSummaries, reviewsAvailable } from '../lib/reviews.js';
-import { communityScore, type CommunityScore } from '../lib/reviewsMath.js';
+import { BENCHMARK_FIT_LABEL, communityScore, type CommunityScore } from '../lib/reviewsMath.js';
 import { CompareSheet } from '../components/CompareSheet.js';
 import { CapIcon, ModelTile } from '../components/MarketIcon.js';
 import {
@@ -1463,7 +1463,7 @@ export function MarketplaceScreen() {
         {rated ? (
           <div className="ratings">
             <div className="osfit">
-              <span className="osfit-label">OpenShore fit</span>
+              <span className="osfit-label">{BENCHMARK_FIT_LABEL}</span>
               <Stars value={rated.osCodeFit} size={18} fill="var(--wave)" />
             </div>
             <div className="osfit-divider" />
@@ -1517,7 +1517,6 @@ export function MarketplaceScreen() {
         {focused && reviewsAvailable() ? (
           <ReviewsSection
             model={model}
-            benchmarkStars={model.ratings?.osCodeFit}
             session={authSession}
             deviceRamGB={deviceRamGB}
             hardwarePrefill={hardwarePrefill}
@@ -2024,14 +2023,14 @@ export function MarketplaceScreen() {
     return sum;
   };
 
-  // The community score for a model, from the batched summaries and the model's
-  // own benchmark fit as the prior a sparse average shrinks toward.
+  // The community score for a model, from the batched summaries: the raw mean of
+  // user stars with its count, never blended with the benchmark fit.
   const reviewScoreFor = (model: CatalogModel): CommunityScore => {
     const s = reviewSummaries.get(model.id);
     const summary = s
       ? { count: s.count, average: s.average, dist: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }
       : undefined;
-    return communityScore(summary, model.ratings?.osCodeFit);
+    return communityScore(summary);
   };
 
   // A compact community star for a browse surface (hero, shelf row, list row),

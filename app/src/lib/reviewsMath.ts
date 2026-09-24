@@ -1,16 +1,16 @@
 // Pure math for community reviews, kept out of the network layer so the store
-// never reasons about raw rows. The load-bearing honesty rules live here:
+// never reasons about raw rows. The load-bearing honesty rules live here
+// (DECISIONS.md 2026-09-24, "Community ratings show the raw average"):
 //
-//   1. A community average is HIDDEN below a minimum count, so one grumpy first
-//      report cannot stamp a score on a good model (CX: below ~5 the mean swings
-//      on a single voice).
-//   2. When shown, a sparse average is SHRUNK toward the benchmark prior, so the
-//      number is honest at n=1 and converges to the crowd as reports arrive
-//      (CX: Bayesian shrinkage beats a hard show/hide cliff).
+//   1. The community number is the RAW mean of the stars people gave, nothing
+//      blended in. It supersedes the earlier benchmark-shrunk average.
+//   2. No average is shown below a minimum count (five), so one voice cannot
+//      stamp a score on a model. The reviews and the count still show.
 //   3. Community stars are ALWAYS reported with their count. The count is the
-//      tell that separates a crowd score from the benchmark score (CMO).
+//      tell that separates a crowd score from the benchmark score.
 //
-// None of this ever writes into the benchmark ratings; it is a separate axis.
+// The benchmark "OpenShore fit" is a separate axis with its own label; nothing
+// here reads it or writes into it.
 
 /** The star distribution for a model, counts per star 1..5. */
 export interface ReviewDistribution {
@@ -28,50 +28,35 @@ export interface ReviewSummary {
   dist: ReviewDistribution;
 }
 
-/** Below this many reports, an average is not trustworthy enough to show as a
- *  number: the individual reports are shown, but no star aggregate. */
+/** Below this many reports, no average is shown as a number: the individual
+ *  reports and the count are shown, but no star aggregate. */
 export const MIN_REPORTS_FOR_AVERAGE = 5;
 
-/** The weight (in "virtual reports") of the benchmark prior when shrinking a
- *  sparse community average toward it. At C reports the community and the prior
- *  carry equal weight; past that the crowd dominates. */
-export const PRIOR_WEIGHT = 8;
+/** The label the benchmark stars carry wherever they sit near community
+ *  stars, so the two axes are never read as one. */
+export const BENCHMARK_FIT_LABEL = 'OpenShore fit (benchmark, not user reviews)';
 
 export interface CommunityScore {
   /** Whether there are enough reports to show an averaged number at all. */
   hasAverage: boolean;
-  /** The shrunk, display-ready average (only meaningful when hasAverage). */
+  /** The raw mean of user stars, to one decimal (only meaningful when
+   *  hasAverage). */
   average: number;
-  /** The raw crowd average before shrinkage, for reference. */
-  rawAverage: number;
   count: number;
   dist: ReviewDistribution;
 }
 
-/** Turn a server summary into a display score. `benchmarkStars` (0..5, the
- *  model's OpenShore fit) is the prior a sparse average is pulled toward; pass
- *  undefined for a model with no benchmark rating (a discovered model), in which
- *  case no number is shown until the count floor is met and no shrink applies. */
-export function communityScore(
-  summary: ReviewSummary | undefined,
-  benchmarkStars?: number,
-): CommunityScore {
+/** Turn a server summary into a display score: the raw mean of user stars,
+ *  rounded to one decimal, with its count, and no number below the floor. */
+export function communityScore(summary: ReviewSummary | undefined): CommunityScore {
   const count = summary?.count ?? 0;
   const dist = summary?.dist ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  const rawAverage = summary && count > 0 ? summary.average : 0;
-  if (count < MIN_REPORTS_FOR_AVERAGE) {
-    return { hasAverage: false, average: 0, rawAverage, count, dist };
+  if (count < MIN_REPORTS_FOR_AVERAGE || !summary) {
+    return { hasAverage: false, average: 0, count, dist };
   }
-  // Shrink toward the benchmark prior when there is one; otherwise the raw crowd
-  // average stands (a discovered model has no prior to borrow).
-  const average =
-    benchmarkStars === undefined
-      ? rawAverage
-      : (rawAverage * count + benchmarkStars * PRIOR_WEIGHT) / (count + PRIOR_WEIGHT);
   return {
     hasAverage: true,
-    average: Math.round(average * 10) / 10,
-    rawAverage: Math.round(rawAverage * 10) / 10,
+    average: Math.round(summary.average * 10) / 10,
     count,
     dist,
   };
@@ -117,11 +102,12 @@ export function containsObjectionable(text: string | undefined | null): boolean 
 
 // ------------------------------------------------------- hardware-aware read
 
-/** One review row, as read from the reviews table (the fields the fit signal
- *  and the list need). */
+/** One review row, as read from the model_reviews_public view (migration
+ *  0020): the fields the fit signal and the list need, and never the author's
+ *  id. `is_staff` is set by the server from its staff list; `is_mine` is true
+ *  only on the reader's own review. */
 export interface ReviewRow {
   id: string;
-  user_id: string;
   model_id: string;
   rating: number;
   body?: string | null;
@@ -132,6 +118,8 @@ export interface ReviewRow {
   quant?: string | null;
   felt_speed?: 'snappy' | 'usable' | 'slow' | null;
   created_at: string;
+  is_staff?: boolean | null;
+  is_mine?: boolean | null;
 }
 
 /** A coarse memory tier for "machines like yours", so a reader on a 16GB phone

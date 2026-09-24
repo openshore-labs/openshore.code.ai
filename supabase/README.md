@@ -12,7 +12,8 @@ it.
 | Supabase (client)    | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (app build; public)                | app sign-in (`src/lib/supabase.ts`)      |
 | Supabase (server)    | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (function secrets; NEVER `VITE_`)     | every edge function                      |
 | Stripe (client)      | `VITE_STRIPE_PUBLISHABLE_KEY` (app build; public)                                 | web checkout                             |
-| Stripe (server)      | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (function secrets)                   | stripe-checkout / -webhook / -portal     |
+| Stripe (server)      | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (function secrets)                   | stripe-checkout / -webhook / -portal, delete-account (key only) |
+| Guardrail HMAC key   | Vault secret `guardrail_hmac_key` (created in the SQL editor, never committed)    | migration 0019 insert trigger            |
 | Stripe prices        | `STRIPE_PRICE_MICRO/SMALL/GROWTH/SCALE` (function secrets)                        | checkout + webhook (commercial tiers)    |
 | Stripe price (indiv) | `STRIPE_PRICE_PERSONAL` (function secret)                                         | checkout + webhook (Personal $20/yr)     |
 | Stripe ignore list   | `STRIPE_IGNORED_PRICES` (function secret, optional, comma-separated)              | webhook: log-and-200 for listed prices   |
@@ -21,6 +22,26 @@ it.
 
 Rule: a secret can live in more than one place. Never put a service-role or
 secret key in a `VITE_` var.
+
+## Migrations 0019 and 0020 (compliance pass two, part A): before you apply them
+
+1. Create the guardrail HMAC key in Supabase Vault, once, from the SQL editor:
+   `select vault.create_secret(encode(gen_random_bytes(32), 'hex'), 'guardrail_hmac_key');`
+   0019 re-keys the stored fingerprints and stops with a clear error if the
+   secret is missing. After it is applied, a missing secret makes guardrail
+   inserts fail (the app tolerates that; the block itself happens on the
+   device).
+2. Enable pg_cron (Dashboard, Database, Extensions) so 0019 schedules
+   `oscode_guardrail_retention` (daily 03:41 UTC: block rows after 180 days,
+   enforcement actions after two years, ended deletion holds; rows under legal
+   hold are skipped). The block is guarded like 0015's; re-run it if the
+   extension was off. Check with `select * from cron.job`.
+3. Apply 0019, deploy `delete-account` (`supabase functions deploy
+   delete-account`; it uses `STRIPE_SECRET_KEY` and the service role), then
+   apply 0020 and ship the app build that reads `model_reviews_public`. An
+   older build reads only its own review once 0020 is applied.
+4. Seed the "OpenShore team" label, if wanted:
+   `insert into public.review_staff (user_id) select id from auth.users where email = '<address>' on conflict do nothing;`
 
 ## Migration 0015 (review 2026-09-05): what changed and how to ship it
 

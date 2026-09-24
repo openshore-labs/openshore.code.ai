@@ -10,3 +10,6 @@ export const PRIVACY_URL = 'https://openshore.ai/privacy-policy/';
 /** The minimum age to create an account. Self-declared, no ID (advisory org
  *  ruling). */
 export const MINIMUM_AGE = 18;
+/** Where a person cancels an Apple subscription. A server cannot cancel one, so
+ *  account deletion points here (advisory org ruling, 2026-09-24). */
+export const APPLE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';

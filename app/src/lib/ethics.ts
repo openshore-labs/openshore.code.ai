@@ -18,8 +18,10 @@
 //
 // A BLOCK is recorded to the account when the person is signed in, because
 // enforcement has to survive a reinstall. What travels is the record and
-// nothing else: a category, a tier, a timestamp, a SHA-256 of the request, and
-// the model path. The prompt never travels. When the person is signed out, or
+// nothing else: a category, a tier, a timestamp, a SHA-256 of the request
+// (keyed into an HMAC by the server), and the model path. The prompt never
+// travels, a block row names no person, and an allowed-with-assertion record
+// never leaves the device at all. When the person is signed out, or
 // the account backend is not configured on this build, the record stays on the
 // device and nothing is sent at all.
 
@@ -99,6 +101,28 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
 }
 
 /**
+ * The row a record becomes on the account, or undefined when it must not leave
+ * the device. Only blocks travel, and a block row never names a person: the
+ * subject a likeness assertion covered stays in the device's consent store.
+ * What travels is a category, a tier, a timestamp, the side, the signal names,
+ * the model path, and a SHA-256 of the request, which the server replaces with
+ * a keyed HMAC of it on insert (migration 0019).
+ */
+export function serverRowFor(record: EthicsRecord): Record<string, unknown> | undefined {
+  if (record.action !== 'blocked') return undefined;
+  return {
+    category: record.category,
+    tier: record.tier,
+    occurred_at: record.timestamp,
+    request_hash: record.requestHash,
+    model_path: record.modelPath,
+    action: 'blocked',
+    side: record.side,
+    signals: record.signals,
+  };
+}
+
+/**
  * Send one record to the account, then let the server run the enforcement
  * ladder.
  *
@@ -114,26 +138,19 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
  * on the device: enforcement degrades, screening does not.
  */
 async function postRecord(record: EthicsRecord): Promise<void> {
+  const row = serverRowFor(record);
+  // Only a block ever leaves the device (DECISIONS.md 2026-09-24, "Guardrail
+  // data"): an allowed-with-assertion record stays here with the assertion.
+  if (!row) return;
   try {
     if (!isConfigured()) return;
     const stored = await loadStoredSession();
     if (!stored) return;
     const session = await freshSession(stored);
-    await insert('guardrail_events', session.accessToken, {
-      category: record.category,
-      tier: record.tier,
-      occurred_at: record.timestamp,
-      request_hash: record.requestHash,
-      model_path: record.modelPath,
-      action: record.action,
-      side: record.side,
-      signals: record.signals,
-      subject: record.subject ?? null,
-    });
+    await insert('guardrail_events', session.accessToken, row);
     // A failed check is the layer failing closed, not a person misbehaving, so
-    // it never drives enforcement; an allowed-with-assertion row is not a
-    // violation either. Neither asks the server to re-evaluate.
-    if (record.action !== 'blocked' || record.category === 'check-failed') return;
+    // it never drives enforcement or asks the server to re-evaluate.
+    if (record.category === 'check-failed') return;
 
     // The server decides the outcome from its own history. We pass nothing and
     // trust nothing: a client cannot talk its own standing down.

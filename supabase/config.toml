@@ -96,3 +96,9 @@ verify_jwt = false
 # no secrets and writes nothing.
 [functions.checkout-return]
 verify_jwt = false
+
+# A signed-in user deletes their own account, so the caller's JWT is required.
+# The function also refuses a sign-in older than 10 minutes, and does the
+# deletes with the service role.
+[functions.delete-account]
+verify_jwt = true
