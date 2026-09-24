@@ -426,14 +426,22 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Harbor and DeepBlue's 3B are not Apache (checked 2026-09-24; a
-      founder or Board call).** Qwen2.5-Coder-3B's model card says the Qwen
-      Research License: research and non-commercial use, commercial use needs
-      Qwen's permission. Copy, attribution, MODEL-LICENSES, and the catalog now
-      say so (flagged non-commercial). Before a paid release: ask Qwen for a
-      commercial license, or move Harbor to an Apache model (Qwen3-4B, about
-      2.5 GB, or Qwen2.5-Coder-1.5B, about 1.1 GB) and DeepBlue's floor to the
-      1.5B or Qwen3-4B, each re-measured with `osc eval` on the box first.
+- [ ] **Harbor and DeepBlue's 3B are not Apache: swap to commercial models
+      (founder 2026-09-24: all three built-in models must allow commercial
+      use). PAUSED until the founder's Mac mini arrives; the 8 GB pop-os box
+      could not hold the eval.** Qwen2.5-Coder-3B is the Qwen Research License
+      (model card checked); copy, attribution, MODEL-LICENSES, and the catalog
+      already say so. Harbor Lite (SmolLM2-135M) and DeepBlue's 7B/14B/32B are
+      Apache. To pick up on the Mac mini: confirm each license from the model
+      cards; run `osc eval --deep --provider ollama --model <tag> --attempts 2`
+      one model at a time (unload between) for `qwen2.5-coder:1.5b`, the Qwen3
+      4B instruct (non-thinking) build, and `qwen2.5-coder:3b` as the baseline;
+      then move Harbor (`harbor.ts`: likely Qwen3-4B-Instruct-2507 on 6 GB+
+      phones, Qwen2.5-Coder-1.5B below) and DeepBlue's floor
+      (`HARBOR_MASTER_SIZES`, the catalog, bundles, copy, tests) to the winners.
+      The phone runner (LLM.swift 3.0.3, llama.cpp b10068) supports Qwen3.
+      Decide whether the Mac mini becomes the reference box (tenet 2 set the
+      floor deliberately low; a Mac mini changes that floor).
 - [ ] **Harbor Lite's guide harness: a phone pass (built 2026-09-24; box
       number in, `docs/guide-eval-2026-09-24.md`).** On a phone: a web
       question shows "Searching the web" and cites; an app question stays
