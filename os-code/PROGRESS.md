@@ -428,8 +428,9 @@ extended that day by the graduated enforcement ladder (migration
 
 - [ ] **Harbor and DeepBlue's 3B are not Apache: swap to commercial models
       (founder 2026-09-24: all three built-in models must allow commercial
-      use). PAUSED until the founder's Mac mini arrives; the 8 GB pop-os box
-      could not hold the eval.** Qwen2.5-Coder-3B is the Qwen Research License
+      use before anything is sold). KEPT for the free beta, a non-commercial
+      use the license allows; replace before pay gates turn on, once the
+      Mac mini is here.** Qwen2.5-Coder-3B is the Qwen Research License
       (model card checked); copy, attribution, MODEL-LICENSES, and the catalog
       already say so. Harbor Lite (SmolLM2-135M) and DeepBlue's 7B/14B/32B are
       Apache. To pick up on the Mac mini: confirm each license from the model

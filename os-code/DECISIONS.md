@@ -1848,3 +1848,9 @@ execution contract. Newest at the bottom.
   teal only for local, `--cloud` amber only for spend, `--accent` for chrome,
   `--attention` plum for "needs you". Harbor's license line is unchanged until
   the Qwen2.5-Coder-3B model card is checked.
+- **Keep Qwen2.5-Coder-3B through the free beta, founder 2026-09-24:** Harbor
+  and DeepBlue's 3B stay on the Qwen Research License while OpenShore is a
+  free beta that sells nothing (non-commercial use the license permits). Before
+  pay gates turn on (`PAY_GATES_ENABLED`), both move to Apache 2.0 models,
+  measured on the new equipment first (the steps are in PROGRESS). Harbor Lite
+  and DeepBlue's 7B/14B/32B are already Apache 2.0.
