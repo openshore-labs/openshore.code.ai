@@ -16,7 +16,15 @@ import {
 } from '../src/insights/stackHealth.js';
 import type { DriverEvent } from '../src/core/agent/types.js';
 
-const { foldSession, zeroTotals, priceLocal, planBuckets, bucketIndex, buildModelUsage } = __test;
+const {
+  foldSession,
+  zeroTotals,
+  priceLocal,
+  planBuckets,
+  bucketIndex,
+  buildModelUsage,
+  buildSeal,
+} = __test;
 
 const DAY_MS = 86_400_000;
 
@@ -315,5 +323,29 @@ describe('stack health at-rest scan cache eviction (P2-2)', () => {
     computeStackHealth('all', new Date());
     expect(_atRestScanCacheSizes().journals).toBe(1);
     expect(_atRestScanCacheSizes().titles).toBe(1);
+  });
+});
+
+// The seal's privacy lines are claims, so they say only what is true: a
+// signed-in guardrail block does send a record, and a period with no cloud
+// turns is described as that, not as "nothing left this device" (a web search
+// or a signed-in block can still leave it). Compliance pass one, 2026-09-24.
+describe('the seal says only what is true', () => {
+  const clean = { plainLines: 0, sealedLines: 1, plainTitles: 0 };
+
+  it('names the one record a signed-in block sends, never "nothing is collected"', () => {
+    const telemetry = buildSeal(0, clean, 'keychain').find((f) => f.key === 'telemetry')!;
+    expect(telemetry.label).toBe(
+      'No telemetry or analytics. Signed in, a guardrail block sends a record to your account.',
+    );
+    expect(telemetry.label).not.toMatch(/Nothing about your use/);
+  });
+
+  it('describes a period with no cloud turns as exactly that', () => {
+    const none = buildSeal(0, clean, 'keychain').find((f) => f.key === 'dataLeftDevice')!;
+    expect(none).toMatchObject({ state: 'good', label: 'No cloud model turns this period.' });
+    const some = buildSeal(2, clean, 'keychain').find((f) => f.key === 'dataLeftDevice')!;
+    expect(some.state).toBe('note');
+    expect(some.label).toMatch(/^2 cloud turns sent to your provider/);
   });
 });

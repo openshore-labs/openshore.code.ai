@@ -1,6 +1,6 @@
 # OpenShore Terms of Use
 
-Last updated: 2026-09-05
+Last updated: 2026-09-24
 
 These terms cover OpenShore OS Code: the desktop engine, the iOS and desktop
 apps, and the accounts that connect them. Plain language throughout, because
@@ -32,8 +32,8 @@ with materially increasing the harm such a weapon would cause.
 the likeness or voice of a real, identifiable person, as an image, a video, or
 an audio clip, is permitted only when you are authorized for that specific
 person: they are you, they gave you permission, or they licensed the likeness to
-you. You assert that authorization in the product, and the assertion is recorded
-against your account. This is about synthesized media, not about words: writing
+you. You assert that authorization in the product, and the assertion stays on
+your device. This is about synthesized media, not about words: writing
 about, satirizing, or criticizing a person in text is not covered here.
 
 The first three have no exception and no consent option. The fourth is gated
@@ -65,8 +65,9 @@ carried out by the operator, and where the law requires or permits it the matter
 is reported to the appropriate authority. In the United States, child sexual
 abuse material is reported to the National Center for Missing and Exploited
 Children. Account termination and, where required, a report are the entire
-enforcement scope. We do not collect, log, or act on an IP address for any
-reason.
+enforcement scope. The guardrail record never contains an IP address, and
+OpenShore never uses one for enforcement. Our hosting and sign-in providers see
+IP addresses as any server does.
 
 We take this seriously and we want to be direct about why. Deepfakes,
 non-consensual intimate imagery, and synthetic child sexual abuse material are
@@ -76,14 +77,17 @@ promise is kept rather than merely stated.
 
 ## 5. What we record when something is blocked
 
-When the guardrail blocks a request, we record the category, the tier, the time,
-which model path served it (local or cloud), and a one-way SHA-256 hash of the
-request.
+When you're signed in, a block sends a short record to your account: the
+category and tier, the time, a one-way fingerprint of the text, whether it ran
+locally or in the cloud, what the screen did, whether it was your request or the
+model's reply, and the names of the rules that matched. Never the text, and never
+a person's name. Blocks are kept for 180 days. Consent you give to depict a real
+person stays on this device.
 
-We do not store the prompt, the completion, or any excerpt of either. A hash is
-enough to recognize a repeat and to identify the same content in a lawful
-report, and retaining harmful material in order to police harmful material is
-its own harm.
+We do not store the prompt, the completion, or any excerpt of either. A one-way
+fingerprint is enough to recognize a repeat and to identify the same content in
+a lawful report, and retaining harmful material in order to police harmful
+material is its own harm.
 
 ## 6. Honest limits
 
@@ -125,4 +129,4 @@ or section 4 will be surfaced in the app.
 ## 10. Contact
 
 Questions, appeals of an enforcement decision, and reports of misuse:
-support@openshore.ai
+os-code@openshorellc.com

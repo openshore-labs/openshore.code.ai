@@ -116,7 +116,7 @@ export const AGENTIC_CURRENTS: AgenticCurrentInfo[] = [
   {
     id: 'openagi',
     label: 'OpenAGI',
-    sub: 'A self-improving agent that learns from how you work.',
+    sub: 'An agent that remembers what worked.',
     needs:
       'OpenAGI runs in-process with no network API yet. If your install exposes an A2A card or an OpenAI-compatible endpoint, paste its address and OpenShore will try.',
     kind: 'endpoint',

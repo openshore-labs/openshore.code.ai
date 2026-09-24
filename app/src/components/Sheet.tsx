@@ -9,8 +9,17 @@
 // flips its flag; the exit plays from wherever the finger left the sheet;
 // then the sheet is gone. The drag tracks the finger 1:1, rubber-bands past
 // the top with asymptotic damping, and springs back on a short release.
+//
+// To assistive tech the card is a modal dialog (an alert dialog for the
+// confirm variant), named by `label` or else by its own first heading. The
+// focus work (save the opener, move focus in, wrap Tab and Shift+Tab, hand
+// focus back on close) is the app-root trap in hooks/useSheetFocusTrap.ts,
+// which covers every `.sheet` and `.confirm-card`; a second trap here would
+// step Tab twice. The card takes tabIndex -1 so the trap can land on it when
+// a dialog holds no control of its own.
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -35,6 +44,7 @@ export function Sheet({
   children,
   variant = 'sheet',
   className,
+  label,
 }: {
   open: boolean;
   onClose: () => void;
@@ -43,6 +53,9 @@ export function Sheet({
    *  from the top edge (and drags up to dismiss). */
   variant?: 'sheet' | 'confirm' | 'top';
   className?: string;
+  /** The dialog's accessible name. Without it, the card's first heading names
+   *  it. */
+  label?: string;
 }) {
   // Which way a dismissing drag travels: down for a bottom sheet, up for a top
   // sheet. The math below runs in dismiss-positive "travel" space so one code
@@ -69,6 +82,20 @@ export function Sheet({
   // to how far down the sheet has been pulled (the room comes back as the sheet
   // leaves, the same seam the drawer's scrim keeps).
   const cardH = useRef(0);
+  // The heading that names the dialog when no `label` is given. Found after
+  // render, since the heading lives in the caller's children.
+  const autoId = useId();
+  const [labelledBy, setLabelledBy] = useState<string | undefined>();
+  useEffect(() => {
+    if (!mounted || label) return;
+    const heading = cardRef.current?.querySelector<HTMLElement>('h1, h2, h3');
+    if (!heading) {
+      setLabelledBy(undefined);
+      return;
+    }
+    if (!heading.id) heading.id = `${autoId}-title`;
+    setLabelledBy(heading.id);
+  }, [mounted, open, label, autoId]);
 
   useEffect(() => {
     if (!open) return;
@@ -188,6 +215,11 @@ export function Sheet({
     >
       <div
         ref={cardRef}
+        role={variant === 'confirm' ? 'alertdialog' : 'dialog'}
+        aria-modal="true"
+        aria-label={label}
+        aria-labelledby={label ? undefined : labelledBy}
+        tabIndex={-1}
         className={`${card}${className ? ` ${className}` : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${settling ? ' settling' : ''}`}
         style={!closing && dragY !== 0 ? { transform: `translateY(${dragY}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}

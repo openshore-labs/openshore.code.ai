@@ -6,7 +6,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { platform, isDesktop } from '../lib/platform.js';
+import { platform, isDesktop, openExternal } from '../lib/platform.js';
+import { COMPANY_NAME, PRIVACY_URL, SUPPORT_EMAIL, TERMS_URL } from '../lib/legal.js';
 import { bridge } from '../lib/electronBridge.js';
 import { HARBOR_BYLINE } from '../lib/harbor.js';
 import {
@@ -467,7 +468,7 @@ export function SettingsScreen() {
         <SettingsGroup title="Account" index={group++}>
           <SettingsRow
             label={accountLabel}
-            sub={signedIn ? email : 'Personal use needs no account'}
+            sub={signedIn ? email : 'Chat needs no account'}
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
@@ -489,10 +490,11 @@ export function SettingsScreen() {
             <p>
               Local models run on your hardware and nothing leaves it. Cloud models run on your own
               keys and only with your approval. Web search leaves your machine when the agent uses
-              it. No telemetry, no analytics, no advertising, no IP address, ever. There is one
-              exception, stated plainly under Ethical boundaries below: when the guardrail blocks a
-              request and you are signed in, a record of that block reaches your account. It carries
-              a category, a time, and a one-way hash, never your prompt.
+              it. No telemetry, no analytics, no advertising. OpenShore's own code never reads or
+              stores your IP address, though our hosting and sign-in provider sees it as any server
+              does. There is one exception, stated plainly under Ethical boundaries below: when the
+              guardrail blocks a request and you are signed in, a short record of that block reaches
+              your account. What it carries is listed there, and it never carries your text.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>
@@ -566,10 +568,15 @@ export function SettingsScreen() {
             </p>
             <h3 className="settings-sheet-head">What is recorded</h3>
             <p>
-              A block records a category, a timestamp, and a one-way hash of the request. Your
-              prompt is never stored and never sent, and no IP address is recorded, ever. When you
-              are signed in, block records reach your account so enforcement holds across a
-              reinstall. Signed out, they stay on this device.
+              When you're signed in, a block sends a short record to your account: the category and
+              tier, the time, a one-way fingerprint of the text, whether it ran locally or in the
+              cloud, what the screen did, whether it was your request or the model's reply, and the
+              names of the rules that matched. Never the text, and never a person's name. Blocks are
+              kept for 180 days. Consent you give to depict a real person stays on this device.
+            </p>
+            <p>
+              The record reaches your account so enforcement holds across a reinstall. Signed out,
+              it stays on this device.
             </p>
           </InfoSheet>
         </SettingsGroup>
@@ -967,6 +974,24 @@ export function SettingsScreen() {
               }}
             />
           ))}
+        </SettingsGroup>
+
+        {/* Who makes this, a person to write to, and the two documents. The
+            address is selectable text and a mail link; the documents open in
+            the system browser. */}
+        <SettingsGroup title="Support and legal" index={group++}>
+          <SettingsRow label={COMPANY_NAME} sub="Makes OpenShore" />
+          <SettingsRow
+            label="Support"
+            subWrap
+            sub={
+              <a className="linklike settings-mail" href={`mailto:${SUPPORT_EMAIL}`}>
+                {SUPPORT_EMAIL}
+              </a>
+            }
+          />
+          <SettingsRow label="Privacy Policy" onClick={() => openExternal(PRIVACY_URL)} />
+          <SettingsRow label="Terms of Use" onClick={() => openExternal(TERMS_URL)} />
         </SettingsGroup>
 
         <SettingsGroup index={group++}>

@@ -12,19 +12,21 @@ import { QrScanner } from '../components/QrScanner.js';
 import { Switch } from '../components/Switch.js';
 import { parsePairingQr } from '../lib/qrDecode.js';
 
-// Clean white glyphs for the Tailscale download rows, drawn on a solid teal
-// tile (iOS-app-icon feel). One per platform.
+// Clean glyphs for the Tailscale download rows, drawn on a solid teal tile
+// (iOS-app-icon feel). One per platform. They take the tile's text color
+// (--on-accent: white on paper, the dark ground on the dark theme's lighter
+// teal), so they keep their contrast in both themes.
 const GLYPHS: Record<string, JSX.Element> = {
   apple: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path
-        fill="#fff"
+        fill="currentColor"
         d="M15.77 12.9c-.02-2.13 1.74-3.15 1.82-3.2-.99-1.45-2.54-1.65-3.09-1.67-1.31-.13-2.56.77-3.23.77-.66 0-1.69-.75-2.78-.73-1.43.02-2.75.83-3.48 2.11-1.48 2.57-.38 6.38 1.06 8.47.7 1.02 1.54 2.17 2.63 2.13 1.05-.04 1.45-.68 2.72-.68 1.27 0 1.63.68 2.74.66 1.13-.02 1.85-1.04 2.55-2.07.8-1.19 1.13-2.34 1.15-2.4-.03-.01-2.2-.85-2.22-3.36zM13.7 6.3c.58-.7.97-1.68.86-2.65-.83.03-1.84.55-2.44 1.25-.53.62-1 1.61-.88 2.56.93.07 1.88-.47 2.46-1.16z"
       />
     </svg>
   ),
   windows: (
-    <svg viewBox="0 0 24 24" aria-hidden="true" fill="#fff">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
       <rect x="3.5" y="4" width="7.4" height="7.4" rx="0.8" />
       <rect x="13.1" y="4" width="7.4" height="7.4" rx="0.8" />
       <rect x="3.5" y="12.6" width="7.4" height="7.4" rx="0.8" />
@@ -32,28 +34,31 @@ const GLYPHS: Record<string, JSX.Element> = {
     </svg>
   ),
   linux: (
-    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#fff" strokeWidth="1.6">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
       <rect x="3" y="5" width="18" height="14" rx="2.2" />
       <path d="M7 10l2.6 2-2.6 2" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M12.4 14.2h4.2" strokeLinecap="round" />
     </svg>
   ),
   phone: (
-    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#fff" strokeWidth="1.6">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
       <rect x="6.5" y="2.5" width="11" height="19" rx="2.6" />
       <path d="M10.5 5h3" strokeLinecap="round" />
     </svg>
   ),
   android: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#fff" d="M8 8.5a4 4 0 0 1 8 0zM8 9h8v6.4a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1z" />
-      <rect x="4.6" y="9.6" width="1.8" height="5.4" rx="0.9" fill="#fff" />
-      <rect x="17.6" y="9.6" width="1.8" height="5.4" rx="0.9" fill="#fff" />
-      <rect x="9.4" y="16" width="1.8" height="3.2" rx="0.9" fill="#fff" />
-      <rect x="12.8" y="16" width="1.8" height="3.2" rx="0.9" fill="#fff" />
+      <path
+        fill="currentColor"
+        d="M8 8.5a4 4 0 0 1 8 0zM8 9h8v6.4a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1z"
+      />
+      <rect x="4.6" y="9.6" width="1.8" height="5.4" rx="0.9" fill="currentColor" />
+      <rect x="17.6" y="9.6" width="1.8" height="5.4" rx="0.9" fill="currentColor" />
+      <rect x="9.4" y="16" width="1.8" height="3.2" rx="0.9" fill="currentColor" />
+      <rect x="12.8" y="16" width="1.8" height="3.2" rx="0.9" fill="currentColor" />
       <path
         d="M9.2 5.6l1.3 1.9M14.8 5.6l-1.3 1.9"
-        stroke="#fff"
+        stroke="currentColor"
         strokeWidth="1.2"
         strokeLinecap="round"
       />
@@ -295,6 +300,7 @@ function RemoteHubPanel() {
             <label>Hub address</label>
             <input
               placeholder="http://100.x.y.z:4816"
+              aria-label="Hub address"
               value={address}
               autoCapitalize="none"
               autoCorrect="off"
@@ -305,6 +311,7 @@ function RemoteHubPanel() {
             <label>Pairing token</label>
             <input
               placeholder="osc_..."
+              aria-label="Pairing token"
               value={token}
               autoCapitalize="none"
               autoCorrect="off"
@@ -482,6 +489,7 @@ function PhonePair() {
             <label>Desktop address</label>
             <input
               placeholder="http://100.x.y.z:4816"
+              aria-label="Desktop address"
               value={address}
               autoCapitalize="none"
               autoCorrect="off"
@@ -492,6 +500,7 @@ function PhonePair() {
             <label>Pairing code</label>
             <input
               placeholder="pc_..."
+              aria-label="Pairing code"
               value={code}
               autoCapitalize="none"
               autoCorrect="off"

@@ -2,10 +2,14 @@
 // (Supabase keys present); otherwise OpenShore is local-first and shows nothing
 // here. It follows the conventional pattern: one primary action whose label and
 // heading track a Sign in / Create account mode toggle, with a passwordless
-// magic link offered underneath.
+// magic link offered underneath. Creating an account asks the person to state
+// they are 18 or older (self-declared, no ID, advisory org ruling) and says,
+// under the button, which terms they agree to by creating it.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
+import { MINIMUM_AGE, PRIVACY_URL, TERMS_URL } from '../lib/legal.js';
+import { ExternalLink } from './ExternalLink.js';
 
 type Mode = 'signin' | 'signup';
 
@@ -30,6 +34,8 @@ export function SignInCard() {
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [newPw, setNewPw] = useState('');
+  // Create-account only: the self-declared age line. Never pre-checked.
+  const [adult, setAdult] = useState(false);
 
   if (!configured) return null;
 
@@ -61,6 +67,7 @@ export function SignInCard() {
           <input
             type="password"
             placeholder="New password"
+            aria-label="New password"
             autoComplete="new-password"
             value={newPw}
             onChange={(e) => setNewPw(e.target.value)}
@@ -103,9 +110,15 @@ export function SignInCard() {
   }
 
   // Field validation up front so the primary action never fails silently.
-  const guard = (needPassword: boolean): boolean => {
+  // `creating` marks the paths that can make a new account (the create button,
+  // and the magic link from create mode); only those ask for the age line.
+  const guard = (needPassword: boolean, creating = false): boolean => {
     if (!addr.trim()) {
       showToast('Enter your email.');
+      return false;
+    }
+    if (creating && !adult) {
+      showToast(`Confirm you're ${MINIMUM_AGE} or older to create an account.`);
       return false;
     }
     if (needPassword && !pw) {
@@ -119,8 +132,13 @@ export function SignInCard() {
     return true;
   };
 
-  const run = async (needPassword: boolean, fn: () => Promise<unknown>, done: string) => {
-    if (!guard(needPassword)) return;
+  const run = async (
+    needPassword: boolean,
+    fn: () => Promise<unknown>,
+    done: string,
+    creating = false,
+  ) => {
+    if (!guard(needPassword, creating)) return;
     setBusy(true);
     try {
       await fn();
@@ -147,6 +165,7 @@ export function SignInCard() {
         );
       },
       '',
+      true,
     );
   };
 
@@ -155,13 +174,14 @@ export function SignInCard() {
       <h3>{mode === 'signin' ? 'Sign in' : 'Create account'}</h3>
       <div className="sub" style={{ marginBottom: 10 }}>
         {mode === 'signin'
-          ? 'Sign in to sync your company account and role. Personal use needs no account.'
-          : 'Create an account to sync your company role across your devices. Personal use needs no account.'}
+          ? 'Sign in to sync your company account and role. Chat needs no account. Personal, sync, and teams do.'
+          : 'Create an account to sync your company role across your devices. Chat needs no account. Personal, sync, and teams do.'}
       </div>
       <div className="field">
         <input
           type="email"
           placeholder="you@company.com"
+          aria-label="Email"
           autoCapitalize="none"
           autoCorrect="off"
           autoComplete="email"
@@ -173,20 +193,39 @@ export function SignInCard() {
         <input
           type="password"
           placeholder="Password"
+          aria-label="Password"
           autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
           value={pw}
           onChange={(e) => setPw(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void submit()}
         />
       </div>
+      {mode === 'signup' ? (
+        <label className="consent-check">
+          <input
+            type="checkbox"
+            required
+            checked={adult}
+            onChange={(e) => setAdult(e.target.checked)}
+          />
+          <span>I'm {MINIMUM_AGE} or older.</span>
+        </label>
+      ) : null}
       <button
         className="btn primary"
         style={{ width: '100%' }}
-        disabled={busy}
+        disabled={busy || (mode === 'signup' && !adult)}
         onClick={() => void submit()}
       >
         {busy ? 'Working...' : mode === 'signin' ? 'Sign in' : 'Create account'}
       </button>
+      {mode === 'signup' ? (
+        <p className="sub consent-terms">
+          By creating an account you agree to the{' '}
+          <ExternalLink href={TERMS_URL}>Terms of Use</ExternalLink> and the{' '}
+          <ExternalLink href={PRIVACY_URL}>Privacy Policy</ExternalLink>.
+        </p>
+      ) : null}
       <div className="sub" style={{ marginTop: 10, textAlign: 'center' }}>
         {mode === 'signin' ? (
           <>
@@ -209,7 +248,12 @@ export function SignInCard() {
           className="linklike"
           disabled={busy}
           onClick={() =>
-            void run(false, () => sendMagicLink(addr), 'Check your email for a sign-in link.')
+            void run(
+              false,
+              () => sendMagicLink(addr),
+              'Check your email for a sign-in link.',
+              mode === 'signup',
+            )
           }
         >
           Email me a link instead

@@ -83,6 +83,7 @@ export function AccountSetup() {
                 <label>Company name</label>
                 <input
                   placeholder="e.g. Acme Inc"
+                  aria-label="Company name"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                 />
@@ -94,6 +95,7 @@ export function AccountSetup() {
                   autoCapitalize="none"
                   autoCorrect="off"
                   placeholder="you@company.com"
+                  aria-label="Your email (you are the first admin)"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -103,6 +105,7 @@ export function AccountSetup() {
                 <input
                   type="number"
                   min={1}
+                  aria-label="How many people will use it?"
                   value={seats}
                   onChange={(e) => setSeats(Math.max(1, Number(e.target.value) || 1))}
                 />

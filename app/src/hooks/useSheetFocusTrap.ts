@@ -95,10 +95,11 @@ export function useSheetFocusTrap(): void {
           opener = active;
         }
         current = sheet;
-        // Move focus into it (its first control) unless the dialog already
-        // holds focus, e.g. an autofocused field.
+        // Move focus into it (its first control, or the card itself when it
+        // holds none; Sheet gives the card tabIndex -1 for this) unless the
+        // dialog already holds focus, e.g. an autofocused field.
         if (!sheet.contains(document.activeElement)) {
-          sheet.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+          (sheet.querySelector<HTMLElement>(FOCUSABLE) ?? sheet).focus();
         }
         return;
       }

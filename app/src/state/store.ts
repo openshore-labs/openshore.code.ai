@@ -3053,8 +3053,9 @@ export const useApp = create<AppState>((set, get) => {
       }
       // Web/desktop: Personal is an Apple subscription, so there is no purchase
       // here. Point the user to buy it in the app on their iPhone, then unlock
-      // this computer with "I bought it" (restorePurchases refreshes the
-      // entitlement). Commercial team plans still use Stripe, via manageBilling.
+      // this computer with "I already subscribed. Check again" (restorePurchases
+      // refreshes the entitlement). Commercial team plans still use Stripe, via
+      // manageBilling.
       get().showToast('Buy Personal in the OS Code app on your iPhone, then refresh here.');
     },
 

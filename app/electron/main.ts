@@ -603,8 +603,10 @@ function createWindow(): void {
   });
 
   // External links open in the system browser, never inside the shell.
+  // http(s) and a mailto: (the support address in Settings) go to the system
+  // browser or mail client; nothing else leaves the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    if (/^(https?:\/\/|mailto:)/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
   // Allow navigation ONLY to the app's own bundled entry point. Any other
@@ -621,7 +623,7 @@ function createWindow(): void {
     }
     if (sameApp) return;
     event.preventDefault();
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    if (/^(https?:\/\/|mailto:)/.test(url)) void shell.openExternal(url);
   });
 
   // A found-but-not-yet-shown update (the check can resolve before the window

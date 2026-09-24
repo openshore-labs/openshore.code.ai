@@ -110,7 +110,7 @@ export type IntentCheck = (input: {
  *  refusal stays two short sentences. Over-blocking is a defect, so a block
  *  names the appeal path: the app renders it as a card with a prefilled note to
  *  support, and the engine appends it to the block event's message. */
-export const SUPPORT_EMAIL = 'support@openshore.ai';
+export const SUPPORT_EMAIL = 'os-code@openshorellc.com';
 export const BLOCK_NEXT_ACTION = `If this was legitimate work, say so: write to ${SUPPORT_EMAIL} with the category and the time. Over-blocking is treated as a defect on our side.`;
 
 /** The next action for a block in this category: the appeal line on the three

@@ -37,32 +37,46 @@
   /* Ink: primary, secondary, faint. Straight from openshore.ai. */
   --ink: #1c2a33;
   --ink-soft: #55636b;
-  --muted: #8a949a;
+  /* Deepened for WCAG 2.2 AA (4.5:1 on paper, 2026-09-24); was #8a949a. */
+  --muted: #5f686e;
 
   /* Accents. LOCAL work carries the brand water teal; CLOUD/spend carries a
      deep amber that stays legible on paper. */
   --local: #2f5a66;
   --local-deep: #24454f;
   --local-soft: rgba(47, 90, 102, 0.12);
-  --cloud: #a35f0a;
+  --cloud: #925509;
   --cloud-soft: rgba(163, 95, 10, 0.13);
 
   /* Voice: the community-rating tone. A honey gold, warmer and lighter than the
      brown spend-amber (--cloud), used ONLY for the people-signal so a community
-     star can never be misread as spend or as the teal benchmark score. */
-  --voice: #c98a1f;
+     star can never be misread as spend or as the teal benchmark score.
+     --voice fills stars and bars (a graphic, 3:1); --voice-ink is the same
+     honey deepened for text (4.5:1 on paper). */
+  --voice: #b47b1c;
+  --voice-ink: #8b6015;
   --voice-soft: rgba(201, 138, 31, 0.14);
 
-  /* Status. Deepened so they read as text on a light ground. */
-  --ok: #2f8f4e;
-  /* Soft ok fill (mirrors --cloud-soft), shared by every green status pill. */
+  /* Status. Deepened so they read as text on a light ground (WCAG 2.2 AA,
+     4.5:1 on paper, 2026-09-24). */
+  --ok: #277641;
+  /* Soft ok fill (mirrors --cloud-soft), shared by every green status pill,
+     and the ok ink that reads as text on it. */
   --ok-soft: rgba(47, 143, 78, 0.14);
-  --warn: #8a6d0a;
-  --danger: #c0392b;
-  --link: #2c6ea3;
+  --ok-ink: #25703d;
+  --warn: #806509;
+  --danger: #bd382a;
+  --link: #2b6ca0;
+  /* Text and glyphs on a solid accent fill (local, link, danger): white on
+     paper; the dark ground on the dark theme, where those fills lift light. */
+  --on-accent: #fff;
+  /* Input borders and the off switch track: a control's edge reads at 3:1. */
+  --input-border: #8f8a7f;
 
-  /* Wave-mark accent from the brand tile (the lighter shore teal). */
+  /* Wave-mark accent from the brand tile (the lighter shore teal). A fill and
+     a graphic color; --wave-ink is the same teal deepened for text. */
   --wave: #4b90a3;
+  --wave-ink: #3a6f7d;
 
   /* The currents glow (the Siri-style ring in the brand's water): deep water,
      water, shore teal, a light aqua the ring needs for its highlight, and the
@@ -164,20 +178,25 @@
     --border-strong: #4a4433;
     --ink: #ece5d6;
     --ink-soft: #b3ab99;
-    --muted: #8b8674;
+    --muted: #9b9687;
     --local: #6bb3c4;
     --local-deep: #4b90a3;
     --local-soft: rgba(107, 179, 196, 0.16);
     --cloud: #e0902f;
     --cloud-soft: rgba(224, 144, 47, 0.16);
     --voice: #eab94f;
+    --voice-ink: #eab94f;
     --voice-soft: rgba(234, 185, 79, 0.18);
     --ok: #5fbf7e;
     --ok-soft: rgba(95, 191, 126, 0.16);
+    --ok-ink: #5fbf7e;
     --warn: #d6a53a;
     --danger: #e5675a;
     --link: #6fb0e0;
+    --on-accent: var(--bg);
+    --input-border: #77705e;
     --wave: #6bb3c4;
+    --wave-ink: #6bb3c4;
     --current-1: #2f6f80;
     --current-2: #4b90a3;
     --current-3: #6bb3c4;
@@ -203,20 +222,25 @@
   --border-strong: #4a4433;
   --ink: #ece5d6;
   --ink-soft: #b3ab99;
-  --muted: #8b8674;
+  --muted: #9b9687;
   --local: #6bb3c4;
   --local-deep: #4b90a3;
   --local-soft: rgba(107, 179, 196, 0.16);
   --cloud: #e0902f;
   --cloud-soft: rgba(224, 144, 47, 0.16);
   --voice: #eab94f;
+  --voice-ink: #eab94f;
   --voice-soft: rgba(234, 185, 79, 0.18);
   --ok: #5fbf7e;
   --ok-soft: rgba(95, 191, 126, 0.16);
+  --ok-ink: #5fbf7e;
   --warn: #d6a53a;
   --danger: #e5675a;
   --link: #6fb0e0;
+  --on-accent: var(--bg);
+  --input-border: #77705e;
   --wave: #6bb3c4;
+  --wave-ink: #6bb3c4;
   --current-1: #2f6f80;
   --current-2: #4b90a3;
   --current-3: #6bb3c4;
@@ -292,6 +316,14 @@ textarea {
    touch. Founder preference: no ring there. Scoped to the composer only, so a
    real keyboard user still sees the ring on every other focusable element. */
 .composer textarea:focus-visible {
+  outline: none;
+}
+
+/* A dialog card (components/Sheet.tsx) takes focus only as a landing spot when
+   it holds no control of its own; the card is the dialog, so it carries no
+   ring. Its controls still ring as usual. */
+.sheet:focus-visible,
+.confirm-card:focus-visible {
   outline: none;
 }
 
@@ -1346,7 +1378,7 @@ textarea {
   padding: 7px 14px;
   font-size: 13.5px;
   font-weight: 600;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--local);
   border-radius: 999px;
 }
@@ -1753,7 +1785,7 @@ textarea {
 
 .accessory-key.armed {
   background: var(--link);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--link);
 }
 
@@ -2277,9 +2309,14 @@ textarea {
   color: var(--muted);
   display: grid;
   place-items: center;
+  /* An 18px glyph disc inside a 24px hit area (WCAG 2.2 target size): the
+     padding widens the target, the negative margin keeps the chip's footprint
+     where it was. */
+  box-sizing: content-box;
   width: 18px;
   height: 18px;
-  padding: 0;
+  padding: 3px;
+  margin: -3px;
   line-height: 0;
   border-radius: 50%;
 }
@@ -2503,7 +2540,7 @@ textarea {
   align-items: center;
   justify-content: center;
   background: var(--local);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 13.5px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -3454,6 +3491,24 @@ textarea {
   letter-spacing: -0.01em;
   margin: 0 0 14px;
 }
+/* The renewal terms ride the price line, in the plain UI face so the price
+   stays the headline and the terms stay fully legible. */
+.paywall-renewal {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.paywall-legal {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+}
 
 /* The small "Personal" pill on a locked nav item. */
 .nav-lock-pill,
@@ -3470,10 +3525,15 @@ textarea {
 }
 
 /* A coming-soon nav room: dimmed, non-interactive, and it never lights on
-   hover. The "Coming soon" pill carries the reason. */
+   hover. The "Coming soon" pill carries the reason, so it stays at full
+   opacity (a dimmed pill failed contrast); only the glyph and label beside it
+   dim. */
 .nav-item--soon {
-  opacity: 0.5;
   cursor: default;
+}
+.nav-item--soon .glyph,
+.nav-item--soon .nav-soon-label {
+  opacity: 0.5;
 }
 
 .nav-item--soon:hover {
@@ -3538,7 +3598,7 @@ textarea {
 
 .btn.danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .btn:disabled {
@@ -3885,6 +3945,48 @@ textarea {
   text-decoration: none;
 }
 
+/* A link that leaves the app (components/ExternalLink.tsx) or a mail link. An
+   inline-block so the press scale can land on it (an inline box ignores
+   `scale`), and underlined so it never reads by color alone. */
+a.linklike {
+  display: inline-block;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The support address in Settings: selectable, so it can be copied as well as
+   tapped. */
+.settings-mail {
+  user-select: text;
+  -webkit-user-select: text;
+  font-weight: 500;
+}
+
+/* Create account: the self-declared age line, and the terms it agrees to,
+   under the button. */
+.consent-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: -4px 0 8px;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.consent-check input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--local);
+}
+.consent-terms {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 /* Download rows (the Tailscale links on the pairing screen). A compact take on
    the marketing store cards: a solid water-teal glyph tile, the platform name,
    and a GET pill, one line each. */
@@ -3928,7 +4030,7 @@ textarea {
   place-items: center;
   border-radius: 9px;
   background: var(--local);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.16);
 }
 
@@ -3977,7 +4079,7 @@ textarea {
 
 .pill.fits {
   background: var(--ok-soft);
-  color: var(--ok);
+  color: var(--ok-ink);
 }
 .pill.tight {
   background: rgba(138, 109, 10, 0.14);
@@ -4004,7 +4106,7 @@ textarea {
    --ok-soft fill with .pill.fits (same green status family). */
 .pill.ok {
   background: var(--ok-soft);
-  color: var(--ok);
+  color: var(--ok-ink);
 }
 /* A plan price. Price is spend, so it wears the amber spend family, not teal. */
 .pill.price {
@@ -4041,7 +4143,7 @@ textarea {
 .field input {
   width: 100%;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   padding: 11px 12px;
   font-size: 15px;
@@ -4056,7 +4158,7 @@ textarea {
 .field .select {
   width: 100%;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   padding: 11px 12px;
   font-size: 15px;
@@ -4198,7 +4300,7 @@ textarea {
   width: 100%;
   text-align: left;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   padding: 11px 12px;
   font-size: 15px;
@@ -4758,7 +4860,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--voice);
+  color: var(--voice-ink);
 }
 .community-line svg {
   display: block;
@@ -4958,7 +5060,7 @@ textarea {
 }
 .review-mine {
   font-size: 11px;
-  color: var(--voice);
+  color: var(--voice-ink);
   font-weight: 600;
 }
 .review-more {
@@ -5062,7 +5164,7 @@ textarea {
   flex: 1;
   padding: 8px 10px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   background: var(--bg);
   color: var(--ink);
   font: inherit;
@@ -5305,7 +5407,7 @@ textarea {
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--wave);
+  color: var(--wave-ink);
 }
 
 .lib-headline {
@@ -5488,7 +5590,7 @@ textarea {
   flex: 1;
   min-width: 180px;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 14.5px;
@@ -6079,7 +6181,7 @@ textarea {
 .cat-chip.active {
   background: var(--local);
   border-color: var(--local);
-  color: #fff;
+  color: var(--on-accent);
 }
 .cat-chip-glyph {
   display: inline-flex;
@@ -6094,7 +6196,7 @@ textarea {
 }
 .cat-chip.active .cat-chip-glyph {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .store-front {
@@ -8658,7 +8760,7 @@ button.settings-row:active {
 }
 .harbor-action.is-retry {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 .harbor-action.is-progress {
   background: var(--surface);
@@ -8761,7 +8863,7 @@ button.settings-row:active {
   width: 46px;
   height: 28px;
   border-radius: 999px;
-  background: var(--border-strong);
+  background: var(--input-border);
   transition: background var(--dur-3) var(--ease-standard);
 }
 .switch.on {
@@ -9300,7 +9402,7 @@ button.settings-row:active {
 .stack-select {
   width: 100%;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 15px;
@@ -9706,7 +9808,7 @@ button.settings-row:active {
 }
 .pill.cc-presence.ok {
   background: var(--ok-soft);
-  color: var(--ok);
+  color: var(--ok-ink);
 }
 .pill.cc-presence.failed {
   background: rgba(192, 57, 43, 0.12);

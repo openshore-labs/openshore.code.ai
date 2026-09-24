@@ -245,7 +245,9 @@ export function Sidebar({
         <span className="glyph">
           <NavIcon name={v} />
         </span>
-        {label}
+        {/* A coming-soon room dims its glyph and label; the pill stays at full
+            strength, since it carries the reason. */}
+        {soon ? <span className="nav-soon-label">{label}</span> : label}
         {soon ? <span className="nav-soon-pill">Coming soon</span> : null}
         {locked ? <span className="nav-lock-pill">Personal</span> : null}
       </button>

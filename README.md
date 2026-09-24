@@ -61,10 +61,12 @@ pnpm -r build && pnpm -r typecheck && pnpm -r lint && pnpm -r test
 The daemon binds Tailscale or loopback, never `0.0.0.0`, behind a bearer
 token. Shell access is default-deny with approvals. API keys live in the
 OS credential store (or an encrypted file) and go only to the provider they
-belong to. No product analytics, no tracking, no IP address, ever. The one
-thing sent to an account is an enforcement record when the guardrail blocks a
-request (a category, a hash, no prompt); see Ethical boundaries below for
-exactly what and when. The phone profile is stricter than the desktop.
+belong to. No product analytics and no tracking. OpenShore's own code never
+reads or stores an IP address, though hosting and sign-in providers see it as
+any server does. The one thing sent to an account is a record when the
+guardrail blocks a request (category, tier, time, a one-way fingerprint of the
+text; never the text or a name); see Ethical boundaries below for exactly what
+and when. The phone profile is stricter than the desktop.
 
 ## Ethical boundaries
 

@@ -413,10 +413,11 @@ function buildSeal(
     {
       key: 'telemetry',
       state: 'good',
-      label: 'No telemetry. Nothing about your use is collected.',
+      label:
+        'No telemetry or analytics. Signed in, a guardrail block sends a record to your account.',
     },
     cloudTurns === 0
-      ? { key: 'dataLeftDevice', state: 'good', label: 'Nothing left this device this period.' }
+      ? { key: 'dataLeftDevice', state: 'good', label: 'No cloud model turns this period.' }
       : {
           key: 'dataLeftDevice',
           state: 'note',
@@ -625,4 +626,5 @@ export const __test = {
   planBuckets,
   bucketIndex,
   buildModelUsage,
+  buildSeal,
 };
