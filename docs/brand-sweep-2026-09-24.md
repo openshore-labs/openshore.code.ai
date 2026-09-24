@@ -43,7 +43,7 @@ Line replaced.
 | --- | ----------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | 1   | SettingsScreen.tsx:445                                            | Privacy sheet: Harbor is "Qwen3-1.7B", "neither guide is a coder"   | Current facts (Qwen 2.5 Coder 3B, a coder that does not edit files; Harbor Lite is SmolLM2-135M)  |
 | 2   | harbor.ts:37                                                      | Byline calls Harbor "a coding agent" (the agent is DeepBlue)        | "A coding model that runs fully on your phone. It writes and explains code and searches the web." |
-| 3   | setupGuides.ts:95,104; StackScreen.tsx:295; StartingPaths.tsx:287 | Four doors into the closed Marketplace                              | Point at Your stack and Settings, Harbor; rewrite pick-a-model                                    |
+| 3   | setupGuides.ts:95,104; StackScreen.tsx:295; StartingPaths.tsx:287 | Four doors into the closed Marketplace                              | Point at Stack and Settings, Harbor; rewrite pick-a-model                                         |
 | 4   | AccountSetup.tsx:48; Paywall.tsx                                  | "$20 a year", "the Marketplace", "OS Code" while gates are off      | Price behind `PAY_GATES_ENABLED`; drop Marketplace; "OpenShore"                                   |
 | 5   | Composer.tsx:144                                                  | The model pill says "Claude" for every cloud model, OpenAI included | Label from `sourceLabel`                                                                          |
 | 6   | theme.css:2257                                                    | Plan mode wears amber (spend) though it costs nothing               | Ink for Plan; amber only for spend                                                                |
@@ -126,7 +126,7 @@ Line replaced.
 | -------------------------------------------------- | --------------------------------------------------- |
 | OpenShore                                          | Open Shore, OS Code (in UI)                         |
 | Harbor Lite, Harbor, DeepBlue                      | harbor lite, Deep Blue                              |
-| Your stack (room), your stack (in a sentence)      | Your Stack, My Stack (pending decision 1)           |
+| Stack (the room, the model sheet row, the name)    | Your stack, Your Stack, My Stack (as names)         |
 | your computer                                      | hub, desktop, machine, the box, home system (in UI) |
 | Desktop + phone                                    | Desktop and phone, Desktop connection               |
 | My Crew, Crew command                              | my crew                                             |
