@@ -71,11 +71,15 @@ Non-consensual intimate imagery of a real, identifiable person, including the
 "nudify" family. Concrete weapons uplift for biological, chemical, nuclear, or
 high-yield explosive weapons.
 
-**Tier 2, blocked unless authorization is asserted.** Synthesizing the face or
-voice of a real, identifiable person. An assertion naming the specific subject
-unlocks it, is recorded against the account, and the output carries provenance.
-The assertion is a deterrent and an accountability record, not proof, which is
-why the provenance label is not optional.
+**Tier 2, blocked unless authorization is asserted.** Synthesizing an image of
+a real, identifiable person. An assertion naming the specific subject unlocks
+it, is recorded against the account, and the image (a PNG from the engine's
+image server) carries an unsigned provenance record; a likeness that cannot be
+labeled is not produced. The assertion is a deterrent and an accountability
+record, not proof, which is why the provenance label is not optional. Video or
+voice of a real person is refused, assertion or not, until it can be marked the
+same way (advisory org ruling, 2026-09-24; `likenessIsVideoOrVoice` in
+`classify.ts`, applied in the chokepoint).
 
 **Tier 3, not blocked, nothing added.** Legal adult content, dark and violent
 fiction, horror, edgy humor, satire and political parody, security research and

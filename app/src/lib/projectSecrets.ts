@@ -30,7 +30,8 @@ export function projectSecretsKey(projectId: string): string {
 export function secretsTemplate(): string {
   return `# Tokens and Secrets
 
-Private to this device. Encrypted at rest. Never pushed to your repo, and never synced.
+Private to this device, sealed with its data key (Settings, Privacy says where that key
+lives on this device). Never pushed to your repo, and never synced.
 Your local coding model can read these so it does not have to ask you to paste a
 credential again. A cloud model never receives them, and while this is on the
 session stays fully on-device: web tools and cloud escalation are turned off for it.

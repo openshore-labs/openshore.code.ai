@@ -128,7 +128,7 @@ export const REFUSALS: Record<Exclude<EthicsCategory, 'permitted'>, string> = {
   'weapons-uplift':
     'I will not help with making or deploying weapons meant to cause mass casualties.',
   likeness:
-    "Recreating a real person's face or voice needs your authorization for that specific person first. Say who the subject is and that you are authorized, or that it is you.",
+    'Making an image of a real person needs your authorization for that specific person first. Say who the subject is and that you are authorized, or that it is you.',
   'check-failed':
     'The safety checks could not finish, so nothing was sent to the model. Try that again.',
 };
@@ -262,6 +262,8 @@ function checkWeapons(hits: SignalHit[]): RuleVerdict | undefined {
  * Tier 2: synthesizing the face or voice of a real, identifiable person.
  *
  * This fires on MEDIA synthesis only: making an image, a video, or a voice.
+ * Only the image path can be authorized today: video or voice of a real
+ * person is refused by the chokepoint until it can carry provenance too.
  * Writing satire, parody, criticism, or an impression in TEXT is Tier 3 and
  * never reaches here, which is what keeps political parody out of the consent
  * gate. Generic and invented characters are Tier 3. A person's own face or
@@ -295,6 +297,23 @@ function checkLikeness(hits: SignalHit[], text: string): RuleVerdict | undefined
     reason: 'synthesis of the face or voice of a real, identifiable person',
     subject: extractSubject(text, hits),
   };
+}
+
+/** The refusal for video or voice of a real person. Only engine-generated
+ *  PNG images can carry a provenance record today, so moving or spoken media
+ *  of a real person is refused, consent or not, until it can be marked the
+ *  same way (advisory org ruling, 2026-09-24). */
+export const LIKENESS_VIDEO_VOICE_REFUSAL =
+  'Video or voice of a real person is refused until it can be marked as AI-generated the way images are. An image of that person, with your authorization, is allowed.';
+
+// Moving or spoken media. Narrow on purpose: "a picture of X giving a speech"
+// or "clip art of X" is an image and stays in the image path.
+const VIDEO_OR_VOICE =
+  /\b(?:videos?|video clip|audio clip|film|movie|footage|animation|animated|gif|deep ?fakes?|face ?swap|faceswap|lip ?sync(?:ed|ing)?|voices?|audio|text[- ]to[- ]speech|tts|speech model|sounds? (?:just )?like|speaking in the voice)\b/i;
+
+/** Does this likeness request ask for video or voice rather than an image? */
+export function likenessIsVideoOrVoice(text: string): boolean {
+  return VIDEO_OR_VOICE.test(text);
 }
 
 /** Run every rule. First block wins; a consent gate outranks a candidate. */

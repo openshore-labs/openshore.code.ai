@@ -154,7 +154,9 @@ export const PermissionsSchema = z.object({
   defaults: z
     .object({
       read: z.enum(['allow', 'ask', 'deny']).default('allow'),
-      network: z.enum(['allow', 'ask', 'deny']).default('allow'),
+      // Web search and fetch ask first, once per session (advisory org,
+      // 2026-09-24). askAgent and askHermes are network tools and share it.
+      network: z.enum(['allow', 'ask', 'deny']).default('ask'),
       write: z.enum(['allow', 'ask', 'deny']).default('ask'),
       shell: z.enum(['allow', 'ask', 'deny']).default('ask'),
       push: z.enum(['allow', 'ask', 'deny']).default('ask'),

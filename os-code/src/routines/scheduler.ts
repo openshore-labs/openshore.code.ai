@@ -115,6 +115,9 @@ export function routineInstructions(routine: Routine): string {
     routine.access === 'read-only'
       ? 'This routine is read-only: you can read files, search, and inspect the repository, but you cannot change anything. Do not try.'
       : 'This routine may edit files inside this workspace. Any shell command will ask for approval; if nobody answers within a few minutes the step is declined and you should carry on without it, or stop and say what is blocked.',
+    routine.webSearch === true
+      ? 'This routine may search and read the web.'
+      : 'This routine does not use the web: web search and page fetches are turned off for it. Work from the workspace.',
     `You have about ${routine.maxMinutes} minutes. Work efficiently. When you finish, end with a short plain-language report the person will read first thing: what you found or did, anything risky, and a checklist of what needs them. Lead with the one thing that matters most. Never use em dashes.`,
   ].join('\n');
 }
@@ -718,6 +721,9 @@ export function defaultOpenSession(
     projectName: routine.projectName,
     permissionMode,
     caps: routineCaps(routine),
+    // Declared on the setup card, so an unattended run never blocks on the
+    // web-search question: yes pre-approves network, no denies it outright.
+    unattendedWeb: routine.webSearch === true,
   });
   if (orchestratorKind === 'cloud' && !profile.allowCloudAutoApprove) {
     try {

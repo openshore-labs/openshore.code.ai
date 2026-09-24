@@ -6836,11 +6836,14 @@ a.linklike {
 }
 .model-tile.on-device {
   background: linear-gradient(150deg, var(--wave), var(--local-deep));
+  /* White on the lighter dark-mode teal fails AA; the accent ink passes. */
+  color: var(--on-accent);
 }
 /* A cloud-hosted model wears the amber spend family, never teal: teal is
    reserved for local and private, and a hosted model is billed spend. */
 .model-tile.cloud {
   background: linear-gradient(150deg, var(--cloud-bright), var(--cloud));
+  color: var(--on-accent);
 }
 
 /* ---- Frontier, on your key: cloud-hosted models in the store ---- */
@@ -7843,6 +7846,9 @@ a.linklike {
 .todo-row.completed .todo-mark {
   background: var(--ok);
   border-color: var(--ok);
+  /* The check on the green fill: white in light, the dark ground in dark,
+     where white on the lighter green fails AA. */
+  color: var(--on-accent);
 }
 .todo-row.in_progress .todo-mark {
   border-color: var(--local);
@@ -10867,4 +10873,16 @@ button.settings-row:active {
 }
 .settings-row-switch {
   display: inline-flex;
+}
+/* A routine setup field that is one switch: the label and the switch on one
+   line (the web declaration). */
+.cc-field-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cc-field-switch-label {
+  font-size: 13px;
+  color: var(--muted);
 }

@@ -15,6 +15,7 @@ import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SwipeRow } from '../components/SwipeRow.js';
 import { Markdown } from '../components/Markdown.js';
+import { Switch } from '../components/Switch.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
 import { daemonWorkspaces } from '../drivers/remoteDriver.js';
@@ -36,6 +37,9 @@ import {
   runWhen,
   scheduleLabel,
   workspaceName,
+  ROUTINE_WEB_LABEL,
+  routineWebHint,
+  webLabel,
   type PresenceTone,
   type RoutineInput,
   type RoutineRun,
@@ -67,6 +71,8 @@ interface Draft {
   days: number[];
   access: 'read-only' | 'edit';
   maxMinutes: number;
+  /** "This routine may search the web", declared at setup. */
+  webSearch: boolean;
   enabled: boolean;
 }
 
@@ -254,6 +260,7 @@ export function CrewCommandScreen() {
       days: [...PRESET.schedule.days],
       access: PRESET.access,
       maxMinutes: PRESET.maxMinutes,
+      webSearch: PRESET.webSearch,
       enabled: true,
     });
   };
@@ -269,6 +276,7 @@ export function CrewCommandScreen() {
       days: [1, 2, 3, 4, 5],
       access: 'read-only',
       maxMinutes: ROUTINE_LIMITS.defaultMinutes,
+      webSearch: false,
       enabled: true,
     });
   };
@@ -286,6 +294,7 @@ export function CrewCommandScreen() {
       days: [...r.schedule.days],
       access: r.access,
       maxMinutes: r.maxMinutes,
+      webSearch: r.webSearch === true,
       enabled: r.enabled,
     });
   };
@@ -335,6 +344,7 @@ export function CrewCommandScreen() {
         schedule: { hour: draft.hour, minute: draft.minute, days: [...draft.days].sort() },
         access: draft.access,
         maxMinutes: draft.maxMinutes,
+        webSearch: draft.webSearch,
         enabled: draft.enabled,
       };
       if (draft.id) {
@@ -658,6 +668,7 @@ export function CrewCommandScreen() {
                   </div>
                   <div className="cc-routine-meta">
                     {r.agentName} · {scheduleLabel(r.schedule)} · {accessLabel(r.access)} ·{' '}
+                    {webLabel(r) ? `${webLabel(r)} · ` : ''}
                     {workspaceName(r.cwd)}
                   </div>
                   {r.lastRun?.summary ? (
@@ -972,6 +983,20 @@ export function CrewCommandScreen() {
                 {draft.access === 'read-only'
                   ? 'Reads, searches, and reports. It can never change a file, so it never needs an approval.'
                   : 'Edits inside the workspace flow. A shell command waits for your approval; if nobody answers within 15 minutes it is declined.'}
+              </p>
+            </div>
+
+            <div className="field">
+              <div className="cc-field-switch">
+                <span className="cc-field-switch-label">{ROUTINE_WEB_LABEL}</span>
+                <Switch
+                  checked={draft.webSearch}
+                  label={ROUTINE_WEB_LABEL}
+                  onChange={(next) => setDraft({ ...draft, webSearch: next })}
+                />
+              </div>
+              <p className="hint" style={{ marginTop: 6 }}>
+                {routineWebHint(draft.webSearch)}
               </p>
             </div>
 

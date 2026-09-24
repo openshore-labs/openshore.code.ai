@@ -202,3 +202,24 @@ export function formatSearchResults(query: string, results: WebSearchResult[]): 
   const lines = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`.trim());
   return `Search results for "${query}":\n${lines.join('\n')}\n\nAnswer the user's question using these. Cite a source URL when you rely on one.`;
 }
+
+/** The service a query goes to, by name, for the ask-first card: the person
+ *  sees exactly who receives the query before it leaves the phone. */
+export function searchServiceLabel(backend: SearchBackend | undefined): string {
+  switch (backend) {
+    case 'brave':
+      return 'Brave Search';
+    case 'tavily':
+      return 'Tavily';
+    case 'perplexity':
+      return 'Perplexity';
+    case 'duckduckgo':
+    default:
+      return 'DuckDuckGo';
+  }
+}
+
+/** What the model is told when the person taps Not now on the search card, so
+ *  it answers without the web and says so, instead of asking again. */
+export const SEARCH_DECLINED_NOTE =
+  'The person chose not to search the web for this, so no search happened and nothing left the phone. Answer from what you already know, say plainly that you did not search, and do not ask to search again for this message.';

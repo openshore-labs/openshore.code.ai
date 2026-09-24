@@ -171,8 +171,9 @@ export function ProjectMemoryScreen() {
         <div className="screen-inner">
           <h1 className="vault-title">{SECRETS_NOTE_TITLE}</h1>
           <p className="hint" style={{ marginTop: 2 }}>
-            Private to this device. Encrypted at rest. Never pushed to your repo, never synced. A
-            local model can use these; a cloud model never receives them.
+            Private to this device, sealed with its data key (Settings, Privacy says where that key
+            lives here). Never pushed to your repo, never synced. A local model can use these; a
+            cloud model never receives them.
           </p>
           <div className="vault-editor-wrap">
             <textarea

@@ -369,20 +369,22 @@ function buildCrew(
 /** The privacy seal facts, every one computed, none asserted. Telemetry is off
  *  by construction. Data-left-device reflects real cloud calls rather than a
  *  fake zero. Encryption-at-rest is graded from the actual disk scan and from
- *  the backend that holds the key: green means a system keychain holds the key
+ *  the backend that holds the key: green means a system keyring holds the key
  *  AND no plaintext line or title remains anywhere on disk; anything less says
- *  exactly what is less about it. */
+ *  exactly what is less about it. The wording is per platform (advisory org,
+ *  2026-09-24): never a blanket "encrypted at rest", always where the key is. */
 function buildSeal(
   cloudTurns: number,
   atRest: { plainLines: number; sealedLines: number; plainTitles: number },
   keyProtection: 'keychain' | 'encrypted-file' | undefined,
+  os: string = process.platform,
 ): StackHealthSealFact[] {
   let encrypted: StackHealthSealFact;
   if (!keyProtection) {
     encrypted = {
       key: 'encryptedAtRest',
       state: 'pending',
-      label: 'Sessions are not yet encrypted at rest.',
+      label: 'Sessions on this computer are not sealed yet.',
     };
   } else if (atRest.plainLines > 0) {
     encrypted = {
@@ -397,16 +399,24 @@ function buildSeal(
       label: `Encrypting your sessions. ${atRest.plainTitles} older ${atRest.plainTitles === 1 ? 'title is' : 'titles are'} not yet sealed.`,
     };
   } else if (keyProtection === 'encrypted-file') {
+    // No system keyring holds the key: the engine keeps it in a file sealed
+    // with a key derived from this machine, which stops a copied file, not
+    // someone who can use this computer. Said plainly, per platform. The
+    // "would hold the key more safely" phrase is the Settings How link's hook,
+    // and its steps are for Linux, so only Linux carries it.
     encrypted = {
       key: 'encryptedAtRest',
       state: 'note',
-      label: 'Sessions are encrypted at rest. A system keychain would hold the key more safely.',
+      label:
+        os === 'linux'
+          ? 'Sessions are sealed on this computer, but no system keyring was found, so the key is kept in a file here. A system keyring would hold the key more safely.'
+          : 'Sessions are sealed on this computer, but the key is kept in a file here, not in the system keychain.',
     };
   } else {
     encrypted = {
       key: 'encryptedAtRest',
       state: 'good',
-      label: 'Sessions are encrypted at rest. The key lives in your system keychain.',
+      label: 'Sessions are sealed on this computer, key in your system keyring.',
     };
   }
   return [

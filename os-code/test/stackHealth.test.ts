@@ -348,4 +348,30 @@ describe('the seal says only what is true', () => {
     expect(some.state).toBe('note');
     expect(some.label).toMatch(/^2 cloud turns sent to your provider/);
   });
+
+  // "Encrypted at rest" replaced by per-platform wording (advisory org,
+  // 2026-09-24): the seal says where the key is, and says plainly when no
+  // system keyring holds it.
+  it('says where the key lives, per platform, never a blanket "encrypted at rest"', () => {
+    const at = (p: 'keychain' | 'encrypted-file' | undefined, os: string) =>
+      buildSeal(0, clean, p, os).find((f) => f.key === 'encryptedAtRest')!;
+    expect(at('keychain', 'linux')).toMatchObject({
+      state: 'good',
+      label: 'Sessions are sealed on this computer, key in your system keyring.',
+    });
+    const linuxFile = at('encrypted-file', 'linux');
+    expect(linuxFile.state).toBe('note');
+    expect(linuxFile.label).toContain('no system keyring was found');
+    // The Settings How link hooks on this phrase; its steps are for Linux.
+    expect(linuxFile.label).toContain('would hold the key more safely');
+    const macFile = at('encrypted-file', 'darwin');
+    expect(macFile.state).toBe('note');
+    expect(macFile.label).toContain('not in the system keychain');
+    expect(macFile.label).not.toContain('would hold the key more safely');
+    for (const os of ['linux', 'darwin', 'win32']) {
+      for (const p of ['keychain', 'encrypted-file', undefined] as const) {
+        expect(at(p, os).label).not.toMatch(/encrypted at rest/i);
+      }
+    }
+  });
 });

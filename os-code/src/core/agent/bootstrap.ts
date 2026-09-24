@@ -10,7 +10,11 @@ import { Router } from '../../router/router.js';
 import { buildToolContext, buildToolRegistry } from './registry.js';
 import { AgentSession } from './loop.js';
 import { seedHistoryFromEvents, unresolvedApprovalIds } from './seed.js';
-import { PermissionEngine, type PermissionConfig } from '../permissions/index.js';
+import {
+  PermissionEngine,
+  sessionNetworkDefault,
+  type PermissionConfig,
+} from '../permissions/index.js';
 import { Guardrails } from '../guardrails/index.js';
 import { profileFor, type SecurityProfileName } from '../security/profiles.js';
 import { UsageTracker } from '../../auth/usage.js';
@@ -60,6 +64,16 @@ export interface BootstrapOptions {
    *  session (the override only ever turns it off, never on over a project that
    *  opted out). See humanizerEnabled in humanizerStandard.ts. */
   humanize?: boolean;
+  /** The app's "Ask before searching the web" setting for this session.
+   *  Undefined or true leaves the project config in charge (web search and
+   *  fetch ask once per session by default); false relaxes a configured ask to
+   *  allow for this session only. It never overrides a configured deny. See
+   *  sessionNetworkDefault in core/permissions. */
+  askBeforeWeb?: boolean;
+  /** A routine's setup declaration, "This routine may search the web". Set
+   *  only by an unattended host: an unattended run never blocks on a question,
+   *  so true pre-approves network for this session and false denies it. */
+  unattendedWeb?: boolean;
   /** The person's Codemagic token, so the codemagic tool can drive App Launch
    *  builds. Delivered ONLY by the local, on-device engine and only when the
    *  person turned Codemagic Access on; the daemon path never forwards it, so
@@ -119,6 +133,24 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // source. A fresh config object, never mutating a caller's (tests pass one in).
   if (!humanizerEnabled(config.humanizer?.standard, options.humanize)) {
     config = { ...config, humanizer: { ...config.humanizer, standard: 'off' } };
+  }
+
+  // Web access: the app's "Ask before searching the web" switch and a
+  // routine's setup declaration resolve the session's network default here,
+  // the same way, so loop.ts keeps reading the permission config as its one
+  // source. A fresh config object, never mutating a caller's.
+  const network = sessionNetworkDefault(config.permissions.defaults.network, {
+    askBeforeWeb: options.askBeforeWeb,
+    unattendedWeb: options.unattendedWeb,
+  });
+  if (network !== config.permissions.defaults.network) {
+    config = {
+      ...config,
+      permissions: {
+        ...config.permissions,
+        defaults: { ...config.permissions.defaults, network },
+      },
+    };
   }
 
   // The ethics layer, wired before any provider exists. Every provider the

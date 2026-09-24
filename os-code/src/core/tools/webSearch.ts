@@ -3,7 +3,7 @@
 // show. Queries leave the machine; the egress policy governs every request.
 import { z } from 'zod';
 import type { Citation, ToolDef } from './index.js';
-import { searchProviderFor } from './search/index.js';
+import { searchProviderFor, searchServiceName } from './search/index.js';
 import { EgressBlocked } from '../security/egress.js';
 
 const schema = z.object({
@@ -23,6 +23,14 @@ export const webSearchTool: ToolDef<typeof schema> = {
     'Search the web and get ranked results (title, url, snippet). Use webFetch on a result to read the page.',
   schema,
   risk: 'network',
+  // The approval card shows the exact query and names the service it goes to.
+  async preview(args, ctx) {
+    const service = searchServiceName(ctx.config.search);
+    return {
+      summary: `Search the web for: ${args.query}`,
+      detail: `The query goes to ${service}. Allowing lets this session search and read the web without asking again.`,
+    };
+  },
   async execute(args, ctx) {
     const provider = searchProviderFor(ctx.config.search);
     const count = args.count ?? ctx.config.search.resultCount;

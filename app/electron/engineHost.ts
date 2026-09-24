@@ -223,6 +223,7 @@ export class EngineHost {
       projectName?: string;
       projectSecrets?: string;
       humanize?: boolean;
+      askBeforeWeb?: boolean;
       codemagicToken?: string;
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
       currents?: CurrentsHandles;
@@ -246,6 +247,7 @@ export class EngineHost {
       projectName: opts.projectName,
       projectSecrets: opts.projectSecrets,
       humanize: opts.humanize,
+      askBeforeWeb: opts.askBeforeWeb,
       codemagicToken: opts.codemagicToken,
       codemagicTarget: opts.codemagicTarget,
       currents,
@@ -761,6 +763,7 @@ export class EngineHost {
       enabled: existing.enabled,
       access: existing.access,
       maxMinutes: existing.maxMinutes,
+      webSearch: existing.webSearch === true,
       ...body,
     });
     if (!parsed.ok) return { error: parsed.error };

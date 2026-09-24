@@ -4,7 +4,10 @@
 // questions stack up the sheet counts them ("1 of 3") and offers to answer
 // them all; on an engine session a path-bearing tool can be allowed for the
 // whole project, the Claude Code "don't ask again". The keyboard answers too:
-// y approves, a allows for the session, n declines.
+// y approves, a allows for the session, n declines. Web access (a search or a
+// page fetch) is its own card: the exact query or URL, the service it goes to,
+// and one yes. On the engine that yes is "Allow for this session" (the first
+// yes covers the rest of the session); on the phone it is "Search", per query.
 import { useEffect, useRef } from 'react';
 import type { ApprovalRequest, PermissionMode } from 'os-code/protocol';
 import { hapticApproval } from '../lib/haptics.js';
@@ -34,6 +37,9 @@ export function ApprovalSheet({
   onOpenMode: () => void;
 }) {
   const isSpend = request.kind === 'cloud-spend';
+  const isWeb = !isSpend && request.risk === 'network';
+  // The engine grants web access once per session; the phone asks per query.
+  const webSession = isWeb && request.grant === 'session';
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => hapticApproval(), [request.id]);
   // Play the exit before the answer propagates, so the sheet never snap-closes.
@@ -60,7 +66,7 @@ export function ApprovalSheet({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if (e.key === 'y' || e.key === 'Y') answer(true);
+      if (e.key === 'y' || e.key === 'Y') answer(true, webSession || undefined);
       else if ((e.key === 'a' || e.key === 'A') && !isSpend) answer(true, true);
       else if (e.key === 'n' || e.key === 'N' || e.key === 'Escape') answer(false);
       else return;
@@ -69,7 +75,7 @@ export function ApprovalSheet({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.id, isSpend]);
+  }, [request.id, isSpend, webSession]);
 
   // A tool that names a file or a command can be allowed for the project. The
   // engine scopes the rule (the path's directory, the command's first word).
@@ -90,7 +96,7 @@ export function ApprovalSheet({
         <div key={request.id} className="approval-body">
           <div className="approval-head">
             <span className={`approval-badge ${isSpend ? 'spend' : 'tool'}`}>
-              {isSpend ? 'Cloud spend' : `Approve ${request.toolName}`}
+              {isSpend ? 'Cloud spend' : isWeb ? 'Web access' : `Approve ${request.toolName}`}
             </span>
             {total > 1 ? (
               <span className="approval-count">
@@ -106,37 +112,57 @@ export function ApprovalSheet({
               <p className="sheet-sub">{request.detail}</p>
             )
           ) : null}
-          <div className="sheet-actions">
-            <button
-              className={`btn press-fb ${isSpend ? 'cloud' : 'primary'}`}
-              onClick={() => answer(true)}
-            >
-              {isSpend ? 'Approve this spend' : 'Approve once'}
-              <kbd className="approval-key">y</kbd>
-            </button>
-            {/* Ordered by how often each is the right answer: once, then the
+          {isWeb ? (
+            <div className="sheet-actions">
+              <button
+                className="btn primary press-fb"
+                onClick={() => answer(true, webSession || undefined)}
+              >
+                {webSession
+                  ? 'Allow for this session'
+                  : request.toolName === 'webSearch'
+                    ? 'Search'
+                    : 'Allow'}
+                <kbd className="approval-key">y</kbd>
+              </button>
+              <button className="btn quiet approval-skip press-fb" onClick={() => answer(false)}>
+                Not now
+                <kbd className="approval-key">n</kbd>
+              </button>
+            </div>
+          ) : (
+            <div className="sheet-actions">
+              <button
+                className={`btn press-fb ${isSpend ? 'cloud' : 'primary'}`}
+                onClick={() => answer(true)}
+              >
+                {isSpend ? 'Approve this spend' : 'Approve once'}
+                <kbd className="approval-key">y</kbd>
+              </button>
+              {/* Ordered by how often each is the right answer: once, then the
               standing project rule, then the session-only allow. */}
-            {projectAllowable ? (
-              <button className="btn ghost press-fb" onClick={() => answer(true, true, true)}>
-                Always allow this in the project
+              {projectAllowable ? (
+                <button className="btn ghost press-fb" onClick={() => answer(true, true, true)}>
+                  Always allow this in the project
+                </button>
+              ) : null}
+              {!isSpend ? (
+                <button className="btn ghost press-fb" onClick={() => answer(true, true)}>
+                  Approve for this session
+                  <kbd className="approval-key">a</kbd>
+                </button>
+              ) : null}
+              {total > 1 ? (
+                <button className="btn ghost press-fb" onClick={() => answerAll(true)}>
+                  Approve all {total}
+                </button>
+              ) : null}
+              <button className="btn quiet approval-skip press-fb" onClick={() => answer(false)}>
+                No, skip it
+                <kbd className="approval-key">n</kbd>
               </button>
-            ) : null}
-            {!isSpend ? (
-              <button className="btn ghost press-fb" onClick={() => answer(true, true)}>
-                Approve for this session
-                <kbd className="approval-key">a</kbd>
-              </button>
-            ) : null}
-            {total > 1 ? (
-              <button className="btn ghost press-fb" onClick={() => answerAll(true)}>
-                Approve all {total}
-              </button>
-            ) : null}
-            <button className="btn quiet approval-skip press-fb" onClick={() => answer(false)}>
-              No, skip it
-              <kbd className="approval-key">n</kbd>
-            </button>
-          </div>
+            </div>
+          )}
           {agent ? (
             <button type="button" className="approval-mode press-fb" onClick={onOpenMode}>
               Mode: {permissionModeLabel(mode)}. Change

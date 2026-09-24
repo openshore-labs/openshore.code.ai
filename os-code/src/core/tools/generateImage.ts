@@ -23,7 +23,7 @@ const schema = z.object({
 export const generateImageTool: ToolDef<typeof schema> = {
   name: 'generateImage',
   description:
-    'Generate an image with the local image server (the image-gen specialist). Returns the saved file path. Generated images carry provenance metadata marking them as AI-generated.',
+    'Generate an image with the local image server (the image-gen specialist). Returns the saved file path. A PNG carries an unsigned provenance record marking it as AI-generated.',
   schema,
   risk: 'read', // local compute, no egress, no workspace writes
   async execute(args, ctx) {
@@ -45,7 +45,7 @@ export const generateImageTool: ToolDef<typeof schema> = {
       writeFileSync(file, Buffer.from(image.imageBase64, 'base64'));
       return {
         ok: true,
-        content: `Image generated and saved to ${file}. It carries provenance metadata marking it as AI-generated.`,
+        content: `Image generated and saved to ${file}. A PNG from the image server carries an unsigned provenance record marking it as AI-generated.`,
       };
     } catch (err) {
       // A refusal from the ethics layer is not a failure to report as a bug.

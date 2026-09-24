@@ -732,6 +732,8 @@ function sessionOpts(v: unknown) {
     projectName: optStr(o.projectName, 'projectName'),
     projectSecrets: optStr(o.projectSecrets, 'projectSecrets'),
     humanize: optBool(o.humanize, 'humanize'),
+    // "Ask before searching the web": false relaxes this session's ask only.
+    askBeforeWeb: optBool(o.askBeforeWeb, 'askBeforeWeb'),
     codemagicToken: optStr(o.codemagicToken, 'codemagicToken'),
     codemagicTarget,
     // The Agentic Current's handle: the shared parser drops anything malformed,
@@ -802,7 +804,9 @@ guarded('osc:terminalResize', (termId: unknown, cols: unknown, rows: unknown) =>
 );
 guarded('osc:terminalKill', (termId: unknown) => host.terminalKill(str(termId, 'termId')));
 
-guarded('osc:status', () => host.status());
+// The status carries where this computer's secret store keeps the key, so
+// Settings can say it per platform instead of a blanket "encrypted at rest".
+guarded('osc:status', async () => ({ ...(await host.status()), keyStore: keyStoreStatus() }));
 guarded('osc:catalog', () => host.catalog());
 guarded('osc:stackHealth', (range: unknown) =>
   host.stackHealth(optStr(range, 'range') as Parameters<typeof host.stackHealth>[0]),
@@ -1022,6 +1026,31 @@ guarded('osc:repoReadFile', (root: unknown, relPath: unknown): string | null => 
     return null;
   }
 });
+
+/** Where safeStorage keeps its key on this computer, read, never assumed. On
+ *  Linux the selected backend says whether a system keyring (libsecret or
+ *  KWallet) holds it or Chromium fell back to basic_text, which is not real
+ *  protection. On macOS and Windows the OS holds it (Keychain, DPAPI). */
+function keyStoreStatus(): { os: string; available: boolean; backend?: string } {
+  let available = false;
+  try {
+    available = safeStorage.isEncryptionAvailable();
+  } catch {
+    available = false;
+  }
+  let backend: string | undefined;
+  if (process.platform === 'linux') {
+    try {
+      backend =
+        typeof safeStorage.getSelectedStorageBackend === 'function'
+          ? safeStorage.getSelectedStorageBackend()
+          : 'unknown';
+    } catch {
+      backend = 'unknown';
+    }
+  }
+  return { os: process.platform, available, ...(backend ? { backend } : {}) };
+}
 
 // OS-encrypted secret store (used for the app's data-encryption key). secureHas
 // tells "no entry" from "an entry this launch cannot decrypt" (P0-3): secureGet

@@ -14,6 +14,11 @@ export interface ApprovalRequest {
   summary: string;
   /** Diff or detail block. */
   detail?: string;
+  /** How far a yes reaches. 'session' means the first yes covers every later
+   *  call of this risk for the rest of the session (web search and fetch ask
+   *  once per session, never per call), so the client offers one "Allow for
+   *  this session" instead of "Approve once". Absent means a per-call ask. */
+  grant?: 'session';
 }
 
 export interface ApprovalAnswer {

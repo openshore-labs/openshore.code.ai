@@ -14,6 +14,14 @@ export const webFetchTool: ToolDef<typeof schema> = {
   description: 'Fetch a web page and return its readable content as markdown.',
   schema,
   risk: 'network',
+  // The approval card shows the exact URL; the page is read from its own site.
+  async preview(args) {
+    return {
+      summary: `Read the web page: ${args.url}`,
+      detail:
+        'The request goes to that site directly. Allowing lets this session search and read the web without asking again.',
+    };
+  },
   async execute(args, ctx) {
     try {
       const page = await fetchReadable(args.url, ctx.egress, ctx.config.search.fetchMaxChars);

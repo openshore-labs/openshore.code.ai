@@ -30,6 +30,8 @@ import {
   blockedBy,
   classifyRules,
   consentCovers,
+  LIKENESS_VIDEO_VOICE_REFUSAL,
+  likenessIsVideoOrVoice,
   localIntentCheck,
   permitted,
   readAssertion,
@@ -147,6 +149,21 @@ export class EthicsGuard {
       }
 
       if (verdict.kind === 'consent-required') {
+        // Video or voice of a real person is refused, consent or not: only an
+        // engine-generated PNG image can carry a provenance record today, so
+        // nothing else of a real person is made until it can be marked too.
+        if (side === 'input' && likenessIsVideoOrVoice(text)) {
+          const decision: EthicsDecision = {
+            ...blockedBy(
+              'likeness',
+              'video or voice of a real person, refused until it can carry provenance',
+              hits,
+              verdict.subject,
+            ),
+            message: LIKENESS_VIDEO_VOICE_REFUSAL,
+          };
+          return this.withRecord(decision, request, side, 'blocked');
+        }
         // Tier 2. An assertion in this very message counts: asserting
         // authorization is one sentence in the chat, and it is recorded
         // against the account either way.
@@ -162,7 +179,8 @@ export class EthicsGuard {
             signals: signalNames(hits),
             subject,
             // The assertion is a deterrent and an accountability record, not
-            // proof. Anything this produces carries provenance metadata.
+            // proof. The image this allows must carry a provenance record, or
+            // it is not produced (guardedProvider.ts).
             requiresProvenance: true,
           };
           const result = this.withRecord(decision, request, side, 'allowed-with-assertion');

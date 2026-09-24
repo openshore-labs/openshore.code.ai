@@ -81,7 +81,10 @@ export interface PermissionConfig {
 export const DEFAULT_PERMISSIONS: PermissionConfig = {
   defaults: {
     read: 'allow',
-    network: 'allow', // web search and fetch, still governed by the egress policy
+    // Web search and fetch ask first, once per session (advisory org
+    // 2026-09-24): the first approval allows network for the rest of the
+    // session, never per call. Still governed by the egress policy.
+    network: 'ask',
     write: 'ask',
     shell: 'ask',
     push: 'ask',
@@ -90,6 +93,30 @@ export const DEFAULT_PERMISSIONS: PermissionConfig = {
   rules: [],
   trustedRepos: [],
 };
+
+/**
+ * The per-session network default, from the configured one and the two
+ * session-level inputs. One helper so the precedence cannot drift:
+ *
+ * - `askBeforeWeb` is the app's "Ask before searching the web" switch. It can
+ *   only relax the ask for its own session: false turns a configured `ask`
+ *   into `allow`; true (or undefined) leaves the config in charge. A configured
+ *   `deny` always holds, and a configured `allow` is never tightened by it.
+ * - `unattendedWeb` is a routine's setup declaration ("This routine may search
+ *   the web"). An unattended run must never block on a question, so any `ask`
+ *   resolves here: true allows, false denies. False also denies a configured
+ *   `allow`, because the routine said it does not use the web. A configured
+ *   `deny` holds either way.
+ */
+export function sessionNetworkDefault(
+  configured: Decision,
+  opts: { askBeforeWeb?: boolean; unattendedWeb?: boolean } = {},
+): Decision {
+  if (configured === 'deny') return 'deny';
+  if (opts.unattendedWeb !== undefined) return opts.unattendedWeb ? 'allow' : 'deny';
+  if (configured === 'ask' && opts.askBeforeWeb === false) return 'allow';
+  return configured;
+}
 
 export interface PermissionQuery {
   toolName: string;
@@ -116,6 +143,10 @@ export class PermissionEngine {
    *  before the config is reloaded). Evaluated after the config rules, so a
    *  configured deny still wins. */
   private sessionRules: PermissionRule[] = [];
+  /** Risk classes granted for the rest of this session. Only network is ever
+   *  granted this way: the first approved web search or fetch allows the rest
+   *  (one grant per session, never per call). */
+  private sessionRisks = new Set<ToolRisk>();
 
   constructor(
     private readonly config: PermissionConfig = DEFAULT_PERMISSIONS,
@@ -127,6 +158,25 @@ export class PermissionEngine {
     if (this.profile && !this.profile.allowSessionAutoApprove) return false;
     this.sessionAllows.add(toolName);
     return true;
+  }
+
+  /**
+   * Grant a whole risk class for the rest of this session. Network only: a web
+   * search or fetch asks once per session, and the first yes covers every later
+   * call. Unlike a per-tool grant this is not profile-gated, since the ruling is
+   * one grant per session on every surface and network is never shell, push, or
+   * spend. A configured deny (rule or default) still wins: the grant only turns
+   * the default's ask into an allow.
+   */
+  allowRiskForSession(risk: ToolRisk): boolean {
+    if (risk !== 'network') return false;
+    this.sessionRisks.add(risk);
+    return true;
+  }
+
+  /** Has this session's network ask already been answered yes? */
+  riskAllowedForSession(risk: ToolRisk): boolean {
+    return this.sessionRisks.has(risk);
   }
 
   /** Add a scoped rule for the rest of this session. Profile-gated the same
@@ -195,6 +245,9 @@ export class PermissionEngine {
     }
 
     const decision = this.config.defaults[q.risk];
+    if (decision === 'ask' && this.sessionRisks.has(q.risk)) {
+      return { decision: 'allow', reason: `${q.risk} allowed for this session` };
+    }
     // The configured default is no louder than a rule: a config that sets
     // shell (or push, or cloud spend) to allow cannot make it silent on the
     // phone or headless profile. A routine running at 3am asks, or is denied
