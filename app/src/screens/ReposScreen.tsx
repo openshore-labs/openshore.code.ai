@@ -11,6 +11,7 @@ import { homeRepoReady, REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from
 import { isRepoOAuthConfigured, repoOAuthCallbackUrl } from '../lib/gitos/repoOAuth.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
+import { PlainError, plainError } from '../lib/plainError.js';
 
 // The phone-to-home commit-offload pipeline (home repo + buffered deploys) is
 // built and tested end to end on the desktop engine. The homePath picker now
@@ -90,14 +91,14 @@ export function ReposScreen() {
       } else if (settings.daemon) {
         result = await daemonCloneRepo(settings.daemon, cleaned);
       } else {
-        throw new Error('Connect your desktop first; repos live there.');
+        throw new PlainError('Connect your desktop first; repos live there.');
       }
       showToast(`${result.name} is ready.`);
       setUrl('');
       await refresh();
       await openRepo(result.cwd, result.name);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err));
+      showToast(plainError(err));
     } finally {
       setCloning(false);
     }

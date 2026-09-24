@@ -216,7 +216,7 @@ function Rings({ health, animate }: { health: StackHealth; animate: boolean }) {
               strokeDasharray={c}
               strokeDashoffset={c * (1 - shown)}
               className="sh-ring-fill"
-              style={{ transitionDelay: `${i * 90}ms` }}
+              style={{ '--i': i } as CSSProperties}
             />
           </g>
         );
@@ -414,7 +414,16 @@ export function StackHealthScreen() {
 
         {state === 'loading' ? <p className="hint">Reading your sessions...</p> : null}
         {state === 'error' ? (
-          <p className="hint">Could not read Stack Health right now. Try again in a moment.</p>
+          <div className="card" style={{ marginTop: 12 }}>
+            <p className="sub">Could not read Stack Health right now.</p>
+            <button
+              className="btn ghost press-fb"
+              style={{ marginTop: 10 }}
+              onClick={() => void load()}
+            >
+              Try again
+            </button>
+          </div>
         ) : null}
         {state === 'none' ? (
           <div className="card" style={{ marginTop: 12 }}>
@@ -433,8 +442,15 @@ export function StackHealthScreen() {
             <p className="sub" style={{ marginTop: 6 }}>
               Stack Health is folded on the machine that runs your models. It looks asleep or off
               your network right now. Wake it, or check you are both on the same Tailscale network,
-              then open this again.
+              then try again.
             </p>
+            <button
+              className="btn ghost press-fb"
+              style={{ marginTop: 10 }}
+              onClick={() => void load()}
+            >
+              Try again
+            </button>
           </div>
         ) : null}
         {state === 'restricted' ? (

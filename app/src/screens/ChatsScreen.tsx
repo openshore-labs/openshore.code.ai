@@ -15,6 +15,7 @@ import { SwipeRow } from '../components/SwipeRow.js';
 import { Sheet } from '../components/Sheet.js';
 import { daemonListSessions } from '../drivers/remoteDriver.js';
 import { hapticTick } from '../lib/haptics.js';
+import { plainError } from '../lib/plainError.js';
 
 /** "just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". */
 export function relativeTime(iso: string, now = Date.now()): string {
@@ -248,8 +249,7 @@ export function ChatsScreen() {
                     className="chat-row press-fb press-fb--row"
                     onClick={() => {
                       void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title }).catch(
-                        (err: unknown) =>
-                          showToast(err instanceof Error ? err.message : String(err)),
+                        (err: unknown) => showToast(plainError(err)),
                       );
                     }}
                   >
@@ -307,6 +307,11 @@ export function ChatsScreen() {
                   ? `Start a chat and it stays with ${activeProject.name}.`
                   : 'Create a project to start saving your chats.'}
               </p>
+            ) : null}
+            {!q ? (
+              <button type="button" className="btn ghost press-fb" onClick={() => startNewChat()}>
+                Start a chat
+              </button>
             ) : null}
           </div>
         ) : null}

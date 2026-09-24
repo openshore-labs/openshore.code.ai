@@ -14,7 +14,8 @@ import { SettingsGroup, SettingsRow } from './SettingsRow.js';
 import { Switch } from './Switch.js';
 import { CurrentConnectSheet } from './CurrentConnectSheet.js';
 import { HarnessCurrentConnectSheet } from './HarnessCurrentConnectSheet.js';
-import { hapticApproval } from '../lib/haptics.js';
+import { ForgetCurrentConfirm } from './ForgetCurrentConfirm.js';
+import { hapticCommit } from '../lib/haptics.js';
 import {
   AGENTIC_CURRENTS,
   AGENTIC_CURRENTS_BETA_LINE,
@@ -61,7 +62,7 @@ function AgenticRow({
     const at = rect
       ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
       : { x: window.innerWidth - 40, y: window.innerHeight / 2 };
-    if (next) hapticApproval();
+    if (next) hapticCommit();
     void setAgenticCurrent(projectId, id, next, at);
     if (next && !currentConfigured(id, view)) onOpen();
   };
@@ -115,7 +116,7 @@ function HarnessRow({
     const at = rect
       ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
       : { x: window.innerWidth - 40, y: window.innerHeight / 2 };
-    if (next) hapticApproval();
+    if (next) hapticCommit();
     void setHarnessCurrent(projectId, id, next, at);
     if (next && !harnessCurrentConfigured(id, view)) onOpen();
   };
@@ -146,6 +147,14 @@ function HarnessRow({
 export function ProjectCurrents({ projectId, index }: { projectId: string; index: number }) {
   const [agenticSheet, setAgenticSheet] = useState<AgenticCurrentId | undefined>();
   const [harnessSheet, setHarnessSheet] = useState<HarnessCurrentId | undefined>();
+  const disconnectCurrent = useApp((s) => s.disconnectCurrent);
+  const disconnectHarnessCurrent = useApp((s) => s.disconnectHarnessCurrent);
+  // The connection waiting on a forget confirm (its roster label rides along).
+  const [forgetting, setForgetting] = useState<
+    | { group: 'agentic'; id: AgenticCurrentId; label: string }
+    | { group: 'harness'; id: HarnessCurrentId; label: string }
+    | undefined
+  >();
   return (
     <>
       <SettingsGroup
@@ -180,8 +189,29 @@ export function ProjectCurrents({ projectId, index }: { projectId: string; index
         ))}
       </SettingsGroup>
 
-      <CurrentConnectSheet id={agenticSheet} onClose={() => setAgenticSheet(undefined)} />
-      <HarnessCurrentConnectSheet id={harnessSheet} onClose={() => setHarnessSheet(undefined)} />
+      <CurrentConnectSheet
+        id={agenticSheet}
+        onClose={() => setAgenticSheet(undefined)}
+        onForget={(id, label) => setForgetting({ group: 'agentic', id, label })}
+      />
+      <HarnessCurrentConnectSheet
+        id={harnessSheet}
+        onClose={() => setHarnessSheet(undefined)}
+        onForget={(id, label) => setForgetting({ group: 'harness', id, label })}
+      />
+      {/* A forget reaches every project, so it asks first. The connect sheet
+          leaves as the confirm card arrives. */}
+      <ForgetCurrentConfirm
+        label={forgetting?.label}
+        onKeep={() => setForgetting(undefined)}
+        onForget={() => {
+          const f = forgetting;
+          setForgetting(undefined);
+          if (!f) return;
+          if (f.group === 'agentic') void disconnectCurrent(f.id);
+          else void disconnectHarnessCurrent(f.id);
+        }}
+      />
     </>
   );
 }

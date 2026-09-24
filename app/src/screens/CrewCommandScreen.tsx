@@ -43,7 +43,7 @@ import {
 } from '../lib/routines.js';
 import { ROUTINE_LIMITS } from 'os-code/protocol';
 import { activeContribution, currentSecretKey, slotNone } from '../lib/currents.js';
-import { hermesJobs, type HermesJob } from '../lib/currentsProbe.js';
+import { hermesJobsRead, type HermesJob } from '../lib/currentsProbe.js';
 import { secretGet } from '../lib/platform.js';
 
 /** How often the room re-asks the computer while it is open. */
@@ -217,7 +217,9 @@ export function CrewCommandScreen() {
   // did not answer or has none.
   const current = activeContribution(agenticView(settings));
   const currentEndpoint = current ? settings.currentConnections?.[current.id]?.endpoint : undefined;
-  const [currentJobs, setCurrentJobs] = useState<HermesJob[] | undefined>();
+  // null: the box did not answer (its own state, with Try again).
+  const [currentJobs, setCurrentJobs] = useState<HermesJob[] | null | undefined>();
+  const [jobsAsk, setJobsAsk] = useState(0);
   useEffect(() => {
     if (!current || slotNone(current.crew) || !current.crew.jobsFrom || !currentEndpoint) {
       setCurrentJobs(undefined);
@@ -225,17 +227,19 @@ export function CrewCommandScreen() {
     }
     let live = true;
     const id = current.id;
+    setCurrentJobs(undefined);
     void (async () => {
       const key = (await secretGet(currentSecretKey(id))) ?? undefined;
-      const jobs = await hermesJobs(currentEndpoint, key);
+      const jobs = await hermesJobsRead(currentEndpoint, key);
       if (live) setCurrentJobs(jobs);
     })();
     return () => {
       live = false;
     };
-    // Re-read when the current or its address changes, not on every render.
+    // Re-read when the current or its address changes (or on Try again), not
+    // on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, currentEndpoint]);
+  }, [current?.id, currentEndpoint, jobsAsk]);
 
   const recentRuns = useMemo(() => runs.slice(0, 20), [runs]);
   const routineById = (id: string) => routines.find((r) => r.id === id);
@@ -579,10 +583,19 @@ export function CrewCommandScreen() {
             </div>
             {currentJobs === undefined ? (
               <p className="hint">Reading its schedule.</p>
+            ) : currentJobs === null ? (
+              <div>
+                <p className="hint">
+                  Your computer did not answer, so its schedule could not be read.
+                </p>
+                <button className="btn ghost press-fb" onClick={() => setJobsAsk((n) => n + 1)}>
+                  Try again
+                </button>
+              </div>
             ) : currentJobs.length === 0 ? (
               <p className="hint">
-                No scheduled jobs reported, or the box did not answer. Jobs are set up on the box
-                itself; they show here once it answers.
+                Nothing scheduled there yet. Jobs are set up on {current.label} itself; they show
+                here once it has some.
               </p>
             ) : (
               <div className="cc-roster">
@@ -1042,13 +1055,16 @@ export function CrewCommandScreen() {
       >
         {confirmDelete ? (
           <>
-            <h2>Delete {confirmDelete.name}?</h2>
-            <p className="sheet-sub">
+            <h3>Delete {confirmDelete.name}?</h3>
+            <p>
               Its results stay in your vault. A run in flight is stopped. This cannot be undone.
             </p>
-            <div className="sheet-actions">
+            <div className="confirm-row">
+              <button className="btn ghost" onClick={() => setConfirmDelete(undefined)}>
+                Keep
+              </button>
               <button
-                className="btn primary"
+                className="btn danger"
                 onClick={async () => {
                   const r = confirmDelete;
                   setConfirmDelete(undefined);
@@ -1057,9 +1073,6 @@ export function CrewCommandScreen() {
                 }}
               >
                 Delete
-              </button>
-              <button className="btn quiet" onClick={() => setConfirmDelete(undefined)}>
-                Keep
               </button>
             </div>
           </>

@@ -21,7 +21,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react';
-import { sourceLabel, type ConversationSource } from '../state/types.js';
+import { sourceLabel, sourceShortLabel, type ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -37,6 +37,7 @@ import {
   type Attachment,
 } from '../lib/attachments.js';
 import { buildVideoAttachment } from '../lib/videoAttach.js';
+import type { ComposerRestore } from '../lib/heldMessage.js';
 import { pickVideoBackend } from '../lib/videoBackends.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
@@ -135,26 +136,6 @@ export const SLASH_COMMANDS: Array<{
   { name: 'init', hint: 'Write an OSCODE.md for this repo', agentOnly: true },
   { name: 'rename', hint: 'Name this chat', arg: 'name' },
 ];
-
-/** The brain's short name for the pill: the row is narrow and the full label
- *  lives in the model sheet. */
-function shortLabel(source?: ConversationSource): string {
-  if (!source) return 'Stack';
-  switch (source.kind) {
-    case 'cloud':
-      return 'Claude';
-    case 'desktop':
-      return source.repoName ?? 'Desktop';
-    case 'desktop-chat':
-      return 'Desktop chat';
-    case 'device':
-      return sourceLabel(source).split(' · ')[0] ?? 'On device';
-    case 'stack':
-      return 'Stack';
-    case 'mock':
-      return 'Demo';
-  }
-}
 
 /** A paste long enough to fold into a chip rather than fill the field. */
 const PASTE_FOLD_CHARS = 1500;
@@ -257,6 +238,7 @@ export function Composer({
   placeholder,
   autoFocus,
   focusSignal,
+  restore,
   agent,
   history,
   onSend,
@@ -279,6 +261,10 @@ export function Composer({
   autoFocus?: boolean;
   /** Bump to pull focus into the field (a "Change something" on a plan). */
   focusSignal?: number;
+  /** A held message handed back to the field (a first send whose model
+   *  chooser was dismissed). A new `seq` puts the text and attachments back and
+   *  pulls focus, so nothing the person typed is lost. */
+  restore?: ComposerRestore;
   /** An engine session is open: @ files, /compact, /init are live. */
   agent?: boolean;
   /** Earlier messages in this chat, oldest first, for Up-arrow recall. */
@@ -397,6 +383,14 @@ export function Composer({
   useEffect(() => {
     if (focusSignal) areaRef.current?.focus();
   }, [focusSignal]);
+  useEffect(() => {
+    if (!restore) return;
+    setValue(restore.text);
+    setAttachments(restore.attachments ?? []);
+    areaRef.current?.focus();
+    // Only a new seq restores; the payload rides along with it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restore?.seq]);
 
   // Voice-to-text. On start we remember the text already typed and append the
   // live transcript after it, so dictation adds to the field instead of wiping
@@ -615,7 +609,7 @@ export function Composer({
     dictation.toggle();
   };
 
-  const modelLabel = shortLabel(source);
+  const modelLabel = sourceShortLabel(source);
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

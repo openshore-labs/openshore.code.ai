@@ -143,10 +143,21 @@ export async function hermesJobs(
   apiKey: string | undefined,
   fetchFn: Fetch = fetch,
 ): Promise<HermesJob[]> {
+  return (await hermesJobsRead(baseUrl, apiKey, fetchFn)) ?? [];
+}
+
+/** The same read, honest about silence: null when the box did not answer (a
+ *  network failure or an error status), so a room can tell "nothing
+ *  scheduled" apart from "your computer did not answer". */
+export async function hermesJobsRead(
+  baseUrl: string,
+  apiKey: string | undefined,
+  fetchFn: Fetch = fetch,
+): Promise<HermesJob[] | null> {
   const root = baseUrl.replace(/\/v1\/?$/, '');
   try {
     const res = await fetchFn(`${root}/api/jobs`, withTimeout({ headers: authHeaders(apiKey) }));
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     const data = (await res.json()) as unknown;
     const list = Array.isArray(data)
       ? data
@@ -171,7 +182,7 @@ export async function hermesJobs(
       ];
     });
   } catch {
-    return [];
+    return null;
   }
 }
 

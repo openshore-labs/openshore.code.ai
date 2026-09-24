@@ -66,9 +66,12 @@ export function VaultScreen() {
   // while reading or unreachable; an answered listing may be empty.
   const current = activeContribution(agenticView(settings));
   const currentVault = current && !slotNone(current.vault) ? current.vault : undefined;
+  // 'silent': a computer is paired but did not answer (its own state, with Try
+  // again), kept apart from an answered, empty listing.
   const [currentNotes, setCurrentNotes] = useState<
-    { home: string; notes: HermesNoteMeta[] } | undefined
+    { home: string; notes: HermesNoteMeta[] } | 'silent' | undefined
   >();
+  const [notesAsk, setNotesAsk] = useState(0);
   const [currentNote, setCurrentNote] = useState<HermesNote | undefined>();
   useEffect(() => {
     if (!currentVault) {
@@ -76,15 +79,18 @@ export function VaultScreen() {
       return;
     }
     let live = true;
+    setCurrentNotes(undefined);
+    const reachable = Boolean(settings.daemon) || isDesktop();
     void hermesNotesList(settings.daemon).then((r) => {
-      if (live) setCurrentNotes(r ?? { home: '', notes: [] });
+      if (!live) return;
+      setCurrentNotes(r ?? (reachable ? 'silent' : undefined));
     });
     return () => {
       live = false;
     };
-    // Re-read when the current changes or the hub does.
+    // Re-read when the current changes or the hub does (or on Try again).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, settings.daemon?.baseUrl]);
+  }, [current?.id, settings.daemon?.baseUrl, notesAsk]);
   const openCurrentNote = async (path: string) => {
     const note = await hermesNoteRead(settings.daemon, path);
     if (note) setCurrentNote(note);
@@ -516,7 +522,7 @@ export function VaultScreen() {
               />
               <div className="sheet-actions">
                 <button
-                  className={`btn quiet press-fb${confirmDelete ? ' danger' : ''}`}
+                  className={`btn press-fb ${confirmDelete ? 'danger' : 'quiet'}`}
                   onClick={() => {
                     // Two taps to delete: a single tap is too easy to hit by
                     // accident, and a local or iCloud delete is unrecoverable.
@@ -666,10 +672,19 @@ export function VaultScreen() {
                   ? 'Reading its home folder.'
                   : 'Pair the computer that runs it to read its memory here.'}
               </p>
+            ) : currentNotes === 'silent' ? (
+              <>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  Your computer did not answer, so its home folder could not be read.
+                </p>
+                <button className="btn ghost press-fb" onClick={() => setNotesAsk((n) => n + 1)}>
+                  Try again
+                </button>
+              </>
             ) : currentNotes.notes.length === 0 ? (
               <p className="hint" style={{ marginTop: 0 }}>
                 Nothing to read yet. Its home folder ({currentNotes.home}) has no memory or skills
-                on the paired computer, or you are not docked.
+                on the paired computer.
               </p>
             ) : (
               <div className="vault-tree">
