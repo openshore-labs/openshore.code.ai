@@ -49,7 +49,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'setup-page',
     title: 'Set up OpenShore',
     where: "The Set up OpenShore button under Harbor Lite's first message",
-    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Connect your own key. On the desktop: Set up your local stack, Open a repository, Connect your own key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message; say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
+    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Connect your own API key. On your computer: Set up your local stack, Open a repository, Connect your own API key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message; say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
     keywords: [
       'set up',
       'setup',
@@ -65,7 +65,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'walk-me-through',
     title: 'Walk me through it',
-    text: "Setup screens carry a Walk me through it (or Guide me) button that opens a chat with a step-by-step guide: the goal, a numbered plan, then one step at a time, with questions welcome between steps. It is on Cloud Connections, Desktop + phone on the phone, Repositories before you connect, Terminal, Crew command, App Launch, and each current's connect sheet.",
+    text: "Screens that set something up carry a Walk me through it (or Guide me) button that opens a chat with a step-by-step guide: the goal, a numbered plan, then one step at a time, with questions welcome between steps. It is on Cloud Connections, Desktop + phone on the phone, Repositories before you connect, Terminal, Crew command, Launch with Codemagic, and each current's connect sheet.",
     keywords: [
       'walk me through',
       'guide me',
@@ -79,8 +79,8 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'menu',
     title: 'The Menu',
-    where: 'Phone: the Menu button at top left, or swipe from the edge. Desktop: the sidebar',
-    text: 'Top: Chats, Projects, Terminal, Repositories, Your stack, Vault. Bottom: Admin (company admins), My Crew, Marketplace (Coming soon), Stack Health, App Launch with Codemagic, Cloud Connections, Desktop + phone, Settings. A Sign in row shows when you are signed out.',
+    where: 'Phone: the Menu button at top left, or swipe from the edge. Computer: the sidebar',
+    text: 'Top: Chats, Projects, Terminal, Repositories, Stack, Vault. Bottom: Admin (company admins), My Crew, Marketplace (Coming soon), Stack Health, Launch with Codemagic, Cloud Connections, Desktop + phone, Settings. A Sign in row shows when you are signed out.',
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
   },
 
@@ -123,8 +123,8 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'deepblue',
     title: 'DeepBlue',
     where:
-      'Desktop app: Menu, Settings, Harbor, DeepBlue, or the first-run card, or Your stack, Get DeepBlue',
-    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to the machine (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as My computer. How:\n${guideStepsCompact('get-harbor-master')}`,
+      'OpenShore on your computer: Menu, Settings, Harbor, DeepBlue, or the first-run card, or Stack, Get DeepBlue',
+    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as My computer. How:\n${guideStepsCompact('get-harbor-master')}`,
     keywords: [
       'deepblue',
       'deep blue',
@@ -142,7 +142,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'chat-home',
     title: 'Chat',
-    text: 'The main screen. The header shows the chat title (tap to rename), the repositories pill, spend so far, a context bar, and the connection pill. Type in the box and tap send.',
+    text: 'The main screen. The header shows the chat title (tap to rename), the repositories pill, spend so far, a context bar, and the connection pill. Type in the chat box and tap send.',
     keywords: ['chat', 'home', 'new chat', 'rename chat', 'context bar', 'main screen'],
   },
   {
@@ -155,7 +155,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'model-picker',
     title: 'Select model',
     where: 'Tap the model pill in the chat box, next to the +',
-    text: 'Picks who answers: My Stack, your pinned favorites, My computer (or Connect your computer), Cloud Providers, and Local LLMs, plus Effort. Swipe a model left or tap its star to pin it. This is where you switch to Harbor once it is downloaded.',
+    text: 'Picks who answers: Stack, your pinned favorites, My computer (or Connect your computer), Cloud models, and Local models, plus Effort. Swipe a model left or tap its star to pin it. This is where you switch to Harbor once it is downloaded.',
     keywords: [
       'switch model',
       'switch',
@@ -182,7 +182,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'modes',
     title: 'Modes',
     where: 'The mode pill in the chat box, or Shift+Tab',
-    text: 'Sets what the coding agent may do without asking. Default asks before every edit and command. Accept edits (the starting mode) lets file edits through but asks for commands. Plan is read-only and proposes a plan first. Bypass runs everything without asking, though cloud spend still asks. Plain chat models have no tools, so the mode does nothing there.',
+    text: 'Sets what the coding agent may do without asking. Ask first asks before every edit and command. Accept edits (the starting mode) lets file edits through but asks for commands. Plan is read-only and proposes a plan first. Bypass runs everything without asking, though cloud spend still asks. Plain chat models have no tools, so the mode does nothing there.',
     keywords: [
       'mode',
       'modes',
@@ -211,7 +211,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'attachments',
     title: 'Attach',
     where: 'The + at the left of the chat box',
-    text: 'Opens Camera, Photos, and Files (drag and drop on the desktop). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Your stack or connect a cloud model that can.',
+    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Stack or connect a cloud model that can.',
     keywords: [
       'attach',
       'photo',
@@ -228,7 +228,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'dictation',
     title: 'Dictate',
     where: 'The mic icon in the chat box',
-    text: 'Turns your speech into text in the box without sending it. Tap again to stop, then send.',
+    text: 'Turns your speech into text in the chat box without sending it. Tap again to stop, then send.',
     keywords: ['mic', 'microphone', 'dictate', 'dictation', 'speech to text', 'voice typing'],
   },
   {
@@ -250,7 +250,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'slash-commands',
     title: 'Slash commands',
-    text: 'Type / in the chat box: /help, /clear, /model, /cost, /mode, and /rename; agent chats add /compact (fold history to save room) and /init (write an OSCODE.md for the repo).',
+    text: 'Type / in the chat box: /help, /clear, /model, /cost, /mode, and /rename; agent chats add /compact (fold history to save room) and /init (write an OSCODE.md for the repository).',
     keywords: ['slash', 'commands', 'shortcut', 'compact', 'cost', 'init'],
   },
   {
@@ -289,8 +289,8 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   // ---------------------------------------------------------- the stack
   {
     id: 'stack',
-    title: 'Your stack',
-    where: 'Menu, Your stack',
+    title: 'Stack',
+    where: 'Menu, Stack',
     text: 'The models that answer for you. One is the Reasoning LLM: it plans each task and sends it to the specialist whose job fits, or does it itself. You can keep a separate stack for each connection status (Docked, Offshore, Offline); the one for your current status is used automatically. It exists so you can mix models you own, each doing what it does best.',
     keywords: [
       'stack',
@@ -306,7 +306,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'specialists',
     title: 'Specialists',
-    where: 'Menu, Your stack, Specialists',
+    where: 'Menu, Stack, Specialists',
     text: 'Models placed by job under the Reasoning LLM: Coding, Writing, Analysis, Image reading, Image creation, Retrieval, Fast, or Custom. Image reading has an on-device slot and a cloud slot. Add one from the Bench with Add to stack and pick its category.',
     keywords: [
       'specialist',
@@ -324,7 +324,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'bench',
     title: 'The Bench',
-    where: 'Menu, Your stack, Bench',
+    where: 'Menu, Stack, Bench',
     text: 'Models you download or connect wait on the Bench until you place them. Teal is local and private, amber is cloud. Tap Add to stack, choose a category, and optionally a trigger, a persona, and effort.',
     keywords: [
       'bench',
@@ -339,8 +339,8 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'byom',
     title: 'Bring your own model',
-    where: 'Menu, Your stack, the BYOM + pill',
-    text: 'Connects any OpenAI-compatible endpoint you control, like your own server or a fine-tune: a name, an endpoint URL ending in /v1, a model id, and an optional key. It lands on your Bench, and calls go straight from your device to it.',
+    where: 'Menu, Stack, the BYOM + pill',
+    text: 'Connects any OpenAI-compatible endpoint you control, like your own server or a fine-tune: a name, an address ending in /v1, a model id, and an optional API key. It lands on your Bench, and calls go straight from your device to it.',
     keywords: [
       'byom',
       'bring your own model',
@@ -354,11 +354,12 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'stack-desktop',
-    title: 'Your stack on the desktop',
-    where: 'Menu, Your stack, on the desktop app',
+    title: 'Stack on your computer',
+    where: 'Menu, Stack, in OpenShore on your computer',
     text: 'Shows the Reasoning LLM with a Change button and the specialist roles, chosen from models installed through Ollama. Start with a prefab stack fills it in one tap and shows the size and any graphics memory it needs; with no models, the picker offers Get DeepBlue.',
     keywords: [
       'desktop stack',
+      'computer stack',
       'prefab stack',
       'ollama models',
       'installed models',
@@ -368,14 +369,14 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'first-seat',
     title: 'First Seat',
-    text: 'On an empty chat when nothing can answer yet, one card sets you up: on the desktop, one tap installs DeepBlue sized to your computer. More ways to start offers Connect your computer and Connect a key.',
+    text: 'On an empty chat when nothing can answer yet, one card sets you up: on your computer, one tap installs DeepBlue sized to it. More ways to start offers Connect your computer, Connect an API key, and Open Stack.',
     keywords: ['first run', 'no model', 'first seat', 'nothing answers', 'one tap', 'empty chat'],
   },
   {
     id: 'marketplace',
     title: 'Marketplace',
     where: 'Menu, Marketplace (grayed, Coming soon)',
-    text: 'A catalog of more models rated against your hardware, downloaded straight from their source. It is marked Coming soon in the Menu; today you grow the stack with the three built-in models, a cloud key, or your own model (BYOM). A few in-app links still open it, such as Select model, Local LLMs.',
+    text: 'A catalog of more models rated against your hardware, downloaded straight from their source. It is marked Coming soon in the Menu; today you grow the stack with the three built-in models, a cloud model on your own API key, or your own model (BYOM), all from Stack and Settings, Harbor.',
     keywords: [
       'marketplace',
       'more models',
@@ -392,7 +393,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'stack-health',
     title: 'Stack Health',
     where: 'Menu, Stack Health',
-    text: 'An honest read of how your stack is used, worked out on your own machine, by day, week, or month: how much ran locally versus in the cloud, what the cloud cost, energy and carbon estimates, and leaner swaps.',
+    text: 'An honest read of how your stack is used, worked out on your own computer, by day, week, or month: how much ran locally versus in the cloud, what the cloud cost, energy and carbon estimates, and leaner swaps.',
     keywords: [
       'stack health',
       'usage',
@@ -410,7 +411,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'cloud-connections',
     title: 'Cloud Connections',
     where: 'Menu, Cloud Connections',
-    text: `Add cloud models on your own key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), and Perplexity. Each connected provider puts its models on your Bench. Keys stay on your device, and nothing spends without your approval. How:\n${guideStepsCompact('connect-cloud-key')}`,
+    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), and Perplexity. Each connected provider puts its models on your Bench. API keys stay on your device, and nothing spends without your approval. How:\n${guideStepsCompact('connect-cloud-key')}`,
     keywords: [
       'cloud',
       'api key',
@@ -450,7 +451,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'pair-desktop',
     title: 'Desktop + phone, on the computer',
-    where: 'Desktop app: Menu, Desktop + phone',
+    where: 'On your computer: Menu, Desktop + phone',
     text: 'Tap Turn on to open the phone connection over Tailscale; it shows a QR code and a one-time pairing code good for five minutes. Paired devices are listed and each can be revoked on its own.',
     keywords: ['turn on', 'show qr', 'pairing code', 'revoke', 'paired devices', 'desktop + phone'],
   },
@@ -458,7 +459,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'repositories',
     title: 'Repositories',
     where: 'Menu, Repositories, and the repositories pill at the top of a chat',
-    text: `Connect GitHub, GitLab, or Bitbucket (one tap, or a token). With your computer connected you can clone from a URL or open a local folder. In a chat, the repositories pill picks which code that chat works on, with its branch. OpenShore reads, edits, tests, and commits with your approval on every change. How:\n${guideStepsCompact('open-a-repo')}`,
+    text: `Connect GitHub, GitLab, or Bitbucket (one tap, or an access token). With your computer connected you can clone from a URL or open a local folder. In a chat, the repositories pill picks which code that chat works on, with its branch. OpenShore reads, edits, tests, and commits with your approval on every change. How:\n${guideStepsCompact('open-a-repo')}`,
     keywords: [
       'repository',
       'repositories',
@@ -491,9 +492,9 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'launch',
-    title: 'App Launch with Codemagic',
-    where: 'Menu, App Launch with Codemagic',
-    text: `Ships your app to the App Store or Google Play through Codemagic on your own account: add a Codemagic token and a launch target, then build. On a failed build the model can read the log. How:\n${guideStepsCompact('connect-codemagic')}`,
+    title: 'Launch with Codemagic',
+    where: 'Menu, Launch with Codemagic',
+    text: `Ships your app to the App Store or Google Play through Codemagic on your own account: add a Codemagic API key and a launch target, then build. On a failed build the model can read the log. How:\n${guideStepsCompact('connect-codemagic')}`,
     keywords: [
       'launch',
       'codemagic',
@@ -633,14 +634,14 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'settings',
     title: 'Settings',
     where: 'Menu, Settings',
-    text: 'Groups: Account, Privacy, Ethical boundaries, This device, Terminal, App Launch, Stack Health, Harbor, Writing, Voice, Notifications (iPhone), Wayfinding, and Clear conversations. Setup steps are not here; they are on the Set up OpenShore page.',
+    text: 'Groups: Account, Privacy, Ethical boundaries, This device, Terminal, Launch with Codemagic, Stack Health, Harbor, Writing, Voice, Notifications (iPhone), Wayfinding, and Clear conversations. Set up steps are not here; they are on the Set up OpenShore page.',
     keywords: ['settings', 'preferences', 'options', 'configure', 'toggles'],
   },
   {
     id: 'settings-harbor',
     title: 'Harbor settings and web search',
     where: 'Menu, Settings, Harbor',
-    text: 'Installs or removes the built-in models (Harbor on the phone, DeepBlue on the desktop; Harbor Lite is Built in) and picks the web search provider: DuckDuckGo needs no key, or add your own Brave Search or Tavily key.',
+    text: 'Installs or removes the built-in models (Harbor on the phone, DeepBlue on your computer; Harbor Lite is Built in) and picks the web search provider: DuckDuckGo needs no API key, or add your own Brave Search or Tavily API key.',
     keywords: [
       'web search',
       'duckduckgo',
@@ -655,7 +656,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'wayfinding',
     title: 'Wayfinding',
     where: 'Menu, Settings, Wayfinding',
-    text: 'How the agent finds its way, on by default. Memory keeps project notes in your Vault and reads them back. Skills are reusable markdown recipes. Browser drives a browser on your paired computer and asks before every action. Research (off by default) runs web research through Perplexity once a Perplexity key is connected.',
+    text: 'How the agent finds its way, on by default. Memory keeps what it has learned in your Vault and reads it back. Skills are reusable markdown recipes. Browser drives a browser on your paired computer and asks before every action. Research (off by default) runs web research through Perplexity once a Perplexity API key is connected.',
     keywords: [
       'wayfinding',
       'memory',
@@ -723,7 +724,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'privacy',
     title: 'Privacy',
     where: 'Menu, Settings, Privacy and Ethical boundaries',
-    text: 'Local models keep everything on your device. Cloud models run on your own keys with your approval. Chats, projects, and keys are encrypted on the device, and there is no telemetry. Only a cloud model you connect, or a web search, sends anything off the device.',
+    text: 'Local models keep everything on your device. Cloud models run on your own API keys with your approval. Chats, projects, and API keys are encrypted on the device, and there is no telemetry. Only a cloud model you connect, or a web search, sends anything off the device.',
     keywords: [
       'privacy',
       'private',

@@ -238,7 +238,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         const cmds = SLASH_COMMANDS.filter((c) => agent || !c.agentOnly)
           .map((c) => `/${c.name}${c.arg ? ` <${c.arg}>` : ''}: ${c.hint.toLowerCase()}`)
           .join('\n');
-        const text = `${cmds}\n@ mentions a repo file. # saves a line to the project's instructions. Esc stops a run or clears the field. Up recalls an earlier message. Shift+Tab cycles the permission mode. A message typed while the agent works is queued.`;
+        const text = `${cmds}\n@ mentions a repository file. # saves a line to the project's instructions. Esc stops a run or clears the field. Up recalls an earlier message. Shift+Tab cycles the permission mode. A message typed while the agent works is queued.`;
         if (conv) addNote(text);
         else showToast('Open a chat, then /help lists what the composer can do.');
         return;
@@ -271,7 +271,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         return;
       case 'init':
         if (!conv) {
-          showToast('Open a desktop repo first.');
+          showToast('Open a repository on your computer first.');
           return;
         }
         send(INIT_PROMPT);
@@ -527,7 +527,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
       {offlineMounted ? (
         <div className={`offline-banner${offlineClosing ? ' closing' : ''}`} role="status">
-          Offline. Local models still answer; the desktop and cloud wait for a connection.
+          Offline. Local models still answer; your computer and the cloud wait for a connection.
         </div>
       ) : null}
 

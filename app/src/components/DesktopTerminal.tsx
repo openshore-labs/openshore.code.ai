@@ -50,7 +50,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
     const el = containerRef.current;
     if (!el || !driver.openTerminal) {
       setStatus('unavailable');
-      setMessage('This session has no terminal. It is not backed by a desktop.');
+      setMessage('This session has no terminal. It is not backed by your computer.');
       return;
     }
 

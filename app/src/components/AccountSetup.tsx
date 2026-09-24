@@ -6,8 +6,8 @@
 // Everything about the app is identical either way; commercial just adds the
 // admin controls and the shared, admin-owned stack.
 import { useState } from 'react';
-import { useApp } from '../state/store.js';
-import { COMMERCIAL_TIERS, priceLabel, tierForSeats } from '../lib/plans.js';
+import { PAY_GATES_ENABLED, useApp } from '../state/store.js';
+import { COMMERCIAL_TIERS, shownPrice, tierForSeats } from '../lib/plans.js';
 import { BrandMark } from './BrandMark.js';
 
 export function AccountSetup() {
@@ -45,8 +45,7 @@ export function AccountSetup() {
               <div className="card account-card">
                 <h3>Personal</h3>
                 <div className="sub" style={{ marginBottom: 10 }}>
-                  For your own work, your models, your keys. Free to chat. Unlock the coding agent
-                  and the Marketplace with Personal, $20 a year.
+                  For your own work, your models, your keys.
                 </div>
                 <button
                   className="btn primary"
@@ -61,7 +60,7 @@ export function AccountSetup() {
                 <h3>Business</h3>
                 <div className="sub" style={{ marginBottom: 10 }}>
                   For a team. You become the admin: add people by email, and own the shared stack
-                  and where everything lives. Priced by how many people use it.
+                  and where everything lives. Plans follow how many people use it.
                 </div>
                 <div className="plan-grid">
                   {COMMERCIAL_TIERS.map((t) => (
@@ -116,7 +115,9 @@ export function AccountSetup() {
                     <h3 style={{ color: 'var(--local)' }}>{tier.name} plan</h3>
                     <div className="sub">{tier.blurb}</div>
                   </div>
-                  <span className="pill price">{priceLabel(tier)}</span>
+                  {shownPrice(tier, PAY_GATES_ENABLED) ? (
+                    <span className="pill price">{shownPrice(tier, PAY_GATES_ENABLED)}</span>
+                  ) : null}
                 </div>
               </div>
               <p className="hint" style={{ marginTop: 8 }}>

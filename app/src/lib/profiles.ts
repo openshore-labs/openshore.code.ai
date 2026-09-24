@@ -28,13 +28,13 @@ export const PROFILES: Record<ProfileId, ProfileInfo> = {
     id: 'docked',
     label: 'Docked',
     dot: 'var(--ok)',
-    blurb: 'Connected to your home system. Full stack: home models, cloud, and on-device.',
+    blurb: 'Connected to your computer. Full stack: its models, cloud, and on-device.',
   },
   offshore: {
     id: 'offshore',
     label: 'Offshore',
     dot: 'var(--cloud)',
-    blurb: 'Online, but your home system is out of reach. Cloud and on-device models.',
+    blurb: 'Online, but your computer is out of reach. Cloud and on-device models.',
   },
   offline: {
     id: 'offline',

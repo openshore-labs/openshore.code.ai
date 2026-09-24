@@ -109,7 +109,9 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
 
   const setUp = () => {
     if (!desktop) {
-      setView('marketplace');
+      // The phone's own model is Harbor, from Settings (the Marketplace is
+      // Coming soon, so it is never a door here).
+      setView('settings');
       return;
     }
     void ensureHarborMaster().then((ok) => {
@@ -123,7 +125,7 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
         <BrandMark size={40} />
       </span>
       <p className="first-seat-line" style={{ '--i': 1 } as React.CSSProperties}>
-        A private coding partner that runs on your own machine. Free, and yours.
+        A private coding partner that runs on your own computer. Free, and yours.
       </p>
       <div
         className="first-seat-card"
@@ -148,7 +150,7 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
           {pulling
             ? `${harborMasterDownload!.label} of ${seatName}`
             : failed
-              ? `Retry ${seatName}`
+              ? `Try ${seatName} again`
               : `Set up ${seatName}`}
         </button>
       </div>
@@ -158,10 +160,10 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
           Connect your computer
         </button>
         <button className="first-seat-more-row press-fb" onClick={() => setView('connections')}>
-          Connect a key
+          Connect an API key
         </button>
-        <button className="first-seat-more-row press-fb" onClick={() => setView('marketplace')}>
-          Browse the Marketplace
+        <button className="first-seat-more-row press-fb" onClick={() => setView('stack')}>
+          Open Stack
         </button>
       </div>
     </div>

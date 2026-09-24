@@ -128,8 +128,8 @@ function DesktopPair() {
       <div className="screen-inner">
         <h1>Put this on your phone</h1>
         <p className="lead">
-          Over your own private Tailscale network. The desktop owns the run; the phone can drop into
-          a tunnel and reattach with nothing lost.
+          Over your own private Tailscale network. Your computer owns the run; the phone can drop
+          into a tunnel and reattach with nothing lost.
         </p>
 
         <div className="card">
@@ -139,11 +139,11 @@ function DesktopPair() {
               <div className="sub">
                 {info?.running
                   ? info.mode === 'loopback'
-                    ? 'On, but only for this machine. Tailscale is not up, so the phone cannot reach it yet. Start it (sudo tailscale up).'
+                    ? 'On, but only for this computer. Tailscale is not up, so the phone cannot reach it yet. Start it (sudo tailscale up).'
                     : `Serving on ${info.host}:${info.port} over the tailnet.`
                   : info?.tailscaleUp
                     ? 'Off. Turn it on and the phone app can connect.'
-                    : 'Tailscale is not up on this machine. Start it (sudo tailscale up), then turn this on.'}
+                    : 'Tailscale is not up on this computer. Start it (sudo tailscale up), then turn this on.'}
               </div>
             </div>
             <button
@@ -228,8 +228,8 @@ function DesktopPair() {
 
         <p className="hint">
           Both devices sign into the same tailnet (the Tailscale app, free for personal use). The
-          connection needs its own token on top of the tailnet, and phone sessions are stricter than
-          desk sessions: shell commands and cloud spend always ask.
+          connection needs its own pairing token on top of the tailnet, and phone sessions are
+          stricter than sessions on the computer itself: shell commands and cloud spend always ask.
         </p>
 
         <RemoteHubPanel />
@@ -253,7 +253,7 @@ function RemoteHubPanel() {
   const connect = async () => {
     const baseUrl = address.trim().replace(/\/$/, '');
     if (!/^https?:\/\//.test(baseUrl) || !token.trim()) {
-      setState('Enter the address and token shown on the hub computer.');
+      setState('Enter the address and pairing token shown on the other computer.');
       return;
     }
     setTesting(true);
@@ -267,7 +267,7 @@ function RemoteHubPanel() {
         { baseUrl, token: token.trim() },
         { role: (health as { role?: HubRole }).role },
       );
-      showToast('Hub connected. This computer now runs sessions there.');
+      showToast('Connected. This computer now runs sessions on the other one.');
     }
   };
 
@@ -275,16 +275,16 @@ function RemoteHubPanel() {
     <div className="card">
       <div className="card-row">
         <div className="grow">
-          <h3 style={{ margin: 0 }}>Use a remote hub</h3>
+          <h3 style={{ margin: 0 }}>Run on another computer</h3>
           <div className="sub">
             {prefer
-              ? 'On. This computer runs sessions on the hub below, not on itself.'
+              ? 'On. This computer runs sessions on the computer below, not on itself.'
               : 'Off. This computer is its own engine. Turn on to run on another computer.'}
           </div>
         </div>
         <Switch
           checked={prefer}
-          label="Use a remote hub"
+          label="Run on another computer"
           onChange={(next) => void setPreferRemoteHub(next)}
         />
       </div>
@@ -292,7 +292,7 @@ function RemoteHubPanel() {
       {prefer ? (
         <>
           <div className="field" style={{ marginTop: 12 }}>
-            <label>Hub address</label>
+            <label>Address</label>
             <input
               placeholder="http://100.x.y.z:4816"
               value={address}
@@ -317,7 +317,7 @@ function RemoteHubPanel() {
             disabled={testing}
             onClick={() => void connect()}
           >
-            {testing ? 'Checking...' : 'Connect this computer to the hub'}
+            {testing ? 'Checking...' : 'Connect to the other computer'}
           </button>
           {state ? (
             <p className="hint" style={{ marginTop: 10 }}>
@@ -365,7 +365,9 @@ function PhonePair() {
     const rawClaim = override?.claim ?? code;
     const baseUrl = rawAddress.trim().replace(/\/$/, '');
     if (!/^https?:\/\//.test(baseUrl) || !rawClaim.trim()) {
-      setState('Enter the address and the pairing code shown on the desktop pairing screen.');
+      setState(
+        "Enter the address and the pairing code shown on your computer's Desktop + phone screen.",
+      );
       return;
     }
     setTesting(true);
@@ -397,7 +399,7 @@ function PhonePair() {
   const onScanned = (text: string) => {
     const pair = parsePairingQr(text);
     if (!pair) {
-      setState('That QR is not an OpenShore pairing code. Try the one on the desktop screen.');
+      setState("That QR is not an OpenShore pairing code. Try the one on your computer's screen.");
       return;
     }
     setConnected(false);
@@ -420,11 +422,11 @@ function PhonePair() {
 
   return (
     <div className="screen">
-      <BackBar title="Desktop connection" />
+      <BackBar title="Desktop + phone" />
       <div className="screen-inner">
         <h1>Connect your computer</h1>
         <p className="lead">
-          One time, two minutes. Then your own model runs on your machine and you reach it from
+          One time, two minutes. Then your own model runs on your computer and you reach it from
           here, over your private network. Your computer does the work, so a long task keeps going
           even when you close the app.
         </p>
@@ -441,7 +443,7 @@ function PhonePair() {
           <div className="sub">
             1. Install Tailscale on both devices and sign into the same tailnet.
             <br />
-            2. In OpenShore on the desktop: Menu, Desktop + phone, Turn on.
+            2. In OpenShore on your computer: Menu, Desktop + phone, Turn on.
           </div>
           <div className="sub" style={{ marginTop: 12 }}>
             Get Tailscale (free for personal use):{' '}
@@ -479,7 +481,7 @@ function PhonePair() {
             Or type the address and the pairing code it shows.
           </p>
           <div className="field">
-            <label>Desktop address</label>
+            <label>Address</label>
             <input
               placeholder="http://100.x.y.z:4816"
               value={address}
@@ -540,10 +542,10 @@ function PhonePair() {
             onClick={async () => {
               await removeHub(settings.daemon!.baseUrl);
               setState(undefined);
-              showToast('Desktop disconnected on this phone.');
+              showToast('Computer disconnected on this phone.');
             }}
           >
-            Forget this desktop
+            Forget this computer
           </button>
         ) : null}
       </div>
@@ -562,7 +564,7 @@ function HubList() {
   const activeUrl = settings.daemon?.baseUrl;
   return (
     <div className="card">
-      <h3 style={{ marginTop: 0 }}>Your hubs</h3>
+      <h3 style={{ marginTop: 0 }}>Your computers</h3>
       <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
         Switch which computer your sessions and terminal run on.
       </p>
@@ -587,7 +589,7 @@ function HubList() {
             <button
               className="linklike press-fb"
               onClick={() => {
-                const name = window.prompt('Name this hub', h.name ?? '');
+                const name = window.prompt('Name this computer', h.name ?? '');
                 if (name !== null) void renameHub(h.baseUrl, name);
               }}
             >
@@ -597,7 +599,7 @@ function HubList() {
               className="linklike press-fb"
               onClick={() => {
                 void removeHub(h.baseUrl);
-                showToast('Hub forgotten on this device.');
+                showToast('Computer forgotten on this device.');
               }}
             >
               forget

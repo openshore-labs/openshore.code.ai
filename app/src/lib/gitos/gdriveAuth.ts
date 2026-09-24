@@ -219,7 +219,7 @@ export async function connectGdrive(): Promise<{ ok: true } | { ok: false; error
       if ('error' in result) throw new Error(googleErrorMessage(result.error));
       redirect = result;
     } else {
-      throw new Error('Google Drive sign-in needs the iPhone app or the desktop app.');
+      throw new Error('Google Drive sign-in needs the iPhone app or OpenShore on your computer.');
     }
 
     if (redirect.state !== state) {

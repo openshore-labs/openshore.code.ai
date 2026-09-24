@@ -32,7 +32,7 @@ describe('repo ids and labels', () => {
   });
 
   it('summarizes for the header: none, one, or the first plus a count', () => {
-    expect(summarizeRepos([])).toBe('No repos');
+    expect(summarizeRepos([])).toBe('No repositories');
     expect(summarizeRepos(['/code/uki-audio'])).toBe('uki-audio');
     expect(summarizeRepos(['/code/uki-audio', 'github:o/openshore-hq', 'github:o/x'])).toBe(
       'uki-audio +2',

@@ -62,7 +62,7 @@ export function ConnectionsScreen() {
       setChecking(false);
     }
     if (check === 'invalid') {
-      showToast(`That ${name} key was rejected. Check it and try again.`);
+      showToast(`That ${name} API key was rejected. Check it and try again.`);
       return;
     }
     if (check === 'needs-workspace') {
@@ -75,7 +75,7 @@ export function ConnectionsScreen() {
     showToast(
       check === 'valid'
         ? `${name} connected. Its models are on your bench.`
-        : `${name} key saved. We could not verify it right now.`,
+        : `${name} API key saved. We could not verify it right now.`,
     );
   };
 

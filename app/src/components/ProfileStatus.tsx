@@ -162,7 +162,7 @@ export function ProfileStatus() {
                 </div>
                 <SheetHead title="Connection" onClose={dismiss} />
                 <p className="sheet-sub">
-                  Your stack, chats, and connections are the same everywhere. What changes is reach.
+                  Stack, chats, and connections are the same everywhere. What changes is reach.
                 </p>
                 <div className="sheet-actions">
                   <button

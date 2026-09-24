@@ -61,10 +61,10 @@ export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
     'What are we shipping today?',
   ],
   midday: [
-    'Midday momentum.',
+    'The afternoon’s open.',
     'Halfway there, still flowing?',
     'What’s next on the list?',
-    'Fueled up and ready?',
+    'A clear stretch ahead.',
     'One more before lunch?',
     'Still in the zone?',
     'A good stretch ahead.',
@@ -83,7 +83,7 @@ export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
     'Evening session?',
     'Winding down, or just starting?',
     'What are we building tonight?',
-    'Off the clock, on a roll?',
+    'Evening. No rush.',
     'Evening. Let’s tinker.',
     'A little something before bed?',
     'What’s on your mind tonight?',
@@ -123,7 +123,7 @@ export const MONDAY_LINES: readonly string[] = [
 ];
 
 export const FRIDAY_LINES: readonly string[] = [
-  'Friday. Ship it?',
+  'Friday. Something to land?',
   'Land it before the weekend?',
   'Close the week out strong?',
   'One good push left?',

@@ -19,7 +19,7 @@ export const CODEMAGIC_TOOL_NAME = 'codemagic';
 export const codemagicToolSpec = {
   name: CODEMAGIC_TOOL_NAME,
   description:
-    'Drive an App Launch build on Codemagic: trigger a build, check its status, and read the redacted failure log so you can tell the person exactly what to fix and build again until it is green. Use the saved launch target; you can override the branch on a trigger. Poll status until it reaches a terminal state (finished, failed, canceled, timeout), then report where it landed (TestFlight, App Store, or Google Play).',
+    'Drive a build on Codemagic: trigger a build, check its status, and read the redacted failure log so you can tell the person exactly what to fix and build again until it is green. Use the saved launch target; you can override the branch on a trigger. Poll status until it reaches a terminal state (finished, failed, canceled, timeout), then report where it landed (TestFlight, App Store, or Google Play).',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -123,7 +123,7 @@ export async function runCodemagicTool(input: CodemagicToolInput): Promise<strin
     if (input.action === 'trigger') {
       const target = await savedTarget();
       if (!target?.appId || !target?.workflowId) {
-        return 'No launch target is set. Ask the person to set the app id, workflow, and branch in App Launch first.';
+        return 'No launch target is set. Ask the person to set the app id, workflow, and branch in Launch with Codemagic first.';
       }
       const branch = input.branch?.trim() || target.branch;
       const buildId = await triggerBuild({
@@ -164,9 +164,9 @@ export async function runCodemagicTool(input: CodemagicToolInput): Promise<strin
  *  handed to a paired desktop), while build-target retries it can do itself. */
 export function codemagicSystemNote(): string {
   return [
-    'You can drive App Launch builds with the codemagic tool (trigger, status, logs).',
+    'You can drive Codemagic builds with the codemagic tool (trigger, status, logs).',
     'Flow: trigger a build, poll status until it reaches a terminal state, and if it failed read logs, find the single root cause, and tell the person the exact fix.',
-    'You are on the phone, so you cannot edit the repo here: describe the code fix for the person (or their paired desktop) to apply, then trigger again once they confirm. You may retry directly for a transient failure or a build-target change.',
+    'You are on the phone, so you cannot edit the repo here: describe the code fix for the person (or their paired computer) to apply, then trigger again once they confirm. You may retry directly for a transient failure or a build-target change.',
     'When it goes green, tell the person plainly where it landed (TestFlight, the App Store, or Google Play, per the workflow).',
   ].join(' ');
 }

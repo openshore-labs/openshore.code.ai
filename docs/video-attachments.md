@@ -75,10 +75,10 @@ placed in vision falls back to the cloud. Flip the device case in
 `visionCapable` when a multimodal on-device runtime lands. `StackDriver` folds
 the frames into the current user turn for the Anthropic and OpenAI-compatible
 backends (frame labels and header included); the device backend never receives
-images. The composer's attach button lights for a "My Stack" chat exactly when
+images. The composer's attach button lights for a Stack chat exactly when
 `stackVisionReady()` says a picture would be understood.
 
-### The two Vision slots, in My Stack
+### The two Vision slots, in Stack
 
 The Stack manager shows Image reading (Vision) as a dedicated card with two
 slots (`visionSlots` in `stack.ts`, edited in `StackManager.tsx`):
@@ -91,7 +91,7 @@ slots (`visionSlots` in `stack.ts`, edited in `StackManager.tsx`):
   one, so images are always understood out of the box.
 
 Each slot carries its own **effort** (`Placement.effort`, honored in
-`StackDriver.systemFor` over the global composer effort). "My Stack is the
+`StackDriver.systemFor` over the global composer effort). "Stack is the
 source": a workflow that runs through the stack (a crew routine on the app path)
 uses whatever the Vision position holds, so there is one place to set it.
 Effort is now settable on any specialist placement, not just Vision.

@@ -27,3 +27,11 @@ describe('toolActionLabel', () => {
     expect(src).toMatch(/toolActionLabel\(request\.toolName\)/);
   });
 });
+
+describe('a current tool', () => {
+  it('reads Ask plus the roster name, never a hardcoded one', async () => {
+    const { AGENTIC_CURRENTS } = await import('../src/lib/currents.js');
+    const hermes = AGENTIC_CURRENTS.find((c) => c.id === 'hermes')!;
+    expect(toolActionLabel('askHermes')).toBe(`Ask ${hermes.label}`);
+  });
+});

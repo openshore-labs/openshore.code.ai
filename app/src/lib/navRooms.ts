@@ -26,25 +26,38 @@ export interface NavEntry {
   label: string;
 }
 
-const TERMINAL: NavEntry = { view: 'terminalroom', label: 'Terminal' };
+/** The one list of room names (brand sweep, founder 2026-09-24). The Sidebar,
+ *  the BackBar, and the guides all read these, so a room is named one way
+ *  everywhere. Title Case only for proper nouns (My Crew, Stack Health, Cloud
+ *  Connections, Vault, Marketplace); Sentence case for the rest. The stack is
+ *  named "Stack", never "Your stack" or "My Stack". */
+export const ROOM_LABELS: Record<NavRoom, string> = {
+  chats: 'Chats',
+  projects: 'Projects',
+  terminalroom: 'Terminal',
+  repos: 'Repositories',
+  stack: 'Stack',
+  vault: 'Vault',
+  crew: 'My Crew',
+  marketplace: 'Marketplace',
+  stackhealth: 'Stack Health',
+  launch: 'Launch with Codemagic',
+  connections: 'Cloud Connections',
+  pair: 'Desktop + phone',
+  settings: 'Settings',
+};
 
-const PRIMARY_BASE: NavEntry[] = [
-  { view: 'chats', label: 'Chats' },
-  { view: 'projects', label: 'Projects' },
-  { view: 'repos', label: 'Repositories' },
-  { view: 'stack', label: 'Your stack' },
-  { view: 'vault', label: 'Vault' },
-];
+const entry = (view: NavRoom): NavEntry => ({ view, label: ROOM_LABELS[view] });
 
-const EXPLORE_BASE: NavEntry[] = [
-  { view: 'crew', label: 'My Crew' },
-  { view: 'marketplace', label: 'Marketplace' },
-  { view: 'stackhealth', label: 'Stack Health' },
-  { view: 'launch', label: 'App Launch with Codemagic' },
-  { view: 'connections', label: 'Cloud Connections' },
-  { view: 'pair', label: 'Desktop + phone' },
-  { view: 'settings', label: 'Settings' },
-];
+const TERMINAL: NavEntry = entry('terminalroom');
+
+const PRIMARY_BASE: NavEntry[] = (['chats', 'projects', 'repos', 'stack', 'vault'] as const).map(
+  entry,
+);
+
+const EXPLORE_BASE: NavEntry[] = (
+  ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
+).map(entry);
 
 /** Whether Terminal belongs in the day-one set on this device. */
 export function terminalIsDayOne(input: { desktop: boolean; hubPaired: boolean }): boolean {

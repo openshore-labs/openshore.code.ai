@@ -155,9 +155,9 @@ export function CrewScreen() {
             </span>
             <span className="crew-command-door-sub">
               {control.where === 'unpaired'
-                ? 'Pair your machine, then routines run while you are away.'
+                ? 'Pair your computer, then routines run while you are away.'
                 : control.where === 'away'
-                  ? 'Away from your machine. Watch here, reconnect to take control.'
+                  ? 'Away from your computer. Watch here, reconnect to take control.'
                   : crewHeadline(routines, routinesState.runs)}
             </span>
           </span>
@@ -178,9 +178,9 @@ export function CrewScreen() {
             <h3 className="crew-advisors-title">A ready-made team, in one tap</h3>
             <p className="sub">
               General advisors for whatever you are building: a Technical Advisor who reviews the
-              work, a Marketing, Finance, and Creative Studio that step in when a decision needs
-              them, and a Research Advisor, Coordinator, Sounding Board, and Strategy Advisor who
-              answer when asked. All advisory. You decide.
+              work, a Marketing Advisor, Finance Advisor, and Creative Studio who step in when a
+              decision needs them, and a Research Advisor, Coordinator, Sounding Board, and Strategy
+              Advisor who answer when asked. All advisory. You decide.
             </p>
             <button
               className="btn ghost press-fb"

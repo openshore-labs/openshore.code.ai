@@ -527,7 +527,7 @@ export class StackDriver implements ChatDriver {
         this.emit({
           type: 'task-done',
           reason: 'error',
-          message: `No image-reading model is reachable while ${this.profile}. Put an image-reading model in your Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
+          message: `No image-reading model is reachable while ${this.profile}. Put an image-reading model in Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
         });
         return;
       }

@@ -81,7 +81,7 @@ export async function daemonInstallModel(target: DaemonTarget, modelId: string):
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `The desktop answered ${res.status}.`);
+    throw new Error(body.error ?? `Your computer answered ${res.status}.`);
   }
 }
 
@@ -95,7 +95,7 @@ export async function daemonInstallProgress(
     { headers: headers(target), signal: AbortSignal.timeout(10_000) },
   );
   if (res.status === 404) return undefined;
-  if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
+  if (!res.ok) throw new Error(`Your computer answered ${res.status}.`);
   return (await res.json()) as DaemonInstallProgress;
 }
 
@@ -124,12 +124,12 @@ export async function daemonHealth(
         detail:
           typeof body.error === 'string'
             ? body.error
-            : 'The desktop rejected the pairing token. Re-copy it from the desktop app.',
+            : 'Your computer rejected the pairing token. Copy it again from OpenShore on your computer.',
       };
     }
-    if (!res.ok) return { ok: false, detail: `The desktop answered ${res.status}.` };
+    if (!res.ok) return { ok: false, detail: `Your computer answered ${res.status}.` };
     const role = roleOf(await res.json().catch(() => ({})));
-    return { ok: true, detail: 'Connected to your desktop.', ...(role ? { role } : {}) };
+    return { ok: true, detail: 'Connected to your computer.', ...(role ? { role } : {}) };
   } catch {
     // A rejected credential answers 401 with no CORS headers (DAE-15), which a
     // WebView reports as a failed fetch, the same as an unreachable hub. Tell
@@ -195,13 +195,13 @@ export async function redeemPairClaim(
     const detail =
       typeof body.error === 'string'
         ? body.error
-        : `The desktop answered ${res.status} to the pairing code.`;
+        : `Your computer answered ${res.status} to the pairing code.`;
     return { ok: false, detail };
   } catch {
     return {
       ok: false,
       detail:
-        'Could not reach the desktop to redeem the pairing code. Check that Tailscale is on for both devices and the desktop app is open, then scan the QR again.',
+        'Could not reach your computer to redeem the pairing code. Check that Tailscale is on for both devices and OpenShore is open on your computer, then scan the QR again.',
     };
   }
 }
@@ -233,7 +233,7 @@ export async function daemonCreateSession(
     signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
-  if (!res.ok || !body.id) throw new Error(body.error ?? `The desktop answered ${res.status}.`);
+  if (!res.ok || !body.id) throw new Error(body.error ?? `Your computer answered ${res.status}.`);
   return body.id;
 }
 
@@ -242,7 +242,7 @@ export async function daemonListSessions(target: DaemonTarget): Promise<DaemonSe
     headers: headers(target),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
+  if (!res.ok) throw new Error(`Your computer answered ${res.status}.`);
   const body = (await res.json()) as {
     live: Array<{ id: string; cwd: string; busy: boolean }>;
     stored: Array<{ id: string; cwd: string; title: string; updatedAt: string }>;
@@ -265,7 +265,7 @@ export async function daemonWorkspaces(target: DaemonTarget) {
     headers: headers(target),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
+  if (!res.ok) throw new Error(`Your computer answered ${res.status}.`);
   return ((await res.json()) as { workspaces: Array<{ cwd: string; name: string }> }).workspaces;
 }
 
@@ -291,7 +291,7 @@ export async function daemonStack(target: DaemonTarget) {
     headers: headers(target),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`The desktop answered ${res.status}.`);
+  if (!res.ok) throw new Error(`Your computer answered ${res.status}.`);
   return (await res.json()) as import('os-code/protocol').DaemonStackInfo;
 }
 
@@ -451,7 +451,7 @@ export class RemoteDriver implements ChatDriver {
         );
         if (res.status === 401 || res.status === 403) {
           this.emitTerminal(
-            'The desktop rejected this phone. Re-pair from Menu, Desktop connection.',
+            'Your computer rejected this phone. Pair again from Menu, Desktop + phone.',
           );
           return;
         }
@@ -459,7 +459,7 @@ export class RemoteDriver implements ChatDriver {
           // Tolerate a transient 404 (a session rehydrating), give up after a few.
           this.notFoundStreak += 1;
           if (this.notFoundStreak >= 3) {
-            this.emitTerminal('This session no longer exists on the desktop. Start a new one.');
+            this.emitTerminal('This session no longer exists on your computer. Start a new one.');
             return;
           }
           throw new Error('session not found yet');
@@ -580,7 +580,7 @@ export class RemoteDriver implements ChatDriver {
       });
       return (await res.json()) as { before: number; after: number } | { error: string };
     } catch {
-      return { error: 'Could not reach the desktop to compact.' };
+      return { error: 'Could not reach your computer to compact.' };
     }
   }
 
@@ -615,7 +615,9 @@ export class RemoteDriver implements ChatDriver {
       if (res.status === 403) {
         const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
         if (body.error === 'restricted') {
-          return { refused: body.message ?? 'The hub does not allow commands for this device.' };
+          return {
+            refused: body.message ?? 'Your computer does not allow commands for this device.',
+          };
         }
         return undefined;
       }
@@ -659,7 +661,7 @@ export class RemoteDriver implements ChatDriver {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         return {
           unavailable: true,
-          error: body.error ?? 'Terminal support is not installed on the desktop.',
+          error: body.error ?? 'Terminal support is not installed on your computer.',
         };
       }
       const body = (await res.json().catch(() => ({}))) as {
@@ -671,12 +673,12 @@ export class RemoteDriver implements ChatDriver {
       if (!res.ok || !body.termId) {
         return {
           unavailable: true,
-          error: body.error ?? `The desktop answered ${res.status}.`,
+          error: body.error ?? `Your computer answered ${res.status}.`,
         };
       }
       return { termId: body.termId, cols: body.cols ?? opts.cols, rows: body.rows ?? opts.rows };
     } catch {
-      return { unavailable: true, error: 'Could not reach the desktop to open a terminal.' };
+      return { unavailable: true, error: 'Could not reach your computer to open a terminal.' };
     }
   }
 
@@ -743,10 +745,11 @@ export class RemoteDriver implements ChatDriver {
         ok: false,
         exited,
         error:
-          body.error ?? (exited ? 'The shell has exited.' : `The desktop answered ${res.status}.`),
+          body.error ??
+          (exited ? 'The shell has exited.' : `Your computer answered ${res.status}.`),
       };
     } catch {
-      return { ok: false, exited: false, error: 'Could not reach the desktop.' };
+      return { ok: false, exited: false, error: 'Could not reach your computer.' };
     }
   }
 

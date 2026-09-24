@@ -22,7 +22,7 @@ export function isDeviceFolderAvailable(): boolean {
 function fs() {
   const b = bridge();
   if (!b || typeof b.vaultList !== 'function') {
-    throw new Error('The on-disk vault is only available in the desktop app.');
+    throw new Error('The on-disk vault is only available in OpenShore on your computer.');
   }
   return b;
 }

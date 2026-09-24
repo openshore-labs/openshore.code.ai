@@ -41,7 +41,7 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
   // The app: what each part does and why.
   {
     id: 'stack',
-    message: 'How does Your stack work?',
+    message: 'How does Stack work?',
     route: 'app',
     cards: ['stack'],
     mustInclude: [['reasoning']],

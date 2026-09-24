@@ -63,7 +63,7 @@ export interface SetupStepCopy {
 }
 
 export const HARBOR_SWITCH_HINT =
-  'To use Harbor, tap the model name in the chat box below (next to the +) and pick Harbor. Or open the menu, go to Your stack, and place Harbor there so every chat starts with it.';
+  'To use Harbor, tap the model name in the chat box below (next to the +) and pick Harbor. Or open the menu, go to Stack, and place Harbor there so every chat starts with it.';
 
 /** Said once, whenever Harbor finishes downloading during or after the walk. */
 export const HARBOR_READY_MESSAGE = `Harbor is ready on your iPhone. ${HARBOR_SWITCH_HINT}`;
@@ -89,21 +89,21 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   },
   repo: {
     title: 'Set up a repository',
-    what: 'Connect GitHub or another platform, and pick a home repo for OpenShore to work in.',
+    what: 'Connect GitHub or another platform, and pick a home repository for OpenShore to work in.',
     why: 'This is where building happens: OpenShore reads your code, edits it, runs its tests, and commits, always with your approval.',
-    how: 'Tap Set up a repository, choose your platform, and connect it with your own token. Then set your home repo. Every edit shows you a diff first, and every command asks before it runs. I will bring you back here once it is connected.',
+    how: 'Tap Set up a repository, choose your platform, and connect it with your own access token. Then set your home repository. Every edit shows you a diff first, and every command asks before it runs. I will bring you back here once it is connected.',
     action: 'Set up a repository',
     ask: 'Tell me more about setting up a repository.',
     done: 'Your repository is connected.',
   },
   key: {
-    title: 'Connect your own key',
+    title: 'Connect your own API key',
     what: 'Add an API key for Claude, OpenAI, or Gemini.',
     why: "For the hardest work, a frontier model on your own account goes further than anything on a phone, at your provider's price. Chat stays free either way.",
-    how: "Create a key on your provider's site, then tap Add a key, paste it, and save. OpenShore checks it with the provider before it says connected, and the key never leaves this device. I will bring you back here once it is saved.",
-    action: 'Add a key',
-    ask: 'Tell me more about using my own key.',
-    done: 'Your key is connected.',
+    how: "Create an API key on your provider's site, then tap Add an API key, paste it, and save. OpenShore checks it with the provider before it says connected, and the API key never leaves this device. I will bring you back here once it is saved.",
+    action: 'Add an API key',
+    ask: 'Tell me more about using my own API key.',
+    done: 'Your API key is connected.',
   },
 };
 
@@ -198,7 +198,7 @@ export function finishMessage(facts: SetupFacts): string {
 
 /** Openers offered under the wrap-up, so the next question is one tap. */
 export const ASK_ANYTHING = [
-  'How does Your stack work?',
+  'How does Stack work?',
   'What is the Vault?',
   'What can My Crew do?',
   'How do Projects work?',
@@ -206,7 +206,7 @@ export const ASK_ANYTHING = [
 
 /** The first chat's first goal, above setup (founder, 2026-09-23). */
 export const FIRST_CHAT_GOAL =
-  'FIRST CHAT: your first goal is a pleasant, genuinely useful conversation that shows the person you are a capable chat companion. Setup is offered, never pushed.';
+  'FIRST CHAT: your first goal is a pleasant, genuinely useful conversation that shows the person you are a capable chat companion. Setting up is offered, never pushed.';
 
 /** What a message in the walk's chat asks of the walk itself, read before it
  *  goes to the model:

@@ -112,7 +112,7 @@ export function CurrentConnectSheet({
                   autoCorrect="off"
                   placeholder={
                     info.kind === 'hermes'
-                      ? 'http://your-box.ts.net:8642/v1'
+                      ? 'http://your-computer.ts.net:8642/v1'
                       : 'http://your-agent.ts.net:port'
                   }
                   value={endpoint}
@@ -143,7 +143,9 @@ export function CurrentConnectSheet({
                 <input
                   type="password"
                   placeholder={
-                    saved ? 'Leave blank to keep the saved key' : 'Leave blank for a keyless box'
+                    saved
+                      ? 'Leave blank to keep the saved API key'
+                      : 'Leave blank if it needs no API key'
                   }
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}

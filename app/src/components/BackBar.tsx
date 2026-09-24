@@ -9,28 +9,17 @@ import { useApp, type ViewName } from '../state/store.js';
 import { useCompact } from '../hooks/useCompact.js';
 import { ProfileStatus } from './ProfileStatus.js';
 import { MenuIcon } from './MenuIcon.js';
+import { ROOM_LABELS } from '../lib/navRooms.js';
 
 export const ROOM_NAMES: Record<ViewName, string> = {
+  ...ROOM_LABELS,
   chat: 'Chat',
-  chats: 'Chats',
-  marketplace: 'Marketplace',
-  stack: 'Your stack',
-  stackhealth: 'Stack Health',
-  connections: 'Cloud Connections',
-  repos: 'Repositories',
-  vault: 'Vault',
-  projects: 'Projects',
   project: 'Project',
-  projectmemory: 'Project notes',
-  crew: 'My Crew',
+  projectmemory: 'What it has learned',
   crewcommand: 'Crew command',
   admin: 'Admin',
-  launch: 'App Launch with Codemagic',
-  pair: 'Desktop + phone',
-  settings: 'Settings',
-  terminal: 'Terminal',
-  terminalroom: 'Terminal',
-  onboarding: 'Setup',
+  terminal: ROOM_LABELS.terminalroom,
+  onboarding: 'Set up OpenShore',
 };
 
 /** A way back that lives inside the room: a page the room opened over its own

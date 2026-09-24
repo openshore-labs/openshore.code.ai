@@ -135,7 +135,7 @@ describe('what the guide says', () => {
 
   it('says how to switch to Harbor once it is downloaded', () => {
     expect(HARBOR_SWITCH_HINT).toMatch(/chat box/);
-    expect(HARBOR_SWITCH_HINT).toMatch(/Your stack/);
+    expect(HARBOR_SWITCH_HINT).toMatch(/go to Stack,/);
     expect(finishMessage({ ...NONE, harborReady: true })).toContain(HARBOR_SWITCH_HINT);
     expect(advanceMessage('harbor', 'done', 'computer', { ...NONE, harborReady: true })).toContain(
       HARBOR_SWITCH_HINT,

@@ -3,6 +3,8 @@
 // trace). Known tools get a verb phrase; anything else is humanized from its
 // camelCase name so a new tool still reads as a sentence.
 
+import { AGENTIC_CURRENTS } from './currents.js';
+
 const TOOL_VERBS: Record<string, string> = {
   runShell: 'Run a command',
   readTerminal: 'Read the terminal',
@@ -46,7 +48,17 @@ export function humanizeToolName(name: string): string {
   return words.join(' ');
 }
 
-/** The plain verb phrase for a tool the agent asks to use. */
+/** The plain verb phrase for a tool the agent asks to use. A current's own
+ *  tool (askHermes) reads "Ask" plus the name from its roster, never a name
+ *  spelled here (CLAUDE.md: no room names a current). */
 export function toolActionLabel(toolName: string): string {
-  return TOOL_VERBS[toolName] ?? humanizeToolName(toolName);
+  const known = TOOL_VERBS[toolName];
+  if (known) return known;
+  const ask = /^ask([A-Z]\w*)$/.exec(toolName);
+  if (ask) {
+    const id = ask[1]!.toLowerCase();
+    const current = AGENTIC_CURRENTS.find((c) => c.id === id);
+    if (current) return `Ask ${current.label}`;
+  }
+  return humanizeToolName(toolName);
 }

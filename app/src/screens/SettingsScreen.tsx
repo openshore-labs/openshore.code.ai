@@ -4,7 +4,7 @@
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
 import { useEffect, useState } from 'react';
-import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
+import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone } from '../lib/platform.js';
 import { noticeEnabled, noticePermission, syncNoticePrefs } from '../lib/notices.js';
@@ -34,7 +34,7 @@ import {
   setStackHealthVisibility,
   type StackHealthVisibility,
 } from '../lib/stackHealth.js';
-import { tierById, priceLabel } from '../lib/plans.js';
+import { tierById, shownPrice } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticCommit } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
@@ -124,7 +124,7 @@ function LiveSeal({ facts }: { facts: StackHealthSealFact[] }) {
         })}
       </ul>
       <p className="hint" style={{ marginTop: 8 }}>
-        Measured on this machine just now, not promised.
+        Measured on this device just now, not promised.
       </p>
     </>
   );
@@ -207,7 +207,7 @@ function HarborInstallButton({
   if (download?.failed) {
     return (
       <button type="button" className="harbor-action is-retry press-fb" onClick={onInstall}>
-        Retry
+        Try again
       </button>
     );
   }
@@ -424,7 +424,7 @@ export function SettingsScreen() {
             <h3 className="settings-sheet-head">Privacy, plainly</h3>
             <p>
               Local models run on your hardware and nothing leaves it. Cloud models run on your own
-              keys and only with your approval. Web search leaves your machine when the agent uses
+              keys and only with your approval. Web search leaves your computer when the agent uses
               it. No telemetry, no analytics, no advertising, no IP address, ever. There is one
               exception, stated plainly under Ethical boundaries below: when the guardrail blocks a
               request and you are signed in, a record of that block reaches your account. It carries
@@ -434,7 +434,7 @@ export function SettingsScreen() {
             <p>
               Your chats, projects, crew, settings, and session journals are sealed at rest with
               AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
-              {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API
+              {keyStoreLabel()}, whenever one is available, and it never leaves this device. API
               keys are held the same way. When you send a turn to a cloud provider, that one
               provider sees that one request on your own account. We do not, and there is nothing in
               between.
@@ -443,10 +443,11 @@ export function SettingsScreen() {
             <h3 className="settings-sheet-head">Local models, honestly</h3>
             <p>
               Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
-              confidently wrong, and neither guide is a coder. For real work, use DeepBlue on your
-              computer or connect a bigger model. What you type to a local model stays on this
-              device. Harbor is Qwen3-1.7B and Harbor Lite is SmolLM2-135M-Instruct, both used under
-              the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
+              confidently wrong. Harbor Lite (SmolLM2-135M-Instruct) is a guide, not a coder. Harbor
+              (Qwen 2.5 Coder 3B) writes and explains code, but it does not edit files or run
+              commands. For real work, use DeepBlue on your computer or connect a bigger model. What
+              you type to a local model stays on this device. Harbor and Harbor Lite are both used
+              under the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
             </p>
             <p>
               OpenShore does not editorialize what a model says. Three narrow limits are enforced on
@@ -466,7 +467,7 @@ export function SettingsScreen() {
               <SettingsRow
                 label="Ethical boundaries"
                 sub="Enforced by default, on every model, with no switch"
-                value="Always on"
+                value="Enforced"
                 onClick={open}
               />
             )}
@@ -611,7 +612,7 @@ export function SettingsScreen() {
         ) : null}
 
         {codemagicConnected ? (
-          <SettingsGroup title="App Launch" index={group++}>
+          <SettingsGroup title="Launch with Codemagic" index={group++}>
             <SettingsRow
               label="Codemagic Access"
               subWrap
@@ -646,8 +647,8 @@ export function SettingsScreen() {
               subWrap
               sub={
                 shVisibility === 'admins'
-                  ? 'Admins only. Stack Health shows this hub. The numbers are always the hub total, never broken down by person.'
-                  : 'Everyone on the team. Stack Health shows this hub. The numbers are always the hub total, never broken down by person.'
+                  ? 'Admins only. Stack Health shows this computer. The numbers are always its total, never broken down by person.'
+                  : 'Everyone on the team. Stack Health shows this computer. The numbers are always its total, never broken down by person.'
               }
               trailing={
                 canControlSh ? (
@@ -669,7 +670,7 @@ export function SettingsScreen() {
                           );
                         } else {
                           setShVisibility(prev); // revert on failure
-                          showToast('Could not reach your hub to change that.');
+                          showToast('Could not reach your computer to change that.');
                         }
                       });
                     }}
@@ -772,7 +773,7 @@ export function SettingsScreen() {
             <p>
               It is on by default, and most people leave it on. Turn it off and the standard drops
               out of the prompt, so a model runs on a shorter prompt and answers a little faster.
-              Off reaches your chats here and any paired desktop session this app starts.
+              Off reaches your chats here and any session this app starts on your paired computer.
             </p>
             <p>
               Two things it does not touch. A project can keep its own setting in its config, and
@@ -947,7 +948,10 @@ export function SettingsScreen() {
         <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />
         {signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
-            {tierById(org.tierId).name} plan · {priceLabel(tierById(org.tierId))} ·{' '}
+            {tierById(org.tierId).name} plan ·{' '}
+            {shownPrice(tierById(org.tierId), PAY_GATES_ENABLED)
+              ? `${shownPrice(tierById(org.tierId), PAY_GATES_ENABLED)} · `
+              : ''}
             {org.members.length} {org.members.length === 1 ? 'person' : 'people'}
           </p>
         ) : null}
@@ -993,8 +997,8 @@ export function SettingsScreen() {
       <Sheet open={sheet === 'search'} onClose={close}>
         <SheetHead title="Web search" onClose={close} />
         <p className="sheet-sub">
-          Harbor searches the web when it needs to. DuckDuckGo needs no key. Bring your own Brave
-          Search or Tavily key to search on your own account.
+          Harbor searches the web when it needs to. DuckDuckGo needs no API key. Bring your own
+          Brave Search or Tavily API key to search on your own account.
         </p>
         <div className="segmented" role="tablist" aria-label="Search provider">
           {(['brave', 'tavily'] as const).map((c) => (
@@ -1024,7 +1028,7 @@ export function SettingsScreen() {
             disabled={!searchKeyValue.trim()}
             onClick={() => void saveSearch()}
           >
-            Save key
+            Save API key
           </button>
           {searchKeyConfigured ? (
             <button
@@ -1043,7 +1047,7 @@ export function SettingsScreen() {
 
       <Sheet open={sheet === 'clear'} onClose={close} variant="confirm">
         <h3>Clear every conversation on this {platformLabel()}?</h3>
-        <p>Desktop journals stay on the desktop. This cannot be undone.</p>
+        <p>Session journals on your computer stay there. This cannot be undone.</p>
         <div className="confirm-row">
           <button className="btn ghost" onClick={close}>
             Keep them

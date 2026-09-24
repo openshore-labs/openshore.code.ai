@@ -53,7 +53,7 @@ describe('Harbor Lite fits its window', () => {
   it('loads Harbor Lite with the full device window, not 2048', async () => {
     const driver = new OnDeviceDriver(HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME);
     await tick();
-    driver.send('How does Your stack work?');
+    driver.send('How does Stack work?');
     await tick();
     await tick();
     expect(calls).toContain(`load:${HARBOR_MINI_MODEL_ID}:${DEVICE_CONTEXT_TOKENS}`);
@@ -101,7 +101,7 @@ describe('an empty device reply is not a silent success', () => {
       if (e.type === 'task-done') done.push({ reason: e.reason, message: e.message });
     });
     await tick();
-    driver.send('How does Your stack work?');
+    driver.send('How does Stack work?');
     await tick();
     await tick();
     const { requestId } = generated[0]!;

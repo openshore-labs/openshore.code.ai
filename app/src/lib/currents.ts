@@ -88,8 +88,9 @@ export const AGENTIC_CURRENTS: AgenticCurrentInfo[] = [
   {
     id: 'hermes',
     label: 'Hermes Agent',
-    sub: 'An always-on agent on a computer you own, with its own memory and skills.',
-    needs: 'A Hermes box reachable over your Tailscale network, with its API server on.',
+    sub: 'An agent on a computer you own, with its own memory and skills.',
+    needs:
+      'Hermes on a computer you can reach over your Tailscale network, with its API server on.',
     kind: 'hermes',
     available: true,
     guide: 'connect-hermes',
@@ -243,7 +244,10 @@ export function currentStateLabel(state: CurrentState): string {
     case 'on':
       return 'On';
     case 'arriving':
-      return 'Arriving';
+      // The internal state keeps its name; the word "Arriving" is kept for a
+      // current not built yet (brand sweep 2026-09-24). On but silent reads
+      // "Not answering".
+      return 'Not answering';
     case 'ready':
       return 'Ready';
     default:
@@ -266,10 +270,10 @@ export function currentStateLine(
     return `On. Answering at ${hostOf(c?.endpoint)}.`;
   }
   if (state === 'arriving') {
-    if (!currentConfigured(id, settings)) return `Arriving. ${info.needs}`;
+    if (!currentConfigured(id, settings)) return `Not set up. ${info.needs}`;
     if (info.kind === 'cli')
-      return `Arriving. ${cliLabel(c?.command)} is not on the paired computer yet, or you are not docked.`;
-    return `Arriving. ${hostOf(c?.endpoint)} did not answer yet. Check the box is up and you are on its network.`;
+      return `Not answering. ${cliLabel(c?.command)} is not on the paired computer yet, or you are not docked.`;
+    return `Not answering. ${hostOf(c?.endpoint)} did not answer yet. Check that computer is on and you are on its network.`;
   }
   if (state === 'ready') return `Ready. Turn it on to bring it in.`;
   return info.sub;
@@ -353,7 +357,7 @@ export function contributionFor(
               },
               pill: 'via Hermes',
             }
-          : { none: 'Connect the Hermes box first.' },
+          : { none: 'Connect Hermes first.' },
         crew: {
           name: 'Hermes',
           line: 'Runs on its own computer. Its scheduled jobs show here.',
@@ -377,7 +381,7 @@ export function contributionFor(
           line: 'On your paired computer. A coding chat can hand it a task you approve.',
         },
         vault: {
-          none: 'A CLI keeps its memory in the repo, which the Vault already shows under Coding projects.',
+          none: 'A CLI keeps its memory in the repository, which the Vault already shows under Coding projects.',
         },
         tools: { names: ['cliAgent'] },
       };
@@ -414,7 +418,7 @@ export function contributionFor(
           line:
             c?.via === 'a2a'
               ? 'Reached over the agent-to-agent protocol. Runs under its own rules.'
-              : 'Arriving. It shows here once an address answers.',
+              : 'Not answering yet. It shows here once an address answers.',
         },
         vault: { none: `${info.label} has no documented memory files to read yet.` },
         tools: c?.via === 'a2a' ? { names: ['askAgent'] } : { none: 'No agent door answered yet.' },
