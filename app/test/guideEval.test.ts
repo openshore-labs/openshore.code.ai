@@ -18,7 +18,9 @@ import {
   buildGuidePrompt,
   planGuideTurn,
   readEquipment,
+  sanitizeGuideText,
   setupAdvice,
+  STRETCH_NOTE,
 } from '../src/lib/guideHarness.js';
 import { buildHarborMiniSystemPrompt, HARBOR_MINI_PERSONA } from '../src/lib/harborMini.js';
 import { estimateTokens } from '../src/drivers/deviceModel.js';
@@ -148,5 +150,39 @@ describe('guide eval, answers', () => {
     expect(seen).toHaveLength(2);
     expect(seen[1]).toBe(baselinePrompt());
     expect(out.withHarness).toBe(1);
+  });
+});
+
+describe('what the reference box eval taught (2026-09-24)', () => {
+  it('shows the worked-out size after a setup reply, so the number never gets lost', () => {
+    const plan = planGuideTurn({
+      message: 'I have a laptop with 8GB of RAM and no GPU. What should I use?',
+      cards: GUIDE_CARDS,
+    });
+    expect(plan.after).toContain('Qwen 2.5 Coder 3B');
+    expect(
+      planGuideTurn({ message: 'What model should I get for my computer?', cards: GUIDE_CARDS })
+        .after,
+    ).toBeUndefined();
+  });
+
+  it('shows the past-my-size note after a stretch reply', () => {
+    const plan = planGuideTurn({ message: 'Write a Python function', cards: GUIDE_CARDS });
+    expect(plan.after).toBe(STRETCH_NOTE);
+  });
+
+  it('never shows an em dash in a Harbor Lite reply', () => {
+    const dash = String.fromCharCode(8212);
+    expect(sanitizeGuideText(`Tokyo is ahead ${dash} about 9 hours${dash}right now.`)).toBe(
+      'Tokyo is ahead, about 9 hours, right now.',
+    );
+  });
+
+  it('scores the shown text: words plus the fixed line, and an empty reply stays empty', async () => {
+    const fit = GUIDE_EVAL_CASES.find((x) => x.id === 'fit-8')!;
+    const words = await runAnswerEval(async () => 'Go with DeepBlue.', undefined, [fit]);
+    expect(words.withHarness).toBe(1);
+    const empty = await runAnswerEval(async () => '', undefined, [fit]);
+    expect(empty.withHarness).toBe(0);
   });
 });

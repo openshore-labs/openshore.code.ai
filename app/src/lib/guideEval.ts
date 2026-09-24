@@ -15,7 +15,13 @@
 import { DEVICE_CONTEXT_TOKENS, estimateTokens } from '../drivers/deviceModel.js';
 import { AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { GUIDE_CARDS } from './guideCards.js';
-import { buildGuidePrompt, cardText, planGuideTurn, type GuideRoute } from './guideHarness.js';
+import {
+  buildGuidePrompt,
+  cardText,
+  planGuideTurn,
+  sanitizeGuideText,
+  type GuideRoute,
+} from './guideHarness.js';
 import { HARBOR_MINI_PERSONA } from './harborMini.js';
 import type { WebSearchResult } from './webSearch.js';
 
@@ -376,7 +382,12 @@ export async function runAnswerEval(
     }
     const system = buildGuidePrompt({ persona: HARBOR_MINI_PERSONA, plan, sources, searchFailed });
     const messages = [{ role: 'user' as const, content: c.message }];
-    const withText = await complete(system, messages);
+    // Score what the chat shows: the model's words, cleaned the way the driver
+    // cleans them, then the harness's fixed line after the reply.
+    const raw = await complete(system, messages);
+    // An empty reply stays empty: the driver shows the line only after words.
+    const words = sanitizeGuideText(raw).trim();
+    const withText = words ? [words, plan.after].filter(Boolean).join('\n') : '';
     const withoutText = await complete(baselinePrompt(), messages);
     runs.push({
       id: c.id,

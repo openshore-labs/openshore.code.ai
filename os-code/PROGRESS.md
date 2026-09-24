@@ -426,15 +426,13 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Harbor Lite's guide harness: the box number and a phone pass (built
-      2026-09-24).** Run `pnpm --filter oscode-app eval:guide --search` on the
-      reference box (`ollama pull smollm2:135m`) and record with versus without.
-      Then, on a phone: a web question shows "Searching the web" and cites; an
-      app question stays offline; "I have 16 GB" gets the 7B. Tune a card's
-      keywords when a real question misses it (add the question to the eval).
-      Stale copy found alongside: the Settings privacy sheet still calls
-      Harbor Qwen3-1.7B and "not a coder"; AccountSetup and Paywall still
-      advertise the $20 unlock while the gates are off.
+- [ ] **Harbor Lite's guide harness: a phone pass (built 2026-09-24; box
+      number in, `docs/guide-eval-2026-09-24.md`).** On a phone: a web
+      question shows "Searching the web" and cites; an app question stays
+      offline; "I have 16 GB" gets the 7B line. Rerun `eval:guide` on the box
+      after card changes (about 100 minutes per model there). Stale copy found
+      alongside: the Settings privacy sheet still calls Harbor Qwen3-1.7B and
+      "not a coder"; AccountSetup and Paywall still advertise the $20 unlock.
 - [ ] **Mac desktop updates: prove on a real Mac (built 2026-09-23, founder has
       no Mac yet).** Windows and Linux update from any push to main with no
       Mac involved; until this is done, Macs simply see no update. Needs a Mac
@@ -961,6 +959,10 @@ extended that day by the graduated enforcement ladder (migration
       `/find` is the genuinely additive capability.
 
 ## Log
+
+### 2026-09-24, Harbor Lite's guide harness measured on the reference box
+
+The box (i5-7300U, 8 GB, CPU only), 49 questions with live DuckDuckGo: with the harness 94% vs 89% without on `smollm2:135m`, 94% vs 90% on the phone's Q4_K_M quant (`docs/guide-eval-2026-09-24.md`). Web and chat questions all 100%. The misses were the model restating setup advice without the size (fit-8, fit-4090, fit-mac on both runs), a stretch reply without Harbor or DeepBlue, and one em dash. So the harness now shows a fixed line after the reply with the worked-out DeepBlue size, as it already did for a stretch, and strips any em dash from Harbor Lite's words; the eval scores what the chat shows. The rest (stack, pair, bench, reach) moved between runs, so single-run noise, not yet a card fix.
 
 ### 2026-09-24, Harbor Lite: the guide harness, web search, and setup advice
 

@@ -110,4 +110,15 @@ describe('Harbor Lite through the guide harness', () => {
     const note = seen.find((e) => e.type === 'note');
     expect(note?.message).toBe(STRETCH_NOTE);
   });
+
+  it('shows the worked-out size after a setup reply, and strips an em dash', async () => {
+    const dash = String.fromCharCode(8212);
+    const { seen } = await ask(
+      'I have 16 GB of RAM, what should I run?',
+      `Go big ${dash} DeepBlue.`,
+    );
+    expect(seen.find((e) => e.type === 'note')?.message).toContain('Qwen 2.5 Coder 7B');
+    const final = seen.find((e) => e.type === 'text-final') as { text?: string } | undefined;
+    expect(final?.text).toBe('Go big, DeepBlue.');
+  });
 });
