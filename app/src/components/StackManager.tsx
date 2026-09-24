@@ -17,7 +17,7 @@ import {
 import { PROVIDERS, type ProviderInfo } from '../lib/providers.js';
 import { CLAUDE_MODELS } from '../lib/claudeModels.js';
 import { isPinned } from '../lib/pins.js';
-import { byomRef, normalizeBaseUrl } from '../lib/byom.js';
+import { byomReach, byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import {
   activeContribution,
   currentBenchRefs,
@@ -39,6 +39,7 @@ import {
 } from '../lib/stack.js';
 import { EFFORTS, effortLabel, DEFAULT_EFFORT, type Effort } from '../lib/effort.js';
 import { Sheet } from './Sheet.js';
+import { SheetHead } from './SheetHead.js';
 
 /** A cloud provider's selectable models for the bench. Claude comes from the
  *  full client lineup (claudeModels.ts, the same list and tiers the chat sheet
@@ -62,12 +63,17 @@ function byomHost(baseUrl: string): string {
 }
 
 /** One consistent read on where a model runs, so the whole stack is legible at
- *  a glance: teal for local and private (on device, or your own server), amber
- *  for cloud (spend and off-device). The same language the rest of the app
- *  uses. */
+ *  a glance: teal for local and private (on device, or your own server on this
+ *  machine, the home network, or a tailnet), amber for cloud (spend and
+ *  off-device, including a BYOM pointed at a hosted API). The same language
+ *  the rest of the app uses. */
 function kindMeta(ref: StackModelRef): { cls: 'local' | 'cloud'; label: string } {
   if (ref.kind === 'cloud') return { cls: 'cloud', label: 'cloud' };
-  if (ref.kind === 'byom') return { cls: 'local', label: 'your server' };
+  if (ref.kind === 'byom') {
+    return byomReach(ref.baseUrl) === 'local'
+      ? { cls: 'local', label: 'your server' }
+      : { cls: 'cloud', label: 'cloud' };
+  }
   return { cls: 'local', label: 'on device' };
 }
 
@@ -642,7 +648,7 @@ export function StackManager() {
       <Sheet open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)}>
         {profileMenuOpen ? (
           <>
-            <h2>Which status?</h2>
+            <SheetHead title="Which status?" onClose={() => setProfileMenuOpen(false)} />
             <p className="sheet-sub">
               Each status runs its own stack, used automatically when you are in it. You are{' '}
               {PROFILES[profile].label} right now.
@@ -676,7 +682,7 @@ export function StackManager() {
       <Sheet open={Boolean(pickReasoning)} onClose={() => setPickReasoning(false)}>
         {pickReasoning ? (
           <>
-            <h2>Who runs the show?</h2>
+            <SheetHead title="Who runs the show?" onClose={() => setPickReasoning(false)} />
             <p className="sheet-sub">
               The Reasoning LLM plans and routes. It can be any model you have.
             </p>

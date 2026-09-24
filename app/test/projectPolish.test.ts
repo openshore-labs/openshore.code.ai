@@ -88,7 +88,10 @@ describe('project room, redesigned as a workspace', () => {
   it('leads with the work: chats sit first (--i 0) before the context cards', () => {
     const chatsAt = detail.indexOf("'--i': 0");
     const instructionsAt = detail.indexOf("'--i': 1");
-    const reposAt = detail.indexOf("'--i': 2");
+    // Repositories steps after the currents groups when they show (2 and 3),
+    // so every card arrives on its own beat.
+    const reposAt = detail.indexOf("'--i': reposStep");
+    expect(detail).toMatch(/const reposStep = mayEdit \? 4 : 2;/);
     expect(chatsAt).toBeGreaterThan(-1);
     expect(chatsAt).toBeLessThan(instructionsAt);
     expect(instructionsAt).toBeLessThan(reposAt);

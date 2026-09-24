@@ -10910,3 +10910,18 @@ button.settings-row:active {
   padding: 6px 0;
   font-size: 13.5px;
 }
+
+/* ---- Brand sweep 2026-09-24: behavior and trust fixes (appended as one block
+   so it merges cleanly; existing tokens only, no edits above) ---- */
+
+/* Stack Health rings fill one after another on the stagger step, set per ring
+   as --i in the TSX (never a raw per-item delay). Reduced motion already drops
+   the ring transition. */
+.sh-ring-fill {
+  transition-delay: calc(var(--i, 0) * var(--stagger) * 2);
+}
+
+/* The chat's cloud spend in the top bar is spend, so it wears amber. */
+.chat-spend.spend {
+  color: var(--cloud);
+}

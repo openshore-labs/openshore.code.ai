@@ -6,24 +6,21 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { Sheet } from './Sheet.js';
+import { SheetHead } from './SheetHead.js';
 import { currentInfo, currentStateLine, type AgenticCurrentId } from '../lib/currents.js';
 
 export function CurrentConnectSheet({
   id,
   onClose,
+  onForget,
 }: {
   id: AgenticCurrentId | undefined;
   onClose: () => void;
+  /** Forget was tapped: the parent asks to confirm, then disconnects. */
+  onForget: (id: AgenticCurrentId, label: string) => void;
 }) {
-  const {
-    settings,
-    currentProbes,
-    currentsHost,
-    connectCurrent,
-    disconnectCurrent,
-    showToast,
-    startGuideChat,
-  } = useApp();
+  const { settings, currentProbes, currentsHost, connectCurrent, showToast, startGuideChat } =
+    useApp();
   const info = id ? currentInfo(id) : undefined;
   const saved = id ? settings.currentConnections?.[id] : undefined;
   const [endpoint, setEndpoint] = useState('');
@@ -70,7 +67,7 @@ export function CurrentConnectSheet({
     <Sheet open={Boolean(id)} onClose={onClose}>
       {id && info ? (
         <>
-          <h2>{info.label}</h2>
+          <SheetHead title={info.label} onClose={onClose} />
           <p className="sheet-sub">{info.needs}</p>
           {saved ? (
             <p className="hint" style={{ marginTop: 0 }}>
@@ -175,8 +172,9 @@ export function CurrentConnectSheet({
               <button
                 className="btn quiet"
                 onClick={() => {
-                  void disconnectCurrent(id);
+                  // Ask first: a forget turns the current off in every project.
                   onClose();
+                  onForget(id, info.label);
                 }}
               >
                 Forget

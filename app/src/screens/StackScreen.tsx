@@ -30,10 +30,18 @@ export function StackScreen() {
   const [status, setStatus] = useState<DesktopStatus | undefined>();
   const [remote, setRemote] = useState<DaemonStackInfo | undefined>();
   const [pickFor, setPickFor] = useState<string | undefined>(); // 'orchestrator' or a role
+  // The engine's status has not landed yet (or the read failed). Until it does,
+  // the cards read quietly instead of claiming "Not set up yet" or "Off".
+  const [readFailed, setReadFailed] = useState(false);
 
   const refresh = useCallback(async () => {
     if (isDesktop() && bridge()) {
-      setStatus(await bridge()!.status());
+      try {
+        setStatus(await bridge()!.status());
+        setReadFailed(false);
+      } catch {
+        setReadFailed(true);
+      }
     } else if (settings.daemon) {
       try {
         setRemote(await daemonStack(settings.daemon));
@@ -145,6 +153,8 @@ export function StackScreen() {
   const orchestrator = stack?.orchestrator ?? remote?.orchestrator;
   const admin = stackAdmin(settings.account);
   const canEdit = isDesktop() && admin;
+  const reading = isDesktop() && Boolean(bridge()) && !status && !readFailed;
+  const readingLine = 'Reading your computer...';
 
   // The phone manages its own app-side stack (Reasoning LLM + bench). The
   // desktop keeps its live daemon-driven view below.
@@ -201,16 +211,28 @@ export function StackScreen() {
           <div className="card-row">
             <div className="grow">
               <h3>Reasoning LLM</h3>
-              <div className="sub">
+              <div className="sub" aria-live="polite">
                 {orchestrator
                   ? `${orchestrator.model} on ${orchestrator.provider}`
-                  : 'Not set up yet. Pick a model to run the show.'}
+                  : reading
+                    ? readingLine
+                    : readFailed && !status
+                      ? 'Your computer did not answer.'
+                      : 'Not set up yet. Pick a model to run the show.'}
               </div>
             </div>
             {orchestrator ? (
               <span className={`pill ${orchestrator.kind}`}>{orchestrator.kind}</span>
             ) : null}
-            {canEdit ? (
+            {readFailed && !status ? (
+              <button
+                className="btn ghost press-fb"
+                style={{ padding: '8px 14px' }}
+                onClick={() => void refresh()}
+              >
+                Try again
+              </button>
+            ) : canEdit && !reading ? (
               <button
                 className="btn ghost"
                 style={{ padding: '8px 14px' }}
@@ -229,13 +251,18 @@ export function StackScreen() {
               <div className="card-row">
                 <div className="grow">
                   <h3>
-                    {role} <span className="sub">({plain})</span>
+                    {role.charAt(0).toUpperCase() + role.slice(1)}{' '}
+                    <span className="sub">({plain})</span>
                   </h3>
                   <div className="sub">
-                    {enabled ? enabled.model : 'Off. The orchestrator handles this itself.'}
+                    {enabled
+                      ? enabled.model
+                      : reading || (readFailed && !status)
+                        ? '\u00a0'
+                        : 'Off. The Reasoning LLM handles this itself.'}
                   </div>
                 </div>
-                {canEdit ? (
+                {canEdit && !reading && !(readFailed && !status) ? (
                   enabled ? (
                     <button
                       className="btn ghost"

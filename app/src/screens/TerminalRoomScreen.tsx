@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { driverFor, isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
-import { hapticApproval } from '../lib/haptics.js';
+import { hapticCommit } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { Switch } from '../components/Switch.js';
 import { DesktopTerminal } from '../components/DesktopTerminal.js';
@@ -153,7 +153,7 @@ export function TerminalRoomScreen() {
                   onChange={(next) => {
                     // Turning it on is a decisive commit (autonomous shell), so
                     // mark it with the firmer tap over the Switch's own tick.
-                    if (next) hapticApproval();
+                    if (next) hapticCommit();
                     void setTerminalControl(next);
                   }}
                 />

@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
+import { plainError } from '../lib/plainError.js';
 
 type Mode = 'signin' | 'signup';
 
@@ -46,7 +47,7 @@ export function SignInCard() {
         await updateMyPassword(newPw);
         setNewPw('');
       } catch (err) {
-        showToast(err instanceof Error ? err.message : String(err));
+        showToast(plainError(err));
       } finally {
         setBusy(false);
       }
@@ -126,7 +127,7 @@ export function SignInCard() {
       await fn();
       showToast(done);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err));
+      showToast(plainError(err));
     } finally {
       setBusy(false);
     }
