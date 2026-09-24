@@ -9,6 +9,7 @@ import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
 import { Composer, SLASH_COMMANDS, type SlashCommand } from '../components/Composer.js';
+import { HELD_MESSAGE_KEPT, restoreFromHeld, type ComposerRestore } from '../lib/heldMessage.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
 import { ModelSheet } from '../components/ModelSheet.js';
 import { ModeSheet } from '../components/ModeSheet.js';
@@ -183,6 +184,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [pending, setPending] = useState<{ text: string; attachments?: Attachment[] } | undefined>(
     undefined,
   );
+  // The held message handed back to the composer when the chooser closes.
+  const [restore, setRestore] = useState<ComposerRestore | undefined>(undefined);
   const booted = useBooted();
   const headerRef = useRef<HTMLElement>(null);
   useHeaderHeight(headerRef);
@@ -477,7 +480,15 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 dirty={thread?.repo?.dirty}
                 onOpenRepos={() => setView('repos')}
               />
-              {thread && thread.dollars > 0 ? ` · $${thread.dollars.toFixed(2)}` : ''}
+              {thread && thread.dollars > 0 ? (
+                <>
+                  {' · '}
+                  {/* Cloud spend so far: marked as spend, so it wears amber. */}
+                  <span className="chat-spend spend" title="Cloud spend in this chat">
+                    ${thread.dollars.toFixed(2)}
+                  </span>
+                </>
+              ) : null}
               {thread && thread.contextPercent > 0 ? (
                 <span
                   className={`ctx-bar${thread.contextPercent >= 75 ? ' warm' : ''}${thread.contextPercent >= 90 ? ' hot' : ''}`}
@@ -673,6 +684,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }
           autoFocus={isEmpty && booted}
           focusSignal={focusSignal}
+          restore={restore}
           agent={agent}
           history={history}
           hubRole={hubRole}
@@ -778,9 +790,15 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
           onClose={() => {
             setSheetOpen(false);
-            // Leaving the chooser (dismiss, or a jump to a setup screen) drops
-            // the held message so a later pick never sends stale text.
-            setPending(undefined);
+            // Leaving the chooser (dismiss, or a jump to a setup screen) stops
+            // holding the message so a later pick never sends stale text, and
+            // hands it back to the field so nothing typed is lost.
+            if (pending) {
+              const p = pending;
+              setPending(undefined);
+              setRestore((r) => restoreFromHeld(p, r));
+              if (useApp.getState().view === 'chat') showToast(HELD_MESSAGE_KEPT);
+            }
           }}
         />
       ) : null}

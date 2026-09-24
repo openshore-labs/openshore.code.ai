@@ -16,13 +16,26 @@ export function ThinkingBlock({
   endedAt?: number;
 }) {
   const [open, setOpen] = useState(false);
+  // Mount the body on first open and keep it, so the reveal plays both ways on
+  // grid rows (the ToolCard pattern), never a snap mount or unmount. The first
+  // open lands a frame after the mount so the rows have a closed state to
+  // grow from.
+  const [everOpen, setEverOpen] = useState(false);
+  const toggle = () => {
+    if (!everOpen) {
+      setEverOpen(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => setOpen(true)));
+      return;
+    }
+    setOpen((o) => !o);
+  };
   const seconds = Math.max(1, Math.round(((endedAt ?? Date.now()) - startedAt) / 1000));
   return (
     <div className={`thinking${open ? ' open' : ''}`}>
       <button
         type="button"
         className="thinking-head press-fb press-fb--row"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-expanded={open}
       >
         <span className={`thinking-glyph${streaming ? ' live' : ''}`} aria-hidden="true" />
@@ -31,9 +44,13 @@ export function ThinkingBlock({
           {open ? '▾' : '▸'}
         </span>
       </button>
-      {open ? (
-        <div className="thinking-body">
-          <Markdown text={text} streaming={streaming} />
+      {everOpen ? (
+        <div className={`reveal${open ? ' open' : ''}`} aria-hidden={!open}>
+          <div className="reveal-inner">
+            <div className="thinking-body">
+              <Markdown text={text} streaming={streaming} />
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

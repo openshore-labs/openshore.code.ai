@@ -60,6 +60,9 @@ export function ProjectDetailScreen() {
   // read/write teammate sees it but cannot change its content or roster.
   const myLevel = projectPermissionFor(project ?? {});
   const mayEdit = canEdit(myLevel);
+  // The arrival step for the Repositories card: after the first two cards (0
+  // and 1) and, for editors, the two currents groups (2 and 3).
+  const reposStep = mayEdit ? 4 : 2;
   const mayWrite = canWrite(myLevel);
   // Who can change the roster: an editor on a shared project; a company admin on
   // a local draft (which ships when the project is shared).
@@ -346,8 +349,10 @@ export function ProjectDetailScreen() {
             device-local, reached from its row. Editors only. */}
         {mayEdit ? <ProjectCurrents projectId={project.id} index={2} /> : null}
 
-        {/* Context that rides into every chat: repositories and their files. */}
-        <section className="card project-section" style={{ '--i': 2 } as CSSProperties}>
+        {/* Context that rides into every chat: repositories and their files.
+            Its step follows the two currents groups when they show, so every
+            card arrives on its own beat. */}
+        <section className="card project-section" style={{ '--i': reposStep } as CSSProperties}>
           <div className="card-row">
             <div className="grow">
               <span className="project-eyebrow">Rides into every chat</span>
@@ -390,7 +395,7 @@ export function ProjectDetailScreen() {
         {/* Enterprise: who on the team can read, write, or edit. */}
         {isCommercial ? (
           <TeamAccess
-            index={3}
+            index={reposStep + 1}
             project={project}
             canManage={canManageAccess}
             myLevel={myLevel}

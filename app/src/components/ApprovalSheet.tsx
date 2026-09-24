@@ -11,6 +11,7 @@ import { hapticApproval } from '../lib/haptics.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { permissionModeLabel } from '../lib/permissionMode.js';
 import { DiffBlock } from './ToolCard.js';
+import { toolActionLabel } from '../lib/toolVerbs.js';
 
 export function ApprovalSheet({
   request,
@@ -90,7 +91,7 @@ export function ApprovalSheet({
         <div key={request.id} className="approval-body">
           <div className="approval-head">
             <span className={`approval-badge ${isSpend ? 'spend' : 'tool'}`}>
-              {isSpend ? 'Cloud spend' : `Approve ${request.toolName}`}
+              {isSpend ? 'Cloud spend' : toolActionLabel(request.toolName)}
             </span>
             {total > 1 ? (
               <span className="approval-count">

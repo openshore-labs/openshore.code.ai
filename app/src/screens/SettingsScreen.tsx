@@ -36,7 +36,7 @@ import {
 } from '../lib/stackHealth.js';
 import { tierById, priceLabel } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
-import { hapticApproval } from '../lib/haptics.js';
+import { hapticCommit } from '../lib/haptics.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { InfoSheet } from '../components/InfoSheet.js';
@@ -593,7 +593,7 @@ export function SettingsScreen() {
                     checked={termControlOn}
                     label="Terminal Control"
                     onChange={(next) => {
-                      if (next) hapticApproval();
+                      if (next) hapticCommit();
                       void setTerminalControl(next);
                       showToast(
                         next
@@ -626,7 +626,7 @@ export function SettingsScreen() {
                     checked={codemagicAccessIsOn}
                     label="Codemagic Access"
                     onChange={(next) => {
-                      if (next) hapticApproval();
+                      if (next) hapticCommit();
                       void setCodemagicAccess(next);
                       showToast(next ? 'Codemagic Access on.' : 'Codemagic Access off.');
                     }}
@@ -659,7 +659,7 @@ export function SettingsScreen() {
                       const v: StackHealthVisibility = next ? 'admins' : 'everyone';
                       const prev = shVisibility;
                       setShVisibility(v); // optimistic
-                      if (next) hapticApproval();
+                      if (next) hapticCommit();
                       void setStackHealthVisibility(shHub, v).then((ok) => {
                         if (ok) {
                           showToast(
