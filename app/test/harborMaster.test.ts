@@ -220,7 +220,9 @@ describe('the guides know the third Harbor', () => {
   });
 
   it('Harbor Lite recites it and the shared facts name the family', () => {
-    expect(buildHarborMiniSystemPrompt()).toContain(guideStepsCompact('get-harbor-master'));
+    expect(buildHarborMiniSystemPrompt('How do I get DeepBlue?')).toContain(
+      guideStepsCompact('get-harbor-master'),
+    );
     expect(APP_KNOWLEDGE).toContain('DeepBlue');
     expect(APP_KNOWLEDGE).toContain('never through the Marketplace');
   });

@@ -178,8 +178,8 @@ export function advanceMessage(
  *  Harbor when it is on the phone. */
 export function finishMessage(facts: SetupFacts): string {
   const parts = [
-    "That's the setup. You can pick up anything you skipped later in Settings, under Get started.",
-    'Now ask me anything about OpenShore and how it works. That is what I am best at.',
+    "That's the setup. Anything you skipped waits on the Set up OpenShore page, from the button under my first message.",
+    'Now ask me anything about OpenShore, how it works, or the best setup for your equipment. I can look simple questions up on the web too.',
   ];
   if (facts.harborReady) parts.push(`Harbor is ready. ${HARBOR_SWITCH_HINT}`);
   else if (facts.harborDownloading) {

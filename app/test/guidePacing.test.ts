@@ -37,7 +37,7 @@ describe('guideOpeningPaced', () => {
 
 describe('where pacing is honest', () => {
   it('names exactly the guides Harbor Lite recites verbatim', () => {
-    const mini = readFileSync(join(process.cwd(), 'src/lib/harborMini.ts'), 'utf8');
+    const mini = readFileSync(join(process.cwd(), 'src/lib/guideCards.ts'), 'utf8');
     for (const id of GUIDES_PACED_BY_HARBOR_LIGHT) {
       expect(mini).toContain(`guideStepsCompact('${id}')`);
     }
@@ -50,7 +50,7 @@ describe('where pacing is honest', () => {
     const g = SETUP_GUIDES['get-harbor'];
     expect(pacedOpeningFor(g, { harborLight: true })).toBe(guideOpeningPaced(g));
     expect(pacedOpeningFor(g, { harborLight: false })).not.toBe(guideOpeningPaced(g));
-    const other = SETUP_GUIDES['pair-computer'];
+    const other = SETUP_GUIDES['install-ollama'];
     expect(pacedOpeningFor(other, { harborLight: true })).not.toContain('Step 1 of');
   });
 
