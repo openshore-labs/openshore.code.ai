@@ -15,7 +15,8 @@ import {
   forgetDeviceModel,
 } from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
-import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
+import { buildHarborMiniSystemPrompt, harborMiniTurn, isHarborMini } from '../lib/harborMini.js';
+import type { WebSearchResult } from '../lib/webSearch.js';
 import { formatSearchResults, resolveSearchKey, webSearch } from '../lib/webSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
@@ -51,6 +52,12 @@ export class OnDeviceDriver implements ChatDriver {
 
   private readonly guide: boolean;
   private readonly searchable: boolean;
+  /** Harbor Lite's prompt for the live turn, built by the guide harness from
+   *  the question (only the facts it needs, any web results, any setup fit). */
+  private turnPrompt?: string;
+  /** The honest line the chat shows after a reply the harness judged past
+   *  Harbor Lite's size, whatever the model wrote. */
+  private stretchNote?: string;
 
   constructor(
     private readonly modelId: string,
@@ -73,7 +80,7 @@ export class OnDeviceDriver implements ChatDriver {
 
   private systemPrompt(): string {
     const base = isHarborMini(this.modelId)
-      ? buildHarborMiniSystemPrompt()
+      ? (this.turnPrompt ?? buildHarborMiniSystemPrompt())
       : this.searchable
         ? buildHarborSystemPrompt()
         : SYSTEM_PROMPT;
@@ -160,6 +167,7 @@ export class OnDeviceDriver implements ChatDriver {
         this.emitter.emit({ type: 'task-done', reason: 'error', message: ready.detail });
         return;
       }
+      if (isHarborMini(this.modelId)) await this.prepareGuideTurn(text);
       this.history.push({ role: 'user', content: text });
       await this.generate();
     } catch (err) {
@@ -171,6 +179,36 @@ export class OnDeviceDriver implements ChatDriver {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  // The guide harness does the mechanical work before Harbor Lite writes a
+  // word: it picks the facts this question needs, searches the web when the
+  // app facts do not cover a factual question, and works out any setup fit.
+  // A search that fails (offline, rate limited) is said plainly, never faked.
+  private async prepareGuideTurn(text: string): Promise<void> {
+    const turn = harborMiniTurn(text);
+    this.stretchNote = turn.plan.stretch;
+    let sources: WebSearchResult[] | undefined;
+    let searchFailed = false;
+    if (turn.plan.searchQuery) {
+      this.emitter.emit({
+        type: 'status',
+        message: `Searching the web for "${turn.plan.searchQuery}".`,
+      });
+      try {
+        const key = await resolveSearchKey(this.researchOn);
+        sources = await webSearch(turn.plan.searchQuery, key, 3);
+        if (sources.length) {
+          this.emitter.emit({
+            type: 'citations',
+            citations: sources.map((r) => ({ title: r.title, url: r.url, snippet: r.snippet })),
+          });
+        }
+      } catch {
+        searchFailed = true;
+      }
+    }
+    this.turnPrompt = turn.prompt({ sources, searchFailed });
   }
 
   private async generate(): Promise<void> {
@@ -250,6 +288,11 @@ export class OnDeviceDriver implements ChatDriver {
 
     if (text) this.history.push({ role: 'assistant', content: text });
     this.emitter.emit({ type: 'text-final', text });
+    const stretch = this.stretchNote;
+    this.stretchNote = undefined;
+    if (stretch && text && stopReason === 'end') {
+      this.emitter.emit({ type: 'note', message: stretch });
+    }
     // A finished reply with no words is a failure, not a quiet success: say
     // so, rather than leaving the chat on its "Warming up" line.
     if (!text && stopReason === 'end') {

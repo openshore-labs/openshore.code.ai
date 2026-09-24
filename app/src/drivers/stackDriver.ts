@@ -396,10 +396,18 @@ export class StackDriver implements ChatDriver {
     });
   }
 
+  /** The live question, for Harbor Lite's per-turn fact lookup. */
+  private lastUserText(): string {
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (this.history[i]!.role === 'user') return this.history[i]!.content;
+    }
+    return '';
+  }
+
   private systemFor(ref: StackModelRef, placement?: Placement): string {
     const guideSystem =
       ref.kind === 'device' && isHarborMini(ref.modelId)
-        ? buildHarborMiniSystemPrompt()
+        ? buildHarborMiniSystemPrompt(this.lastUserText())
         : ref.kind === 'device' && isHarbor(ref.modelId)
           ? buildHarborSystemPrompt(false)
           : undefined;

@@ -426,6 +426,15 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Harbor Lite's guide harness: the box number and a phone pass (built
+      2026-09-24).** Run `pnpm --filter oscode-app eval:guide --search` on the
+      reference box (`ollama pull smollm2:135m`) and record with versus without.
+      Then, on a phone: a web question shows "Searching the web" and cites; an
+      app question stays offline; "I have 16 GB" gets the 7B. Tune a card's
+      keywords when a real question misses it (add the question to the eval).
+      Stale copy found alongside: the Settings privacy sheet still calls
+      Harbor Qwen3-1.7B and "not a coder"; AccountSetup and Paywall still
+      advertise the $20 unlock while the gates are off.
 - [ ] **Mac desktop updates: prove on a real Mac (built 2026-09-23, founder has
       no Mac yet).** Windows and Linux update from any push to main with no
       Mac involved; until this is done, Macs simply see no update. Needs a Mac
@@ -953,6 +962,10 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-24, Harbor Lite: the guide harness, web search, and setup advice
+
+Founder: raise Harbor Lite's floor. It must search the web (DuckDuckGo), answer basic sourced questions, say when it is stretched, know every part of the app and why it exists, and reason about a person's needs and equipment. A 135M model cannot do that alone, so the harness does the mechanical work (tenet 3): `app/src/lib/guideHarness.ts` (pure) plans each turn. It picks 3 of 50 verified fact cards (`guideCards.ts`, one per screen or control, current names read from the roster), searches the web for a factual question the cards do not cover (status line plus citations, a failed search said plainly), sizes DeepBlue from the person's stated RAM or GPU with the First Seat fit table, and marks a coding or heavy ask as a stretch, with a fixed honest note after the reply. The persona is short. Eval (tenet 2): 49 questions, route 100%, card recall 100% (CI, `test/guideEval.test.ts`); prompt about 580 tokens on average (880 at most) versus about 6,300 for every card on every turn. Answer quality with versus without the harness is `pnpm --filter oscode-app eval:guide` on the reference box (smollm2:135m), not yet run. Also fixed: the setup wrap-up pointed to a Settings "Get started" group that does not exist, and the shared guide facts said Linux-only and treated the Marketplace as open.
+
 ### 2026-09-24, Harbor Lite no longer sticks on "Warming up"
 
 Founder report: a question in the setup chat sat on "Warming up Harbor Lite" with no reply. Its system prompt (about 10.5k characters) outgrew the 2048-token window it loaded with, so the reply came back empty. Every device model now loads at `DEVICE_CONTEXT_TOKENS` (4096), history is trimmed to fit (`fitDeviceHistory`), and an empty reply ends with an error naming the model (`app/test/deviceContext.test.ts`). Not yet checked on a phone.
@@ -974,24 +987,3 @@ Checks every 30 minutes. A Mac build made by hand offline works too:
 `pnpm --filter oscode-app release:mac` stamps the release version, builds, and
 uploads the dmg and zip; the updater installs from either. Not yet run on a
 real packaged build.
-
-### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
-
-Founder: the setup steps are run by Harbor Lite, one at a time, in the first
-chat, with the buttons to connect; a step's page returns to the chat once the
-connection lands; questions can go off script; the walk ends by inviting
-questions about the app, and says how to switch to Harbor if it came down. Pure
-core `app/src/lib/guidedSetup.ts` (order Harbor, computer, repository, key; the
-repository waits on the computer; the words; `guideContextLine` for the model),
-effects in the store (`beginGuidedSetup`, `openSetupStep`, `skipSetupStep`, and
-`advanceGuidedSetup` on a store subscription and after each reply), buttons in
-`components/SetupStepActions.tsx` under the guide's latest message. Harbor Lite
-reads the current step through `setHarborMiniContext`. Each step says what it
-is, why it helps, and how it works, with three choices: connect, "Ask about
-this" (sends a question the guide answers), or "Skip for now". Setup is
-offered, never pushed: the first chat's first goal is a pleasant, useful
-conversation (`FIRST_CHAT_GOAL`); "I just want to chat" pauses the walk
-(`setupIntent`, buttons hidden, the guide stops raising it), "let's set up" or
-"Pick up setup" resumes it, and a bare "skip" skips the step. Progress lives on
-`settings.guidedSetup`. Guards in `app/test/guidedSetup.test.ts`, including the
-whole walk through the real store.

@@ -138,6 +138,10 @@ export function currentInfo(id: AgenticCurrentId): AgenticCurrentInfo {
   return AGENTIC_CURRENTS.find((c) => c.id === id)!;
 }
 
+/** The group's name as the app shows it, for anything outside the rooms that
+ *  must name it (Harbor Lite's fact cards), so the name lives only here. */
+export const AGENTIC_CURRENTS_TITLE = 'Agentic Currents';
+
 /** The BETA line under the group heading. Honest about what beta means here. */
 export const AGENTIC_CURRENTS_BETA_LINE =
   'An imperfect addition we are exploring. One on at a time. Off leaves no trace.';
