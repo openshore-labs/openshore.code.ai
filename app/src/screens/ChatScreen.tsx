@@ -24,7 +24,8 @@ import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
 import { GuideSetupLink } from '../components/GuideSetupLink.js';
 import { SetupStepActions } from '../components/SetupStepActions.js';
-import { ASK_ANYTHING } from '../lib/guidedSetup.js';
+import { EditChoiceActions } from '../components/EditChoiceActions.js';
+import { ASK_ANYTHING, walkActive } from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
@@ -560,7 +561,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               if (guided && guided.conversationId === conv.id) {
                 // Paused ("I'd rather just chat"): no buttons following the
                 // talk, just a quiet way back in, up under the hello.
-                if (guided.paused && !guided.finished) {
+                if (guided.paused && walkActive(guided)) {
                   return itemId === `${conv.id}-hello` ? (
                     <button
                       type="button"
@@ -572,6 +573,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                   ) : null;
                 }
                 if (thread?.busy || itemId !== lastAssistantId) return null;
+                if (guided.editChoice === 'asking') return <EditChoiceActions />;
                 if (guided.current && !guided.finished) {
                   return <SetupStepActions step={guided.current} />;
                 }

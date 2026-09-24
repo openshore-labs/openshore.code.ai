@@ -1848,3 +1848,13 @@ execution contract. Newest at the bottom.
   teal only for local, `--cloud` amber only for spend, `--accent` for chrome,
   `--attention` plum for "needs you". Harbor's license line is unchanged until
   the Qwen2.5-Coder-3B model card is checked.
+- **Zed's first-run options, CX 2026-09-24:** of Zed's eight setup options,
+  only the trust question fits, and it becomes one narrow choice: how edits
+  are handled, asked at the end of the repository step (Ask me first / Let
+  edits flow), and kept in Settings > Approvals as a device setting, not per
+  project. Theme is already in Settings. Keymap and Vim are skipped because
+  there is no editor. Agent install is skipped because CLI Pairing is per
+  project, so it is a guide opener instead. There is no settings import,
+  since instruction files are already read. Usage data and crash reports are
+  never on by default, and there is no second switch that sends anything.
+  The walk stays at four steps.

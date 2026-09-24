@@ -115,9 +115,9 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
       'Make sure a model is set up first (Stack). The agent needs a brain before it can open a repository.',
       'On your computer, open Repositories and tap Open a local folder, or paste a clone URL. On this phone, connect your computer first; the code lives there.',
       'A coding chat opens on that folder. Ask for something small and real, like: explain this project and run its tests.',
-      'Every edit shows you a diff to approve, and every command asks before it runs. You stay in control.',
+      'Every command asks before it runs. Edits go through and show their diff in the chat, or choose Ask first in Settings, under Approvals, to check each one. You stay in control.',
     ],
-    done: 'The chat header names your repository, and the agent reads files and proposes changes with approvals.',
+    done: 'The chat header names your repository, and the agent reads files, makes changes you can see as diffs, and asks before any command.',
   },
   'install-tailscale': {
     id: 'install-tailscale',
