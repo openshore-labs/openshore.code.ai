@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, openExternal } from '../lib/platform.js';
 import { COMPANY_NAME, PRIVACY_URL, SUPPORT_EMAIL, TERMS_URL } from '../lib/legal.js';
 import { bridge } from '../lib/electronBridge.js';
-import { HARBOR_BYLINE } from '../lib/harbor.js';
+import { HARBOR_ATTRIBUTION, HARBOR_BYLINE } from '../lib/harbor.js';
 import {
   HARBOR_MINI_BYLINE,
   HARBOR_MINI_BUNDLED,
@@ -19,8 +19,11 @@ import {
   HARBOR_MASTER_ATTRIBUTION,
   HARBOR_MASTER_BYLINE,
   HARBOR_MASTER_MODEL_NAME,
+  HARBOR_MASTER_RETIRED_LINE,
   harborMasterInstalled,
+  harborMasterRetiredOnly,
 } from '../lib/harborMaster.js';
+import { HarborUpgradeRow } from '../components/HarborUpgradeRow.js';
 import {
   canControlTerminal,
   terminalControlOn,
@@ -377,6 +380,9 @@ export function SettingsScreen() {
   // DeepBlue lives in the engine's Ollama, so presence is read from the
   // engine's own list, never remembered by the app.
   const harborMasterPresent = Boolean(harborMasterInstalled(desktopStatus?.ollama.models));
+  // Only a pulled size (the research-licensed 3B) in Ollama: the row reads not
+  // set up and says why. Nothing is removed from Ollama by the app.
+  const harborMasterRetired = Boolean(harborMasterRetiredOnly(desktopStatus?.ollama.models));
   const installHarborMaster = async () => {
     const ok = await ensureHarborMaster();
     if (ok) {
@@ -529,10 +535,11 @@ export function SettingsScreen() {
             <h3 className="settings-sheet-head">Local models, honestly</h3>
             <p>
               Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
-              confidently wrong, and neither guide is a coder. For real work, use DeepBlue on your
-              computer or connect a bigger model. What you type to a local model stays on this
-              device. Harbor is Qwen3-1.7B and Harbor Lite is SmolLM2-135M-Instruct, both used under
-              the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
+              confidently wrong. Harbor Lite is a guide, not a coder, and Harbor is a small coder
+              for short edits. For real work, use DeepBlue on your computer or connect a bigger
+              model. What you type to a local model stays on this device. {HARBOR_ATTRIBUTION}{' '}
+              Harbor Lite is SmolLM2-135M-Instruct, also used under the Apache License 2.0.{' '}
+              {HARBOR_MASTER_ATTRIBUTION}
             </p>
             <p>
               OpenShore does not editorialize what a model says. Three narrow limits are enforced on
@@ -805,12 +812,13 @@ export function SettingsScreen() {
                   />
                 }
               />
+              <HarborUpgradeRow />
             </>
           ) : null}
           {isDesktop() ? (
             <SettingsRow
               label="DeepBlue"
-              sub={HARBOR_MASTER_BYLINE}
+              sub={harborMasterRetired ? HARBOR_MASTER_RETIRED_LINE : HARBOR_MASTER_BYLINE}
               subWrap
               trailing={
                 <HarborInstallButton

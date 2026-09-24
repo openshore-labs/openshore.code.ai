@@ -1,17 +1,23 @@
-// Harbor: the mobile coder. Qwen 2.5 Coder 3B running fully on this device,
-// with real reasoning and real web search, so it can write and explain real
-// code and look things up instead of guessing. Harbor Lite (harborMini.ts) is
-// the tiny built-in guide; a fresh stack seeds with Harbor Lite to keep the
-// first-run download small, and Harbor is the coder a person adds when they
-// want to build on the phone. Founder scope 2026-09-21: the three curated
-// models are Harbor Lite (pocket guide), Harbor (this, the mobile coder), and
-// DeepBlue (the desktop coder).
+// Harbor: the mobile coder. A small coder running fully on this device for
+// short edits, with web search so it can look things up instead of guessing;
+// longer work happens on the person's computer (DeepBlue). Harbor Lite
+// (harborMini.ts) is the tiny built-in guide; a fresh stack seeds with Harbor
+// Lite to keep the first-run download small, and Harbor is the coder a person
+// adds when they want to code on the phone. Founder scope 2026-09-21: the three
+// curated models are Harbor Lite (pocket guide), Harbor (this, the mobile
+// coder), and DeepBlue (the desktop coder).
 //
 // HARBOR_MODEL_ID is a stable slot, not tied to one set of weights: as the
-// model improves, HARBOR_MODEL_VERSION bumps and HARBOR_MODEL_URL points at the
-// new weights, but the id and the "Harbor" name stay put so a device that
-// already has Harbor just re-downloads in place. Version 2.0 is the recast from
-// the earlier Qwen3-1.7B guide to the Qwen 2.5 Coder 3B mobile coder.
+// model changes, HARBOR_MODEL_VERSION bumps and HARBOR_MODEL_URL points at the
+// new weights, but the id and the "Harbor" name stay put. Version history:
+// 1.x was the Qwen3-1.7B guide; 2.0 was Qwen 2.5 Coder 3B, pulled 2026-09-24
+// because it is under the Qwen Research License (non-commercial only, see
+// os-code/DECISIONS.md); 2.1 is Qwen2.5-Coder-1.5B-Instruct (Apache 2.0).
+//
+// The native store keys the file by the slot id and will not re-download over
+// a file that is already there, so a device holding an older Harbor keeps it
+// until the person acts: harborIsStale() drives a card that offers the new
+// Harbor and the removal of the old file, and nothing is deleted silently.
 //
 // Harbor is a reserved on-device model id, so it flows through the existing
 // OnDeviceDriver / llama plugin and the same download path as any pocket
@@ -20,36 +26,53 @@
 import { APP_KNOWLEDGE } from './guideKnowledge.js';
 
 export const HARBOR_MODEL_ID = 'harbor';
-export const HARBOR_MODEL_VERSION = '2.0';
+export const HARBOR_MODEL_VERSION = '2.1';
 // The display name is just "Harbor" (the version rides the slot, not the copy).
 export const HARBOR_MODEL_NAME = 'Harbor';
 
-// Qwen2.5-Coder-3B-Instruct, Q4_K_M (Apache-2.0), from unsloth's GGUF repo (the
-// standard source for this quant level, the same we use for Harbor Lite). About
-// 1.9 GB. VERIFY the exact filename/casing resolves (200) before a build; this
-// sandbox cannot reach huggingface.co to check it.
-export const HARBOR_MODEL_URL =
-  'https://huggingface.co/unsloth/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf';
-export const HARBOR_APPROX_LABEL = 'about 1.9 GB';
+// The honest name of the weights behind the slot, for the license lines
+// (Settings, MODEL-LICENSES.md). Copy that speaks as Harbor never names them.
+export const HARBOR_WEIGHTS_NAME = 'Qwen2.5-Coder-1.5B-Instruct';
+export const HARBOR_ATTRIBUTION = `On this iPhone, Harbor is ${HARBOR_WEIGHTS_NAME}, used under the Apache License 2.0.`;
 
-// The one-sentence byline shown under the Harbor row in Settings. Harbor is the
-// coder that runs on the phone, a step up from the built-in Harbor Lite guide.
+// Qwen2.5-Coder-1.5B-Instruct, Q4_K_M (Apache-2.0), from unsloth's GGUF repo
+// (the standard source for this quant level, the same we use for Harbor Lite).
+// About 1 GB. VERIFY the exact filename/casing resolves (200) before a build;
+// this sandbox cannot reach huggingface.co to check it.
+export const HARBOR_MODEL_URL =
+  'https://huggingface.co/unsloth/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf';
+export const HARBOR_APPROX_LABEL = 'about 1 GB';
+
+// The one-sentence byline shown under the Harbor row in Settings. What it is,
+// in plain words: no size, no number, no benchmark.
 export const HARBOR_BYLINE =
-  'A coding agent that runs fully on your phone, writing and explaining real code, with real reasoning and web search.';
+  'A small coder on this iPhone for short edits, with web search; longer work happens on your computer.';
 
 export function isHarbor(modelId: string): boolean {
   return modelId === HARBOR_MODEL_ID;
 }
 
+/** Is the Harbor on this device older weights than the current slot? A device
+ *  that downloaded Harbor before the version was recorded (the 2.0 Qwen 2.5
+ *  Coder 3B, or the 1.x guide before it) has no version, so it reads stale.
+ *  Stale never deletes anything: it only shows the upgrade card. */
+export function harborIsStale(s: { harborReady?: boolean; harborVersion?: string }): boolean {
+  return Boolean(s.harborReady) && s.harborVersion !== HARBOR_MODEL_VERSION;
+}
+
+/** The upgrade card's copy. The old file stays until the person taps. */
+export const HARBOR_UPGRADE_TITLE = 'A new Harbor is ready';
+export const HARBOR_UPGRADE_LINE = `This iPhone has an older Harbor that OpenShore no longer ships. Get the new one (${HARBOR_APPROX_LABEL}) in its place, or just remove the old file to free the space. Nothing is removed until you tap.`;
+
 /** The instant, seeded first message, shown once Harbor is downloaded. Not
  *  model-generated, so it is reliable and appears with zero wait. No em
  *  dashes. */
 export const HARBOR_GREETING = [
-  "Hi, I'm Harbor. I'm a coding model that runs fully on this phone, and I can search the web when a question needs it, so I'm not limited to what I already know.",
+  "Hi, I'm Harbor, a small coder that lives on this iPhone. I'm here for short edits and quick explanations, and I can search the web when a question needs it.",
   '',
-  "Ask me to write or explain code, or ask how something in the app works and I'll walk you through it. For multi-file work on a whole repository, point me at a bigger model in your stack or dock to your computer.",
+  'Longer work, like changes across a whole repository, happens on your computer. Dock to it, or pick a bigger model in your stack, and I will hand it over.',
   '',
-  'What do you want to build?',
+  'What do you want to fix first?',
 ].join('\n');
 
 // The exact line Harbor emits when it wants to search, and nothing else, so
@@ -60,11 +83,12 @@ export const HARBOR_SEARCH_PREFIX = 'SEARCH:';
 
 function harborPersona(searchable: boolean): string {
   return [
-    "You are Harbor, a coding model running fully on the user's phone, part of their OpenShore stack.",
+    "You are Harbor, a small coder running fully on the user's iPhone, part of their OpenShore stack.",
     searchable
-      ? 'You are bigger and more capable than the tiny built-in Harbor Lite guide: real reasoning, and real web search when you need current information.'
-      : 'You are bigger and more capable than the tiny built-in Harbor Lite guide: real reasoning.',
-    'Your main job is coding: write and explain real code right here in chat for small, self-contained tasks. You do not edit files or run commands yourself yet. For multi-file changes, repository work, or anything heavy, know your limit: say so plainly and point to a bigger model in the stack, or to docking to the computer, instead of overreaching.',
+      ? 'You are for short edits and quick explanations, and you can search the web when you need current information.'
+      : 'You are for short edits and quick explanations.',
+    "Your main job is coding: write and explain code right here in chat for small, self-contained tasks. You do not edit files or run commands yourself yet. Longer work happens on the person's computer: for multi-file changes, repository work, or anything heavy, say so plainly and point to docking to the computer or a bigger model in the stack, instead of overreaching.",
+    'Never claim a benchmark score, a model size, or a speed for yourself.',
     'You can also answer questions about the OpenShore app, grounded in its own repository. Explain any front-end feature or setup step, and take the person as deep as they want on setting their system up. Never reveal backend build internals, infrastructure, or how OpenShore is implemented under the hood; keep to what the person can see and do in the app.',
     'Voice: warm, brief, plainspoken, confident.',
     searchable

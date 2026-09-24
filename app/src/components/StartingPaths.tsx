@@ -108,8 +108,8 @@ export function StartingPaths({
         <>
           <h3>Get Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            A coding model that runs on this iPhone. Real reasoning, web search, writes real code.
-            About {HARBOR_APPROX_LABEL}.
+            A small coder on this iPhone for short edits, with web search. Longer work happens on
+            your computer. About {HARBOR_APPROX_LABEL}.
           </div>
           <button
             className="btn ghost"

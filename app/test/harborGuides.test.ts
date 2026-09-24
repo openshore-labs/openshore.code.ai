@@ -6,7 +6,19 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { HARBOR_BYLINE, buildHarborSystemPrompt } from '../src/lib/harbor.js';
+import {
+  HARBOR_APPROX_LABEL,
+  HARBOR_ATTRIBUTION,
+  HARBOR_BYLINE,
+  HARBOR_GREETING,
+  HARBOR_MODEL_ID,
+  HARBOR_MODEL_URL,
+  HARBOR_MODEL_VERSION,
+  HARBOR_UPGRADE_LINE,
+  HARBOR_WEIGHTS_NAME,
+  buildHarborSystemPrompt,
+  harborIsStale,
+} from '../src/lib/harbor.js';
 import {
   HARBOR_MINI_APPROX_LABEL,
   HARBOR_MINI_BUNDLED,
@@ -28,6 +40,8 @@ import { SETUP_GUIDES, guideStepsCompact } from '../src/lib/setupGuides.js';
 // or a spelling out of this file.
 const EM_DASH = String.fromCharCode(0x2014);
 const NO_EM_DASH = new RegExp([EM_DASH, '&' + 'mdash;', '&#x' + '2014;', '&#' + '8212;'].join('|'));
+
+const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
 
 function oneSentence(s: string): boolean {
   // A single trailing sentence: exactly one period, and it is the last char.
@@ -91,9 +105,12 @@ describe('the guide bylines', () => {
     }
   });
 
-  it('keeps Harbor a one-sentence capability line', () => {
+  it('keeps Harbor a one-sentence line that says what it is', () => {
     expect(oneSentence(HARBOR_BYLINE)).toBe(true);
-    expect(HARBOR_BYLINE.toLowerCase()).toContain('coding agent');
+    const b = HARBOR_BYLINE.toLowerCase();
+    expect(b).toContain('small coder');
+    expect(b).toContain('short edits');
+    expect(b).toContain('longer work happens on your computer');
   });
 
   it('gives Harbor Lite its "always on" promise (Creative Studio)', () => {
@@ -228,5 +245,79 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(paths).toContain('Harbor Lite is already here');
     expect(paths).toContain('Say hello');
     expect(paths).toContain("When you're ready to go further");
+  });
+});
+
+describe('Harbor is Qwen2.5-Coder-1.5B-Instruct under Apache 2.0 (the 3B was pulled 2026-09-24)', () => {
+  it('points the slot at the 1.5B GGUF, with an honest size and a bumped version', () => {
+    expect(HARBOR_MODEL_ID).toBe('harbor');
+    expect(HARBOR_MODEL_VERSION).toBe('2.1');
+    expect(HARBOR_MODEL_URL).toMatch(/^https:\/\/huggingface\.co\//);
+    expect(HARBOR_MODEL_URL).toContain('Qwen2.5-Coder-1.5B-Instruct');
+    expect(HARBOR_MODEL_URL).toMatch(/Q4_K_M\.gguf$/);
+    expect(HARBOR_MODEL_URL).not.toMatch(/3B/i);
+    expect(HARBOR_APPROX_LABEL).toBe('about 1 GB');
+  });
+
+  it('names the weights and the Apache license in the attribution, never the 3B', () => {
+    expect(HARBOR_WEIGHTS_NAME).toBe('Qwen2.5-Coder-1.5B-Instruct');
+    expect(HARBOR_ATTRIBUTION).toContain(HARBOR_WEIGHTS_NAME);
+    expect(HARBOR_ATTRIBUTION).toContain('Apache License 2.0');
+    const settings = readFileSync(join(process.cwd(), 'src/screens/SettingsScreen.tsx'), 'utf8');
+    expect(settings).toContain('{HARBOR_ATTRIBUTION}');
+    expect(settings).not.toContain('Qwen3-1.7B');
+    expect(settings).not.toContain('neither guide is a coder');
+    expect(read('MODEL-LICENSES.md')).toContain('Qwen2.5-Coder-1.5B-Instruct');
+  });
+
+  it('speaks in its own voice without a size, a number, or a benchmark', () => {
+    for (const text of [HARBOR_BYLINE, HARBOR_GREETING, buildHarborSystemPrompt()]) {
+      expect(text).not.toMatch(NO_EM_DASH);
+      expect(text).not.toMatch(/\b\d+(\.\d+)?\s*[BM]\b/);
+      expect(text).not.toMatch(/\d+\s*%|HumanEval|benchmark score of|\bGB\b/);
+      expect(text).not.toMatch(/Qwen/);
+    }
+    expect(HARBOR_GREETING.toLowerCase()).toContain('small coder');
+    expect(buildHarborSystemPrompt().toLowerCase()).toContain('longer work happens');
+    expect(buildHarborSystemPrompt()).toContain('Never claim a benchmark score');
+  });
+});
+
+describe('an older Harbor on the phone is never deleted silently', () => {
+  it('reads stale only when Harbor is on the device at an older or unrecorded version', () => {
+    expect(harborIsStale({})).toBe(false);
+    expect(harborIsStale({ harborReady: false })).toBe(false);
+    expect(harborIsStale({ harborReady: true, harborVersion: HARBOR_MODEL_VERSION })).toBe(false);
+    // A device that got the 3B (2.0) never recorded a version, so it reads stale.
+    expect(harborIsStale({ harborReady: true })).toBe(true);
+    expect(harborIsStale({ harborReady: true, harborVersion: '2.0' })).toBe(true);
+  });
+
+  it('offers the new Harbor and the removal as two taps on a Settings row', () => {
+    expect(HARBOR_UPGRADE_LINE).not.toMatch(NO_EM_DASH);
+    expect(HARBOR_UPGRADE_LINE).toContain(HARBOR_APPROX_LABEL);
+    expect(HARBOR_UPGRADE_LINE).toContain('Nothing is removed until you tap');
+    const row = read('src/components/HarborUpgradeRow.tsx');
+    expect(row).toContain('harborIsStale(settings)');
+    expect(row).toContain('upgradeHarbor()');
+    expect(row).toContain('removeHarbor()');
+    expect(row.match(/press-fb/g)?.length).toBe(2);
+    const settings = read('src/screens/SettingsScreen.tsx');
+    expect(settings).toContain('<HarborUpgradeRow />');
+  });
+
+  it('records the version on download, clears it on removal, and upgrades only on a tap', () => {
+    const store = read('src/state/store.ts');
+    expect(store).toContain(
+      'saveSettings({ harborReady: true, harborVersion: HARBOR_MODEL_VERSION })',
+    );
+    expect(store).toContain('saveSettings({ harborReady: false, harborVersion: undefined })');
+    const upgrade = store.slice(store.indexOf('async upgradeHarbor()'));
+    const body = upgrade.slice(0, upgrade.indexOf('async removeHarbor()'));
+    expect(body).toContain('removeHarbor()');
+    expect(body).toContain('ensureHarbor()');
+    // Only the card calls it: nothing on launch or in reconcile upgrades a Harbor.
+    const calls = [...store.matchAll(/upgradeHarbor\(\)/g)].length;
+    expect(calls).toBe(2); // the interface declaration and the action itself
   });
 });

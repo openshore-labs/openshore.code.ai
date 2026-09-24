@@ -21,21 +21,29 @@ attribution ship in the app.
 
 ## Harbor (downloaded)
 
-- **Weights:** Qwen2.5-Coder-3B-Instruct (GGUF, Q4_K_M quantization).
-- **Source:** via Hugging Face (`unsloth/Qwen2.5-Coder-3B-Instruct-GGUF`),
+- **Weights:** Qwen2.5-Coder-1.5B-Instruct (GGUF, Q4_K_M quantization), about
+  1 GB. Slot version 2.1 (`HARBOR_MODEL_VERSION`).
+- **Source:** via Hugging Face (`unsloth/Qwen2.5-Coder-1.5B-Instruct-GGUF`),
   downloaded on demand (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
 - **License:** Apache License 2.0. Downloaded from the source, not redistributed
   by us, the same posture as any pocket model.
+- **Pulled:** Qwen2.5-Coder-3B-Instruct (slot version 2.0) is under the Qwen
+  Research License, which allows research and non-commercial use only, so it is
+  no longer Harbor (ruling 2026-09-24, `os-code/DECISIONS.md`). A phone that
+  still holds it keeps the file until the person taps to replace or remove it.
 
 ## DeepBlue (pulled through Ollama, on the desktop)
 
-- **Weights:** Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 3B
+- **Weights:** Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 1.5B
   (Ollama's Q4_K_M builds). The slot id is `harbor-master`; the sizes are the
   catalog's own entries (`HARBOR_MASTER_SIZES` in `app/src/lib/harborMaster.ts`).
 - **Source:** the Ollama library, pulled by the desktop engine on the person's
   own machine (`ollama pull qwen2.5-coder:<size>`), never through OpenShore.
-- **License:** Apache License 2.0 as the catalog records it for each size.
-  Downloaded from the source, not redistributed by us. When OpenShore's own tuned
+- **License:** Apache License 2.0 as the catalog records it for every size.
+  Downloaded from the source, not redistributed by us. The 3B is no longer a
+  size: it is under the Qwen Research License (non-commercial only), the catalog
+  labels it so, and the license gate drops it. A computer that pulled it keeps it
+  in Ollama; the app never removes it. When OpenShore's own tuned
   weights replace these, the refs, this entry, and the in-app attribution change
   in the same commit (`docs/house-model-proposal.md`).
 

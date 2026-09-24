@@ -424,9 +424,9 @@
     {
       "id": "qwen2.5-coder-3b",
       "name": "Qwen 2.5 Coder 3B",
-      "tagline": "A small coder that runs short plans on a computer with no GPU. Measured, not guessed.",
+      "tagline": "A small coder under the Qwen Research License, research use only. Not offered as a seat.",
       "categories": ["coding", "fast"],
-      "orchestratorCapable": true,
+      "orchestratorCapable": false,
       "source": {
         "kind": "ollama",
         "ref": "qwen2.5-coder:3b",
@@ -437,13 +437,15 @@
       "quantization": "Q4_K_M",
       "contextTokens": 32768,
       "license": {
-        "id": "Apache-2.0",
-        "name": "Apache License 2.0",
-        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+        "id": "qwen-research",
+        "name": "Qwen Research License",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct/blob/main/LICENSE",
+        "note": "Research and non-commercial use only.",
+        "commercial": "non-commercial"
       },
       "curation": {
         "rank": 13,
-        "note": "A middle step between the 1.5B helper and the 7B starter."
+        "note": "Pulled 2026-09-24: not Apache 2.0, so the license gate drops it and no slot seats it."
       },
       "blessed": false
     },

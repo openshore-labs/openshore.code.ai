@@ -1,15 +1,17 @@
 // Curation carries provenance: every eval entry says whether its number was
 // published (a seed number) or measured (a run on a named box, on a date).
-// The 3B's measured deep score on the reference box is what lets it clear the
-// orchestrator gate; nothing is invented for the 4B. The seed flips the 3B to
-// orchestrator-capable so the storefront, the bundles, and the starter can
-// offer it as a seat.
+// A measured deep score alone can clear the orchestrator gate; nothing is
+// invented for the 4B. The Qwen 2.5 Coder 3B is under the Qwen Research License
+// (non-commercial only), so it was pulled on 2026-09-24 (DECISIONS): its
+// measured result stays as history, labeled research use, and the license gate
+// drops it from the storefront fail-closed.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { enrichCatalog } from '../scripts/build-catalog/enrich.js';
 import { evalScore, evalSource } from '../scripts/build-catalog/evals.js';
+import { resolveLicense } from '../scripts/build-catalog/licenses.table.js';
 import { derivePresets } from '../scripts/build-catalog/presets.js';
 import type { BuildInputs, EvalEntries } from '../scripts/build-catalog/types.js';
 import { CatalogSchema } from '../src/market/schema.js';
@@ -22,16 +24,20 @@ const overlay = JSON.parse(readFileSync(resolve(here, '../curation/recommended.j
 const seed = JSON.parse(readFileSync(resolve(here, '../catalog.sample.json'), 'utf8'));
 
 describe('curation/eval.json provenance', () => {
-  it('every entry names its source', () => {
+  it('every entry names its source, and a note, when present, is a plain label', () => {
     for (const [id, entry] of Object.entries(evals)) {
       expect(evalSource(entry), id).toMatch(/^(published|measured)$/);
       const score = evalScore(entry);
       expect(score, id).toBeGreaterThanOrEqual(0);
       expect(score, id).toBeLessThanOrEqual(1);
+      if (typeof entry === 'object' && entry.note !== undefined) {
+        expect(typeof entry.note, id).toBe('string');
+        expect(entry.note.trim().length, id).toBeGreaterThan(0);
+      }
     }
   });
 
-  it('carries the measured 3B entry from the reference box, as recorded', () => {
+  it('keeps the measured 3B entry as history, labeled research use and not seated', () => {
     const e = evals['qwen2.5-coder-3b'];
     expect(e).toBeDefined();
     expect(typeof e).toBe('object');
@@ -42,6 +48,15 @@ describe('curation/eval.json provenance', () => {
       date: '2026-09-15',
       source: 'measured',
     });
+    const note = typeof e === 'object' ? (e.note ?? '') : '';
+    expect(note).toMatch(/research use only/);
+    expect(note).toMatch(/Qwen Research License/);
+    expect(note).toMatch(/not seated/);
+  });
+
+  it('a note never moves the score', () => {
+    const base = { deep: 0.75, source: 'measured' as const };
+    expect(evalScore({ ...base, note: 'research use only' })).toBe(evalScore(base));
   });
 
   it('invents nothing for the 4B', () => {
@@ -153,17 +168,39 @@ describe('the enrich gate accepts a measured deep score', () => {
   });
 });
 
-describe('the bundled seed offers the 3B as a seat', () => {
-  it('flips qwen2.5-coder-3b to orchestrator-capable and it clears the real gate', () => {
+describe('the bundled seed pulls the research-licensed 3B', () => {
+  it('labels qwen2.5-coder-3b with the Qwen Research License, which is not on the allow-list', () => {
     const three = seed.models.find((m: { id: string }) => m.id === 'qwen2.5-coder-3b');
-    expect(three?.orchestratorCapable).toBe(true);
+    expect(three?.license).toMatchObject({ id: 'qwen-research', name: 'Qwen Research License' });
+    expect(resolveLicense(three?.license.id)).toBeUndefined();
+    expect(three?.orchestratorCapable).toBe(false);
+  });
+
+  it('the license gate drops it fail-closed, even with its measured eval in hand', () => {
     const { catalog, drops } = enrichCatalog(
       inputs({ seed, evals, overlay, metadata: {}, benchmarks: {} }),
     );
-    expect(drops.map((d) => d.id)).not.toContain('qwen2.5-coder-3b');
-    const kept = catalog.models.find((m) => m.id === 'qwen2.5-coder-3b');
-    expect(kept?.orchestratorCapable).toBe(true);
-    expect(kept?.ratings?.osCodeFit).toBe(4);
+    const drop = drops.find((d) => d.id === 'qwen2.5-coder-3b');
+    expect(drop?.reason).toMatch(/license "qwen-research" is not on the SPDX allow-list/);
+    expect(catalog.models.map((m) => m.id)).not.toContain('qwen2.5-coder-3b');
+    for (const p of catalog.presets) {
+      const refs = [p.stack.orchestrator, ...Object.values(p.stack.specialists)];
+      expect(refs, p.id).not.toContain('qwen2.5-coder-3b');
+    }
+  });
+
+  it('no editorial overlay recommends it, so no license note can call it commercial', () => {
+    expect(overlay['qwen2.5-coder-3b']).toBeUndefined();
+  });
+
+  it('the 1.5B that stands in is Apache 2.0 and survives the gate', () => {
+    const benchmarks = JSON.parse(
+      readFileSync(resolve(here, '../curation/benchmarks.json'), 'utf8'),
+    );
+    const { catalog } = enrichCatalog(inputs({ seed, evals, overlay, metadata: {}, benchmarks }));
+    const kept = catalog.models.find((m) => m.id === 'qwen2.5-coder-1.5b');
+    expect(kept?.source.ref).toBe('qwen2.5-coder:1.5b');
+    expect(kept?.license.id).toBe('Apache-2.0');
   });
 });
 

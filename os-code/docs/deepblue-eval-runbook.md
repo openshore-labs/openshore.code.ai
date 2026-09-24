@@ -2,22 +2,35 @@
 
 How to put each DeepBlue size through the premium harness deep eval and record
 the result honestly. DeepBlue is Qwen 2.5 Coder, sized to the machine (32B, 14B,
-7B, 3B). Only the 3B has a measured loop number so far; this runbook is for
-getting the larger sizes measured on hardware that fits them, then committing the
-numbers.
+7B, 1.5B), every size Apache 2.0. The 3B was pulled on 2026-09-24 (`DECISIONS.md`):
+it is under the Qwen Research License (non-commercial only), so it is no longer
+DeepBlue's floor or Harbor's weights. Its measured number stays in
+`curation/eval.json` as history, labeled research use. No current size has a
+measured loop number yet; this runbook is for getting them measured on hardware
+that fits them, then committing the numbers.
 
 Companion decisions: `DECISIONS.md` (Harbor Lite is out of the coding eval; only
 Harbor and DeepBlue go through the harness; DeepBlue stays Qwen 2.5 Coder, with
 Bonsai 2 a measured candidate only).
 
-## Current state (2026-09-23)
+## Current state (2026-09-24)
 
 | Size  | Ollama ref            | eval.json key          | Number today                | Through the harness? |
 | ----- | --------------------- | ---------------------- | --------------------------- | -------------------- |
-| 3B    | `qwen2.5-coder:3b`    | `qwen2.5-coder-3b`     | deep 0.75, best of 2, measured | Yes (cpu-7.6gb, 2026-09-15) |
+| 1.5B (floor) | `qwen2.5-coder:1.5b` | `qwen2.5-coder-1.5b` | probe 0.48, published (seed) | No, measured next |
 | 7B    | `qwen2.5-coder:7b`    | `qwen2.5-coder-7b`     | probe 0.86, published (seed) | No                   |
 | 14B   | `qwen2.5-coder:14b`   | `qwen2.5-coder-14b`    | probe 0.88, published (seed) | No                   |
 | 32B   | `qwen2.5-coder:32b`   | `qwen2.5-coder-32b`    | probe 0.94, published (seed) | No                   |
+
+History, not a size: the 3B (`qwen2.5-coder:3b`, key `qwen2.5-coder-3b`) measured
+deep 0.75, best of 2, on cpu-7.6gb on 2026-09-15. Research use only (Qwen
+Research License); not seated; the catalog's license gate drops it. It is not
+DeepBlue's number and no card may quote it.
+
+Next on the reference box, per the 2026-09-24 ruling: measure `qwen3:4b` first
+to decide the floor, then the 1.5B. Until then the floor is the 1.5B, unmeasured
+through the harness, and the site's Measured block stays off until an Apache
+model has a with-and-without number.
 
 "Published" is a seed number from public benchmarks. It clears the gate but is
 NOT a run through our harness. Only a "measured" `deep` number is.
@@ -38,11 +51,13 @@ NOT a run through our harness. Only a "measured" `deep` number is.
 
 ## Hardware fit
 
-The reference box (CPU-only, 7.6 GB) tops out at the 3B. A 7B at Q4 is about
-4.7 GB of weights plus context and server overhead, so it needs real headroom.
+The reference box (CPU-only, 7.6 GB) tops out below the 7B: it ran the 3B, and
+it fits the 1.5B and `qwen3:4b`. A 7B at Q4 is about 4.7 GB of weights plus
+context and server overhead, so it needs real headroom.
 
 | Size  | Weights (Q4) | Run it on                          |
 | ----- | ------------ | ---------------------------------- |
+| 1.5B  | ~1.0 GB      | the reference box                  |
 | 7B    | ~4.7 GB      | a 16 GB laptop, or an 8 GB GPU     |
 | 14B   | ~9 GB        | a hub-class box                    |
 | 32B   | ~20 GB       | a ~48 GB-GPU-class box             |
@@ -61,9 +76,9 @@ ollama pull qwen2.5-coder:7b
 osc eval --deep --provider ollama --model qwen2.5-coder:7b --attempts 2
 ```
 
-Swap `:7b` for `:14b` or `:32b` as appropriate. Notes:
+Swap `:7b` for `:1.5b`, `:14b`, or `:32b` as appropriate. Notes:
 
-- `--attempts 2` matches how the 3B was measured (best of 2, the number a card
+- `--attempts 2` matches how the 3B history entry was measured (best of 2, the number a card
   may quote). The report prints one-try and best-of-2 side by side.
 - The command uses the Ollama ref (colon, `qwen2.5-coder:7b`); the eval.json key
   uses the dash id (`qwen2.5-coder-7b`). They are not the same string.
@@ -111,22 +126,24 @@ when a card is redesigned later:
   (`app/src/lib/harborMaster.ts`) shows a size and attribution line. Harbor's row
   shows a byline. None reads a rating.
 - **Eval stars surface only in the catalog-driven Marketplace**, keyed by the
-  catalog id (`qwen2.5-coder-3b`, `-7b`, ...), which is the correct key. The
+  catalog id (`qwen2.5-coder-1.5b`, `-7b`, ...), which is the correct key. The
   reserved app slots (`harbor`, `harbor-master`, `harbor-mini`) resolve to those
   catalog ids for install, not for rating display.
 - **So there is nothing to fix now.** The mapping only becomes a real gap if a
   DeepBlue or Harbor card is later designed to quote its measured score. At that
   point it must resolve the slot to its weights id (DeepBlue's active size to its
-  `catalogId`, Harbor to `qwen2.5-coder-3b`) and read that entry, never invent a
+  `catalogId`, Harbor to its weights' entry) and read that entry, never invent a
   per-slot number. This paragraph is the reminder to do that when the time comes.
 
 ## Harbor and the phone
 
-Harbor runs the same Qwen 2.5 Coder 3B weights as DeepBlue's floor size, so the
-desktop 0.75 characterizes the weights. Harbor ships on the phone, where the
-harness loop does not run yet (`app/src/drivers/onDeviceDriver.ts` is a single
-search protocol, no tool loop, no verify, no best-of-N). Measuring Harbor through
-the harness on its real runtime waits on the pure-core extraction and the phone
-host (see `PROGRESS.md`, What remains). Until then, the honest line is: Harbor's
-weights score 0.75 through the harness on desktop, and Harbor on the phone is
-chat coding without the harness loop.
+Harbor is Qwen2.5-Coder-1.5B-Instruct (Apache 2.0) since 2026-09-24, the same
+weights as DeepBlue's floor size, so the 1.5B's desktop run, once measured, will
+characterize Harbor's weights. The 3B's 0.75 no longer describes Harbor. Harbor
+ships on the phone, where the harness loop does not run yet
+(`app/src/drivers/onDeviceDriver.ts` is a single search protocol, no tool loop,
+no verify, no best-of-N). Measuring Harbor through the harness on its real
+runtime waits on the pure-core extraction and the phone host (see `PROGRESS.md`,
+What remains). Until then, the honest line is: Harbor's weights have no measured
+harness number yet, and Harbor on the phone is chat coding without the harness
+loop.

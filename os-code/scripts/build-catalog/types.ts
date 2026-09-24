@@ -47,6 +47,7 @@ export type BenchmarkScores = Record<string, number>;
  *  (0..1); `deep` is the agent-loop score from `osc eval --deep` (0..1), the
  *  number a card may quote. `published` marks a seed number; `measured` marks a
  *  run on a named box (`box`), on a date, with the best-of `attempts` used.
+ *  `note` labels the entry (research use, not seated) without moving a score.
  *  osCodeFit is round(score * 5) over the probe, else the deep score. */
 export interface EvalEntry {
   probe?: number;
@@ -55,6 +56,10 @@ export interface EvalEntry {
   attempts?: number;
   box?: string;
   date?: string;
+  /** A plain label on the entry, never read by the gate or the fit: for
+   *  example "research use only; Qwen Research License; not seated", so a
+   *  number kept as history cannot be mistaken for a seat's number. */
+  note?: string;
 }
 
 /** A bare number is an older file's published probe average. */

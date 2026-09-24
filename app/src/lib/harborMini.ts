@@ -38,7 +38,7 @@ export const HARBOR_MINI_MODEL_ID = 'harbor-mini';
 export const HARBOR_MINI_MODEL_NAME = 'Harbor Lite';
 
 // SmolLM2-135M-Instruct, Q4_K_M (Apache-2.0), from unsloth's GGUF repo (the
-// same source we use for Harbor's Qwen3-1.7B). About 105 MB. VERIFY the exact
+// same source we use for Harbor's weights). About 105 MB. VERIFY the exact
 // filename/casing resolves (200) before a build; this sandbox cannot reach
 // huggingface.co to check it.
 export const HARBOR_MINI_MODEL_URL =
@@ -112,7 +112,7 @@ const HARBOR_MINI_PERSONA = [
   'You do not write real code, run commands, edit files, or do multi-step reasoning. A small model that fakes those gets people stuck. Know your limits and say so early: when you hit that edge, say so warmly and hand off. Reaching your size is the design, not a failure, so never grovel or apologize for it. Tone to match: "That one is bigger than me, and I can set up a model that handles it with you in about a minute. Want to?"',
   '',
   'WHEN YOU REACH YOUR EDGE, route by what the person needs:',
-  '- Real coding, real reasoning, or current info from the web: get Harbor, a coding model that runs on the phone. Or connect Claude on their own key for the strongest.',
+  '- Short code edits, or current info from the web: get Harbor, a small coder that runs on the phone. Or connect Claude on their own key for the strongest.',
   '- A real coding agent that edits their repositories: get DeepBlue, the most capable of the out-of-the-box models, on their own computer, then pair this phone to it.',
   '- Their own paid model (Claude, OpenAI, or Gemini): connect a cloud key.',
   '- A bigger model that still runs fully on the phone, private and offline: the Marketplace.',

@@ -2,7 +2,8 @@
 // that resolves against this computer, a phone pick that reads real memory,
 // and the one rule for when the empty chat shows the seat at all. The load-
 // bearing case is the founder's box: 8 GB, no GPU, where the 7B must read
-// "too big" (the engine's own verdict) and the 3B must be the pick.
+// "too big" (the engine's own verdict) and the 1.5B must be the pick (the 3B
+// was pulled on 2026-09-24 for its research-only license).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -59,8 +60,8 @@ describe('fitVerdict mirrors the engine budget exactly', () => {
   it('the founder box: 4.7 GB on 8 GB CPU reads too-big, on 16 GB it fits', () => {
     expect(fitVerdict(4.7, cpu(8))).toBe('too-big');
     expect(fitVerdict(4.7, cpu(16))).toBe('fits');
-    // The 3B fits the floor machine with room.
-    expect(fitVerdict(1.9, cpu(8))).toBe('fits');
+    // The 1.5B fits the floor machine with room.
+    expect(fitVerdict(1.0, cpu(8))).toBe('fits');
   });
 
   it('agrees with budgetFor + fitsBudget across a grid of machines', () => {
@@ -109,29 +110,28 @@ describe('fitVerdict mirrors the engine budget exactly', () => {
 });
 
 describe('resolveStarter is a preference list resolved by fit', () => {
-  it('is DeepBlue: the 32B on a big hub, the 14B, the 7B, then the 3B floor seat', () => {
+  it('is DeepBlue: the 32B on a big hub, the 14B, the 7B, then the 1.5B floor seat', () => {
     expect(STARTER_CANDIDATES.map((c) => c.catalogId)).toEqual([
       'qwen2.5-coder-32b',
       'qwen2.5-coder-14b',
       'qwen2.5-coder-7b',
-      'qwen2.5-coder-3b',
+      'qwen2.5-coder-1.5b',
     ]);
+    // The research-licensed 3B is never a starter candidate.
+    expect(STARTER_CANDIDATES.map((c) => c.ollamaRef)).not.toContain('qwen2.5-coder:3b');
     // The default pick, before the machine is read, is never the biggest.
     expect(STARTER_MODEL.catalogId).toBe('qwen2.5-coder-7b');
   });
 
-  it('picks the 3B on a CPU box under about 12 GB and the 7B when it fits', () => {
+  it('picks the 1.5B on a CPU box under about 12 GB and the 7B when it fits', () => {
     // The fit is the engine's own verdict (fitVerdict over budgetFor), so the
     // pill never drifts from the store. The load-bearing guarantee is the PICK:
-    // the 3B on a CPU box through 12 GB, the 7B once real memory allows it.
+    // the 1.5B on a CPU box through 12 GB, the 7B once real memory allows it.
     for (const ram of [4, 8, 12]) {
-      expect(resolveStarter(cpu(ram)).pick.ollamaRef, `${ram} GB`).toBe('qwen2.5-coder:3b');
+      expect(resolveStarter(cpu(ram)).pick.ollamaRef, `${ram} GB`).toBe('qwen2.5-coder:1.5b');
+      // The 1.5B is small enough to read a clean fit even on a 4 GB box.
+      expect(resolveStarter(cpu(ram)).fit, `${ram} GB`).toBe('fits');
     }
-    // On the 8 and 12 GB boxes the 3B reads a clean fit; a 4 GB box is honestly
-    // tight (half of 4 GB leaves the 3B little headroom), never a false "fits".
-    expect(resolveStarter(cpu(8)).fit).toBe('fits');
-    expect(resolveStarter(cpu(12)).fit).toBe('fits');
-    expect(resolveStarter(cpu(4)).fit).toBe('tight');
     expect(resolveStarter(cpu(14))).toMatchObject({
       pick: { ollamaRef: 'qwen2.5-coder:7b' },
       fit: 'tight',
@@ -152,13 +152,13 @@ describe('resolveStarter is a preference list resolved by fit', () => {
     expect(r.fit).toBe('unknown');
   });
 
-  it('falls to the 3B on the reference box because the 7B is too big, and says so honestly', () => {
+  it('falls to the 1.5B on the reference box because the 7B is too big, and says so honestly', () => {
     // The 8 GB CPU box is the founder's floor: the 7B is the engine's own
-    // "too big" there (it swaps), so the starter falls to the 3B and reports
-    // the 3B's real verdict, never the 7B's.
+    // "too big" there (it swaps), so the starter falls to the 1.5B and reports
+    // the 1.5B's real verdict, never the 7B's.
     expect(fitVerdict(4.7, cpu(8))).toBe('too-big');
     const r = resolveStarter(cpu(8));
-    expect(r.pick.ollamaRef).toBe('qwen2.5-coder:3b');
+    expect(r.pick.ollamaRef).toBe('qwen2.5-coder:1.5b');
     expect(r.fit).toBe('fits');
   });
 });
@@ -178,14 +178,14 @@ describe('the class line comes from the engine, never invented on the card', () 
     expect(modelClassFor(32)).toBe('large');
   });
 
-  it('the 7B and 3B picks are small, the 14B is mid, and the 32B is large', () => {
-    for (const c of STARTER_CANDIDATES.filter(
-      (c) => c.catalogId === 'qwen2.5-coder-7b' || c.catalogId === 'qwen2.5-coder-3b',
-    )) {
-      expect(classLineFor(c.ollamaRef)).toBe(
-        'Runs short plans. The harness carries the checklist.',
-      );
-    }
+  it('the 1.5B floor is tiny, the 7B is small, the 14B is mid, and the 32B is large', () => {
+    // The floor's pill says what it is: a tiny seat runs single steps.
+    expect(classLineFor('qwen2.5-coder:1.5b')).toBe(
+      'Runs single steps. Best for quick edits and questions.',
+    );
+    expect(classLineFor('qwen2.5-coder:7b')).toBe(
+      'Runs short plans. The harness carries the checklist.',
+    );
     expect(classLineFor('qwen2.5-coder:14b')).toBe(
       'Plans and runs multi-step work with subagents.',
     );

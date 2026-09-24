@@ -15,7 +15,7 @@ workflow.
   The benchmark names match `src/router/roles.ts`. These drive the per-capability
   stars through the normalization table in `scripts/build-catalog/stars.ts`.
 - **`eval.json`**: a map of modelId to an eval entry with provenance:
-  `{ probe?, deep?, source, attempts?, box?, date? }`. `probe` is the one-shot
+  `{ probe?, deep?, source, attempts?, box?, date?, note? }`. `probe` is the one-shot
   probe average (0..1); `deep` is the agent-loop score from `osc eval --deep`
   (0..1), the number a card may quote. `source` is `published` for a seed
   number or `measured` for a run on a named box (`box`, for example
@@ -24,7 +24,10 @@ workflow.
   entry to earn a ratings block, and an orchestrator needs one to clear the
   curated gate; a measured deep score satisfies it on its own. A bare number is
   read as a published probe (older files). Nothing is entered that was not
-  published or measured: no number for a model nobody has run.
+  published or measured: no number for a model nobody has run. `note` is a
+  plain label on the entry, for example that a number was measured on a model
+  that is research use only and not seated (the Qwen 2.5 Coder 3B keeps its
+  2026-09-15 result as history this way). It never changes the score.
 
 A model whose license id is not on the allow-list in
 `scripts/build-catalog/licenses.table.ts` is dropped fail-closed, no matter what

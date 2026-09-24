@@ -157,6 +157,7 @@ import {
   HARBOR_MODEL_ID,
   HARBOR_MODEL_NAME,
   HARBOR_MODEL_URL,
+  HARBOR_MODEL_VERSION,
   isHarbor,
 } from '../lib/harbor.js';
 import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
@@ -313,6 +314,10 @@ export interface AppSettings {
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
+  /** HARBOR_MODEL_VERSION of the Harbor weights on this device, recorded when a
+   *  download lands. Absent on a device that got Harbor before it was recorded,
+   *  which reads as an older Harbor (harborIsStale) and shows the upgrade card. */
+  harborVersion?: string;
   /** Web search backend for Harbor, when the user has brought their own key.
    *  Undefined means the zero-config DuckDuckGo default. */
   searchBackend?: SearchBackend;
@@ -1031,8 +1036,12 @@ interface AppState {
   ensureHarbor(): Promise<boolean>;
   /** Cancel an in-progress Harbor download. */
   cancelHarbor(): void;
+  /** Replace an older Harbor with the current one, on the person's tap: remove
+   *  the old file, then download the new weights. The native store will not
+   *  download over a file already in the slot, so the order is fixed. */
+  upgradeHarbor(): Promise<boolean>;
   /** Remove Harbor's weights from this device and drop its ready flag. Harbor
-   *  is a real download (about 1.9 GB), so it is uninstallable; Harbor Lite is
+   *  is a real download (about 1 GB), so it is uninstallable; Harbor Lite is
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through
@@ -4750,7 +4759,7 @@ export const useApp = create<AppState>((set, get) => {
       try {
         await Llama.downloadModel({ id: HARBOR_MODEL_ID, url: HARBOR_MODEL_URL });
         set({ harborDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
-        await get().saveSettings({ harborReady: true });
+        await get().saveSettings({ harborReady: true, harborVersion: HARBOR_MODEL_VERSION });
         logEvent('harbor_ready');
         // Make Harbor the Reasoning anchor when the stack has none, its anchor
         // is a guide not on the device, or the anchor is Harbor Lite (Harbor is
@@ -4791,6 +4800,15 @@ export const useApp = create<AppState>((set, get) => {
       set({ harborDownload: undefined });
     },
 
+    async upgradeHarbor() {
+      // Only ever on a tap from the upgrade card, which says what happens:
+      // the older file goes, the current Harbor comes down in its place. A
+      // failed download leaves Harbor Lite answering and the row's Retry.
+      logEvent('harbor_upgrade_start');
+      await get().removeHarbor();
+      return get().ensureHarbor();
+    },
+
     async removeHarbor() {
       // Delete the weights from disk, then drop the ready flag. Any status
       // whose Reasoning anchor was Harbor is healed to whichever guide is still
@@ -4799,7 +4817,7 @@ export const useApp = create<AppState>((set, get) => {
       // re-downloadable from the same row, so nothing is lost for good.
       await Llama.deleteModel({ id: HARBOR_MODEL_ID }).catch(() => {});
       logEvent('harbor_removed');
-      await get().saveSettings({ harborReady: false });
+      await get().saveSettings({ harborReady: false, harborVersion: undefined });
       const stacks = get().settings.stacks;
       if (stacks) {
         let changed = false;

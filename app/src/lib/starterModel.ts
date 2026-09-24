@@ -5,9 +5,9 @@
 // Starter bundle, the Stack screen's pick sheet) so nothing that pinned it has
 // to move; the sizes themselves live in one place. The 7B is right on a 16 GB
 // laptop or a GPU box; on a CPU box under about 12 GB it does not fit in real
-// memory (the reference box proved it: 0%, swapping), and the 3B is the seat
-// there (measured 75% on the coding loop, best of 2, 2026-09-15). Every id is
-// pinned against the engine's bundled catalog by starterModel.test.ts and
+// memory (the reference box proved it: 0%, swapping), and the 1.5B is the seat
+// there (Apache 2.0, standing in for the pulled research-licensed 3B, not yet
+// measured on the coding loop). Every id is pinned against the engine's bundled catalog by starterModel.test.ts and
 // harborMaster.test.ts, so a catalog rename can never leave the button
 // pointing at nothing.
 import type { FitVerdict, HardwareRead } from './firstSeat.js';

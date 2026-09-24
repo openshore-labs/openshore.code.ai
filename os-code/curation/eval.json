@@ -15,6 +15,7 @@
     "attempts": 2,
     "box": "cpu-7.6gb",
     "date": "2026-09-15",
-    "source": "measured"
+    "source": "measured",
+    "note": "research use only; Qwen Research License; not seated"
   }
 }

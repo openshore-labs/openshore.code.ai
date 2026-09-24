@@ -13,13 +13,14 @@ the most capable, and the one a home-lab hub runs.
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
   the app is installed, with nothing to download, and works offline.
-- **Harbor** (Qwen 2.5 Coder 3B, Apache-2.0). The mobile coder: a coding agent
-  that runs fully on the phone, writing and explaining real code, with real
-  reasoning and web search. It can also answer app questions, but it leads as a
-  coder (Harbor Lite is the guide). A real download (about 1.9 GB) from Hugging
-  Face, installed and uninstalled from Settings.
-- **DeepBlue** (Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 3B,
-  Apache-2.0). The third and most capable: a real coding agent that plans and
+- **Harbor** (Qwen2.5-Coder-1.5B-Instruct, Apache-2.0). The mobile coder: a
+  small coder on the phone for short edits, with web search; longer work
+  happens on the computer. It can also answer app questions, but it leads as a
+  coder (Harbor Lite is the guide). A real download (about 1 GB) from Hugging
+  Face, installed and uninstalled from Settings. Its copy never states a size,
+  a number, or a benchmark.
+- **DeepBlue** (Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 1.5B,
+  every size Apache-2.0). The third and most capable: a real coding agent that plans and
   edits repositories on the desktop engine. It is pulled through Ollama on the
   person's own computer, straight from the Ollama library, and seated as the
   Reasoning LLM in one tap from the First Seat card or the Settings row.
@@ -48,14 +49,21 @@ whose label follows the model's state:
   downloads, **Retry** after a failure, **Uninstall** once it is on the device.
   Uninstall deletes the weights and re-heals any stack whose Reasoning anchor
   was Harbor to Harbor Lite (which is always present). Re-installable any time.
+- **A new Harbor is ready** (only when the Harbor on the phone is older weights,
+  `harborIsStale`): two taps, **Get new** (removes the older file, then
+  downloads the current Harbor in its place) and **Remove old** (frees the space
+  and leaves Install on the Harbor row). Nothing is removed until the person
+  taps. See "Harbor version changes" below.
 
 - **DeepBlue** (desktop only): **Install** when absent, its live percent as
   a plain status while it pulls (Ollama owns the pull, so there is no cancel),
   **Retry** after a failure, **Installed** once the engine's Ollama list holds a
   size. No uninstall here: `ollama rm` is the honest remove, since the weights
-  belong to Ollama, not the app.
+  belong to Ollama, not the app. A computer whose only DeepBlue is the pulled
+  3B reads not set up: the row says so and offers **Install**, which pulls the
+  current size. The 3B stays in Ollama until the person removes it.
 
-The store actions are `ensureHarbor` / `removeHarbor` and `ensureHarborMaster`
+The store actions are `ensureHarbor` / `removeHarbor` / `upgradeHarbor` and `ensureHarborMaster`
 (`app/src/state/store.ts`); `test/harborGuides.test.ts` pins the guide rows and
 the disclosure boundary, `test/harborMaster.test.ts` pins the third.
 
@@ -111,7 +119,7 @@ Bundling trades a first-launch download for a larger install:
   build runs tight there is room to drop to Q4_0 (about 92 MB) or an IQ quant.
 - So the App Store download should land around **150 to 165 MB**, under the cap,
   versus a small base app plus a separate ~105 MB download if Mini were not
-  bundled. Harbor (1.1 GB) is never bundled; it stays a download.
+  bundled. Harbor (about 1 GB) is never bundled; it stays a download.
 
 This is comfortably under Apple's over-cellular download limit, so users can
 still install over a mobile network.
@@ -132,8 +140,9 @@ two guides are not offered there (their rows stay gated to the phone). The
 desktop's out-of-the-box model is DeepBlue:
 
 - **Sized to the computer.** `resolveHarborMaster(hw)` picks the largest size
-  that is not too big by the engine's own budget (`fitVerdict`): the 3B on the
-  CPU-only reference box (measured 75% on the coding loop, best of 2), the 7B
+  that is not too big by the engine's own budget (`fitVerdict`): the 1.5B on the
+  CPU-only reference box (a tiny seat that runs single steps, not yet measured
+  on the coding loop; qwen3:4b and the 1.5B are measured next), the 7B
   on a 16 GB laptop or an 8 GB GPU, the 14B on a hub with room, and the 32B on
   a big hub (a 48 GB GPU class). Before the machine is read it offers the 7B,
   never the biggest on a guess. The First
@@ -154,6 +163,26 @@ DeepBlue is the same list the Starter bundle and the Stack screen already
 used (`starterModel.ts` now derives from `harborMaster.ts`), given its name and
 its front-door place.
 
+## Harbor version changes, and the pulled 3B
+
+Harbor's id is a stable slot, and `HARBOR_MODEL_VERSION` names the weights
+behind it. A download records the version on the device (`harborVersion`); a
+device with Harbor but no recorded version, or an older one, reads stale. The
+native `ModelStore` keys the file by the slot id and will not re-download over a
+file that is already there, so an upgrade has to remove the older file first.
+That is why it is a tap, never automatic: the Settings row says what happens,
+and a failed download leaves Harbor Lite answering and the Harbor row's Retry.
+
+Version 2.0 was Qwen2.5-Coder-3B-Instruct, pulled on 2026-09-24 because it is
+under the Qwen Research License (non-commercial only); 2.1 is
+Qwen2.5-Coder-1.5B-Instruct (Apache 2.0). On the desktop, DeepBlue's 3B size is
+gone for the same reason. The app never runs a removal in Ollama; a person who
+wants the space back removes it themselves:
+
+```
+ollama rm qwen2.5-coder:3b
+```
+
 ## Grounding
 
 Guide accuracy comes from the setup/FAQ facts injected into their system prompts
@@ -164,7 +193,8 @@ open, backend private boundary. Full retrieval over docs is a later upgrade.
 
 ## License
 
-All three are Apache-2.0 as the catalog records them. Harbor downloads from the
+All three are Apache-2.0 as the catalog records them, every DeepBlue size
+included. Harbor downloads from the
 source (we do not redistribute its weights), the same posture as any pocket
 model; DeepBlue is pulled from the Ollama library by the person's own
 engine, the same posture as any desktop model. Harbor Lite's

@@ -4,7 +4,7 @@
 // verdict is unit-tested against the engine's own budget (firstSeat.test.ts
 // runs budgetFor and fitsBudget side by side with this file across a grid of
 // machines). The reference machine is the founder's CPU-only box: 8 GB, no
-// GPU, where the 7B must read too big and the 3B is the seat.
+// GPU, where the 7B must read too big and the 1.5B is the seat.
 import type { CatalogModel } from 'os-code/protocol';
 import { fitFor, type FitLabel } from '../components/marketplace.js';
 import { POCKET_ANCHORS } from './packs.js';

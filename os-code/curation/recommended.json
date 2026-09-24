@@ -36,11 +36,5 @@
     "rank": 4,
     "note": "The iPhone pick. A newer 4B beats the 2024 7B class at half the memory, so this is the one to carry.",
     "licenseNote": "Commercial use is fine. Attribution required."
-  },
-  "qwen2.5-coder-3b": {
-    "isRecommended": true,
-    "rank": 6,
-    "note": "The seat for a computer with no GPU and under about 12 GB of memory. Measured at 75% on the coding loop on a CPU-only box (best of 2, 2026-09-15). Runs short plans; the harness carries the checklist.",
-    "licenseNote": "Commercial use is fine. Attribution required."
   }
 }
