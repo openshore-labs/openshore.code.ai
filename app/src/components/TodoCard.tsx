@@ -5,6 +5,7 @@
 // the next task. The rows animate with the house tokens, never with layout.
 import { useEffect, useState } from 'react';
 import type { TodoRow } from '../state/types.js';
+import { Icon } from './Icon.js';
 
 /** How long the finished list stays open before folding itself. */
 const SELF_FOLD_MS = 600;
@@ -48,18 +49,9 @@ export function TodoCard({ todos }: { todos: TodoRow[] }) {
               <li key={`${i}-${t.content}`} className={`todo-row ${t.status}`}>
                 <span className="todo-mark" aria-hidden="true">
                   {t.status === 'completed' ? (
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="12"
-                      height="12"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
+                    <Icon size={12}>
                       <path d="M4 12.5 9.5 18 20 6.5" />
-                    </svg>
+                    </Icon>
                   ) : t.status === 'in_progress' ? (
                     <i className="todo-pulse" />
                   ) : null}

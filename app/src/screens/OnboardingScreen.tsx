@@ -26,7 +26,7 @@ export function OnboardingScreen() {
           <div style={{ textAlign: 'center', marginBottom: 26 }}>
             <span className="brand-lockup">
               <BrandMark size={30} />
-              <span className="wordmark" style={{ fontSize: 22 }}>
+              <span className="wordmark wordmark-lg">
                 Open<span className="accent">Shore</span>
               </span>
             </span>

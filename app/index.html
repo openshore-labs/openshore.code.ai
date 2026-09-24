@@ -6,9 +6,22 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
     />
-    <meta name="color-scheme" content="light" />
-    <meta name="theme-color" content="#f6f4ef" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- The browser chrome matches the ground in both schemes. App.tsx points
+         both at the active --bg when the person pins a theme in Settings. -->
+    <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#17140e" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <!-- The splash wordmark is set in Fraunces. Preloaded, and declared below
+         with font-display: block, so the letters rise in the real face and
+         never swap from a fallback serif mid-rise. -->
+    <link
+      rel="preload"
+      href="./src/fonts/fraunces-standard.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <!--
       One CSP for both shells (Electron window and the iOS WebView). Scripts
       only from the bundle; connect-src stays open because the phone talks to
@@ -23,18 +36,42 @@
       Boot splash. Painted the instant the document parses, before the bundle
       loads and React mounts, so opening OpenShore never shows a blank window
       (desktop Electron) or the gap between the iOS launch image and the first
-      React frame. Deliberately unhurried, modeled on the Claude iOS app's
-      opening: the mark scales and fades in, HOLDS for a beat (main.tsx enforces
-      a minimum on-screen time so it never flashes past on a fast device), then
-      the whole splash scales through and cross-fades as the app arrives.
+      React frame. It speaks the Swell Line (Creative Studio, 2026-09-24), the
+      same motion as the first open's letter: the mark, then each letter of the
+      wordmark, rises 0.14em from below, crests 0.05em above its line, and
+      settles, far longer than the step between them, so many move at once and
+      it reads as one low wave. No bounce, no rotation, no droplets. It holds
+      (main.tsx enforces a minimum on-screen time so it never flashes past on a
+      fast device), then cross-fades as the app arrives.
+
+      Motion exemption: this paints before the bundle (and the motion tokens in
+      theme.css) can load, so its curves and durations are literal by
+      necessity. They mirror the tokens by value: the swell is --ease-ink
+      cubic-bezier(0.35, 0, 0.25, 1) over --dur-swell 600ms, the exit is
+      --ease-arrive cubic-bezier(0.22, 1, 0.36, 1). It honors reduced motion
+      inline (polish-standards.test.ts exempts only this file, for this reason).
+      Colors mirror the --bg, --ink, and --accent tokens of both themes; the
+      splash follows the system scheme, since a pinned theme lives in settings
+      the bundle has not read yet.
 
       Timing knobs live in two places, tune both together:
-        - entrance + exit durations/curves here in this <style>
+        - the swell and exit durations here in this <style>
         - SPLASH_MIN_MS (the hold) in src/main.tsx
       Inline styles are allowed by the CSP's style-src 'unsafe-inline'.
     -->
     <style>
+      @font-face {
+        font-family: 'Fraunces';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url('./src/fonts/fraunces-standard.woff2') format('woff2');
+      }
       #boot-splash {
+        --splash-bg: #f6f4ef;
+        --splash-ink: #1c2a33;
+        --splash-accent: #2f5a66;
+        --splash-crest: brightness(1);
         position: fixed;
         inset: 0;
         z-index: 2147483647;
@@ -45,7 +82,7 @@
         align-items: center;
         justify-content: center;
         gap: 14px;
-        background: #f6f4ef;
+        background: var(--splash-bg);
         opacity: 1;
         transform: scale(1);
         /* Exit: the whole lockup eases up and dissolves as the app appears. */
@@ -53,25 +90,30 @@
           opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
           transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
       }
+      /* The dark ground, the same warm brown-black as the app's dark --bg, so
+         a dark-mode open never flashes cream. */
+      @media (prefers-color-scheme: dark) {
+        #boot-splash {
+          --splash-bg: #17140e;
+          --splash-ink: #ece5d6;
+          --splash-accent: #6bb3c4;
+          --splash-crest: brightness(1.14);
+        }
+      }
       #boot-splash.boot-splash-hidden {
         opacity: 0;
-        transform: scale(1.05);
+        transform: scale(1.02);
         pointer-events: none;
       }
+      /* The mark and the wordmark share one em (the wordmark's 36px), so the
+         tile rises by the same 0.14em as the letters beside it. */
       #boot-splash .boot-mark {
         width: 56px;
         height: 56px;
-        /* Entrance: scale + fade in, easeOutQuint. `backwards` fill holds the
-           from-state during any delay and reverts to the natural scale(1)
-           after, so it never fights the container's exit transform. */
-        animation: boot-rise 0.62s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+        font-size: 36px;
+        animation: boot-swell 0.6s cubic-bezier(0.35, 0, 0.25, 1) 0.12s backwards;
       }
       #boot-splash .boot-wordmark {
-        /* The greeting's display serif (Fraunces), mirrored here so the splash
-           and the in-app greeting read as one wordmark. Fraunces is loaded via
-           @font-face in theme.css (font-display: swap), so this falls back to
-           Georgia for the first paint and swaps in when the bundle's CSS lands,
-           the same behavior as the greeting. */
         font-family: 'Fraunces', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
         font-weight: 500;
         /* font-size: 0 on the container so the whitespace between the letter
@@ -79,270 +121,47 @@
            The real size lives on the letters. */
         font-size: 0;
         letter-spacing: 0.02em;
-        color: #1c2a33;
+        color: var(--splash-ink);
       }
       #boot-splash .boot-wordmark .boot-accent {
-        color: #2f5a66;
+        color: var(--splash-accent);
       }
-      /* The wordmark surfaces mostly one letter at a time through a REAL water
-         surface, not an implied one. Each letter is a small stage:
-
-           .boot-letter  positioning shell, defines --t (this letter's turn)
-             .boot-crest overflow-hidden window whose BOTTOM EDGE IS THE
-                         WATERLINE. The glyph starts fully below it (clipped,
-                         invisible) and is genuinely revealed as it crosses,
-                         and re-submerges by a few px on each downward bob.
-               .boot-glyph  the letter, running the emerge-and-buoy keyframes
-             .boot-rip x4  soft gradient rings emitted AT the waterline, one
-                         per surface event: the anticipation swell, the breach,
-                         and each downward bob. The water answers the letter.
-             ::after     the reflection: a mirrored, blurred, teal copy of the
-                         glyph (content: attr(data-ch)) fading in under the
-                         waterline once the letter is out.
-
-         --i drives the stagger, --dir alternates tilt so no two letters move
-         in lockstep. The run finishes near 2.6s, inside the 2.7s hold. */
+      /* Each letter swells on its own delay: a 60ms step after the mark, far
+         shorter than the 600ms swell, so most of the word is moving at once.
+         `backwards` holds the sunk, clear from-state through the delay and
+         lets go of the end state, so nothing pins a transform. The run ends
+         near 1.3s, well inside the 2.7s hold. */
       #boot-splash .boot-wordmark .boot-letter {
-        --t: calc(0.15s + var(--i) * 0.16s);
-        position: relative;
         display: inline-block;
-        /* font-size 0 here too, so whitespace between the letter's inner
-           elements can never render; the crest and the water dressing carry
-           the real size themselves. */
-        font-size: 0;
-      }
-      #boot-splash .boot-wordmark .boot-crest {
-        display: block;
-        overflow: hidden;
         font-size: 36px;
-        letter-spacing: 0.02em;
-        /* Headroom inside the clip so the overshoot and stretch never touch
-           the window edges; the negative margins keep layout unchanged. Only
-           the BOTTOM edge stays tight: it is the waterline. */
-        padding: 0.35em 0.2em 0;
-        margin: -0.35em -0.2em 0;
+        animation: boot-swell 0.6s cubic-bezier(0.35, 0, 0.25, 1) backwards;
+        animation-delay: calc(0.24s + var(--i) * 0.06s);
       }
-      #boot-splash .boot-wordmark .boot-glyph {
-        display: inline-block;
-        /* Grows and squashes from the waterline, like a ball on the ground. */
-        transform-origin: 50% 100%;
-        transform: translateY(1.15em);
-        /* Fill mode BOTH, not backwards: backwards would snap the glyph back
-           to its sunk base transform the moment its animation ends, and the
-           early letters would sink again while the late ones still surface. */
-        animation: boot-glyph 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
-        animation-delay: var(--t);
-        will-change: transform;
-      }
-      /* The buoy cycle. Non-uniform scale throughout: compressed in the rise,
-         elongated as it strains through the surface, squashed as it settles
-         onto it, volume roughly conserved. Downward beats re-enter the crest
-         clip, so the letter visibly re-submerges a touch on every bob. Fall
-         segments switch to ease-in so gravity reads. */
-      @keyframes boot-glyph {
-        0% {
-          transform: translateY(1.15em) scale(0.96, 0.92) rotate(calc(var(--dir, 1) * -2deg));
-        }
-        30% {
-          /* The breach: through the surface, stretched tall. */
-          transform: translateY(-0.11em) scale(0.91, 1.15) rotate(calc(var(--dir, 1) * 1.5deg));
-          animation-timing-function: ease-in;
-        }
-        44% {
-          /* Falls back and squashes onto the water, dipping into it. */
-          transform: translateY(0.07em) scale(1.09, 0.91) rotate(calc(var(--dir, 1) * -1deg));
-        }
-        58% {
-          transform: translateY(-0.045em) scale(0.975, 1.045) rotate(calc(var(--dir, 1) * 0.6deg));
-          animation-timing-function: ease-in;
-        }
-        72% {
-          transform: translateY(0.028em) scale(1.03, 0.98) rotate(calc(var(--dir, 1) * -0.35deg));
-        }
-        85% {
-          transform: translateY(-0.012em) scale(0.99, 1.01) rotate(0deg);
-          animation-timing-function: ease-in;
-        }
-        100% {
-          transform: translateY(0) scale(1, 1) rotate(0deg);
-        }
-      }
-      /* Water rings. Soft ellipse BANDS via radial gradient, no stroked
-         outline, so they read as rings on water rather than drawn loops.
-         Foreshortened flat, expanding and decaying. Each ring's peak opacity
-         (--ro) and spread (--rs) shrink with the energy of the surface event
-         that threw it. */
-      #boot-splash .boot-wordmark .boot-rip {
-        position: absolute;
-        left: 50%;
-        font-size: 36px;
-        bottom: -0.06em;
-        width: 1em;
-        height: 0.32em;
-        margin-left: -0.5em;
-        border-radius: 50%;
-        background: radial-gradient(
-          50% 50% at 50% 50%,
-          rgba(47, 90, 102, 0) 44%,
-          rgba(47, 90, 102, 0.55) 58%,
-          rgba(47, 90, 102, 0.18) 70%,
-          rgba(47, 90, 102, 0) 78%
-        );
-        opacity: 0;
-        pointer-events: none;
-        animation: boot-rip 0.85s ease-out forwards;
-      }
-      @keyframes boot-rip {
+      /* The Swell Line, by value (theme.css @keyframes swell). */
+      @keyframes boot-swell {
         0% {
           opacity: 0;
-          transform: scale(0.25);
-        }
-        18% {
-          opacity: var(--ro, 0.4);
-        }
-        100% {
-          opacity: 0;
-          transform: scale(var(--rs, 2));
-        }
-      }
-      /* One ring per surface event, timed to the glyph keyframes above. */
-      #boot-splash .boot-wordmark .boot-rip-a {
-        /* Anticipation: the water swells just before the letter emerges. */
-        --ro: 0.2;
-        --rs: 1.15;
-        animation-duration: 0.5s;
-        animation-delay: calc(var(--t) + 0.1s);
-      }
-      #boot-splash .boot-wordmark .boot-rip-b {
-        /* The breach. */
-        --ro: 0.5;
-        --rs: 2.4;
-        animation-duration: 0.95s;
-        animation-delay: calc(var(--t) + 0.28s);
-      }
-      #boot-splash .boot-wordmark .boot-rip-c {
-        /* First bob back into the water. */
-        --ro: 0.3;
-        --rs: 1.8;
-        animation-delay: calc(var(--t) + 0.48s);
-      }
-      #boot-splash .boot-wordmark .boot-rip-d {
-        /* Last, nearly spent bob. */
-        --ro: 0.16;
-        --rs: 1.4;
-        animation-duration: 0.7s;
-        animation-delay: calc(var(--t) + 0.78s);
-      }
-      /* The reflection under the waterline: the same glyph, mirrored in place
-         and pushed below the surface, water-teal, softly blurred, fading down
-         via the mask the way a reflection dies off with distance. It arrives
-         just after the breach, while the ripples are still running. */
-      #boot-splash .boot-wordmark .boot-letter::after {
-        content: attr(data-ch);
-        position: absolute;
-        left: 0;
-        width: 100%;
-        top: 0;
-        font-size: 36px;
-        text-align: center;
-        color: #2f5a66;
-        filter: blur(1.6px);
-        transform: translateY(0.88em) scaleY(-0.75);
-        opacity: 0;
-        pointer-events: none;
-        -webkit-mask-image: linear-gradient(0deg, rgba(0, 0, 0, 0.8) 30%, transparent 72%);
-        mask-image: linear-gradient(0deg, rgba(0, 0, 0, 0.8) 30%, transparent 72%);
-        animation: boot-reflect 0.55s ease-out forwards;
-        animation-delay: calc(var(--t) + 0.34s);
-      }
-      @keyframes boot-reflect {
-        from {
-          opacity: 0;
-          transform: translateY(0.95em) scaleY(-0.68);
-        }
-        to {
-          opacity: 0.2;
-          transform: translateY(0.88em) scaleY(-0.75);
-        }
-      }
-      /* Secondary action: on a few star letters a droplet is flung up off the
-         breach, decelerates to its apex, then falls back under gravity and
-         winks out at the surface. --dx picks the throw direction. Restraint
-         on purpose: a gag on every letter stops reading as a gag. */
-      #boot-splash .boot-wordmark .boot-drop {
-        position: absolute;
-        left: 50%;
-        font-size: 36px;
-        bottom: 0.12em;
-        width: 0.09em;
-        height: 0.09em;
-        margin-left: -0.045em;
-        border-radius: 50%;
-        background: #2f5a66;
-        opacity: 0;
-        pointer-events: none;
-        animation: boot-drop 0.6s linear forwards;
-        animation-delay: calc(var(--t) + 0.3s);
-      }
-      #boot-splash .boot-wordmark .boot-drop.boot-drop-b {
-        width: 0.06em;
-        height: 0.06em;
-        margin-left: -0.03em;
-        animation-duration: 0.5s;
-        animation-delay: calc(var(--t) + 0.38s);
-      }
-      @keyframes boot-drop {
-        0% {
-          opacity: 0;
-          transform: translate(0, 0) scale(1);
-          animation-timing-function: ease-out;
-        }
-        12% {
-          opacity: 0.8;
+          transform: translateY(0.14em);
+          filter: blur(0.08em) brightness(1);
         }
         45% {
-          /* Apex: eased out on the way up, eased in on the way down. */
-          transform: translate(calc(var(--dx, 1) * 0.24em), -0.72em) scale(0.85);
-          animation-timing-function: ease-in;
-        }
-        88% {
-          opacity: 0.65;
+          opacity: 1;
+          transform: translateY(-0.05em);
+          filter: blur(0) var(--splash-crest);
         }
         100% {
-          opacity: 0;
-          transform: translate(calc(var(--dx, 1) * 0.4em), 0.02em) scale(0.7);
-        }
-      }
-      @keyframes boot-rise {
-        from {
-          opacity: 0;
-          transform: scale(0.86);
-        }
-        to {
           opacity: 1;
-          transform: scale(1);
+          transform: translateY(0);
+          filter: blur(0) brightness(1);
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        #boot-splash,
         #boot-splash .boot-mark,
-        #boot-splash .boot-wordmark,
-        #boot-splash .boot-wordmark .boot-glyph {
+        #boot-splash .boot-wordmark .boot-letter {
           animation: none;
+        }
+        #boot-splash {
           transition: opacity 0.3s linear;
-          transform: none;
-          opacity: 1;
-        }
-        #boot-splash .boot-wordmark .boot-rip,
-        #boot-splash .boot-wordmark .boot-drop {
-          animation: none;
-          opacity: 0;
-        }
-        /* The reflection is a still image, safe under reduced motion; keep it
-           at its resting state (its transform is the mirror, not motion). */
-        #boot-splash .boot-wordmark .boot-letter::after {
-          animation: none;
-          opacity: 0.2;
         }
         #boot-splash.boot-splash-hidden {
           transform: none;
@@ -375,56 +194,15 @@
         </g>
       </svg>
       <div class="boot-wordmark" aria-hidden="true">
-        <span class="boot-letter" data-ch="O" style="--i: 0; --dir: 1">
-          <span class="boot-crest"><span class="boot-glyph">O</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i
-          ><i class="boot-drop" style="--dx: -1"></i
-          ><i class="boot-drop boot-drop-b" style="--dx: 1"></i>
-        </span>
-        <span class="boot-letter" data-ch="p" style="--i: 1; --dir: -1">
-          <span class="boot-crest"><span class="boot-glyph">p</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i>
-        </span>
-        <span class="boot-letter" data-ch="e" style="--i: 2; --dir: 1">
-          <span class="boot-crest"><span class="boot-glyph">e</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i>
-        </span>
-        <span class="boot-letter" data-ch="n" style="--i: 3; --dir: -1">
-          <span class="boot-crest"><span class="boot-glyph">n</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i>
-        </span>
-        <span class="boot-letter boot-accent" data-ch="S" style="--i: 4; --dir: 1">
-          <span class="boot-crest"><span class="boot-glyph">S</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i
-          ><i class="boot-drop" style="--dx: 1"></i
-          ><i class="boot-drop boot-drop-b" style="--dx: -1"></i>
-        </span>
-        <span class="boot-letter boot-accent" data-ch="h" style="--i: 5; --dir: -1">
-          <span class="boot-crest"><span class="boot-glyph">h</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i>
-        </span>
-        <span class="boot-letter boot-accent" data-ch="o" style="--i: 6; --dir: 1">
-          <span class="boot-crest"><span class="boot-glyph">o</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i>
-        </span>
-        <span class="boot-letter boot-accent" data-ch="r" style="--i: 7; --dir: -1">
-          <span class="boot-crest"><span class="boot-glyph">r</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i>
-        </span>
-        <span class="boot-letter boot-accent" data-ch="e" style="--i: 8; --dir: 1">
-          <span class="boot-crest"><span class="boot-glyph">e</span></span>
-          <i class="boot-rip boot-rip-a"></i><i class="boot-rip boot-rip-b"></i
-          ><i class="boot-rip boot-rip-c"></i><i class="boot-rip boot-rip-d"></i
-          ><i class="boot-drop" style="--dx: 1"></i>
-        </span>
+        <span class="boot-letter" style="--i: 0">O</span>
+        <span class="boot-letter" style="--i: 1">p</span>
+        <span class="boot-letter" style="--i: 2">e</span>
+        <span class="boot-letter" style="--i: 3">n</span>
+        <span class="boot-letter boot-accent" style="--i: 4">S</span>
+        <span class="boot-letter boot-accent" style="--i: 5">h</span>
+        <span class="boot-letter boot-accent" style="--i: 6">o</span>
+        <span class="boot-letter boot-accent" style="--i: 7">r</span>
+        <span class="boot-letter boot-accent" style="--i: 8">e</span>
       </div>
     </div>
     <div id="root"></div>

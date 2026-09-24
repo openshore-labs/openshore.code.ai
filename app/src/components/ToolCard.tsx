@@ -5,6 +5,7 @@
 // The approval moment lives in ApprovalSheet; this is the record.
 import { useEffect, useState } from 'react';
 import type { ThreadItem } from '../state/types.js';
+import { Icon } from './Icon.js';
 
 type ToolItem = Extract<ThreadItem, { kind: 'tool' }>;
 
@@ -134,20 +135,9 @@ export function ToolCard({ item }: { item: ToolItem }) {
       <span className={`tool-state ok`}>
         {/* CR1: the checkmark SVG is aria-hidden, so name the outcome for SR. */}
         <span className="visually-hidden">done</span>
-        <svg
-          className="icon-inline"
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
+        <Icon size={13} className="icon-inline">
           <path d="M4 12.5 9.5 18 20 6.5" />
-        </svg>
+        </Icon>
         {item.durationMs !== undefined ? ` ${(item.durationMs / 1000).toFixed(1)}s` : ''}
       </span>
     ) : item.state === 'denied' ? (
@@ -156,20 +146,9 @@ export function ToolCard({ item }: { item: ToolItem }) {
       <span className="tool-state fail">
         {/* CR1: the cross SVG is aria-hidden, so name the outcome for SR. */}
         <span className="visually-hidden">failed</span>
-        <svg
-          className="icon-inline"
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
+        <Icon size={13} className="icon-inline">
           <path d="M6 6l12 12M18 6 6 18" />
-        </svg>
+        </Icon>
       </span>
     );
 

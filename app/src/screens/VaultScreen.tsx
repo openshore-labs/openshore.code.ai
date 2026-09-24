@@ -29,6 +29,7 @@ import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
 import { isDesktop } from '../lib/platform.js';
 import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
+import { Icon } from '../components/Icon.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -368,34 +369,14 @@ export function VaultScreen() {
               onClick={() => !readOnly && setEditing((e) => !e)}
             >
               {editing ? (
-                <svg
-                  viewBox="0 0 24 24"
-                  width="19"
-                  height="19"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
+                <Icon size={19}>
                   <path d="M3 5a2 2 0 0 1 2-2h4a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H3V5Z" />
                   <path d="M21 5a2 2 0 0 0-2-2h-4a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H21V5Z" />
-                </svg>
+                </Icon>
               ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  width="19"
-                  height="19"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
+                <Icon size={19}>
                   <path d="M17 3.5 20.5 7 8.5 19l-4.5 1 1-4.5L17 3.5Z" />
-                </svg>
+                </Icon>
               )}
             </button>
             <button className="icon-btn" aria-label="Options" onClick={() => setMenuOpen(true)}>
@@ -566,18 +547,9 @@ export function VaultScreen() {
             title="New note"
             onClick={() => setNewOpen(true)}
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
+            <Icon size={20}>
               <path d="M12 5v14M5 12h14" />
-            </svg>
+            </Icon>
           </button>
         </div>
         {teamAvailable ? (
@@ -990,57 +962,27 @@ export function VaultScreen() {
 // currentColor, so they sit in the brand water like the rest of the room.
 function DocGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <Icon size={18}>
       <path d="M6 2h8l4 4v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" />
       <path d="M14 2v4h4M8 13h8M8 17h6" />
-    </svg>
+    </Icon>
   );
 }
 
 function AgentGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <Icon size={18}>
       <rect x="4" y="8" width="16" height="12" rx="3" />
       <path d="M12 4v4M9 14h.01M15 14h.01" />
-    </svg>
+    </Icon>
   );
 }
 
 function LinkGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <Icon size={18}>
       <path d="M9 12a3 3 0 0 1 3-3h4a3 3 0 0 1 0 6h-2" />
       <path d="M15 12a3 3 0 0 1-3 3H8a3 3 0 0 1 0-6h2" />
-    </svg>
+    </Icon>
   );
 }

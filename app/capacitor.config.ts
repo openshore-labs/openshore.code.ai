@@ -6,6 +6,9 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   ios: {
     contentInset: 'never',
+    // The light ground. Config takes one colour, so the dark ground (#17140e)
+    // is set natively: ShellViewController in ios/App/App/SceneDelegate.swift
+    // gives the web view a colour that follows the system appearance.
     backgroundColor: '#f6f4ef',
   },
   // Route fetch/XHR through native networking on iOS only (Electron/web are

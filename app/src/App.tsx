@@ -83,11 +83,19 @@ export function App() {
   }, []);
 
   // Apply the appearance preference to the document root. 'system' removes the
-  // attribute so prefers-color-scheme decides; light/dark pin it.
+  // attribute so prefers-color-scheme decides; light/dark pin it. The browser
+  // chrome's theme-color follows: index.html carries one meta per system
+  // scheme, and a pinned theme points both at the active --bg.
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+    const pinned = theme === 'light' || theme === 'dark';
+    if (pinned) root.dataset.theme = theme;
     else delete root.dataset.theme;
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+    document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
+      meta.dataset.system ??= meta.content;
+      meta.content = pinned && bg ? bg : meta.dataset.system;
+    });
   }, [theme]);
 
   // Keep a focused field above the on-screen keyboard. Our scroll lives in a
