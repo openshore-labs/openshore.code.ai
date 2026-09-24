@@ -542,7 +542,7 @@ export function describeCall(name: string, args: Record<string, unknown>): strin
     case 'webFetch':
       return `Fetch ${(str(args.url) ?? '').slice(0, 80)}`;
     case 'searchRepo':
-      return `Search the repo for ${(str(args.query) ?? '').slice(0, 60)}`;
+      return `Search the repository for ${(str(args.query) ?? '').slice(0, 60)}`;
     case 'gitStatus':
       return 'Git status';
     case 'gitDiff':

@@ -168,7 +168,7 @@ export function StackManager() {
 
   const saveByom = async () => {
     if (!byomFormValid) {
-      showToast('A name, an https endpoint, and a model id are needed.');
+      showToast('A name, an https address, and a model id are needed.');
       return;
     }
     const conn = await connectByom({
@@ -259,10 +259,10 @@ export function StackManager() {
 
   return (
     <div className="screen">
-      <BackBar title="Your stack" />
+      <BackBar title="Stack" />
       <div className="screen-inner">
         <div className="stack-head">
-          <h1>{admin ? 'Your stack' : 'The stack'}</h1>
+          <h1>Stack</h1>
           {admin ? (
             <div className="stack-add">
               <button
@@ -698,7 +698,7 @@ export function StackManager() {
                 ))}
               {available.length <= 1 ? (
                 <p className="hint">
-                  Download a model from the Marketplace or connect a cloud model to choose another.
+                  Get Harbor from Settings, Harbor, or connect a cloud model to choose another.
                 </p>
               ) : null}
             </div>
@@ -710,9 +710,7 @@ export function StackManager() {
           glyph on the BYOM pill. */}
       <Sheet open={byomInfoOpen} onClose={() => setByomInfoOpen(false)} variant="top">
         <h2>Bring your own model</h2>
-        <p className="sheet-sub">
-          BYOM points OpenShore at a model you run and control, instead of only the ones we host.
-        </p>
+        <p className="sheet-sub">BYOM points OpenShore at a model you run and control.</p>
         <ul className="paywall-benefits">
           <li>
             Any OpenAI-compatible endpoint works: a model on your own server, a fine-tune behind
@@ -723,8 +721,8 @@ export function StackManager() {
             LLM starts routing the right tasks to it.
           </li>
           <li>
-            Your endpoint and key stay yours. The key is held in this device's secure store, scoped
-            to that one connection, and never synced.
+            Your address and API key stay yours. The API key is held in this device's secure store,
+            scoped to that one connection, and never synced.
           </li>
           <li>
             Nothing you send it passes through us. The call goes straight from your device to the
@@ -768,7 +766,7 @@ export function StackManager() {
               />
             </div>
             <div className="field">
-              <label>Endpoint URL</label>
+              <label>Address</label>
               <input
                 type="url"
                 inputMode="url"
@@ -843,7 +841,7 @@ export function StackManager() {
                   const id = byomMenuId!;
                   setByomMenuId(undefined);
                   await disconnectByom(id);
-                  showToast('Disconnected. Its key was removed from this device.');
+                  showToast('Disconnected. Its API key was removed from this device.');
                 }}
               >
                 Disconnect
@@ -987,7 +985,7 @@ export function StackManager() {
             {eligibleVisionRefs(visionEdit.slot).length === 0 ? (
               <p className="hint">
                 {visionEdit.slot === 'local'
-                  ? 'No on-device or bring-your-own models yet. Download one from the Marketplace or connect your own.'
+                  ? 'No on-device or bring-your-own models yet. Get Harbor from Settings, Harbor, or connect your own.'
                   : 'No cloud provider connected yet. Connect one under Cloud Connections.'}
               </p>
             ) : (

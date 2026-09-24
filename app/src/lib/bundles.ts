@@ -62,7 +62,7 @@ export const STACK_BUNDLES: StackBundle[] = [
     id: 'coding',
     name: 'Coding',
     tagline:
-      'A stronger brain, repo search that finds code by meaning, and a fast hand for small edits.',
+      'A stronger brain, repository search that finds code by meaning, and a fast hand for small edits.',
     platform: 'desktop',
     orchestrator: 'qwen2.5-coder-14b',
     specialists: { embedding: 'nomic-embed-text', fast: 'qwen2.5-coder-1.5b' },

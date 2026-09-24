@@ -95,7 +95,7 @@ describe('Harbor Lite through the guide harness', () => {
   });
 
   it('never searches for a question about the app, and hands over the right facts', async () => {
-    const { system } = await ask('How does Your stack work?');
+    const { system } = await ask('How does Stack work?');
     expect(searches).toEqual([]);
     expect(system).toContain('Reasoning LLM');
   });

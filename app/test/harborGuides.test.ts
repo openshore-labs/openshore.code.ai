@@ -29,11 +29,6 @@ import { SETUP_GUIDES, guideStepsCompact } from '../src/lib/setupGuides.js';
 const EM_DASH = String.fromCharCode(0x2014);
 const NO_EM_DASH = new RegExp([EM_DASH, '&' + 'mdash;', '&#x' + '2014;', '&#' + '8212;'].join('|'));
 
-function oneSentence(s: string): boolean {
-  // A single trailing sentence: exactly one period, and it is the last char.
-  return s.trim().endsWith('.') && (s.match(/\./g) ?? []).length === 1;
-}
-
 describe('Harbor Lite is bundled (native with the app)', () => {
   it('declares itself bundled', () => {
     expect(HARBOR_MINI_BUNDLED).toBe(true);
@@ -91,16 +86,19 @@ describe('the guide bylines', () => {
     }
   });
 
-  it('keeps Harbor a one-sentence capability line', () => {
-    expect(oneSentence(HARBOR_BYLINE)).toBe(true);
-    expect(HARBOR_BYLINE.toLowerCase()).toContain('coding agent');
+  it('keeps Harbor a short capability line that calls it a coding model, not an agent', () => {
+    expect(HARBOR_BYLINE.trim().endsWith('.')).toBe(true);
+    expect((HARBOR_BYLINE.match(/\./g) ?? []).length).toBeLessThanOrEqual(2);
+    expect(HARBOR_BYLINE.toLowerCase()).toContain('coding model');
+    expect(HARBOR_BYLINE.toLowerCase()).not.toContain('agent');
   });
 
-  it('gives Harbor Lite its "always on" promise (Creative Studio)', () => {
+  it('gives Harbor Lite its standing-light promise, without "always on" (brand sweep)', () => {
     const b = HARBOR_MINI_BYLINE.toLowerCase();
     expect(b).toContain('built in');
     expect(b).toContain('offline');
-    expect(b).toContain('always on');
+    expect(b).toContain('first launch');
+    expect(b).not.toContain('always on');
   });
 });
 

@@ -57,7 +57,9 @@ export function TerminalScreen() {
     const driver = activeId ? driverFor(activeId) : undefined;
     if (!el || !driver?.openTerminal) {
       setStatus('unavailable');
-      setMessage('This conversation has no terminal. Open a desktop repo to use one.');
+      setMessage(
+        'This conversation has no terminal. Open a repository on your computer to use one.',
+      );
       return;
     }
 
@@ -228,7 +230,7 @@ export function TerminalScreen() {
         </button>
         <div className="topbar-title">
           Terminal
-          <div className="topbar-sub">{conv ? sourceLabel(conv.source) : 'Desktop'}</div>
+          <div className="topbar-sub">{conv ? sourceLabel(conv.source) : 'Your computer'}</div>
         </div>
         {status === 'ready' ? (
           <button className="icon-btn" onClick={endTerminal} aria-label="End terminal">
@@ -248,7 +250,7 @@ export function TerminalScreen() {
       ) : (
         <>
           {status === 'connecting' ? (
-            <div className="terminal-message">Connecting to your desktop terminal...</div>
+            <div className="terminal-message">Connecting to the terminal on your computer...</div>
           ) : status === 'exited' ? (
             <div className="terminal-message">{message} Close to go back to the chat.</div>
           ) : null}

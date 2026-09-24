@@ -55,8 +55,9 @@ export const HARBOR_MINI_BUNDLED = true;
 
 // The byline under the Harbor Lite row in Settings, and its promise in three
 // beats. Creative Studio "The Standing Light": a harbor light is built in,
-// works in any weather, and is never off. No em dashes.
-export const HARBOR_MINI_BYLINE = 'Built in. Offline. Always on.';
+// works in any weather, and is there from the start. "Always on" is retired in
+// copy (brand sweep 2026-09-24). No em dashes.
+export const HARBOR_MINI_BYLINE = 'Built in. Works offline. Here from first launch.';
 
 // The composer's resting prompt in a Harbor Lite chat, so an empty box still
 // speaks in its voice. Creative Studio microcopy: the guide is always present.

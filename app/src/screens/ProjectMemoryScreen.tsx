@@ -147,12 +147,12 @@ export function ProjectMemoryScreen() {
       <div className="screen">
         <BackBar
           title={open.title}
-          back={{ to: project?.name ?? 'Project notes', onBack: () => setOpen(null) }}
+          back={{ to: 'What it has learned', onBack: () => setOpen(null) }}
         />
         <div className="screen-inner">
           <h1 className="vault-title">{open.title}</h1>
           <p className="hint" style={{ marginTop: 2 }}>
-            Read only. The agent keeps this current in the repo.
+            Read-only. The agent keeps this current in the repository.
           </p>
           <VaultMarkdown text={open.text} paths={[]} onOpenNote={() => {}} />
         </div>
@@ -166,13 +166,13 @@ export function ProjectMemoryScreen() {
       <div className="screen">
         <BackBar
           title={SECRETS_NOTE_TITLE}
-          back={{ to: project?.name ?? 'Project notes', onBack: closeSecrets }}
+          back={{ to: 'What it has learned', onBack: closeSecrets }}
         />
         <div className="screen-inner">
           <h1 className="vault-title">{SECRETS_NOTE_TITLE}</h1>
           <p className="hint" style={{ marginTop: 2 }}>
-            Private to this device. Encrypted at rest. Never pushed to your repo, never synced. A
-            local model can use these; a cloud model never receives them.
+            Private to this device. Encrypted at rest. Never pushed to your repository, never
+            synced. A local model can use these; a cloud model never receives them.
           </p>
           <div className="vault-editor-wrap">
             <textarea
@@ -191,18 +191,18 @@ export function ProjectMemoryScreen() {
   // ---- the project's note list -------------------------------------------
   return (
     <div className="screen">
-      <BackBar title={project?.name ?? 'Project notes'} />
+      <BackBar title="What it has learned" />
       <div className="screen-inner">
         <div className="stack-head">
-          <h1>{project?.name ?? 'Project notes'}</h1>
+          <h1>What it has learned</h1>
         </div>
         <p className="lead">
-          Historical knowledge for this project, kept by the coding agent in the repo. Read the
-          Current State top sheet first, then dig deeper.
+          {project?.name ? `About ${project.name}: ` : ''}what the coding agent has learned, kept in
+          the project's repository. Read the Current State top sheet first, then dig deeper.
         </p>
 
         {state.phase === 'loading' ? (
-          <p className="hint">Loading the project notes...</p>
+          <p className="hint">Loading what it has learned...</p>
         ) : state.phase === 'no-repo' ? (
           <div className="card empty-notice">
             <h3>No repository yet.</h3>
@@ -224,7 +224,7 @@ export function ProjectMemoryScreen() {
             <h3>Not set up yet.</h3>
             <p className="sub">
               The agent creates these notes the first time it works on this project. Once it does,
-              they appear here, in the repo under "OpenShore Project {project?.name} MDs".
+              they appear here, in the repository under "OpenShore Project {project?.name} MDs".
             </p>
           </div>
         ) : (
@@ -260,8 +260,8 @@ export function ProjectMemoryScreen() {
           {secretsOn ? (
             <>
               <p className="hint" style={{ marginTop: 0 }}>
-                Encrypted here, never pushed to your repo or synced. A local model can use these to
-                run without asking you to paste a credential again.
+                Encrypted here, never pushed to your repository or synced. A local model can use
+                these to run without asking you to paste a credential again.
               </p>
               <div className="vault-tree">
                 <button

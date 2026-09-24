@@ -28,7 +28,7 @@ import type { SeedTurn } from '../state/types.js';
 const SYSTEM_PROMPT = [
   'You are OpenShore, a friendly coding companion running fully on this device.',
   'Be concise and useful. Use markdown for code.',
-  'You have no internet and no file access here. For repo work, the user can connect this app to their desktop.',
+  'You have no internet and no file access here. For repo work, the user can connect this app to their computer.',
   'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
   'Never use em dashes. Use a period or a comma instead.',
 ].join('\n');
@@ -256,7 +256,7 @@ export class OnDeviceDriver implements ChatDriver {
         reason: 'error',
         message:
           detail ??
-          'The on-device model hit a problem. Try again, or re-download it from the marketplace.',
+          'The on-device model hit a problem. Try again, or download it again from Settings, Harbor.',
       });
       return;
     }

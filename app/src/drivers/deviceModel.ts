@@ -131,7 +131,8 @@ export async function ensureDeviceModel(
   if (!load.ok) {
     return {
       ok: false,
-      detail: load.detail ?? `${model.name} would not load. Re-download it from the marketplace.`,
+      detail:
+        load.detail ?? `${model.name} would not load. Download it again from Settings, Harbor.`,
     };
   }
   slot = { id: model.id, contextSize: model.contextSize };

@@ -154,7 +154,7 @@ describe('pickLanding', () => {
     const friMorning = new Date(2026, 0, 2, 9); // Friday, morning
     const g = pickLanding(friMorning, seqRng([0, 0])); // flavor gate 0 < 1/3, index 0
     expect(FRIDAY_LINES).toContain(g.native);
-    expect(g.native).toBe('Friday. Ship it?');
+    expect(g.native).toBe('Friday. Something to land?');
   });
 
   it('stays in the hour bucket when the first roll is above one third', () => {

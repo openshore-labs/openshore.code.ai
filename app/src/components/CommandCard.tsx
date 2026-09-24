@@ -1,6 +1,6 @@
 // A command the user ran through the chat-to-terminal bridge, rendered as a
 // live terminal card: the command line, streaming output in a mono block that
-// sticks to the bottom while running, a stdin field to answer a prompt, a Kill
+// sticks to the bottom while running, a stdin field to answer a prompt, a Stop
 // control, and an exit badge when it finishes. The model reads the result on
 // its next turn, so there is no screenshot round-trip.
 import { useEffect, useRef, useState } from 'react';
@@ -70,7 +70,7 @@ export function CommandCard({ item }: { item: CommandItem }) {
               killCommand(item.runId);
             }}
           >
-            Kill
+            Stop
           </button>
         ) : null}
       </div>
@@ -85,7 +85,7 @@ export function CommandCard({ item }: { item: CommandItem }) {
           <input
             type="text"
             value={stdin}
-            placeholder="type to answer a prompt, then Enter"
+            placeholder="Type a reply, then press Enter"
             onChange={(e) => setStdin(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') submitStdin();

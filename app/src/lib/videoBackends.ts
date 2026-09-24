@@ -182,7 +182,7 @@ const electronBackend: VideoBackend = {
     // Electron exposes the real path on a picked File, so FFmpeg reads the
     // original in place with no copy.
     const path = (file as File & { path?: string }).path;
-    if (!path) throw new Error('The desktop could not locate that video file.');
+    if (!path) throw new Error('OpenShore could not locate that video file.');
     onProgress?.(0, 0);
     const result = await b.mediaProcess(processOptions(path, plan));
     const raw = toRawResult(result);

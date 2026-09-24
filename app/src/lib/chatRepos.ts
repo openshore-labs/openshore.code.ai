@@ -49,7 +49,7 @@ export function firstWorkspace(ids: readonly string[]): string | undefined {
 
 /** The header summary: "No repos", one name, or "name +2". */
 export function summarizeRepos(ids: readonly string[]): string {
-  if (ids.length === 0) return 'No repos';
+  if (ids.length === 0) return 'No repositories';
   const first = repoLabel(ids[0]!);
   return ids.length === 1 ? first : `${first} +${ids.length - 1}`;
 }
