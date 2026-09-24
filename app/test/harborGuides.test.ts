@@ -230,7 +230,9 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     const store = readFileSync(join(process.cwd(), 'src/state/store.ts'), 'utf8');
     expect(store).toContain("view: 'chat',");
     expect(store).not.toMatch(/\? 'chat' : 'onboarding'/);
-    expect(store).toContain('startGuide(HARBOR_MINI_MODEL_ID)');
+    // First open starts the guided walk in Harbor Lite's chat, without
+    // waiting on the model (guidedSetup.test.ts proves the timing).
+    expect(store).toContain('void get().beginGuidedSetup()');
     const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
     expect(chat).toContain('<GuideSetupLink');
     expect(chat).toContain("setView('onboarding')");

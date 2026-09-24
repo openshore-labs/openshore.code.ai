@@ -2818,7 +2818,28 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-23)
+## Log entries (2026-08-18 to 2026-09-24)
+
+### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
+
+Founder: the setup steps are run by Harbor Lite, one at a time, in the first
+chat, with the buttons to connect; a step's page returns to the chat once the
+connection lands; questions can go off script; the walk ends by inviting
+questions about the app, and says how to switch to Harbor if it came down. Pure
+core `app/src/lib/guidedSetup.ts` (order Harbor, computer, repository, key; the
+repository waits on the computer; the words; `guideContextLine` for the model),
+effects in the store (`beginGuidedSetup`, `openSetupStep`, `skipSetupStep`, and
+`advanceGuidedSetup` on a store subscription and after each reply), buttons in
+`components/SetupStepActions.tsx` under the guide's latest message. Harbor Lite
+reads the current step through `setHarborMiniContext`. Each step says what it
+is, why it helps, and how it works, with three choices: connect, "Ask about
+this" (sends a question the guide answers), or "Skip for now". Setup is
+offered, never pushed: the first chat's first goal is a pleasant, useful
+conversation (`FIRST_CHAT_GOAL`); "I just want to chat" pauses the walk
+(`setupIntent`, buttons hidden, the guide stops raising it), "let's set up" or
+"Pick up setup" resumes it, and a bare "skip" skips the step. Progress lives on
+`settings.guidedSetup`. Guards in `app/test/guidedSetup.test.ts`, including the
+whole walk through the real store.
 
 ### 2026-09-23, replies arrive like Claude's: whole words that fade in
 

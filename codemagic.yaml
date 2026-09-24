@@ -88,6 +88,26 @@ workflows:
           cd app
           npx vite build
           npx cap sync ios
+      # Harbor Lite ships INSIDE the app (docs/HARBOR.md), so a new person's
+      # first chat opens with no download. The weights are not committed; this
+      # drops the pinned GGUF into the Capacitor `public` folder, which is
+      # already a folder reference in the app's resources, and ModelStore's
+      # bundledURL finds it at public/models/harbor-mini.gguf. Runs after cap
+      # sync (which rewrites `public`). If the fetch fails the build still
+      # ships, and the app falls back to downloading Harbor Lite on first open.
+      - name: Bundle Harbor Lite's weights
+        script: |
+          set -euo pipefail
+          DEST=app/ios/App/App/public/models
+          mkdir -p "$DEST"
+          # The one pinned source, read from HARBOR_MINI_MODEL_URL so it never drifts.
+          URL=$(grep -o "https://huggingface.co/[^']*\.gguf" app/src/lib/harborMini.ts | head -1 || true)
+          if [ -n "$URL" ] && curl -fsSL --retry 3 -o "$DEST/harbor-mini.gguf" "$URL"; then
+            echo "Bundled Harbor Lite: $(du -h "$DEST/harbor-mini.gguf" | cut -f1) from $URL"
+          else
+            rm -f "$DEST/harbor-mini.gguf"
+            echo "Could not fetch Harbor Lite's weights; the app will download them on first open."
+          fi
       - name: Stamp the build number
         script: |
           set -euo pipefail
