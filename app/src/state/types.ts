@@ -414,6 +414,28 @@ export function sourceLabel(source: ConversationSource): string {
   }
 }
 
+/** The brain's short name for the composer pill: the row is narrow and the
+ *  full label lives in the model sheet. Cloud and device both take the part of
+ *  `sourceLabel` before the separator, so every provider is named for itself
+ *  (OpenAI reads OpenAI, never Claude). */
+export function sourceShortLabel(source?: ConversationSource): string {
+  if (!source) return 'Stack';
+  switch (source.kind) {
+    case 'cloud':
+      return sourceLabel(source).split(' · ')[0] || 'Cloud';
+    case 'desktop':
+      return source.repoName ?? 'Desktop';
+    case 'desktop-chat':
+      return 'Desktop chat';
+    case 'device':
+      return sourceLabel(source).split(' · ')[0] || 'On device';
+    case 'stack':
+      return 'Stack';
+    case 'mock':
+      return 'Demo';
+  }
+}
+
 function isProbablyPhone(): boolean {
   return typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
 }

@@ -330,14 +330,21 @@ export function CrewScreen() {
         ) : null}
       </Sheet>
 
-      <Sheet open={Boolean(confirmDelete)} onClose={() => setConfirmDelete(undefined)}>
+      <Sheet
+        open={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(undefined)}
+        variant="confirm"
+      >
         {confirmDelete ? (
           <>
-            <h2>Remove this crew member?</h2>
-            <p className="sheet-sub">This cannot be undone.</p>
-            <div className="sheet-actions">
+            <h3>Remove this crew member?</h3>
+            <p>This cannot be undone.</p>
+            <div className="confirm-row">
+              <button className="btn ghost" onClick={() => setConfirmDelete(undefined)}>
+                Keep
+              </button>
               <button
-                className="btn primary"
+                className="btn danger"
                 onClick={async () => {
                   const id = confirmDelete;
                   setConfirmDelete(undefined);
@@ -346,9 +353,6 @@ export function CrewScreen() {
                 }}
               >
                 Remove
-              </button>
-              <button className="btn quiet" onClick={() => setConfirmDelete(undefined)}>
-                Keep
               </button>
             </div>
           </>

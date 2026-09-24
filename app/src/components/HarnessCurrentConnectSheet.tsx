@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { Sheet } from './Sheet.js';
+import { SheetHead } from './SheetHead.js';
 import {
   harnessCurrentInfo,
   harnessCurrentStateLine,
@@ -15,18 +16,15 @@ import {
 export function HarnessCurrentConnectSheet({
   id,
   onClose,
+  onForget,
 }: {
   id: HarnessCurrentId | undefined;
   onClose: () => void;
+  /** Forget was tapped: the parent asks to confirm, then disconnects. */
+  onForget: (id: HarnessCurrentId, label: string) => void;
 }) {
-  const {
-    settings,
-    harnessCurrentProbes,
-    connectHarnessCurrent,
-    disconnectHarnessCurrent,
-    showToast,
-    startGuideChat,
-  } = useApp();
+  const { settings, harnessCurrentProbes, connectHarnessCurrent, showToast, startGuideChat } =
+    useApp();
   const info = id ? harnessCurrentInfo(id) : undefined;
   const saved = id ? settings.harnessCurrentConnections?.[id] : undefined;
   const [endpoint, setEndpoint] = useState('');
@@ -62,7 +60,7 @@ export function HarnessCurrentConnectSheet({
     <Sheet open={Boolean(id)} onClose={onClose}>
       {id && info ? (
         <>
-          <h2>{info.label}</h2>
+          <SheetHead title={info.label} onClose={onClose} />
           <p className="sheet-sub">{info.needs}</p>
           {saved ? (
             <p className="hint" style={{ marginTop: 0 }}>
@@ -133,8 +131,9 @@ export function HarnessCurrentConnectSheet({
               <button
                 className="btn quiet"
                 onClick={() => {
-                  void disconnectHarnessCurrent(id);
+                  // Ask first: a forget turns the current off in every project.
                   onClose();
+                  onForget(id, info.label);
                 }}
               >
                 Forget

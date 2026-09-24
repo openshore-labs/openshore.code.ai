@@ -11,6 +11,16 @@ export function hapticApproval(): void {
   void Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
 }
 
+/** A setting turned on: a decisive commit, lighter than an approval and
+ *  distinct from the tick (the selection click iOS gives a switch), so an
+ *  approval's weight stays its own. */
+export function hapticCommit(): void {
+  void Haptics.selectionStart()
+    .then(() => Haptics.selectionChanged())
+    .then(() => Haptics.selectionEnd())
+    .catch(() => {});
+}
+
 export function hapticSuccess(): void {
   void Haptics.notification({ type: NotificationType.Success }).catch(() => {});
 }

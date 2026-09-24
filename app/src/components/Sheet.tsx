@@ -188,6 +188,8 @@ export function Sheet({
     >
       <div
         ref={cardRef}
+        role="dialog"
+        aria-modal="true"
         className={`${card}${className ? ` ${className}` : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${settling ? ' settling' : ''}`}
         style={!closing && dragY !== 0 ? { transform: `translateY(${dragY}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}
