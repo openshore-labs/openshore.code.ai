@@ -4,29 +4,36 @@
 // gives the reader a few seconds, the setup message picks up at a brisker
 // pace, and the step's buttons settle last, when it is the person's turn.
 //
-// This module is the pure timing: the paces, the pauses, and the plan of word
-// groups a paced message reveals in. The same plan drives the bubble's reveal
+// This module is the pure timing: the paces, the pauses, and the plan of when
+// each character of a scripted line starts its swell. The same plan drives the bubble's reveal
 // (hooks/useSmoothedReveal.ts) and the walk's sequencing (store.ts
 // beginGuidedSetup), so a beat starts exactly when the previous one finishes,
 // never on a guessed timeout. A tap or a keystroke skips to the end
 // (lib/streamSmoothing.ts skipReveals); reduced motion shows it all at once.
-import { WORD_FADE_MS } from './streamSmoothing.js';
 
-export interface RevealPace {
-  /** Whole words shown together, each group fading in as one. */
-  wordsPerGroup: number;
-  /** The beat between groups. */
-  groupMs: number;
+/** How a scripted line rolls in (Creative Studio, "Swell Line"): a low swell
+ *  crosses each line, every character rising from a hair below its baseline,
+ *  cresting, and settling as the wave passes. Characters start a fixed step
+ *  apart and each takes far longer than a step, so many are mid-swell at once
+ *  and the eye sees one feathered wave, never letters hopping. */
+export interface InkPace {
+  /** The beat between one character and the next (a space counts as one). */
+  stepMs: number;
+  /** How long one character's swell takes; mirrors its CSS token. */
+  swellMs: number;
+  /** Extra stillness after a sentence ends. */
+  sentenceMs: number;
 }
 
-/** The greeting: two words every 190 ms, about ten words a second, written
- *  rather than typed. */
-export const GREETING_PACE: RevealPace = { wordsPerGroup: 2, groupMs: 190 };
-/** The walk's messages: three words every 170 ms, so the walk keeps moving. */
-export const WALK_PACE: RevealPace = { wordsPerGroup: 3, groupMs: 170 };
+/** The greeting: 20 ms a character on the 600 ms swell (`--dur-swell`), a
+ *  short wave about thirteen characters wide, unhurried. */
+export const GREETING_PACE: InkPace = { stepMs: 20, swellMs: 600, sentenceMs: 90 };
+/** The walk: 8 ms a character on `--dur-6`, a longer, flatter swell about a
+ *  line wide, so the walk keeps moving. */
+export const WALK_PACE: InkPace = { stepMs: 8, swellMs: 420, sentenceMs: 50 };
 
 export type PacedKind = 'greeting' | 'walk';
-export const PACES: Record<PacedKind, RevealPace> = {
+export const PACES: Record<PacedKind, InkPace> = {
   greeting: GREETING_PACE,
   walk: WALK_PACE,
 };
@@ -35,67 +42,56 @@ export const PACES: Record<PacedKind, RevealPace> = {
 export const INTRO_START_MS = 600;
 /** The reader's pause after the greeting has fully inked. */
 export const READ_PAUSE_MS = 3000;
-/** The one pause inside a message: the breath before a step's heading. */
+/** The breath before a step heading, used instead of the paragraph pause. */
 export const HEADING_PAUSE_MS = 600;
+/** After a comma or a colon. */
+export const COMMA_PAUSE_MS = 40;
+/** A single line break inside a paragraph. */
+export const LINE_PAUSE_MS = 120;
+/** A paragraph break: the tail settles fully, each paragraph starts from still
+ *  water. */
+export const PARAGRAPH_PAUSE_MS = 280;
 
-export interface RevealStep {
-  /** Show the text up to this index. */
-  end: number;
-  /** Wait this long (after the previous step) before showing it. */
-  delayMs: number;
+export interface InkPlan {
+  /** When each visible, non-space character starts its swell, in reading
+   *  order (markdown's bold markers are not characters). */
+  delays: number[];
+  /** From the first character starting to the last one settled. */
+  totalMs: number;
 }
 
-const PARAGRAPH_BREAK = /\n\s*\n/;
-
-/** The groups a paced message reveals in. Whole words only; a paragraph break
- *  always starts a new group; a group never ends inside an open `**` span, so
- *  a bold heading ("Step 1 of 4: Get Harbor.") arrives as one piece and the
- *  markdown is never half-drawn; a paragraph that opens in bold (a heading or
- *  a "Why:" label) starts its own group; and a step heading gets its breath. */
-export function pacedSteps(
-  text: string,
-  pace: RevealPace,
-  headingPauseMs = HEADING_PAUSE_MS,
-): RevealStep[] {
-  const words = [...text.matchAll(/\S+/g)].map((m) => ({
-    start: m.index,
-    end: m.index + m[0].length,
-  }));
-  const boldOpenAt = (end: number) => ((text.slice(0, end).match(/\*\*/g) ?? []).length & 1) === 1;
-  const steps: RevealStep[] = [];
-  let i = 0;
-  while (i < words.length) {
-    const start = words[i]!.start;
-    const paraStart = i === 0 || PARAGRAPH_BREAK.test(text.slice(words[i - 1]!.end, start));
-    const bold = paraStart && text.startsWith('**', start);
-    let j = i;
-    for (;;) {
-      j += 1;
-      const end = words[j - 1]!.end;
-      if (j >= words.length) break;
-      if (boldOpenAt(end)) continue;
-      if (bold) break;
-      if (j - i >= pace.wordsPerGroup) break;
-      if (PARAGRAPH_BREAK.test(text.slice(end, words[j]!.start))) break;
-      if (text.startsWith('**', words[j]!.start)) break;
+/** The one plan: the bubble stamps these delays on its character spans and
+ *  the walk waits `totalMs` before its next beat. */
+export function inkPlan(text: string, pace: InkPace): InkPlan {
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const delays: number[] = [];
+  let clock = 0;
+  paragraphs.forEach((para, index) => {
+    if (index > 0) clock += para.startsWith('**Step') ? HEADING_PAUSE_MS : PARAGRAPH_PAUSE_MS;
+    const visible = para.replace(/\*\*/g, '');
+    for (let i = 0; i < visible.length; i += 1) {
+      const ch = visible[i]!;
+      if (ch === '\n') {
+        clock += LINE_PAUSE_MS;
+        continue;
+      }
+      if (!/\s/.test(ch)) delays.push(clock);
+      clock += pace.stepMs;
+      if (/[,:]/.test(ch)) clock += COMMA_PAUSE_MS;
+      else if (/[.!?]/.test(ch) && (i + 1 >= visible.length || /\s/.test(visible[i + 1]!)))
+        clock += pace.sentenceMs;
     }
-    const heading = bold && text.startsWith('**Step', start);
-    steps.push({
-      end: words[j - 1]!.end,
-      delayMs: steps.length === 0 ? 0 : pace.groupMs + (heading ? headingPauseMs : 0),
-    });
-    i = j;
-  }
-  // Trailing whitespace or punctuation-only tails still land.
-  if (steps.length && steps[steps.length - 1]!.end < text.length) {
-    steps[steps.length - 1]!.end = text.length;
-  }
-  return steps;
+  });
+  const last = delays.length ? delays[delays.length - 1]! : 0;
+  return { delays, totalMs: delays.length ? last + pace.swellMs : 0 };
 }
 
-/** How long a paced message takes from its first group to full ink. */
-export function pacedDurationMs(text: string, pace: RevealPace): number {
-  return pacedSteps(text, pace).reduce((sum, s) => sum + s.delayMs, 0) + WORD_FADE_MS;
+/** How long a scripted line takes to roll in, start to settled. */
+export function inkDurationMs(text: string, pace: InkPace): number {
+  return inkPlan(text, pace).totalMs;
 }
 
 // ------------------------------------------------------------- playing

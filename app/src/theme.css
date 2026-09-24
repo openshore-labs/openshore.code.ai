@@ -124,6 +124,14 @@
   --dur-6: 420ms;
   /* The door's clock: the one duration for a surface that crosses the screen. */
   --dur-7: 520ms;
+  /* The swell (Creative Studio, "Swell Line", 2026-09-24): the first open's
+     scripted lines roll in on a low wave, each character rising a hair,
+     cresting, and settling. Near-symmetric, so the crest has zero speed and
+     reads as a swell, not a bounce. */
+  --ease-ink: cubic-bezier(0.35, 0, 0.25, 1);
+  --dur-swell: 600ms;
+  /* The crest brightens faintly in dark themes only; light keeps pure ink. */
+  --ink-crest: brightness(1);
   /* The step between rows that arrive one after another (the drawer's). */
   --stagger: 40ms;
   /* Loops (spinners, pulses, shimmers): outside the transition range on
@@ -156,6 +164,7 @@
    explicit [data-theme="dark"] toggle. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    --ink-crest: brightness(1.14);
     --bg: #17140e;
     --bg-raised: #201c14;
     --surface: #29241a;
@@ -195,6 +204,7 @@
 
 /* The explicit toggle wins over the system preference in both directions. */
 :root[data-theme='dark'] {
+  --ink-crest: brightness(1.14);
   --bg: #17140e;
   --bg-raised: #201c14;
   --surface: #29241a;
@@ -1380,6 +1390,60 @@ textarea {
 }
 @media (prefers-reduced-motion: reduce) {
   .md-live .w {
+    animation: none;
+  }
+}
+
+/* The swell (lib/inkSwell.ts): a scripted line laid out whole, each word a
+   nowrap span so lines only wrap between words, each character an
+   inline-block that rises from a hair below its baseline, crests, and settles
+   on the delay the ink plan stamps as --d. Many are mid-swell at once, so the
+   eye sees one feathered wave rolling left to right. A settled line renders
+   plain again, so kerning and selection are normal. */
+.md-ink-greeting {
+  --ink-dur: var(--dur-swell);
+}
+.md-ink-walk {
+  --ink-dur: var(--dur-6);
+}
+.md-ink .iw {
+  white-space: nowrap;
+}
+.md-ink .ic {
+  display: inline-block;
+  animation: swell var(--ink-dur) var(--ease-ink) backwards;
+  animation-delay: var(--d);
+}
+/* The skip's finish: the rest arrive flat and quick, no wave at skip speed. */
+.md-ink .ic.flat {
+  animation: ink-flat var(--dur-3) var(--ease-ink) backwards;
+  animation-delay: var(--d);
+}
+@keyframes swell {
+  0% {
+    opacity: 0;
+    transform: translateY(0.14em);
+    filter: blur(0.08em) brightness(1);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-0.05em);
+    filter: blur(0) var(--ink-crest);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0) brightness(1);
+  }
+}
+@keyframes ink-flat {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .md-ink .ic,
+  .md-ink .ic.flat {
     animation: none;
   }
 }

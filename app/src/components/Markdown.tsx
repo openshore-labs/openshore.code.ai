@@ -14,6 +14,7 @@ import { useApp } from '../state/store.js';
 import { copyText } from '../lib/clipboard.js';
 import { DiffBlock } from './ToolCard.js';
 import { rehypeFadeWords } from '../lib/fadeWords.js';
+import { rehypeInk, type InkStamp } from '../lib/inkSwell.js';
 
 function extractText(node: ReactNode): string {
   if (typeof node === 'string') return node;
@@ -99,18 +100,28 @@ export function Markdown({
   text,
   streaming = false,
   fade = false,
+  ink,
 }: {
   text: string;
   streaming?: boolean;
   /** A live reply: split prose into word spans so each new word fades in
    *  (lib/fadeWords.ts, `.md-live .w`). Off renders plain text. */
   fade?: boolean;
+  /** A scripted line rolling in on the swell (lib/inkSwell.ts): every
+   *  character stamped with its start. Undefined renders plain text. */
+  ink?: { stamp: InkStamp; kind: 'greeting' | 'walk' };
 }) {
+  const plugins = ink
+    ? [rehypeHighlight, rehypeInk(ink.stamp)]
+    : fade
+      ? [rehypeHighlight, rehypeFadeWords]
+      : [rehypeHighlight];
+  const cls = ink ? ` md-ink md-ink-${ink.kind}` : fade ? ' md-live' : '';
   return (
-    <div className={`md${fade ? ' md-live' : ''}`}>
+    <div className={`md${cls}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={fade ? [rehypeHighlight, rehypeFadeWords] : [rehypeHighlight]}
+        rehypePlugins={plugins}
         components={{
           pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
           // Links leave the app rather than navigating the WebView away from it.
