@@ -1999,6 +1999,62 @@ export const useApp = create<AppState>((set, get, api) => {
     return true;
   }
 
+  // A Harbor Lite chat opens before the model is ready (beginGuidedSetup), so a
+  // message typed in that window waits, visibly, as a queued line, and goes out
+  // the moment Harbor Lite is ready; anything queued after it follows in order
+  // when that reply ends. Returns true when the message was held here.
+  const harborLiteWaiters = new Set<string>();
+  function holdForHarborLite(
+    conversationId: string,
+    text: string,
+    attachments?: Attachment[],
+  ): boolean {
+    const conv = get().conversations[conversationId];
+    if (conv?.source.kind !== 'device' || conv.source.modelId !== HARBOR_MINI_MODEL_ID)
+      return false;
+    if (get().settings.harborMiniReady || (attachments && attachments.length) || !text.trim()) {
+      return false;
+    }
+    set((st) => {
+      const c = st.conversations[conversationId];
+      if (!c) return st;
+      return {
+        conversations: {
+          ...st.conversations,
+          [conversationId]: { ...c, thread: { ...c.thread, queued: [...c.thread.queued, text] } },
+        },
+      };
+    });
+    // One wait and one flush per chat, however many lines were typed: the
+    // first goes out when Harbor Lite is ready, the rest follow it in order
+    // (attachDriver sends the next queued line each time a reply ends).
+    if (!harborLiteWaiters.has(conversationId)) {
+      harborLiteWaiters.add(conversationId);
+      void get()
+        .ensureHarborMini()
+        .then((ok) => {
+          harborLiteWaiters.delete(conversationId);
+          if (!ok) return; // the failure shows on the download row; lines stay queued
+          const c = get().conversations[conversationId];
+          const [head, ...rest] = c?.thread.queued ?? [];
+          if (!c || head === undefined || c.thread.busy) return;
+          set((st) => {
+            const cur = st.conversations[conversationId];
+            if (!cur) return st;
+            return {
+              conversations: {
+                ...st.conversations,
+                [conversationId]: { ...cur, thread: { ...cur.thread, queued: rest } },
+              },
+            };
+          });
+          get().sendWhenAttached(conversationId, head);
+          ensureDriver(conversationId);
+        });
+    }
+    return true;
+  }
+
   // Move the walk along when the world changed: a step's connection landed
   // (say so, bring the person back to the chat if they went to its page, and
   // bring up the next step), or Harbor finished downloading (say how to switch
@@ -5345,21 +5401,39 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async beginGuidedSetup() {
       if (!isPhone()) return;
-      const id = await get().startGuide(HARBOR_MINI_MODEL_ID);
-      if (!id) return;
-      // The walk's chat opens on its own hello, then the first step under it.
+      // Open the walk's chat NOW, without waiting on the model: its hello and
+      // its steps are scripted, so nothing on screen needs Harbor Lite loaded.
+      // (startGuide waits for the model first, which on a build that does not
+      // carry the bundled weights meant a minute on an empty chat.) The model
+      // gets ready in the background, and a message typed before it is waits
+      // for it (see holdForHarborLite).
+      const id = await get().newConversation({
+        kind: 'device',
+        modelId: HARBOR_MINI_MODEL_ID,
+        modelName: HARBOR_MINI_MODEL_NAME,
+      });
       set((st) => {
         const c = st.conversations[id];
         if (!c) return st;
-        const items = c.thread.items.map((i) =>
-          i.id === `${id}-hello` && i.kind === 'assistant'
-            ? { ...i, text: HARBOR_MINI_SETUP_GREETING }
-            : i,
-        );
+        const hello = {
+          kind: 'assistant' as const,
+          id: `${id}-hello`,
+          text: HARBOR_MINI_SETUP_GREETING,
+          streaming: false,
+        };
         return {
-          conversations: { ...st.conversations, [id]: { ...c, thread: { ...c.thread, items } } },
+          conversations: {
+            ...st.conversations,
+            [id]: {
+              ...c,
+              title: HARBOR_MINI_MODEL_NAME,
+              thread: { ...c.thread, items: [hello] },
+            },
+          },
         };
       });
+      void persistConversations(get());
+      if (!get().settings.harborMiniReady) void get().ensureHarborMini();
       const facts = setupFacts();
       const first = nextStep({ skipped: [] }, facts);
       await get().saveSettings({
@@ -5821,6 +5895,12 @@ export const useApp = create<AppState>((set, get, api) => {
     send(text, attachments) {
       const { activeId } = get();
       if (!activeId) return;
+      // The guided setup's chat: a "not now", "let's set up", or "skip" is
+      // about the walk (see interceptSetupMessage).
+      if (!(attachments && attachments.length) && !get().conversations[activeId]?.thread.busy) {
+        if (interceptSetupMessage(activeId, text)) return;
+      }
+      if (holdForHarborLite(activeId, text, attachments)) return;
       const driver = liveDriver(activeId);
       if (!driver) {
         // The driver is still building (a fast send after reopen) or its build
@@ -5830,11 +5910,6 @@ export const useApp = create<AppState>((set, get, api) => {
         get().sendWhenAttached(activeId, text, attachments);
         ensureDriver(activeId);
         return;
-      }
-      // The guided setup's chat: a "not now", "let's set up", or "skip" is
-      // about the walk (see interceptSetupMessage).
-      if (!(attachments && attachments.length) && !get().conversations[activeId]?.thread.busy) {
-        if (interceptSetupMessage(activeId, text)) return;
       }
       // Mid-run: hold the message and send it when the task ends (attachDriver
       // flushes on task-done). Attachments do not queue; they need a live turn.

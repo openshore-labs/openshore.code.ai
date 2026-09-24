@@ -2818,7 +2818,46 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-23)
+## Log entries (2026-08-18 to 2026-09-24)
+
+### 2026-09-23, every push to main reaches the desktops, with a one-click update bar
+
+Founder: a desktop that is behind main shows a permanent bar at the top, and
+one click downloads and updates. `release.yml` now publishes on every push to
+main that touches the app or engine (a `version` job picks the next patch
+after the newest tag; tags and hand runs work as before) and, when the
+`CODEMAGIC_API_TOKEN`/`CODEMAGIC_APP_ID` secrets are set, starts the Mac build.
+The bar (`components/UpdateBanner.tsx`) is a full-width row above the app in
+an `.app-frame`, no dismiss. Windows and Linux: shows on `update-available`,
+downloads in the background, one click installs (at once, or the moment the
+download lands). macOS, unsigned: one click downloads the newest release that
+has a zip for this Mac, swaps the bundle, relaunches (`electron/macUpdate.ts`,
+pure picks in `electron/updateVersion.ts`), falling back to the release page.
+Checks every 30 minutes. A Mac build made by hand offline works too:
+`pnpm --filter oscode-app release:mac` stamps the release version, builds, and
+uploads the dmg and zip; the updater installs from either. Not yet run on a
+real packaged build.
+
+### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
+
+Founder: the setup steps are run by Harbor Lite, one at a time, in the first
+chat, with the buttons to connect; a step's page returns to the chat once the
+connection lands; questions can go off script; the walk ends by inviting
+questions about the app, and says how to switch to Harbor if it came down. Pure
+core `app/src/lib/guidedSetup.ts` (order Harbor, computer, repository, key; the
+repository waits on the computer; the words; `guideContextLine` for the model),
+effects in the store (`beginGuidedSetup`, `openSetupStep`, `skipSetupStep`, and
+`advanceGuidedSetup` on a store subscription and after each reply), buttons in
+`components/SetupStepActions.tsx` under the guide's latest message. Harbor Lite
+reads the current step through `setHarborMiniContext`. Each step says what it
+is, why it helps, and how it works, with three choices: connect, "Ask about
+this" (sends a question the guide answers), or "Skip for now". Setup is
+offered, never pushed: the first chat's first goal is a pleasant, useful
+conversation (`FIRST_CHAT_GOAL`); "I just want to chat" pauses the walk
+(`setupIntent`, buttons hidden, the guide stops raising it), "let's set up" or
+"Pick up setup" resumes it, and a bare "skip" skips the step. Progress lives on
+`settings.guidedSetup`. Guards in `app/test/guidedSetup.test.ts`, including the
+whole walk through the real store.
 
 ### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
 

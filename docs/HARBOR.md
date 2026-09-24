@@ -77,7 +77,13 @@ Settings row reads. Keep it in step with `ModelStore.bundledModelIds`.
 
 ### The build step
 
-The weights file is NOT committed to the repo. At build time, drop the
+The weights file is NOT committed to the repo. The Codemagic iOS workflow does
+this for you (2026-09-24, step "Bundle Harbor Lite's weights"): after `cap sync`
+it downloads `HARBOR_MINI_MODEL_URL` into `ios/App/App/public/models/`, and
+`ModelStore.bundledURL` finds it at `public/models/harbor-mini.gguf`, since the
+Capacitor `public` folder is already a folder reference in the app target.
+Before that step existed, TestFlight builds shipped without the file and
+downloaded it on first open. For a local Xcode build, drop the
 SmolLM2-135M-Instruct Q4_K_M GGUF into the iOS app as a bundle resource named
 `harbor-mini.gguf` (either directly in the app target's resources, or under a
 `Models/` folder reference). `cap sync ios` does not do this for you; add the
