@@ -28,6 +28,13 @@ const CANON: Record<string, string> = {
   '--dur-5': '320ms',
   '--dur-6': '420ms',
   '--dur-7': '520ms',
+  // The swell (Creative Studio "Swell Line", 2026-09-24): the first open's
+  // letter and the boot splash rise 0.14em, crest 0.05em above, and settle on
+  // this near-symmetric curve, so the crest has zero speed and reads as a
+  // swell, not a bounce. index.html mirrors these values literally (it paints
+  // before the bundle), so a change here is a change there too.
+  '--ease-ink': 'cubic-bezier(0.35, 0, 0.25, 1)',
+  '--dur-swell': '600ms',
   '--stagger': '40ms',
   '--loop-1': '800ms',
   '--loop-2': '1100ms',
@@ -59,6 +66,9 @@ describe('motion tokens', () => {
     expect(wrong, wrong.join('\n  ')).toEqual([]);
   });
 
+  // --press-out keeps a literal 260ms on purpose (documented beside the token
+  // in theme.css): the spring's overshoot needs a beat longer than --dur-3 to
+  // read as a settle, and a full --dur-4 makes a quick second tap feel held.
   it('composes the press-state shorthands from the base tokens (asymmetric on purpose)', () => {
     expect(norm(tokenValue('--press-in'))).toBe(norm('var(--dur-1) var(--ease-accel)'));
     expect(norm(tokenValue('--press-out'))).toBe(norm('260ms var(--ease-spring)'));

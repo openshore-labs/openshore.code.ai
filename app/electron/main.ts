@@ -8,6 +8,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   powerSaveBlocker,
   safeStorage,
   shell,
@@ -595,7 +596,10 @@ function createWindow(): void {
     height: 800,
     minWidth: 720,
     minHeight: 520,
-    backgroundColor: '#f6f4ef',
+    // The window's ground before the first paint, matched to the app's --bg
+    // in the system's scheme (theme.css and the index.html splash), so a
+    // dark-mode open never flashes cream.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17140e' : '#f6f4ef',
     autoHideMenuBar: true,
     title: 'OpenShore',
     webPreferences: {

@@ -197,20 +197,12 @@ function Rings({ health, animate }: { health: StackHealth; animate: boolean }) {
         const shown = animate ? r.fraction : 0;
         return (
           <g key={r.key} transform="rotate(-90 100 100)">
-            <circle
-              cx="100"
-              cy="100"
-              r={r.radius}
-              className="sh-ring-track"
-              strokeWidth={13}
-              fill="none"
-            />
+            <circle cx="100" cy="100" r={r.radius} className="sh-ring-track" fill="none" />
             <circle
               cx="100"
               cy="100"
               r={r.radius}
               stroke={`url(#sh-grad-${r.key})`}
-              strokeWidth={13}
               fill="none"
               strokeLinecap="round"
               strokeDasharray={c}
@@ -278,14 +270,7 @@ function SealBand({ health }: { health: StackHealth }) {
   return (
     <div className="sh-seal" role="group" aria-label="Privacy seal">
       <span className={`sh-seal-mark${pulse ? ' sh-seal-mark-pulse' : ''}`} aria-hidden="true">
-        <svg
-          viewBox="0 0 32 32"
-          width="26"
-          height="26"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
+        <svg viewBox="0 0 32 32" width="26" height="26" fill="none" stroke="currentColor">
           <circle cx="16" cy="16" r="13" opacity="0.5" />
           <path d="M7 18q4.5-3.3 9 0t9 0" strokeLinecap="round" strokeLinejoin="round" />
         </svg>

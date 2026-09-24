@@ -5,6 +5,7 @@
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { CloseGlyph } from './SheetGlyphs.js';
+import { Icon } from './Icon.js';
 import {
   PERMISSION_MODES,
   permissionModeLabel,
@@ -14,47 +15,35 @@ import {
 } from '../lib/permissionMode.js';
 
 function ModeIcon({ mode }: { mode: PermissionMode }) {
-  const common = {
-    className: 'mode-icon',
-    viewBox: '0 0 24 24',
-    width: 22,
-    height: 22,
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 2,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-  };
   if (mode === 'bypassPermissions') {
     return (
-      <svg {...common}>
+      <Icon size={22} className="mode-icon">
         <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
-      </svg>
+      </Icon>
     );
   }
   if (mode === 'acceptEdits') {
     return (
-      <svg {...common}>
+      <Icon size={22} className="mode-icon">
         <path d="m9 8-4 4 4 4" />
         <path d="m15 8 4 4-4 4" />
-      </svg>
+      </Icon>
     );
   }
   if (mode === 'plan') {
     return (
-      <svg {...common}>
+      <Icon size={22} className="mode-icon">
         <path d="M6 3h9l3 3v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
         <path d="M8.5 9h7M8.5 13h7M8.5 17h4" />
-      </svg>
+      </Icon>
     );
   }
   // default: a shield, the mode that asks before it acts
   return (
-    <svg {...common}>
+    <Icon size={22} className="mode-icon">
       <path d="M12 3 5 6v6c0 4.2 3 7.6 7 9 4-1.4 7-4.8 7-9V6l-7-3Z" />
       <path d="m9.5 12 1.8 1.8L15 10" />
-    </svg>
+    </Icon>
   );
 }
 

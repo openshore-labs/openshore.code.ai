@@ -1,3 +1,4 @@
+import { Icon } from './Icon.js';
 // The attach tray: what the composer's + opens on a phone. It takes the
 // keyboard's slot (the same remembered height, see lib/keyboardHeight.ts), so
 // when the keyboard swaps for it the composer does not move, the way the
@@ -10,61 +11,28 @@ export type AttachSource = 'camera' | 'photos' | 'files';
 
 function CameraGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="26"
-      height="26"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
+    <Icon size={26}>
       <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.3-2h6l1.3 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" />
       <circle cx="12" cy="13" r="3.4" />
-    </svg>
+    </Icon>
   );
 }
 
 function PhotosGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="26"
-      height="26"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
+    <Icon size={26}>
       <rect x="4" y="5" width="16" height="14" rx="2.5" />
       <circle cx="9" cy="10" r="1.6" />
       <path d="M20 15.5l-4.2-4.2a1.5 1.5 0 0 0-2.1 0L7 18" />
-    </svg>
+    </Icon>
   );
 }
 
 function FilesGlyph() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="26"
-      height="26"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
+    <Icon size={26}>
       <path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h4l1.8 2h7.2A1.5 1.5 0 0 1 20 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" />
-    </svg>
+    </Icon>
   );
 }
 

@@ -43,26 +43,17 @@ import { useExitPresence } from '../hooks/useExitPresence.js';
 import { CloseGlyph } from './SheetGlyphs.js';
 import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
 import { AttachTray, type AttachSource } from './AttachTray.js';
+import { Icon } from './Icon.js';
 
 // The iOS keyboard dictation microphone, the same outline Claude uses.
 function MicIcon() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={20}
-      height={20}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <Icon size={20}>
       <rect x="9" y="2" width="6" height="12" rx="3" />
       <path d="M5 11a7 7 0 0 0 14 0" />
       <line x1="12" y1="18" x2="12" y2="22" />
       <line x1="8.5" y1="22" x2="15.5" y2="22" />
-    </svg>
+    </Icon>
   );
 }
 
@@ -70,23 +61,13 @@ function MicIcon() {
 // mic, which dictates into the field). Opens the full-screen voice surface.
 function VoiceWaveIcon() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={20}
-      height={20}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <Icon size={20}>
       <line x1="4" y1="10" x2="4" y2="14" />
       <line x1="8" y1="7" x2="8" y2="17" />
       <line x1="12" y1="4" x2="12" y2="20" />
       <line x1="16" y1="7" x2="16" y2="17" />
       <line x1="20" y1="10" x2="20" y2="14" />
-    </svg>
+    </Icon>
   );
 }
 
