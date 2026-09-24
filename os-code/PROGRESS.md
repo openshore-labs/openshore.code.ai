@@ -426,6 +426,15 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Harbor Lite's guide harness: the box number and a phone pass (built
+      2026-09-24).** Run `pnpm --filter oscode-app eval:guide --search` on the
+      reference box (`ollama pull smollm2:135m`) and record with versus without.
+      Then, on a phone: a web question shows "Searching the web" and cites; an
+      app question stays offline; "I have 16 GB" gets the 7B. Tune a card's
+      keywords when a real question misses it (add the question to the eval).
+      Stale copy found alongside: the Settings privacy sheet still calls
+      Harbor Qwen3-1.7B and "not a coder"; AccountSetup and Paywall still
+      advertise the $20 unlock while the gates are off.
 - [ ] **Mac desktop updates: prove on a real Mac (built 2026-09-23, founder has
       no Mac yet).** Windows and Linux update from any push to main with no
       Mac involved; until this is done, Macs simply see no update. Needs a Mac
@@ -961,6 +970,14 @@ on that. `beginGuidedSetup` now opens the chat and its scripted hello at once
 and readies the model in the background; a line typed before it is ready waits
 as a queued message (`holdForHarborLite`). Codemagic now bundles the weights
 into `public/models/` (see docs/HARBOR.md), which `bundledURL` reads.
+
+### 2026-09-24, Harbor Lite: the guide harness, web search, and setup advice
+
+Founder: raise Harbor Lite's floor. It must search the web (DuckDuckGo), answer basic sourced questions, say when it is stretched, know every part of the app and why it exists, and reason about a person's needs and equipment. A 135M model cannot do that alone, so the harness does the mechanical work (tenet 3): `app/src/lib/guideHarness.ts` (pure) plans each turn. It picks 3 of 50 verified fact cards (`guideCards.ts`, one per screen or control, current names read from the roster), searches the web for a factual question the cards do not cover (status line plus citations, a failed search said plainly), sizes DeepBlue from the person's stated RAM or GPU with the First Seat fit table, and marks a coding or heavy ask as a stretch, with a fixed honest note after the reply. The persona is short. Eval (tenet 2): 49 questions, route 100%, card recall 100% (CI, `test/guideEval.test.ts`); prompt about 580 tokens on average (880 at most) versus about 6,300 for every card on every turn. Answer quality with versus without the harness is `pnpm --filter oscode-app eval:guide` on the reference box (smollm2:135m), not yet run. Also fixed: the setup wrap-up pointed to a Settings "Get started" group that does not exist, and the shared guide facts said Linux-only and treated the Marketplace as open.
+
+### 2026-09-24, Harbor Lite no longer sticks on "Warming up"
+
+Founder report: a question in the setup chat sat on "Warming up Harbor Lite" with no reply. Its system prompt (about 10.5k characters) outgrew the 2048-token window it loaded with, so the reply came back empty. Every device model now loads at `DEVICE_CONTEXT_TOKENS` (4096), history is trimmed to fit (`fitDeviceHistory`), and an empty reply ends with an error naming the model (`app/test/deviceContext.test.ts`). Not yet checked on a phone.
 
 ### 2026-09-23, every push to main reaches the desktops, with a one-click update bar
 

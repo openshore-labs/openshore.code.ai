@@ -9,14 +9,16 @@
 import type { SetupGuide, SetupGuideId } from './setupGuides.js';
 import { guideOpening } from './setupGuides.js';
 
-/** The guides Harbor Lite carries verbatim (guideStepsCompact in its prompt),
- *  so it can give step two without inventing it. guidePacing.test.ts pins this
- *  list against the prompt source. */
+/** The guides Harbor Lite carries verbatim (guideStepsCompact in its fact
+ *  cards, handed over when a question asks about one), so it can give step two
+ *  without inventing it. guidePacing.test.ts pins this list against the cards. */
 export const GUIDES_PACED_BY_HARBOR_LIGHT: readonly SetupGuideId[] = [
   'get-harbor',
   'get-harbor-master',
   'connect-cloud-key',
-  'pick-a-model',
+  'pair-computer',
+  'open-a-repo',
+  'connect-codemagic',
 ];
 
 /** The honest second seed when nothing can answer: no pretending. */

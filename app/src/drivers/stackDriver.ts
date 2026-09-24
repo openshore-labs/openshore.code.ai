@@ -30,8 +30,11 @@ import {
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
+  DEVICE_CONTEXT_TOKENS,
   STALL_TIMEOUT_MS,
+  emptyReplyMessage,
   ensureDeviceModel,
+  fitDeviceHistory,
   forgetDeviceModel,
 } from './deviceModel.js';
 import { platform, secretGet, storeGetJson } from '../lib/platform.js';
@@ -232,6 +235,8 @@ export class StackDriver implements ChatDriver {
   private aborted = false;
   private answer = '';
   private activeRequestId?: string;
+  /** The device model writing the live reply, named if it ends with no words. */
+  private deviceModelName?: string;
   // A framing turn that asked the user to clarify: the original request is held
   // here so the next message can be folded back in and re-framed.
   private pendingClarify?: { text: string };
@@ -391,10 +396,18 @@ export class StackDriver implements ChatDriver {
     });
   }
 
+  /** The live question, for Harbor Lite's per-turn fact lookup. */
+  private lastUserText(): string {
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (this.history[i]!.role === 'user') return this.history[i]!.content;
+    }
+    return '';
+  }
+
   private systemFor(ref: StackModelRef, placement?: Placement): string {
     const guideSystem =
       ref.kind === 'device' && isHarborMini(ref.modelId)
-        ? buildHarborMiniSystemPrompt()
+        ? buildHarborMiniSystemPrompt(this.lastUserText())
         : ref.kind === 'device' && isHarbor(ref.modelId)
           ? buildHarborSystemPrompt(false)
           : undefined;
@@ -1073,6 +1086,9 @@ export class StackDriver implements ChatDriver {
           // Whatever the slot holds after an error is suspect; reload next time.
           forgetDeviceModel();
           this.finish('error', detail ?? 'The on-device model hit a problem.');
+        } else if (stopReason === 'end' && !this.answer.trim() && this.deviceModelName) {
+          // A finished reply with no words is a failure, not a quiet success.
+          this.finish('error', emptyReplyMessage(this.deviceModelName));
         } else this.finish(stopReason === 'stopped' ? 'aborted' : 'complete');
       }),
     );
@@ -1089,18 +1105,21 @@ export class StackDriver implements ChatDriver {
       {
         id: ref.modelId,
         name: ref.modelName,
-        contextSize: isHarborMini(ref.modelId) ? 2048 : 4096,
+        contextSize: DEVICE_CONTEXT_TOKENS,
       },
       (message) => this.emit({ type: 'status', message }),
     );
     if (!ready.ok) throw new RouteUnavailable(ready.detail);
     const requestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
     this.activeRequestId = requestId;
+    this.deviceModelName = ref.modelName;
+    const system = this.systemFor(ref, placement);
+    const maxTokens = isHarborMini(ref.modelId) ? 512 : 1024;
     const res = await Llama.generate({
       requestId,
-      system: this.systemFor(ref, placement),
-      messages: this.history,
-      maxTokens: isHarborMini(ref.modelId) ? 512 : 1024,
+      system,
+      messages: fitDeviceHistory(system, this.history, maxTokens),
+      maxTokens,
       temperature: 0.6,
     });
     // A refused start already reported generationDone; only a started reply

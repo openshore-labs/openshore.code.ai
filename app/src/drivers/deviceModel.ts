@@ -26,6 +26,53 @@ export const STALL_TIMEOUT_MS = 120_000;
  *  (the request was already lost) must not leave the chat busy. */
 export const ABORT_BEAT_MS = 1500;
 
+/** The context window every device model loads with. Harbor Lite once loaded
+ *  at 2048 to keep its KV cache small, but its system prompt (persona, app
+ *  facts, the setup step) alone runs past 2048 tokens, so the prompt overflowed
+ *  before the question was read and the reply came back empty: the chat sat on
+ *  "Warming up Harbor Lite" with nothing under it. A 135M model's cache at 4096
+ *  is under 100 MB, so one size for every device model is cheap and safe. */
+export const DEVICE_CONTEXT_TOKENS = 4096;
+
+/** A conservative characters-per-token figure for sizing a prompt without the
+ *  model's tokenizer. English prose runs near four; code and markdown run
+ *  lower, so this errs toward a smaller history rather than an overflow. */
+const CHARS_PER_TOKEN = 3.2;
+
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
+/** The newest turns that fit the window beside the system prompt and room for
+ *  the reply, oldest dropped first. The live question (the last message) is
+ *  always kept, and history never opens on an assistant turn, since a chat
+ *  template expects a user turn first. */
+export function fitDeviceHistory<M extends { role: 'user' | 'assistant'; content: string }>(
+  system: string,
+  messages: M[],
+  replyTokens: number,
+  contextTokens: number = DEVICE_CONTEXT_TOKENS,
+): M[] {
+  if (messages.length === 0) return messages;
+  let budget = contextTokens - replyTokens - estimateTokens(system);
+  let start = messages.length - 1;
+  budget -= estimateTokens(messages[start]!.content);
+  while (start > 0) {
+    const cost = estimateTokens(messages[start - 1]!.content);
+    if (cost > budget) break;
+    budget -= cost;
+    start -= 1;
+  }
+  while (start < messages.length - 1 && messages[start]!.role !== 'user') start += 1;
+  return start === 0 ? messages : messages.slice(start);
+}
+
+/** What a device reply that ended with no words says, instead of ending
+ *  silently under the "Warming up" line. */
+export function emptyReplyMessage(modelName: string): string {
+  return `${modelName} did not come up with an answer. Try asking again, or in fewer words.`;
+}
+
 export type EnsureDeviceModel = { ok: true } | { ok: false; detail: string };
 
 /** The model id in the slot right now, as far as the JS side knows. */
