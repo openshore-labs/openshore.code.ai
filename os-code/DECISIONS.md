@@ -1810,3 +1810,58 @@ execution contract. Newest at the bottom.
   policy, the Terms notices, the App Store listing, and list email; the
   registered agent address is for service of process only, and a residential
   address is never published. The founder supplies the literal address.
+- **Qwen 2.5 Coder 3B pulled; Harbor and DeepBlue's floor move to Apache
+  models (advisory org, 2026-09-24, founder delegated).** The 3B is under the
+  Qwen Research License (non-commercial only), so it comes off Harbor,
+  DeepBlue's floor, and the Starter bundle. Qwen2.5-Coder-1.5B (Apache 2.0)
+  stands in, qwen3:4b is measured first on the reference box to decide the
+  floor, and the site's Measured block comes off until an Apache model has a
+  with-and-without number. The 3B's eval result stays in `curation/eval.json`,
+  labeled research use. CMO dissent recorded (keep the block with the license
+  named).
+- **Guardrail data has retention limits and a keyed hash (advisory org,
+  2026-09-24, founder delegated).** Block rows are kept 180 days and
+  enforcement actions two years; block rows carry no subject name;
+  allowed-with-consent rows stop going to the server and existing ones are
+  purged (consent assertions already stay on the device); the text hash becomes
+  a server-side HMAC; records tied to a submitted report are held at least one
+  year under 18 U.S.C. 2258A(h).
+- **Account deletion ships with Download my data (advisory org, 2026-09-24,
+  founder delegated).** Owners transfer ownership or delete the org inside the
+  same flow; deleting an org cancels its Stripe subscription under the refund
+  rule, with "Cancel renewal instead" offered first; Apple subscriptions are
+  cancelled by the person in iOS Settings; rows under legal hold outlive the
+  deletion until the hold ends. CX dissent recorded (pro-rata refund on org
+  deletion).
+- **Community ratings show the raw average (advisory org, 2026-09-24, founder
+  delegated).** Raw mean with the count, no average under five reviews, the
+  benchmark fit on its own labeled axis, no `user_id` for anonymous readers, a
+  server-set "OpenShore team" label on staff reviews, published community
+  guidelines, and a 24-hour look at reports. Supersedes the benchmark-shrunk
+  average. CTO dissent recorded (shrinkage resists brigading).
+- **OpenShore is BSL 1.1 source with a proprietary EULA for binaries (advisory
+  org, 2026-09-24, founder delegated).** The Additional Use Grant follows the
+  tier ladder, Apache 2.0 is the Change License four years after each release,
+  and counsel drafts both. Strategist dissent recorded (Apache now).
+- **Team plans refund within 14 days of each annual charge (advisory org,
+  2026-09-24, founder delegated).** After that, cancellation takes effect at the
+  end of the period with access until then; price changes apply at renewal with
+  at least 30 days notice; a renewal notice goes out 30 days before each
+  renewal; cancellation is online through the Stripe Customer Portal. CX dissent
+  recorded (30 days).
+- **Desktop and web voice asks first (advisory org, 2026-09-24, founder
+  delegated).** Off by default; the first mic tap shows a card saying audio
+  goes to the speech service, and "Send voice to the speech service" stays off
+  until flipped. The iPhone, which recognizes speech on the device, is
+  unchanged.
+- **Provenance copy narrowed to what exists (advisory org, 2026-09-24, founder
+  delegated).** Only engine-generated likeness PNGs carry an unsigned
+  provenance record; likeness video or voice is refused until it can be
+  marked, pinned by a test.
+- **"Buy seats on the web" hidden on iOS (advisory org, 2026-09-24, founder
+  delegated).** The iOS Admin screen shows seat counts only, with no path to
+  purchase.
+- **"Encrypted at rest" replaced by per-platform wording (advisory org,
+  2026-09-24, founder delegated).** Each platform says where its key lives;
+  Linux without a system keyring (safeStorage basic_text) and the plain browser
+  say plainly that stored keys are not protected there.
