@@ -24,7 +24,9 @@ export const HARBOR_MODEL_VERSION = '2.0';
 // The display name is just "Harbor" (the version rides the slot, not the copy).
 export const HARBOR_MODEL_NAME = 'Harbor';
 
-// Qwen2.5-Coder-3B-Instruct, Q4_K_M (Apache-2.0), from unsloth's GGUF repo (the
+// Qwen2.5-Coder-3B-Instruct, Q4_K_M (Qwen Research License, not Apache: research
+// and non-commercial use, commercial use needs Qwen's permission; checked on the
+// model card 2026-09-24), from unsloth's GGUF repo (the
 // standard source for this quant level, the same we use for Harbor Lite). About
 // 1.9 GB. VERIFY the exact filename/casing resolves (200) before a build; this
 // sandbox cannot reach huggingface.co to check it.

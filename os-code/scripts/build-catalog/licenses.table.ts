@@ -59,6 +59,14 @@ export const LICENSE_TABLE: LicenseRow[] = [
     commercial: 'ok',
   },
   {
+    // Qwen2.5's 3B sizes (and 72B) are not Apache: research and non-commercial
+    // use, commercial use needs Qwen's permission. Admitted flagged, like
+    // CC-BY-NC, so the storefront says so rather than hiding the model.
+    id: 'Qwen-Research',
+    name: 'Qwen Research License',
+    commercial: 'non-commercial',
+  },
+  {
     id: 'CC-BY-NC-4.0',
     name: 'Creative Commons Attribution NonCommercial 4.0',
     url: 'https://creativecommons.org/licenses/by-nc/4.0/',

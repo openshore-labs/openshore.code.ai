@@ -446,8 +446,8 @@ export function SettingsScreen() {
               confidently wrong. Harbor Lite (SmolLM2-135M-Instruct) is a guide, not a coder. Harbor
               (Qwen 2.5 Coder 3B) writes and explains code, but it does not edit files or run
               commands. For real work, use DeepBlue on your computer or connect a bigger model. What
-              you type to a local model stays on this device. Harbor and Harbor Lite are both used
-              under the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
+              you type to a local model stays on this device. Harbor Lite is used under the Apache
+              License 2.0, and Harbor under the Qwen Research License. {HARBOR_MASTER_ATTRIBUTION}
             </p>
             <p>
               OpenShore does not editorialize what a model says. Three narrow limits are enforced on

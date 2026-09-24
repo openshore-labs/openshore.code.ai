@@ -24,8 +24,10 @@ attribution ship in the app.
 - **Weights:** Qwen2.5-Coder-3B-Instruct (GGUF, Q4_K_M quantization).
 - **Source:** via Hugging Face (`unsloth/Qwen2.5-Coder-3B-Instruct-GGUF`),
   downloaded on demand (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
-- **License:** Apache License 2.0. Downloaded from the source, not redistributed
-  by us, the same posture as any pocket model.
+- **License:** Qwen Research License (the model card's `license_name:
+qwen-research`, checked 2026-09-24), not Apache 2.0 as this file said before:
+  research and non-commercial use, commercial use needs permission from Qwen.
+  Downloaded from the source, not redistributed by us.
 
 ## DeepBlue (pulled through Ollama, on the desktop)
 
@@ -34,7 +36,9 @@ attribution ship in the app.
   catalog's own entries (`HARBOR_MASTER_SIZES` in `app/src/lib/harborMaster.ts`).
 - **Source:** the Ollama library, pulled by the desktop engine on the person's
   own machine (`ollama pull qwen2.5-coder:<size>`), never through OpenShore.
-- **License:** Apache License 2.0 as the catalog records it for each size.
+- **License:** the 32B, 14B, and 7B are Apache License 2.0. The 3B is the Qwen
+  Research License (research and non-commercial use; commercial use needs
+  permission from Qwen), checked on its model card 2026-09-24.
   Downloaded from the source, not redistributed by us. When OpenShore's own tuned
   weights replace these, the refs, this entry, and the in-app attribution change
   in the same commit (`docs/house-model-proposal.md`).

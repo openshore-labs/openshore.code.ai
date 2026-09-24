@@ -154,6 +154,8 @@ describe('the copy keeps the honesty bar', () => {
   it('the attribution names the real weights and their license', () => {
     expect(HARBOR_MASTER_ATTRIBUTION).toContain('Qwen 2.5 Coder');
     expect(HARBOR_MASTER_ATTRIBUTION).toContain('Apache License 2.0');
+    // The 3B is not Apache (its model card, checked 2026-09-24).
+    expect(HARBOR_MASTER_ATTRIBUTION).toContain('the 3B under the Qwen Research License');
   });
 });
 
