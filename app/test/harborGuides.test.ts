@@ -111,45 +111,51 @@ describe('the front-end open, backend private disclosure boundary', () => {
   });
 
   it('rides into both guide personas', () => {
-    for (const prompt of [buildHarborSystemPrompt(), buildHarborMiniSystemPrompt()]) {
-      const lower = prompt.toLowerCase();
-      expect(lower).toContain('never reveal backend build internals');
-      expect(lower).toContain('grounded in its own repository');
-    }
+    const harbor = buildHarborSystemPrompt().toLowerCase();
+    expect(harbor).toContain('never reveal backend build internals');
+    expect(harbor).toContain('grounded in its own repository');
+    expect(buildHarborMiniSystemPrompt().toLowerCase()).toContain(
+      'never reveal how openshore is built under the hood',
+    );
   });
 
   it('has Harbor Lite own its limits and point to a bigger model', () => {
     const mini = buildHarborMiniSystemPrompt().toLowerCase();
-    expect(mini).toContain('know your limits');
-    expect(mini).toContain('bigger model');
+    expect(mini).toContain('you are small, and you say so honestly');
+    expect(mini).toContain('harbor (a coding model on the phone)');
+    expect(mini).toContain('deepblue (a coding agent on their computer)');
   });
 });
 
 describe('Harbor Lite is optimized for guiding, not building', () => {
-  const prompt = buildHarborMiniSystemPrompt();
-
-  it('scopes it to navigation plus honest handoff, not real work', () => {
-    const lower = prompt.toLowerCase();
-    expect(lower).toContain('you are a guide, not a builder');
-    expect(lower).toContain('do not write real code');
+  it('scopes it to guidance plus honest handoff, not real work', () => {
+    const lower = buildHarborMiniSystemPrompt().toLowerCase();
+    expect(lower).toContain('you do not write real code');
+    expect(lower).toContain('never invent a feature');
   });
 
-  it('recites the three activation walkthroughs verbatim from the setup guides', () => {
+  it('recites each activation walkthrough verbatim when asked about it', () => {
     // A tiny model reciting scripts, not reasoning them out. The scripts are the
-    // single source in setupGuides.ts, so they cannot drift from the real UI.
-    expect(prompt).toContain('ACTIVATION STEPS');
-    for (const id of ['get-harbor', 'connect-cloud-key', 'pick-a-model'] as const) {
+    // single source in setupGuides.ts, so they cannot drift from the real UI;
+    // the guide harness hands over the one a question asks about.
+    const asks: Array<[Parameters<typeof guideStepsCompact>[0], string]> = [
+      ['get-harbor', 'How do I get Harbor?'],
+      ['get-harbor-master', 'How do I install DeepBlue?'],
+      ['connect-cloud-key', 'How do I connect my Claude key?'],
+      ['pair-computer', 'How do I pair my computer?'],
+      ['open-a-repo', 'How do I add a repository?'],
+      ['connect-codemagic', 'How do I set up Codemagic?'],
+    ];
+    for (const [id, ask] of asks) {
       const steps = guideStepsCompact(id);
       expect(steps).toMatch(/^1\. /);
-      expect(prompt).toContain(steps);
+      expect(buildHarborMiniSystemPrompt(ask)).toContain(steps);
     }
   });
 
-  it('routes the three upgrades the founder named', () => {
-    const lower = prompt.toLowerCase();
-    expect(lower).toContain('get harbor');
-    expect(lower).toContain('cloud key');
-    expect(lower).toContain('marketplace');
+  it('routes a coding ask to the upgrades the founder named', () => {
+    const lower = buildHarborMiniSystemPrompt('Write me a Python script').toLowerCase();
+    expect(lower).toContain('suggest harbor on the phone or deepblue on their computer');
   });
 });
 

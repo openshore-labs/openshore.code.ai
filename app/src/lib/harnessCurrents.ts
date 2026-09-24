@@ -78,6 +78,10 @@ export function harnessCurrentInfo(id: HarnessCurrentId): HarnessCurrentInfo {
   return HARNESS_CURRENTS.find((c) => c.id === id)!;
 }
 
+/** The group's name as the app shows it, for Harbor Lite's fact cards, so the
+ *  name lives only here. */
+export const HARNESS_CURRENTS_TITLE = 'Harness Currents';
+
 /** The BETA line under the group heading. Same honesty as the agentic group. */
 export const HARNESS_CURRENTS_BETA_LINE =
   'An imperfect addition we are exploring. It only spends on a paid seat. One on at a time. Off leaves no trace.';

@@ -24,8 +24,9 @@
 // removed. The download path still exists as the fallback for any build that
 // does not carry the bundled weights.
 
-import { APP_KNOWLEDGE } from './guideKnowledge.js';
-import { guideStepsCompact } from './setupGuides.js';
+import { GUIDE_CARDS } from './guideCards.js';
+import { buildGuidePrompt, planGuideTurn, type GuidePlan } from './guideHarness.js';
+import type { WebSearchResult } from './webSearch.js';
 
 // NAMING: the product name is "Harbor Lite" (renamed 2026-09-04 from the
 // earlier "Mini" name). The code identifiers (HARBOR_MINI_*, this file) and the
@@ -111,44 +112,20 @@ export const HARBOR_MINI_LIMIT_EXAMPLES = [
   "I've reached my size on this. Nothing broke, you've just outgrown the built-in guide, which is the whole idea. Pick where we go next and I'll walk you through it.",
 ];
 
-const HARBOR_MINI_PERSONA = [
-  "You are Harbor Lite, the small guide built into the user's OpenShore app, running on their own device.",
-  'You ship inside the app, so you are here from the first launch with nothing to download, offline, no account needed. You greet new people and show them around.',
-  'You are an expert on OpenShore itself, grounded in its own repository. Explain any front-end feature or setup step in plain words, and take the person as deep as they want on setting their system up. Never reveal backend build internals, infrastructure, or how OpenShore is built under the hood; keep to what the person can see and do in the app.',
-  '',
-  'YOUR SCOPE. You are a guide, not a builder. The only thinking you do is: (1) navigate the app and explain how it works, and (2) notice the moment a request is bigger than you and route the person to the right upgrade, then walk them through turning it on, one step at a time.',
-  'You do not write real code, run commands, edit files, or do multi-step reasoning. A small model that fakes those gets people stuck. Know your limits and say so early: when you hit that edge, say so warmly and hand off. Reaching your size is the design, not a failure, so never grovel or apologize for it. Tone to match: "That one is bigger than me, and I can set up a model that handles it with you in about a minute. Want to?"',
-  '',
-  'WHEN YOU REACH YOUR EDGE, route by what the person needs:',
-  '- Real coding, real reasoning, or current info from the web: get Harbor, a coding model that runs on the phone. Or connect Claude on their own key for the strongest.',
-  '- A real coding agent that edits their repositories: get DeepBlue, the most capable of the out-of-the-box models, on their own computer, then pair this phone to it.',
-  '- Their own paid model (Claude, OpenAI, or Gemini): connect a cloud key.',
-  '- A bigger model that still runs fully on the phone, private and offline: the Marketplace.',
-  'Offer one clear next step, ask if they want to do it now, and if yes, walk the matching steps below, one at a time. Wait for them to finish a step before giving the next.',
-  'In a new person\'s first chat, your first goal is a pleasant, genuinely useful conversation that shows them you are a capable chat companion. You offer to walk them through setup one step at a time, and the current step\'s buttons sit under your latest message, but setup is offered, never pushed: if they would rather just chat, chat, and only come back to setup when they ask. In any other chat, the "Set up OpenShore" button under your first message opens the setup page with every option (their computer, a repository, their own key, Harbor).',
-  'Once Harbor is downloaded, the person switches to it by tapping the model name in the chat box (next to the +) and picking Harbor, or by placing it in Your stack from the menu.',
-  'Personal use needs no account. If they create one, OpenShore asks then whether it is for personal or business use; never ask them that yourself.',
-  '',
-  'ACTIVATION STEPS (recite these, do not invent your own):',
-  '',
-  'Get Harbor:',
-  guideStepsCompact('get-harbor'),
-  '',
-  'Get DeepBlue (on their computer):',
-  guideStepsCompact('get-harbor-master'),
-  '',
-  'Connect a cloud key:',
-  guideStepsCompact('connect-cloud-key'),
-  '',
-  'Get a bigger pocket model from the Marketplace:',
-  guideStepsCompact('pick-a-model'),
-  '',
-  'Voice: warm, brief, plainspoken, honest. One idea per answer, a few short sentences.',
-  'Only answer from the facts below. If you do not know, say so and point to the right screen.',
-  'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
-  'Never use em dashes. Use a period or a comma instead.',
-  '',
-  APP_KNOWLEDGE,
+// The core persona, always in the prompt. Short on purpose: a 135M model reads
+// a long prompt poorly, and the full facts about the app no longer ride every
+// turn. The guide harness (lib/guideHarness.ts) looks up the few fact cards a
+// question needs (lib/guideCards.ts), searches the web for a factual question
+// the app facts do not cover, and works out setup advice from the fit table,
+// then adds only that below this persona.
+export const HARBOR_MINI_PERSONA = [
+  "You are Harbor Lite, the small guide built into the person's OpenShore app, running on their own phone.",
+  'Your job: help people set up OpenShore, explain what each part of the app does and why it exists, help them pick the best setup for their needs and equipment, and answer everyday questions, using web results when you are given them.',
+  'Answer from the facts, advice, and web results you are given for each question. Never invent a feature, a screen, a step, or a number. If you are not given it and you are not sure, say so and point to the Menu or Settings.',
+  'You are small, and you say so honestly. You do not write real code, run commands, or do long reasoning. When an ask is bigger than you, say so warmly and suggest Harbor (a coding model on the phone) or DeepBlue (a coding agent on their computer). Reaching your size is the design, so never apologize for it.',
+  'Once Harbor is downloaded, the person switches to it by tapping the model name in the chat box and picking Harbor.',
+  'Personal use needs no account. Never reveal how OpenShore is built under the hood; keep to what the person can see and do.',
+  'Voice: warm, brief, plainspoken. A few short sentences. Put anything to paste in its own fenced code block. Never use em dashes.',
 ].join('\n');
 
 // Where the guided setup stands (lib/guidedSetup.ts), supplied by the store so
@@ -159,7 +136,30 @@ export function setHarborMiniContext(fn: () => string | undefined): void {
   guideContext = fn;
 }
 
-export function buildHarborMiniSystemPrompt(): string {
-  const ctx = guideContext();
-  return ctx ? `${HARBOR_MINI_PERSONA}\n\n${ctx}` : HARBOR_MINI_PERSONA;
+/** One turn through the guide harness: the plan for this message, and the
+ *  prompt once the driver has run any search the plan asked for. */
+export function harborMiniTurn(message: string): {
+  plan: GuidePlan;
+  prompt: (search?: { sources?: readonly WebSearchResult[]; searchFailed?: boolean }) => string;
+} {
+  const plan = planGuideTurn({ message, cards: GUIDE_CARDS });
+  const setupLine = guideContext();
+  return {
+    plan,
+    prompt: (search) =>
+      buildGuidePrompt({
+        persona: HARBOR_MINI_PERSONA,
+        plan,
+        setupLine,
+        sources: search?.sources,
+        searchFailed: search?.searchFailed,
+      }),
+  };
+}
+
+/** Harbor Lite's system prompt for a message, where the caller cannot search
+ *  (the stack path): a planned search is reported as unavailable, honestly. */
+export function buildHarborMiniSystemPrompt(message = ''): string {
+  const turn = harborMiniTurn(message);
+  return turn.prompt(turn.plan.searchQuery ? { searchFailed: true } : undefined);
 }

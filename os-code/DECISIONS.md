@@ -1805,3 +1805,12 @@ execution contract. Newest at the bottom.
   build) and only to a release that carries a Mac zip, since the Mac build
   lands after Linux and Windows; the bar never promises an update a Mac cannot
   fetch.
+- **Harbor Lite's floor is raised by the harness, not the model, founder
+  2026-09-24:** a 135M model cannot decide when to search, hold the whole app,
+  or size a machine, so a pure planner does each and hands over only what the
+  question needs. Search is harness-triggered (a factual question no card
+  covers), not a SEARCH: line the model must emit, since a model this small
+  will not emit it reliably. Setup sizing reuses `resolveHarborMaster`, so the
+  guide and the First Seat card can never disagree. The past-my-size line is a
+  fixed note after the reply, not left to the model. Stays on SmolLM2-135M: the
+  360M would break the 170 MB bundle budget, a Board call if ever wanted.
