@@ -16,7 +16,7 @@ the most capable, and the one a home-lab hub runs.
 - **Harbor** (Qwen2.5-Coder-1.5B-Instruct, Apache-2.0). The mobile coder: a
   small coder on the phone for short edits, with web search; longer work
   happens on the computer. It can also answer app questions, but it leads as a
-  coder (Harbor Lite is the guide). A real download (about 1 GB) from Hugging
+  coder (Harbor Lite is the guide). A real download (about 1.1 GB) from Hugging
   Face, installed and uninstalled from Settings. Its copy never states a size,
   a number, or a benchmark.
 - **DeepBlue** (Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 1.5B,
@@ -119,7 +119,7 @@ Bundling trades a first-launch download for a larger install:
   build runs tight there is room to drop to Q4_0 (about 92 MB) or an IQ quant.
 - So the App Store download should land around **150 to 165 MB**, under the cap,
   versus a small base app plus a separate ~105 MB download if Mini were not
-  bundled. Harbor (about 1 GB) is never bundled; it stays a download.
+  bundled. Harbor (about 1.1 GB) is never bundled; it stays a download.
 
 This is comfortably under Apple's over-cellular download limit, so users can
 still install over a mobile network.

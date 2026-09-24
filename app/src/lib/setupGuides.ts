@@ -38,7 +38,7 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
     goal: 'Add Harbor, a small coder that runs on my phone for short edits.',
     steps: [
       'Open Settings and find the Harbor section. Harbor Lite, the built-in guide, is already there. Harbor is the coder that runs alongside it.',
-      'On the Harbor row, tap Install. It downloads straight from the source, about 1 GB, roughly a minute or two on wifi. You can keep chatting while it lands.',
+      'On the Harbor row, tap Install. It downloads straight from the source, about 1.1 GB, roughly a minute or two on wifi. You can keep chatting while it lands.',
       'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
     ],
     done: 'Harbor writes and explains code for short edits, and can search the web. Longer work happens on your computer: dock to it, or add a cloud key.',

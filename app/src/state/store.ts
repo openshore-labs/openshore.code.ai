@@ -1055,7 +1055,7 @@ interface AppState {
    *  download over a file already in the slot, so the order is fixed. */
   upgradeHarbor(): Promise<boolean>;
   /** Remove Harbor's weights from this device and drop its ready flag. Harbor
-   *  is a real download (about 1 GB), so it is uninstallable; Harbor Lite is
+   *  is a real download (about 1.1 GB), so it is uninstallable; Harbor Lite is
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through

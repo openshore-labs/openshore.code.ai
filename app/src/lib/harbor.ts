@@ -35,13 +35,13 @@ export const HARBOR_MODEL_NAME = 'Harbor';
 export const HARBOR_WEIGHTS_NAME = 'Qwen2.5-Coder-1.5B-Instruct';
 export const HARBOR_ATTRIBUTION = `On this iPhone, Harbor is ${HARBOR_WEIGHTS_NAME}, used under the Apache License 2.0.`;
 
-// Qwen2.5-Coder-1.5B-Instruct, Q4_K_M (Apache-2.0), from unsloth's GGUF repo
-// (the standard source for this quant level, the same we use for Harbor Lite).
-// About 1 GB. VERIFY the exact filename/casing resolves (200) before a build;
-// this sandbox cannot reach huggingface.co to check it.
+// Qwen2.5-Coder-1.5B-Instruct, Q4_K_M (Apache-2.0), from Qwen's own official
+// GGUF repo, the same repo the catalog's phone 1.5B entry names. The lowercase
+// filename is the one Qwen documents for this quant (1.12 GB). Confirmed from
+// the repo's published file list; a build still smoke-tests the download.
 export const HARBOR_MODEL_URL =
-  'https://huggingface.co/unsloth/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf';
-export const HARBOR_APPROX_LABEL = 'about 1 GB';
+  'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf';
+export const HARBOR_APPROX_LABEL = 'about 1.1 GB';
 
 // The one-sentence byline shown under the Harbor row in Settings. What it is,
 // in plain words: no size, no number, no benchmark.

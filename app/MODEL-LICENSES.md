@@ -23,7 +23,7 @@ attribution ship in the app.
 
 - **Weights:** Qwen2.5-Coder-1.5B-Instruct (GGUF, Q4_K_M quantization), about
   1 GB. Slot version 2.1 (`HARBOR_MODEL_VERSION`).
-- **Source:** via Hugging Face (`unsloth/Qwen2.5-Coder-1.5B-Instruct-GGUF`),
+- **Source:** via Hugging Face (`Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF`, Qwen's official repo),
   downloaded on demand (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
 - **License:** Apache License 2.0. Downloaded from the source, not redistributed
   by us, the same posture as any pocket model.

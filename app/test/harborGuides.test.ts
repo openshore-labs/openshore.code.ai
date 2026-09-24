@@ -254,9 +254,12 @@ describe('Harbor is Qwen2.5-Coder-1.5B-Instruct under Apache 2.0 (the 3B was pul
     expect(HARBOR_MODEL_VERSION).toBe('2.1');
     expect(HARBOR_MODEL_URL).toMatch(/^https:\/\/huggingface\.co\//);
     expect(HARBOR_MODEL_URL).toContain('Qwen2.5-Coder-1.5B-Instruct');
-    expect(HARBOR_MODEL_URL).toMatch(/Q4_K_M\.gguf$/);
+    // Qwen's official repo and its documented lowercase filename.
+    expect(HARBOR_MODEL_URL).toBe(
+      'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf',
+    );
     expect(HARBOR_MODEL_URL).not.toMatch(/3B/i);
-    expect(HARBOR_APPROX_LABEL).toBe('about 1 GB');
+    expect(HARBOR_APPROX_LABEL).toBe('about 1.1 GB');
   });
 
   it('names the weights and the Apache license in the attribution, never the 3B', () => {
