@@ -32,7 +32,7 @@ export const HARBOR_MASTER_BYLINE =
 /** The attribution sentence for the "Local models, honestly" sheet. Names the
  *  real weights behind the slot; changes in the same commit as the refs. */
 export const HARBOR_MASTER_ATTRIBUTION =
-  'On the desktop, DeepBlue is Qwen 2.5 Coder, sized to your computer (32B, 14B, 7B, or 3B), used under the Apache License 2.0.';
+  'On the desktop, DeepBlue is Qwen 2.5 Coder, sized to your computer: the 32B, 14B, and 7B under the Apache License 2.0, and the 3B under the Qwen Research License.';
 
 /** One size of DeepBlue. The catalog id is what the engine's installer
  *  takes; the Ollama ref is what seats it as the Reasoning LLM once pulled;

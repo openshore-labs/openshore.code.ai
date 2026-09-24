@@ -13,13 +13,14 @@ the most capable, and the one a home-lab hub runs.
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
   the app is installed, with nothing to download, and works offline.
-- **Harbor** (Qwen 2.5 Coder 3B, Apache-2.0). The mobile coder: a coding agent
+- **Harbor** (Qwen 2.5 Coder 3B, Qwen Research License: research and
+  non-commercial use; commercial use needs permission from Qwen). The mobile coder: a coding agent
   that runs fully on the phone, writing and explaining real code, with real
   reasoning and web search. It can also answer app questions, but it leads as a
   coder (Harbor Lite is the guide). A real download (about 1.9 GB) from Hugging
   Face, installed and uninstalled from Settings.
-- **DeepBlue** (Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 3B,
-  Apache-2.0). The third and most capable: a real coding agent that plans and
+- **DeepBlue** (Qwen 2.5 Coder, sized to the computer: 32B, 14B, 7B, or 3B;
+  Apache-2.0 except the 3B, which is the Qwen Research License). The third and most capable: a real coding agent that plans and
   edits repositories on the desktop engine. It is pulled through Ollama on the
   person's own computer, straight from the Ollama library, and seated as the
   Reasoning LLM in one tap from the First Seat card or the Settings row.
@@ -170,7 +171,9 @@ open, backend private boundary. Full retrieval over docs is a later upgrade.
 
 ## License
 
-All three are Apache-2.0 as the catalog records them. Harbor downloads from the
+Harbor Lite and DeepBlue's 7B, 14B, and 32B are Apache-2.0. Harbor and
+DeepBlue's 3B are the Qwen Research License (checked on the model card
+2026-09-24), which does not allow commercial use without Qwen's permission. Harbor downloads from the
 source (we do not redistribute its weights), the same posture as any pocket
 model; DeepBlue is pulled from the Ollama library by the person's own
 engine, the same posture as any desktop model. Harbor Lite's

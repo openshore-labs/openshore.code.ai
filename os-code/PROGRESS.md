@@ -426,6 +426,14 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Harbor and DeepBlue's 3B are not Apache (checked 2026-09-24; a
+      founder or Board call).** Qwen2.5-Coder-3B's model card says the Qwen
+      Research License: research and non-commercial use, commercial use needs
+      Qwen's permission. Copy, attribution, MODEL-LICENSES, and the catalog now
+      say so (flagged non-commercial). Before a paid release: ask Qwen for a
+      commercial license, or move Harbor to an Apache model (Qwen3-4B, about
+      2.5 GB, or Qwen2.5-Coder-1.5B, about 1.1 GB) and DeepBlue's floor to the
+      1.5B or Qwen3-4B, each re-measured with `osc eval` on the box first.
 - [ ] **Harbor Lite's guide harness: a phone pass (built 2026-09-24; box
       number in, `docs/guide-eval-2026-09-24.md`).** On a phone: a web
       question shows "Searching the web" and cites; an app question stays

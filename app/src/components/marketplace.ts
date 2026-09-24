@@ -30,6 +30,7 @@ const LICENSE_POSTURE: Record<string, LicensePosture> = {
   'BSD-3-Clause': 'commercial-ok',
   'CC-BY-4.0': 'commercial-ok',
   'CC-BY-NC-4.0': 'non-commercial',
+  'Qwen-Research': 'non-commercial',
   'Llama-3.1-Community': 'gated',
   'Llama-3.2-Community': 'gated',
   Gemma: 'gated',

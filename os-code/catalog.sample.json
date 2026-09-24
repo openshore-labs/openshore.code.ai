@@ -437,9 +437,11 @@
       "quantization": "Q4_K_M",
       "contextTokens": 32768,
       "license": {
-        "id": "Apache-2.0",
-        "name": "Apache License 2.0",
-        "url": "https://www.apache.org/licenses/LICENSE-2.0"
+        "id": "Qwen-Research",
+        "name": "Qwen Research License",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct/blob/main/LICENSE",
+        "commercial": "non-commercial",
+        "note": "Research and non-commercial use. Commercial use needs permission from Qwen."
       },
       "curation": {
         "rank": 13,
