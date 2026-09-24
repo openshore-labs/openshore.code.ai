@@ -205,13 +205,16 @@ vi.mock('../src/lib/insights.js', () => ({
   clearInsights: async () => {},
 }));
 
+const deviceSends: string[] = [];
 vi.mock('../src/drivers/onDeviceDriver.js', () => ({
   OnDeviceDriver: class {
     readonly kind = 'device' as const;
     subscribe() {
       return () => {};
     }
-    send() {}
+    send(text: string) {
+      deviceSends.push(text);
+    }
     abort() {}
     answerApproval() {}
     dispose() {}
@@ -339,5 +342,28 @@ describe('the guided walk in the store', () => {
     await wait(5);
     // The computer connected while paused, so the walk passes it by.
     expect(guided().current).toBe('repo');
+  });
+
+  it('opens the walk at once, before Harbor Lite is ready, and holds an early message', async () => {
+    deviceSends.length = 0;
+    useApp.setState((st) => ({ settings: { ...st.settings, harborMiniReady: false } }));
+    const started = Date.now();
+    await useApp.getState().beginGuidedSetup();
+    // No wait on the model: the chat and its hello are there right away.
+    expect(Date.now() - started).toBeLessThan(300);
+    const id = guided().conversationId;
+    expect(useApp.getState().activeId).toBe(id);
+    expect(texts()[0]).toContain("Hi, I'm Harbor Lite");
+    expect(useApp.getState().settings.harborMiniReady).toBeFalsy();
+
+    // A message typed before the model is ready waits, visibly, then goes out.
+    useApp.getState().send('What can you do?');
+    await wait(5);
+    expect(useApp.getState().conversations[id].thread.queued).toEqual(['What can you do?']);
+    expect(deviceSends).toEqual([]);
+    await wait(1700); // the web stub's download
+    expect(useApp.getState().settings.harborMiniReady).toBe(true);
+    expect(useApp.getState().conversations[id].thread.queued).toEqual([]);
+    expect(deviceSends).toEqual(['What can you do?']);
   });
 });

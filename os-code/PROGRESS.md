@@ -953,6 +953,15 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-24, the first chat opens at once; Harbor Lite really ships in the app
+
+TestFlight showed the plain chat for about a minute before the walk: no build
+carried Harbor Lite's weights, so first open downloaded them and the walk waited
+on that. `beginGuidedSetup` now opens the chat and its scripted hello at once
+and readies the model in the background; a line typed before it is ready waits
+as a queued message (`holdForHarborLite`). Codemagic now bundles the weights
+into `public/models/` (see docs/HARBOR.md), which `bundledURL` reads.
+
 ### 2026-09-23, every push to main reaches the desktops, with a one-click update bar
 
 Founder: a desktop that is behind main shows a permanent bar at the top, and
@@ -970,24 +979,3 @@ Checks every 30 minutes. A Mac build made by hand offline works too:
 `pnpm --filter oscode-app release:mac` stamps the release version, builds, and
 uploads the dmg and zip; the updater installs from either. Not yet run on a
 real packaged build.
-
-### 2026-09-23, Harbor Lite runs the setup in a new person's first chat
-
-Founder: the setup steps are run by Harbor Lite, one at a time, in the first
-chat, with the buttons to connect; a step's page returns to the chat once the
-connection lands; questions can go off script; the walk ends by inviting
-questions about the app, and says how to switch to Harbor if it came down. Pure
-core `app/src/lib/guidedSetup.ts` (order Harbor, computer, repository, key; the
-repository waits on the computer; the words; `guideContextLine` for the model),
-effects in the store (`beginGuidedSetup`, `openSetupStep`, `skipSetupStep`, and
-`advanceGuidedSetup` on a store subscription and after each reply), buttons in
-`components/SetupStepActions.tsx` under the guide's latest message. Harbor Lite
-reads the current step through `setHarborMiniContext`. Each step says what it
-is, why it helps, and how it works, with three choices: connect, "Ask about
-this" (sends a question the guide answers), or "Skip for now". Setup is
-offered, never pushed: the first chat's first goal is a pleasant, useful
-conversation (`FIRST_CHAT_GOAL`); "I just want to chat" pauses the walk
-(`setupIntent`, buttons hidden, the guide stops raising it), "let's set up" or
-"Pick up setup" resumes it, and a bare "skip" skips the step. Progress lives on
-`settings.guidedSetup`. Guards in `app/test/guidedSetup.test.ts`, including the
-whole walk through the real store.
