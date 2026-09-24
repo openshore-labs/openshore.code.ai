@@ -16,6 +16,7 @@ import { Sheet } from '../components/Sheet.js';
 import { daemonListSessions } from '../drivers/remoteDriver.js';
 import { hapticTick } from '../lib/haptics.js';
 import { plainError } from '../lib/plainError.js';
+import { Icon } from '../components/Icon.js';
 
 /** "just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". */
 export function relativeTime(iso: string, now = Date.now()): string {
@@ -57,20 +58,10 @@ export function sourceShort(conv: Conversation): string {
 
 function ComposeIcon() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <Icon size={22}>
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-    </svg>
+    </Icon>
   );
 }
 

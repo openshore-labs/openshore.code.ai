@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BrandMark } from './BrandMark.js';
+import { Icon } from './Icon.js';
 
 interface Beat {
   id: string;
@@ -124,7 +125,7 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
       <div className="lib-masthead">
         <span className="brand-lockup">
           <BrandMark size={24} />
-          <span className="wordmark" style={{ fontSize: 16 }}>
+          <span className="wordmark wordmark-md">
             Open<span className="accent">Shore</span>
           </span>
         </span>
@@ -158,20 +159,9 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
             </div>
             <button className="lib-next" onClick={advance}>
               Next{' '}
-              <svg
-                className="icon-inline"
-                viewBox="0 0 24 24"
-                width="15"
-                height="15"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
+              <Icon size={15} className="icon-inline">
                 <path d="M4 12h15M13 6l6 6-6 6" />
-              </svg>
+              </Icon>
             </button>
           </div>
         )}

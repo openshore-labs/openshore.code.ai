@@ -5,6 +5,7 @@
 // two-letter monogram. Distinct enough to scan a shelf by, on-brand on any card.
 import type { CapabilityCategory } from 'os-code/protocol';
 import { modelMonogram } from './marketplace.js';
+import { Icon } from './Icon.js';
 
 const CAP_PATHS: Record<CapabilityCategory, JSX.Element> = {
   // The Reasoning LLM: a four-point spark.
@@ -37,22 +38,7 @@ const CAP_PATHS: Record<CapabilityCategory, JSX.Element> = {
 
 /** A line glyph for a capability. Strokes/fills follow currentColor. */
 export function CapIcon({ cap, size = 16 }: { cap: CapabilityCategory; size?: number }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {CAP_PATHS[cap]}
-    </svg>
-  );
+  return <Icon size={size}>{CAP_PATHS[cap]}</Icon>;
 }
 
 /** The generated "app icon" tile for a model. Teal for on-device (local and

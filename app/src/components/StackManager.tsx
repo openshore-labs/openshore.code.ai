@@ -40,6 +40,7 @@ import {
 import { EFFORTS, effortLabel, DEFAULT_EFFORT, type Effort } from '../lib/effort.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
+import { Icon } from './Icon.js';
 
 /** A cloud provider's selectable models for the bench. Claude comes from the
  *  full client lineup (claudeModels.ts, the same list and tiers the chat sheet
@@ -317,18 +318,9 @@ export function StackManager() {
               <span className="stack-reach-label">{PROFILES[editProfile].label}</span>
               {editProfile === profile ? <span className="profile-now">now</span> : null}
               <span className="stack-reach-caret" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <Icon size={16}>
                   <path d="M6 9l6 6 6-6" />
-                </svg>
+                </Icon>
               </span>
             </button>
 

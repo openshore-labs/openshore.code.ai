@@ -23,6 +23,7 @@ import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
 import { isPinned, pinKey, togglePin } from '../lib/pins.js';
 import { SwipeRow } from './SwipeRow.js';
 import { BackGlyph, CloseGlyph } from './SheetGlyphs.js';
+import { Icon } from './Icon.js';
 
 function RowContent({
   main,
@@ -90,15 +91,14 @@ function PinStar({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }
         onToggle();
       }}
     >
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <Icon size={20} weight="hairline">
         <path
           d="M12 3.6l2.35 4.77 5.26.76-3.8 3.71.9 5.24L12 15.9l-4.71 2.48.9-5.24-3.8-3.71 5.26-.76z"
           fill={pinned ? 'currentColor' : 'none'}
           stroke="currentColor"
-          strokeWidth="1.5"
           strokeLinejoin="round"
         />
-      </svg>
+      </Icon>
     </button>
   );
 }
