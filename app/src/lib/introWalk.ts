@@ -32,6 +32,10 @@ export const GREETING_PACE: InkPace = { stepMs: 20, swellMs: 600, sentenceMs: 90
  *  line wide, so the walk keeps moving. */
 export const WALK_PACE: InkPace = { stepMs: 8, swellMs: 420, sentenceMs: 50 };
 
+/** The empty chat's landing line: a short greeting, so a slower step on the
+ *  long swell, a little over a second end to end. */
+export const LANDING_PACE: InkPace = { stepMs: 30, swellMs: 600, sentenceMs: 0 };
+
 export type PacedKind = 'greeting' | 'walk';
 export const PACES: Record<PacedKind, InkPace> = {
   greeting: GREETING_PACE,
@@ -100,6 +104,15 @@ export function inkDurationMs(text: string, pace: InkPace): number {
 // composer can skip it (and only it; a live model reply is never hurried). One
 // walk at a time, on one device, so module state is enough.
 let playing = false;
+let landingSwellPlayed = false;
+
+/** The landing greeting rolls in on the swell once per session, on the first
+ *  empty chat; after that it simply lands. */
+export function takeLandingSwell(): boolean {
+  const first = !landingSwellPlayed;
+  landingSwellPlayed = true;
+  return first;
+}
 let buttonsHaptic = false;
 
 export function setIntroPlaying(on: boolean): void {

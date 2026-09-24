@@ -4,8 +4,9 @@ The founder asked the Creative Studio to sweep the whole app after the first
 open's Tide Letter and Swell Line, to keep the brand consistent everywhere.
 Four Studio passes read the code (chat surfaces; setup and settings; the stack
 and the rooms; the design system) and reported ranked findings with file
-references. This is the merged plan. Nothing here is built yet: the Studio
-shapes, the founder chooses.
+references. This is the merged plan. **Built 2026-09-24** (founder: address every finding, take the recommended
+calls): all three waves and moments 1 and 2. Calls 2 to 4 went as
+recommended; call 5 (Harbor's license) awaits the model card check.
 
 **The read.** Motion is the healthiest part of the app, and the guards hold it.
 The damage is in facts and words: copy never caught up with Harbor's recast, the

@@ -2820,6 +2820,10 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-24)
 
+### 2026-09-24, Harbor Lite no longer sticks on "Warming up"
+
+Founder report: a question in the setup chat sat on "Warming up Harbor Lite" with no reply. Its system prompt (about 10.5k characters) outgrew the 2048-token window it loaded with, so the reply came back empty. Every device model now loads at `DEVICE_CONTEXT_TOKENS` (4096), history is trimmed to fit (`fitDeviceHistory`), and an empty reply ends with an error naming the model (`app/test/deviceContext.test.ts`). Not yet checked on a phone.
+
 ### 2026-09-23, every push to main reaches the desktops, with a one-click update bar
 
 Founder: a desktop that is behind main shows a permanent bar at the top, and

@@ -2,6 +2,8 @@
 // and a time-of-day greeting, with the model, effort, and everything else
 // living in the composer. A live conversation swaps in the transcript and a
 // header that names the chat.
+import { SwellText } from '../components/SwellText.js';
+import { LANDING_PACE, takeLandingSwell } from '../lib/introWalk.js';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
 import { useApp, driverFor } from '../state/store.js';
@@ -300,6 +302,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     { id: 0, g: rotation[0] },
   ]);
   const seq = useRef(0);
+  // The session's first landing line rolls in on the swell (SwellText); every
+  // later one, and every language tap, keeps the crossfade.
+  const [landingSwellId] = useState(() => (takeLandingSwell() ? 0 : -1));
   // One-time discovery nudge, played on the first empty-state paint of the
   // session and never again.
   const [hint, setHint] = useState(true);
@@ -625,7 +630,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                           <span
                             key={layer.id}
                             className={
-                              current ? 'greeting-swap' : 'greeting-swap greeting-swap-out'
+                              current
+                                ? `greeting-swap${layer.id === landingSwellId ? ' greeting-swap-swell' : ''}`
+                                : 'greeting-swap greeting-swap-out'
                             }
                             onAnimationEnd={
                               current
@@ -636,7 +643,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                                   }
                             }
                           >
-                            {layer.g.native}
+                            {layer.id === landingSwellId ? (
+                              <SwellText text={layer.g.native} pace={LANDING_PACE} />
+                            ) : (
+                              layer.g.native
+                            )}
                           </span>
                         );
                       })}
