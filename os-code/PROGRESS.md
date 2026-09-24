@@ -8,9 +8,9 @@ Older Current state sections and log entries are in `docs/progress-archive.md`
 this file to one Current state, one What remains, and the last five log
 entries (`test/progressShape.test.ts` enforces the shape).
 
-## Current state (2026-09-14 the premium harness begun; 2026-09-09 Agentic Currents and Wayfinding; 2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
+## Current state (2026-09-24 compliance and copy pass; 2026-09-14 the premium harness begun; 2026-09-09 Agentic Currents and Wayfinding; 2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 
-Newest first: the premium harness (2026-09-14, below), then Agentic Currents
+Newest first: the compliance and copy pass (2026-09-24, below), the premium harness (2026-09-14, below), then Agentic Currents
 and Wayfinding (2026-09-09, below), then voice
 mode (2026-09-06), then the plan-first workflow and video attachments
 (2026-09-06), then four pieces from 2026-09-05 built in
@@ -18,6 +18,21 @@ parallel sessions and merged here: the phone storefront, Crew routines, the
 always-on ethical guardrail layer, and the full-codebase review remediation (its
 state section moved to `docs/progress-archive.md`; its open items stay in What
 remains).
+
+### Compliance and copy pass, app and openshore.ai (advisory org, 2026-09-24)
+
+The founder asked for a legal baseline ("so we don't get sued") and a copy
+facelift, then delegated every call to the advisory org: nineteen rulings in
+`DECISIONS.md` (2026-09-24). Built on this branch and on the marketing site's
+branch of the same name: the Within Reach hero and true privacy claims on
+openshore.ai; in the app, the privacy manifest, 18+ and terms consent at
+sign-up, paywall renewal disclosures, account deletion with Download my data,
+guardrail retention (180 days, keyed fingerprint, no names), raw community
+ratings, ask-first web search and desktop voice, narrowed provenance,
+per-platform key wording, WCAG 2.2 AA fixes, and the research-licensed Qwen
+3B pulled (Harbor and DeepBlue's floor now Qwen 2.5 Coder 1.5B, unmeasured).
+Legal drafts for counsel are in `docs/legal/`. Nothing here is live until the
+founder and counsel items in What remains are done.
 
 ### Scope simplified to three curated models (founder, 2026-09-21)
 
@@ -360,62 +375,9 @@ reserved for cloud models. Doc: `docs/agentic-currents.md`; rulings in
   Hermes box answering over Tailscale, a paired CLI running headless, an A2A
   agent card, and the App Review read of the BETA label.
 
-### Voice mode (a spoken conversation over the chat, native and offline)
-
-The founder's ask: a Claude-style voice mode usable while coding, native so it
-works offline, with a voice you pick, and with the natural breaks the work needs.
-Built on top of the existing on-device dictation. Listening reuses the
-`oscode-speech` plugin (on-device SFSpeechRecognizer, mic audio stays on the
-phone) with a silence-based finalize so it is hands-free; speaking is a new
-`oscode-tts` plugin (AVSpeechSynthesizer, synthesized on the phone, offline), Web
-Speech on desktop and web. The picker lists the device's installed system voices
-(Apple's downloadable premium neural voices included), so it is real and offline,
-and it steers clear of the ethics layer's Tier 2 voice-likeness gate (generic
-system voices, no cloud voice service like Claude's own). Access inherits the
-chat, no separate preset (founder: "if access is on for the chat, voice gets the
-same access"): a voice-triggered action rides the same `send` and approval path.
-The natural breaks are one policy table (`voiceBreaks.ts`): clarifying questions
-and plan approval are read out and answered by voice; a tool or cloud-spend
-approval, and a stopped-turn recovery, close voice and hand back to the chat
-screen, then voice reopens once an approval is answered. Everything spoken lands
-in the transcript as text, so the chat is the history. Pure, tested core in
-`app/src/lib/voice/` (`spoken.ts` speech shaping, `voiceBreaks.ts` the policy,
-`tts.ts`/`stt.ts` the backends), the loop in `app/src/hooks/useVoiceMode.ts`, the
-overlay in `VoiceMode.tsx` and the picker in `VoicePicker.tsx`, a voice button in
-`Composer.tsx`, the break/reopen wiring in `ChatScreen.tsx`, and settings
-(`voiceReplies`, `voiceId`, `voiceRate`) in `SettingsScreen.tsx`. Doc in
-`docs/voice-mode.md`, rulings in `DECISIONS.md`. Like dictation, the native speech
-path is only provable on a device (What remains).
-
-### The plan-first workflow (My Stack as the anchor, the reasoning LLM draws a play)
-
-The founder's explicit workflow: a prompt flows through the harness (always-on
-ethics plus curatable filters), starts in My Stack, and the reasoning LLM frames
-it (asking clarifying questions only when genuinely ambiguous), composes a play
-(an ordered set of handoffs to specialist models with dependencies), briefs the
-user (a short checklist of steps and their owner models, live), runs it in
-dependency order handing each step to its owner, re-plans at bounded
-checkpoints, and streams a final synthesis. Any category with no placed
-specialist is run by the reasoning LLM; a step can also target a specific model
-by id for a particular subject or decision (the level-deeper routing). The flow
-degrades to a single routed turn when the anchor is a weak or unreachable model,
-the plan will not parse, or the play is one step, so a modest stack still just
-answers. It is app-native (works on the phone alone); a repo/tool step is marked
-to run on the paired computer's engine when docked (engine execution from this
-flow is a seam, a follow-up). Pure core in `app/src/lib/play.ts` (scheduling,
-re-plan merge, owner resolution, the brief, planner/re-plan prompts and robust
-JSON parse), fully tested in `app/test/play.test.ts` (30 cases); the runner is
-`app/src/drivers/stackDriver.ts`; the brief renders as todos-with-owners
-(`TodoItem`/`TodoRow` gained `owner`, shown in `TodoCard`). Doc and a diagram in
-`docs/workflow.md`. The three follow-ups then landed (CTO-guided, 2026-09-06):
-the clarifying questions are a tappable picker (`ClarifyCard`, a `clarify`
-driver event); a repo/tool step runs on the paired computer's engine when docked
-over one shared `RemoteDriver` session with real approvals surfaced (describe
-only when not docked or no local workspace is bound); and crew routines, which
-keep the engine's own ReAct loop, now write a Plan section into their vault note
-from the agent's `todoWrite`. Live plan quality, the engine hand-off, and the
-routine Plan note need a real reasoning model, a paired computer, and a device
-(unverifiable in a web session).
+Voice mode (2026-09-06) and the plan-first workflow (2026-09-06) moved to
+`docs/progress-archive.md` on 2026-09-24; both still ship, and their device
+verification items stay open in What remains below.
 
 Video attachments (frame-by-frame vision, never the raw video) shipped and
 moved to `docs/progress-archive.md` on 2026-09-17; device and desktop-FFmpeg
@@ -433,16 +395,29 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Compliance pass, founder and counsel gates (2026-09-24).** Before
+      migration 0019: create the Vault secret `guardrail_hmac_key` and enable
+      pg_cron; deploy 0019, then `delete-account`, then 0020 with the new app
+      build (`supabase/README.md`). Supply the mailbox address and route
+      support@, privacy@, legal@, copyright@openshore.ai. Counsel reviews
+      `docs/legal/` (36 open items), drafts the EULA and the BSL 1.1 license,
+      and registers a DMCA agent. Verify the Harbor 1.5B GGUF URL, run
+      `osc eval --deep` for qwen3:4b and the 1.5B on the reference box, set
+      the App Store age rating (18+) and EULA. Device checks: account
+      deletion, the paywall, Linux keyring detection, Web Speech in Electron.
+      Then merge the openshore.ai branch (it links /privacy-policy/, which
+      waits on counsel).
+
 - [ ] **DeepBlue on a real desktop (built 2026-09-21, unverified off the
       sandbox).** On the founder's box with Ollama up: the First Seat card reads
-      "DeepBlue", "On Qwen 2.5 Coder 3B. 1.9 GB download. Fits this
+      "DeepBlue", "On Qwen 2.5 Coder 1.5B. 1.0 GB download. Fits this
       computer (8 GB, no GPU)."; Set up pulls it with a percent on the button,
       the card leaves, a chat opens; Settings > Harbor reads Installed. A 16 GB
       or GPU machine gets the 7B, a hub with room the 14B. Then pair the phone
       and confirm My computer. Follow-ups: a phone-side row reading "On your
       computer" when docked; an engine-side uninstall if `ollama rm` is too
-      much to ask; the 14B's loop score on a hub-class box (only the 3B has a
-      measured deep number).
+      much to ask; the 14B's loop score on a hub-class box (the only measured deep
+      number is the pulled 3B's, kept as research-use history).
 - [ ] **OpenShore's own weights, and the Air program (founder go, 2026-09-21).**
       Both in `docs/house-model-proposal.md`. Not a compact Opus (closed
       weights; distilling from Claude is barred by the terms): the harness's
@@ -929,6 +904,17 @@ extended that day by the graduated enforcement ladder (migration
       `/find` is the genuinely additive capability.
 
 ## Log
+
+### 2026-09-24, the compliance and copy pass
+
+A copy review (CMO, CX, Creative Studio) and two compliance audits (site,
+app) against the founder's checklist, then nineteen delegated rulings and the
+build: the site overhaul, app passes one and two (A, B1, B2), and the legal
+drafts. Verified on the combined branch: os-code 848 tests, app 1175, both
+typechecks, lint; the new migrations and their plpgsql bodies parse with the
+Postgres parser but were not executed. Found along the way: the Qwen 2.5 Coder
+3B is research-licensed (pulled), consents were never on the server, web
+search and desktop voice left the device without a tap (now ask first).
 
 ### 2026-09-21, DeepBlue: the third out-of-the-box model, on the desktop
 

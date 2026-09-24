@@ -169,19 +169,34 @@ describe('the enrich gate accepts a measured deep score', () => {
 });
 
 describe('the bundled seed pulls the research-licensed 3B', () => {
-  it('labels qwen2.5-coder-3b with the Qwen Research License, which is not on the allow-list', () => {
-    const three = seed.models.find((m: { id: string }) => m.id === 'qwen2.5-coder-3b');
-    expect(three?.license).toMatchObject({ id: 'qwen-research', name: 'Qwen Research License' });
-    expect(resolveLicense(three?.license.id)).toBeUndefined();
-    expect(three?.orchestratorCapable).toBe(false);
+  it('the bundled seed does not ship qwen2.5-coder-3b at all', () => {
+    // The engine and the app read the bundled seed directly when offline, with
+    // no license gate in that path, so a withdrawn model must not be in it.
+    // Its measured result stays in curation/eval.json as research-use history.
+    expect(seed.models.map((m: { id: string }) => m.id)).not.toContain('qwen2.5-coder-3b');
+    expect(resolveLicense('qwen-research')).toBeUndefined();
   });
 
-  it('the license gate drops it fail-closed, even with its measured eval in hand', () => {
+  it('the license gate drops a research-licensed model fail-closed, even with a measured eval', () => {
+    const research = {
+      ...model('research-coder', true),
+      license: { id: 'qwen-research', name: 'Qwen Research License' },
+    };
     const { catalog, drops } = enrichCatalog(
+      inputs({
+        seed: { version: 1, updated: '2026-09-24', models: [research], presets: [] },
+        evals: { 'research-coder': { deep: 0.75, attempts: 2, source: 'measured' } },
+      }),
+    );
+    const drop = drops.find((d) => d.id === 'research-coder');
+    expect(drop?.reason).toMatch(/license "qwen-research" is not on the SPDX allow-list/);
+    expect(catalog.models).toHaveLength(0);
+  });
+
+  it('no preset built from the real seed seats the 3B', () => {
+    const { catalog } = enrichCatalog(
       inputs({ seed, evals, overlay, metadata: {}, benchmarks: {} }),
     );
-    const drop = drops.find((d) => d.id === 'qwen2.5-coder-3b');
-    expect(drop?.reason).toMatch(/license "qwen-research" is not on the SPDX allow-list/);
     expect(catalog.models.map((m) => m.id)).not.toContain('qwen2.5-coder-3b');
     for (const p of catalog.presets) {
       const refs = [p.stack.orchestrator, ...Object.values(p.stack.specialists)];

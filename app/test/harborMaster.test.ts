@@ -97,7 +97,9 @@ describe('DeepBlue is a stable slot over catalog weights', () => {
       ];
       for (const id of ids) expect(id, b.id).not.toMatch(three);
     }
-    expect(byId.get('qwen2.5-coder-3b')!.license.id).toBe('qwen-research');
+    // The bundled catalog is read offline with no license gate, so the
+    // research-licensed 3B is not shipped in it at all.
+    expect(byId.has('qwen2.5-coder-3b')).toBe(false);
     expect(isHarborMasterRef('qwen2.5-coder:3b')).toBe(false);
   });
 

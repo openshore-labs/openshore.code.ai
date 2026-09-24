@@ -7,6 +7,63 @@ not a source of current truth. `PROGRESS.md` is.
 
 ## Current state sections (2026-08-20 to 2026-09-15)
 
+### Voice mode (a spoken conversation over the chat, native and offline; moved out of PROGRESS 2026-09-24, still shipped)
+
+The founder's ask: a Claude-style voice mode usable while coding, native so it
+works offline, with a voice you pick, and with the natural breaks the work needs.
+Built on top of the existing on-device dictation. Listening reuses the
+`oscode-speech` plugin (on-device SFSpeechRecognizer, mic audio stays on the
+phone) with a silence-based finalize so it is hands-free; speaking is a new
+`oscode-tts` plugin (AVSpeechSynthesizer, synthesized on the phone, offline), Web
+Speech on desktop and web. The picker lists the device's installed system voices
+(Apple's downloadable premium neural voices included), so it is real and offline,
+and it steers clear of the ethics layer's Tier 2 voice-likeness gate (generic
+system voices, no cloud voice service like Claude's own). Access inherits the
+chat, no separate preset (founder: "if access is on for the chat, voice gets the
+same access"): a voice-triggered action rides the same `send` and approval path.
+The natural breaks are one policy table (`voiceBreaks.ts`): clarifying questions
+and plan approval are read out and answered by voice; a tool or cloud-spend
+approval, and a stopped-turn recovery, close voice and hand back to the chat
+screen, then voice reopens once an approval is answered. Everything spoken lands
+in the transcript as text, so the chat is the history. Pure, tested core in
+`app/src/lib/voice/` (`spoken.ts` speech shaping, `voiceBreaks.ts` the policy,
+`tts.ts`/`stt.ts` the backends), the loop in `app/src/hooks/useVoiceMode.ts`, the
+overlay in `VoiceMode.tsx` and the picker in `VoicePicker.tsx`, a voice button in
+`Composer.tsx`, the break/reopen wiring in `ChatScreen.tsx`, and settings
+(`voiceReplies`, `voiceId`, `voiceRate`) in `SettingsScreen.tsx`. Doc in
+`docs/voice-mode.md`, rulings in `DECISIONS.md`. Like dictation, the native speech
+path is only provable on a device (What remains).
+
+### The plan-first workflow (My Stack as the anchor, the reasoning LLM draws a play)
+
+The founder's explicit workflow: a prompt flows through the harness (always-on
+ethics plus curatable filters), starts in My Stack, and the reasoning LLM frames
+it (asking clarifying questions only when genuinely ambiguous), composes a play
+(an ordered set of handoffs to specialist models with dependencies), briefs the
+user (a short checklist of steps and their owner models, live), runs it in
+dependency order handing each step to its owner, re-plans at bounded
+checkpoints, and streams a final synthesis. Any category with no placed
+specialist is run by the reasoning LLM; a step can also target a specific model
+by id for a particular subject or decision (the level-deeper routing). The flow
+degrades to a single routed turn when the anchor is a weak or unreachable model,
+the plan will not parse, or the play is one step, so a modest stack still just
+answers. It is app-native (works on the phone alone); a repo/tool step is marked
+to run on the paired computer's engine when docked (engine execution from this
+flow is a seam, a follow-up). Pure core in `app/src/lib/play.ts` (scheduling,
+re-plan merge, owner resolution, the brief, planner/re-plan prompts and robust
+JSON parse), fully tested in `app/test/play.test.ts` (30 cases); the runner is
+`app/src/drivers/stackDriver.ts`; the brief renders as todos-with-owners
+(`TodoItem`/`TodoRow` gained `owner`, shown in `TodoCard`). Doc and a diagram in
+`docs/workflow.md`. The three follow-ups then landed (CTO-guided, 2026-09-06):
+the clarifying questions are a tappable picker (`ClarifyCard`, a `clarify`
+driver event); a repo/tool step runs on the paired computer's engine when docked
+over one shared `RemoteDriver` session with real approvals surfaced (describe
+only when not docked or no local workspace is bound); and crew routines, which
+keep the engine's own ReAct loop, now write a Plan section into their vault note
+from the agent's `todoWrite`. Live plan quality, the engine hand-off, and the
+routine Plan note need a real reasoning model, a paired computer, and a device
+(unverifiable in a web session).
+
 ### Crew routines (the botOS brief, shipped inside My Crew; moved out of PROGRESS 2026-09-17, still shipped)
 
 **Crew routines are BUILT.** The founder's brief was "clone grokbot, call it
