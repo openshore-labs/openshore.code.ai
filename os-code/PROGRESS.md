@@ -426,6 +426,16 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Mac desktop updates: prove on a real Mac (built 2026-09-23, founder has
+      no Mac yet).** Windows and Linux update from any push to main with no
+      Mac involved; until this is done, Macs simply see no update. Needs a Mac
+      to: run `pnpm --filter oscode-app release:mac` once (builds, stamps the
+      version, uploads the dmg and zip), install that dmg into /Applications,
+      then publish a newer release with a Mac build and confirm the top bar's
+      one click downloads, swaps, and relaunches (`electron/macUpdate.ts`, both
+      the zip and the dmg path). Optional after that: set CODEMAGIC_API_TOKEN
+      and CODEMAGIC_APP_ID so every release gets a Mac build without a Mac on
+      hand (`docs/MAC-DESKTOP.md`).
 - [ ] **Harness Currents (Jev): the eval number and a device pass (built
       2026-09-23).** The seam ships, but tenet 2 means no copy claims a dollar
       saving until `osc eval --deep` measures the gate/classifier/judge with and
