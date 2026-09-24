@@ -19,16 +19,16 @@ Line replaced.
 
 ## Decisions for the founder
 
-1. **The stack's name.** "Your stack" (the room today) or "My Stack" (the model
-   sheet today). The chat pass wants "My Stack", the system pass "Your stack".
-   Recommendation: **Your stack** for the room and in copy, since the app speaks
-   to the person; the model sheet row becomes "Your stack".
+1. **The stack's name. Decided (founder, 2026-09-24): "Stack".** No "Your" or
+   "My": the room is Stack, the model sheet row is Stack, and copy says "your
+   stack" only as plain English mid-sentence where a possessive reads naturally
+   ("add it to your stack"), never as a name.
 2. **The machine's name.** Retire hub, desktop, machine, the box, home system in
    anything a person reads. Recommendation: **your computer** (and "My computer"
    only as the model-sheet row that means "answer on my computer").
 3. **Room-name casing.** Recommendation: Title Case only for proper nouns (My
    Crew, Cloud Connections, Stack Health, Harbor Lite, DeepBlue, Vault,
-   Wayfinding); Sentence case for everything else (Your stack, Desktop + phone,
+   Wayfinding); Sentence case for everything else (Stack, Desktop + phone,
    Crew command, Launch with Codemagic).
 4. **Prices on screen.** Tiers in `plans.ts` ($20/$100/$250) disagree with
    CLAUDE.md ($50/$100/$250/$500/$1000), and pricing is a Board gate.
