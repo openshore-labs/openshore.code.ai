@@ -175,7 +175,7 @@ import {
   WALK_PACE,
   introFinished,
   introSkipped,
-  pacedDurationMs,
+  inkDurationMs,
   setIntroPlaying,
 } from '../lib/introWalk.js';
 import {
@@ -2017,14 +2017,14 @@ export const useApp = create<AppState>((set, get, api) => {
         });
       }, at),
     );
-    at += pacedDurationMs(HARBOR_MINI_SETUP_GREETING, GREETING_PACE) + READ_PAUSE_MS;
+    at += inkDurationMs(HARBOR_MINI_SETUP_GREETING, GREETING_PACE) + READ_PAUSE_MS;
     timers.push(
       window.setTimeout(() => {
         stage = 2;
         appendGuideMessage(conversationId, opening, { paced: 'walk' });
       }, at),
     );
-    at += pacedDurationMs(opening, WALK_PACE);
+    at += inkDurationMs(opening, WALK_PACE);
     timers.push(
       window.setTimeout(() => {
         done();

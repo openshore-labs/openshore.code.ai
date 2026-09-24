@@ -8,8 +8,14 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
-import { WORD_FADE_MS, skipReveals } from '../lib/streamSmoothing.js';
-import { PACES, type PacedKind } from '../lib/introWalk.js';
+import {
+  REVEAL_SKIP_EVENT,
+  WORD_FADE_MS,
+  prefersReducedMotion,
+  skipReveals,
+} from '../lib/streamSmoothing.js';
+import { PACES, inkPlan, type PacedKind } from '../lib/introWalk.js';
+import { restampForSkip, type InkStamp } from '../lib/inkSwell.js';
 import { hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
 import { Markdown } from './Markdown.js';
@@ -42,11 +48,8 @@ function AssistantBubble({
   /** A scripted guide message that writes itself (lib/introWalk.ts). */
   paced?: PacedKind;
 }) {
-  const { text: shown, settling } = useSmoothedReveal(
-    text,
-    streaming,
-    paced ? PACES[paced] : undefined,
-  );
+  const { text: shown, settling } = useSmoothedReveal(text, streaming && !paced);
+  const ink = useInkSwell(text, streaming, paced);
   // Fires once per bubble mount, i.e. right as its first token lands. A
   // scripted letter stays quiet: the first open should not buzz.
   useEffect(() => {
@@ -59,29 +62,31 @@ function AssistantBubble({
   // No caret: like Claude, the arrival itself is the signal. Words stay split
   // into fading spans while any text is on its way, and for one fade after the
   // last word lands (so the tail finishes its fade instead of popping to ink).
-  // A settled reply renders plain.
-  const live = streaming || settling;
-  const { mounted: fading } = useExitPresence(live, WORD_FADE_MS);
-  // A letter being written is read whole by VoiceOver, once, never word by
-  // word: the full text sits in a hidden node and the fading layer is hidden.
-  const writing = Boolean(paced) && live;
+  // A settled reply renders plain. A scripted letter rolls in on the swell
+  // instead, laid out whole from the first frame.
+  const live = paced ? Boolean(ink) : streaming || settling;
+  const { mounted: fading } = useExitPresence(live && !paced, WORD_FADE_MS);
+  // A letter rolling in is read whole by VoiceOver, once, never letter by
+  // letter: the full text sits in a hidden node and the swelling layer is
+  // hidden.
+  const writing = Boolean(ink);
   const bubble = (
     <div className="msg-assistant">
       {showModel && model ? <div className="msg-model">{model}</div> : null}
       {writing ? <div className="visually-hidden">{text}</div> : null}
       {paced ? (
         // A stable wrapper for letters only, so flipping aria-hidden never
-        // remounts the words mid-fade.
+        // remounts the characters mid-swell.
         <div aria-hidden={writing || undefined}>
-          <Markdown text={shown} streaming={live} fade={fading} />
+          <Markdown text={text} ink={ink && paced ? { stamp: ink, kind: paced } : undefined} />
         </div>
       ) : (
         <Markdown text={shown} streaming={live} fade={fading} />
       )}
     </div>
   );
-  // What follows waits for the words and, for a letter, for the last fade.
-  return after && !live && !(paced && fading) ? (
+  // What follows waits until the words have fully arrived.
+  return after && !live ? (
     <>
       {bubble}
       {after}
@@ -90,6 +95,44 @@ function AssistantBubble({
     bubble
   );
 }
+
+/** A scripted line's swell (lib/inkSwell.ts): the ink stamp while it rolls in,
+ *  null once it has settled (or when it mounted settled, or under reduced
+ *  motion). A tap or keystroke (skipReveals) finishes it: characters already
+ *  swelling carry on, the rest arrive flat within a fifth of a second. */
+function useInkSwell(text: string, streaming: boolean, paced?: PacedKind): InkStamp | null {
+  const [stamp, setStamp] = useState<InkStamp | null>(() =>
+    paced && streaming && !prefersReducedMotion()
+      ? { delays: inkPlan(text, PACES[paced]).delays }
+      : null,
+  );
+  const started = useRef(0);
+  const rolling = stamp !== null;
+  useEffect(() => {
+    if (!rolling || !paced) return;
+    started.current = performance.now();
+    let timer = window.setTimeout(() => setStamp(null), inkPlan(text, PACES[paced]).totalMs);
+    const skip = () => {
+      const now = performance.now() - started.current;
+      setStamp((cur) => (cur ? restampForSkip(cur.delays, now, SKIP_SPREAD_MS) : cur));
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setStamp(null), SKIP_SPREAD_MS + FLAT_MS);
+      window.removeEventListener(REVEAL_SKIP_EVENT, skip);
+    };
+    window.addEventListener(REVEAL_SKIP_EVENT, skip);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener(REVEAL_SKIP_EVENT, skip);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rolling]);
+  return stamp;
+}
+
+/** The skip's finish: the rest spread over this long, each arriving flat over
+ *  `--dur-3` (FLAT_MS mirrors it), so the whole thing lands inside `--dur-6`. */
+const SKIP_SPREAD_MS = 200;
+const FLAT_MS = 220;
 
 /** A stopped turn that a retry could plausibly fix: anything but the
  *  person's own stop or a declined step. */

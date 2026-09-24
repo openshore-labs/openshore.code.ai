@@ -17,14 +17,10 @@ import {
   revealLimit,
   toWordEnd,
 } from '../lib/streamSmoothing.js';
-import { pacedSteps, type RevealPace } from '../lib/introWalk.js';
 
 export function useSmoothedReveal(
   target: string,
   active: boolean,
-  /** A scripted message's pace (lib/introWalk.ts): whole-word groups on their
-   *  own beat instead of the stream smoother. Only the first mount plays it. */
-  pace?: RevealPace,
 ): { text: string; settling: boolean } {
   // Reduced motion shows the text whole; the words still arrive as they stream.
   const [shownLen, setShownLen] = useState(() =>
@@ -34,29 +30,8 @@ export function useSmoothedReveal(
   const latest = useRef({ target, active });
   latest.current = { target, active };
 
-  // The paced letter: step through the planned groups, each on its beat.
   useEffect(() => {
-    if (!pace || !settling) return;
-    const steps = pacedSteps(latest.current.target, pace);
-    let k = steps.findIndex((st) => st.end > shownLen);
-    if (k < 0) return;
-    let timer = 0;
-    const next = () => {
-      const st = steps[k];
-      if (!st) return;
-      timer = window.setTimeout(() => {
-        setShownLen((len) => Math.max(len, st.end));
-        k += 1;
-        next();
-      }, st.delayMs);
-    };
-    next();
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pace, settling]);
-
-  useEffect(() => {
-    if (pace || !settling) return;
+    if (!settling) return;
     const id = window.setInterval(() => {
       const { target: text, active: live } = latest.current;
       const limit = revealLimit(text, live);
@@ -65,7 +40,7 @@ export function useSmoothedReveal(
       );
     }, TICK_MS);
     return () => window.clearInterval(id);
-  }, [pace, settling]);
+  }, [settling]);
 
   // A tap on the transcript finishes the reveal: never hold a reader to the
   // typing pace. A live stream still stops at its last complete word.

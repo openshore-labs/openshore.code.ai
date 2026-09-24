@@ -1829,3 +1829,10 @@ execution contract. Newest at the bottom.
   stream smoother's pace. Chosen over "Quiet Chapters" (whole bubbles, reads
   as a slideshow) and "Harbor Light" (a splash screen, a new room that holds
   the reader up).
+- **The letter rolls in on a swell, founder + Creative Studio 2026-09-24:**
+  "Swell Line": characters rise 0.14em, crest 0.05em above the baseline, and
+  settle, far longer than the step between them, so many move at once and it
+  reads as one wave. Chosen over "Harbor Light" (a teal crest; teal means
+  local here) and "Chart Pen" (a measured line mask, fragile at wraps).
+  Characters are inline-block only while rolling; a settled line renders plain
+  so kerning, selection, and find are normal.

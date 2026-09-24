@@ -111,8 +111,9 @@ describe('the seam', () => {
   // Founder, 2026-09-23: the reply arrives like Claude's, a few words at a
   // time, each group fading up from light to full ink, with no caret.
   it('fades words in while live and holds the split through the last fade', () => {
-    expect(list).toMatch(/const live = streaming \|\| settling/);
-    expect(list).toMatch(/useExitPresence\(live, WORD_FADE_MS\)/);
+    // A model reply (not a scripted letter, which rolls in on the swell).
+    expect(list).toMatch(/const live = paced \? Boolean\(ink\) : streaming \|\| settling/);
+    expect(list).toMatch(/useExitPresence\(live && !paced, WORD_FADE_MS\)/);
     expect(list).toContain('fade={fading}');
     expect(read('components/Markdown.tsx')).toContain('rehypeFadeWords');
     expect(theme).toMatch(/\.md-live \.w \{[^}]*animation: word-in var\(--dur-6\)/);
