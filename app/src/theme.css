@@ -1511,10 +1511,19 @@ textarea {
 .md-ink-walk {
   --ink-dur: var(--dur-6);
 }
-.md-ink .iw {
+.ink-swell {
+  --ink-dur: var(--dur-swell);
+}
+.md-ink .iw,
+.ink-swell .iw {
   white-space: nowrap;
 }
-.md-ink .ic {
+/* The landing greeting's layer rides the swell, not its own rise. */
+.greeting-swap.greeting-swap-swell {
+  animation: none;
+}
+.md-ink .ic,
+.ink-swell .ic {
   display: inline-block;
   animation: swell var(--ink-dur) var(--ease-ink) backwards;
   animation-delay: var(--d);
@@ -1547,6 +1556,7 @@ textarea {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .ink-swell .ic,
   .md-ink .ic,
   .md-ink .ic.flat {
     animation: none;
@@ -7697,17 +7707,6 @@ textarea {
   font-size: var(--text-2);
   margin-top: 2px;
 }
-.sh-lean-browse {
-  margin-top: 12px;
-  padding: 9px 14px;
-  border: 1px solid var(--local);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--local-deep);
-  font-size: var(--text-3);
-  font-weight: var(--weight-medium);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sh-ring-fill {
     transition: none;

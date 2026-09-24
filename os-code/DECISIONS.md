@@ -1840,3 +1840,11 @@ execution contract. Newest at the bottom.
   Stack". The room, the model sheet row, and any label say Stack; "your stack"
   survives only as plain English mid-sentence ("add it to your stack"). Part
   of the Creative Studio brand sweep (`docs/brand-sweep-2026-09-24.md`).
+- **Brand sweep calls, founder 2026-09-24:** the machine is "your computer"
+  in all copy; room names take Title Case only as proper nouns (My Crew, Cloud
+  Connections, Stack Health), Sentence case otherwise (Stack, Desktop + phone,
+  Crew command, Launch with Codemagic), spelled once in `lib/navRooms.ts`; no
+  price shows while pay gates are off (`shownPrice`). Color meaning: `--local`
+  teal only for local, `--cloud` amber only for spend, `--accent` for chrome,
+  `--attention` plum for "needs you". Harbor's license line is unchanged until
+  the Qwen2.5-Coder-3B model card is checked.
