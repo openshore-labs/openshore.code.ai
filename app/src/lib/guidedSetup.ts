@@ -12,6 +12,8 @@
 // for what is current. The store owns the effects (appending messages, opening
 // pages, coming back), and ChatScreen renders the buttons.
 
+import type { PermissionMode } from './permissionMode.js';
+
 export type SetupStepId = 'harbor' | 'computer' | 'repo' | 'key';
 
 /** Harbor first: it is a long download that carries on while the rest is set
@@ -43,6 +45,10 @@ export interface GuidedSetupProgress {
   paused?: boolean;
   /** Harbor's "ready, here is how to switch" line has been said. */
   harborAnnounced?: boolean;
+  /** The one choice the repository step ends on (CX, 2026-09-24, after
+   *  Zed's "trust projects" row): how edits are handled. 'asking' while the
+   *  two buttons wait for a tap; then the mode picked, or 'later'. */
+  editChoice?: 'asking' | 'later' | PermissionMode;
 }
 
 export interface SetupStepCopy {
@@ -90,8 +96,8 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   repo: {
     title: 'Set up a repository',
     what: 'Connect GitHub or another platform, and pick a home repository for OpenShore to work in.',
-    why: 'This is where building happens: OpenShore reads your code, edits it, runs its tests, and commits, always with your approval.',
-    how: 'Tap Set up a repository, choose your platform, and connect it with your own access token. Then set your home repository. Every edit shows you a diff first, and every command asks before it runs. I will bring you back here once it is connected.',
+    why: 'This is where building happens: OpenShore reads your code, edits it, runs its tests, and commits.',
+    how: "Tap Set up a repository, choose your platform, and connect it with your own access token. Then set your home repository. Commands always ask before they run. Once you're connected, you'll choose how edits are handled, and you can change that any time. I will bring you back here once it is connected.",
     action: 'Set up a repository',
     ask: 'Tell me more about setting up a repository.',
     done: 'Your repository is connected.',
@@ -106,6 +112,52 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
     done: 'Your API key is connected.',
   },
 };
+
+/** The choice the repository step ends on (CX ruling, 2026-09-24). Zed asks
+ *  up front whether to trust every project; OpenShore asks one narrower
+ *  question at the moment it starts to matter, once there is code to edit.
+ *  Commands ask either way. Neither button is preselected; Plan and Bypass
+ *  stay in the composer's mode pill for people who already know them. */
+export const EDIT_CHOICES: readonly { mode: PermissionMode; label: string }[] = [
+  { mode: 'default', label: 'Ask me first' },
+  { mode: 'acceptEdits', label: 'Let edits flow' },
+];
+
+export const EDIT_CHOICE_QUESTION =
+  'If it has a CLAUDE.md, AGENTS.md, or OSCODE.md, OpenShore follows it, so there is nothing to import. One choice before we go on: should OpenShore ask before each edit, or let edits go through and show you each diff in the chat? Commands ask either way, and you can change this any time in Settings, under Approvals.';
+
+/** Said when the repository connects: the step's done line, then the one
+ *  choice. The walk holds here until a button is tapped. */
+export function repoConnectedMessage(): string {
+  return `${STEP_COPY.repo.done}
+
+${EDIT_CHOICE_QUESTION}`;
+}
+
+/** Said once the edit choice is made (or put off): what was chosen, then the
+ *  next step or the wrap-up. */
+export function editChoiceMessage(
+  mode: PermissionMode | undefined,
+  next: SetupStepId | undefined,
+  facts: SetupFacts,
+): string {
+  const lead =
+    mode === 'default'
+      ? 'Ask first it is. OpenShore will check with you before each edit.'
+      : mode === 'acceptEdits'
+        ? 'Edits will flow, and each diff shows in the chat. Commands still ask.'
+        : 'No problem. Edits flow for now and each diff shows in the chat. Change it any time in Settings, under Approvals.';
+  const body = next ? stepIntro(next) : finishMessage(facts);
+  return `${lead}
+
+${body}`;
+}
+
+/** Whether the walk still has something for the person to do: a step, or
+ *  the edit choice waiting on a tap. */
+export function walkActive(p: GuidedSetupProgress): boolean {
+  return Boolean(p.current && !p.finished) || p.editChoice === 'asking';
+}
 
 /** How the guide introduces a step: what it is, why it helps, how it works. */
 export function stepIntro(id: SetupStepId): string {
@@ -202,6 +254,7 @@ export const ASK_ANYTHING = [
   'What is the Vault?',
   'What can My Crew do?',
   'How do Projects work?',
+  'Can I use Claude Code or Codex here?',
 ];
 
 /** The first chat's first goal, above setup (founder, 2026-09-23). */
@@ -261,6 +314,9 @@ export function guideContextLine(
   const harbor = facts.harborReady
     ? ` Harbor is downloaded; if asked how to use it: ${HARBOR_SWITCH_HINT}`
     : '';
+  if (progress.editChoice === 'asking' && !progress.paused) {
+    return `${FIRST_CHAT_GOAL} SETUP: the repository is connected, and the person is choosing how edits are handled. Two buttons sit under your latest message: "Ask me first" (check before each edit) and "Let edits flow" (edits go through, each diff shows in the chat). Commands ask either way. Explain the difference if asked; never choose for them.${harbor}`;
+  }
   if (progress.finished || !progress.current) {
     return `${FIRST_CHAT_GOAL} SETUP: finished.${harbor} Invite questions about the app.`;
   }

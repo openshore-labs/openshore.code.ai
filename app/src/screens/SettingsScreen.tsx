@@ -37,6 +37,7 @@ import {
 import { tierById, shownPrice } from '../lib/plans.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticCommit } from '../lib/haptics.js';
+import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { InfoSheet } from '../components/InfoSheet.js';
@@ -249,6 +250,7 @@ export function SettingsScreen() {
     harborMasterDownload,
     desktopStatus,
     setTerminalControl,
+    setPermissionMode,
     setCodemagicAccess,
     codemagicConnected,
     serverRole,
@@ -256,6 +258,7 @@ export function SettingsScreen() {
     setPerplexityResearch,
     connectedProviders,
   } = useApp();
+  const editMode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
   const humanizeOn = settings.humanizeWriting !== false;
@@ -575,6 +578,48 @@ export function SettingsScreen() {
                   );
                 }}
               />
+            }
+          />
+        </SettingsGroup>
+
+        {/* Approvals (CX, 2026-09-24, after Zed's "trust all projects" row):
+            not a blanket trust switch, one comfort level for edits, the same
+            choice the setup walk asks once a repository connects. Kept on this
+            device; commands always ask, and Plan and Bypass stay in the chat's
+            mode pill. */}
+        <SettingsGroup title="Approvals" index={group++}>
+          <SettingsRow
+            label="When the agent edits"
+            sub={
+              editMode === 'default' || editMode === 'acceptEdits'
+                ? "Commands always ask. Plan and Bypass are in the chat's mode pill."
+                : `${permissionModeLabel(editMode)} is on, from the chat's mode pill. Commands still ask unless Bypass is on.`
+            }
+            trailing={
+              <div className="segmented" role="tablist" aria-label="When the agent edits">
+                {(['default', 'acceptEdits'] as const).map((m) => {
+                  const active = editMode === m;
+                  return (
+                    <button
+                      key={m}
+                      role="tab"
+                      aria-selected={active}
+                      className={`seg press-fb${active ? ' active' : ''}`}
+                      onClick={() => {
+                        if (active) return;
+                        void setPermissionMode(m, 'settings');
+                        showToast(
+                          m === 'default'
+                            ? 'Ask first. OpenShore checks before each edit.'
+                            : 'Accept edits. Each diff shows in the chat.',
+                        );
+                      }}
+                    >
+                      {permissionModeLabel(m)}
+                    </button>
+                  );
+                })}
+              </div>
             }
           />
         </SettingsGroup>

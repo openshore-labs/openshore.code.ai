@@ -158,6 +158,10 @@ import { guardDriver } from '../drivers/guardedDriver.js';
 import {
   HARBOR_READY_MESSAGE,
   advanceMessage,
+  editChoiceMessage,
+  repoConnectedMessage,
+  walkActive,
+  EDIT_CHOICE_QUESTION,
   guideContextLine,
   nextStep,
   openingMessage,
@@ -1126,6 +1130,9 @@ interface AppState {
   skipSetupStep(): void;
   /** Pick a paused setup walk back up at its current step. */
   resumeGuidedSetup(): void;
+  /** The repository step's one choice: how edits are handled. Undefined
+   *  means "decide later" (the starting mode stays). */
+  chooseEditMode(mode: PermissionMode | undefined): Promise<void>;
   /** Bring your own Brave or Tavily key for Harbor's web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
@@ -1194,7 +1201,9 @@ interface AppState {
   /** Plan mode: keep the plan in view and hand the person the composer. */
   revisePlan(): void;
   /** Set the permission mode for new sessions and the live one. */
-  setPermissionMode(mode: PermissionMode): Promise<void>;
+  /** `source` names where the change came from, for the opt-in activity
+   *  log's regret signal (a walk choice changed soon after). */
+  setPermissionMode(mode: PermissionMode, source?: 'pill' | 'settings' | 'walk'): Promise<void>;
   /** Name a chat by hand; the generated title never overwrites it after. */
   renameConversation(id: string, title: string): Promise<void>;
   /** Fold the active session's history now (the /compact command). */
@@ -2103,7 +2112,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!p || p.conversationId !== conversationId) return false;
     const intent = setupIntent(text);
     if (!intent) return false;
-    const walking = Boolean(p.current && !p.finished);
+    const walking = walkActive(p);
     if (intent === 'pause') {
       if (walking && !p.paused) {
         logEvent('guided_setup_pause', { step: p.current ?? 'none' });
@@ -2120,7 +2129,8 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     if (p.paused) return false; // "next" while just chatting is ordinary talk
     appendUserLine(conversationId, text);
-    get().skipSetupStep();
+    if (p.editChoice === 'asking') void get().chooseEditMode(undefined);
+    else get().skipSetupStep();
     return true;
   }
 
@@ -2190,18 +2200,26 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!p) return;
     const conv = s.conversations[p.conversationId];
     if (!conv || conv.thread.busy) return;
+    // The edit choice holds the walk until a button is tapped.
+    if (p.editChoice === 'asking') return;
     const facts = setupFacts();
     let next: GuidedSetupProgress = p;
     if (!p.finished && !p.paused && p.current && stepHandled(p.current, facts)) {
       const done = p.current;
       const after = nextStep(p, facts);
-      if (!appendGuideMessage(p.conversationId, advanceMessage(done, 'done', after, facts))) return;
+      // The repository step ends on one choice (how edits are handled), asked
+      // once; the next step waits for the tap (chooseEditMode).
+      const asking = done === 'repo' && !p.editChoice;
+      const text = asking ? repoConnectedMessage() : advanceMessage(done, 'done', after, facts);
+      if (!appendGuideMessage(p.conversationId, text)) return;
+      logEvent('guided_setup_step_done', { step: done });
       next = {
         ...next,
         current: after,
         finished: !after,
         awaiting: undefined,
         harborAnnounced: next.harborAnnounced || facts.harborReady,
+        ...(asking ? { editChoice: 'asking' as const } : {}),
       };
       if (p.awaiting === done && (s.view !== 'chat' || s.activeId !== p.conversationId)) {
         s.openConversation(p.conversationId);
@@ -5579,6 +5597,11 @@ export const useApp = create<AppState>((set, get, api) => {
 
     resumeGuidedSetup() {
       const p = get().settings.guidedSetup;
+      if (p?.paused && p.editChoice === 'asking') {
+        if (!appendGuideMessage(p.conversationId, `Happy to. ${EDIT_CHOICE_QUESTION}`)) return;
+        void get().saveSettings({ guidedSetup: { ...p, paused: false } });
+        return;
+      }
       if (!p?.current || p.finished || !p.paused) return;
       // Anything connected while paused is passed by: resume at the step
       // that is actually next.
@@ -5592,6 +5615,32 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!appendGuideMessage(p.conversationId, resumeMessage(current))) return;
       void get().saveSettings({ guidedSetup: { ...p, paused: false, current } });
+    },
+
+    async chooseEditMode(mode) {
+      const p = get().settings.guidedSetup;
+      if (!p || p.editChoice !== 'asking') return;
+      const facts = setupFacts();
+      // Anything connected while the choice waited is passed by.
+      const after = p.current && !stepHandled(p.current, facts) ? p.current : nextStep(p, facts);
+      if (!appendGuideMessage(p.conversationId, editChoiceMessage(mode, after, facts))) return;
+      // Close the choice before any await, so a second tap finds it answered.
+      const saved = get().saveSettings({
+        guidedSetup: {
+          ...p,
+          editChoice: mode ?? 'later',
+          current: after,
+          finished: !after,
+          harborAnnounced: p.harborAnnounced || (!after && facts.harborReady),
+        },
+      });
+      if (mode) {
+        logEvent('permission_mode_chosen', { mode, source: 'walk' });
+        await get().setPermissionMode(mode, 'walk');
+      } else {
+        logEvent('permission_mode_deferred', { source: 'walk' });
+      }
+      await saved;
     },
 
     skipSetupStep() {
@@ -6151,7 +6200,9 @@ export const useApp = create<AppState>((set, get, api) => {
       });
     },
 
-    async setPermissionMode(mode) {
+    async setPermissionMode(mode, source = 'pill') {
+      const from = get().settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
+      if (from !== mode) logEvent('permission_mode_changed', { from, to: mode, source });
       await get().saveSettings({ permissionMode: mode });
       const { activeId } = get();
       if (activeId) drivers.get(activeId)?.setMode?.(mode);

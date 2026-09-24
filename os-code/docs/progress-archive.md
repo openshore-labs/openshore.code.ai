@@ -2820,6 +2820,10 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-24)
 
+### 2026-09-24, Harbor Lite: the guide harness, web search, and setup advice
+
+Founder: raise Harbor Lite's floor. It must search the web (DuckDuckGo), answer basic sourced questions, say when it is stretched, know every part of the app and why it exists, and reason about a person's needs and equipment. A 135M model cannot do that alone, so the harness does the mechanical work (tenet 3): `app/src/lib/guideHarness.ts` (pure) plans each turn. It picks 3 of 50 verified fact cards (`guideCards.ts`, one per screen or control, current names read from the roster), searches the web for a factual question the cards do not cover (status line plus citations, a failed search said plainly), sizes DeepBlue from the person's stated RAM or GPU with the First Seat fit table, and marks a coding or heavy ask as a stretch, with a fixed honest note after the reply. The persona is short. Eval (tenet 2): 49 questions, route 100%, card recall 100% (CI, `test/guideEval.test.ts`); prompt about 580 tokens on average (880 at most) versus about 6,300 for every card on every turn. Answer quality with versus without the harness is `pnpm --filter oscode-app eval:guide` on the reference box (smollm2:135m), not yet run. Also fixed: the setup wrap-up pointed to a Settings "Get started" group that does not exist, and the shared guide facts said Linux-only and treated the Marketplace as open.
+
 ### 2026-09-24, Harbor Lite no longer sticks on "Warming up"
 
 Founder report: a question in the setup chat sat on "Warming up Harbor Lite" with no reply. Its system prompt (about 10.5k characters) outgrew the 2048-token window it loaded with, so the reply came back empty. Every device model now loads at `DEVICE_CONTEXT_TOKENS` (4096), history is trimmed to fit (`fitDeviceHistory`), and an empty reply ends with an error naming the model (`app/test/deviceContext.test.ts`). Not yet checked on a phone.

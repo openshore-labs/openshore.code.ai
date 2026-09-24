@@ -7,17 +7,23 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  EDIT_CHOICES,
+  EDIT_CHOICE_QUESTION,
   HARBOR_SWITCH_HINT,
   STEP_COPY,
   advanceMessage,
+  editChoiceMessage,
   finishMessage,
   guideContextLine,
   nextStep,
   openingMessage,
   setupIntent,
+  repoConnectedMessage,
   stepIntro,
+  walkActive,
   type SetupFacts,
 } from '../src/lib/guidedSetup.js';
+import { DEFAULT_PERMISSION_MODE } from '../src/lib/permissionMode.js';
 
 const NONE: SetupFacts = {
   harborReady: false,
@@ -221,6 +227,49 @@ vi.mock('../src/drivers/onDeviceDriver.js', () => ({
   },
 }));
 
+// CX ruling (2026-09-24), from reading Zed's first-run page: of its eight
+// options only the trust question fits OpenShore, and as one narrow choice
+// about edits at the moment there is code to edit, not a blanket switch.
+describe('the edit choice at the end of the repository step', () => {
+  it('never promises a check before every edit, since edits flow by default', () => {
+    expect(DEFAULT_PERMISSION_MODE).toBe('acceptEdits');
+    const repo = Object.values(STEP_COPY.repo).join(' ');
+    expect(repo).not.toMatch(/every edit/i);
+    expect(repo).toMatch(/commands always ask/i);
+    const guides = readFileSync(join(__dirname, '../src/lib/setupGuides.ts'), 'utf8');
+    expect(guides).not.toMatch(/every edit shows you a diff/i);
+  });
+
+  it('offers exactly Ask first and Accept edits, and names the instruction files', () => {
+    expect(EDIT_CHOICES.map((c) => c.mode)).toEqual(['default', 'acceptEdits']);
+    expect(repoConnectedMessage()).toContain(STEP_COPY.repo.done);
+    expect(EDIT_CHOICE_QUESTION).toMatch(/CLAUDE\.md, AGENTS\.md, or OSCODE\.md/);
+    expect(EDIT_CHOICE_QUESTION).toMatch(/Settings, under Approvals/);
+  });
+
+  it('says what was chosen, then moves on', () => {
+    expect(editChoiceMessage('default', 'key', NONE)).toMatch(/^Ask first/);
+    expect(editChoiceMessage('acceptEdits', 'key', NONE)).toContain(stepIntro('key'));
+    expect(editChoiceMessage(undefined, undefined, NONE)).toContain(finishMessage(NONE));
+  });
+
+  it('keeps the walk alive while the choice waits, and tells the guide so', () => {
+    const p = { conversationId: 'c', skipped: [], finished: true, editChoice: 'asking' as const };
+    expect(walkActive(p)).toBe(true);
+    expect(walkActive({ ...p, editChoice: 'later' })).toBe(false);
+    const line = guideContextLine(p, NONE)!;
+    expect(line).toMatch(/choosing how edits are handled/);
+    expect(line).toMatch(/never choose for them/i);
+  });
+
+  it('lives on in Settings, under Approvals', () => {
+    const src = readFileSync(join(__dirname, '../src/screens/SettingsScreen.tsx'), 'utf8');
+    expect(src).toContain('<SettingsGroup title="Approvals"');
+    expect(src).toContain('label="When the agent edits"');
+    expect(src).toContain("setPermissionMode(m, 'settings')");
+  });
+});
+
 const { useApp } = await import('../src/state/store.js');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const guided = () => useApp.getState().settings.guidedSetup!;
@@ -283,6 +332,60 @@ describe('the guided walk in the store', () => {
     await wait(5);
     expect(guided().finished).toBe(true);
     expect(texts().at(-1)).toMatch(/ask me anything about OpenShore/i);
+  });
+
+  it('asks how edits are handled once a repository connects, and holds until a tap', async () => {
+    useApp.setState((s) => ({
+      settings: {
+        ...s.settings,
+        harborReady: true,
+        daemon: { baseUrl: 'http://box', token: 't' } as never,
+      },
+    }));
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    expect(guided().current).toBe('repo');
+    useApp.setState({ connectedRepoPlatforms: { github: true } as never });
+    await wait(5);
+    expect(guided().editChoice).toBe('asking');
+    expect(texts().at(-1)).toBe(repoConnectedMessage());
+    // A key landing while the choice waits does not move the walk past it.
+    useApp.setState({ cloudKeyPresent: true });
+    await wait(5);
+    expect(texts().at(-1)).toBe(repoConnectedMessage());
+
+    // A double tap answers once.
+    await Promise.all([
+      useApp.getState().chooseEditMode('default'),
+      useApp.getState().chooseEditMode('acceptEdits'),
+    ]);
+    await wait(5);
+    expect(texts().filter((t) => /^(Ask first it is|Edits will flow)/.test(t))).toHaveLength(1);
+    expect(useApp.getState().settings.permissionMode).toBe('default');
+    expect(guided().editChoice).toBe('default');
+    expect(guided().finished).toBe(true);
+    expect(texts().at(-1)).toMatch(/^Ask first it is/);
+  });
+
+  it('treats a bare "skip" at the edit choice as decide later', async () => {
+    useApp.setState((s) => ({
+      settings: {
+        ...s.settings,
+        harborReady: true,
+        daemon: { baseUrl: 'http://box', token: 't' } as never,
+      },
+    }));
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    useApp.setState({ connectedRepoPlatforms: { github: true } as never });
+    await wait(5);
+    useApp.setState({ activeId: guided().conversationId });
+    useApp.getState().send('skip');
+    await wait(5);
+    expect(guided().editChoice).toBe('later');
+    expect(useApp.getState().settings.permissionMode).toBeUndefined();
+    expect(guided().current).toBe('key');
+    expect(texts().at(-1)).toContain(stepIntro('key'));
   });
 
   it('says how to switch once Harbor finishes, even after the walk', async () => {
