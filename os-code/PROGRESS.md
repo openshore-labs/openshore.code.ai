@@ -988,12 +988,3 @@ Founder: the first open landed on finished text; reveal it, pause on the welcome
 ### 2026-09-24, Harbor Lite's guide harness measured on the reference box
 
 The box (i5-7300U, 8 GB, CPU only), 49 questions with live DuckDuckGo: with the harness 94% vs 89% without on `smollm2:135m`, 94% vs 90% on the phone's Q4_K_M quant (`docs/guide-eval-2026-09-24.md`). Web and chat questions all 100%. The misses were the model restating setup advice without the size (fit-8, fit-4090, fit-mac on both runs), a stretch reply without Harbor or DeepBlue, and one em dash. So the harness now shows a fixed line after the reply with the worked-out DeepBlue size, as it already did for a stretch, and strips any em dash from Harbor Lite's words; the eval scores what the chat shows. The rest (stack, pair, bench, reach) moved between runs, so single-run noise, not yet a card fix.
-
-### 2026-09-24, the first chat opens at once; Harbor Lite really ships in the app
-
-TestFlight showed the plain chat for about a minute before the walk: no build
-carried Harbor Lite's weights, so first open downloaded them and the walk waited
-on that. `beginGuidedSetup` now opens the chat and its scripted hello at once
-and readies the model in the background; a line typed before it is ready waits
-as a queued message (`holdForHarborLite`). Codemagic now bundles the weights
-into `public/models/` (see docs/HARBOR.md), which `bundledURL` reads.
