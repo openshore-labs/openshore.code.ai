@@ -33,7 +33,7 @@ export const TRUST_STATEMENT_TIERS: ReadonlyArray<{ name: string; body: string }
   },
   {
     name: 'Gated behind consent',
-    body: 'Synthesizing the face or voice of a real, identifiable person, as an image, a video, or a voice, allowed only when you state you are authorized for that specific person. Writing about a person in text is not gated. The assertion is recorded, and what comes out carries provenance metadata saying it was AI-generated.',
+    body: 'Synthesizing an image of a real, identifiable person, allowed only when you state you are authorized for that specific person. Writing about a person in text is not gated. Images of a real person made on your computer carry a provenance record saying they are AI-generated. Video or voice of a real person is refused until it can be marked the same way.',
   },
   {
     name: 'Left alone',

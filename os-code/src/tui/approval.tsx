@@ -66,13 +66,22 @@ export function ApprovalPrompt({ request, onAnswer }: ApprovalProps): React.Reac
       </Text>
       <Text color={TOKENS.text}>{request.summary}</Text>
       {request.detail ? <DetailBlock detail={request.detail} /> : null}
-      <Text>
-        {key('y', '[y] yes once', TOKENS.muted)}
-        <Text color={TOKENS.muted}> {'·'} </Text>
-        {key('a', '[a] yes for this session', TOKENS.muted)}
-        <Text color={TOKENS.muted}> {'·'} </Text>
-        {key('n', '[n] no', TOKENS.muted)}
-      </Text>
+      {request.grant === 'session' ? (
+        // Web access asks once per session: one yes covers the rest.
+        <Text>
+          {key('y', '[y] allow for this session', TOKENS.muted)}
+          <Text color={TOKENS.muted}> {'·'} </Text>
+          {key('n', '[n] not now', TOKENS.muted)}
+        </Text>
+      ) : (
+        <Text>
+          {key('y', '[y] yes once', TOKENS.muted)}
+          <Text color={TOKENS.muted}> {'·'} </Text>
+          {key('a', '[a] yes for this session', TOKENS.muted)}
+          <Text color={TOKENS.muted}> {'·'} </Text>
+          {key('n', '[n] no', TOKENS.muted)}
+        </Text>
+      )}
     </Box>
   );
 }

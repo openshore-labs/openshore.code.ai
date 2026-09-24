@@ -91,6 +91,7 @@ export function createRoutine(input: RoutineInput, ownerUserId?: string): Routin
     enabled: input.enabled ?? true,
     access: input.access ?? 'read-only',
     maxMinutes: input.maxMinutes ?? 20,
+    webSearch: input.webSearch === true,
     ownerUserId,
     createdAt: now,
     updatedAt: now,

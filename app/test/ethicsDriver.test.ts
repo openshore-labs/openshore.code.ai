@@ -116,16 +116,33 @@ describe('the app cannot send a blocked prompt', () => {
     const guarded = guardDriver(inner);
     const events = collect(guarded);
 
-    guarded.send('clone the voice of Jordan Ellis for our advert');
+    guarded.send('generate a photo of Jordan Ellis for our advert');
     await settle();
     expect(inner.sent).toHaveLength(0);
     expect(events.some((e) => e.type === 'ethics-block' && 'tier' in e && e.tier === 2)).toBe(true);
 
     // The person asserts authorization. The assertion is recorded and the same
     // request goes through.
-    guarded.send('I have written permission from Jordan Ellis. Clone the voice of Jordan Ellis.');
+    guarded.send('I have written permission from Jordan Ellis. Generate a photo of Jordan Ellis.');
     await settle();
     expect(inner.sent).toHaveLength(1);
+  });
+
+  it('refuses video or voice of a real person even with authorization', async () => {
+    const inner = new FakeDriver();
+    const guarded = guardDriver(inner);
+    const events = collect(guarded);
+
+    // Only images can carry a provenance record today (advisory org,
+    // 2026-09-24), so the assertion does not open voice or video.
+    guarded.send('I have written permission from Jordan Ellis. Clone the voice of Jordan Ellis.');
+    await settle();
+    guarded.send('I have written permission from Jordan Ellis. Generate a video of Jordan Ellis.');
+    await settle();
+    expect(inner.sent).toHaveLength(0);
+    expect(
+      events.filter((e) => e.type === 'ethics-block' && 'tier' in e && e.tier === 2),
+    ).toHaveLength(2);
   });
 });
 

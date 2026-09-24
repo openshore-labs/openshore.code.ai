@@ -389,6 +389,18 @@ export interface AppSettings {
    *  writing). On by default; undefined means on. Off drops the standard from
    *  the prompt, so a model runs a little faster on a shorter prompt. */
   humanizeWriting?: boolean;
+  /** Ask before searching the web: a web search or page fetch shows the exact
+   *  query or URL, and the service it goes to, before it leaves. On by default
+   *  (undefined means on). On the phone each Harbor search asks; on the engine
+   *  the first yes covers the rest of the session. Off allows web access
+   *  without asking, for this person's own sessions only (a project's deny
+   *  still holds). */
+  askBeforeWeb?: boolean;
+  /** Send voice to the speech service: on desktop and web, voice input uses
+   *  the system's speech service (Web Speech), which may send audio to its
+   *  provider (Google in Chrome-based apps). Off by default; the first mic tap
+   *  asks. The iPhone recognizes speech on the device and never reads this. */
+  voiceCloudConsent?: boolean;
   /** Voice mode: speak replies aloud during a spoken conversation. On by default
    *  (undefined means on); off keeps voice mode as listen-and-send, with replies
    *  read on screen. Device local (a per-device output preference). */
@@ -935,7 +947,9 @@ interface AppState {
    *  confirmation is required before the account can sign in. */
   signUpAccount(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
   /** Send a magic-link email that returns to the app's deep-link origin. */
-  sendMagicLink(email: string): Promise<void>;
+  /** `createAccount` is true only from the create-account path, after the 18+
+   *  declaration; a sign-in link never creates an account. */
+  sendMagicLink(email: string, opts?: { createAccount?: boolean }): Promise<void>;
   /** Email a password-reset link that returns to the app to set a new password. */
   sendPasswordReset(email: string): Promise<void>;
   /** Resend the sign-up confirmation email (lost or expired link). */
@@ -1895,6 +1909,9 @@ export const useApp = create<AppState>((set, get) => {
           // honors the toggle too (it only ever turns the humanizer off; a
           // project's own config still wins). Undefined means on.
           humanize: settings.humanizeWriting !== false,
+          // "Ask before searching the web" rides to the engine the same way; it
+          // only ever relaxes the ask for this session.
+          askBeforeWeb: settings.askBeforeWeb !== false,
           codemagicToken,
           codemagicTarget,
           currents,
@@ -1945,6 +1962,7 @@ export const useApp = create<AppState>((set, get) => {
             instructions: sessionOpts.instructions,
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
+            askBeforeWeb: sessionOpts.askBeforeWeb,
             currents: sessionOpts.currents,
           });
           await bindSessionId(conv.id, sessionId);
@@ -1979,6 +1997,8 @@ export const useApp = create<AppState>((set, get) => {
           seed,
           settings.perplexityResearch === true,
           standingContext(conv),
+          // Read at search time, so flipping the switch applies mid-chat.
+          () => get().settings.askBeforeWeb !== false,
         );
       case 'cloud': {
         // Claude runs on the Anthropic SDK; every other connected provider runs
@@ -3965,8 +3985,8 @@ export const useApp = create<AppState>((set, get) => {
       return { needsConfirmation: true };
     },
 
-    async sendMagicLink(email) {
-      await signInWithOtp(email.trim(), authRedirectTo());
+    async sendMagicLink(email, opts) {
+      await signInWithOtp(email.trim(), authRedirectTo(), opts?.createAccount === true);
       // Remember who we sent the link to, so the callback only signs in that
       // person (see completeAuthCallback). A custom-scheme link has no
       // browser-enforced origin, so this binding is the CSRF guard.

@@ -776,6 +776,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
             enabled: existing.enabled,
             access: existing.access,
             maxMinutes: existing.maxMinutes,
+            webSearch: existing.webSearch === true,
             ...body,
           };
           const parsed = validateRoutineInput(merged);
@@ -880,6 +881,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const { mode: permissionMode, note: modeNote } = effectiveRemoteMode(requestedMode);
       // The app's Humanize Writing setting for this session (only ever an off).
       const humanize = typeof body.humanize === 'boolean' ? body.humanize : undefined;
+      // The app's "Ask before searching the web" setting for this session. It
+      // only ever relaxes the ask to allow (never a configured deny).
+      const askBeforeWeb = typeof body.askBeforeWeb === 'boolean' ? body.askBeforeWeb : undefined;
       // The Agentic Current the person turned on, as the handle its tool needs.
       // A malformed handle is dropped, never a refused session. A CLI handle is
       // honored only when that CLI is really on this hub's PATH, so the tool
@@ -905,6 +909,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           projectName,
           permissionMode,
           humanize,
+          askBeforeWeb,
           currents,
         });
         trackDriver(driver);

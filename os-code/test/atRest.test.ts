@@ -246,7 +246,10 @@ describe('the measured seal in Stack Health', () => {
     // Everything is sealed, but the key sits in the encrypted file (no
     // keychain in tests), so the honest grade is a note, never green.
     expect(fact.state).toBe('note');
-    expect(fact.label).toContain('encrypted at rest');
+    // Per-platform wording (advisory org, 2026-09-24): sealed, and where the
+    // key is, never a blanket "encrypted at rest".
+    expect(fact.label).toContain('Sessions are sealed on this computer');
+    expect(fact.label).not.toContain('encrypted at rest');
   });
 
   it('counts remaining plaintext lines and says so', () => {

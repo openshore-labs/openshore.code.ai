@@ -21,6 +21,7 @@ import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
 import { FirstSeat } from '../components/FirstSeat.js';
 import { VoiceMode } from '../components/VoiceMode.js';
+import { useVoiceConsent } from '../components/VoiceConsentSheet.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
 import { Sheet } from '../components/Sheet.js';
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_EMPTY_HINT } from '../lib/harborMini.js';
@@ -392,7 +393,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // the empty state, start a chat first on the chosen brain, so the first thing
   // said has somewhere to go; if the brain is not ready, send the person to the
   // chooser rather than opening a voice surface that cannot answer.
-  const openVoice = async () => {
+  const voiceConsent = useVoiceConsent();
+  const openVoiceNow = async () => {
     if (!conv) {
       if (!sourceReady(selectedSource)) {
         setSheetStage('root');
@@ -404,6 +406,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     }
     setVoiceOpen(true);
   };
+  // Off the iPhone, voice mode listens through the system speech service,
+  // which may send audio to its provider: the first tap asks, before a chat is
+  // started for it.
+  const openVoice = () => voiceConsent.gate(() => void openVoiceNow());
 
   // The model needs an on-screen decision (an approval, a spend): close voice and
   // remember to reopen it once the decision is answered. A plan revision and a
@@ -639,7 +645,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             setSheetOpen(true);
           }}
           onOpenModeSheet={() => setModeSheetOpen(true)}
-          onOpenVoice={() => void openVoice()}
+          onOpenVoice={openVoice}
           onSend={(text, attachments) => {
             if (!conv) {
               // Never start a chat on a brain that cannot answer yet. Hold the
@@ -743,6 +749,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ) : null}
 
       {modeSheetOpen ? <ModeSheet onClose={() => setModeSheetOpen(false)} /> : null}
+      {voiceConsent.sheet}
 
       <VoiceMode
         open={voiceOpen}

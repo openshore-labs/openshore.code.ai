@@ -66,6 +66,12 @@ export interface Routine {
   access: RoutineAccess;
   /** Wall-clock cap for one run, in minutes. */
   maxMinutes: number;
+  /** "This routine may search the web", declared on the setup card. Web
+   *  search and fetch ask first everywhere else, but nobody is there to answer
+   *  an unattended run, so the answer is given up front: true pre-approves
+   *  network for this routine's sessions, false (the default, and absent on a
+   *  routine saved before the setting existed) denies it without asking. */
+  webSearch?: boolean;
   ownerUserId?: string;
   createdAt: string;
   updatedAt: string;
@@ -96,6 +102,7 @@ export interface RoutineInput {
   enabled?: boolean;
   access?: RoutineAccess;
   maxMinutes?: number;
+  webSearch?: boolean;
 }
 
 export const ROUTINE_LIMITS = {
@@ -184,6 +191,10 @@ export function validateRoutineInput(
         };
       }
     }
+    if (b.webSearch !== undefined && typeof b.webSearch !== 'boolean') {
+      return { ok: false, error: 'webSearch must be true or false.' };
+    }
+    const webSearch = b.webSearch === true;
     const enabled = b.enabled === undefined ? true : b.enabled === true;
     const agentId =
       typeof b.agentId === 'string' && b.agentId.trim() ? b.agentId.trim() : undefined;
@@ -202,6 +213,7 @@ export function validateRoutineInput(
         enabled,
         access,
         maxMinutes,
+        webSearch,
       },
     };
   } catch (err) {
@@ -324,4 +336,5 @@ export const PRESET_ROUTINE = {
   schedule: { hour: 6, minute: 0, days: [1, 2, 3, 4, 5] } as RoutineSchedule,
   access: 'read-only' as RoutineAccess,
   maxMinutes: 15,
+  webSearch: false,
 };

@@ -111,7 +111,13 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     const label = request.kind === 'cloud-spend' ? 'CLOUD SPEND' : `approve ${request.toolName}`;
     out(t.warn(`\n${label}: ${request.summary}`));
     if (request.detail) out(t.muted(request.detail.split('\n').slice(0, 12).join('\n')));
-    rl.question(t.warn('yes once [y], yes for session [a], no [n]: '), (answer) => {
+    // Web access asks once per session: one yes covers the rest, so there is
+    // no "once" to offer.
+    const prompt =
+      request.grant === 'session'
+        ? 'allow for this session [y], not now [n]: '
+        : 'yes once [y], yes for session [a], no [n]: ';
+    rl.question(t.warn(prompt), (answer) => {
       const ch = answer.trim().toLowerCase();
       driver.answerApproval(request.id, {
         approve: ch === 'y' || ch === 'a' || ch === 'yes',

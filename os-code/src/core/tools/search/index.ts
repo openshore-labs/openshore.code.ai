@@ -41,3 +41,21 @@ export function searchProviderFor(config: SearchConfig): SearchProvider {
       return duckduckgoProvider();
   }
 }
+
+/** The search service a query goes to, by name, for the approval card: the
+ *  person sees exactly who receives the query before it leaves. */
+export function searchServiceName(config: Pick<SearchConfig, 'backend'>): string {
+  switch (config.backend) {
+    case 'brave':
+      return 'Brave Search';
+    case 'searxng':
+      return 'your SearXNG server';
+    case 'tavily':
+      return 'Tavily';
+    case 'perplexity':
+      return 'Perplexity';
+    case 'duckduckgo':
+    default:
+      return 'DuckDuckGo';
+  }
+}

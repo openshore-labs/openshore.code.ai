@@ -26,7 +26,7 @@ async function readIndex(resourceId: string): Promise<IndexDoc> {
 export const localProvider: StorageProvider = {
   id: 'local',
   label: 'This device',
-  blurb: 'Stored here, sealed at rest. Private by construction.',
+  blurb: 'Stored here, sealed with this device key. Never synced.',
   ready: true,
 
   async list(resourceId) {

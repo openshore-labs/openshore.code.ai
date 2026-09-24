@@ -48,7 +48,10 @@ describe('creating an account asks for age and states the terms', () => {
     expect(card).toMatch(/if \(creating && !adult\)/);
     // Both account-making paths pass creating: the button and the magic link.
     expect(card).toMatch(/'',\s*true,\s*\);/);
-    expect(card).toMatch(/sendMagicLink\(addr\),[\s\S]{0,80}mode === 'signup'/);
+    // The magic link creates an account only from create mode (pass two B).
+    expect(card).toMatch(
+      /sendMagicLink\(addr, \{ createAccount: mode === 'signup' \}\),[\s\S]{0,80}mode === 'signup'/,
+    );
   });
 
   it('states the Terms of Use and Privacy Policy under the button, as links', () => {

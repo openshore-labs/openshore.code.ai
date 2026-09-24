@@ -146,15 +146,40 @@ export async function resendConfirmation(email: string, redirectTo: string): Pro
   if (!res.ok) throw new Error(await readError(res));
 }
 
+/** What a sign-in link for an address with no account says. */
+export const MAGIC_LINK_NO_ACCOUNT =
+  'No account uses that email yet. Choose Create an account to make one.';
+
 /** Send a magic-link / OTP email. The link returns to redirectTo (the app's own
- *  deep-link origin), where handleAuthCallback parses the tokens. */
-export async function signInWithOtp(email: string, redirectTo: string): Promise<void> {
+ *  deep-link origin), where handleAuthCallback parses the tokens.
+ *
+ *  `createUser` is false unless the caller is the create-account path, which
+ *  has already taken the 18+ declaration: a sign-in link must never create an
+ *  account, or it would be a way around the age check (advisory org, minimum
+ *  age 18, 2026-09-24). */
+export async function signInWithOtp(
+  email: string,
+  redirectTo: string,
+  createUser = false,
+): Promise<void> {
   const res = await fetch(`${base()}/auth/v1/otp`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ email, create_user: true, options: { email_redirect_to: redirectTo } }),
+    body: JSON.stringify({
+      email,
+      create_user: createUser,
+      options: { email_redirect_to: redirectTo },
+    }),
   });
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) {
+    const message = await readError(res);
+    // GoTrue refuses a sign-in link for an unknown address when create_user is
+    // false ("Signups not allowed for otp"); say what to do instead.
+    if (!createUser && /signups? not allowed|user not found/i.test(message)) {
+      throw new Error(MAGIC_LINK_NO_ACCOUNT);
+    }
+    throw new Error(message);
+  }
 }
 
 /** Exchange a refresh token for a fresh session. */

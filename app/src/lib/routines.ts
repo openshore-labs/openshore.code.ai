@@ -307,6 +307,22 @@ export function accessLabel(access: RoutineView['access']): string {
   return access === 'edit' ? 'May edit files' : 'Read-only';
 }
 
+/** Web search and fetch ask first everywhere else, but nobody is there to
+ *  answer an unattended run, so a routine declares web use on its setup card
+ *  (advisory org, 2026-09-24). Off by default. */
+export const ROUTINE_WEB_LABEL = 'This routine may search the web';
+
+export function routineWebHint(on: boolean): string {
+  return on
+    ? 'Web searches and page reads run without asking, only for this routine. The query goes to your search service.'
+    : 'No web searches or page reads. Nothing is asked while you are away; the routine works from the workspace.';
+}
+
+/** The meta line's web mark: shown only when the routine uses the web. */
+export function webLabel(view: { webSearch?: boolean }): string | undefined {
+  return view.webSearch === true ? 'Searches the web' : undefined;
+}
+
 export { scheduleLabel, scheduleTimeLabel, nextSlotAfter };
 
 /** The one line at the top of the command center. */
@@ -357,6 +373,7 @@ export function presetRoutineInput(
     schedule: { ...PRESET_ROUTINE.schedule, days: [...PRESET_ROUTINE.schedule.days] },
     access: PRESET_ROUTINE.access,
     maxMinutes: PRESET_ROUTINE.maxMinutes,
+    webSearch: PRESET_ROUTINE.webSearch,
     enabled: true,
   };
 }

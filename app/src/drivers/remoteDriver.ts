@@ -187,6 +187,9 @@ export async function daemonCreateSession(
     instructions?: string;
     permissionMode?: PermissionMode;
     humanize?: boolean;
+    /** "Ask before searching the web" (default on). False relaxes this
+     *  session's web ask on the hub; it never overrides the hub's deny. */
+    askBeforeWeb?: boolean;
     /** The Agentic Current that is on, as the handle its engine tool needs. */
     currents?: CurrentsHandles;
   } = {},
@@ -199,6 +202,7 @@ export async function daemonCreateSession(
       ...(opts.instructions ? { instructions: opts.instructions } : {}),
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
+      ...(typeof opts.askBeforeWeb === 'boolean' ? { askBeforeWeb: opts.askBeforeWeb } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
     }),
     signal: AbortSignal.timeout(10_000),

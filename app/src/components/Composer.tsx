@@ -37,6 +37,7 @@ import {
 import { buildVideoAttachment } from '../lib/videoAttach.js';
 import { pickVideoBackend } from '../lib/videoBackends.js';
 import { useDictation } from '../hooks/useDictation.js';
+import { useVoiceConsent } from './VoiceConsentSheet.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { CloseGlyph } from './SheetGlyphs.js';
 import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
@@ -604,13 +605,22 @@ export function Composer({
     void addFiles(Array.from(e.dataTransfer.files ?? []));
   };
 
+  const voiceConsent = useVoiceConsent();
   const micTap = () => {
     if (!dictation.supported) {
       showToast('Voice input needs the native app update. Type for now.');
       return;
     }
-    if (!dictation.listening) baseRef.current = value.trim();
-    dictation.toggle();
+    if (dictation.listening) {
+      dictation.toggle();
+      return;
+    }
+    // Off the iPhone the speech service may send audio to its provider, so the
+    // first tap asks (voiceConsent.ts); Allow starts listening in the same tap.
+    voiceConsent.gate(() => {
+      baseRef.current = value.trim();
+      dictation.toggle();
+    });
   };
 
   const modelLabel = shortLabel(source);
@@ -980,6 +990,7 @@ export function Composer({
       {trayPresence.mounted ? (
         <AttachTray closing={trayPresence.closing} onPick={pickFrom} />
       ) : null}
+      {voiceConsent.sheet}
     </div>
   );
 }

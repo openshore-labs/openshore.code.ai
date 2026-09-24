@@ -250,7 +250,8 @@ export function SignInCard() {
           onClick={() =>
             void run(
               false,
-              () => sendMagicLink(addr),
+              // Only create mode (past the 18+ checkbox) may create an account.
+              () => sendMagicLink(addr, { createAccount: mode === 'signup' }),
               'Check your email for a sign-in link.',
               mode === 'signup',
             )

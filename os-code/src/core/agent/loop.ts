@@ -1019,6 +1019,9 @@ export class AgentSession {
       } catch (err) {
         detail = `Preview failed: ${(err as Error).message}`;
       }
+      // Web search and fetch (and the other network tools) ask once per
+      // session: the card says so, and the first yes covers the rest.
+      const sessionGrant = tool.risk === 'network' && !tool.alwaysAsk;
       const answer = await this.awaitApprovalOrAbort({
         id: call.id,
         kind: 'tool',
@@ -1026,10 +1029,18 @@ export class AgentSession {
         risk: tool.risk,
         summary,
         detail,
+        ...(sessionGrant ? { grant: 'session' as const } : {}),
       });
       // C1: the session was aborted while this approval was pending. Do not run
       // the tool; report an abort so run() settles instead of wedging.
       if (answer === 'aborted') return 'aborted';
+      if (sessionGrant && answer.approve && !permissions.riskAllowedForSession('network')) {
+        permissions.allowRiskForSession('network');
+        this.emit({
+          type: 'note',
+          message: 'Web access is allowed for the rest of this session.',
+        });
+      }
       if (answer.alwaysThisSession && answer.approve) {
         if (tool.alwaysAsk) {
           // An always-ask tool cannot be granted for the session, by design.

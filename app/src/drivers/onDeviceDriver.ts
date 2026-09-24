@@ -2,14 +2,23 @@
 // plugin. Chat-only by design in v1 (repo tools live on the desktop
 // connection), private by construction: nothing ever leaves the phone, except
 // a web search Harbor explicitly asks for, which the user can point at their
-// own key instead of the DuckDuckGo default.
+// own key instead of the DuckDuckGo default. With "Ask before searching the
+// web" on (the default), the exact query and the service it goes to are shown
+// on a card first, and only a tap on Search lets it leave.
 import type { PluginListenerHandle } from '@capacitor/core';
-import type { ApprovalAnswer } from 'os-code/protocol';
+import type { ApprovalAnswer, ApprovalRequest } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import { STALL_TIMEOUT_MS, ensureDeviceModel, forgetDeviceModel } from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
-import { formatSearchResults, resolveSearchKey, webSearch } from '../lib/webSearch.js';
+import {
+  SEARCH_DECLINED_NOTE,
+  formatSearchResults,
+  resolveSearchKey,
+  searchServiceLabel,
+  webSearch,
+  type SearchKey,
+} from '../lib/webSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 import type { SeedTurn } from '../state/types.js';
@@ -27,6 +36,7 @@ const SYSTEM_PROMPT = [
 const SEARCH_LINE = new RegExp(`^${HARBOR_SEARCH_PREFIX}\\s*(.+)$`, 'i');
 
 let requestSeq = 0;
+let searchAskSeq = 0;
 
 export class OnDeviceDriver implements ChatDriver {
   readonly kind = 'device' as const;
@@ -41,6 +51,8 @@ export class OnDeviceDriver implements ChatDriver {
   private turn = 1;
   /** At most one search per user message, so a confused model can't loop. */
   private searchedThisTurn = false;
+  /** The search card waiting on the person, if any. */
+  private pendingSearch?: { id: string; settle: (answer: boolean | 'aborted') => void };
 
   private readonly guide: boolean;
   private readonly searchable: boolean;
@@ -56,6 +68,9 @@ export class OnDeviceDriver implements ChatDriver {
     /** The project's standing instructions and the chat's repo context, so
      *  the pocket model works from the same brief as every other brain. */
     private readonly extraSystem?: string,
+    /** "Ask before searching the web" (default on), read at search time so a
+     *  flip in Settings applies mid-chat. On shows the query on a card first. */
+    private readonly askBeforeWeb: () => boolean = () => true,
   ) {
     this.searchable = isHarbor(modelId);
     this.guide = isHarborMini(modelId) || this.searchable;
@@ -209,13 +224,40 @@ export class OnDeviceDriver implements ChatDriver {
     if (searchMatch) {
       this.searchedThisTurn = true;
       const query = searchMatch[1]!.trim();
+      // Reading the key is local; nothing has left the phone yet.
+      let key: SearchKey | undefined;
+      try {
+        key = await resolveSearchKey(this.researchOn);
+      } catch {
+        key = undefined;
+      }
+      // Ask first: the exact query and the service it goes to, on a card.
+      // Only Search lets it leave; Not now continues the turn without it.
+      if (this.askBeforeWeb()) {
+        const answer = await this.askToSearch(query, searchServiceLabel(key?.backend));
+        if (answer === 'aborted') {
+          this.emitter.emit({ type: 'task-done', reason: 'aborted' });
+          return;
+        }
+        if (!answer) {
+          this.history.push({ role: 'user', content: SEARCH_DECLINED_NOTE });
+          this.turn += 1;
+          this.emitter.emit({
+            type: 'turn-start',
+            turn: this.turn,
+            model: this.modelName,
+            providerKind: 'local',
+          });
+          await this.generate();
+          return;
+        }
+      }
       // The search line itself is a control message, not a real reply: leave
       // it out of the visible transcript and out of history, so the model
       // does not later "remember" having already announced it.
       this.emitter.emit({ type: 'status', message: `Searching the web for "${query}".` });
       let resultText: string;
       try {
-        const key = await resolveSearchKey(this.researchOn);
         const results = await webSearch(query, key);
         resultText = formatSearchResults(query, results);
         if (results.length) {
@@ -247,13 +289,40 @@ export class OnDeviceDriver implements ChatDriver {
     });
   }
 
-  abort(): void {
-    if (this.activeRequestId) void Llama.stop({ requestId: this.activeRequestId });
+  /** Put the search on the approval stack (the same sheet every approval
+   *  uses) and wait for Search or Not now. */
+  private askToSearch(query: string, service: string): Promise<boolean | 'aborted'> {
+    const id = `search_${searchAskSeq++}`;
+    const request: ApprovalRequest = {
+      id,
+      kind: 'tool',
+      toolName: 'webSearch',
+      risk: 'network',
+      summary: `Search the web for: ${query}`,
+      detail: `The query goes to ${service}. Nothing leaves this phone until you tap Search.`,
+    };
+    return new Promise((resolve) => {
+      this.pendingSearch = {
+        id,
+        settle: (answer) => {
+          this.pendingSearch = undefined;
+          this.emitter.emit({ type: 'approval-resolved', id, approved: answer === true });
+          resolve(answer);
+        },
+      };
+      this.emitter.emit({ type: 'approval-request', request });
+    });
   }
 
-  answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {
-    // On-device chat has no user-approved tools: search runs unprompted, the
-    // same way it would for a person typing a question into a search engine.
+  abort(): void {
+    if (this.activeRequestId) void Llama.stop({ requestId: this.activeRequestId });
+    // A stop while the search card is up ends the turn; the query never leaves.
+    this.pendingSearch?.settle('aborted');
+  }
+
+  answerApproval(approvalId: string, answer: ApprovalAnswer): void {
+    // The only approval on-device chat raises is the ask-first search card.
+    if (this.pendingSearch?.id === approvalId) this.pendingSearch.settle(answer.approve);
   }
 
   dispose(): void {

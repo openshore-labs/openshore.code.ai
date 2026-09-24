@@ -6,7 +6,13 @@
 // controls are written as first-class assertions, not an afterthought.
 import { describe, expect, it } from 'vitest';
 import { EthicsGuard } from '../src/core/ethics/chokepoint.js';
-import { classifyRules, readAssertion, REFUSALS } from '../src/core/ethics/classify.js';
+import {
+  classifyRules,
+  likenessIsVideoOrVoice,
+  LIKENESS_VIDEO_VOICE_REFUSAL,
+  readAssertion,
+  REFUSALS,
+} from '../src/core/ethics/classify.js';
 import { detectSignals } from '../src/core/ethics/signals.js';
 import {
   evaluateEnforcement,
@@ -111,9 +117,9 @@ describe('Tier 2: the consent gate', () => {
     expect(result.decision.tier).toBe(2);
   });
 
-  it('allows it when the person asserts authorization in the same message', async () => {
+  it('allows an image when the person asserts authorization in the same message', async () => {
     const result = await screen(
-      'clone the voice of Jordan Ellis for our ad. I have written permission from Jordan Ellis.',
+      'generate a photo of Jordan Ellis for our ad. I have written permission from Jordan Ellis.',
     );
     expect(result.decision.action).toBe('allow');
     expect(result.decision.requiresProvenance).toBe(true);
@@ -121,26 +127,64 @@ describe('Tier 2: the consent gate', () => {
     expect(result.record?.action).toBe('allowed-with-assertion');
   });
 
-  it('allows a person to synthesize their own voice', async () => {
+  // Provenance narrowed to what exists (advisory org, 2026-09-24): only an
+  // engine-generated PNG image can carry a provenance record, so video or voice
+  // of a real person is refused, authorization or not, until it can be marked.
+  it('refuses a voice clone of a real person even with authorization', async () => {
+    const result = await screen(
+      'clone the voice of Jordan Ellis for our ad. I have written permission from Jordan Ellis.',
+    );
+    expect(result.decision.action).toBe('block');
+    expect(result.decision.tier).toBe(2);
+    expect(result.decision.category).toBe('likeness');
+    expect(result.decision.message).toBe(LIKENESS_VIDEO_VOICE_REFUSAL);
+    expect(result.record?.action).toBe('blocked');
+  });
+
+  it('refuses a person their own synthesized voice too, until it can be marked', async () => {
     const result = await screen('generate a voice clone of my own voice, this is me speaking');
+    expect(result.decision.action).toBe('block');
+    expect(result.decision.message).toBe(LIKENESS_VIDEO_VOICE_REFUSAL);
+  });
+
+  it('allows a person an image of themselves', async () => {
+    const result = await screen('generate a portrait of me, this is me, a photo of my own face');
     expect(result.decision.action).toBe('allow');
     expect(result.decision.subject).toBe('self');
   });
 
-  it('honors an assertion already on file for that subject only', async () => {
+  it('refuses a video of a real person even with an assertion on file', async () => {
+    const consents = [{ subject: 'Jordan Ellis', assertedAt: new Date().toISOString() }];
+    const video = await guard.screenInput({
+      text: 'generate a video of Jordan Ellis speaking the script',
+      modelPath: 'cloud',
+      consents,
+    });
+    expect(video.decision.action).toBe('block');
+    expect(video.decision.message).toBe(LIKENESS_VIDEO_VOICE_REFUSAL);
+  });
+
+  it('honors an assertion already on file for that subject only (images)', async () => {
     const consents = [{ subject: 'Jordan Ellis', assertedAt: new Date().toISOString() }];
     const allowed = await guard.screenInput({
-      text: 'generate a video of Jordan Ellis speaking the script',
+      text: 'generate a photo of Jordan Ellis at the launch event',
       modelPath: 'cloud',
       consents,
     });
     expect(allowed.decision.action).toBe('allow');
     const other = await guard.screenInput({
-      text: 'generate a video of Taylor Brooks speaking the script',
+      text: 'generate a photo of Taylor Brooks at the launch event',
       modelPath: 'cloud',
       consents,
     });
     expect(other.decision.action).toBe('block');
+  });
+
+  it('keeps a picture of a person giving a speech in the image path', () => {
+    expect(likenessIsVideoOrVoice('a photo of Jordan Ellis giving a speech')).toBe(false);
+    expect(likenessIsVideoOrVoice('clip art of Jordan Ellis')).toBe(false);
+    expect(likenessIsVideoOrVoice('a deepfake video of Jordan Ellis')).toBe(true);
+    expect(likenessIsVideoOrVoice('make it sound like Jordan Ellis')).toBe(true);
   });
 
   it('reads an assertion out of plain words', () => {

@@ -6,6 +6,8 @@
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { tierById, priceLabel } from '../lib/plans.js';
+import { platform } from '../lib/platform.js';
+import { billingStatusLine, cannotGrowHint, showsPurchasePath } from '../lib/adminBilling.js';
 import { BackBar } from '../components/BackBar.js';
 import { ReviewModeration } from '../components/ReviewModeration.js';
 import { EnforcementReview } from '../components/EnforcementReview.js';
@@ -53,6 +55,9 @@ export function AdminScreen() {
   // A1: adding seats or teammates needs an active subscription once the org is
   // billed. Manage Billing / Buy stays open, and the current team keeps working.
   const canGrow = canGrowTeam();
+  // iOS shows seat counts only: no price, no purchase or renew path (Apple
+  // 3.1.1; advisory org ruling 2026-09-24). See lib/adminBilling.ts.
+  const purchasePath = showsPurchasePath(platform() === 'ios');
 
   const add = async () => {
     const clean = email.trim();
@@ -84,19 +89,23 @@ export function AdminScreen() {
                 {org.seatCount} {org.seatCount === 1 ? 'seat' : 'seats'} declared. {tier.blurb}
               </div>
             </div>
-            <span className="pill price">{priceLabel(tier)}</span>
-            <button
-              className="btn ghost"
-              style={{ padding: '8px 14px' }}
-              onClick={() => {
-                setSeats(org.seatCount);
-                setSeatEdit((v) => !v);
-              }}
-            >
-              {seatEdit ? 'Close' : 'Change'}
-            </button>
+            {purchasePath ? (
+              <>
+                <span className="pill price">{priceLabel(tier)}</span>
+                <button
+                  className="btn ghost"
+                  style={{ padding: '8px 14px' }}
+                  onClick={() => {
+                    setSeats(org.seatCount);
+                    setSeatEdit((v) => !v);
+                  }}
+                >
+                  {seatEdit ? 'Close' : 'Change'}
+                </button>
+              </>
+            ) : null}
           </div>
-          {seatEdit ? (
+          {seatEdit && purchasePath ? (
             <div style={{ marginTop: 12 }}>
               <div className="field">
                 <label>How many people will use it?</label>
@@ -132,23 +141,17 @@ export function AdminScreen() {
               manage the subscription. */}
           <div className="card-row" style={{ marginTop: 12 }}>
             <div className="grow">
-              <div className="sub">
-                {entitlement
-                  ? `Subscription ${entitlement.status}${
-                      entitlement.validUntil
-                        ? ` · renews ${new Date(entitlement.validUntil).toLocaleDateString()}`
-                        : ''
-                    }`
-                  : 'No active subscription yet. Seats are purchased on the web.'}
-              </div>
+              <div className="sub">{billingStatusLine(entitlement, !purchasePath)}</div>
             </div>
-            <button
-              className={`btn ${entitlement ? 'ghost' : 'primary'}`}
-              style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}
-              onClick={() => void manageBilling()}
-            >
-              {entitlement ? 'Manage billing' : 'Buy seats on the web'}
-            </button>
+            {purchasePath ? (
+              <button
+                className={`btn ${entitlement ? 'ghost' : 'primary'}`}
+                style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}
+                onClick={() => void manageBilling()}
+              >
+                {entitlement ? 'Manage billing' : 'Buy seats on the web'}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -178,8 +181,7 @@ export function AdminScreen() {
             </div>
             {!canGrow ? (
               <p className="hint" style={{ marginTop: 10 }}>
-                Renew your subscription to add teammates. Your current team keeps working. Use
-                Manage billing above to renew.
+                {cannotGrowHint(!purchasePath)}
               </p>
             ) : null}
           </div>

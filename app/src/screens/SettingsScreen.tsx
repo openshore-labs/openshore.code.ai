@@ -61,6 +61,8 @@ import {
   type AgenticCurrentId,
 } from '../lib/currents.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { KeySealRow, VoiceConsentRow, WebAskRow } from '../components/PrivacyRows.js';
+import { sealLine } from '../lib/keySeal.js';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet.js';
 import { exportMyData, saveExport } from '../lib/accountDeletion.js';
 import { VoicePicker } from '../components/VoicePicker.js';
@@ -146,17 +148,6 @@ function LiveSeal({ facts }: { facts: StackHealthSealFact[] }) {
       </p>
     </>
   );
-}
-
-function keyStoreLabel(): string {
-  switch (platform()) {
-    case 'ios':
-      return 'iOS Keychain';
-    case 'electron':
-      return 'system keychain';
-    default:
-      return 'browser store';
-  }
 }
 
 function platformLabel(): string {
@@ -506,7 +497,7 @@ export function SettingsScreen() {
             renderTrigger={(open) => (
               <SettingsRow
                 label="Privacy and Conditions"
-                sub="Plainly, encrypted on this device, local models honestly"
+                sub="Plainly, where your data key lives, local models honestly"
                 value={facts ? (sealed ? 'Sealed' : 'On this device') : 'On this device'}
                 onClick={open}
               />
@@ -522,14 +513,14 @@ export function SettingsScreen() {
               guardrail blocks a request and you are signed in, a short record of that block reaches
               your account. What it carries is listed there, and it never carries your text.
             </p>
-            <h3 className="settings-sheet-head">Encrypted on this device</h3>
+            <h3 className="settings-sheet-head">Where your data key lives</h3>
             <p>
-              Your chats, projects, crew, settings, and session journals are sealed at rest with
-              AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
-              {keyStoreLabel()}, whenever one is available, and it never leaves this machine. API
-              keys are held the same way. When you send a turn to a cloud provider, that one
-              provider sees that one request on your own account. We do not, and there is nothing in
-              between.
+              Your chats, projects, crew, settings, and session journals are sealed with AES-256
+              under one key made on this device, and that key never leaves it. How well the key is
+              kept depends on where you run OpenShore. Here:{' '}
+              {sealLine(platform(), desktopStatus?.keyStore)} API keys are held the same way. When
+              you send a turn to a cloud provider, that one provider sees that one request on your
+              own account. We do not, and there is nothing in between.
             </p>
             {facts ? <LiveSeal facts={facts} /> : null}
             <h3 className="settings-sheet-head">Local models, honestly</h3>
@@ -548,6 +539,8 @@ export function SettingsScreen() {
               stays local even though it is screened.
             </p>
           </InfoSheet>
+          <KeySealRow />
+          <WebAskRow />
         </SettingsGroup>
 
         {/* The trust statement. One source (os-code/protocol), shown here and on
@@ -576,10 +569,10 @@ export function SettingsScreen() {
               of those.
             </p>
             <p>
-              Synthesized media only, meaning an image, a video, or a voice. Recreating the face or
-              voice of a real, identifiable person is held back until you state you are authorized
-              for that specific person, and what comes out carries provenance metadata saying it was
-              AI-generated.
+              Synthesized media only. An image of a real, identifiable person is held back until you
+              state you are authorized for that specific person. Images of a real person made on
+              your computer carry an unsigned provenance record saying they are AI-generated. Video
+              or voice of a real person is refused until it can be marked the same way.
             </p>
             <h3 className="settings-sheet-head">What is not blocked</h3>
             <p>
@@ -933,6 +926,7 @@ export function SettingsScreen() {
               />
             }
           />
+          <VoiceConsentRow />
         </SettingsGroup>
 
         {/* Wayfinding: how the agent finds its way. On by default. */}

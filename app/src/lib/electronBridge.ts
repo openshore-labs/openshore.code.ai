@@ -77,6 +77,9 @@ export interface DesktopStatus {
     specialists: Array<{ role: string; model: string }>;
   };
   connections: { anthropic: boolean; openai: boolean; github: boolean };
+  /** Where this computer's secret store keeps the key (safeStorage), for the
+   *  per-platform privacy line. Absent on an older build. */
+  keyStore?: import('./keySeal.js').KeyStoreStatus;
 }
 
 /** One device paired to this desktop, as shown in the revoke list. `id` is the
@@ -134,6 +137,9 @@ export interface OscodeBridge {
       projectName?: string;
       projectSecrets?: string;
       humanize?: boolean;
+      /** The "Ask before searching the web" setting. False relaxes this
+       *  session's web ask to allow; it never overrides a configured deny. */
+      askBeforeWeb?: boolean;
       /** The person's Codemagic token, so the engine's codemagic tool can drive
        *  App Launch builds. Delivered only on this local engine and only when
        *  Codemagic Access is on; never sent to a remote daemon. */
