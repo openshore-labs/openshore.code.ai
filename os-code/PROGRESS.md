@@ -964,6 +964,15 @@ extended that day by the graduated enforcement ladder (migration
 
 The box (i5-7300U, 8 GB, CPU only), 49 questions with live DuckDuckGo: with the harness 94% vs 89% without on `smollm2:135m`, 94% vs 90% on the phone's Q4_K_M quant (`docs/guide-eval-2026-09-24.md`). Web and chat questions all 100%. The misses were the model restating setup advice without the size (fit-8, fit-4090, fit-mac on both runs), a stretch reply without Harbor or DeepBlue, and one em dash. So the harness now shows a fixed line after the reply with the worked-out DeepBlue size, as it already did for a stretch, and strips any em dash from Harbor Lite's words; the eval scores what the chat shows. The rest (stack, pair, bench, reach) moved between runs, so single-run noise, not yet a card fix.
 
+### 2026-09-24, the first chat opens at once; Harbor Lite really ships in the app
+
+TestFlight showed the plain chat for about a minute before the walk: no build
+carried Harbor Lite's weights, so first open downloaded them and the walk waited
+on that. `beginGuidedSetup` now opens the chat and its scripted hello at once
+and readies the model in the background; a line typed before it is ready waits
+as a queued message (`holdForHarborLite`). Codemagic now bundles the weights
+into `public/models/` (see docs/HARBOR.md), which `bundledURL` reads.
+
 ### 2026-09-24, Harbor Lite: the guide harness, web search, and setup advice
 
 Founder: raise Harbor Lite's floor. It must search the web (DuckDuckGo), answer basic sourced questions, say when it is stretched, know every part of the app and why it exists, and reason about a person's needs and equipment. A 135M model cannot do that alone, so the harness does the mechanical work (tenet 3): `app/src/lib/guideHarness.ts` (pure) plans each turn. It picks 3 of 50 verified fact cards (`guideCards.ts`, one per screen or control, current names read from the roster), searches the web for a factual question the cards do not cover (status line plus citations, a failed search said plainly), sizes DeepBlue from the person's stated RAM or GPU with the First Seat fit table, and marks a coding or heavy ask as a stretch, with a fixed honest note after the reply. The persona is short. Eval (tenet 2): 49 questions, route 100%, card recall 100% (CI, `test/guideEval.test.ts`); prompt about 580 tokens on average (880 at most) versus about 6,300 for every card on every turn. Answer quality with versus without the harness is `pnpm --filter oscode-app eval:guide` on the reference box (smollm2:135m), not yet run. Also fixed: the setup wrap-up pointed to a Settings "Get started" group that does not exist, and the shared guide facts said Linux-only and treated the Marketplace as open.
@@ -971,21 +980,3 @@ Founder: raise Harbor Lite's floor. It must search the web (DuckDuckGo), answer 
 ### 2026-09-24, Harbor Lite no longer sticks on "Warming up"
 
 Founder report: a question in the setup chat sat on "Warming up Harbor Lite" with no reply. Its system prompt (about 10.5k characters) outgrew the 2048-token window it loaded with, so the reply came back empty. Every device model now loads at `DEVICE_CONTEXT_TOKENS` (4096), history is trimmed to fit (`fitDeviceHistory`), and an empty reply ends with an error naming the model (`app/test/deviceContext.test.ts`). Not yet checked on a phone.
-
-### 2026-09-23, every push to main reaches the desktops, with a one-click update bar
-
-Founder: a desktop that is behind main shows a permanent bar at the top, and
-one click downloads and updates. `release.yml` now publishes on every push to
-main that touches the app or engine (a `version` job picks the next patch
-after the newest tag; tags and hand runs work as before) and, when the
-`CODEMAGIC_API_TOKEN`/`CODEMAGIC_APP_ID` secrets are set, starts the Mac build.
-The bar (`components/UpdateBanner.tsx`) is a full-width row above the app in
-an `.app-frame`, no dismiss. Windows and Linux: shows on `update-available`,
-downloads in the background, one click installs (at once, or the moment the
-download lands). macOS, unsigned: one click downloads the newest release that
-has a zip for this Mac, swaps the bundle, relaunches (`electron/macUpdate.ts`,
-pure picks in `electron/updateVersion.ts`), falling back to the release page.
-Checks every 30 minutes. A Mac build made by hand offline works too:
-`pnpm --filter oscode-app release:mac` stamps the release version, builds, and
-uploads the dmg and zip; the updater installs from either. Not yet run on a
-real packaged build.

@@ -192,7 +192,11 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     func bundledURL(for id: String) -> URL? {
         guard Self.bundledModelIds.contains(id) else { return nil }
         let name = sanitize(id)
+        // `public/models` is where the CI build drops it (codemagic.yaml): the
+        // Capacitor `public` folder is already a folder reference in the app's
+        // resources, so no Xcode project edit is needed to ship the file.
         return Bundle.main.url(forResource: name, withExtension: "gguf", subdirectory: "Models")
+            ?? Bundle.main.url(forResource: name, withExtension: "gguf", subdirectory: "public/models")
             ?? Bundle.main.url(forResource: name, withExtension: "gguf")
     }
 
