@@ -6,7 +6,14 @@
 import type { PluginListenerHandle } from '@capacitor/core';
 import type { ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
-import { STALL_TIMEOUT_MS, ensureDeviceModel, forgetDeviceModel } from './deviceModel.js';
+import {
+  DEVICE_CONTEXT_TOKENS,
+  STALL_TIMEOUT_MS,
+  emptyReplyMessage,
+  ensureDeviceModel,
+  fitDeviceHistory,
+  forgetDeviceModel,
+} from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
 import { formatSearchResults, resolveSearchKey, webSearch } from '../lib/webSearch.js';
@@ -139,15 +146,13 @@ export class OnDeviceDriver implements ChatDriver {
     try {
       // The phone has one model slot shared by every device chat (APP-3), so
       // confirm this chat's model is the one loaded before every reply.
-      // Harbor Lite only writes short guidance, so a small context keeps the
-      // KV cache and load time down. Harbor is bigger and does an extra
-      // search round-trip, so it gets the full window like a chosen pocket
-      // model does.
+      // Every device model gets the same window: Harbor Lite's system prompt
+      // alone outgrew the 2048 it used to load with.
       const ready = await ensureDeviceModel(
         {
           id: this.modelId,
           name: this.modelName,
-          contextSize: this.guide && !this.searchable ? 2048 : 4096,
+          contextSize: DEVICE_CONTEXT_TOKENS,
         },
         (message) => this.emitter.emit({ type: 'status', message }),
       );
@@ -172,11 +177,15 @@ export class OnDeviceDriver implements ChatDriver {
     this.answer = '';
     const requestId = `req_${requestSeq++}`;
     this.activeRequestId = requestId;
+    const system = this.systemPrompt();
+    const maxTokens = this.guide ? (this.searchable ? 768 : 512) : 1024;
     const res = await Llama.generate({
       requestId,
-      system: this.systemPrompt(),
-      messages: this.history,
-      maxTokens: this.guide ? (this.searchable ? 768 : 512) : 1024,
+      system,
+      // Only the newest turns that fit the window beside the prompt, so a long
+      // chat never overflows it and comes back empty.
+      messages: fitDeviceHistory(system, this.history, maxTokens),
+      maxTokens,
       temperature: this.guide ? 0.4 : 0.7,
     });
     // A refused start already reported generationDone; only a started reply
@@ -241,6 +250,16 @@ export class OnDeviceDriver implements ChatDriver {
 
     if (text) this.history.push({ role: 'assistant', content: text });
     this.emitter.emit({ type: 'text-final', text });
+    // A finished reply with no words is a failure, not a quiet success: say
+    // so, rather than leaving the chat on its "Warming up" line.
+    if (!text && stopReason === 'end') {
+      this.emitter.emit({
+        type: 'task-done',
+        reason: 'error',
+        message: emptyReplyMessage(this.modelName),
+      });
+      return;
+    }
     this.emitter.emit({
       type: 'task-done',
       reason: stopReason === 'stopped' ? 'aborted' : 'complete',
