@@ -22,6 +22,9 @@ export type ThreadItem =
       streaming: boolean;
       /** The model that wrote this bubble, so a specialist's answer is named. */
       model?: string;
+      /** A scripted guide line that writes itself on its first showing
+       *  (lib/introWalk.ts). A settled item never replays it. */
+      paced?: 'greeting' | 'walk';
     }
   // The model's reasoning, collapsed to "Thought for Ns" and expandable.
   | {

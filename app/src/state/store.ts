@@ -167,6 +167,17 @@ import {
   type GuidedSetupProgress,
   type SetupFacts,
 } from '../lib/guidedSetup.js';
+import { REVEAL_SKIP_EVENT, prefersReducedMotion } from '../lib/streamSmoothing.js';
+import {
+  GREETING_PACE,
+  INTRO_START_MS,
+  READ_PAUSE_MS,
+  WALK_PACE,
+  introFinished,
+  introSkipped,
+  pacedDurationMs,
+  setIntroPlaying,
+} from '../lib/introWalk.js';
 import {
   HARBOR_MINI_BUNDLED,
   HARBOR_MINI_GREETING,
@@ -1919,16 +1930,27 @@ export const useApp = create<AppState>((set, get, api) => {
   // and settles a tick later, so it arrives like a reply (a few words at a
   // time, fading in) rather than landing as a block. Never while the guide is
   // mid-reply: the walk resumes when that reply ends.
-  function appendGuideMessage(conversationId: string, text: string): boolean {
+  function appendGuideMessage(
+    conversationId: string,
+    text: string,
+    opts: { paced?: 'greeting' | 'walk'; id?: string; settled?: boolean } = {},
+  ): boolean {
     const conv = get().conversations[conversationId];
     if (!conv || conv.thread.busy) return false;
-    const id = `${conversationId}-setup-${Date.now().toString(36)}${(guideSeq++).toString(36)}`;
+    const id =
+      opts.id ?? `${conversationId}-setup-${Date.now().toString(36)}${(guideSeq++).toString(36)}`;
+    // A settled line (reduced motion, a skip) lands whole; otherwise it mounts
+    // live and reveals, at its paced beat when it has one.
+    const paced = opts.settled ? {} : { paced: opts.paced ?? ('walk' as const) };
     const patch = (streaming: boolean) =>
       set((st) => {
         const c = st.conversations[conversationId];
         if (!c) return st;
         const items = streaming
-          ? [...c.thread.items, { kind: 'assistant' as const, id, text, streaming: true }]
+          ? [
+              ...c.thread.items,
+              { kind: 'assistant' as const, id, text, streaming: !opts.settled, ...paced },
+            ]
           : c.thread.items.map((i) =>
               i.id === id && i.kind === 'assistant' ? { ...i, streaming: false } : i,
             );
@@ -1945,6 +1967,107 @@ export const useApp = create<AppState>((set, get, api) => {
       void persistConversations(get());
     }, 0);
     return true;
+  }
+
+  // The first open's letter (lib/introWalk.ts, "Tide Letter"): stillness, the
+  // greeting written in word groups, a reading pause, then the walk's opening
+  // at a brisker pace; the step's buttons follow once its last word inks. Each
+  // beat is scheduled from the exact reveal plan of the one before it. A tap
+  // or a keystroke skips to the end (every remaining line lands whole), and
+  // reduced motion shows it all at once.
+  function writeIntroLetter(conversationId: string, opening: string): void {
+    const helloId = `${conversationId}-hello`;
+    // No screen (a test, a headless run) or reduced motion: the letter lands
+    // whole, with no typing and no pauses.
+    if (typeof window === 'undefined' || prefersReducedMotion()) {
+      appendGuideMessage(conversationId, HARBOR_MINI_SETUP_GREETING, {
+        id: helloId,
+        settled: true,
+      });
+      appendGuideMessage(conversationId, opening, { settled: true });
+      return;
+    }
+    setIntroPlaying(true);
+    let stage = 0;
+    const timers: number[] = [];
+    const done = () => {
+      timers.forEach((t) => window.clearTimeout(t));
+      window.removeEventListener(REVEAL_SKIP_EVENT, onSkip);
+    };
+    const onSkip = () => {
+      done();
+      introSkipped();
+      if (stage < 1) {
+        appendGuideMessage(conversationId, HARBOR_MINI_SETUP_GREETING, {
+          id: helloId,
+          settled: true,
+        });
+      }
+      if (stage < 2) appendGuideMessage(conversationId, opening, { settled: true });
+      stage = 2;
+    };
+    window.addEventListener(REVEAL_SKIP_EVENT, onSkip);
+    let at = INTRO_START_MS;
+    timers.push(
+      window.setTimeout(() => {
+        stage = 1;
+        appendGuideMessage(conversationId, HARBOR_MINI_SETUP_GREETING, {
+          id: helloId,
+          paced: 'greeting',
+        });
+      }, at),
+    );
+    at += pacedDurationMs(HARBOR_MINI_SETUP_GREETING, GREETING_PACE) + READ_PAUSE_MS;
+    timers.push(
+      window.setTimeout(() => {
+        stage = 2;
+        appendGuideMessage(conversationId, opening, { paced: 'walk' });
+      }, at),
+    );
+    at += pacedDurationMs(opening, WALK_PACE);
+    timers.push(
+      window.setTimeout(() => {
+        done();
+        introFinished();
+      }, at),
+    );
+  }
+
+  // A walk whose letter was cut short (the app closed mid-letter) is made
+  // whole on the next launch, settled, so its chat never sits empty.
+  function repairIntroLetter(): void {
+    const p = get().settings.guidedSetup;
+    if (!p || p.finished) return;
+    const conv = get().conversations[p.conversationId];
+    if (!conv) return;
+    const helloId = `${p.conversationId}-hello`;
+    const items = conv.thread.items;
+    if (!items.some((i) => i.id === helloId)) {
+      set((st) => {
+        const c = st.conversations[p.conversationId];
+        if (!c) return st;
+        const hello = {
+          kind: 'assistant' as const,
+          id: helloId,
+          text: HARBOR_MINI_SETUP_GREETING,
+          streaming: false,
+        };
+        return {
+          conversations: {
+            ...st.conversations,
+            [p.conversationId]: {
+              ...c,
+              thread: { ...c.thread, items: [hello, ...c.thread.items] },
+            },
+          },
+        };
+      });
+    }
+    if (!items.some((i) => i.id.includes('-setup-')) && p.current) {
+      appendGuideMessage(p.conversationId, openingMessage(p.current, setupFacts()), {
+        settled: true,
+      });
+    }
   }
 
   // Show the person's own line in the guide's chat without sending it to the
@@ -3194,6 +3317,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // On every app open, check for local project work that never reached the
       // remote and push it, so nothing important is stranded on this device.
       void get().reconcileProjectRepos('open');
+
+      repairIntroLetter();
 
       // Guided setup: Harbor Lite reads where the walk stands on every reply,
       // only in the walk's own chat.
@@ -5403,10 +5528,8 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!isPhone()) return;
       // Open the walk's chat NOW, without waiting on the model: its hello and
       // its steps are scripted, so nothing on screen needs Harbor Lite loaded.
-      // (startGuide waits for the model first, which on a build that does not
-      // carry the bundled weights meant a minute on an empty chat.) The model
-      // gets ready in the background, and a message typed before it is waits
-      // for it (see holdForHarborLite).
+      // The model gets ready in the background, and a message typed before it
+      // is waits for it (see holdForHarborLite).
       const id = await get().newConversation({
         kind: 'device',
         modelId: HARBOR_MINI_MODEL_ID,
@@ -5415,21 +5538,8 @@ export const useApp = create<AppState>((set, get, api) => {
       set((st) => {
         const c = st.conversations[id];
         if (!c) return st;
-        const hello = {
-          kind: 'assistant' as const,
-          id: `${id}-hello`,
-          text: HARBOR_MINI_SETUP_GREETING,
-          streaming: false,
-        };
         return {
-          conversations: {
-            ...st.conversations,
-            [id]: {
-              ...c,
-              title: HARBOR_MINI_MODEL_NAME,
-              thread: { ...c.thread, items: [hello] },
-            },
-          },
+          conversations: { ...st.conversations, [id]: { ...c, title: HARBOR_MINI_MODEL_NAME } },
         };
       });
       void persistConversations(get());
@@ -5446,8 +5556,7 @@ export const useApp = create<AppState>((set, get, api) => {
         },
       });
       logEvent('guided_setup_start', { first: first ?? 'none' });
-      // A beat after the hello, so the step reads as the guide's next thought.
-      setTimeout(() => appendGuideMessage(id, openingMessage(first, facts)), 700);
+      writeIntroLetter(id, openingMessage(first, facts));
     },
 
     openSetupStep() {

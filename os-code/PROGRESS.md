@@ -960,6 +960,10 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-24, the first open writes itself (Creative Studio, "Tide Letter")
+
+Founder: the first open landed on finished text; reveal it, pause on the welcome, then keep the walk moving. The Creative Studio proposed three directions and recommended Tide Letter, now built: 600 ms of stillness, the greeting written two words per 190 ms, a 3 s reading pause from full ink, the walk's opening at three words per 170 ms with a 600 ms breath before the step heading (which lands as one piece), then the buttons settle (primary, then the ask/skip row one stagger behind) with one soft tick. Pure timing in `app/src/lib/introWalk.ts`, driving both the bubble's reveal and the walk's sequencing. A tap on the transcript or the first keystroke finishes it; reduced motion shows it whole; it never replays; VoiceOver reads each line once, whole. Copy tightened by the Studio, and Step 1 no longer implies web search in airplane mode. Tests: `app/test/introWalk.test.ts`. Not yet felt on a phone.
+
 ### 2026-09-24, Harbor Lite's guide harness measured on the reference box
 
 The box (i5-7300U, 8 GB, CPU only), 49 questions with live DuckDuckGo: with the harness 94% vs 89% without on `smollm2:135m`, 94% vs 90% on the phone's Q4_K_M quant (`docs/guide-eval-2026-09-24.md`). Web and chat questions all 100%. The misses were the model restating setup advice without the size (fit-8, fit-4090, fit-mac on both runs), a stretch reply without Harbor or DeepBlue, and one em dash. So the harness now shows a fixed line after the reply with the worked-out DeepBlue size, as it already did for a stretch, and strips any em dash from Harbor Lite's words; the eval scores what the chat shows. The rest (stack, pair, bench, reach) moved between runs, so single-run noise, not yet a card fix.

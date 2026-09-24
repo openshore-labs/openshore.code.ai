@@ -71,9 +71,9 @@ export const HARBOR_READY_MESSAGE = `Harbor is ready on your iPhone. ${HARBOR_SW
 export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
-    what: 'Harbor is a coding model that runs right here on your iPhone.',
-    why: 'I am a guide; Harbor does the real work. It reasons, searches the web, and writes real code, all on this phone, even in airplane mode.',
-    how: 'Tap Get Harbor. It downloads straight from its source, about 1.9 GB, a couple of minutes on wifi, and keeps going in the background while we set up the rest. I will tell you when it is ready and how to switch to it.',
+    what: 'Harbor is a coding model, Qwen 2.5 Coder 3B, that runs right here on your iPhone.',
+    why: "I'm a guide. Harbor does the real work: it reasons, writes real code on this phone, even in airplane mode, and searches the web when you're online.",
+    how: "Tap Get Harbor. It downloads straight from its source, about 1.9 GB, a couple of minutes on wifi. It keeps going in the background while we set up the rest, and I'll tell you when it's ready and how to switch to it.",
     action: 'Get Harbor',
     ask: 'Tell me more about Harbor before I download it.',
     done: 'Harbor is downloading in the background. I will tell you when it is ready.',
@@ -150,9 +150,14 @@ export function stepNumber(id: SetupStepId): { n: number; of: number } {
 }
 
 /** The first message of the walk, right under the greeting. */
+/** The line that opens the walk, before the first step (Creative Studio, "Tide
+ *  Letter", 2026-09-24). */
+const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
+export const SETUP_INTRO = `Let's get you set up. There are ${COUNT_WORDS[SETUP_ORDER.length] ?? SETUP_ORDER.length} short steps. For each one I'll say what it is, why it helps, and how it works. Then you can connect it, skip it, or ask me first. Nothing here is required, and you can come back to any of it. If you'd rather just chat, say so.`;
+
 export function openingMessage(first: SetupStepId | undefined, facts: SetupFacts): string {
   if (!first) return finishMessage(facts);
-  return `Let's get you set up. For each step I'll tell you what it is, why it helps, and how it works. Then you can connect it, skip it, or ask me more first. Skip anything you don't need; you can always come back to it. And if you'd rather just chat for now, say so. I'm happy to talk about anything.\n\n${stepIntro(first)}`;
+  return `${SETUP_INTRO}\n\n${stepIntro(first)}`;
 }
 
 /** The guide's message when the walk moves on: what just happened, then the

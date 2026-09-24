@@ -10804,8 +10804,18 @@ button.settings-row:active {
   flex-direction: column;
   gap: 8px;
   padding: 2px 16px 14px;
-  animation: first-move-in var(--dur-3) var(--ease-arrive) backwards;
-  animation-delay: calc(3 * var(--stagger));
+}
+/* The buttons settle once the guide's last word has inked (MessageList holds
+   them until then): the primary first, the ask and skip row one stagger
+   behind, so the way forward arrives as the guide's last beat. */
+.setup-actions > .btn,
+.setup-actions-row,
+.setup-actions-progress {
+  animation: first-move-in var(--dur-5) var(--ease-arrive) backwards;
+}
+.setup-actions-row,
+.setup-actions-progress {
+  animation-delay: var(--stagger);
 }
 .setup-actions .btn {
   width: 100%;

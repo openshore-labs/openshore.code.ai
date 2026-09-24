@@ -6,7 +6,10 @@
 // "Skip for now" moves the walk along. A Harbor download in flight shows its progress here
 // for the rest of the walk. Everything rides press-fb and arrives on the
 // First Moves curve.
+import { useEffect } from 'react';
 import { useApp } from '../state/store.js';
+import { hapticTick } from '../lib/haptics.js';
+import { takeButtonsHaptic } from '../lib/introWalk.js';
 import { STEP_COPY, stepNumber, type SetupStepId } from '../lib/guidedSetup.js';
 
 export function SetupStepActions({ step }: { step: SetupStepId }) {
@@ -15,6 +18,13 @@ export function SetupStepActions({ step }: { step: SetupStepId }) {
   const send = useApp((s) => s.send);
   const harborDownload = useApp((s) => s.harborDownload);
   const { n, of } = stepNumber(step);
+  // The first open's letter ends here: one soft tick as the buttons land,
+  // saying "your turn". Only when it played through; never after a skip.
+  useEffect(() => {
+    if (!takeButtonsHaptic()) return;
+    const t = window.setTimeout(hapticTick, 320);
+    return () => window.clearTimeout(t);
+  }, []);
   return (
     <div className="setup-actions" role="group" aria-label={`Setup step ${n} of ${of}`}>
       <button type="button" className="btn primary press-fb" onClick={openSetupStep}>

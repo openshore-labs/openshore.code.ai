@@ -114,7 +114,7 @@ describe('what the guide says', () => {
       expect(intro).toContain(`**How:** ${STEP_COPY[id].how}`);
       expect(STEP_COPY[id].ask.endsWith('.') || STEP_COPY[id].ask.endsWith('?')).toBe(true);
     }
-    expect(openingMessage('harbor', NONE)).toMatch(/connect it, skip it, or ask me more/);
+    expect(openingMessage('harbor', NONE)).toMatch(/connect it, skip it, or ask me first/);
   });
 
   it('offers connect, ask, and skip on every step', () => {

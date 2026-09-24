@@ -88,9 +88,9 @@ export const HARBOR_MINI_GREETING = [
 // The greeting for a new person's first chat, where Harbor Lite runs the
 // guided setup (lib/guidedSetup.ts): the first step follows right under it.
 export const HARBOR_MINI_SETUP_GREETING = [
-  "Hi, I'm Harbor Lite. I came built into the app, so I'm here the second you open it. No download, no account, no signal needed.",
+  "Hi, I'm Harbor Lite, your guide. I'm built into the app and work offline, so I'm here the moment you open it. No download, no account, no signal needed.",
   '',
-  "I'm small and quick, made to get you moving, and I'll always tell you when something is past my size.",
+  "I'm small and quick. I'll get you moving, and I'll tell you plainly when something is past my size.",
 ].join('\n');
 
 // The tappable opening prompts shown under the greeting on a fresh Harbor Lite
