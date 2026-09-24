@@ -2820,6 +2820,17 @@ Kept as written, as the record of how each was closed.
 
 ## Log entries (2026-08-18 to 2026-09-23)
 
+### 2026-09-23, replies arrive like Claude's: whole words that fade in
+
+From the founder's screen recording of the Claude app: a reply lands a few
+whole words at a time, each group light gray and fading up to full ink over
+about 400ms, with no caret. The reveal now paces on word boundaries and holds
+back a word still arriving (`revealLimit`/`toWordEnd` in
+`app/src/lib/streamSmoothing.ts`); a rehype plugin (`app/src/lib/fadeWords.ts`)
+splits a live reply's prose into word spans that fade on mount (`.md-live .w`,
+`--dur-6`), so words already on screen never replay. Code blocks are not split;
+a settled reply renders plain. The breathing caret and its CSS are gone.
+
 ### 2026-09-23, first open is the chat; Personal or Business only at sign-up
 
 Founder: assume personal until sign-in, ask Personal or Business only when a
