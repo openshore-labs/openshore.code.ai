@@ -1820,3 +1820,12 @@ execution contract. Newest at the bottom.
   data) never shows it again; only a fresh install or a delete and reinstall
   does. A returning launch opens a new chat on the stack. Anything skipped
   waits on the Set up OpenShore page.
+- **The first open is a letter, not a page, founder + Creative Studio
+  2026-09-24:** Harbor Lite's scripted walk reveals in whole-word groups at its
+  own pace (slower for the greeting, brisker for the walk), with a reading
+  pause after the greeting and the step buttons arriving last. Every beat is
+  scheduled from the exact reveal plan in `lib/introWalk.ts`, never a guessed
+  timeout; a tap or keystroke skips to the end; live model replies keep the
+  stream smoother's pace. Chosen over "Quiet Chapters" (whole bubbles, reads
+  as a slideshow) and "Harbor Light" (a splash screen, a new room that holds
+  the reader up).

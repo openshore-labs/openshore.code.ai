@@ -4,11 +4,12 @@
 // changed-files record, quiet status lines, and citations at the end. A
 // working row fills the gap between a send and the first token, and a "new
 // messages" pill offers the way back when the person has scrolled up.
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
-import { WORD_FADE_MS } from '../lib/streamSmoothing.js';
+import { WORD_FADE_MS, skipReveals } from '../lib/streamSmoothing.js';
+import { PACES, type PacedKind } from '../lib/introWalk.js';
 import { hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
 import { Markdown } from './Markdown.js';
@@ -26,6 +27,8 @@ function AssistantBubble({
   model,
   showModel,
   onReveal,
+  after,
+  paced,
 }: {
   text: string;
   streaming: boolean;
@@ -33,11 +36,21 @@ function AssistantBubble({
   showModel: boolean;
   /** Called as revealed text grows, so a pinned thread follows the typing. */
   onReveal?: () => void;
+  /** What follows the message (a guided step's buttons, a way back in). It
+   *  arrives only once the words have finished arriving, never over them. */
+  after?: ReactNode;
+  /** A scripted guide message that writes itself (lib/introWalk.ts). */
+  paced?: PacedKind;
 }) {
-  const { text: shown, settling } = useSmoothedReveal(text, streaming);
-  // Fires once per bubble mount, i.e. right as its first token lands.
+  const { text: shown, settling } = useSmoothedReveal(
+    text,
+    streaming,
+    paced ? PACES[paced] : undefined,
+  );
+  // Fires once per bubble mount, i.e. right as its first token lands. A
+  // scripted letter stays quiet: the first open should not buzz.
   useEffect(() => {
-    if (streaming) hapticTick();
+    if (streaming && !paced) hapticTick();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -49,11 +62,32 @@ function AssistantBubble({
   // A settled reply renders plain.
   const live = streaming || settling;
   const { mounted: fading } = useExitPresence(live, WORD_FADE_MS);
-  return (
+  // A letter being written is read whole by VoiceOver, once, never word by
+  // word: the full text sits in a hidden node and the fading layer is hidden.
+  const writing = Boolean(paced) && live;
+  const bubble = (
     <div className="msg-assistant">
       {showModel && model ? <div className="msg-model">{model}</div> : null}
-      <Markdown text={shown} streaming={live} fade={fading} />
+      {writing ? <div className="visually-hidden">{text}</div> : null}
+      {paced ? (
+        // A stable wrapper for letters only, so flipping aria-hidden never
+        // remounts the words mid-fade.
+        <div aria-hidden={writing || undefined}>
+          <Markdown text={shown} streaming={live} fade={fading} />
+        </div>
+      ) : (
+        <Markdown text={shown} streaming={live} fade={fading} />
+      )}
     </div>
+  );
+  // What follows waits for the words and, for a letter, for the last fade.
+  return after && !live && !(paced && fading) ? (
+    <>
+      {bubble}
+      {after}
+    </>
+  ) : (
+    bubble
   );
 }
 
@@ -187,7 +221,9 @@ export function MessageList({
   if (pillVisible) heldUnseen.current = unseen;
 
   return (
-    <div className="thread" ref={threadRef}>
+    // A tap anywhere in the transcript finishes any typing still under way
+    // (lib/streamSmoothing.ts skipReveals): the reader sets the pace.
+    <div className="thread" ref={threadRef} onClick={skipReveals}>
       <div className="thread-inner">
         {thread.items.map((item) => {
           switch (item.kind) {
@@ -200,8 +236,7 @@ export function MessageList({
             case 'assistant': {
               const showModel = Boolean(item.model && item.model !== lastModel);
               if (item.model) lastModel = item.model;
-              const after = afterItem?.(item.id);
-              const bubble = (
+              return (
                 <AssistantBubble
                   key={item.id}
                   text={item.text}
@@ -209,15 +244,9 @@ export function MessageList({
                   model={item.model}
                   showModel={showModel}
                   onReveal={followReveal}
+                  after={afterItem?.(item.id)}
+                  paced={item.paced}
                 />
-              );
-              return after ? (
-                <Fragment key={item.id}>
-                  {bubble}
-                  {after}
-                </Fragment>
-              ) : (
-                bubble
               );
             }
             case 'thinking':

@@ -70,3 +70,27 @@ export function toWordEnd(text: string, len: number, limit: number): number {
   const rest = text.slice(len, limit).search(/\s/);
   return rest === -1 ? limit : len + rest;
 }
+
+/** How long a settled text takes to reveal from nothing and finish its last
+ *  word's fade: the paced ticks plus one fade. The guided walk waits this long
+ *  (plus a reading pause) before its next line, so lines never overlap. */
+export function revealDurationMs(text: string): number {
+  return ticksToDrain(text.length) * TICK_MS + WORD_FADE_MS;
+}
+
+/** The event a tap on the transcript sends to finish every reveal at once:
+ *  a reader is never held to the typing pace. */
+export const REVEAL_SKIP_EVENT = 'oscode:reveal-skip';
+
+export function skipReveals(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(REVEAL_SKIP_EVENT));
+}
+
+/** Reduced motion shows text whole, with no typing. */
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}

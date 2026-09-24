@@ -10,6 +10,8 @@
 // repo files, "#" saves a line to the project's instructions, and a message
 // typed mid-run queues for the moment the agent is free. A long paste folds
 // into a chip so the field stays readable.
+import { isIntroPlaying } from '../lib/introWalk.js';
+import { skipReveals } from '../lib/streamSmoothing.js';
 import {
   useEffect,
   useLayoutEffect,
@@ -855,6 +857,9 @@ export function Composer({
                 : (placeholder ?? 'Chat with OpenShore')
           }
           onChange={(e) => {
+            // The first keystroke during the first open's letter finishes it:
+            // someone typing is ready, never held to the reveal.
+            if (isIntroPlaying()) skipReveals();
             setValue(e.target.value);
             setHistIdx(null);
             setMention(agent ? mentionAt(e.target.value, e.target.selectionStart) : null);
