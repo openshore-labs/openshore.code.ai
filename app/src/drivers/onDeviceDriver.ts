@@ -17,6 +17,9 @@ import {
 import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, harborMiniTurn, isHarborMini } from '../lib/harborMini.js';
 import type { WebSearchResult } from '../lib/webSearch.js';
+import { sanitizeGuideText } from '../lib/guideHarness.js';
+
+const EM_DASH = String.fromCharCode(8212);
 import { formatSearchResults, resolveSearchKey, webSearch } from '../lib/webSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
@@ -55,9 +58,11 @@ export class OnDeviceDriver implements ChatDriver {
   /** Harbor Lite's prompt for the live turn, built by the guide harness from
    *  the question (only the facts it needs, any web results, any setup fit). */
   private turnPrompt?: string;
-  /** The honest line the chat shows after a reply the harness judged past
-   *  Harbor Lite's size, whatever the model wrote. */
-  private stretchNote?: string;
+  /** The fixed line the chat shows after Harbor Lite's reply, whatever the
+   *  model wrote: the past-my-size note, or the worked-out setup size. */
+  private afterNote?: string;
+  /** This chat's model is Harbor Lite, so the guide harness shapes its turns. */
+  private readonly guideTurn: boolean;
 
   constructor(
     private readonly modelId: string,
@@ -73,6 +78,7 @@ export class OnDeviceDriver implements ChatDriver {
   ) {
     this.searchable = isHarbor(modelId);
     this.guide = isHarborMini(modelId) || this.searchable;
+    this.guideTurn = isHarborMini(modelId);
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
     this.listenersReady = this.attachListeners();
@@ -96,8 +102,11 @@ export class OnDeviceDriver implements ChatDriver {
       await Llama.addListener('token', ({ requestId, delta }) => {
         if (requestId !== this.activeRequestId) return;
         this.armWatchdog(requestId);
+        // Harbor Lite never shows an em dash (house rule); the final text
+        // gets the full clean-up, the live stream just swaps the character.
+        const shown = this.guideTurn ? delta.split(EM_DASH).join(',') : delta;
         this.answer += delta;
-        this.emitter.emit({ type: 'text-delta', text: delta });
+        this.emitter.emit({ type: 'text-delta', text: shown });
       }),
     );
     this.deviceListeners.push(
@@ -187,7 +196,7 @@ export class OnDeviceDriver implements ChatDriver {
   // A search that fails (offline, rate limited) is said plainly, never faked.
   private async prepareGuideTurn(text: string): Promise<void> {
     const turn = harborMiniTurn(text);
-    this.stretchNote = turn.plan.stretch;
+    this.afterNote = turn.plan.after;
     let sources: WebSearchResult[] | undefined;
     let searchFailed = false;
     if (turn.plan.searchQuery) {
@@ -236,7 +245,7 @@ export class OnDeviceDriver implements ChatDriver {
     stopReason: 'end' | 'stopped' | 'error',
     detail?: string,
   ): Promise<void> {
-    const text = this.answer.trim();
+    const text = this.guideTurn ? sanitizeGuideText(this.answer).trim() : this.answer.trim();
     if (stopReason === 'error') {
       // Whatever the slot holds after an error is suspect; reload next time.
       forgetDeviceModel();
@@ -288,10 +297,10 @@ export class OnDeviceDriver implements ChatDriver {
 
     if (text) this.history.push({ role: 'assistant', content: text });
     this.emitter.emit({ type: 'text-final', text });
-    const stretch = this.stretchNote;
-    this.stretchNote = undefined;
-    if (stretch && text && stopReason === 'end') {
-      this.emitter.emit({ type: 'note', message: stretch });
+    const after = this.afterNote;
+    this.afterNote = undefined;
+    if (after && text && stopReason === 'end') {
+      this.emitter.emit({ type: 'note', message: after });
     }
     // A finished reply with no words is a failure, not a quiet success: say
     // so, rather than leaving the chat on its "Warming up" line.

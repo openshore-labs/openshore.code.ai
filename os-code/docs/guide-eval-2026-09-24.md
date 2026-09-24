@@ -44,10 +44,10 @@ Swap:             11           5           6
 
 ## Runs
 
-| Run | Model tag | Questions | Wall time | With the harness | Without |
-| --- | --- | --- | --- | --- | --- |
-| fp16 | `smollm2:135m` | 49 | 6174s | 94% | 89% |
-| q4 | `smollm2:135m-instruct-q4_K_M` | 49 | 5905s | 94% | 90% |
+| Run  | Model tag                      | Questions | Wall time | With the harness | Without |
+| ---- | ------------------------------ | --------- | --------- | ---------------- | ------- |
+| fp16 | `smollm2:135m`                 | 49        | 6174s     | 94%              | 89%     |
+| q4   | `smollm2:135m-instruct-q4_K_M` | 49        | 5905s     | 94%              | 90%     |
 
 Both runs were invoked with `--search` enabled.
 

@@ -57,6 +57,11 @@ export interface GuidePlan {
   advice?: string[];
   /** Set when the ask is past a guide's size; the honest note the chat shows. */
   stretch?: string;
+  /** A fixed line the chat shows after the reply, whatever the model wrote:
+   *  the stretch note, or the worked-out setup size. A 135M model restating
+   *  advice drops the one number that matters often enough (the reference box
+   *  eval, 2026-09-24) that the harness says it itself. */
+  after?: string;
 }
 
 // ------------------------------------------------------------- the words
@@ -263,6 +268,27 @@ const FIT_WORDS: Record<FitLabel, string> = {
   'too-big': 'It is too big for that machine.',
 };
 
+/** The fixed setup line shown after the reply, when a size was worked out. */
+export function setupNote(eq: GuideEquipment): string | undefined {
+  if (eq.phoneOnly || (eq.ramGB === undefined && eq.gpuVramGB === undefined)) return undefined;
+  const hw: HardwareRead = {
+    ramGB: eq.ramGB ?? 0,
+    gpu: eq.gpu === true && (eq.gpuVramGB ?? 0) > 0,
+    gpuVramGB: eq.gpuVramGB,
+  };
+  const { size, fit } = resolveHarborMaster(hw);
+  return `Worked out from what you described: DeepBlue on ${size.weightsName}, a ${size.sizeGB} GB download. ${FIT_WORDS[fit as FitLabel]}`;
+}
+
+/** The em dash, built from its code point so no source line spells it. */
+const EM_DASH = String.fromCharCode(8212);
+
+/** Harbor Lite's words as the chat shows them: never an em dash (house rule),
+ *  which a model this small still writes now and then despite the prompt. */
+export function sanitizeGuideText(text: string): string {
+  return text.split(` ${EM_DASH} `).join(', ').split(EM_DASH).join(', ');
+}
+
 // ------------------------------------------------------------- the route
 
 const CODE_ASK =
@@ -301,12 +327,22 @@ export function planGuideTurn({ message, cards }: GuideTurnInput): GuidePlan {
   if (CHAT_ONLY.test(lower)) return { route: 'chat', cards: [] };
 
   if (CODE_ASK.test(lower) || HEAVY_ASK.test(lower)) {
-    return { route: 'stretch', cards: top.slice(0, 1), stretch: STRETCH_NOTE };
+    return {
+      route: 'stretch',
+      cards: top.slice(0, 1),
+      stretch: STRETCH_NOTE,
+      after: STRETCH_NOTE,
+    };
   }
 
   const eq = readEquipment(text);
   if (SETUP_ASK.test(lower) || hasEquipment(eq)) {
-    return { route: 'setup', cards: top.slice(0, 2), advice: setupAdvice(eq) };
+    return {
+      route: 'setup',
+      cards: top.slice(0, 2),
+      advice: setupAdvice(eq),
+      after: setupNote(eq),
+    };
   }
 
   if (best >= APP_SCORE || APP_TERMS.test(lower)) return { route: 'app', cards: top };
