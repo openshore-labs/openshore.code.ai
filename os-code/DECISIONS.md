@@ -1836,3 +1836,7 @@ execution contract. Newest at the bottom.
   local here) and "Chart Pen" (a measured line mask, fragile at wraps).
   Characters are inline-block only while rolling; a settled line renders plain
   so kerning, selection, and find are normal.
+- **The stack is named "Stack", founder 2026-09-24:** not "Your stack" or "My
+  Stack". The room, the model sheet row, and any label say Stack; "your stack"
+  survives only as plain English mid-sentence ("add it to your stack"). Part
+  of the Creative Studio brand sweep (`docs/brand-sweep-2026-09-24.md`).
