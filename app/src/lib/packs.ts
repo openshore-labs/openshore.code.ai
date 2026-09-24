@@ -57,7 +57,7 @@ export const DEVICE_PACKS: DevicePack[] = [
       'The same pocket models answer anywhere, and a frontier model on your key takes the heavy lifting.',
     anchor: POCKET_ANCHORS,
     helpers: { coding: POCKET_CODERS },
-    nextStep: { label: 'Connect a key', view: 'connections' },
+    nextStep: { label: 'Connect an API key', view: 'connections' },
   },
   {
     id: 'docked',

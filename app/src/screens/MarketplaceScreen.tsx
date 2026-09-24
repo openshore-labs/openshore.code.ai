@@ -146,7 +146,7 @@ const SORT_SUBHEAD: Partial<Record<SortKey, string>> = {
   staff: 'Our opinionated shortlist. Chosen, not counted.',
   popular:
     'Ranked by downloads and likes on Hugging Face. A snapshot of what the world runs, not a measure of quality. The stars are quality.',
-  used: 'Counted on your machine. Never sent anywhere.',
+  used: 'Counted on your computer. Never sent anywhere.',
   greenest:
     'Ordered by the energy a model is estimated to draw per token, leanest first. A relative guide from model size, not a measured figure.',
 };
@@ -536,7 +536,9 @@ export function MarketplaceScreen() {
         void installViaDaemon(model);
         return;
       }
-      showToast('Desktop models install from the desktop app. This phone can browse them.');
+      showToast(
+        'Computer models install from OpenShore on your computer. This phone can browse them.',
+      );
       return;
     }
     setDownloads((d) => ({
@@ -612,7 +614,7 @@ export function MarketplaceScreen() {
         ...d,
         [model.id]: {
           percent: d[model.id]?.percent ?? 0,
-          label: 'Your hub stopped answering. Check the install on the desktop.',
+          label: 'Your computer stopped answering. Check the install there.',
           failed: true,
         },
       }));
@@ -627,7 +629,7 @@ export function MarketplaceScreen() {
       hapticSuccess();
       setInstalledRefs((s) => new Set(s).add(model.source.ref));
     }
-    showToast(outcome.detail ?? (outcome.ok ? 'Installed on your desktop.' : 'Install failed.'));
+    showToast(outcome.detail ?? (outcome.ok ? 'Installed on your computer.' : 'Install failed.'));
   };
 
   // The internal axis only exists when the user has real local usage that maps
@@ -848,7 +850,7 @@ export function MarketplaceScreen() {
       }
       const b = bridge();
       if (!b) {
-        showToast('Desktop bundles install from the OpenShore desktop app.');
+        showToast('Computer bundles install from OpenShore on your computer.');
         return;
       }
       for (const m of models) {
@@ -998,7 +1000,7 @@ export function MarketplaceScreen() {
           {other.length ? (
             <p className="hint">
               {isPhone()
-                ? 'Desktop bundles (Starter, Coding, Creative, Performance) install from the OpenShore desktop app.'
+                ? 'Computer bundles (Starter, Coding, Creative, Performance) install from OpenShore on your computer.'
                 : 'The Pocket bundle runs on your iPhone; get it there.'}
             </p>
           ) : null}
@@ -1030,7 +1032,7 @@ export function MarketplaceScreen() {
       : phoneOverMemory
         ? {
             state: 'over',
-            note: 'Better on your computer. This one wants more memory than an iPhone keeps free. It shines on a desktop or home server.',
+            note: 'Better on your computer. This one wants more memory than an iPhone keeps free. It shines on a computer or home server.',
           }
         : {
             state: 'yes',
@@ -1042,13 +1044,13 @@ export function MarketplaceScreen() {
         key: 'laptop',
         label: 'A laptop',
         state: homes.laptop ? 'yes' : 'no',
-        note: homes.laptop ? 'Fits a 16 GB machine.' : 'Needs more than a laptop has.',
+        note: homes.laptop ? 'Fits a 16 GB computer.' : 'Needs more than a laptop has.',
       },
       {
         key: 'workstation',
         label: 'A home server',
         state: homes.workstation ? 'yes' : 'no',
-        note: homes.workstation ? 'Fits a 48 GB workstation.' : 'Needs a very large machine.',
+        note: homes.workstation ? 'Fits a 48 GB workstation.' : 'Needs a very large computer.',
       },
     ];
     const fam = familyOf(model);
@@ -1156,7 +1158,7 @@ export function MarketplaceScreen() {
       : undefined;
     const wantsDownload = pack.anchor.length > 0;
     const names = p.models.map((m) => m.name).join(' · ');
-    const hubName = settings.daemon?.name ?? 'your hub';
+    const hubName = settings.daemon?.name ?? 'your computer';
     return (
       <div
         className={`pack-card pack-${pack.id}${state === 'ready' ? ' ready' : ''}`}
@@ -1214,8 +1216,8 @@ export function MarketplaceScreen() {
             >
               {stepDone
                 ? pack.nextStep.view === 'pair'
-                  ? 'Manage hubs'
-                  : 'Cloud connections'
+                  ? 'Manage computers'
+                  : 'Cloud Connections'
                 : pack.nextStep.label}
             </button>
           ) : null}
@@ -1309,12 +1311,12 @@ export function MarketplaceScreen() {
           split.phone,
         )}
         {group(
-          'Desktop and home servers',
+          'Computers and home servers',
           isPhone()
             ? settings.daemon
-              ? `Installs on ${settings.daemon.name ?? 'your hub'} from here.`
-              : 'Installs from the desktop app, or onto a paired computer.'
-            : 'Installs on this machine through Ollama.',
+              ? `Installs on ${settings.daemon.name ?? 'your computer'} from here.`
+              : 'Installs from OpenShore on your computer, or onto a paired computer.'
+            : 'Installs on this computer through Ollama.',
           split.desktop,
         )}
       </div>
@@ -1326,11 +1328,11 @@ export function MarketplaceScreen() {
   // everything below it that installs on a desktop or a home server.
   const renderDesktopDivider = () => (
     <div className="store-divider" key="desktop-divider">
-      <span className="store-divider-title">Desktop and home servers</span>
+      <span className="store-divider-title">Computers and home servers</span>
       <span className="store-divider-sub">
         {settings.daemon
-          ? `Browse here, install on ${settings.daemon.name ?? 'your hub'}. This phone uses them over Tailscale.`
-          : 'Browse here; these install from the desktop app, or onto a computer you pair. This phone uses them over Tailscale.'}
+          ? `Browse here, install on ${settings.daemon.name ?? 'your computer'}. This phone uses them over Tailscale.`
+          : 'Browse here; these install from OpenShore on your computer, or onto a computer you pair. This phone uses them over Tailscale.'}
       </span>
     </div>
   );
@@ -1936,7 +1938,7 @@ export function MarketplaceScreen() {
           {ollamaHere && m.ollamaCloudRef ? (
             <>
               <p>
-                Also on Ollama&apos;s cloud. With an Ollama account signed in on this desktop, pull
+                Also on Ollama&apos;s cloud. With an Ollama account signed in on this computer, pull
                 it like any library model and it runs there, no {m.providerName} key needed.
               </p>
               <div className="pull-cmd">
@@ -2302,13 +2304,13 @@ export function MarketplaceScreen() {
           <div className="dl-machine">
             <p className="dl-machine-lead">
               This one wants about {requiredRam} GB of memory, more than this iPhone keeps free.
-              Storage is not the limit here, memory is, so it runs better on a bigger machine.
+              Storage is not the limit here, memory is, so it runs better on a bigger computer.
             </p>
             <p className="dl-machine-path">
               Keep it in your iCloud and draw from it whenever you are online.
             </p>
             <p className="dl-machine-path">
-              Or pair a machine with about {rec.ramGB} GB of memory over Tailscale and run it full
+              Or pair a computer with about {rec.ramGB} GB of memory over Tailscale and run it full
               speed.
             </p>
           </div>
@@ -2328,7 +2330,7 @@ export function MarketplaceScreen() {
     installLabel({
       onDevice: Boolean(model.onDevice),
       hasBridge: Boolean(bridge()),
-      hubName: settings.daemon ? (settings.daemon.name ?? 'your hub') : undefined,
+      hubName: settings.daemon ? (settings.daemon.name ?? 'your computer') : undefined,
       failed,
     });
 
@@ -2352,9 +2354,9 @@ export function MarketplaceScreen() {
         className={`store-get${label.kind === 'desktop-only' ? ' desktop-only' : ''}`}
         aria-label={
           label.kind === 'desktop-only'
-            ? `${model.name} installs from the desktop app`
+            ? `${model.name} installs from OpenShore on your computer`
             : label.kind === 'hub'
-              ? `Install ${model.name} on ${settings.daemon?.name ?? 'your hub'}`
+              ? `Install ${model.name} on ${settings.daemon?.name ?? 'your computer'}`
               : undefined
         }
         onClick={(e) => {
@@ -2625,7 +2627,7 @@ export function MarketplaceScreen() {
   const filterRail = (
     <div className="filter-rail">
       <div className="facet-group">
-        <div className="facet-title">Your machine</div>
+        <div className="facet-title">Your computer</div>
         <div className="facet-chips">
           {MEMORY_TIERS.map((t) => (
             <button
@@ -2703,7 +2705,7 @@ export function MarketplaceScreen() {
             className={`facet-chip${facets.fits ? ' active' : ''}`}
             onClick={() => setFacet('fits', !facets.fits)}
           >
-            Runs on my machine
+            Runs on my computer
           </button>
           <button
             className={`facet-chip${facets.onDeviceOnly ? ' active' : ''}`}
@@ -2922,7 +2924,7 @@ export function MarketplaceScreen() {
 
                   {isPhone() ? (
                     <p className="hint" style={{ marginBottom: 10 }}>
-                      Browse here; desktop models install from the OpenShore desktop app, and this
+                      Browse here; computer models install from OpenShore on your computer, and this
                       phone uses them over Tailscale.
                     </p>
                   ) : null}

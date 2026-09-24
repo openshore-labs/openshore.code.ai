@@ -97,7 +97,7 @@ export function controlBlurb(where: ControlWhere, machine: string): string {
     case 'away':
       return `You are away from ${machine}. Your crew keeps working there. Reconnect over Tailscale to take control.`;
     case 'unpaired':
-      return 'Routines run on your own computer, while it is on. Pair this device with your machine to set your crew to work.';
+      return 'Routines run on your own computer, while it is on. Pair this device with your computer to set your crew to work.';
     default:
       return `Connected to ${machine}. Set up, run, and stop your crew from here.`;
   }
@@ -105,7 +105,7 @@ export function controlBlurb(where: ControlWhere, machine: string): string {
 
 /** The reason a control action is refused when a device is not docked. */
 export const CONTROL_REQUIRES_DOCK =
-  'Reconnect to your main machine over Tailscale to control your crew.';
+  'Reconnect to your main computer over Tailscale to control your crew.';
 
 export interface RoutinesClient {
   /** Where the scheduler lives, for the copy ("this computer" or the hub). */
@@ -134,7 +134,7 @@ async function daemonJson<T>(
     signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(body.error ?? `The desktop answered ${res.status}.`);
+  if (!res.ok) throw new Error(body.error ?? `Your computer answered ${res.status}.`);
   return body;
 }
 

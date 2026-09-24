@@ -41,15 +41,15 @@ export function sourceShort(conv: Conversation): string {
   const s = conv.source;
   switch (s.kind) {
     case 'cloud':
-      return 'Claude';
+      return sourceLabel(s).split(' · ')[0] ?? 'Cloud';
     case 'desktop':
-      return s.repoName ?? 'Desktop';
+      return s.repoName ?? 'Your computer';
     case 'device':
       return sourceLabel(s).split(' · ')[0] ?? 'On device';
     case 'stack':
-      return 'Your stack';
+      return 'Stack';
     case 'desktop-chat':
-      return 'Desktop';
+      return 'My computer';
     case 'mock':
       return 'Demo';
   }
@@ -258,7 +258,7 @@ export function ChatsScreen() {
                       {name}
                     </span>
                     <span className="chat-row-sub">
-                      {s.updatedAt ? `${relativeTime(s.updatedAt)} · ` : ''}Running on desktop
+                      {s.updatedAt ? `${relativeTime(s.updatedAt)} · ` : ''}Running on your computer
                       {s.busy ? ' · working' : ''}
                     </span>
                   </button>

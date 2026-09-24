@@ -15,7 +15,9 @@ export function ClarifyCard({
   return (
     <div className="clarify-card">
       {summary ? <div className="clarify-summary">{summary}</div> : null}
-      <div className="clarify-lead">A couple of things to get the framing right:</div>
+      <div className="clarify-lead">
+        {questions.length === 1 ? 'One thing first.' : 'A few things first.'}
+      </div>
       {questions.map((q) => (
         <div key={q.id} className="clarify-q">
           <div className="clarify-question">{q.question}</div>

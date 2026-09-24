@@ -27,7 +27,7 @@ function beatsFor(guideName: string): Beat[] {
     },
     {
       id: 'stack',
-      eyebrow: 'Your stack',
+      eyebrow: 'Stack',
       headline: 'One Reasoning LLM, a few specialists.',
       body: 'You build a stack. One model plans and routes the work; optional specialists take coding, writing, vision, and more. Anything missing, the Reasoning LLM covers itself.',
       art: 'stack',
@@ -120,7 +120,7 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
       : undefined;
 
   return (
-    <div className="lib-intro" role="dialog" aria-label="The Marketplace and your stack">
+    <div className="lib-intro" role="dialog" aria-label="The Marketplace and Stack">
       <div className="lib-masthead">
         <span className="brand-lockup">
           <BrandMark size={24} />

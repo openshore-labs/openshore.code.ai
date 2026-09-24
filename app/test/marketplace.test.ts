@@ -330,7 +330,7 @@ describe('where it runs', () => {
 describe('installLabel', () => {
   it('a phone never shows Get on a model it cannot get', () => {
     expect(installLabel({ onDevice: false, hasBridge: false })).toEqual({
-      text: 'Desktop',
+      text: 'Computer',
       kind: 'desktop-only',
     });
     expect(installLabel({ onDevice: false, hasBridge: false, hubName: 'Studio' })).toEqual({
@@ -345,6 +345,8 @@ describe('installLabel', () => {
   });
 
   it('Retry wins after a failure, whatever the home', () => {
-    expect(installLabel({ onDevice: false, hasBridge: false, failed: true }).text).toBe('Retry');
+    expect(installLabel({ onDevice: false, hasBridge: false, failed: true }).text).toBe(
+      'Try again',
+    );
   });
 });

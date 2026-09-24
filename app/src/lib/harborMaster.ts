@@ -27,7 +27,7 @@ export const HARBOR_MASTER_MODEL_NAME = 'DeepBlue';
 /** The byline under the DeepBlue row in Settings. One capability line, no em
  *  dash, under 140 characters, and only claims the engine keeps today. */
 export const HARBOR_MASTER_BYLINE =
-  'A real coding agent that plans and edits your repositories, running on your computer through Ollama, sized to the machine.';
+  'A real coding agent that plans and edits your repositories, running on your computer through Ollama, sized to fit it.';
 
 /** The attribution sentence for the "Local models, honestly" sheet. Names the
  *  real weights behind the slot; changes in the same commit as the refs. */

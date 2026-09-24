@@ -43,11 +43,11 @@ export function terminalTargetLabel(opts: {
   const name = opts.daemon?.name?.trim();
   if (name) return name;
   const url = opts.daemon?.baseUrl;
-  if (!url) return 'your hub';
+  if (!url) return 'your computer';
   try {
     return new URL(url).hostname;
   } catch {
-    return 'your hub';
+    return 'your computer';
   }
 }
 

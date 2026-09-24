@@ -69,7 +69,7 @@ describe('device folder provider', () => {
 
   it('throws a clear error when the desktop bridge is absent', async () => {
     h.ret.current = undefined;
-    await expect(deviceFolderProvider.list('vault.personal')).rejects.toThrow(/desktop app/i);
+    await expect(deviceFolderProvider.list('vault.personal')).rejects.toThrow(/on your computer/i);
   });
 
   it('grants a lease trivially (shared folder, no exclusive lock)', async () => {

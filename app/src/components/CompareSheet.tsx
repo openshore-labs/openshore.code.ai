@@ -73,7 +73,7 @@ export function CompareSheet({
       >
         <h2>Compare</h2>
         <div className="sheet-sub">
-          Stars come from benchmarks. Fit is for your selected machine.
+          Stars come from benchmarks. Fit is for your selected computer.
         </div>
 
         <div className="compare-scroll">

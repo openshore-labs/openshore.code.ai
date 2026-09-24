@@ -90,7 +90,7 @@ export interface MachineRec {
   /** Plain-language machine this names, e.g. "a Mac or PC with 32 GB of memory". */
   label: string;
   /** The always-true escape hatch: pair it and run it on that machine over
-   *  Tailscale, or keep it in iCloud until you are at a machine that fits. */
+   *  Tailscale, or keep it in iCloud until you are at a computer that fits. */
   note: string;
 }
 
@@ -115,7 +115,7 @@ export function recommendMachine(requiredRamGB: number): MachineRec {
   return {
     ramGB,
     label,
-    note: 'Pair one over Tailscale and run it there, or keep it in iCloud until you are at a machine that fits.',
+    note: 'Pair one over Tailscale and run it there, or keep it in iCloud until you are at a computer that fits.',
   };
 }
 

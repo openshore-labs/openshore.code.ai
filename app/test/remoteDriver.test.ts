@@ -155,7 +155,7 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     driver.dispose();
 
     expect(calls).toBe(1); // no retry loop on a fatal answer
-    expect(messages.some((m) => /re-pair/i.test(m))).toBe(true);
+    expect(messages.some((m) => /pair again/i.test(m))).toBe(true);
   });
 
   it('ends the run when the session is gone, so the thread is not stuck busy (APP-4)', async () => {
@@ -327,7 +327,7 @@ describe('RemoteDriver command lane and hub role (P0-1)', () => {
     const fallback = await daemonHealth({ baseUrl: 'http://desktop', token: 'osc_x' });
     expect(fallback.ok).toBe(false);
     expect(fallback.detail).toBe(
-      'The desktop rejected the pairing token. Re-copy it from the desktop app.',
+      'Your computer rejected the pairing token. Copy it again from OpenShore on your computer.',
     );
   });
 });

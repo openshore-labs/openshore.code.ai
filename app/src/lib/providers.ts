@@ -53,7 +53,8 @@ export const PROVIDERS: ProviderInfo[] = [
         id: 'claude-opus-5',
         label: 'Claude Opus 5',
         good: 'reasoning',
-        tagline: 'The deepest reasoner here. Plans long work and holds the whole repo in mind.',
+        tagline:
+          'The deepest reasoner here. Plans long work and holds the whole repository in mind.',
         categories: ['reasoning', 'coding', 'writing', 'vision'],
       },
       {
@@ -164,7 +165,8 @@ export const PROVIDERS: ProviderInfo[] = [
         id: 'kimi-k2.7-code',
         label: 'Kimi K2.7 Code',
         good: 'coding',
-        tagline: 'Built for agentic coding. Leaner reasoning than K2.6 on the same repo work.',
+        tagline:
+          'Built for agentic coding. Leaner reasoning than K2.6 on the same repository work.',
         categories: ['coding', 'reasoning'],
         contextTokens: 262_144,
         released: '2026-06-12',
@@ -310,7 +312,7 @@ export function needsWorkspaceId(text: string): boolean {
 }
 
 export const WORKSPACE_HINT =
-  'This key is linked to your identity, so Claude needs the id of the workspace it acts in. Find it in the Anthropic Console under Settings, Workspaces (it starts with wrkspc_), and add it under Cloud Connections.';
+  'This API key is linked to your identity, so Claude needs the id of the workspace it acts in. Find it in the Anthropic Console under Settings, Workspaces (it starts with wrkspc_), and add it under Cloud Connections.';
 
 export async function validateProviderKey(
   id: string,

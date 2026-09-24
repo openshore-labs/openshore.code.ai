@@ -42,7 +42,7 @@ describe('First Seat in the chat empty state', () => {
   it('one primary teal install control, More ways to start beneath', () => {
     expect(SEAT).toContain('btn primary press-fb');
     expect(SEAT).toContain('More ways to start');
-    for (const row of ['Connect your computer', 'Connect a key', 'Browse the Marketplace']) {
+    for (const row of ['Connect your computer', 'Connect an API key', 'Open Stack']) {
       expect(SEAT).toContain(row);
     }
   });

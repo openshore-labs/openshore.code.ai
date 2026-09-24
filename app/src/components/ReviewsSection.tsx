@@ -155,7 +155,7 @@ export function ReviewsSection({
           <CommunityStars score={score} invite size={22} />
           <p className="reviews-cold-lead">Be the first who runs it.</p>
           <p className="reviews-cold-sub">
-            Ran it on your machine? Tell the next person how it felt.
+            Ran it on your computer? Tell the next person how it felt.
           </p>
           <button className="btn primary press-fb" onClick={openWrite}>
             Write the first run report

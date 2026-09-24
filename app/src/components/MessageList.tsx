@@ -361,7 +361,7 @@ export function MessageList({
                           onRetry();
                         }}
                       >
-                        Retry
+                        Try again
                       </button>
                     ) : null}
                   </div>

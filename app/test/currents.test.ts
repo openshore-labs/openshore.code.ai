@@ -142,7 +142,7 @@ describe('the two-part gate', () => {
 
   it('writes the row line from the state, never a promise it cannot keep', () => {
     expect(currentStateLine('hermes', { agenticCurrent: 'hermes' }, {})).toMatch(
-      /^Arriving\. A Hermes box/,
+      /^Not set up\. Hermes on a computer/,
     );
     expect(currentStateLine('hermes', { ...saved, agenticCurrent: 'hermes' }, {})).toMatch(
       /did not answer yet/,

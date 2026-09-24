@@ -79,7 +79,7 @@ export function QrScanner({
   return (
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
       <div className={`sheet${closing ? ' closing' : ''}`} onClick={(e) => e.stopPropagation()}>
-        <h2>Scan the desktop QR</h2>
+        <h2>Scan the QR on your computer</h2>
         <p className="sheet-sub">
           Point the camera at the QR on your computer's Desktop + phone screen. It fills in the
           address and token and connects.

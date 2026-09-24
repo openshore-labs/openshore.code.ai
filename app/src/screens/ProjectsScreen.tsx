@@ -57,7 +57,7 @@ export function ProjectsScreen() {
           <h3>New project</h3>
           <div className="field" style={{ marginTop: 10 }}>
             <input
-              placeholder="e.g. Uki Audio, Homepage, Weekend hacks"
+              placeholder="e.g. Homepage, Thesis, Weekend hacks"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void create()}

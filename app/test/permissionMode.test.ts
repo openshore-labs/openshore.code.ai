@@ -15,7 +15,7 @@ describe('permission mode', () => {
 
   it('offers the four Claude Code modes', () => {
     expect([...PERMISSION_MODES]).toEqual(['default', 'acceptEdits', 'plan', 'bypassPermissions']);
-    expect(permissionModeLabel('default')).toBe('Default');
+    expect(permissionModeLabel('default')).toBe('Ask first');
     expect(permissionModeLabel('acceptEdits')).toBe('Accept edits');
     expect(permissionModeLabel('plan')).toBe('Plan');
     expect(permissionModeLabel('bypassPermissions')).toBe('Bypass');

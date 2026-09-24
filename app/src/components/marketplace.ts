@@ -110,17 +110,17 @@ export function deviceSplit(models: CatalogModel[]): {
 /** What the compact install control should say, so a phone never shows a
  *  "Get" it cannot honor. A desktop model on a phone reads as where it goes:
  *  the paired hub by name when there is one, otherwise a plain "Desktop" that
- *  explains itself on tap. Retry always wins after a failure. */
+ *  explains itself on tap. Try again always wins after a failure. */
 export function installLabel(input: {
   onDevice: boolean;
   hasBridge: boolean;
   hubName?: string;
   failed?: boolean;
 }): { text: string; kind: 'get' | 'hub' | 'desktop-only' } {
-  if (input.failed) return { text: 'Retry', kind: 'get' };
+  if (input.failed) return { text: 'Try again', kind: 'get' };
   if (input.onDevice || input.hasBridge) return { text: 'Get', kind: 'get' };
   if (input.hubName) return { text: `On ${input.hubName}`, kind: 'hub' };
-  return { text: 'Desktop', kind: 'desktop-only' };
+  return { text: 'Computer', kind: 'desktop-only' };
 }
 
 // -------------------------------------------------------------------- search
@@ -422,7 +422,7 @@ export function buildShelves(
       title: opts.phone ? 'Runs on this iPhone' : 'Runs on your phone',
       subtitle: opts.phone
         ? 'Fully on-device. The newest small models beat the old 7B class at half the memory, so bigger is not better here.'
-        : 'Fully on-device, no desktop needed.',
+        : 'Fully on-device, no computer needed.',
       sort: 'recommended',
       models: pocket.slice(0, SHELF_MAX),
     });

@@ -16,7 +16,8 @@ export interface PlanTier {
   /** Inclusive employee range; max null means "no upper bound". */
   minEmployees: number;
   maxEmployees: number | null;
-  /** One-line copy shown on the plan card. */
+  /** One-line copy shown on the plan card: the headcount band, never a price
+   *  (prices show only through shownPrice, behind the pay gates). */
   blurb: string;
 }
 
@@ -47,7 +48,7 @@ export const COMMERCIAL_TIERS: PlanTier[] = [
     priceYear: 20,
     minEmployees: 1,
     maxEmployees: 5,
-    blurb: 'Up to 5 people. $20 / year.',
+    blurb: 'Up to 5 people.',
   },
   {
     id: 'commercial_small',
@@ -55,7 +56,7 @@ export const COMMERCIAL_TIERS: PlanTier[] = [
     priceYear: 100,
     minEmployees: 6,
     maxEmployees: 30,
-    blurb: '6 to 30 people. $100 / year.',
+    blurb: '6 to 30 people.',
   },
   {
     id: 'commercial_mid',
@@ -63,7 +64,7 @@ export const COMMERCIAL_TIERS: PlanTier[] = [
     priceYear: 250,
     minEmployees: 31,
     maxEmployees: 100,
-    blurb: '31 to 100 people. $250 / year.',
+    blurb: '31 to 100 people.',
   },
   {
     id: 'commercial_large',
@@ -71,7 +72,7 @@ export const COMMERCIAL_TIERS: PlanTier[] = [
     priceYear: 500,
     minEmployees: 101,
     maxEmployees: null,
-    blurb: 'More than 100 people. $500 / year.',
+    blurb: 'More than 100 people.',
   },
 ];
 
@@ -93,4 +94,12 @@ export function tierById(id: PlanTierId): PlanTier {
 /** A short price label, e.g. "$100 / year" or "Free". */
 export function priceLabel(tier: PlanTier): string {
   return tier.priceYear === 0 ? 'Free' : `$${tier.priceYear} / year`;
+}
+
+/** The price a screen may show, or null. Pricing is a Board gate, so no price
+ *  reaches the screen while the pay gates are off (brand sweep, founder
+ *  2026-09-24); the headcount band (the tier's blurb) shows instead. Every UI
+ *  price goes through here with store.ts PAY_GATES_ENABLED. */
+export function shownPrice(tier: PlanTier, payGatesOn: boolean): string | null {
+  return payGatesOn ? priceLabel(tier) : null;
 }

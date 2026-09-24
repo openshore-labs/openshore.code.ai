@@ -396,19 +396,19 @@ export interface LaunchState {
 export function sourceLabel(source: ConversationSource): string {
   switch (source.kind) {
     case 'desktop':
-      return source.repoName ? `Desktop · ${source.repoName}` : 'Desktop stack';
+      return source.repoName ? `Your computer · ${source.repoName}` : 'Your computer · Stack';
     case 'desktop-chat':
-      return 'Your desktop · chat';
+      return 'Your computer · chat';
     case 'device':
       if (isHarborMini(source.modelId)) return 'Harbor Lite · built-in guide';
-      if (isHarbor(source.modelId)) return 'Harbor · built-in guide';
+      if (isHarbor(source.modelId)) return 'Harbor · coding model';
       return `On this ${isProbablyPhone() ? 'iPhone' : 'device'} · ${source.modelName}`;
     case 'cloud':
       return source.provider === 'anthropic'
         ? `Claude · ${claudeModelLabel(source.model)}`
         : `${providerInfo(source.provider)?.name ?? source.provider} · ${providerModelLabel(source.provider, source.model)}`;
     case 'stack':
-      return 'Your stack';
+      return 'Stack';
     case 'mock':
       return 'Demo';
   }
@@ -424,9 +424,9 @@ export function sourceShortLabel(source?: ConversationSource): string {
     case 'cloud':
       return sourceLabel(source).split(' · ')[0] || 'Cloud';
     case 'desktop':
-      return source.repoName ?? 'Desktop';
+      return source.repoName ?? 'Your computer';
     case 'desktop-chat':
-      return 'Desktop chat';
+      return 'My computer';
     case 'device':
       return sourceLabel(source).split(' · ')[0] || 'On device';
     case 'stack':

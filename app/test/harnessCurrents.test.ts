@@ -134,7 +134,7 @@ describe('the two-part gate', () => {
       harnessCurrentStateLine('jev', { ...saved, harnessCurrent: 'jev' }, { jev: true }),
     ).toMatch(/^On\. Steering your seats/);
     expect(harnessCurrentStateLine('jev', { harnessCurrent: 'jev' }, {})).toMatch(
-      /^Arriving\..*key/,
+      /^Not set up\..*key/,
     );
     expect(harnessCurrentStateLine('jev', saved, { jev: true })).toMatch(/^Ready/);
   });
