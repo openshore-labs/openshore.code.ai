@@ -1761,3 +1761,52 @@ execution contract. Newest at the bottom.
   changed, so nothing was unwound. The Air program's phone track
   (`docs/house-model-proposal.md`) is unaffected: Bonsai there is still a 12
   GB-phone pocket candidate, not a DeepBlue size.
+- **Hero is the Within Reach set (advisory org, 2026-09-24, founder
+  delegated).** "Your machine. Your models. Your keys." with the byline "Models
+  you run at home, within reach of your phone. Never stop building.", the
+  supporting line "Your code never leaves home unless you send it. Home is your
+  own devices and the private network between them.", and the buttons "Download
+  free" and "On iPhone? Join the beta". The supporting line ships with the
+  ask-first search default below, and the Privacy page lists org Vault content.
+  CMO dissent recorded (preferred "Real coding work from a model you already
+  own").
+- **Web search and fetch ask first by default (advisory org, 2026-09-24,
+  founder delegated).** The engine's `permissions.defaults.network` becomes
+  `ask` with one grant per session, never per call; Harbor shows the exact query
+  and the search service before it leaves; a Settings switch "Ask before
+  searching the web" (default on) lets a person choose allow; routines declare
+  web use on their setup card so a headless run never blocks; `askAgent` and
+  `askHermes` share the default.
+- **Test copy stays conditional until detection is measured (advisory org,
+  2026-09-24, founder delegated).** Copy says "give it your test command" now.
+  Test-command auto-detection is the next harness item, behind config, proposed
+  on a confirm card; the condition drops only after every fixture repo with
+  tests is detected correctly and the 3B lift reproduces on the reference
+  machine with a detected command.
+- **Tabs renamed Models and Ethics (advisory org, 2026-09-24, founder
+  delegated).** "LLM Choice" becomes Models at /models/ with a redirect from
+  /llm-choice/, and "Ethical Standards" becomes Ethics.
+- **EU and UK sign-ups allowed (advisory org, 2026-09-24, founder
+  delegated).** No geo-blocking; GDPR and UK GDPR are met at the backend's small
+  data footprint, with in-app account deletion. EU and UK team billing waits
+  until counsel rules on Art. 27 representatives (CFO condition).
+- **Minimum age is 18 (advisory org, 2026-09-24, founder delegated).**
+  Self-declared at account creation, no ID collection; the App Store rating
+  targets the top band with the questionnaire answered truthfully; an account
+  found to belong to a minor is deleted on notice. CX dissent recorded (16 and
+  17 year old builders).
+- **Contact inboxes are role addresses on openshore.ai (advisory org,
+  2026-09-24, founder delegated).** support@, privacy@, legal@, and copyright@
+  route to one monitored inbox once a test message makes the round trip; until
+  then os-code@openshorellc.com is the only published address, in the repo
+  Terms and on the site alike.
+- **Terms use Delaware law with no forced arbitration (advisory org,
+  2026-09-24, founder delegated).** Delaware law and courts, a small-claims
+  carve-out, no class-action waiver, EU and UK consumer rights preserved;
+  counsel drafts the clause, and the Board revisits arbitration at the billing
+  flip.
+- **Published address is a commercial virtual mailbox (advisory org,
+  2026-09-24, founder delegated).** It appears in the site footer, the privacy
+  policy, the Terms notices, the App Store listing, and list email; the
+  registered agent address is for service of process only, and a residential
+  address is never published. The founder supplies the literal address.
