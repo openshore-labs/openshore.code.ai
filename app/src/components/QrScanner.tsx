@@ -87,12 +87,7 @@ export function QrScanner({
         {error ? (
           <p className="hint">{error}</p>
         ) : (
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            style={{ width: '100%', borderRadius: 12, background: '#000' }}
-          />
+          <video ref={videoRef} className="qr-scanner-video" playsInline muted />
         )}
         <div className="sheet-actions">
           <button className="btn quiet press-fb" onClick={dismiss}>

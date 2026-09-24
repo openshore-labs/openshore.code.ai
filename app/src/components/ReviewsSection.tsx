@@ -34,6 +34,7 @@ import {
 import { CommunityStars, Stars } from './Stars.js';
 import { Sheet } from './Sheet.js';
 import { hapticSuccess } from '../lib/haptics.js';
+import { Icon } from './Icon.js';
 
 type Speed = 'snappy' | 'usable' | 'slow';
 
@@ -276,11 +277,11 @@ function ReviewRowView({
           aria-label="Review options"
           onClick={() => setMenu((m) => !m)}
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+          <Icon size={16} variant="fill">
             <circle cx="5" cy="12" r="1.6" />
             <circle cx="12" cy="12" r="1.6" />
             <circle cx="19" cy="12" r="1.6" />
-          </svg>
+          </Icon>
         </button>
       </div>
       {r.body ? <p className="review-body">{r.body}</p> : null}
@@ -405,14 +406,13 @@ function WriteReview({
               setRating(n);
             }}
           >
-            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+            <Icon size={30} weight="hairline">
               <path
                 d="M12 2.2l2.9 6.26 6.85.72-5.1 4.62 1.42 6.74L12 17.6l-6.08 3.94 1.42-6.74-5.1-4.62 6.85-.72z"
                 fill={n <= rating ? 'var(--voice)' : 'none'}
                 stroke="var(--voice)"
-                strokeWidth="1.4"
               />
-            </svg>
+            </Icon>
           </button>
         ))}
       </div>

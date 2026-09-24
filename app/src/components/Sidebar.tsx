@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth.js';
 import type { GestureProps } from '../hooks/useDrawerGesture.js';
 import { BrandMark } from './BrandMark.js';
 import { ROOM_LABELS, type NavRoom } from '../lib/navRooms.js';
+import { Icon } from './Icon.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
 // appear as a nav item (chat is home; onboarding and terminal are full-screen
@@ -162,21 +163,9 @@ const ICON_NODES: Record<NavIconName, JSX.Element> = {
 // stroke is currentColor so the active-state teal flows through untouched.
 function NavIcon({ name }: { name: NavIconName }) {
   return (
-    <svg
-      className="nav-glyph"
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
+    <Icon size={20} className="nav-glyph">
       {ICON_NODES[name]}
-    </svg>
+    </Icon>
   );
 }
 
@@ -292,19 +281,10 @@ export function Sidebar({
           }}
         >
           <span className="sidebar-signin-avatar" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <Icon size={18}>
               <circle cx="12" cy="8.5" r="3.4" />
               <path d="M5 20v-1a7 7 0 0 1 14 0v1" />
-            </svg>
+            </Icon>
           </span>
           <span className="sidebar-signin-label">
             <span className="sidebar-signin-title">Sign in</span>

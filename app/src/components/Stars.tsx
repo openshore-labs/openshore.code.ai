@@ -7,6 +7,7 @@
 // the stars never stretch or reflow, and both ride the house tokens.
 import { useEffect, useRef, useState } from 'react';
 import { ranItLabel, type CommunityScore } from '../lib/reviewsMath.js';
+import { Icon } from './Icon.js';
 
 const STAR_PATH =
   'M12 2.2l2.9 6.26 6.85.72-5.1 4.62 1.42 6.74L12 17.6l-6.08 3.94 1.42-6.74-5.1-4.62 6.85-.72z';
@@ -25,9 +26,9 @@ function Row({ color, size }: { color: string; size: number }) {
   return (
     <div className="stars-row" style={{ height: size }} aria-hidden="true">
       {[0, 1, 2, 3, 4].map((i) => (
-        <svg key={i} width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block' }}>
+        <Icon key={i} size={size} variant="fill" style={{ display: 'block' }}>
           <path d={STAR_PATH} fill={color} />
-        </svg>
+        </Icon>
       ))}
     </div>
   );
@@ -118,15 +119,9 @@ export function CommunityStars({
     if (!invite) return null;
     return (
       <span className="community-line cold">
-        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d={STAR_PATH}
-            fill="none"
-            stroke="var(--voice)"
-            strokeWidth="1.6"
-            strokeDasharray="3 2"
-          />
-        </svg>
+        <Icon size={size} weight="hairline">
+          <path d={STAR_PATH} fill="none" stroke="var(--voice)" strokeDasharray="3 2" />
+        </Icon>
         <span className="community-count">No run reports yet</span>
       </span>
     );
@@ -136,9 +131,9 @@ export function CommunityStars({
     : `${ranItLabel(score.count)}, not enough for an average yet`;
   return (
     <span className="community-line" role="img" aria-label={aria}>
-      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <Icon size={size} variant="fill">
         <path d={STAR_PATH} fill="var(--voice)" />
-      </svg>
+      </Icon>
       {score.hasAverage ? <b className="community-avg">{score.average.toFixed(1)}</b> : null}
       <span className="community-count">{ranItLabel(score.count)}</span>
     </span>

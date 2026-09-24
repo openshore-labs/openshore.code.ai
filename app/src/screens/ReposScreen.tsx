@@ -391,7 +391,7 @@ export function ReposScreen() {
                         <div className="card-row" key={item.id} style={{ marginTop: 6 }}>
                           <span className={`state-dot ${item.state}`} aria-hidden="true" />
                           <div className="grow">
-                            <div style={{ fontSize: 14 }}>{item.message}</div>
+                            <div className="repo-outbox-message">{item.message}</div>
                             <div className="sub">
                               {item.branch} · {item.files.length} file
                               {item.files.length > 1 ? 's' : ''}

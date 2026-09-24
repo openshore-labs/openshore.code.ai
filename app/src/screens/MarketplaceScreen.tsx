@@ -93,6 +93,7 @@ import { PROFILES, type ProfileId } from '../lib/profiles.js';
 import { stackForProfile } from '../lib/stack.js';
 import { Sheet } from '../components/Sheet.js';
 import { askForNotices, downloadNoticeCopy } from '../lib/notices.js';
+import { Icon } from '../components/Icon.js';
 
 interface DownloadState {
   percent: number;
@@ -1447,12 +1448,12 @@ export function MarketplaceScreen() {
         <div className="badge-row">
           {isRecommended ? (
             <span className="pick-badge">
-              <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true">
+              <Icon size={11} variant="fill">
                 <path
                   d="M2 17c3-1 4-4 5-7s3-5 5-6c-1 3 0 5 1 7s3 3 6 3c-2 2-5 2-8 2s-6 0-9 1z"
                   fill="currentColor"
                 />
-              </svg>
+              </Icon>
               OpenShore pick
             </span>
           ) : null}
@@ -1563,18 +1564,9 @@ export function MarketplaceScreen() {
             aria-expanded={detail}
           >
             <span className={`chevron${detail ? ' open' : ''}`} aria-hidden="true">
-              <svg
-                viewBox="0 0 24 24"
-                width="15"
-                height="15"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
+              <Icon size={15}>
                 <path d="M9 6l6 6-6 6" />
-              </svg>
+              </Icon>
             </span>
             {detail ? 'Hide details' : 'Details and license'}
           </button>
@@ -2266,19 +2258,10 @@ export function MarketplaceScreen() {
                 >
                   {t === 'icloud' ? (
                     <span className="seg-cloud" aria-hidden="true">
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="13"
-                        height="13"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
+                      <Icon size={13}>
                         <path d="M7 16a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.3A3.5 3.5 0 0 1 18 16" />
                         <path d="M12 12v6m0 0l-2.2-2.2M12 18l2.2-2.2" />
-                      </svg>
+                      </Icon>
                     </span>
                   ) : null}
                   {t === 'device' ? 'This iPhone' : 'iCloud Drive'}
@@ -2480,18 +2463,9 @@ export function MarketplaceScreen() {
             {shelf.subtitle ? <span className="shelf-sub">{shelf.subtitle}</span> : null}
           </span>
           <span className="shelf-more" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <Icon size={16}>
               <path d="M9 6l6 6-6 6" />
-            </svg>
+            </Icon>
           </span>
         </button>
         <div className="shelf-scroll">
@@ -2582,18 +2556,9 @@ export function MarketplaceScreen() {
         onClick={() => applyFacets({ ...EMPTY_FACETS })}
       >
         <span className="cat-chip-glyph all" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+          <Icon size={16}>
             <path d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+          </Icon>
         </span>
         Discover
       </button>
