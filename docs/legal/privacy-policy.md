@@ -286,7 +286,7 @@ OpenShore that need a server.
 
 | Processor | What it does for us | Where |
 | --- | --- | --- |
-| Supabase | Accounts, sign-in, the database, and the server functions behind sections 4.1 to 4.6 | [SUPABASE REGION] |
+| Supabase | Accounts, sign-in, the database, and the server functions behind sections 4.1 to 4.6 | United States (AWS us-east-1) |
 | Cloudflare | Hosts the website | [CLOUDFLARE REGION] |
 | Apple Push Notification service | Delivers push notifications to your device | [APNS REGION] |
 | [EMAIL PROVIDER] | Sends account and renewal emails | [EMAIL PROVIDER REGION] |
@@ -426,10 +426,10 @@ know of one, write to us.
 
 ## 12. International transfers
 
-Open Shore, LLC is based in the United States. Our backend runs in
-[SUPABASE REGION]. If you use OpenShore from the European Union or the United
-Kingdom, the data in section 4 may be transferred to the United States or other
-countries.
+Open Shore, LLC is based in the United States. Our backend runs in the United
+States (AWS us-east-1, Northern Virginia). If you use OpenShore from the
+European Union or the United Kingdom, the data in section 4 may be transferred
+to the United States or other countries.
 
 We protect those transfers with [TRANSFER MECHANISM]. You can ask us for a copy
 of the safeguards.
