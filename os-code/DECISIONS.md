@@ -1814,3 +1814,9 @@ execution contract. Newest at the bottom.
   guide and the First Seat card can never disagree. The past-my-size line is a
   fixed note after the reply, not left to the model. Stays on SmolLM2-135M: the
   360M would break the 170 MB bundle budget, a Board call if ever wanted.
+- **Onboarding runs on first open only, founder 2026-09-24:** Harbor Lite's
+  setup walk starts only when `settings.onboarded` is unset, and it is set the
+  moment the walk begins, so an update (TestFlight or App Store keeps app
+  data) never shows it again; only a fresh install or a delete and reinstall
+  does. A returning launch opens a new chat on the stack. Anything skipped
+  waits on the Set up OpenShore page.
