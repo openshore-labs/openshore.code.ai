@@ -32,10 +32,11 @@ export const HARBOR_MODEL_URL =
   'https://huggingface.co/unsloth/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf';
 export const HARBOR_APPROX_LABEL = 'about 1.9 GB';
 
-// The one-sentence byline shown under the Harbor row in Settings. Harbor is the
-// coder that runs on the phone, a step up from the built-in Harbor Lite guide.
+// The byline shown under the Harbor row in Settings. Harbor is the coder that
+// runs on the phone, a step up from the built-in Harbor Lite guide. It is a
+// coding model, not an agent: the agent is DeepBlue (brand sweep 2026-09-24).
 export const HARBOR_BYLINE =
-  'A coding agent that runs fully on your phone, writing and explaining real code, with real reasoning and web search.';
+  'A coding model that runs fully on your phone. It writes and explains code and searches the web.';
 
 export function isHarbor(modelId: string): boolean {
   return modelId === HARBOR_MODEL_ID;

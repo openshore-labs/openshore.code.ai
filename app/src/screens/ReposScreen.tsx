@@ -43,7 +43,7 @@ export function ReposScreen() {
   // opening a chat that cannot answer. Returns whether a session was opened.
   const openRepo = async (cwd: string, repoName: string): Promise<boolean> => {
     if (!sourceReady({ kind: 'desktop' })) {
-      showToast('Pick a model for this computer first, then open the repo.');
+      showToast('Pick a model for this computer first, then open the repository.');
       setView('stack');
       return false;
     }
@@ -90,7 +90,7 @@ export function ReposScreen() {
       } else if (settings.daemon) {
         result = await daemonCloneRepo(settings.daemon, cleaned);
       } else {
-        throw new Error('Connect your desktop first; repos live there.');
+        throw new Error('Connect your computer first; repositories live there.');
       }
       showToast(`${result.name} is ready.`);
       setUrl('');
@@ -109,7 +109,7 @@ export function ReposScreen() {
     setTokenValue('');
     if (!key) return;
     await connectRepoPlatform(id, key);
-    showToast(`${name} connected. Its repos are reachable on your token.`);
+    showToast(`${name} connected. Its repositories are reachable on your access token.`);
   };
 
   // One-tap OAuth: open the provider's consent screen, and on return the tokens
@@ -140,15 +140,15 @@ export function ReposScreen() {
       <div className="screen-inner">
         <h1>Repositories</h1>
         <p className="lead">
-          Connect GitHub or another platform on your own token. OpenShore reads, edits, tests, and
-          commits with your approval on every change.
+          Connect GitHub or another platform on your own access token. OpenShore reads, edits,
+          tests, and commits with your approval on every change.
         </p>
 
         {/* Connect a platform. */}
         <h3 style={{ margin: '4px 0 10px' }}>Connect a platform</h3>
         {!connected ? (
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            You can add a token now. Repositories open once this phone is connected to your
+            You can add an access token now. Repositories open once this phone is connected to your
             computer, where the code lives.{' '}
             <button className="linklike" onClick={() => setView('pair')}>
               Open Desktop + phone
@@ -223,7 +223,7 @@ export function ReposScreen() {
                     setTokenValue('');
                   }}
                 >
-                  Use a token instead
+                  Use an access token instead
                 </button>
               ) : null}
               {connecting === c.id ? (
@@ -237,7 +237,7 @@ export function ReposScreen() {
                     style={{ marginBottom: 8 }}
                     onClick={() => openInAppBrowser(c.tokenUrl)}
                   >
-                    Get a {c.name} token ↗
+                    Get a {c.name} access token ↗
                   </button>
                   <div className="field">
                     <input
@@ -256,7 +256,7 @@ export function ReposScreen() {
                     style={{ width: '100%' }}
                     onClick={() => void saveConnection(c.id, c.name)}
                   >
-                    Save token
+                    Save access token
                   </button>
                   <p className="hint" style={{ marginTop: 8 }}>
                     It stays in this device Keychain, never in a log.
@@ -308,14 +308,14 @@ export function ReposScreen() {
         {/* Home repo. Hidden until the offload producer + homePath picker land. */}
         {REPO_OUTBOX_ENABLED ? (
           <>
-            <h3 style={{ margin: '18px 0 10px' }}>Home repo</h3>
+            <h3 style={{ margin: '18px 0 10px' }}>Home repository</h3>
             <div className="card">
               <div className="card-row">
                 <div className="grow">
                   <h3>{homeRepo ? homeRepo.label : 'Not set up yet'}</h3>
                   <div className="sub">
                     {homeRepo
-                      ? `${homeRepo.kind === 'home' ? 'On your home system' : homeRepo.kind} · ${homeRepo.defaultBranch}`
+                      ? `${homeRepo.kind === 'home' ? 'On your computer' : homeRepo.kind} · ${homeRepo.defaultBranch}`
                       : 'The one place the whole system works through, like your home LLM. Off-home deploys buffer, then land here when you dock.'}
                   </div>
                 </div>
@@ -336,14 +336,14 @@ export function ReposScreen() {
                   onSave={async (h) => {
                     await setHomeRepo(h);
                     setEditingHome(false);
-                    showToast('Home repo set.');
+                    showToast('Home repository set.');
                   }}
                   onCancel={() => setEditingHome(false)}
                 />
               ) : null}
               {!admin && settings.account?.type === 'commercial' ? (
                 <p className="hint" style={{ marginTop: 8 }}>
-                  Your admin owns where the home repo lives.
+                  Your admin owns where the home repository lives.
                 </p>
               ) : null}
             </div>
@@ -351,20 +351,20 @@ export function ReposScreen() {
             {/* Buffered deploys (the outbox). */}
             {homeRepo ? (
               <>
-                <h3 style={{ margin: '18px 0 10px' }}>Buffered while off-home</h3>
+                <h3 style={{ margin: '18px 0 10px' }}>Waiting to sync home</h3>
                 <div className="card">
                   {outbox.length === 0 ? (
                     <div className="sub">
                       Nothing buffered. When you deploy away from home, changes wait here, sealed on
-                      this device, and sync to the home repo the moment you dock. Your device only
-                      clears a change after the home repo confirms it, so nothing is lost in
-                      between.
+                      this device, and sync to the home repository the moment you dock. Your device
+                      only clears a change after the home repository confirms it, so nothing is lost
+                      in between.
                     </div>
                   ) : (
                     <>
                       <div className="sub" style={{ marginBottom: 8 }}>
-                        {unsynced} waiting to reach the home repo. They sync on dock and clear only
-                        once the home repo confirms them.
+                        {unsynced} waiting to reach the home repository. They sync on dock and clear
+                        only once the home repository confirms them.
                       </div>
                       {(() => {
                         const health = bufferHealth(outbox, Date.now());
@@ -403,8 +403,8 @@ export function ReposScreen() {
                       ))}
                       {!homeRepoReady(homeRepo) ? (
                         <p className="hint" style={{ marginTop: 8 }}>
-                          Set the home repo path first. Tap Change above and pick the desktop clone
-                          this repo lands in, then Sync appears here.
+                          Set the home repository path first. Tap Change above and pick the clone on
+                          your computer this repository lands in, then Sync appears here.
                         </p>
                       ) : null}
                       <div
@@ -417,7 +417,7 @@ export function ReposScreen() {
                             disabled={!settings.daemon}
                             onClick={async () => {
                               await syncOutbox();
-                              showToast('Synced what the home repo could confirm.');
+                              showToast('Synced what the home repository could confirm.');
                             }}
                           >
                             Sync now
@@ -471,7 +471,8 @@ export function ReposScreen() {
                 {cloning ? 'Cloning...' : 'Clone and open a chat'}
               </button>
               <p className="hint" style={{ marginTop: 8 }}>
-                Private repos use the platform you connected above, or an SSH key on the desktop.
+                Private repositories use the platform you connected above, or an SSH key on your
+                computer.
               </p>
             </div>
 
@@ -480,7 +481,7 @@ export function ReposScreen() {
                 <div className="card-row">
                   <div className="grow">
                     <h3>Open a local folder</h3>
-                    <div className="sub">Any repo already on this machine.</div>
+                    <div className="sub">Any repository already on this computer.</div>
                   </div>
                   <button
                     className="btn ghost"
@@ -526,10 +527,10 @@ export function ReposScreen() {
           <div className="card">
             <div className="card-row">
               <div className="grow">
-                <h3>Repos also live on your desktop</h3>
+                <h3>Repositories also live on your computer</h3>
                 <div className="sub">
-                  Connect this phone to your desktop over Tailscale and every repo there is one tap
-                  away.
+                  Connect this phone to your computer over Tailscale and every repository there is
+                  one tap away.
                 </div>
               </div>
               <button
@@ -589,7 +590,7 @@ function HomeRepoEditor({
   const save = () => {
     const home: HomeRepo = {
       id: initial?.id ?? `home${Date.now().toString(36)}`,
-      label: label.trim() || 'Home repo',
+      label: label.trim() || 'Home repository',
       kind,
       defaultBranch: branch.trim() || 'main',
       remoteUrl: kind === 'home' ? undefined : remoteUrl.trim() || undefined,
@@ -616,7 +617,7 @@ function HomeRepoEditor({
           value={kind}
           onChange={(e) => setKind(e.target.value as HomeRepo['kind'])}
         >
-          <option value="home">On my home system (over Tailscale)</option>
+          <option value="home">On my computer (over Tailscale)</option>
           {platformKinds.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -637,12 +638,12 @@ function HomeRepoEditor({
         </div>
       ) : (
         <p className="hint">
-          Your home system holds the repo. This phone reaches it over your private Tailscale
+          Your computer holds the repository. This phone reaches it over your private Tailscale
           network, so nothing depends on a third party.
         </p>
       )}
       <div className="field">
-        <label>On the desktop</label>
+        <label>On your computer</label>
         {workspaces.length ? (
           <select
             className="select"
@@ -658,13 +659,13 @@ function HomeRepoEditor({
           </select>
         ) : (
           <p className="hint">
-            No cloned workspaces found. Clone this repo on the desktop first, below, then set it as
-            the home repo here.
+            No cloned workspaces found. Clone this repository on your computer first, below, then
+            set it as the home repository here.
           </p>
         )}
         <p className="hint" style={{ marginTop: 8 }}>
-          Buffered deploys land in this clone on the home engine, then push. Sync stays hidden until
-          a path is set here.
+          Waiting changes land in this clone on your computer, then push. Sync stays hidden until a
+          path is set here.
         </p>
       </div>
       <div className="field">
@@ -678,7 +679,7 @@ function HomeRepoEditor({
       </div>
       <div className="sheet-actions">
         <button className="btn primary" onClick={save}>
-          Save home repo
+          Save home repository
         </button>
         <button className="btn quiet" onClick={onCancel}>
           Cancel

@@ -89,18 +89,18 @@ export function TerminalRoomScreen() {
             <h3 style={{ marginTop: 0 }}>Two things, once</h3>
             <ol className="terminal-firstrun">
               <li>
-                Install the OpenShore desktop engine on the computer you want as your hub, the
-                machine that holds your code. It works on macOS, Windows, or Linux.
+                Install OpenShore on the computer that holds your code. It works on macOS, Windows,
+                or Linux.
               </li>
               <li>
                 Put both this device and that computer on the same private Tailscale network, so
-                this app can reach the hub with no ports opened to the world.
+                this app can reach it with no ports opened to the world.
               </li>
             </ol>
             <p className="hint" style={{ marginBottom: 0 }}>
-              Desktop and phone has the download links and the pairing steps.{' '}
+              Desktop + phone has the download links and the pairing steps.{' '}
               <button className="linklike" onClick={() => setView('pair')}>
-                Open Desktop and phone
+                Open Desktop + phone
               </button>
               {' or '}
               <button
@@ -163,7 +163,7 @@ export function TerminalRoomScreen() {
             </div>
             {!canControl ? (
               <p className="hint" style={{ margin: '8px 0 0' }}>
-                Only an organization admin can turn this on for a shared hub.
+                Only an organization admin can turn this on for a shared computer.
               </p>
             ) : null}
           </div>
@@ -217,13 +217,13 @@ export function TerminalRoomScreen() {
           </div>
         ) : (
           <div className="card tc-section" style={{ '--i': 0 } as CSSProperties}>
-            <h3 style={{ marginTop: 0 }}>Connect your hub</h3>
+            <h3 style={{ marginTop: 0 }}>Connect your computer</h3>
             <p className="hint" style={{ marginBottom: 10 }}>
-              This device is not paired with a computer yet. Set it up under Desktop and phone, then
+              This device is not paired with a computer yet. Set it up under Desktop + phone, then
               the terminal lives here.
             </p>
             <button className="btn press-fb" onClick={() => setView('pair')}>
-              Set up Desktop and phone
+              Set up Desktop + phone
             </button>
           </div>
         )}

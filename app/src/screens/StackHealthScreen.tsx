@@ -381,7 +381,7 @@ export function StackHealthScreen() {
       <div className="screen-inner">
         <h1>Stack Health</h1>
         <p className="lead">
-          How your stack is really working, read on your own machine. Nothing here leaves this
+          How your stack is really working, read on your own computer. Nothing here leaves this
           device.
         </p>
 
@@ -404,8 +404,8 @@ export function StackHealthScreen() {
         {state === 'ready' && health ? (
           <p className="hint sh-scope">
             {health.scope === 'machine'
-              ? 'Across every session on this hub. Never broken down by person.'
-              : 'Your sessions on this machine.'}
+              ? 'Across every session on this computer. Never broken down by person.'
+              : 'Your sessions on this computer.'}
           </p>
         ) : null}
         {state === 'ready' && updatedAt ? (
@@ -420,18 +420,18 @@ export function StackHealthScreen() {
           <div className="card" style={{ marginTop: 12 }}>
             <h3>See it on every device you pair</h3>
             <p className="sub" style={{ marginTop: 6 }}>
-              Stack Health reads the sessions on the machine that runs your models. Pair this phone
-              with your hub and it shows up here too, folded on that machine and sent as a summary.
-              Your phone stays a window onto it, never a copy. On your Mac or PC, open OpenShore to
-              see it directly.
+              Stack Health reads the sessions on the computer that runs your models. Pair this phone
+              with it and it shows up here too, folded on that computer and sent as a summary. Your
+              phone stays a window onto it, never a copy. On your Mac or PC, open OpenShore to see
+              it directly.
             </p>
           </div>
         ) : null}
         {state === 'unreachable' ? (
           <div className="card" style={{ marginTop: 12 }}>
-            <h3>Your hub is not answering</h3>
+            <h3>Your computer is not answering</h3>
             <p className="sub" style={{ marginTop: 6 }}>
-              Stack Health is folded on the machine that runs your models. It looks asleep or off
+              Stack Health is folded on the computer that runs your models. It looks asleep or off
               your network right now. Wake it, or check you are both on the same Tailscale network,
               then open this again.
             </p>
@@ -613,7 +613,7 @@ export function StackHealthScreen() {
               </section>
             ) : catalog && crew.length ? (
               <p className="hint" style={{ marginTop: 14 }}>
-                Your stack is already running lean. Nothing here would save energy without giving up
+                The stack is already running lean. Nothing here would save energy without giving up
                 capability.
               </p>
             ) : null}

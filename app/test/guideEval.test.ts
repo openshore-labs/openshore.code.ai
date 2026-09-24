@@ -44,7 +44,7 @@ describe('guide eval, decisions', () => {
   });
 
   it('is far leaner than every fact on every turn', () => {
-    const lean = estimateTokens(buildHarborMiniSystemPrompt('How does Your stack work?'));
+    const lean = estimateTokens(buildHarborMiniSystemPrompt('How does Stack work?'));
     expect(lean * 2).toBeLessThan(estimateTokens(baselinePrompt()));
   });
 });

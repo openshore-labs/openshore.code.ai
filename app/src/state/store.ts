@@ -547,8 +547,10 @@ const drivers = new Map<string, ChatDriver>();
 // whole gate is routed through personalUnlockedNow(), so this one flag covers
 // every call site. Flip to true to re-enable the $20 Personal gate; nothing else
 // needs to change. (Commercial team-seat billing is a separate gate,
-// growthGatedByBilling, and is not affected by this.)
-const PAY_GATES_ENABLED = false;
+// growthGatedByBilling, and is not affected by this.) Every price a person can
+// read also sits behind this flag (brand sweep 2026-09-24: no prices on screen
+// until the Board rules), through plans.ts shownPrice().
+export const PAY_GATES_ENABLED = false as boolean;
 
 // Throttle for the foreground entitlement re-check, so returning to the app many
 // times in a row never hammers the entitlement read.
@@ -2405,7 +2407,7 @@ export const useApp = create<AppState>((set, get, api) => {
               const msg = err instanceof Error ? err.message : String(err);
               throw new Error(
                 /orchestrator/i.test(msg)
-                  ? 'No model is set up on this computer yet. Open Your stack and pick one.'
+                  ? 'No model is set up on this computer yet. Open Stack and pick one.'
                   : msg,
               );
             }
@@ -2420,7 +2422,7 @@ export const useApp = create<AppState>((set, get, api) => {
           return new ElectronDriver(sessionId, journal);
         }
         if (!settings.daemon) {
-          throw new Error('Connect to your desktop first (Menu, then Desktop connection).');
+          throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
@@ -2457,7 +2459,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // daemon's stateless /chat endpoint. No session is created, so this can
         // never become the paid agent. Needs a paired daemon.
         if (!settings.daemon) {
-          throw new Error('Connect to your desktop first (Menu, then Desktop connection).');
+          throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
         return new DesktopChatDriver(settings.daemon, conv.source.model, seed);
       }
@@ -2477,7 +2479,7 @@ export const useApp = create<AppState>((set, get, api) => {
         const source = conv.source;
         if (source.provider === 'anthropic') {
           const key = await secretGet(ANTHROPIC_KEY_KEY);
-          if (!key) throw new Error('Add your Claude API key under Connections first.');
+          if (!key) throw new Error('Add your Claude API key under Cloud Connections first.');
           return new CloudClaudeDriver(
             key,
             source.model,
@@ -3227,7 +3229,7 @@ export const useApp = create<AppState>((set, get, api) => {
         .catch(() => {});
       if (locked) {
         get().showToast(
-          'Could not unlock your data on this machine. Nothing was changed. Restart the app, or check your system keychain.',
+          'Could not unlock your data on this computer. Nothing was changed. Restart the app, or check your system keychain.',
         );
         logEvent('data_locked');
       }
@@ -3589,7 +3591,7 @@ export const useApp = create<AppState>((set, get, api) => {
         await get().refreshEntitlement();
         if (get().personalUnlockedNow()) {
           set({ paywall: undefined });
-          get().showToast("You're Personal. The agent and Marketplace are unlocked.");
+          get().showToast("You're Personal. The coding agent is unlocked.");
         }
         return;
       }
@@ -3597,7 +3599,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // here. Point the user to buy it in the app on their iPhone, then unlock
       // this computer with "I bought it" (restorePurchases refreshes the
       // entitlement). Commercial team plans still use Stripe, via manageBilling.
-      get().showToast('Buy Personal in the OS Code app on your iPhone, then refresh here.');
+      get().showToast('Buy Personal in the OpenShore app on your iPhone, then refresh here.');
     },
 
     async restorePurchases() {
@@ -3982,7 +3984,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const client = routinesClient(get().settings);
       if (!client) {
-        get().showToast('Pair your desktop first. Routines run on your computer.');
+        get().showToast('Pair your computer first. Routines run there.');
         return undefined;
       }
       try {
@@ -4956,7 +4958,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const prompt = [
         `Launch my ${target.platform} app with Codemagic, from branch ${target.branch}.`,
         'Trigger a build and watch it. If it fails, read the log, find the single root cause, and tell me the exact fix.',
-        'You can retry directly for a transient failure or a build-target change. For a code fix, tell me exactly what to change (I can apply it, or hand it to my desktop), then build again once I confirm.',
+        'You can retry directly for a transient failure or a build-target change. For a code fix, tell me exactly what to change (I can apply it, or hand it to my computer), then build again once I confirm.',
         'When it is green, tell me plainly where it landed (TestFlight, the App Store, or Google Play).',
       ].join(' ');
       get().sendWhenAttached(convId, prompt);
@@ -5015,7 +5017,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async setHomeRepo(home) {
       // The home repo is a shared, admin-owned location (like the stack).
       if (!isOrgAdmin(get().settings.account)) {
-        get().showToast('Only an admin sets the home repo.');
+        get().showToast('Only an admin sets the home repository.');
         return;
       }
       const repo: RepoState = { ...(get().settings.repo ?? { outbox: [] }), homeRepo: home };
@@ -5030,11 +5032,11 @@ export const useApp = create<AppState>((set, get, api) => {
       const home = s.repo?.homeRepo;
       const outbox = s.repo?.outbox ?? [];
       if (!daemon) {
-        get().showToast('Connect your desktop to sync your buffered work.');
+        get().showToast('Connect your computer to sync your waiting work.');
         return;
       }
       if (!home?.homePath) {
-        get().showToast('Set the home repo path first, in Repositories.');
+        get().showToast('Set the home repository path first, in Repositories.');
         return;
       }
       const pending = pendingForRepo(outbox, home.id);
@@ -6189,7 +6191,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const { activeId } = get();
       const driver = activeId ? drivers.get(activeId) : undefined;
       if (!activeId || !driver?.compact) {
-        get().showToast('Compaction is for a desktop repo session.');
+        get().showToast('Compaction is for a repository session on your computer.');
         return;
       }
       const conv = get().conversations[activeId];
@@ -6309,7 +6311,9 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!activeId) return;
       const driver = drivers.get(activeId);
       if (!driver?.runCommand) {
-        get().showToast('This chat has no terminal. Open a desktop repo to run commands.');
+        get().showToast(
+          'This chat has no terminal. Open a repository on your computer to run commands.',
+        );
         return;
       }
       // Output arrives as command-* events on the driver subscription; the
@@ -6323,7 +6327,7 @@ export const useApp = create<AppState>((set, get, api) => {
           return;
         }
         const runId = typeof r === 'string' ? r : r?.runId;
-        if (!runId) get().showToast('Could not reach the desktop to run that. Try again.');
+        if (!runId) get().showToast('Could not reach your computer to run that. Try again.');
       });
     },
 

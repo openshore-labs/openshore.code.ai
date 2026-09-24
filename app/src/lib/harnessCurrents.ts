@@ -61,7 +61,7 @@ export const HARNESS_CURRENTS: HarnessCurrentInfo[] = [
     label: 'Jev',
     sub: 'A cheap decision model that steers your seats: it picks the seat for a turn and skips steps that do not need one.',
     needs:
-      'A TypeSafe API key. Jev is a cloud decision model, so it needs a key and spends a small amount per turn.',
+      'A TypeSafe API key. Jev is a cloud decision model, so it needs an API key and spends a small amount per turn.',
     apiBase: 'https://api.typesafe.ai',
     apiKeyUrl: 'https://typesafe.ai',
     defaultModel: JEV_DEFAULT_MODEL,
@@ -173,8 +173,8 @@ export function harnessCurrentStateLine(
   const host = hostOf(c?.endpoint) || hostOf(info.apiBase);
   if (state === 'on') return `On. Steering your seats through ${host}.`;
   if (state === 'arriving') {
-    if (!harnessCurrentConfigured(id, settings)) return `Arriving. ${info.needs}`;
-    return `Arriving. ${host} did not answer yet. Check the key and that you are online.`;
+    if (!harnessCurrentConfigured(id, settings)) return `Not set up. ${info.needs}`;
+    return `Not answering. ${host} did not answer yet. Check the API key and that you are online.`;
   }
   if (state === 'ready') return 'Ready. Turn it on to layer it in.';
   return info.sub;

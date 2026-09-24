@@ -5,15 +5,14 @@
 // button; the sheet points the user to buy it in the app on their iPhone, then
 // refresh here to unlock the same account on this computer. Chat keeps working
 // behind this, so the dismiss is non-punitive.
-import { useApp } from '../state/store.js';
+import { PAY_GATES_ENABLED, useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { iapAvailable } from '../lib/iap.js';
 
 const BULLETS = [
-  'Run the agent on any repo, on your machine',
+  'Run the agent on any repository, on your computer',
   'Edits with real diffs, and tool approvals you control',
-  'The full model Marketplace, rated against your hardware',
-  'Your models, your keys. Nothing routes through us.',
+  'Your models, your API keys. Nothing routes through us.',
 ];
 
 export function Paywall() {
@@ -26,16 +25,19 @@ export function Paywall() {
   if (!reason) return null;
 
   const ios = iapAvailable();
-  const headline = reason === 'marketplace' ? 'Unlock the Marketplace.' : 'Unlock the agent.';
+  // The Marketplace is Coming soon, so the sheet never sells it (brand sweep
+  // 2026-09-24): one headline for either reason.
+  const headline = 'Unlock the agent.';
   const subhead =
-    reason === 'marketplace'
-      ? 'Free covers chat with the models you already run in Harbor or Ollama. Personal adds the full catalog, rated against your hardware, and the coding agent.'
-      : 'Chat is yours for free. Personal turns OpenShore into a coding agent that reads your repo, writes real edits, and runs the tools to prove them.';
+    'Chat is yours for free. Personal turns OpenShore into a coding agent that reads your repository, writes real edits, and runs the tools to prove them.';
   // The App Store returns the localized price at purchase; $20/year is the set
-  // price and the label the founder configures the product at.
-  const priceLine = ios
-    ? '$20 per year. One person, the whole app.'
-    : '$20 per year. One person, the whole app. Bought on your iPhone.';
+  // price and the label the founder configures the product at. No price shows
+  // while the pay gates are off (pricing is a Board gate).
+  const priceLine = PAY_GATES_ENABLED
+    ? ios
+      ? '$20 per year. One person, the whole app.'
+      : '$20 per year. One person, the whole app. Bought on your iPhone.'
+    : null;
 
   return (
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
@@ -48,15 +50,15 @@ export function Paywall() {
             <li key={b}>{b}</li>
           ))}
         </ul>
-        <p className="paywall-price">{priceLine}</p>
+        {priceLine ? <p className="paywall-price">{priceLine}</p> : null}
         <div className="sheet-actions">
           {ios ? (
             <button className="btn primary press-fb" onClick={() => void buyPersonal()}>
-              Unlock Personal · $20/year
+              {PAY_GATES_ENABLED ? 'Unlock Personal · $20/year' : 'Unlock Personal'}
             </button>
           ) : (
             <p className="sheet-sub" style={{ marginTop: 0 }}>
-              Personal is an in-app purchase in OS Code on iPhone or iPad. Buy it there, then
+              Personal is an in-app purchase in OpenShore on iPhone or iPad. Buy it there, then
               refresh here to unlock it on this computer.
             </p>
           )}

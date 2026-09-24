@@ -1,10 +1,10 @@
 // The model sheet, in the Claude app's "Select model" shape. The root shows the
-// default (My Stack), any models the user has pinned, the effort control, and two
+// default (Stack), any models the user has pinned, the effort control, and two
 // category buttons that open dedicated sheets, the way Claude's "more models"
-// expands: Cloud Providers and Local LLMs. Each category has an honest empty
-// state that routes to setup. When no stack exists yet, My Stack is greyed with a
+// expands: Cloud models and Local models. Each category has an honest empty
+// state that routes to setup. When no stack exists yet, Stack is greyed with a
 // link to build one. Models in the category sheets swipe left to pin; a pinned
-// model rides under My Stack for one-tap use and swipes there to unpin.
+// model rides under Stack for one-tap use and swipes there to unpin.
 import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
@@ -103,7 +103,7 @@ function PinStar({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }
   );
 }
 
-/** A short, human name for a pinned source, shown under My Stack. */
+/** A short, human name for a pinned source, shown under Stack. */
 function pinLabel(s: ConversationSource): string {
   if (s.kind === 'cloud') {
     return s.provider === 'anthropic'
@@ -253,7 +253,7 @@ export function ModelSheet({
                 ) : engineModel ? (
                   <Row
                     main="This computer"
-                    sub={`${engineModel}, running on this machine`}
+                    sub={`${engineModel}, running on this computer`}
                     highlight
                     onClick={() => pick({ kind: 'desktop' })}
                   />
@@ -274,7 +274,7 @@ export function ModelSheet({
                 {!daemon ? (
                   <Row
                     main="Connect your computer"
-                    sub="Run your own model on your machine, from anywhere"
+                    sub="Run your own model on your computer, from anywhere"
                     chevron
                     onClick={() => goto('pair')}
                   />
@@ -297,7 +297,7 @@ export function ModelSheet({
                 ) : boxModel ? (
                   <Row
                     main="My computer"
-                    sub={`${boxModel}, running on your machine`}
+                    sub={`${boxModel}, running on your computer`}
                     highlight
                     onClick={() => pick({ kind: 'desktop' })}
                   />
@@ -314,7 +314,7 @@ export function ModelSheet({
                 {daemon && boxStack && boxStack !== 'error' ? (
                   <Row
                     main="Chat with your computer"
-                    sub="Free. Read-only, no repo or edits."
+                    sub="Free. Read-only, no repository or edits."
                     onClick={() => pick({ kind: 'desktop-chat' })}
                   />
                 ) : null}
@@ -323,15 +323,15 @@ export function ModelSheet({
             <div className="ms-group">
               {hasStack ? (
                 <Row
-                  main="My Stack"
-                  sub="Your Reasoning LLM routes each task"
+                  main="Stack"
+                  sub="Your lead model picks who answers"
                   highlight
                   onClick={() => pick({ kind: 'stack' })}
                 />
               ) : (
                 <div className="ms-row ms-row-disabled">
                   <span className="ms-row-text">
-                    <span className="ms-row-main">My Stack</span>
+                    <span className="ms-row-main">Stack</span>
                     <button className="ms-sublink press-fb" onClick={() => goto('stack')}>
                       Create your stack to get started
                     </button>
@@ -363,8 +363,8 @@ export function ModelSheet({
             </div>
 
             <div className="ms-group">
-              <Row main="Cloud Providers" chevron onClick={() => setStage('cloud')} />
-              <Row main="Local LLMs" chevron onClick={() => setStage('local')} />
+              <Row main="Cloud models" chevron onClick={() => setStage('cloud')} />
+              <Row main="Local models" chevron onClick={() => setStage('local')} />
             </div>
           </>
         ) : null}
@@ -390,10 +390,10 @@ export function ModelSheet({
 
         {stage === 'cloud' ? (
           <>
-            <Header title="Cloud Providers" />
+            <Header title="Cloud models" />
             {cloudEmpty ? (
               <button className="ms-empty press-fb" onClick={() => goto('connections')}>
-                No cloud model connected yet. Connect one on your own key.
+                No cloud model connected yet. Connect one on your own API key.
               </button>
             ) : (
               <>
@@ -488,7 +488,7 @@ export function ModelSheet({
 
         {stage === 'local' ? (
           <>
-            <Header title="Local LLMs" />
+            <Header title="Local models" />
             {deviceModels.length ? (
               <div className="ms-group">
                 {deviceModels.map(([id, name]) => {
@@ -513,8 +513,8 @@ export function ModelSheet({
                 })}
               </div>
             ) : (
-              <button className="ms-empty press-fb" onClick={() => goto('marketplace')}>
-                No on-device model yet. Download one from the Marketplace to get started.
+              <button className="ms-empty press-fb" onClick={() => goto('settings')}>
+                No on-device model yet. Get Harbor from Settings, Harbor, to get started.
               </button>
             )}
           </>

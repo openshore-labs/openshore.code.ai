@@ -189,7 +189,7 @@ export function CrewCommandScreen() {
     .sort()[0];
   const unlocked = customRoutinesUnlocked(runs);
   const hasPreset = routines.some((r) => r.name === PRESET.name);
-  const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your main machine');
+  const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your main computer');
 
   // The roster: every crew member, plus a member a routine names that is not
   // on the crew any more (a deleted card must not hide a live routine).
@@ -423,7 +423,7 @@ export function CrewCommandScreen() {
           {unpaired ? (
             <div className="cc-hero-actions">
               <button className="btn primary press-fb" onClick={() => setView('pair')}>
-                Pair your machine
+                Pair your computer
               </button>
               <button
                 className="btn ghost press-fb"
@@ -440,7 +440,7 @@ export function CrewCommandScreen() {
             <h2>What your crew can do</h2>
             <p className="lead" style={{ marginBottom: 14 }}>
               These run on your own computer, on the models you hold. You set them up while
-              connected to your machine. After that you can watch and steer them from here,
+              connected to your computer. After that you can watch and steer them from here,
               anywhere, and take control whenever you are back in reach over Tailscale.
             </p>
             <div className="cc-dormant">
@@ -535,9 +535,7 @@ export function CrewCommandScreen() {
                       </div>
                       <div className="cc-member-line">
                         <PresenceDot tone={currentProbes[current.id] ? 'ok' : 'muted'} />
-                        {currentProbes[current.id]
-                          ? current.crew.line
-                          : 'Arriving. Not answering yet.'}
+                        {currentProbes[current.id] ? current.crew.line : 'Not answering yet.'}
                       </div>
                     </div>
                   </div>
@@ -581,8 +579,8 @@ export function CrewCommandScreen() {
               <p className="hint">Reading its schedule.</p>
             ) : currentJobs.length === 0 ? (
               <p className="hint">
-                No scheduled jobs reported, or the box did not answer. Jobs are set up on the box
-                itself; they show here once it answers.
+                No scheduled jobs reported, or that computer did not answer. Jobs are set up on that
+                computer itself; they show here once it answers.
               </p>
             ) : (
               <div className="cc-roster">

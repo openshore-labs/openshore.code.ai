@@ -230,7 +230,10 @@ function awaitRedirect(): Promise<RedirectResult> {
 
     const b = bridge();
     if (b) removers.push(b.onDeepLink((url) => handle(url)));
-    else finish(() => reject(new Error('Repo sign-in needs the phone or desktop app.')));
+    else
+      finish(() =>
+        reject(new Error('Repository sign-in needs the phone app or OpenShore on your computer.')),
+      );
   });
 }
 
@@ -313,7 +316,10 @@ export async function connectRepoOAuth(
     return { ok: false, error: 'One-tap sign-in is not set up on this build yet.' };
   }
   if (platform() !== 'ios' && platform() !== 'electron') {
-    return { ok: false, error: 'Repo sign-in needs the iPhone app or the desktop app.' };
+    return {
+      ok: false,
+      error: 'Repository sign-in needs the iPhone app or OpenShore on your computer.',
+    };
   }
 
   // iOS runs the flow through ASWebAuthenticationSession (runAuthSession), which

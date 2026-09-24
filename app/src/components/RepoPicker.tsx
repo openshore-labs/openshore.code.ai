@@ -198,8 +198,8 @@ export function RepoPicker({
               )}
             </div>
             <p className="hint repo-sheet-foot">
-              The agent works in the first repo on your computer. Every repo here is context for the
-              chat.
+              The agent works in the first repository on your computer. Every repository here is
+              context for the chat.
             </p>
           </>
         )}

@@ -106,7 +106,7 @@ export function HarnessCurrentConnectSheet({
             <label>API key</label>
             <input
               type="password"
-              placeholder={saved ? 'Leave blank to keep the saved key' : 'Paste your key'}
+              placeholder={saved ? 'Leave blank to keep the saved API key' : 'Paste your API key'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />

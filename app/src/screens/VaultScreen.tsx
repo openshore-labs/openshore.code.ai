@@ -625,7 +625,8 @@ export function VaultScreen() {
               <h3 style={{ marginBottom: 0 }}>Coding projects</h3>
             </div>
             <p className="hint" style={{ marginTop: 0 }}>
-              Historical knowledge the agent keeps in each project's repository. Read only here.
+              What it has learned: the notes the agent keeps in each project's repository. Read-only
+              here.
             </p>
             {repoSyncConflicts && repoSyncConflicts.length > 0 ? (
               <p className="hint" style={{ marginTop: 0, color: 'var(--warn)' }}>
@@ -658,7 +659,7 @@ export function VaultScreen() {
               <h3 style={{ marginBottom: 0 }}>{current.vault.title}</h3>
             </div>
             <p className="hint" style={{ marginTop: 0 }}>
-              {current.vault.sub} Read only here.
+              {current.vault.sub} Read-only here.
             </p>
             {currentNotes === undefined ? (
               <p className="hint" style={{ marginTop: 0 }}>
@@ -718,7 +719,7 @@ export function VaultScreen() {
               them. Check your connection and try again.
             </p>
             <button className="btn primary" onClick={() => void vaultRefresh()}>
-              Retry
+              Try again
             </button>
           </div>
         ) : vaultFiles.length === 0 && team ? (
@@ -854,7 +855,7 @@ export function VaultScreen() {
           <>
             <SheetHead title={currentNote.title} onClose={() => setCurrentNote(undefined)} />
             <p className="hint" style={{ marginTop: 0 }}>
-              {currentNote.path} · Read only. Edit it where it lives.
+              {currentNote.path} · Read-only. Edit it where it lives.
             </p>
             <VaultMarkdown text={currentNote.text} paths={[]} onOpenNote={() => {}} />
           </>
@@ -969,7 +970,7 @@ export function VaultScreen() {
                     showToast(
                       count === undefined
                         ? 'Export needs the app on a device, not the browser.'
-                        : `${count} ${count === 1 ? 'note' : 'notes'} exported to Files, under OS Code / Vault. Obsidian opens that folder as a vault.`,
+                        : `${count} ${count === 1 ? 'note' : 'notes'} exported to Files, under OpenShore / Vault. Obsidian opens that folder as a vault.`,
                     );
                   } catch {
                     showToast('Could not export your vault. Check device storage and try again.');

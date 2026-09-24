@@ -105,7 +105,7 @@ export function LaunchScreen() {
       <div className="screen screen-embed">
         <BackBar
           title="Codemagic"
-          back={{ to: 'App Launch with Codemagic', onBack: () => setEmbedded(false) }}
+          back={{ to: 'Launch with Codemagic', onBack: () => setEmbedded(false) }}
         />
         <EmbeddedSite site="codemagic" label="Codemagic" onClose={() => setEmbedded(false)} />
       </div>
@@ -114,9 +114,9 @@ export function LaunchScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="App Launch with Codemagic" />
+      <BackBar title="Launch with Codemagic" />
       <div className="screen-inner">
-        <h1>App Launch with Codemagic</h1>
+        <h1>Launch with Codemagic</h1>
         <p className="lead">
           Get your built app to the App Store or Google Play, guided from here. The model walks you
           through the accounts and setup. When you build, OpenShore follows Codemagic and reads the
@@ -170,8 +170,8 @@ export function LaunchScreen() {
               <h3>Codemagic</h3>
               <div className="sub">
                 {codemagicConnected
-                  ? 'Connected. Your token stays in this device Keychain.'
-                  : 'Add your Codemagic API token to trigger and follow builds.'}
+                  ? 'Connected. Your API key stays in this device Keychain.'
+                  : 'Add your Codemagic API key to trigger and follow builds.'}
               </div>
             </div>
             {codemagicConnected ? <span className="pill ok">connected</span> : null}
@@ -204,13 +204,13 @@ export function LaunchScreen() {
                 style={{ marginBottom: 8 }}
                 onClick={() => openInAppBrowser(CODEMAGIC_TOKEN_URL)}
               >
-                Get a Codemagic API token ↗
+                Get a Codemagic API key ↗
               </button>
               <div className="field">
                 <input
                   autoFocus
                   type="password"
-                  placeholder="Codemagic API token"
+                  placeholder="Codemagic API key"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                 />
@@ -226,11 +226,11 @@ export function LaunchScreen() {
                   showToast('Codemagic connected.');
                 }}
               >
-                Save token
+                Save API key
               </button>
               <p className="hint" style={{ marginTop: 8 }}>
-                A Codemagic token can trigger and read builds across your account. It stays on this
-                device and is never put in a log or sent anywhere but Codemagic.{' '}
+                A Codemagic API key can trigger and read builds across your account. It stays on
+                this device and is never put in a log or sent anywhere but Codemagic.{' '}
                 <button
                   className="linklike"
                   onClick={() => void useApp.getState().startGuideChat('connect-codemagic')}

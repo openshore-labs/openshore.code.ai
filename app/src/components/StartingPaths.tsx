@@ -77,7 +77,7 @@ export function StartingPaths({
             style={{ width: '100%' }}
             onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
           >
-            Retry
+            Try again
           </button>
         </>
       ) : harborDownload ? (
@@ -148,7 +148,7 @@ export function StartingPaths({
           <SettingsRow
             label={`Get ${name}`}
             sub={`${dl.label} Check your connection.`}
-            value="Retry"
+            value="Try again"
             onClick={() => void getGuideAndGo(id)}
           />
         );
@@ -212,7 +212,7 @@ export function StartingPaths({
           <>
             <SettingsRow
               label="Build your stack"
-              sub="A model on this machine, through Ollama"
+              sub="A model on this computer, through Ollama"
               onClick={() => void go('stack')}
             />
             <SettingsRow
@@ -230,13 +230,13 @@ export function StartingPaths({
             />
             <SettingsRow
               label="Set up a repository"
-              sub="Connect GitHub and pick a home repo"
+              sub="Connect GitHub and pick a home repository"
               onClick={() => void go('repos')}
             />
           </>
         )}
         <SettingsRow
-          label="Connect your own key"
+          label="Connect your own API key"
           sub="Claude, OpenAI, or Gemini, at your provider's price"
           onClick={() => void go('connections')}
         />
@@ -257,7 +257,7 @@ export function StartingPaths({
             <h3>Connect your computer</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
               Run your model on your own computer and reach it from your phone over your private
-              Tailscale network. Your machine does the work, so it does not drain your battery, and
+              Tailscale network. Your computer does the work, so it does not drain your battery, and
               a long answer keeps going even when you close the app.
             </div>
             <button className="btn ghost" style={{ width: '100%' }} onClick={() => void go('pair')}>
@@ -267,15 +267,15 @@ export function StartingPaths({
           <div className="card">
             <h3>Set up a repository</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Connect GitHub or another platform on your own token and pick a home repo. OpenShore
-              reads, edits, and commits there with your approval.
+              Connect GitHub or another platform on your own access token and pick a home
+              repository. OpenShore reads, edits, and commits there with your approval.
             </div>
             <button
               className="btn ghost"
               style={{ width: '100%' }}
               onClick={() => void go('repos')}
             >
-              Set up a repo
+              Set up a repository
             </button>
           </div>
         </>
@@ -284,8 +284,8 @@ export function StartingPaths({
           <div className="card">
             <h3>Set up your local stack</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Point OpenShore at a model running on this machine through Ollama. It stays on your
-              desk, and the full model Marketplace is one tap away.
+              Point OpenShore at a model running on this computer through Ollama. Open Stack to
+              install DeepBlue, sized to your computer. It stays on your desk.
             </div>
             <button
               className="btn primary"
@@ -298,31 +298,31 @@ export function StartingPaths({
           <div className="card">
             <h3>Open a repository</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Point OpenShore at a repo and it reads, edits, and commits with your approval.
+              Point OpenShore at a repository and it reads, edits, and commits with your approval.
             </div>
             <button
               className="btn ghost"
               style={{ width: '100%' }}
               onClick={() => void go('repos')}
             >
-              Pick a repo
+              Pick a repository
             </button>
           </div>
         </>
       )}
 
       <div className="card">
-        <h3>Connect your own key</h3>
+        <h3>Connect your own API key</h3>
         <div className="sub" style={{ marginBottom: 10 }}>
-          Chat stays free. Add a key for Claude, OpenAI, or Gemini and go further, at your
-          provider's price. Your key stays on your device.
+          Chat stays free. Add an API key for Claude, OpenAI, or Gemini and go further, at your
+          provider's price. Your API key stays on your device.
         </div>
         <button
           className="btn ghost"
           style={{ width: '100%' }}
           onClick={() => void go('connections')}
         >
-          Add a key
+          Add an API key
         </button>
       </div>
     </>

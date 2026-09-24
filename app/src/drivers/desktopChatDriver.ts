@@ -43,7 +43,7 @@ export class DesktopChatDriver implements ChatDriver {
     this.emitter.emit({
       type: 'turn-start',
       turn: 1,
-      model: this.model ?? 'your desktop',
+      model: this.model ?? 'your computer',
       providerKind: 'local',
     });
     this.history.push({ role: 'user', content: text });
@@ -64,7 +64,7 @@ export class DesktopChatDriver implements ChatDriver {
         this.emitter.emit({
           type: 'task-done',
           reason: 'error',
-          message: body?.error ?? `The desktop answered ${res.status}.`,
+          message: body?.error ?? `Your computer answered ${res.status}.`,
         });
         return;
       }
@@ -113,7 +113,7 @@ export class DesktopChatDriver implements ChatDriver {
       this.emitter.emit({
         type: 'task-done',
         reason: 'error',
-        message: err instanceof Error ? err.message : 'Could not reach your desktop.',
+        message: err instanceof Error ? err.message : 'Could not reach your computer.',
       });
     }
   }

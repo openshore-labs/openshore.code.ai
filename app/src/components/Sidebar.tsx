@@ -6,6 +6,7 @@ import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import type { GestureProps } from '../hooks/useDrawerGesture.js';
 import { BrandMark } from './BrandMark.js';
+import { ROOM_LABELS, type NavRoom } from '../lib/navRooms.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
 // appear as a nav item (chat is home; onboarding and terminal are full-screen
@@ -24,28 +25,19 @@ type NavIconName = Exclude<
 // The nav is split so a first-week user is not met with a dozen destinations
 // at once (CMO ruling). PRIMARY is the day-one set, pinned to the top: chat,
 // its project bucket, the coding surface (Repositories), where a model is
-// attached (Your stack), and the Vault. Everything else is real but
+// attached (Stack), and the Vault. Everything else is real but
 // second-session, grouped quietly at the bottom so it reads as depth, not
 // clutter: Admin leads that group (when the account carries it) and Settings
 // closes it.
-const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = [
-  { view: 'chats', label: 'Chats' },
-  { view: 'projects', label: 'Projects' },
-  { view: 'terminalroom', label: 'Terminal' },
-  { view: 'repos', label: 'Repositories' },
-  { view: 'stack', label: 'Your stack' },
-  { view: 'vault', label: 'Vault' },
-];
+const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] });
 
-const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = [
-  { view: 'crew', label: 'My Crew' },
-  { view: 'marketplace', label: 'Marketplace' },
-  { view: 'stackhealth', label: 'Stack Health' },
-  { view: 'launch', label: 'App Launch with Codemagic' },
-  { view: 'connections', label: 'Cloud Connections' },
-  { view: 'pair', label: 'Desktop + phone' },
-  { view: 'settings', label: 'Settings' },
-];
+const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = (
+  ['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const
+).map(nav);
+
+const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = (
+  ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
+).map(nav);
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
 // download tiles: a 24-unit grid, 2px round-cap / round-join strokes, and

@@ -31,7 +31,7 @@ export function OnboardingScreen() {
               </span>
             </span>
             <h1 style={{ marginTop: 14, fontFamily: 'var(--font-display)', fontWeight: 500 }}>
-              Your machine. Your models. Your keys.
+              Your computer. Your models. Your keys.
             </h1>
             <p className="lead" style={{ marginTop: 8 }}>
               Chat and build with local AI you own. Pick any starting point; you can add the rest

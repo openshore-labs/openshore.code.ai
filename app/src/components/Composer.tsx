@@ -132,7 +132,7 @@ export const SLASH_COMMANDS: Array<{
   { name: 'model', hint: 'Switch the model' },
   { name: 'cost', hint: 'Spend and tokens so far' },
   { name: 'mode', hint: 'Change the permission mode' },
-  { name: 'init', hint: 'Write an OSCODE.md for this repo', agentOnly: true },
+  { name: 'init', hint: 'Write an OSCODE.md for this repository', agentOnly: true },
   { name: 'rename', hint: 'Name this chat', arg: 'name' },
 ];
 
@@ -144,9 +144,9 @@ function shortLabel(source?: ConversationSource): string {
     case 'cloud':
       return 'Claude';
     case 'desktop':
-      return source.repoName ?? 'Desktop';
+      return source.repoName ?? 'Your computer';
     case 'desktop-chat':
-      return 'Desktop chat';
+      return 'My computer';
     case 'device':
       return sourceLabel(source).split(' · ')[0] ?? 'On device';
     case 'stack':
@@ -453,7 +453,7 @@ export function Composer({
         return;
       }
       if (cmd) {
-        showToast('That command needs a desktop repo session.');
+        showToast('That command needs a repository session on your computer.');
         return;
       }
     }
@@ -608,7 +608,7 @@ export function Composer({
 
   const micTap = () => {
     if (!dictation.supported) {
-      showToast('Voice input needs the native app update. Type for now.');
+      showToast('Voice input needs the native app. Type in the chat for now.');
       return;
     }
     if (!dictation.listening) baseRef.current = value.trim();
@@ -848,10 +848,10 @@ export function Composer({
           ref={areaRef}
           rows={1}
           value={value}
-          aria-label={terminal ? 'Command to run on your desktop' : 'Message'}
+          aria-label={terminal ? 'Command to run on your computer' : 'Message'}
           placeholder={
             terminal
-              ? 'Run a command on your desktop'
+              ? 'Run a command on your computer'
               : busy
                 ? 'Type to queue the next message'
                 : (placeholder ?? 'Chat with OpenShore')

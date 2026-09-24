@@ -1,6 +1,6 @@
 # How OpenShore runs a prompt: the harness, the game plan, and the play
 
-OpenShore turns a prompt into a run the way a coach runs a play. My Stack is the
+OpenShore turns a prompt into a run the way a coach runs a play. Stack is the
 anchor. The reasoning LLM frames the request, draws up a play (an ordered set of
 handoffs to the specialist models, with dependencies), shows you a brief, and
 runs it. This is the single, explicit workflow the app is built around.
@@ -24,7 +24,7 @@ flowchart TD
 ```
 
 **Stage 0, setup.** A chat or project connects to its repos and inherits its
-markdowns and instructions. My Stack for the current status (Offline / Offshore
+markdowns and instructions. Stack for the current status (Offline / Offshore
 / Docked) is loaded: the reasoning LLM (required; Harbor Light by default, which
 nudges you to install a real one) plus its specialist categories.
 

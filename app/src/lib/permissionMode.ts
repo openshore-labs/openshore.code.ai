@@ -30,7 +30,9 @@ export function normalizePermissionMode(value: unknown): PermissionMode {
 export function permissionModeLabel(m: PermissionMode): string {
   switch (m) {
     case 'default':
-      return 'Default';
+      // Labelled "Ask first": it is not the starting mode (Accept edits is), so
+      // "Default" misled (brand sweep 2026-09-24). The id stays 'default'.
+      return 'Ask first';
     case 'acceptEdits':
       return 'Accept edits';
     case 'plan':
@@ -47,7 +49,7 @@ export function permissionModeDescription(m: PermissionMode): string {
     case 'acceptEdits':
       return 'File edits flow, commands still ask';
     case 'plan':
-      return 'Read only. Proposes a plan you approve first';
+      return 'Read-only. Proposes a plan you approve first';
     case 'bypassPermissions':
       return 'Runs everything without asking. Cloud spend still asks';
   }

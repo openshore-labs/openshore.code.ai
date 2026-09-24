@@ -111,7 +111,7 @@ export class MockDriver implements ChatDriver {
       });
       await this.wait(250);
       const outro =
-        'Fixed and verified. In a real session this runs on YOUR models: your desktop stack over Tailscale, a pocket model on this device, or Claude on your own key. Set one up from the menu.';
+        'Fixed and verified. In a real session this runs on YOUR models: the stack on your computer over Tailscale, a pocket model on this device, or Claude on your own key. Set one up from the menu.';
       await this.streamText(outro);
       this.emit({ type: 'text-final', text: outro });
     } else {

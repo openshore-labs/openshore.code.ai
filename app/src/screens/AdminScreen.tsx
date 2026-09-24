@@ -4,8 +4,8 @@
 // as their own, with the stack shown read-only. Everyone's crew and projects
 // stay personal.
 import { useState } from 'react';
-import { useApp } from '../state/store.js';
-import { tierById, priceLabel } from '../lib/plans.js';
+import { PAY_GATES_ENABLED, useApp } from '../state/store.js';
+import { tierById, shownPrice } from '../lib/plans.js';
 import { BackBar } from '../components/BackBar.js';
 import { ReviewModeration } from '../components/ReviewModeration.js';
 import { EnforcementReview } from '../components/EnforcementReview.js';
@@ -84,7 +84,9 @@ export function AdminScreen() {
                 {org.seatCount} {org.seatCount === 1 ? 'seat' : 'seats'} declared. {tier.blurb}
               </div>
             </div>
-            <span className="pill price">{priceLabel(tier)}</span>
+            {shownPrice(tier, PAY_GATES_ENABLED) ? (
+              <span className="pill price">{shownPrice(tier, PAY_GATES_ENABLED)}</span>
+            ) : null}
             <button
               className="btn ghost"
               style={{ padding: '8px 14px' }}

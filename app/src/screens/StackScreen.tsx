@@ -1,4 +1,4 @@
-// Your stack: the one mandatory orchestrator and the optional specialists.
+// Stack: the one mandatory orchestrator and the optional specialists.
 // Editable on the desktop; the phone shows the live picture from the daemon.
 import { useCallback, useEffect, useState } from 'react';
 import type { DaemonStackInfo } from 'os-code/protocol';
@@ -152,9 +152,9 @@ export function StackScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Your stack" />
+      <BackBar title="Stack" />
       <div className="screen-inner">
-        <h1>Your stack</h1>
+        <h1>Stack</h1>
         <p className="lead">
           One model is your Reasoning LLM: it plans, reasons, and decides which model gets each
           task. Specialists are optional; anything missing, the Reasoning LLM covers itself.
@@ -165,7 +165,7 @@ export function StackScreen() {
             <h3>Start with a prefab stack</h3>
             <p className="hint" style={{ marginTop: 4 }}>
               One tap fills your whole stack. These refresh on their own as new models land, so they
-              stay current without you touching the Marketplace.
+              stay current without you touching a thing.
             </p>
             {catalog.presets.map((preset) => {
               const total = presetTotalGB(preset, catalog);
@@ -266,11 +266,11 @@ export function StackScreen() {
         {!isDesktop() ? (
           <p className="hint">
             {settings.daemon ? (
-              'The stack lives on your desktop; edit it there. This phone rides it over Tailscale.'
+              'The stack lives on your computer; edit it there. This phone rides it over Tailscale.'
             ) : (
               <>
                 <button className="linklike" onClick={() => setView('pair')}>
-                  Connect your desktop
+                  Connect your computer
                 </button>{' '}
                 (Menu, then Desktop + phone) to see and use its stack.
               </>
@@ -291,9 +291,7 @@ export function StackScreen() {
               title={pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}
               onClose={() => setPickFor(undefined)}
             />
-            <p className="sheet-sub">
-              Installed on this machine via Ollama. Get more in the marketplace.
-            </p>
+            <p className="sheet-sub">Installed on this computer through Ollama.</p>
             <div className="sheet-actions">
               {status.ollama.models.length ? (
                 status.ollama.models.map((m) => (
@@ -306,7 +304,7 @@ export function StackScreen() {
                   <p className="hint">
                     No local models yet.{' '}
                     {status.ollama.up
-                      ? 'Get the starter below, or browse the marketplace.'
+                      ? 'Get DeepBlue below, sized to your computer.'
                       : status.ollama.detail}{' '}
                     <button
                       className="linklike"

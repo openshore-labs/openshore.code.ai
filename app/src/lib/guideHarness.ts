@@ -222,7 +222,7 @@ export function setupAdvice(eq: GuideEquipment): string[] {
   }
   if (eq.ramGB === undefined && eq.gpuVramGB === undefined) {
     lines.push(
-      "To size DeepBlue, the desktop coding model, I need the computer's memory (RAM, for example 8, 16, or 32 GB) and whether it has a graphics card, and how much memory that card has. Ask for these.",
+      "To size DeepBlue, the coding model for your computer, I need the computer's memory (RAM, for example 8, 16, or 32 GB) and whether it has a graphics card, and how much memory that card has. Ask for these.",
     );
     if (eq.mac) {
       lines.push('On a Mac, the memory is the number in About This Mac, next to Memory.');
@@ -251,21 +251,21 @@ export function setupAdvice(eq: GuideEquipment): string[] {
   if (fit === 'tight') lines.push('It will run, but close other heavy apps while it works.');
   if (fit === 'too-big')
     lines.push(
-      'Even the smallest DeepBlue is a stretch here, so a cloud key under Cloud Connections will feel much better on this machine.',
+      'Even the smallest DeepBlue is a stretch here, so a cloud API key under Cloud Connections will feel much better on this computer.',
     );
   lines.push(
-    'The best setup: install DeepBlue on the computer (Settings, Harbor, on the desktop app), pair this phone to it under Desktop + phone over Tailscale, and the phone reaches it as My computer, so the computer does the heavy work while the phone stays light.',
+    'The best setup: install DeepBlue on the computer (Settings, Harbor, in OpenShore on that computer), pair this phone to it under Desktop + phone over Tailscale, and the phone reaches it as My computer, so the computer does the heavy work while the phone stays light.',
   );
   lines.push(
-    'Add a cloud key under Cloud Connections only if you want the strongest model for hard tasks; it asks before it spends.',
+    'Add a cloud API key under Cloud Connections only if you want the strongest model for hard tasks; it asks before it spends.',
   );
   return lines;
 }
 
 const FIT_WORDS: Record<FitLabel, string> = {
-  fits: 'It fits that machine comfortably.',
-  tight: 'It fits that machine, with little headroom.',
-  'too-big': 'It is too big for that machine.',
+  fits: 'It fits that computer comfortably.',
+  tight: 'It fits that computer, with little headroom.',
+  'too-big': 'It is too big for that computer.',
 };
 
 /** The fixed setup line shown after the reply, when a size was worked out. */
