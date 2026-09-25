@@ -31,7 +31,9 @@
 import { useEffect } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import {
+  HARDWARE_SETTLE_MS,
   insetForShow,
+  isHardwareBarReading,
   knownKeyboardHeight,
   rememberKeyboardHeight,
 } from '../lib/keyboardHeight.js';
@@ -48,6 +50,13 @@ export function useKeyboardInset(): void {
     const rootEl = document.documentElement;
     let heard = false;
     let fallbackTimer: number | undefined;
+    // A hardware keyboard (an iPad's, or a Bluetooth one on a phone) shows only
+    // its shortcut bar, or nothing. Once one is seen, the composer lifts by the
+    // bar alone and the no-event fallback stands down, so the field never
+    // floats a phantom keyboard's height above the bottom of the screen. A
+    // real on-screen keyboard reading clears it.
+    let hardware = false;
+    let settleTimer: number | undefined;
 
     const lift = (height: number) => {
       rootEl.style.setProperty('--kb-inset', `${height}px`);
@@ -57,6 +66,25 @@ export function useKeyboardInset(): void {
       heard = true;
       if (fallbackTimer) window.clearTimeout(fallbackTimer);
       fallbackTimer = undefined;
+      if (settleTimer) window.clearTimeout(settleTimer);
+      settleTimer = undefined;
+      if (isHardwareBarReading(reported)) {
+        if (hardware) {
+          lift(reported);
+          return;
+        }
+        // Maybe the bar announced first with the full keyboard right behind
+        // it: cover the field by the known height now, and settle to the bar
+        // if no full reading follows.
+        lift(knownKeyboardHeight());
+        settleTimer = window.setTimeout(() => {
+          settleTimer = undefined;
+          hardware = true;
+          lift(reported);
+        }, HARDWARE_SETTLE_MS);
+        return;
+      }
+      if (reported > 0) hardware = false;
       rememberKeyboardHeight(reported);
       lift(insetForShow(reported));
     };
@@ -90,9 +118,10 @@ export function useKeyboardInset(): void {
       const el = e.target;
       if (!(el instanceof HTMLElement) || !el.matches(FIELD)) return;
       if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      if (hardware) return;
       fallbackTimer = window.setTimeout(() => {
         fallbackTimer = undefined;
-        if (heard || document.activeElement !== el) return;
+        if (heard || hardware || document.activeElement !== el) return;
         lift(knownKeyboardHeight());
       }, FALLBACK_AFTER_MS);
     };
@@ -115,6 +144,7 @@ export function useKeyboardInset(): void {
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
       if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      if (settleTimer) window.clearTimeout(settleTimer);
       rootEl.classList.remove('kb-open');
     };
   }, []);

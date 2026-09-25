@@ -5,7 +5,8 @@
 // models; the mic uses the platform's speech engine where it exists.
 //
 // The keyboard grammar is Claude Code's: Enter sends, Shift+Enter breaks a
-// line, Esc stops a run or clears the field, Up recalls earlier messages,
+// line (on a phone, Return breaks a line and the round button sends, the way
+// the Claude app, ChatGPT, and Messages behave), Esc stops a run or clears the field, Up recalls earlier messages,
 // Shift+Tab cycles the permission mode, "/" opens the command menu, "@" offers
 // repo files, "#" saves a line to the project's instructions, and a message
 // typed mid-run queues for the moment the agent is free. A long paste folds
@@ -21,7 +22,12 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react';
-import { sourceLabel, sourceShortLabel, type ConversationSource } from '../state/types.js';
+import {
+  sourceLabel,
+  sourcePlace,
+  sourceShortLabel,
+  type ConversationSource,
+} from '../state/types.js';
 import { useApp } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -33,13 +39,18 @@ import {
 import {
   fileToAttachment,
   groupAttachments,
+  imageToJpegAttachment,
+  sendsAsIs,
+  isTextFile,
   isVideoFile,
   type Attachment,
 } from '../lib/attachments.js';
 import { buildVideoAttachment } from '../lib/videoAttach.js';
 import type { ComposerRestore } from '../lib/heldMessage.js';
-import { pickVideoBackend } from '../lib/videoBackends.js';
+import { PHONE_VIDEO_MAX_BYTES, pickVideoBackend } from '../lib/videoBackends.js';
+import { isPhone } from '../lib/platform.js';
 import { useDictation } from '../hooks/useDictation.js';
+import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { CloseGlyph } from './SheetGlyphs.js';
 import { AttachTray, type AttachSource } from './AttachTray.js';
@@ -159,6 +170,12 @@ interface MenuModel {
 
 /** The menu's exit: --dur-3 plus a hair. */
 const MENU_EXIT_MS = 240;
+/** Matches .composer-chip.closing (--dur-3). */
+const CHIP_EXIT_MS = 220;
+
+/** A touch device (the phone): Return breaks a line and the button sends. */
+const isTouch = () =>
+  typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
 function ComposerMenu({
   label,
@@ -201,6 +218,9 @@ function ComposerMenu({
           aria-selected={i === active}
           className={`composer-menu-row press-fb press-fb--row${i === active ? ' active' : ''}`}
           onMouseEnter={() => onHover(i)}
+          // Keep focus in the field: a row tap must not blur it (dropping the
+          // keyboard, or leaving the caret nowhere for a command's argument).
+          onMouseDown={(e) => e.preventDefault()}
           onClick={it.onPick}
         >
           <span className={`composer-menu-name${mono ? ' mono' : ''}`}>{it.name}</span>
@@ -275,17 +295,38 @@ export function Composer({
     Array<{ id: string; name: string; done: number; total: number }>
   >([]);
   const [pasted, setPasted] = useState<PastedChunk[]>([]);
+  // Chips on their way out: a removed chip plays chip-out, then leaves the
+  // state (house rule 3, everything that animates in animates out).
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(() => new Set());
+  const removeChip = (key: string, drop: () => void) => {
+    setLeaving((prev) => new Set(prev).add(key));
+    window.setTimeout(() => {
+      drop();
+      setLeaving((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }, CHIP_EXIT_MS);
+  };
   // Terminal mode: on a desktop-backed chat, the composer can send its text to
   // the connected machine as a command instead of a prompt (the "type ls from
   // the couch" path of the chat-to-terminal bridge).
   const canRunCommands = source?.kind === 'desktop' && hubRole !== 'member';
   const [termMode, setTermMode] = useState(false);
   const terminal = canRunCommands && termMode;
+  // Terminal mode belongs to one chat's machine. A new chat or a new model
+  // starts back on prompts, so a stray Enter never runs a shell command.
+  const sourceKey = source ? JSON.stringify(source) : '';
+  useEffect(() => setTermMode(false), [sourceKey]);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const anyFileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  // The command and file menus belong to a focused field: tapping away (the
+  // keyboard drops) puts them away too.
+  const [focused, setFocused] = useState(false);
 
   // The attach tray (phone only): + opens a tray under the composer, the
   // camera, the photo library, and any file. It is as tall as its tiles
@@ -302,6 +343,30 @@ export function Composer({
     setTray(false);
   };
   useEffect(() => () => document.documentElement.classList.remove('tray-open'), []);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  // The tray is a transient surface: a tap anywhere outside the composer, a
+  // scroll of the transcript, or Esc puts it away, the way a keyboard goes.
+  useEffect(() => {
+    if (!tray) return;
+    const onDown = (e: PointerEvent) => {
+      if (wrapRef.current && e.target instanceof Node && wrapRef.current.contains(e.target)) return;
+      closeTray();
+    };
+    const onScroll = (e: Event) => {
+      if (e.target instanceof Element && e.target.classList.contains('thread')) closeTray();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeTray();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('scroll', onScroll, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [tray]);
   const pickFrom = (source: AttachSource) => {
     closeTray();
     const input =
@@ -365,9 +430,19 @@ export function Composer({
   useEffect(() => {
     if (focusSignal) areaRef.current?.focus();
   }, [focusSignal]);
+  // What the last send was made of, so a message handed back (a paywall, a
+  // dismissed chooser) returns as it was typed: the words in the field and the
+  // folded pastes as chips, not one merged wall of text.
+  const lastSent = useRef<{ body: string; text: string; pasted: PastedChunk[] } | null>(null);
   useEffect(() => {
     if (!restore) return;
-    setValue(restore.text);
+    const sent = lastSent.current;
+    if (sent && sent.body === restore.text && sent.pasted.length) {
+      setValue(sent.text);
+      setPasted(sent.pasted);
+    } else {
+      setValue(restore.text);
+    }
     setAttachments(restore.attachments ?? []);
     areaRef.current?.focus();
     // Only a new seq restores; the payload rides along with it.
@@ -378,16 +453,56 @@ export function Composer({
   // live transcript after it, so dictation adds to the field instead of wiping
   // what is there.
   const baseRef = useRef('');
-  const dictation = useDictation((transcript) => {
-    const joined = baseRef.current ? `${baseRef.current} ${transcript}` : transcript;
-    setValue(joined);
-  });
+  const dictation = useDictation(
+    (transcript) => {
+      const joined = baseRef.current ? `${baseRef.current} ${transcript}` : transcript;
+      setValue(joined);
+    },
+    (why) =>
+      showToast(
+        why === 'denied'
+          ? 'Microphone access is off. Turn it on in Settings, OpenShore.'
+          : 'Dictation stopped. Tap the mic to try again.',
+      ),
+  );
+  const stopDictation = () => {
+    dictation.stop();
+    baseRef.current = '';
+  };
+
+  // The field fits its text, whoever put it there: typing, dictation, a
+  // restored message, history recall, or a command. Capped at 40% of the room
+  // left above the keyboard, so a long draft never pushes the send row under
+  // it.
+  useLayoutEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const kb = root.classList.contains('kb-open')
+      ? parseFloat(getComputedStyle(root).getPropertyValue('--kb-inset')) || 0
+      : 0;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, (window.innerHeight - kb) * 0.4)}px`;
+  }, [value]);
 
   const resetField = () => {
+    stopDictation();
     setValue('');
     setHistIdx(null);
     setMention(null);
-    if (areaRef.current) areaRef.current.style.height = 'auto';
+  };
+
+  // A command that takes an argument fills the field and keeps the caret in
+  // it, so the argument lands where the person is typing.
+  const fillCommand = (name: SlashCommand) => {
+    const next = `/${name} `;
+    setValue(next);
+    requestAnimationFrame(() => {
+      const el = areaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.length, next.length);
+    });
   };
 
   const runSlash = (name: SlashCommand, arg: string) => {
@@ -408,6 +523,15 @@ export function Composer({
       el.focus();
       el.setSelectionRange(pos, pos);
     });
+  };
+
+  // Stop takes send's place in the same spot the moment a turn starts, so a
+  // quick second tap on send would stop the run it just began. Stop ignores
+  // taps for a beat after a send.
+  const lastSendAt = useRef(0);
+  const stopTap = () => {
+    if (Date.now() - lastSendAt.current < 400) return;
+    onStop();
   };
 
   const submit = () => {
@@ -462,6 +586,8 @@ export function Composer({
       showToast('Images send once the current task finishes.');
       return;
     }
+    lastSendAt.current = Date.now();
+    lastSent.current = { body, text, pasted };
     onSend(body, outgoing);
     resetField();
     setAttachments([]);
@@ -476,12 +602,15 @@ export function Composer({
         closeTray();
         return;
       }
+      stopDictation();
       document.documentElement.classList.add('tray-open');
       areaRef.current?.blur();
       setTray(true);
       return;
     }
-    fileRef.current?.click();
+    // The desktop + opens one picker for everything the composer takes:
+    // images, videos, and text or code files.
+    anyFileRef.current?.click();
   };
 
   // A video never goes to a model as video. It is compressed if large and
@@ -489,18 +618,32 @@ export function Composer({
   // phone, a canvas on the web), and those frames ride along as image
   // attachments. Screen recordings and screenshots flow through the same way,
   // with no approval step: attaching is not a tool call.
+  // Jobs the person cancelled: their frames are dropped if they land later.
+  const cancelledJobs = useRef(new Set<string>());
+  const cancelVideo = (jobId: string) => {
+    cancelledJobs.current.add(jobId);
+    removeChip(jobId, () => setVideoJobs((prev) => prev.filter((x) => x.id !== jobId)));
+  };
   const ingestVideo = async (file: File) => {
+    if (isPhone() && file.size > PHONE_VIDEO_MAX_BYTES) {
+      showToast(`${file.name || 'That video'} is over 300 MB. Trim it or send a shorter clip.`);
+      return;
+    }
     const jobId = `job-${chunkSeq++}`;
     setVideoJobs((prev) => [...prev, { id: jobId, name: file.name || 'video', done: 0, total: 0 }]);
     const onProgress = (done: number, total: number) =>
       setVideoJobs((prev) => prev.map((x) => (x.id === jobId ? { ...x, done, total } : x)));
     try {
       const built = await buildVideoAttachment(file, pickVideoBackend(), onProgress);
-      setAttachments((prev) => [...prev, ...built.frames]);
+      if (!cancelledJobs.current.has(jobId)) setAttachments((prev) => [...prev, ...built.frames]);
     } catch {
-      showToast('Could not read that video. Try a shorter or standard-format clip.');
+      if (!cancelledJobs.current.has(jobId)) {
+        showToast('Could not read that video. Try a shorter or standard-format clip.');
+      }
     } finally {
-      setVideoJobs((prev) => prev.filter((x) => x.id !== jobId));
+      if (!cancelledJobs.current.delete(jobId)) {
+        setVideoJobs((prev) => prev.filter((x) => x.id !== jobId));
+      }
     }
   };
 
@@ -509,7 +652,7 @@ export function Composer({
     const videos = list.filter(isVideoFile);
     const rest = list.filter((f) => !isVideoFile(f));
     const images = rest.filter((f) => f.type.startsWith('image/'));
-    const texts = rest.filter((f) => !f.type.startsWith('image/'));
+    const others = rest.filter((f) => !f.type.startsWith('image/'));
     if (videos.length) {
       if (!visionSupported) {
         showToast(VIDEO_UNSUPPORTED);
@@ -522,16 +665,28 @@ export function Composer({
       if (!visionSupported) {
         showToast(IMAGE_UNSUPPORTED);
       } else {
-        try {
-          const next = await Promise.all(images.map(fileToAttachment));
-          setAttachments((prev) => [...prev, ...next]);
-        } catch {
-          showToast('Could not read that file.');
+        // HEIC, TIFF, and the like, and oversized photos, are redrawn as a
+        // JPEG the model can take; one the phone cannot decode either is
+        // named, never dropped.
+        const next: Attachment[] = [];
+        for (const f of images) {
+          try {
+            next.push(await (sendsAsIs(f) ? fileToAttachment(f) : imageToJpegAttachment(f)));
+          } catch {
+            showToast(`Could not read ${f.name || 'that image'}.`);
+          }
         }
+        if (next.length) setAttachments((prev) => [...prev, ...next]);
       }
     }
-    // A dropped text file folds in as pasted text, named after the file.
-    for (const f of texts) {
+    // A text or code file folds in as pasted text, named after the file. A
+    // binary (a PDF, a zip, a document) is named and left out, never pasted
+    // in as garbage.
+    for (const f of others) {
+      if (!(await isTextFile(f).catch(() => false))) {
+        showToast(`${f.name || 'That file'} is not a text file. Attach images, videos, or text.`);
+        continue;
+      }
       if (f.size > 512_000) {
         showToast(`${f.name} is too large to paste. Mention it by path instead.`);
         continue;
@@ -574,15 +729,28 @@ export function Composer({
     }
   };
 
+  // Only a drag that carries files lights the drop target; dragged text
+  // falls through to the field as usual. A depth count keeps the highlight
+  // steady while the pointer crosses the composer's own children.
+  const dragDepth = useRef(0);
+  const carriesFiles = (e: DragEvent<HTMLDivElement>) =>
+    Array.from(e.dataTransfer?.types ?? []).includes('Files');
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+    dragDepth.current = 0;
     setDragOver(false);
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
     void addFiles(Array.from(e.dataTransfer.files ?? []));
   };
 
   const micTap = () => {
+    if (tray) closeTray();
     if (!dictation.supported) {
-      showToast('Voice input needs the native app. Type in the chat for now.');
+      showToast(
+        isTouch()
+          ? 'Dictation is not available on this device. Use the keyboard mic for now.'
+          : 'Dictation is not available here. Type in the chat for now.',
+      );
       return;
     }
     if (!dictation.listening) baseRef.current = value.trim();
@@ -590,10 +758,14 @@ export function Composer({
   };
 
   const modelLabel = sourceShortLabel(source);
+  const place = sourcePlace(source);
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget;
+    // A Japanese, Chinese, or Korean keyboard uses Enter to confirm a
+    // conversion; that Enter belongs to the keyboard, never to send.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     // Command menu navigation.
     if (slashItems.length && !terminal) {
       if (e.key === 'ArrowDown') {
@@ -606,11 +778,11 @@ export function Composer({
         setSlashIdx((i) => (i - 1 + slashItems.length) % slashItems.length);
         return;
       }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+      if ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && !e.shiftKey)) {
         e.preventDefault();
         const cmd = slashItems[slashIdx] ?? slashItems[0]!;
         if (cmd.arg) {
-          setValue(`/${cmd.name} `);
+          fillCommand(cmd.name);
           return;
         }
         hapticTick();
@@ -635,7 +807,7 @@ export function Composer({
         setFileIdx((i) => (i - 1 + files.length) % files.length);
         return;
       }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+      if ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && !e.shiftKey)) {
         e.preventDefault();
         hapticTick();
         insertFile(files[fileIdx] ?? files[0]!);
@@ -647,7 +819,7 @@ export function Composer({
         return;
       }
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isTouch()) {
       e.preventDefault();
       // The keyboard has no click for the global tap haptic to catch, so the
       // decisive Enter is marked here; the send button is covered by App.tsx.
@@ -701,8 +873,9 @@ export function Composer({
 
   // The one menu that is open right now (commands or files), modeled once so
   // it can play an exit: the last model is held while it closes.
-  const menu: MenuModel | null =
-    slashItems.length && !terminal
+  const menu: MenuModel | null = !focused
+    ? null
+    : slashItems.length && !terminal
       ? {
           label: 'Commands',
           active: slashIdx,
@@ -716,7 +889,7 @@ export function Composer({
               </>
             ),
             hint: c.hint,
-            onPick: () => (c.arg ? setValue(`/${c.name} `) : runSlash(c.name, '')),
+            onPick: () => (c.arg ? fillCommand(c.name) : runSlash(c.name, '')),
           })),
         }
       : mention && files.length
@@ -736,16 +909,27 @@ export function Composer({
   );
   const shownMenu = menu ?? lastMenu.current;
 
-  const showSend = terminal || !busy || value.trim().length > 0;
+  // Stop shows only when a run is live and there is nothing to send or queue,
+  // in terminal mode too (a phone has no Esc).
+  const showSend = !busy || value.trim().length > 0 || (!terminal && pasted.length > 0);
 
   return (
     <div
+      ref={wrapRef}
       className={`composer-wrap${dragOver ? ' drag-over' : ''}`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        if (!dragOver) setDragOver(true);
+      onDragEnter={(e) => {
+        if (!carriesFiles(e)) return;
+        dragDepth.current += 1;
+        setDragOver(true);
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragOver={(e) => {
+        if (carriesFiles(e)) e.preventDefault();
+      }}
+      onDragLeave={(e) => {
+        if (!carriesFiles(e)) return;
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragOver(false);
+      }}
       onDrop={onDrop}
     >
       {menuMounted && shownMenu ? (
@@ -765,7 +949,10 @@ export function Composer({
               const first = g.items[0];
               const label = g.video ? `${g.label} · ${g.video.count} frames` : g.label;
               return (
-                <span key={g.groupId} className="composer-chip">
+                <span
+                  key={g.groupId}
+                  className={`composer-chip${leaving.has(g.groupId) ? ' closing' : ''}`}
+                >
                   {first?.isImage ? (
                     <img src={first.dataUrl} alt="" className="composer-chip-thumb" />
                   ) : (
@@ -778,8 +965,10 @@ export function Composer({
                     className="composer-chip-x press-fb"
                     aria-label={`Remove ${g.label}`}
                     onClick={() =>
-                      setAttachments((prev) =>
-                        prev.filter((x) => !g.items.some((it) => it.id === x.id)),
+                      removeChip(g.groupId, () =>
+                        setAttachments((prev) =>
+                          prev.filter((x) => !g.items.some((it) => it.id === x.id)),
+                        ),
                       )
                     }
                   >
@@ -789,17 +978,28 @@ export function Composer({
               );
             })}
             {videoJobs.map((job) => (
-              <span key={job.id} className="composer-chip" aria-live="polite">
+              <span
+                key={job.id}
+                className={`composer-chip${leaving.has(job.id) ? ' closing' : ''}`}
+                aria-live="polite"
+              >
                 <FrameRing done={job.done} total={job.total} />
                 <span className="composer-chip-name">
                   {job.total > 0
                     ? `Reading ${job.name} · ${job.done}/${job.total}`
                     : `Reading ${job.name}…`}
                 </span>
+                <button
+                  className="composer-chip-x press-fb"
+                  aria-label={`Stop reading ${job.name}`}
+                  onClick={() => cancelVideo(job.id)}
+                >
+                  <CloseGlyph size={12} />
+                </button>
               </span>
             ))}
             {pasted.map((p, i) => (
-              <span key={p.id} className="composer-chip">
+              <span key={p.id} className={`composer-chip${leaving.has(p.id) ? ' closing' : ''}`}>
                 <span className="composer-chip-file" aria-hidden="true">
                   {'📋'}
                 </span>
@@ -809,7 +1009,9 @@ export function Composer({
                 <button
                   className="composer-chip-x press-fb"
                   aria-label={`Remove pasted text ${i + 1}`}
-                  onClick={() => setPasted((prev) => prev.filter((x) => x.id !== p.id))}
+                  onClick={() =>
+                    removeChip(p.id, () => setPasted((prev) => prev.filter((x) => x.id !== p.id)))
+                  }
                 >
                   <CloseGlyph size={12} />
                 </button>
@@ -830,15 +1032,17 @@ export function Composer({
                 ? 'Type to queue the next message'
                 : (placeholder ?? 'Chat with OpenShore')
           }
+          enterKeyHint={isTouch() ? 'enter' : 'send'}
           onChange={(e) => {
             // The first keystroke during the first open's letter finishes it:
             // someone typing is ready, never held to the reveal.
             if (isIntroPlaying()) skipReveals();
+            // Typing takes the field back from dictation, so the next spoken
+            // partial never overwrites what was just typed.
+            if (dictation.listening) stopDictation();
             setValue(e.target.value);
             setHistIdx(null);
             setMention(agent ? mentionAt(e.target.value, e.target.selectionStart) : null);
-            e.target.style.height = 'auto';
-            e.target.style.height = `${Math.min(e.target.scrollHeight, window.innerHeight * 0.4)}px`;
           }}
           onSelect={(e) => {
             const el = e.currentTarget;
@@ -847,8 +1051,18 @@ export function Composer({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onFocus={() => {
-            if (tray) closeTray();
+            setFocused(true);
+            if (tray) {
+              // The keyboard is about to take the tray's slot. Hold the slot at
+              // the keyboard's height now, so the composer rises once instead
+              // of dipping to the floor and back up before the keyboard event.
+              const root = document.documentElement;
+              root.style.setProperty('--kb-inset', `${knownKeyboardHeight()}px`);
+              root.classList.add('kb-open');
+              closeTray();
+            }
           }}
+          onBlur={() => setFocused(false)}
         />
 
         <div className="composer-row">
@@ -886,15 +1100,22 @@ export function Composer({
 
           <button
             className="composer-pill press-fb"
-            onClick={onOpenModelSheet}
+            onClick={() => {
+              if (tray) closeTray();
+              onOpenModelSheet();
+            }}
             aria-label={`Model: ${source ? sourceLabel(source) : 'Stack'}`}
           >
+            {place ? <span className={`composer-pill-place ${place}`} aria-hidden="true" /> : null}
             <span className="composer-pill-text">{modelLabel}</span>
             <span className="composer-pill-chevron" aria-hidden="true" />
           </button>
           <button
             className={`composer-pill composer-pill-mode mode-${mode} press-fb`}
-            onClick={onOpenModeSheet}
+            onClick={() => {
+              if (tray) closeTray();
+              onOpenModeSheet();
+            }}
             aria-label={`Mode: ${permissionModeLabel(mode)}. Shift and Tab cycles.`}
           >
             <span className="composer-pill-dot" aria-hidden="true" />
@@ -920,7 +1141,11 @@ export function Composer({
           {onOpenVoice && !terminal ? (
             <button
               className="composer-mic press-fb"
-              onClick={onOpenVoice}
+              onClick={() => {
+                stopDictation();
+                if (tray) closeTray();
+                onOpenVoice();
+              }}
               aria-label="Voice mode: have a spoken conversation"
               title="Voice mode"
             >
@@ -937,7 +1162,7 @@ export function Composer({
           </button>
 
           {!showSend ? (
-            <button className="send-btn stop press-fb" onClick={onStop} aria-label="Stop">
+            <button className="send-btn stop press-fb" onClick={stopTap} aria-label="Stop">
               {'■'}
             </button>
           ) : (

@@ -74,6 +74,80 @@ export function fileToAttachment(file: File): Promise<Attachment> {
   });
 }
 
+/** Can a model read this image as it is? Only png, jpeg, gif, and webp reach a
+ *  model's vision input; anything else (HEIC from the iOS Files app, TIFF, BMP,
+ *  AVIF, SVG) must be redrawn as a JPEG first, or it would ride along as a
+ *  file chip that the drivers silently drop at send. */
+export function isModelImage(file: { type?: string }): boolean {
+  return IMAGE_MIME.test(file.type ?? '');
+}
+
+/** Can this image go to the model as it is? A readable format at a sane size;
+ *  anything else is redrawn (imageToJpegAttachment). */
+export function sendsAsIs(file: { type?: string; size: number }): boolean {
+  return isModelImage(file) && file.size <= IMAGE_REDRAW_BYTES;
+}
+
+/** The longest side an attached image is sent at. Past it (or past
+ *  IMAGE_REDRAW_BYTES) a photo is redrawn smaller, so a 48MP camera shot never
+ *  trips a provider's image size limit at send. */
+export const IMAGE_MAX_DIM = 2048;
+export const IMAGE_REDRAW_BYTES = 3_500_000;
+
+/** Redraw an image as a JPEG attachment, no longer than `maxDim` on its long
+ *  side: for a format a model cannot read (HEIC, TIFF, BMP, AVIF, SVG) and for
+ *  an oversized photo. Rejects when the platform cannot decode it either, so
+ *  the caller can say so plainly. */
+export async function imageToJpegAttachment(
+  file: File,
+  maxDim: number = IMAGE_MAX_DIM,
+): Promise<Attachment> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    await img.decode();
+    const w0 = img.naturalWidth || 1024;
+    const h0 = img.naturalHeight || 1024;
+    const scale = Math.min(1, maxDim / Math.max(w0, h0));
+    const w = Math.max(1, Math.round(w0 * scale));
+    const h = Math.max(1, Math.round(h0 * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('No canvas.');
+    ctx.drawImage(img, 0, 0, w, h);
+    const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return {
+      id: `att-${nextAttachmentSeq()}-${name}`,
+      name,
+      mime: 'image/jpeg',
+      dataUrl: canvas.toDataURL('image/jpeg', 0.9),
+      isImage: true,
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+const TEXT_MIME =
+  /^(text\/|application\/(json|xml|javascript|x-sh|x-yaml|yaml|toml|x-httpd-php|sql|graphql))/i;
+const TEXT_EXT =
+  /\.(txt|md|markdown|mdx|json|jsonc|ya?ml|toml|ini|cfg|conf|env|csv|tsv|log|xml|html?|css|scss|sass|less|[cm]?[jt]sx?|py|rb|go|rs|java|kt|kts|swift|m|mm|c|h|cc|cpp|hpp|cs|php|sh|bash|zsh|fish|ps1|sql|graphql|gql|proto|lua|dart|scala|clj|ex|exs|erl|hs|ml|r|jl|pl|vue|svelte|astro|gradle|dockerfile|makefile|lock|gitignore|editorconfig)$/i;
+
+/** Is this file text a model can read as pasted text? Trusts a text MIME or a
+ *  known source extension, and otherwise sniffs the first bytes: a NUL byte
+ *  means binary (a PDF, a zip, a .docx), which must never be pasted in as
+ *  mojibake. */
+export async function isTextFile(file: File): Promise<boolean> {
+  if (TEXT_MIME.test(file.type) || TEXT_EXT.test(file.name)) return true;
+  if (file.type && !file.type.startsWith('application/octet-stream')) return false;
+  const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
+  return !head.includes(0);
+}
+
 /** Is this picked file a video we should turn into frames? Reads the MIME, and
  *  falls back to the extension when the picker hands over a blank type (screen
  *  recordings do this). */
