@@ -84,8 +84,13 @@ describe('the attach tray', () => {
   const composer = read('components/Composer.tsx');
   const theme = read('theme.css');
 
-  it('takes the keyboard slot on a phone so the composer does not move', () => {
-    expect(composer).toContain("root.style.setProperty('--tray-inset'");
+  it('is as tall as its tiles, never a keyboard of empty paper', () => {
+    // Founder, 2026-09-25: with the keyboard down, + lifted the composer a
+    // whole keyboard height over three tiles and a blank field. The tray's
+    // height is its content, a CSS token, never the remembered keyboard.
+    expect(composer).not.toContain("setProperty('--tray-inset'");
+    expect(composer).not.toContain('knownKeyboardHeight');
+    expect(theme).toMatch(/--tray-inset: calc\(124px \+ var\(--safe-bottom\)\)/);
     expect(composer).toMatch(/classList\.add\('tray-open'\)/);
     expect(theme).toMatch(
       /:root\.tray-open \.composer-wrap \{[^}]*padding-bottom: calc\(4px \+ var\(--tray-inset/,

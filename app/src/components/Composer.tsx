@@ -42,7 +42,6 @@ import { pickVideoBackend } from '../lib/videoBackends.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { CloseGlyph } from './SheetGlyphs.js';
-import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
 import { AttachTray, type AttachSource } from './AttachTray.js';
 import { Icon } from './Icon.js';
 
@@ -288,12 +287,14 @@ export function Composer({
   const anyFileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  // The attach tray (phone only): + opens a tray in the keyboard's slot, the
-  // camera, the photo library, and any file, and the composer stays put while
-  // the keyboard swaps for it. The root class and --tray-inset are set right
-  // in the tap, before the field blurs, so the composer never dips between
-  // the keyboard's hide and the tray's arrival. The desktop + goes straight
-  // to the file picker.
+  // The attach tray (phone only): + opens a tray under the composer, the
+  // camera, the photo library, and any file. It is as tall as its tiles
+  // (--tray-inset in theme.css), never a keyboard's worth of empty paper: with
+  // the keyboard down the composer lifts just enough to show them, and with it
+  // up the composer eases down onto the tray on the keyboard's own curve. The
+  // root class is set right in the tap, before the field blurs, so the
+  // composer rides one move, not two. The desktop + goes straight to the file
+  // picker.
   const [tray, setTray] = useState(false);
   const trayPresence = useExitPresence(tray, 300);
   const closeTray = () => {
@@ -475,9 +476,7 @@ export function Composer({
         closeTray();
         return;
       }
-      const root = document.documentElement;
-      root.style.setProperty('--tray-inset', `${knownKeyboardHeight()}px`);
-      root.classList.add('tray-open');
+      document.documentElement.classList.add('tray-open');
       areaRef.current?.blur();
       setTray(true);
       return;

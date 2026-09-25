@@ -1,12 +1,11 @@
 // The on-screen keyboard's height, remembered on the device. The Keyboard
 // plugin hands the exact height over on keyboardWillShow, and the composer
-// lifts by it (hooks/useKeyboardInset.ts). Two things need that number when
-// the plugin has not just said it: the fallback that lifts a focused composer
-// anyway when no show event arrives in time (founder, 2026-09-03: the keyboard
-// rose over the text box after Chats, then a chat, then a tap), and the attach
-// tray, which takes the keyboard's slot so the composer does not move when the
-// keyboard swaps for it. A keyboard's height is stable per device and
-// orientation, so the last real reading is the right guess, and a phone-sized
+// lifts by it (hooks/useKeyboardInset.ts). The fallback needs that number when
+// the plugin has not just said it: it lifts a focused composer anyway when no
+// show event arrives in time (founder, 2026-09-03: the keyboard rose over the
+// text box after Chats, then a chat, then a tap). A keyboard's height is
+// stable per device and orientation, so the last real reading is the right
+// guess, and a phone-sized
 // default covers the first focus before any reading exists.
 //
 // Device-local by design: nothing here is a preference or customization.
