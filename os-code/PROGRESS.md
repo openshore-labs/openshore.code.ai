@@ -426,6 +426,14 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Zed analysis: founder decisions, then the trust fix (proposal
+      2026-09-25).** `docs/zed-proposal.md` (evidence `docs/zed-research.md`,
+      eight memos `docs/zed-advisory-memos.md`). All eight advisors: no
+      editor, and close the project-trust hole first. A cloned repo's
+      `os-code.config.json` can run its verify command unasked, silence shell,
+      send a stored key to its own `baseUrl`, and write grants every clone
+      inherits. Also: seat Ollama's `num_ctx`, run the `qwen3:4b` eval, and fix
+      the site's "diffs you approve". Seven founder picks are listed there.
 - [ ] **Repositories: reconnect GitHub, then a device pass (2026-09-25).**
       iPhone, Repositories: tap Reconnect GitHub on the GitHub card; the picker
       then lists private repositories (openshore-hq). Clone it from the picker
@@ -552,19 +560,6 @@ extended that day by the graduated enforcement ladder (migration
       docs host is egress-blocked in the sandbox), and carry the house
       verify-before-release caveat in `providers.ts`. A retired id is a dead
       button in the stack.
-- [x] **Research (Perplexity) engine parity (built 2026-09-14).** The engine
-      now has a `perplexity` search backend
-      (`os-code/src/core/tools/search/perplexity.ts`, registered in
-      `searchProviderFor`, `search.backend: 'perplexity'` +
-      `perplexityKeyEnv`), so a paired-desktop or headless session can ground
-      its own web search in Sonar. By design the key is read from the env on
-      that machine like Brave and Tavily and never rides a session to a remote
-      hub (the CTO provider-key ruling), so the engine is configured on the box
-      via `os-code.config.json` rather than by pushing the app toggle and key
-      over the wire. Auto-selecting the engine backend from the app's Research
-      toggle is deliberately NOT done for that reason; a docked user sets
-      `search.backend` on the desktop, the same as the other keyed backends.
-
 - [ ] **Agentic Currents on a device and a real box (built 2026-09-09, unverified
       off the sandbox).** TestFlight: flip Hermes Agent on in Settings and
       confirm the current flows from the switch to the edges, the water-line
@@ -973,6 +968,10 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-25, Zed analyzed against the desktop; the advisor team's proposal
+
+Founder: a deep analysis of Zed against the OpenShore desktop (what Zed has that we lack and how it works, what people love, hate, and wish for), a proposal of what to remove, change, and fix, and how to take a slice of the market, with the team consulted. Four research passes (Zed's docs read from source at main, GitHub votes pulled live, a repo sweep, the market) and all eight advisors, recorded in `docs/zed-research.md`, `docs/zed-advisory-memos.md`, and `docs/zed-proposal.md`. Verdict: build no editor; take Zed's trust machinery (folder trust, checkpoints before every prompt, a short approval), not its editing machinery. The sweep found a live hole the CTO verified in code: a project file is merged over the person's config with only `daemon.*` dropped (`config/load.ts:66`), so a cloned repo can run `harness.verify.command` with no approval (`loop.ts:338`), silence shell and spend, point a provider's `baseUrl` at another host with the stored key, pass project secrets to a remote server the engine calls local (`openaiCompatible.ts:37`), and "Always allow in this project" grants land in the tracked file. Also found: the engine sends Ollama no `num_ctx` (`openaiCompatible.ts:214`) while budgeting 70% of the trained 32K. Nothing built; the fix waits on the founder's pick (an allowlist is recommended).
+
 ### 2026-09-25, Chain of Thought: a Settings switch, off by default, reasoning shown the way Claude shows it
 
 Founder: add a Chain of Thought option, off by default, that shows reasoning like Opus 4.6 and 4.8; the rulings were live-then-fold, all models (prompted where not native), off means do not think, and an app-wide switch. Settings, Reasoning, "Chain of Thought" (`settings.chainOfThought`, mirrored live into `app/src/lib/chainOfThought.ts` the way effort is). On, the thinking block opens and streams while the model thinks, folds to "Thought for Ns" as the answer starts, and keeps a capped window through the fold (`ThinkingBlock.tsx`). Native reasoners are asked through their API: Claude gets `thinking: {type: "adaptive", display: "summarized"}` (a 4096 budget on Haiku and pre-4.6), with signed thinking blocks replayed ahead of tool calls; Ollama thinking models get `think`; `reasoning_content` and `reasoning` fields are read. Every other model is prompted to think in `<think>` tags, and one splitter (`os-code/src/core/agent/chainOfThought.ts`, through `os-code/protocol`) routes them. Off, no model is prompted, Ollama gets `think: false`, Claude gets no thinking parameter, tags are stripped, and the store drops any thinking event, so the flip hides reasoning at once. It covers every chat driver (Stack, Claude, OpenAI-compatible, desktop chat via `/chat`, on-device except Harbor Lite's guide turns), the engine loop, specialists, and paired sessions (`BootstrapOptions.chainOfThought`, config `chainOfThought.enabled` for the CLI). Tests: `os-code/test/chainOfThought.test.ts`, `app/test/chainOfThought.test.ts`. Open: an already-open desktop session keeps the setting it started with (turning it off still hides the thinking), and none of it has been felt on a phone or measured on the reference box (tenet 2: the cost of thinking on a 7B is unmeasured). Same day, a bug found along the way and fixed: the engine sent its sampling default (`temperature` 0.2, 0.1 for summaries) to every Claude model, and Opus 4.7 and newer, Sonnet 5 (the default Claude seat), and Fable reject it with a 400, so Claude as the engine's orchestrator, escalation, or specialist failed every turn; `claudeAcceptsTemperature` in `providers/anthropic.ts` now sends it only to Opus and Sonnet 4.6 and older, Haiku 4.5, and Claude 3 (`test/claudeTemperature.test.ts`). App-side Claude chats never sent one. Not yet confirmed against the live API.
@@ -992,7 +991,3 @@ Founder, from two screenshots: the repo picker listed 4 repositories where the C
 Correction, same day (founder's screenshot: the App already had All repositories on openshore-labs, a personal account). The four the picker listed are exactly the account's four public repositories (GitHub search, `is:public`); every missing one is private. So the credential sees public data only: a GitHub OAuth App behind the client id authorized with no `repo` scope (the app sent none), or a public-only token. Fixed: the GitHub authorize call asks for `repo read:org` (a GitHub App ignores it); `githubStatus` reads the sign-in kind (App, OAuth App, classic, fine-grained), the account, and the granted scopes, merges each App installation's own repository list, and when every listed repository is public says why with a Reconnect GitHub action; the GitHub card shows "Signed in to GitHub as @login ... It sees N repositories, M private." Tests in `app/test/chatRepos.test.ts` replay the founder's exact case.
 
 Same day, the open items (founder: "push to main and do the remaining open items"). Desktop reconcile now pushes and fetches a platform remote with the desktop app's connected token (the engine's own GitHub token as fallback), the same host-scoped header per git command, so a token-made clone is pushable on a computer with no git credential; other remotes use the machine's setup as before (`reconcile.ts` `tokens`, pinned against a pass-through git in `test/reconcile.test.ts`). A picker change in a live chat reaches the model: cloud chats read the list fresh each reply, and an on-device or Stack chat rebuilds from its transcript on the next send; a started engine session stays in its folder, and the picker says so and offers "New chat there". The slug (`openshore-code`, verified live) is in `codemagic.yaml` and `release.yml`, and the desktop release now reads the repo-OAuth client ids, which it never had, so desktop GitHub was paste-only.
-
-### 2026-09-25, conversing and building across model switches: the chat review, fixed
-
-Founder: the setup chat lost the thread after a switch to Harbor, then asked for a review of conversing and building with models swapped mid-chat, with every finding fixed. The first cause: the phone's history trim cut a run of guide lines back to the bare question, and only Harbor Lite knew the walk's step. Now a trimmed history keeps its guide lines behind a short opener. The walk's step reaches any model in the walk's chat (keyed by the chat the reply is for, dropped once setup is done or set aside), its buttons show whichever model answers, and the walk's own lines reach the live model (`recordLine`). Switching: a send is painted busy the moment it leaves (the ethics screen runs before the driver's task-start), a switch re-checks after its build and loses to a later switch or a send, and a stale open never attaches over it (`driverEpoch`). "My computer, chat" carries the thread and the project brief (`/chat` takes a capped `context`), a Claude request always opens on a user turn, and a Stack play's plan, steps, and synthesis read the conversation. Safety: a withheld message is marked and never seeded, and a blocked answer ends its turn once. Stop now answers during a phone model's warm-up and Harbor's web search. Tests: `app/test/chatSwitchContinuity.test.ts`, plus `switchModel`, `ethicsDriver`, `seedTranscript`, and `daemon`. Not yet felt on a phone.
