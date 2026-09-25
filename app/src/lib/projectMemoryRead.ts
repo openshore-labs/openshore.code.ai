@@ -3,7 +3,7 @@
 // module picks where to read them from (the local clone on desktop, or GitHub
 // otherwise) and lists/reads them through a small reader interface, so the
 // screen stays platform-agnostic and the logic stays testable.
-import { isGithubRepoId } from './chatRepos.js';
+import { isGithubRepoId, isRemoteRepoId } from './chatRepos.js';
 import { ghListDir, ghReadFile, parseGithubRepoId } from './github.js';
 import {
   MEMORY_FILES,
@@ -39,7 +39,7 @@ export function primaryRepoSource(
   repoIds: readonly string[],
   opts: { canReadLocal: boolean },
 ): RepoSource | undefined {
-  const workspace = repoIds.find((id) => !isGithubRepoId(id));
+  const workspace = repoIds.find((id) => !isRemoteRepoId(id));
   if (opts.canReadLocal && workspace) return { kind: 'local', root: workspace };
   const githubId = repoIds.find((id) => isGithubRepoId(id));
   if (githubId) {

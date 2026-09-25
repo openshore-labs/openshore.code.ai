@@ -27,6 +27,22 @@ describe('plainError', () => {
     );
   });
 
+  it('maps a private clone with no credentials, and a folder-name clash', () => {
+    for (const raw of [
+      "Could not clone: fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+      "Could not clone: remote: Invalid username or token.\nfatal: Authentication failed for 'https://github.com/o/r.git/'",
+    ]) {
+      expect(plainError(new Error(raw)), raw).toMatch(/private and your computer has no access/);
+    }
+    expect(
+      plainError(
+        new Error(
+          'Could not clone: A different repository already uses the folder OSCode/site on this computer.',
+        ),
+      ),
+    ).toMatch(/Another repository already has that folder name/);
+  });
+
   it('never shows an unknown raw message', () => {
     expect(plainError(new Error('Request failed (500).'))).toBe(PLAIN_ERROR_FALLBACK);
     expect(plainError(new Error('ECONNRESET at Socket.onEnd (node:net:123)'))).toBe(

@@ -501,6 +501,70 @@ describe('repoAccessToken', () => {
     secrets.set(KEY, 'a_pasted_token'); // no mode marker
     expect(await mod.repoAccessToken('github')).toBeUndefined();
   });
+
+  it('refreshes once when two callers find the token stale together', async () => {
+    // A GitHub App refresh token is single use: spending it twice would fail
+    // the second exchange and hand that caller the expired token.
+    const mod = await loadModule();
+    secrets.set(KEY, 'ghu_old');
+    secrets.set(`${KEY}.mode`, 'oauth');
+    secrets.set(`${KEY}.refresh`, 'ghr_old');
+    secrets.set(`${KEY}.expiresAt`, String(Date.now() - 1000));
+    mockFetchOnce({
+      accessToken: 'ghu_new',
+      refreshToken: 'ghr_new',
+      expiresAt: Date.now() + 8 * 3600_000,
+    });
+
+    const [a, b] = await Promise.all([
+      mod.repoAccessToken('github'),
+      mod.repoAccessToken('github'),
+    ]);
+    expect(a).toBe('ghu_new');
+    expect(b).toBe('ghu_new');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('repoToken (the one reader every repository call uses)', () => {
+  it('uses a pasted access token as is', async () => {
+    const mod = await loadModule();
+    secrets.set(KEY, 'github_pat_pasted'); // no mode marker: the paste path
+    expect(await mod.repoToken('github')).toBe('github_pat_pasted');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('refreshes a one-tap sign-in that is near expiry (a GitHub App token lasts 8 hours)', async () => {
+    const mod = await loadModule();
+    secrets.set(KEY, 'ghu_old');
+    secrets.set(`${KEY}.mode`, 'oauth');
+    secrets.set(`${KEY}.refresh`, 'ghr_old');
+    secrets.set(`${KEY}.expiresAt`, String(Date.now() + 10_000));
+    mockFetchOnce({
+      accessToken: 'ghu_new',
+      refreshToken: 'ghr_new',
+      expiresAt: Date.now() + 8 * 3600_000,
+    });
+    expect(await mod.repoToken('github')).toBe('ghu_new');
+  });
+
+  it('is undefined for a platform that is not connected', async () => {
+    const mod = await loadModule();
+    expect(await mod.repoToken('gitlab')).toBeUndefined();
+  });
+
+  it('names the GitHub App slug only when the build carries a well-formed one', async () => {
+    let mod = await loadModule();
+    expect(mod.githubAppSlug()).toBeUndefined();
+    vi.stubEnv('VITE_GITHUB_APP_SLUG', 'openshore-code');
+    vi.resetModules();
+    mod = await import('../src/lib/gitos/repoOAuth.js');
+    expect(mod.githubAppSlug()).toBe('openshore-code');
+    vi.stubEnv('VITE_GITHUB_APP_SLUG', 'bad slug/../x');
+    vi.resetModules();
+    mod = await import('../src/lib/gitos/repoOAuth.js');
+    expect(mod.githubAppSlug()).toBeUndefined();
+  });
 });
 
 describe('disconnectRepoOAuth', () => {
