@@ -8189,6 +8189,11 @@ textarea {
   font-size: var(--text-2);
 }
 
+.scroll-pill-dock {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+}
 .scroll-pill {
   position: absolute;
   left: 50%;
