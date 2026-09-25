@@ -2089,6 +2089,7 @@ textarea {
 /* -------------------------------------------------------------- composer */
 
 .composer-wrap {
+  flex-shrink: 0;
   padding: 10px 14px calc(12px + var(--safe-bottom));
   background: linear-gradient(transparent, var(--bg) 30%);
 }
@@ -2280,6 +2281,7 @@ textarea {
 
 .send-btn {
   margin-left: auto;
+  flex-shrink: 0;
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -2301,10 +2303,6 @@ textarea {
   opacity: 0.35;
   transform: scale(0.82);
   cursor: default;
-}
-
-.send-btn:not(:disabled):active {
-  transform: scale(0.9);
 }
 
 .send-btn.stop {
@@ -2351,9 +2349,37 @@ textarea {
   color: var(--ink-soft);
   background: transparent;
   white-space: nowrap;
-  min-width: 0;
+  /* Never squeezed to a letter and an ellipsis: a model name keeps at least
+     its first word (the row makes room on a phone, below). */
+  min-width: 64px;
   max-width: 44%;
+  position: relative;
   transition: background var(--dur-1) var(--ease-accel);
+}
+/* A 44pt tap target without changing the pill's look: extend it vertically
+   only, so neighbours on the row never overlap. */
+.composer-pill::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
+/* A phone's row: add, model, mode, voice, mic, send is wider than the field.
+   The mode pill folds to its dot (the sheet it opens names the mode, and its
+   label stays for assistive tech), so the model name reads in full and send
+   keeps its shape. */
+@media (max-width: 430px) {
+  .composer-row {
+    gap: 6px;
+  }
+  .composer-pill-mode {
+    width: 32px;
+    min-width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .composer-pill-mode .composer-pill-text {
+    display: none;
+  }
 }
 .composer-pill:hover,
 .composer-pill:active {
@@ -2382,6 +2408,7 @@ textarea {
 }
 .composer-pill-mode {
   flex-shrink: 0;
+  min-width: 0;
   max-width: none;
 }
 .composer-pill-mode.mode-plan .composer-pill-dot {
@@ -2839,6 +2866,28 @@ textarea {
 
 /* ---------------------------------------------------------------- polish */
 
+/* Compound on purpose, as with .composer-chip-x.press-fb: .press-fb's
+   `transition: scale` shorthand would otherwise wipe the composer controls'
+   own fades and the send button's spring up from its dim, empty state. */
+.send-btn.press-fb {
+  transition:
+    transform var(--dur-4) var(--ease-spring),
+    opacity var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
+}
+.composer-add.press-fb,
+.composer-pill.press-fb {
+  transition:
+    background var(--dur-1) var(--ease-accel),
+    scale var(--press-out);
+}
+.composer-mic.press-fb {
+  transition:
+    background var(--dur-1) var(--ease-accel),
+    color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
+}
 /* Pressed-state feedback for every tappable that opts in. Curt press-down, a
    spring back out. Rides the individual `scale` property on purpose, so an
    inline transform on the same element can never shadow it. */
@@ -2865,6 +2914,16 @@ textarea {
 /* Attachment chips spring in as they are added. */
 .composer-chip {
   animation: chip-in var(--dur-3) var(--ease-spring) backwards;
+}
+.composer-chip.closing {
+  animation: chip-out var(--dur-3) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+@keyframes chip-out {
+  to {
+    opacity: 0;
+    transform: scale(0.8);
+  }
 }
 @keyframes chip-in {
   from {
@@ -7945,6 +8004,14 @@ textarea {
   margin: 0;
   padding: 0 12px 10px;
   border-top: 1px solid var(--border);
+  /* A long plan scrolls inside the card, so it can never push the composer
+     under the keyboard. */
+  max-height: 30vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+:root.kb-open .todo-list {
+  max-height: 18vh;
 }
 .todo-row {
   display: flex;
@@ -8364,6 +8431,11 @@ textarea {
   box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.18);
   z-index: 6;
   animation: menu-in var(--dur-2) var(--ease-arrive) backwards;
+}
+/* With the keyboard up, the room above the composer is the screen less the
+   keyboard; 44vh of the whole screen would run the menu up under the header. */
+:root.kb-open .composer-menu {
+  max-height: calc((100dvh - var(--kb-inset, 0px)) * 0.4);
 }
 @keyframes menu-in {
   from {

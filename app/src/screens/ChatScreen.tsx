@@ -402,9 +402,18 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     text?: string,
     attachments?: Attachment[],
   ) => {
-    const id = await newConversation(source, { repoIds: pendingRepoIds });
-    if (text || (attachments && attachments.length)) {
-      useApp.getState().sendWhenAttached(id, text ?? '', attachments);
+    const hasMessage = Boolean(text || (attachments && attachments.length));
+    const before = useApp.getState().activeId;
+    // The first message rides in on the new chat itself, so its bubble is on
+    // screen at once, not after the model has loaded.
+    const id = await newConversation(source, {
+      repoIds: pendingRepoIds,
+      ...(hasMessage ? { firstMessage: { text: text ?? '', attachments } } : {}),
+    });
+    // No new chat opened (a paywall stood in the way): the composer already
+    // cleared, so hand the message back rather than lose it.
+    if (hasMessage && (!id || id === before)) {
+      setRestore((r) => restoreFromHeld({ text: text ?? '', attachments }, r));
     }
   };
 
@@ -801,7 +810,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 setPending(undefined);
                 void startWith(source, p.text, p.attachments);
               } else {
-                showToast('That one is not ready yet. Finish setting it up, then send.');
+                // The sheet is closing: hand the message back to the field,
+                // the way a dismiss does, so it is never stranded and never
+                // sent stale by a later pick.
+                const p = pending;
+                setPending(undefined);
+                setRestore((r) => restoreFromHeld(p, r));
+                showToast('That one is not ready yet. Your message is back in the box.');
               }
             }
           }}

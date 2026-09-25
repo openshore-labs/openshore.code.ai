@@ -28,6 +28,12 @@ import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { Icon } from './Icon.js';
 
+/** Jump to the foot with no animation. The thread's CSS smooth scroll would
+ *  otherwise animate every follow, so streaming text trails below the fold. */
+function followBottom(el: HTMLElement): void {
+  el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+}
+
 function AssistantBubble({
   text,
   streaming,
@@ -203,6 +209,45 @@ export function MessageList({
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Stay on the latest when the room around the thread changes: the keyboard
+  // rising, the field growing a line, chips or the todo card arriving all
+  // shrink the thread without a scroll event, which would slide the last reply
+  // under the composer. A pinned reader stays pinned.
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (pinnedRef.current) followBottom(el);
+    });
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, []);
+
+  // Drag the transcript down to put the keyboard away, the way Messages and
+  // the Claude app do. Only a clear downward drag, only while typing.
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    let startY: number | undefined;
+    const onStart = (e: TouchEvent) => {
+      startY = e.touches[0]?.clientY;
+    };
+    const onMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      if (startY === undefined || y === undefined || y - startY < 24) return;
+      startY = undefined;
+      const active = document.activeElement;
+      if (active instanceof HTMLTextAreaElement && active.closest('.composer')) active.blur();
+    };
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+    };
+  }, []);
+
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
@@ -214,7 +259,7 @@ export function MessageList({
     prevCount.current = itemCount;
     if (newUserTurn) pinnedRef.current = true;
     if (pinnedRef.current) {
-      el.scrollTop = el.scrollHeight;
+      followBottom(el);
     } else if (grew) {
       setUnseen((n) => n + 1);
     }
@@ -224,7 +269,7 @@ export function MessageList({
   // the revealed text, not only the incoming deltas.
   const followReveal = useCallback(() => {
     const el = threadRef.current;
-    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+    if (el && pinnedRef.current) followBottom(el);
   }, []);
 
   const jumpToBottom = () => {
