@@ -2727,6 +2727,18 @@ repeated-abuse response into staged steps with a next-action block, pinned by
 
 Kept as written, as the record of how each was closed.
 
+- [x] **Research (Perplexity) engine parity (built 2026-09-14).** The engine
+      now has a `perplexity` search backend
+      (`os-code/src/core/tools/search/perplexity.ts`, registered in
+      `searchProviderFor`, `search.backend: 'perplexity'` +
+      `perplexityKeyEnv`), so a paired-desktop or headless session can ground
+      its own web search in Sonar. By design the key is read from the env on
+      that machine like Brave and Tavily and never rides a session to a remote
+      hub (the CTO provider-key ruling), so the engine is configured on the box
+      via `os-code.config.json` rather than by pushing the app toggle and key
+      over the wire. Auto-selecting the engine backend from the app's Research
+      toggle is deliberately NOT done for that reason; a docked user sets
+      `search.backend` on the desktop, the same as the other keyed backends.
 - [x] **GitHub repo connect: RESOLVED, connected on device (founder, 2026-09-07).
       Started as TestFlight "redirect_uri is not associated with this
       application"; four distinct bugs deep, all fixed.** The whole chain below is
@@ -2818,7 +2830,11 @@ Kept as written, as the record of how each was closed.
       build with no new build. The founder then had GitHub connect on the phone,
       the card reading "connected" with no manual step. Done.
 
-## Log entries (2026-08-18 to 2026-09-24)
+## Log entries (2026-08-18 to 2026-09-25)
+
+### 2026-09-25, conversing and building across model switches: the chat review, fixed
+
+Founder: the setup chat lost the thread after a switch to Harbor, then asked for a review of conversing and building with models swapped mid-chat, with every finding fixed. The first cause: the phone's history trim cut a run of guide lines back to the bare question, and only Harbor Lite knew the walk's step. Now a trimmed history keeps its guide lines behind a short opener. The walk's step reaches any model in the walk's chat (keyed by the chat the reply is for, dropped once setup is done or set aside), its buttons show whichever model answers, and the walk's own lines reach the live model (`recordLine`). Switching: a send is painted busy the moment it leaves (the ethics screen runs before the driver's task-start), a switch re-checks after its build and loses to a later switch or a send, and a stale open never attaches over it (`driverEpoch`). "My computer, chat" carries the thread and the project brief (`/chat` takes a capped `context`), a Claude request always opens on a user turn, and a Stack play's plan, steps, and synthesis read the conversation. Safety: a withheld message is marked and never seeded, and a blocked answer ends its turn once. Stop now answers during a phone model's warm-up and Harbor's web search. Tests: `app/test/chatSwitchContinuity.test.ts`, plus `switchModel`, `ethicsDriver`, `seedTranscript`, and `daemon`. Not yet felt on a phone.
 
 ### 2026-09-25, no dead ends in chat: a failed turn always has a way on
 
