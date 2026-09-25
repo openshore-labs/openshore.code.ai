@@ -124,6 +124,25 @@ function processOptions(path: string, plan: FramePlan) {
   };
 }
 
+/** How long a native framing call may run before the composer gives up on
+ *  it. A call that never returns would otherwise hold send ("Still reading the
+ *  video") until the app restarts. */
+export const NATIVE_VIDEO_TIMEOUT_MS = 120_000;
+
+/** The largest video the phone will stage. Its bytes pass through the web view
+ *  as base64 before AVFoundation sees them, so a multi-GB recording could take
+ *  the web view down with it; past this the composer says so up front. */
+export const PHONE_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+
+/** Race a native call against the clock, so a hung plugin fails plainly. */
+export function withTimeout<T>(work: Promise<T>, ms: number = NATIVE_VIDEO_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clock = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Reading the video took too long.')), ms);
+  });
+  return Promise.race([work, clock]).finally(() => clearTimeout(timer));
+}
+
 /** Read a File as raw base64 (no data: prefix), for handing a video's bytes to
  *  the phone's temp store where the native plugin can open it. */
 function fileToBase64(file: File): Promise<string> {
@@ -160,7 +179,7 @@ const iosBackend: VideoBackend = {
     try {
       // The plugin returns the whole set in one call, so progress is a single
       // step to done once the frames are back.
-      const result = await Media.processVideo(processOptions(uri, plan));
+      const result = await withTimeout(Media.processVideo(processOptions(uri, plan)));
       const raw = toRawResult(result);
       onProgress?.(raw.frames.length, raw.frames.length);
       return raw;
@@ -184,7 +203,7 @@ const electronBackend: VideoBackend = {
     const path = (file as File & { path?: string }).path;
     if (!path) throw new Error('OpenShore could not locate that video file.');
     onProgress?.(0, 0);
-    const result = await b.mediaProcess(processOptions(path, plan));
+    const result = await withTimeout(b.mediaProcess(processOptions(path, plan)));
     const raw = toRawResult(result);
     onProgress?.(raw.frames.length, raw.frames.length);
     return raw;

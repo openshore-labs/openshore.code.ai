@@ -89,7 +89,7 @@ describe('the attach tray', () => {
     // whole keyboard height over three tiles and a blank field. The tray's
     // height is its content, a CSS token, never the remembered keyboard.
     expect(composer).not.toContain("setProperty('--tray-inset'");
-    expect(composer).not.toContain('knownKeyboardHeight');
+    expect(composer).not.toMatch(/--tray-inset', `\$\{knownKeyboardHeight/);
     expect(theme).toMatch(/--tray-inset: calc\(124px \+ var\(--safe-bottom\)\)/);
     expect(composer).toMatch(/classList\.add\('tray-open'\)/);
     expect(theme).toMatch(
@@ -106,7 +106,9 @@ describe('the attach tray', () => {
     expect(composer).toMatch(/capture="environment"/);
   });
 
-  it('closes when the field takes focus again, so the keyboard swaps back in', () => {
-    expect(composer).toMatch(/onFocus=\{[^}]*closeTray/);
+  it('closes when the field takes focus again, holding the keyboard slot so it never dips', () => {
+    expect(composer).toMatch(
+      /onFocus=\{[\s\S]*?setProperty\('--kb-inset', `\$\{knownKeyboardHeight\(\)\}px`\)[\s\S]*?closeTray\(\)/,
+    );
   });
 });

@@ -102,7 +102,7 @@ describe('the wiring', () => {
     expect(chat).not.toMatch(/thread\.model\.name\} · \$\{thread\.model\.kind\}/);
     expect(chat).toMatch(/<RepoPicker[\s\S]*?selected=\{conv\.repoIds \?\? \[\]\}/);
     expect(chat).toMatch(/<RepoPicker[\s\S]*?selected=\{pendingRepoIds\}/);
-    expect(chat).toMatch(/newConversation\(source, \{ repoIds: pendingRepoIds \}\)/);
+    expect(chat).toMatch(/newConversation\(source, \{\s*repoIds: pendingRepoIds,/);
   });
 
   it('seeds a chat from its project and lets the chat keep its own list', () => {
