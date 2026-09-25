@@ -222,13 +222,24 @@ vi.mock('../src/lib/insights.js', () => ({
 
 const deviceSends: string[] = [];
 vi.mock('../src/drivers/onDeviceDriver.js', () => ({
+  // Answers like a real driver: every send opens a turn and closes it, so the
+  // chat is busy only while a reply is on its way.
   OnDeviceDriver: class {
     readonly kind = 'device' as const;
-    subscribe() {
-      return () => {};
+    private sink?: (event: unknown, seq: number) => void;
+    subscribe(sink: (event: unknown, seq: number) => void) {
+      this.sink = sink;
+      return () => {
+        this.sink = undefined;
+      };
     }
     send(text: string) {
       deviceSends.push(text);
+      queueMicrotask(() => {
+        this.sink?.({ type: 'task-start', input: text }, 0);
+        this.sink?.({ type: 'text-final', text: 'Sure.' }, 0);
+        this.sink?.({ type: 'task-done', reason: 'complete' }, 0);
+      });
     }
     abort() {}
     answerApproval() {}

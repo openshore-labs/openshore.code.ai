@@ -7,6 +7,7 @@ import type { PluginListenerHandle } from '@capacitor/core';
 import { SEARCH_PROTOCOL_NOTE, SearchLineFilter, type ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
+  ABORT_BEAT_MS,
   DEVICE_CONTEXT_TOKENS,
   STALL_TIMEOUT_MS,
   emptyReplyMessage,
@@ -15,7 +16,7 @@ import {
   forgetDeviceModel,
 } from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
-import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
+import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { sanitizeGuideText } from '../lib/guideHarness.js';
 import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
@@ -45,6 +46,18 @@ export class OnDeviceDriver implements ChatDriver {
   private deviceListeners: PluginListenerHandle[] = [];
   /** UI-1: ends the task from this side when the native runner goes quiet. */
   private watchdog?: ReturnType<typeof setTimeout>;
+  /** Ends a stopped reply from this side when the runner never confirms the
+   *  stop, so Stop always unsticks the chat (the stack's beat, here too). */
+  private abortBeat?: ReturnType<typeof setTimeout>;
+  /** Stop was pressed for the turn in flight. */
+  private aborted = false;
+  /** No turn is open: none has started, or it already ended (a Stop while
+   *  the model loads or a search runs closes it at once), so whatever the
+   *  unwinding run still says is dropped. */
+  private settled = true;
+  /** The run in flight, so a message sent after a Stop waits for it to unwind
+   *  (a model load cannot be cancelled) instead of racing it. */
+  private running: Promise<void> = Promise.resolve();
   private turn = 1;
   /** At most one search per user message, so a confused model can't loop. */
   private searchedThisTurn = false;
@@ -75,6 +88,9 @@ export class OnDeviceDriver implements ChatDriver {
     /** The project's standing instructions and the chat's repo context, so
      *  the pocket model works from the same brief as every other brain. */
     private readonly extraSystem?: string,
+    /** The chat this driver answers for, so the guided setup's line reaches
+     *  only the walk's own chat, whichever chat is on screen. */
+    private readonly conversationId?: string,
   ) {
     this.searchable = !isHarborMini(modelId);
     this.guide = isHarborMini(modelId) || isHarbor(modelId);
@@ -86,12 +102,14 @@ export class OnDeviceDriver implements ChatDriver {
 
   private systemPrompt(): string {
     const base = isHarborMini(this.modelId)
-      ? (this.turnPrompt ?? buildHarborMiniSystemPrompt())
+      ? (this.turnPrompt ?? buildHarborMiniSystemPrompt('', this.conversationId))
       : isHarbor(this.modelId)
         ? buildHarborSystemPrompt()
         : SYSTEM_PROMPT;
-    const extra = this.extraSystem?.trim();
-    return extra ? `${base}\n\n${extra}` : base;
+    // Mid-walk, a model switched in from Harbor Lite still needs to know where
+    // setup stands (Harbor Lite reads it inside its own prompt).
+    const walk = isHarborMini(this.modelId) ? undefined : guidedSetupLine(this.conversationId);
+    return [base, this.extraSystem?.trim(), walk].filter(Boolean).join('\n\n');
   }
 
   private async attachListeners(): Promise<void> {
@@ -108,13 +126,14 @@ export class OnDeviceDriver implements ChatDriver {
           ? delta.split(EM_DASH).join(',')
           : this.searchFilter.push(delta);
         this.answer += delta;
-        if (shown) this.emitter.emit({ type: 'text-delta', text: shown });
+        if (shown) this.emit({ type: 'text-delta', text: shown });
       }),
     );
     this.deviceListeners.push(
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
         if (requestId !== this.activeRequestId) return;
         this.clearWatchdog();
+        this.clearAbortBeat();
         this.activeRequestId = undefined;
         void this.handleDone(stopReason, detail);
       }),
@@ -147,15 +166,24 @@ export class OnDeviceDriver implements ChatDriver {
   }
 
   send(text: string): void {
-    void this.run(text);
+    this.running = this.running.then(() => this.run(text)).catch(() => undefined);
+  }
+
+  /** Every event leaves through here: nothing after a turn has ended. */
+  private emit(event: Parameters<DriverEmitter['emit']>[0]): void {
+    if (event.type === 'task-start') this.settled = false;
+    else if (this.settled) return;
+    if (event.type === 'task-done') this.settled = true;
+    this.emitter.emit(event);
   }
 
   private async run(text: string): Promise<void> {
     await this.listenersReady;
     this.turn = 1;
     this.searchedThisTurn = false;
-    this.emitter.emit({ type: 'task-start', input: text });
-    this.emitter.emit({
+    this.aborted = false;
+    this.emit({ type: 'task-start', input: text });
+    this.emit({
       type: 'turn-start',
       turn: this.turn,
       model: this.modelName,
@@ -172,19 +200,26 @@ export class OnDeviceDriver implements ChatDriver {
           name: this.modelName,
           contextSize: DEVICE_CONTEXT_TOKENS,
         },
-        (message) => this.emitter.emit({ type: 'status', message }),
+        (message) => this.emit({ type: 'status', message }),
       );
+      // Stopped while the model loaded: the turn is already closed. The
+      // message stays in history, the way it stays on screen.
+      if (this.aborted) {
+        this.history.push({ role: 'user', content: text });
+        return;
+      }
       if (!ready.ok) {
-        this.emitter.emit({ type: 'task-done', reason: 'error', message: ready.detail });
+        this.emit({ type: 'task-done', reason: 'error', message: ready.detail });
         return;
       }
       if (isHarborMini(this.modelId)) await this.prepareGuideTurn(text);
       this.history.push({ role: 'user', content: text });
+      if (this.aborted) return; // stopped during the guide's web search
       await this.generate();
     } catch (err) {
       this.clearWatchdog();
       this.activeRequestId = undefined;
-      this.emitter.emit({
+      this.emit({
         type: 'task-done',
         reason: 'error',
         message: err instanceof Error ? err.message : String(err),
@@ -197,7 +232,13 @@ export class OnDeviceDriver implements ChatDriver {
   // app facts do not cover a factual question, and works out any setup fit.
   // A search that fails (offline, rate limited) is said plainly, never faked.
   private async prepareGuideTurn(text: string): Promise<void> {
-    const turn = await prepareGuideTurn(text, this.researchOn, (e) => this.emitter.emit(e));
+    const turn = await prepareGuideTurn(
+      text,
+      this.researchOn,
+      (e) => this.emit(e),
+      true,
+      this.conversationId,
+    );
     this.afterNote = turn.after;
     this.turnPrompt = turn.prompt;
   }
@@ -234,8 +275,8 @@ export class OnDeviceDriver implements ChatDriver {
       // Whatever the slot holds after an error is suspect; reload next time.
       forgetDeviceModel();
       if (text) this.history.push({ role: 'assistant', content: text });
-      this.emitter.emit({ type: 'text-final', text });
-      this.emitter.emit({
+      this.emit({ type: 'text-final', text });
+      this.emit({
         type: 'task-done',
         reason: 'error',
         message:
@@ -250,10 +291,12 @@ export class OnDeviceDriver implements ChatDriver {
       // The search line itself is a control message, not a real reply: leave
       // it out of the visible transcript and out of history, so the model
       // does not later "remember" having already announced it.
-      const resultText = await searchForModel(query, this.researchOn, (e) => this.emitter.emit(e));
+      const resultText = await searchForModel(query, this.researchOn, (e) => this.emit(e));
+      // Stopped during the search: the turn is already closed.
+      if (this.aborted) return;
       this.history.push({ role: 'user', content: resultText });
       this.turn += 1;
-      this.emitter.emit({
+      this.emit({
         type: 'turn-start',
         turn: this.turn,
         model: this.modelName,
@@ -263,7 +306,7 @@ export class OnDeviceDriver implements ChatDriver {
         await this.generate();
       } catch (err) {
         this.activeRequestId = undefined;
-        this.emitter.emit({
+        this.emit({
           type: 'task-done',
           reason: 'error',
           message: err instanceof Error ? err.message : String(err),
@@ -272,32 +315,66 @@ export class OnDeviceDriver implements ChatDriver {
       return;
     }
 
-    if (flush) this.emitter.emit({ type: 'text-delta', text: flush });
+    if (flush) this.emit({ type: 'text-delta', text: flush });
     if (text) this.history.push({ role: 'assistant', content: text });
-    this.emitter.emit({ type: 'text-final', text });
+    this.emit({ type: 'text-final', text });
     const after = this.afterNote;
     this.afterNote = undefined;
     if (after && text && stopReason === 'end') {
-      this.emitter.emit({ type: 'note', message: after });
+      this.emit({ type: 'note', message: after });
     }
     // A finished reply with no words is a failure, not a quiet success: say
     // so, rather than leaving the chat on its "Warming up" line.
     if (!text && stopReason === 'end') {
-      this.emitter.emit({
+      this.emit({
         type: 'task-done',
         reason: 'error',
         message: emptyReplyMessage(this.modelName),
       });
       return;
     }
-    this.emitter.emit({
+    this.emit({
       type: 'task-done',
       reason: stopReason === 'stopped' ? 'aborted' : 'complete',
     });
   }
 
   abort(): void {
-    if (this.activeRequestId) void Llama.stop({ requestId: this.activeRequestId });
+    this.aborted = true;
+    const requestId = this.activeRequestId;
+    if (requestId) {
+      void Llama.stop({ requestId }).catch(() => {});
+      // The runner answers a stop with generationDone('stopped'); when it
+      // does not (the request was already lost), end the turn a beat later.
+      this.clearAbortBeat();
+      this.abortBeat = setTimeout(() => {
+        this.abortBeat = undefined;
+        if (this.activeRequestId !== requestId) return;
+        this.activeRequestId = undefined;
+        this.clearWatchdog();
+        forgetDeviceModel();
+        void this.handleDone('stopped');
+      }, ABORT_BEAT_MS);
+      return;
+    }
+    // Nothing is generating yet (the model is loading, or a web search is
+    // running): close the turn now so Stop answers at once. The run notices
+    // the flag when its wait ends and never starts the reply. With no turn
+    // open there is nothing to stop.
+    if (this.settled) return;
+    // No words of this turn's reply exist yet (a streamed search line is a
+    // control message, not a reply), so the final text is empty.
+    this.emit({ type: 'text-final', text: '' });
+    this.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
+  }
+
+  private clearAbortBeat(): void {
+    if (this.abortBeat) clearTimeout(this.abortBeat);
+    this.abortBeat = undefined;
+  }
+
+  recordLine(turn: SeedTurn): void {
+    this.history.push({ role: turn.role, content: turn.text });
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {
@@ -306,10 +383,12 @@ export class OnDeviceDriver implements ChatDriver {
   }
 
   dispose(): void {
+    // Silent first: a teardown is not a Stop the chat should record.
+    this.emitter.clear();
     this.abort();
     this.clearWatchdog();
+    this.clearAbortBeat();
     for (const h of this.deviceListeners) void h.remove();
     this.deviceListeners = [];
-    this.emitter.clear();
   }
 }

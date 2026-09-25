@@ -5,13 +5,20 @@
 import { useEffect, useState } from 'react';
 import { isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
-import { isDesktop, openInAppBrowser } from '../lib/platform.js';
-import { daemonCloneRepo, daemonWorkspaces } from '../drivers/remoteDriver.js';
+import { openInAppBrowser } from '../lib/platform.js';
+import { daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { homeRepoReady, REPO_CONNECTORS, type HomeRepo, type RepoPlatform } from '../lib/repos.js';
-import { isRepoOAuthConfigured, repoOAuthCallbackUrl } from '../lib/gitos/repoOAuth.js';
+import {
+  githubAppSlug,
+  isRepoOAuthConfigured,
+  repoOAuthCallbackUrl,
+  repoToken,
+} from '../lib/gitos/repoOAuth.js';
+import { githubAccess, githubAccessHint, type RepoAccessHint } from '../lib/chatRepos.js';
+import { cloneOnComputer, computerFor } from '../lib/repoClone.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
-import { PlainError, plainError } from '../lib/plainError.js';
+import { plainError } from '../lib/plainError.js';
 
 // The phone-to-home commit-offload pipeline (home repo + buffered deploys) is
 // built and tested end to end on the desktop engine. The homePath picker now
@@ -58,7 +65,8 @@ export function ReposScreen() {
   const [tokenValue, setTokenValue] = useState('');
   const [editingHome, setEditingHome] = useState(false);
 
-  const connected = isDesktop() || Boolean(settings.daemon);
+  const where = computerFor(settings);
+  const connected = where !== undefined;
   const admin = isOrgAdmin(settings.account);
   const homeRepo = settings.repo?.homeRepo;
   const outbox = settings.repo?.outbox ?? [];
@@ -66,8 +74,9 @@ export function ReposScreen() {
 
   const refresh = async () => {
     try {
-      if (isDesktop() && bridge()) setWorkspaces(await bridge()!.recentWorkspaces());
-      else if (settings.daemon) setWorkspaces(await daemonWorkspaces(settings.daemon));
+      if (where === 'local') setWorkspaces(await bridge()!.recentWorkspaces());
+      else if (where === 'paired' && settings.daemon)
+        setWorkspaces(await daemonWorkspaces(settings.daemon));
     } catch {
       setWorkspaces([]);
     }
@@ -76,23 +85,38 @@ export function ReposScreen() {
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.daemon]);
+  }, [settings.daemon, where]);
+
+  // With GitHub connected, say which repositories OpenShore can see there and
+  // link to the page that changes it (a GitHub App given a few repositories on
+  // an organization is the usual reason one is missing from the picker).
+  const githubOn = Boolean(connectedRepoPlatforms.github);
+  const [githubHint, setGithubHint] = useState<RepoAccessHint | undefined>();
+  const [hintTick, setHintTick] = useState(0);
+  useEffect(() => {
+    if (!githubOn) {
+      setGithubHint(undefined);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      const token = await repoToken('github');
+      const access = token ? await githubAccess(token).catch(() => undefined) : undefined;
+      if (live) setGithubHint(githubAccessHint(access, githubAppSlug()));
+    })();
+    return () => {
+      live = false;
+    };
+  }, [githubOn, hintTick]);
 
   const clone = async () => {
     const cleaned = url.trim();
     if (!cleaned) return;
     setCloning(true);
     try {
-      let result: { cwd: string; name: string };
-      if (isDesktop() && bridge()) {
-        const r = await bridge()!.cloneRepo(cleaned);
-        if ('error' in r) throw new Error(r.error);
-        result = r;
-      } else if (settings.daemon) {
-        result = await daemonCloneRepo(settings.daemon, cleaned);
-      } else {
-        throw new PlainError('Connect your computer first; repositories live there.');
-      }
+      // The connected platform's token rides along for a private repository
+      // on its own host (lib/repoClone.ts), so the hint below is true.
+      const result = await cloneOnComputer(cleaned, settings);
       showToast(`${result.name} is ready.`);
       setUrl('');
       await refresh();
@@ -302,6 +326,21 @@ export function ReposScreen() {
                     );
                   })()
                 : null}
+              {c.id === 'github' && on && githubHint ? (
+                <p className="hint" style={{ marginTop: 10, marginBottom: 0 }}>
+                  {githubHint.text}{' '}
+                  <button
+                    type="button"
+                    className="linklike"
+                    onClick={() =>
+                      openInAppBrowser(githubHint.url, () => setHintTick((n) => n + 1))
+                    }
+                  >
+                    {githubHint.action}
+                  </button>
+                  .
+                </p>
+              ) : null}
             </div>
           );
         })}
@@ -477,7 +516,9 @@ export function ReposScreen() {
               </p>
             </div>
 
-            {isDesktop() ? (
+            {/* A folder on this desktop, only when sessions run here (a desktop
+                pointed at a remote hub runs them there, where this path is not). */}
+            {where === 'local' ? (
               <div className="card">
                 <div className="card-row">
                   <div className="grow">

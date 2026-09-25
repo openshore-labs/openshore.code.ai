@@ -9,9 +9,9 @@
 //   - Sessions run on the remote-attached profile: stricter than sitting at
 //     the desk, never looser.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import {
   assertSafeBind,
   bearerFrom,
@@ -43,7 +43,13 @@ import { HOME_SHELL_ID } from './homeShellId.js';
 import { PushNotifier, savePushConfig } from './push.js';
 import { PairClaimStore, deviceLabelFrom, type PairClaimStatus } from './pairClaims.js';
 import { mintCredential } from '../core/security/credentials.js';
-import { clone } from '../git/index.js';
+import { redactToken } from '../git/index.js';
+import {
+  cloneFolderName,
+  cloneIntoManaged,
+  listWorkspaces,
+  type WorkspaceRow,
+} from '../git/workspaces.js';
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
 import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
@@ -86,6 +92,22 @@ const CHAT_SYSTEM = [
   'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
   'Never use em dashes. Use a period or a comma instead.',
 ].join('\n');
+
+/** The most chat context (standing instructions, setup step) /chat carries. */
+const CHAT_CONTEXT_MAX = 8000;
+
+/** The system line for one /chat request: the fixed line, then the chat's own
+ *  context (the project's standing instructions, the guided setup's step),
+ *  trimmed and capped, so the phone's brief reaches this model the way it
+ *  reaches every other brain. Anything that is not a string is ignored. */
+export function desktopChatSystem(context: unknown, search = false): string {
+  const extra = typeof context === 'string' ? context.trim().slice(0, CHAT_CONTEXT_MAX) : '';
+  // With search on, the phone runs any search itself and sends the results
+  // back as the next turn, so this surface only learns how to ask; it never
+  // fetches.
+  const base = search ? `${CHAT_SYSTEM}\n${SEARCH_PROTOCOL_NOTE}` : CHAT_SYSTEM;
+  return extra ? `${base}\n\n${extra}` : base;
+}
 
 // Request bodies are bounded (DAE-8): a JSON body over the cap is answered 413
 // and never buffered. The outbox carries file contents, so it gets more room.
@@ -397,21 +419,24 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       // The target name comes from the url's last segment; `.` or `..` would
       // land the clone on ~/OSCode or ~ itself (DAE-16).
-      const name = basename(gitUrl.replace(/\.git$/, ''));
-      if (!/^[A-Za-z0-9._-]+$/.test(name) || name === '.' || name === '..') {
+      const name = cloneFolderName(gitUrl);
+      if (!name) {
         sendJson(res, 400, {
           error: 'The repository name in that url is not usable as a folder name.',
         });
         return;
       }
-      const parent = join(homedir(), 'OSCode');
-      mkdirSync(parent, { recursive: true });
-      const target = join(parent, name);
+      // The phone's connected-platform token, for a private repository. Used
+      // for this one clone as a header scoped to the platform's host, never
+      // stored, logged, or written into the clone (git/index.ts).
+      const token = typeof body.token === 'string' && body.token.trim() ? body.token : undefined;
       try {
-        if (!existsSync(target)) await clone(gitUrl, target);
-        sendJson(res, 200, { cwd: target, name });
+        const cwd = await cloneIntoManaged(gitUrl, name, { token });
+        sendJson(res, 200, { cwd, name });
       } catch (err) {
-        sendJson(res, 400, { error: `Could not clone: ${(err as Error).message}` });
+        sendJson(res, 400, {
+          error: `Could not clone: ${redactToken((err as Error).message, token)}`,
+        });
       }
       return;
     }
@@ -673,11 +698,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       const model =
         typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
-      // The phone runs any search itself and sends the results back as the
-      // next turn, so this surface only learns how to ask; it never fetches.
-      const system = body.search === true ? `${CHAT_SYSTEM}\n${SEARCH_PROTOCOL_NOTE}` : CHAT_SYSTEM;
+      // Client system turns are dropped below; the chat's context rides its
+      // own capped field instead (desktopChatSystem).
       const messages: ChatMessage[] = [
-        { role: 'system', content: system },
+        { role: 'system', content: desktopChatSystem(body.context, body.search === true) },
         ...rawMessages
           .filter(
             (m: unknown): m is { role: string; content: string } =>
@@ -1473,35 +1497,13 @@ export { isAdminProvisionedWorkspace, isOutboxAllowedPath };
 /** Recent workspaces: session cwds, newest first, deduped, existing only.
  *  With an owner, only that user's sessions count (DAE-1), followed by the
  *  admin-provisioned workspaces the member may open. */
-function recentWorkspaces(
-  ownerUserId?: string,
-): Array<{ cwd: string; name: string; lastUsed?: string }> {
-  const seen = new Set<string>();
-  const out: Array<{ cwd: string; name: string; lastUsed?: string }> = [];
-  for (const session of listSessions()) {
-    if (ownerUserId !== undefined && session.ownerUserId !== ownerUserId) continue;
-    if (seen.has(session.cwd) || !existsSync(session.cwd)) continue;
-    seen.add(session.cwd);
-    out.push({ cwd: session.cwd, name: basename(session.cwd), lastUsed: session.updatedAt });
-    if (out.length >= 12) break;
-  }
-  if (ownerUserId !== undefined) {
-    const managed = join(homedir(), 'OSCode');
-    try {
-      for (const name of readdirSync(managed)) {
-        const cwd = join(managed, name);
-        if (seen.has(cwd) || name.startsWith('.')) continue;
-        let isDir = false;
-        try {
-          isDir = statSync(cwd).isDirectory();
-        } catch {}
-        if (!isDir || !isAdminProvisionedWorkspace(cwd)) continue;
-        seen.add(cwd);
-        out.push({ cwd, name });
-      }
-    } catch {}
-  }
-  return out;
+function recentWorkspaces(ownerUserId?: string): WorkspaceRow[] {
+  // A member sees only its own sessions' folders; everyone sees the clones
+  // under ~/OSCode, the admin-provisioned workspaces a member may open.
+  const sessions = listSessions().filter(
+    (s) => ownerUserId === undefined || s.ownerUserId === ownerUserId,
+  );
+  return listWorkspaces(sessions);
 }
 
 /** A request body that was present but not a JSON object. Caught centrally and

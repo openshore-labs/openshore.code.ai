@@ -43,8 +43,11 @@ export async function prepareGuideTurn(
   researchOn: boolean,
   emit: (event: DriverEvent) => void,
   online = true,
+  /** The chat this turn answers for, so the guided setup's line reaches only
+   *  the walk's own chat. */
+  conversationId?: string,
 ): Promise<{ prompt: string; after?: string }> {
-  const turn = harborMiniTurn(text);
+  const turn = harborMiniTurn(text, conversationId);
   const query = turn.plan.searchQuery;
   let sources: WebSearchResult[] | undefined;
   let searchFailed = false;

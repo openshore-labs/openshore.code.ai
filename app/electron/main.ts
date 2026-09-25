@@ -844,7 +844,9 @@ guarded('osc:pickFolder', async () => {
   });
   return result.canceled ? null : (result.filePaths[0] ?? null);
 });
-guarded('osc:cloneRepo', (url: unknown) => host.cloneRepo(str(url, 'url')));
+guarded('osc:cloneRepo', (url: unknown, token: unknown) =>
+  host.cloneRepo(str(url, 'url'), optStr(token, 'token')),
+);
 guarded('osc:recentWorkspaces', () => host.recentWorkspaces());
 guarded('osc:reconcileRepos', (roots: unknown) =>
   host.reconcileRepos(Array.isArray(roots) ? strList(roots, 'roots') : []),

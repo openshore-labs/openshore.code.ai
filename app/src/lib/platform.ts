@@ -34,10 +34,24 @@ export function openExternal(url: string): void {
  *  Capacitor "Done" button to dismiss back to exactly where you were.
  *  Electron and web have no in-app browser surface, so they fall back to
  *  the system browser via openExternal. */
-export function openInAppBrowser(url: string): void {
+export function openInAppBrowser(url: string, onClose?: () => void): void {
   // No tick here: every caller is a button, and the global press listener in
   // App.tsx already marks the tap (UI-7), so a second tick reads as a stutter.
   if (platform() === 'ios') {
+    // `onClose` fires when the person taps Done, so a screen can re-read what
+    // they just changed (repository access on GitHub, say). Desktop and web
+    // open the system browser, where a window focus listener does that job.
+    if (onClose) {
+      let handle: { remove: () => Promise<void> } | undefined;
+      void Browser.addListener('browserFinished', () => {
+        void handle?.remove();
+        onClose();
+      })
+        .then((h) => {
+          handle = h;
+        })
+        .catch(() => {});
+    }
     void Browser.open({ url });
     return;
   }

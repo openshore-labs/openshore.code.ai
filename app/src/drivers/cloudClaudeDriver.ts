@@ -4,8 +4,8 @@
 // phone: repo tools need the desktop connection, and the UI says so.
 import Anthropic from '@anthropic-ai/sdk';
 import type { ApprovalAnswer } from 'os-code/protocol';
-import type { ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter } from './types.js';
+import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
+import { DriverEmitter, readChatContext } from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
@@ -78,6 +78,19 @@ const SYSTEM_PROMPT = [
   'Never use em dashes. Use a period or a comma instead.',
 ].join('\n');
 
+/** The user turn a Claude request opens with when the chat itself opened on
+ *  the app's own words (the guided setup's greeting). */
+export const CHAT_OPENER = '(This chat began with the message below.)';
+
+/** The Messages API takes a user turn first. A chat that opens on the app's
+ *  greeting (the setup walk's chat, switched to Claude) gets a short neutral
+ *  opener in front, sent with the request and never stored. */
+export function opensOnUser(history: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  return history[0]?.role === 'assistant'
+    ? [{ role: 'user', content: CHAT_OPENER }, ...history]
+    : history;
+}
+
 export class CloudClaudeDriver implements ChatDriver {
   readonly kind = 'cloud' as const;
   private emitter = new DriverEmitter();
@@ -91,8 +104,9 @@ export class CloudClaudeDriver implements ChatDriver {
     seed?: SeedTurn[],
     /** The workspace an identity-linked key acts in (anthropic-workspace-id). */
     workspaceId?: string,
-    /** Extra system context for this chat (the repositories it works with). */
-    private readonly extraSystem?: string,
+    /** Extra system context for this chat (the repositories it works with,
+     *  the guided setup's step), read on every reply. */
+    private readonly extraSystem?: ChatContext,
   ) {
     const ws = workspaceId?.trim();
     this.client = new Anthropic({
@@ -132,11 +146,11 @@ export class CloudClaudeDriver implements ChatDriver {
           SYSTEM_PROMPT,
           effortDirective(),
           hasFrames ? VIDEO_FRAMES_SYSTEM_NOTE : undefined,
-          this.extraSystem,
+          readChatContext(this.extraSystem),
         ]
           .filter(Boolean)
           .join('\n'),
-        messages: this.history,
+        messages: opensOnUser(this.history),
       });
       this.activeStream = stream;
       stream.on('text', (delta) => {
@@ -189,6 +203,10 @@ export class CloudClaudeDriver implements ChatDriver {
 
   abort(): void {
     this.activeStream?.abort();
+  }
+
+  recordLine(turn: SeedTurn): void {
+    this.history.push({ role: turn.role, content: turn.text });
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {

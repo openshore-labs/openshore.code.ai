@@ -266,16 +266,24 @@ export async function daemonWorkspaces(target: DaemonTarget) {
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`Your computer answered ${res.status}.`);
-  return ((await res.json()) as { workspaces: Array<{ cwd: string; name: string }> }).workspaces;
+  return (
+    (await res.json()) as {
+      workspaces: Array<{ cwd: string; name: string; remote?: string }>;
+    }
+  ).workspaces;
 }
 
-export async function daemonCloneRepo(target: DaemonTarget, url: string) {
+/** Clone onto the paired computer. `token` is this phone's connected-platform
+ *  token for a private repository: the computer uses it for this one clone,
+ *  scoped to the platform's host, and never stores it. */
+export async function daemonCloneRepo(target: DaemonTarget, url: string, token?: string) {
   const res = await fetch(`${target.baseUrl}/workspaces/clone`, {
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
-    body: JSON.stringify({ url }),
-    // A clone is real work; give it a minute before calling the desktop gone.
-    signal: AbortSignal.timeout(60_000),
+    body: JSON.stringify(token ? { url, token } : { url }),
+    // A clone is real work. A big repository takes minutes; a retry after this
+    // joins the clone still running on the computer rather than starting over.
+    signal: AbortSignal.timeout(180_000),
   });
   const body = (await res.json().catch(() => ({}))) as {
     cwd?: string;
