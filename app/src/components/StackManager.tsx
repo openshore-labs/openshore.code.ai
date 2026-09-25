@@ -257,7 +257,7 @@ export function StackManager() {
     if (slot === 'cloud') {
       return {
         title: `${refName(defaultVisionCloudRef())} (default)`,
-        sub: 'Most capable cloud model, until you choose another.',
+        sub: 'Most capable cloud model. Asks before each image until you choose one.',
       };
     }
     return { title: 'None', sub: 'Falls back to the cloud slot for now.' };
