@@ -15,7 +15,12 @@ import {
   forgetDeviceModel,
 } from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
-import { buildHarborMiniSystemPrompt, harborMiniTurn, isHarborMini } from '../lib/harborMini.js';
+import {
+  buildHarborMiniSystemPrompt,
+  guidedSetupLine,
+  harborMiniTurn,
+  isHarborMini,
+} from '../lib/harborMini.js';
 import type { WebSearchResult } from '../lib/webSearch.js';
 import { sanitizeGuideText } from '../lib/guideHarness.js';
 
@@ -90,8 +95,10 @@ export class OnDeviceDriver implements ChatDriver {
       : this.searchable
         ? buildHarborSystemPrompt()
         : SYSTEM_PROMPT;
-    const extra = this.extraSystem?.trim();
-    return extra ? `${base}\n\n${extra}` : base;
+    // Mid-walk, a model switched in from Harbor Lite still needs to know where
+    // setup stands (Harbor Lite reads it inside its own prompt).
+    const walk = isHarborMini(this.modelId) ? undefined : guidedSetupLine();
+    return [base, this.extraSystem?.trim(), walk].filter(Boolean).join('\n\n');
   }
 
   private async attachListeners(): Promise<void> {

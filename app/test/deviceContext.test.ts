@@ -31,8 +31,13 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
 }));
 
 const { OnDeviceDriver } = await import('../src/drivers/onDeviceDriver.js');
-const { DEVICE_CONTEXT_TOKENS, estimateTokens, fitDeviceHistory, forgetDeviceModel } =
-  await import('../src/drivers/deviceModel.js');
+const {
+  DEVICE_CONTEXT_TOKENS,
+  TRIMMED_HISTORY_OPENER,
+  estimateTokens,
+  fitDeviceHistory,
+  forgetDeviceModel,
+} = await import('../src/drivers/deviceModel.js');
 const { buildHarborMiniSystemPrompt, HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } =
   await import('../src/lib/harborMini.js');
 
@@ -85,6 +90,25 @@ describe('fitDeviceHistory', () => {
     expect(used + estimateTokens('s'.repeat(6000)) + 512).toBeLessThanOrEqual(
       DEVICE_CONTEXT_TOKENS,
     );
+  });
+
+  it('keeps the guide lines before the question when the setup walk posted several in a row', () => {
+    // The onboarding shape: an older exchange that no longer fits, then two
+    // scripted guide lines back to back, then the person's question.
+    const msgs = [
+      turn('user', 4000),
+      turn('assistant', 6000),
+      turn('assistant', 300),
+      turn('assistant', 300),
+      turn('user', 20),
+    ];
+    const fitted = fitDeviceHistory('s'.repeat(6000), msgs, 512);
+    expect(fitted).toEqual([
+      { role: 'user', content: TRIMMED_HISTORY_OPENER },
+      msgs[2],
+      msgs[3],
+      msgs[4],
+    ]);
   });
 
   it('always keeps the question, even when nothing else fits', () => {

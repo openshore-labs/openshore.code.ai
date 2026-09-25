@@ -137,6 +137,13 @@ export function setHarborMiniContext(fn: () => string | undefined): void {
   guideContext = fn;
 }
 
+/** Where the guided setup stands, for any model answering in the walk's chat.
+ *  A person who switches from Harbor Lite to Harbor or the Stack mid-walk is
+ *  still in setup, so the model they switched to needs the same line. */
+export function guidedSetupLine(): string | undefined {
+  return guideContext();
+}
+
 /** One turn through the guide harness: the plan for this message, and the
  *  prompt once the driver has run any search the plan asked for. */
 export function harborMiniTurn(message: string): {

@@ -76,7 +76,7 @@ import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
-import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
+import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
@@ -427,6 +427,12 @@ export class StackDriver implements ChatDriver {
         ? `You are working in the project "${this.context.projectName}".`
         : '';
       parts.push([head, proj].filter(Boolean).join('\n'));
+    }
+    // Mid-walk, whatever seat answers still needs to know where setup stands
+    // (Harbor Lite already reads it inside its own prompt).
+    if (!(ref.kind === 'device' && isHarborMini(ref.modelId))) {
+      const walk = guidedSetupLine();
+      if (walk) parts.push(walk);
     }
     const crewNote = this.crewGuidance();
     if (crewNote) parts.push(crewNote);
