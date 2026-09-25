@@ -55,7 +55,7 @@ import { streamingFetch } from '../lib/streamingFetch.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
-import { buildVisionContent } from './cloudClaudeDriver.js';
+import { buildVisionContent, describeError } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import {
   briefTodos,
@@ -612,7 +612,7 @@ export class StackDriver implements ChatDriver {
           this.emit({
             type: 'task-done',
             reason: 'error',
-            message: err2 instanceof Error ? err2.message : String(err2),
+            message: describeError(err2),
           });
         }
         return;
@@ -620,7 +620,7 @@ export class StackDriver implements ChatDriver {
       this.emit({
         type: 'task-done',
         reason: 'error',
-        message: err instanceof Error ? err.message : String(err),
+        message: describeError(err),
       });
     }
   }
