@@ -426,12 +426,13 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
-- [ ] **Repositories on a device (built 2026-09-25).** Founder first: tap
-      "Choose repositories" in the picker, give OpenShore Code all of
-      openshore-labs. Then on the iPhone, paired: clone openshore-hq from the
-      picker and confirm a new chat works in ~/OSCode/openshore-hq. Set
-      `VITE_GITHUB_APP_SLUG` in Codemagic. Follow-up: the computer still needs
-      its own push credential (`gh auth login`) for reconcile and the agent.
+- [ ] **Repositories: three founder settings, then a device pass (built
+      2026-09-25).** (1) Make the GitHub App public: GitHub reports "OpenShore
+      Code is a private GitHub App", so only openshore-labs can install it.
+      (2) Give it all of openshore-labs ("Choose repositories" in the picker).
+      (3) Add `VITE_GITHUB_CLIENT_ID` as a GitHub repository variable so the
+      desktop builds get one-tap GitHub. Then on the iPhone: clone
+      openshore-hq from the picker; a new chat works in ~/OSCode/openshore-hq.
 - [ ] **Harbor and DeepBlue's 3B are not Apache (checked 2026-09-24; a
       founder or Board call).** Qwen2.5-Coder-3B's model card says the Qwen
       Research License: research and non-commercial use, commercial use needs
@@ -977,6 +978,8 @@ extended that day by the graduated enforcement ladder (migration
 ### 2026-09-25, the Repositories review: every GitHub repository reachable, cloned with the connected token
 
 Founder, from two screenshots: the repo picker listed 4 repositories where the Claude GitHub connection shows many more; review the repository section, GitHub first, and make the others work. Root cause: OpenShore signs in as a GitHub App, and an App token sees only the repositories the App was given; on openshore-labs it was installed with a few picked, so `/user/repos` was right and the app never said so (Claude's own GitHub App is a separate installation). Fixed, with the rest the review found. (1) The picker, the project sheet, and the GitHub card read `/user/installations` and say "OpenShore sees only the repositories you picked for openshore-labs on GitHub. Choose repositories", opening that installation's settings (or the App install page; `VITE_GITHUB_APP_SLUG` is optional), and re-read the list on return. (2) The picker read the raw stored token, so an 8-hour GitHub App token went stale; one reader, `repoToken`, refreshes a one-tap sign-in (single-flight, a GitHub refresh token is single use) and serves a pasted token as is, which also fixes the project-memory view ignoring pasted tokens. (3) The Repositories screen promised private repositories clone with the connected platform, and nothing passed it; the token now rides one clone as a host-scoped header through git's environment config, never in args, `.git/config`, the remote, or an error, on the desktop and through `POST /workspaces/clone` (`os-code/src/git/index.ts`, `src/git/workspaces.ts`, `app/src/lib/repoClone.ts`). (4) A selected GitHub repository was context only; the picker offers "Clone to your computer" (or "Use that copy" when a clone already holds it, matched by origin), which puts the folder first so the agent works there. (5) A clone made from the phone never listed until a chat ran in it; workspaces now include every clone under ~/OSCode with its origin (credentials stripped), a repeat request joins a running clone, and a same-named folder holding another repository is refused. (6) GitLab and Bitbucket connected but never listed; they list now under `gitlab:` and `bitbucket:` ids no folder check mistakes for a path, and since Bitbucket app passwords died 2026-06-09 its card takes `email:API token` (Basic) or an access token (bearer). (7) Errors read as sentences, not "GitHub answered 401.", and the list pages to 1000 repositories, not 300. Tests: `app/test/chatRepos.test.ts`, `repoOAuth.test.ts`, `plainError.test.ts`, `os-code/test/repoClone.test.ts`, `daemon.test.ts`. Rendered in headless Chromium against a mocked GitHub. Not yet on a device.
+
+Same day, the open items (founder: "push to main and do the remaining open items"). Desktop reconcile now pushes and fetches a platform remote with the desktop app's connected token (the engine's own GitHub token as fallback), the same host-scoped header per git command, so a token-made clone is pushable on a computer with no git credential; other remotes use the machine's setup as before (`reconcile.ts` `tokens`, pinned against a pass-through git in `test/reconcile.test.ts`). A picker change in a live chat reaches the model: cloud chats read the list fresh each reply, and an on-device or Stack chat rebuilds from its transcript on the next send; a started engine session stays in its folder, and the picker says so and offers "New chat there". The slug (`openshore-code`, verified live) is in `codemagic.yaml` and `release.yml`, and the desktop release now reads the repo-OAuth client ids, which it never had, so desktop GitHub was paste-only.
 
 ### 2026-09-25, conversing and building across model switches: the chat review, fixed
 

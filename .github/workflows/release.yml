@@ -171,6 +171,14 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # One-tap repository sign-in (the repo-oauth function holds the
+          # secrets). Client ids are public; set them as repository variables
+          # (or secrets) with the same values as the iOS build's Codemagic
+          # group. Unset, the desktop keeps the paste-a-token path.
+          VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID || secrets.VITE_GITHUB_CLIENT_ID }}
+          VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID || secrets.VITE_GITLAB_CLIENT_ID }}
+          VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID || secrets.VITE_BITBUCKET_CLIENT_ID }}
+          VITE_GITHUB_APP_SLUG: openshore-code
         run: pnpm --filter oscode-app build
 
       # node-pty is a native module compiled for Node's ABI on install; the
@@ -248,6 +256,14 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # One-tap repository sign-in (the repo-oauth function holds the
+          # secrets). Client ids are public; set them as repository variables
+          # (or secrets) with the same values as the iOS build's Codemagic
+          # group. Unset, the desktop keeps the paste-a-token path.
+          VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID || secrets.VITE_GITHUB_CLIENT_ID }}
+          VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID || secrets.VITE_GITLAB_CLIENT_ID }}
+          VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID || secrets.VITE_BITBUCKET_CLIENT_ID }}
+          VITE_GITHUB_APP_SLUG: openshore-code
         run: pnpm --filter oscode-app build
 
       # Same native-module problem as Linux: node-pty is built for Node's ABI on

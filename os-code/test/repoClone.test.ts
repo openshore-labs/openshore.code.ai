@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { clone, cloneAuthHeader, redactToken } from '../src/git/index.js';
+import { clone, cloneAuthHeader, redactToken, tokenForUrl } from '../src/git/index.js';
 import {
   cloneFolderName,
   cloneIntoManaged,
@@ -59,6 +59,18 @@ describe('the one-shot auth header', () => {
     }
     expect(cloneAuthHeader('https://github.com/o/r.git', 'a\nb')).toBeUndefined();
     expect(cloneAuthHeader('https://github.com/o/r.git', '  ')).toBeUndefined();
+  });
+
+  it('picks the token for the remote platform, and none for another host or shape', () => {
+    const tokens = { github: 'ghu_a', gitlab: 'glpat-b', bitbucket: 'bb' };
+    expect(tokenForUrl('https://github.com/o/r.git', tokens)).toBe('ghu_a');
+    expect(tokenForUrl('https://GitLab.com/g/r.git', tokens)).toBe('glpat-b');
+    expect(tokenForUrl('https://bitbucket.org/w/r.git', tokens)).toBe('bb');
+    expect(tokenForUrl('https://github.com/o/r.git', { gitlab: 'glpat-b' })).toBeUndefined();
+    expect(tokenForUrl('git@github.com:o/r.git', tokens)).toBeUndefined();
+    expect(tokenForUrl('https://me@github.com/o/r.git', tokens)).toBeUndefined();
+    expect(tokenForUrl('https://example.com/o/r.git', tokens)).toBeUndefined();
+    expect(tokenForUrl('https://github.com/o/r.git', undefined)).toBeUndefined();
   });
 
   it('redacts the token and its header form from text a person reads', () => {

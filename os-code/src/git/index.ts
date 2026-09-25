@@ -79,21 +79,41 @@ export function redactToken(text: string, token: string | undefined): string {
   return out;
 }
 
+/** Each connected platform's token, keyed the way the app names platforms. */
+export type PlatformTokens = Partial<Record<'github' | 'gitlab' | 'bitbucket', string>>;
+
+const HOST_PLATFORM: Record<string, keyof PlatformTokens> = {
+  'github.com': 'github',
+  'gitlab.com': 'gitlab',
+  'bitbucket.org': 'bitbucket',
+};
+
+/** The token that authorizes git traffic to this address: the one for the
+ *  platform whose host it is, only for a plain https address. */
+export function tokenForUrl(url: string, tokens: PlatformTokens | undefined): string | undefined {
+  if (!tokens) return undefined;
+  let u: URL;
+  try {
+    u = new URL(url.trim());
+  } catch {
+    return undefined;
+  }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port) return undefined;
+  const platform = HOST_PLATFORM[u.hostname.toLowerCase()];
+  const token = platform ? tokens[platform]?.trim() : undefined;
+  return token || undefined;
+}
+
 /**
- * Clone `url` into `dir`. With a token, the token rides as an http header
- * scoped to the platform's host through git's environment config
- * (GIT_CONFIG_COUNT), so it never lands in the clone's .git/config, its
- * remote address, or the process arguments. Terminal prompts are off either
- * way, so a private repository with no credentials fails at once instead of
- * waiting on a prompt nobody can answer.
+ * The environment for one git command against `url`: terminal prompts off (a
+ * missing credential fails at once instead of waiting on a prompt nobody can
+ * answer), and with a token, a host-scoped auth header appended to any git
+ * config the environment already carries (GIT_CONFIG_COUNT). The token never
+ * lands in the process arguments, the clone's .git/config, or its remote.
  */
-export async function clone(
-  url: string,
-  dir: string,
-  opts: { token?: string } = {},
-): Promise<void> {
-  const header = opts.token ? cloneAuthHeader(url, opts.token) : undefined;
+export function gitAuthEnv(url: string, token: string | undefined): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  const header = token ? cloneAuthHeader(url, token) : undefined;
   if (header) {
     const count = Number.parseInt(env.GIT_CONFIG_COUNT ?? '0', 10);
     const at = Number.isFinite(count) && count > 0 ? count : 0;
@@ -101,20 +121,56 @@ export async function clone(
     env[`GIT_CONFIG_VALUE_${at}`] = header.value;
     env.GIT_CONFIG_COUNT = String(at + 1);
   }
-  await new Promise<void>((resolve, reject) => {
+  return env;
+}
+
+/** Run one git command. Rejects with git's own error lines (token redacted),
+ *  or "timed out" when it outlives `timeoutMs`. */
+export function runGit(
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; token?: string; timeoutMs?: number } = {},
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     execFile(
       'git',
-      ['clone', '--', url, dir],
-      { env, maxBuffer: 4 * 1024 * 1024, windowsHide: true },
-      (err, _stdout, stderr) => {
-        if (!err) return resolve();
-        const detail = String(stderr || err.message)
+      args,
+      {
+        cwd: opts.cwd,
+        env: opts.env,
+        maxBuffer: 4 * 1024 * 1024,
+        windowsHide: true,
+        timeout: opts.timeoutMs,
+      },
+      (err, stdout, stderr) => {
+        if (!err) return resolve(String(stdout));
+        const killed = (err as { killed?: boolean }).killed;
+        const detail = String(stderr || '')
           .split('\n')
           .filter((l) => l.trim() && !/^Cloning into /.test(l))
           .join('\n');
-        reject(new Error(redactToken(detail || 'git clone failed.', opts.token)));
+        const message = detail || (killed ? `git ${args[0]} timed out.` : err.message);
+        reject(new Error(redactToken(message, opts.token)));
       },
     );
+  });
+}
+
+/**
+ * Clone `url` into `dir`. With a token, the token rides as an http header
+ * scoped to the platform's host through git's environment config (see
+ * gitAuthEnv), so it never lands in the clone's .git/config, its remote
+ * address, or the process arguments.
+ */
+export async function clone(
+  url: string,
+  dir: string,
+  opts: { token?: string } = {},
+): Promise<void> {
+  await runGit(['clone', '--', url, dir], {
+    env: gitAuthEnv(url, opts.token),
+    token: opts.token,
+  }).catch((err: Error) => {
+    throw new Error(err.message || 'git clone failed.');
   });
 }
 

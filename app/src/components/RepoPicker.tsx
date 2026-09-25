@@ -25,6 +25,7 @@ import { plainError } from '../lib/plainError.js';
 import {
   PLATFORM_NAME,
   cloneUrlFor,
+  firstWorkspace,
   localCloneFor,
   parseRemoteRepoId,
   repoLabel,
@@ -78,6 +79,8 @@ export function RepoPicker({
   branch,
   dirty,
   onOpenRepos,
+  workingIn,
+  onNewChat,
 }: {
   selected: string[];
   onChange: (ids: string[]) => void;
@@ -86,6 +89,12 @@ export function RepoPicker({
   dirty?: boolean;
   /** Where to send someone with nothing connected yet. */
   onOpenRepos: () => void;
+  /** The folder a started session on the computer works in. The engine cannot
+   *  move a session, so a different first folder means a new chat. */
+  workingIn?: string;
+  /** Start a new chat with these repositories (offered when `workingIn` is
+   *  not the first folder picked). */
+  onNewChat?: (ids: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -138,6 +147,11 @@ export function RepoPicker({
         })
         .slice(0, 3)
     : [];
+
+  // A started session stays in its folder; picking another first folder is
+  // honest only as a new chat.
+  const firstPicked = firstWorkspace(selected);
+  const moved = Boolean(workingIn && firstPicked && firstPicked !== workingIn);
 
   const close = () => setOpen(false);
   const toggle = (id: string) => {
@@ -245,6 +259,25 @@ export function RepoPicker({
                 </div>
               );
             })}
+            {moved && firstPicked ? (
+              <div className="repo-open">
+                <p className="hint">
+                  {`This chat works in ${repoLabel(workingIn!)}, the folder it started in. Start a new chat to work in ${repoLabel(firstPicked)}.`}
+                </p>
+                {onNewChat ? (
+                  <button
+                    type="button"
+                    className="btn ghost press-fb"
+                    onClick={() => {
+                      close();
+                      onNewChat(latest.current);
+                    }}
+                  >
+                    New chat there
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <div className="ms-heading">Repositories</div>
             {repos.error && shownRest.length ? (
               <p className="hint repo-sheet-note">{repos.error}</p>
@@ -284,8 +317,9 @@ export function RepoPicker({
               </p>
             ) : null}
             <p className="hint repo-sheet-foot">
-              The agent works in the first repository on your computer. Every repository here is
-              context for the chat.
+              {workingIn
+                ? `This chat works in ${repoLabel(workingIn)}. Every repository here is context for the chat.`
+                : 'The agent works in the first repository on your computer. Every repository here is context for the chat.'}
             </p>
           </>
         )}
