@@ -580,10 +580,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             }}
             onClarifyPick={(text) => send(text)}
             afterItem={(itemId) => {
-              if (!conv || conv.source.kind !== 'device') return null;
-              if (conv.source.modelId !== HARBOR_MINI_MODEL_ID) return null;
+              if (!conv) return null;
               // The guided setup's chat: the current step's buttons follow the
               // guide's latest message, and the wrap-up offers questions to ask.
+              // Whichever model answers here: a person who switched to Harbor or
+              // the Stack mid-walk is still in setup, and the model is told the
+              // buttons are there.
               if (guided && guided.conversationId === conv.id) {
                 // Paused ("I'd rather just chat"): no buttons following the
                 // talk, just a quiet way back in, up under the hello.
@@ -612,6 +614,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 ) : null;
               }
               // Any other Harbor Lite chat: the door to the setup page.
+              if (conv.source.kind !== 'device' || conv.source.modelId !== HARBOR_MINI_MODEL_ID) {
+                return null;
+              }
               return itemId === `${conv.id}-hello` ? (
                 <GuideSetupLink onOpen={() => setView('onboarding')} />
               ) : null;

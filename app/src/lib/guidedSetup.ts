@@ -305,12 +305,26 @@ export function resumeMessage(current: SetupStepId): string {
 }
 
 /** One line for Harbor Lite's system prompt, so a question asked mid-walk is
- *  answered knowing where the person is. Short: the guide is a small model. */
+ *  answered knowing where the person is. Short: the guide is a small model.
+ *  Any other model switched into the walk's chat (Harbor, a Stack seat, a
+ *  cloud model) gets the 'other' line: only while a step or the edit choice is
+ *  live, without the first-chat persona, so a coding seat is never told its
+ *  job is a pleasant chat once setup is done or set aside. */
 export function guideContextLine(
   progress: GuidedSetupProgress | undefined,
   facts: SetupFacts,
+  audience: 'guide' | 'other' = 'guide',
 ): string | undefined {
   if (!progress) return undefined;
+  if (audience === 'other') {
+    if (progress.paused || !walkActive(progress)) return undefined;
+    if (progress.editChoice === 'asking') {
+      return 'SETUP: this chat is walking the person through setting up OpenShore. The repository is connected, and they are choosing how edits are handled. Two buttons sit under the latest setup message: "Ask me first" (check before each edit) and "Let edits flow" (edits go through, each diff shows in the chat). Commands ask either way. Explain the difference if asked; never choose for them.';
+    }
+    const step = STEP_COPY[progress.current!];
+    const { n, of } = stepNumber(progress.current!);
+    return `SETUP: this chat is walking the person through setting up OpenShore, now on step ${n} of ${of}, "${step.title}". What it is: ${step.what} How it works: ${step.how} Its buttons ("${step.action}", "Ask about this", and "Skip for now") sit under the latest setup message. If they ask what is next, this step is. Answer anything else fully and well. Never invent other steps.`;
+  }
   const harbor = facts.harborReady
     ? ` Harbor is downloaded; if asked how to use it: ${HARBOR_SWITCH_HINT}`
     : '';

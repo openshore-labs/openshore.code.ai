@@ -92,6 +92,18 @@ const CHAT_SYSTEM = [
   'Never use em dashes. Use a period or a comma instead.',
 ].join('\n');
 
+/** The most chat context (standing instructions, setup step) /chat carries. */
+const CHAT_CONTEXT_MAX = 8000;
+
+/** The system line for one /chat request: the fixed line, then the chat's own
+ *  context (the project's standing instructions, the guided setup's step),
+ *  trimmed and capped, so the phone's brief reaches this model the way it
+ *  reaches every other brain. Anything that is not a string is ignored. */
+export function desktopChatSystem(context: unknown): string {
+  const extra = typeof context === 'string' ? context.trim().slice(0, CHAT_CONTEXT_MAX) : '';
+  return extra ? `${CHAT_SYSTEM}\n\n${extra}` : CHAT_SYSTEM;
+}
+
 // Request bodies are bounded (DAE-8): a JSON body over the cap is answered 413
 // and never buffered. The outbox carries file contents, so it gets more room.
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -681,8 +693,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       const model =
         typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
+      // Client system turns are dropped below; the chat's context rides its
+      // own capped field instead (desktopChatSystem).
       const messages: ChatMessage[] = [
-        { role: 'system', content: CHAT_SYSTEM },
+        { role: 'system', content: desktopChatSystem(body.context) },
         ...rawMessages
           .filter(
             (m: unknown): m is { role: string; content: string } =>
