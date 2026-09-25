@@ -1942,3 +1942,8 @@ execution contract. Newest at the bottom.
   are exempt (a 512-token scripted reply cannot carry a thought). The store
   drops thinking events while off, so a flip hides reasoning at once even in
   a desktop session that started with it on.
+- **Claude temperature (2026-09-25):** the Anthropic provider sends a
+  `temperature` only to models known to accept one (Opus and Sonnet 4.6 and
+  older, Haiku 4.5, Claude 3), an allowlist rather than a denylist, so a
+  Claude model newer than the list gets none; leaving it out is always valid,
+  sending it to Opus 4.7+, Sonnet 5, or Fable is a 400.
