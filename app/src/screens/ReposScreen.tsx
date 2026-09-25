@@ -14,7 +14,7 @@ import {
   repoOAuthCallbackUrl,
   repoToken,
 } from '../lib/gitos/repoOAuth.js';
-import { githubAccess, githubAccessHint, type RepoAccessHint } from '../lib/chatRepos.js';
+import { githubStatus, type GithubStatus } from '../lib/chatRepos.js';
 import { cloneOnComputer, computerFor } from '../lib/repoClone.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
@@ -87,27 +87,45 @@ export function ReposScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.daemon, where]);
 
-  // With GitHub connected, say which repositories OpenShore can see there and
-  // link to the page that changes it (a GitHub App given a few repositories on
-  // an organization is the usual reason one is missing from the picker).
+  // With GitHub connected, say which account it is signed in as, how many
+  // repositories that sign-in sees (and how many are private), and the one fix
+  // when some are missing: a page on GitHub, or reconnecting here.
   const githubOn = Boolean(connectedRepoPlatforms.github);
-  const [githubHint, setGithubHint] = useState<RepoAccessHint | undefined>();
+  const [github, setGithub] = useState<GithubStatus | undefined>();
   const [hintTick, setHintTick] = useState(0);
   useEffect(() => {
     if (!githubOn) {
-      setGithubHint(undefined);
+      setGithub(undefined);
       return;
     }
     let live = true;
     void (async () => {
       const token = await repoToken('github');
-      const access = token ? await githubAccess(token).catch(() => undefined) : undefined;
-      if (live) setGithubHint(githubAccessHint(access, githubAppSlug()));
+      const status = token
+        ? await githubStatus(token, { slug: githubAppSlug() }).catch(() => undefined)
+        : undefined;
+      if (live) setGithub(status);
     })();
     return () => {
       live = false;
     };
   }, [githubOn, hintTick]);
+  const githubHint = github?.hint;
+  const privateCount = github?.repos.filter((r) => r.private).length ?? 0;
+
+  // Remove GitHub and connect it again: the one-tap sign-in asks GitHub for
+  // private access now, so an older sign-in that only saw public repositories
+  // is fixed by this. Without one-tap, the token field opens instead.
+  const reconnectGithub = async () => {
+    await disconnectRepoPlatform('github');
+    setGithub(undefined);
+    if (isRepoOAuthConfigured('github')) await runOAuth('github', 'GitHub');
+    else {
+      setConnecting('github');
+      setTokenValue('');
+    }
+    setHintTick((n) => n + 1);
+  };
 
   const clone = async () => {
     const cleaned = url.trim();
@@ -326,14 +344,22 @@ export function ReposScreen() {
                     );
                   })()
                 : null}
-              {c.id === 'github' && on && githubHint ? (
+              {c.id === 'github' && on && github ? (
                 <p className="hint" style={{ marginTop: 10, marginBottom: 0 }}>
+                  {github.line ? `${github.line} ` : ''}
+                  {`It sees ${github.repos.length} ${github.repos.length === 1 ? 'repository' : 'repositories'}, ${privateCount} private.`}
+                </p>
+              ) : null}
+              {c.id === 'github' && on && githubHint ? (
+                <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
                   {githubHint.text}{' '}
                   <button
                     type="button"
                     className="linklike"
                     onClick={() =>
-                      openInAppBrowser(githubHint.url, () => setHintTick((n) => n + 1))
+                      githubHint.url && !githubHint.reconnect
+                        ? openInAppBrowser(githubHint.url, () => setHintTick((n) => n + 1))
+                        : void reconnectGithub()
                     }
                   >
                     {githubHint.action}
