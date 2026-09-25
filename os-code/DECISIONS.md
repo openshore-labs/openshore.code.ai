@@ -1874,3 +1874,19 @@ execution contract. Newest at the bottom.
 - **"Clone to your computer" puts the clone first, 2026-09-25:** the repository
   the person tapped is where the agent works; the platform id stays selected
   as context and as the phone's project-memory read path.
+- **A switched-in model hears the setup step only while it is live, chat
+  review 2026-09-25:** Harbor Lite keeps its whole walk line (first-chat
+  persona, finished, paused). Any other model in the walk's chat gets a
+  step-only line while a step or the edit choice is live, and nothing once
+  setup is done or set aside, so a coding seat is never told its job is a
+  pleasant chat. The walk's buttons follow the walk whichever model answers.
+- **Every in-app send is painted busy at once, chat review 2026-09-25:** the
+  user bubble lands the moment text leaves, for every driver but this
+  machine's own engine (which may reword the input), and the driver's echo
+  folds in. The ethics screen runs before a driver's task-start, so without
+  the paint a quick second message or a model switch met a chat that looked
+  idle. A screen that throws closes the turn with an error, never a hang.
+- **Free desktop chat takes the chat's context as its own field, chat review
+  2026-09-25:** `/chat` keeps dropping client system turns and instead
+  appends a capped `context` string (8,000 characters) below its fixed line,
+  so the project brief and setup step reach it. An older daemon ignores it.

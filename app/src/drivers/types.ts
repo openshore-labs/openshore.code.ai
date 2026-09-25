@@ -4,6 +4,7 @@
 // DriverEvent protocol, so the chat UI has exactly one rendering path.
 import type { ApprovalAnswer, DriverEvent, PermissionMode } from 'os-code/protocol';
 import type { Attachment } from '../lib/attachments.js';
+import type { SeedTurn } from '../state/types.js';
 
 export type DriverEventSink = (event: DriverEvent, seq: number) => void;
 
@@ -26,6 +27,14 @@ export interface ChatDriver {
   subscribe(sink: DriverEventSink): () => void;
   /** Release sockets, native handles, timers. */
   dispose(): void;
+  /**
+   * A line the app itself wrote into the chat, outside any turn: the guided
+   * setup's scripted messages, or a message the walk answered itself. Chat
+   * brains that keep their own history append it, so what the model knows
+   * matches what is on screen. Engine sessions keep their own journal and omit
+   * it. Never called mid-turn (the walk waits for a reply to end).
+   */
+  recordLine?(turn: SeedTurn): void;
   /**
    * The person's controls over a live engine session (Claude Code parity;
    * engine-backed drivers only). setMode switches the permission mode for the
@@ -111,6 +120,15 @@ export type HubLinkState = 'live' | 'reconnecting' | 'away';
  *  the driver or in the session create before the driver existed. */
 export const HUB_NO_ANSWER =
   'Your computer did not answer in 10 seconds. Is it on and on the same network?';
+
+/** A chat's extra system context: fixed, or read fresh on every reply (the
+ *  guided setup's step moves while the chat is open). */
+export type ChatContext = string | (() => string | undefined);
+
+export function readChatContext(context: ChatContext | undefined): string | undefined {
+  const text = typeof context === 'function' ? context() : context;
+  return text?.trim() || undefined;
+}
 
 /** Shared helper: a tiny fan-out emitter drivers can compose. */
 export class DriverEmitter {

@@ -420,12 +420,15 @@ describe('the wiring', () => {
     expect(store).toMatch(
       /function standingContext[\s\S]*?repoContextLine\(conv\.repoIds \?\? \[\]\)/,
     );
-    expect((store.match(/standingContext\(conv\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // The device driver takes it directly; the cloud and desktop-chat drivers
+    // take chatContext, which wraps it with the guided setup's live step.
+    expect((store.match(/standingContext\(conv\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((store.match(/chatContext\(conv\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
     expect(
       (store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length,
     ).toBeGreaterThanOrEqual(3);
     expect(read('drivers/cloudClaudeDriver.ts')).toMatch(
-      /this\.extraSystem,?[\s\S]{0,40}\.filter\(Boolean\)/,
+      /readChatContext\(this\.extraSystem\),?[\s\S]{0,40}\.filter\(Boolean\)/,
     );
   });
 
