@@ -112,6 +112,14 @@ function useHeaderHeight(headerRef: RefObject<HTMLElement>): void {
   }, [headerRef]);
 }
 
+/** The short name on the stopped card's "Continue with" button. */
+function rescueLabel(source?: ConversationSource): string | undefined {
+  if (!source) return undefined;
+  if (source.kind === 'device') return source.modelName;
+  if (source.kind === 'stack') return 'the Stack';
+  return undefined;
+}
+
 export function ChatScreen({ compact }: { compact: boolean }) {
   const {
     activeId,
@@ -130,6 +138,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     sourceReady,
     showToast,
     retryLast,
+    rescueSourceFor,
+    continueElsewhere,
     approvePlan,
     revisePlan,
     startNewChat,
@@ -550,6 +560,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         {conv && thread && thread.items.length > 0 ? (
           <MessageList
             thread={thread}
+            rescueLabel={rescueLabel(rescueSourceFor(conv.id))}
+            onRescue={() => void continueElsewhere()}
+            onPickModel={() => {
+              setSheetStage('root');
+              setSheetOpen(true);
+            }}
+            onOpenConnections={() => setView('connections')}
             onSwitchToLocal={() => {
               setSheetStage('local');
               setSheetOpen(true);
