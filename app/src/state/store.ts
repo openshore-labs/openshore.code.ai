@@ -187,6 +187,7 @@ import {
   HARBOR_MINI_GREETING,
   HARBOR_MINI_SETUP_GREETING,
   setHarborMiniContext,
+  guidedSetupLine,
   HARBOR_MINI_MODEL_ID,
   HARBOR_MINI_MODEL_NAME,
   HARBOR_MINI_MODEL_URL,
@@ -645,6 +646,15 @@ const unsubscribers = new Map<string, () => void>();
 // Chats whose driver is being built right now, so a send that lands mid-open
 // parks instead of starting a second build, and a reopen never double-builds.
 const building = new Set<string>();
+// Which build of a chat's driver is current. A model switch bumps it, so an
+// open that was still building the old brain's driver when the person switched
+// throws its driver away instead of attaching it over the new one.
+const driverEpoch = new Map<string, number>();
+function bumpDriverEpoch(conversationId: string): number {
+  const next = (driverEpoch.get(conversationId) ?? 0) + 1;
+  driverEpoch.set(conversationId, next);
+  return next;
+}
 // Desktop chats showing their saved read-only snapshot (B4): the first journal
 // frame replaces the snapshot rather than stacking on top of it.
 const snapshotIds = new Set<string>();
@@ -1605,25 +1615,27 @@ export const useApp = create<AppState>((set, get, api) => {
     return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
   }
 
-  /** The one way text leaves for a driver (B3). On the daemon path the user
-   *  bubble is painted here, the moment the text leaves, with the working row
-   *  naming the wait; the hub's own task-start for the same text folds into
-   *  that bubble in the reducer, so nothing shows twice. Every other driver
-   *  emits its task-start at once, so it needs no help. */
+  /** The one way text leaves for a driver (B3). The user bubble is painted
+   *  here, the moment the text leaves, and the chat is busy from that instant;
+   *  the driver's own task-start for the same text folds into that bubble in
+   *  the reducer, so nothing shows twice. That matters beyond the daemon's
+   *  wait: every driver is behind the ethics screen, which runs before the
+   *  driver's task-start, so without the paint a second message or a model
+   *  switch in that gap would reach a chat that looked idle. The engine on
+   *  this machine is left to its own task-start (it may reword the input). */
   function deliver(
     conversationId: string,
     driver: ChatDriver,
     text: string,
     attachments?: Attachment[],
   ): void {
-    if (isRemote(driver)) {
+    const paint = isRemote(driver) || driver.kind !== 'desktop';
+    if (paint) {
       set((state) => {
         const c = state.conversations[conversationId];
         if (!c || c.thread.busy) return state;
-        const thread = {
-          ...reduceEvent(c.thread, { type: 'task-start', input: text }),
-          stepNote: REACHING_COMPUTER,
-        };
+        const started = reduceEvent(c.thread, { type: 'task-start', input: text });
+        const thread = isRemote(driver) ? { ...started, stepNote: REACHING_COMPUTER } : started;
         return {
           conversations: {
             ...state.conversations,
@@ -1676,8 +1688,25 @@ export const useApp = create<AppState>((set, get, api) => {
     // MUST reseed the new driver from the persisted transcript, or the model
     // has no memory of a conversation the user is looking at in full.
     const seed = conv.source.kind === 'desktop' ? undefined : seedFromTranscript(conv.thread.items);
+    const epoch = driverEpoch.get(conversationId) ?? 0;
     void buildDriver(conv, seed)
-      .then((driver) => attachDriver(conversationId, driver))
+      .then((driver) => {
+        // The person switched models while this was building: the switch's
+        // driver is the chat's brain now, so this one is released unused.
+        if ((driverEpoch.get(conversationId) ?? 0) !== epoch) {
+          driver.dispose();
+          return;
+        }
+        // A guide line written while this was building is on screen but not
+        // in the seed; hand it over so the model has read it too.
+        const latest = get().conversations[conversationId];
+        if (seed && latest) {
+          for (const turn of seedFromTranscript(latest.thread.items).slice(seed.length)) {
+            driver.recordLine?.(turn);
+          }
+        }
+        attachDriver(conversationId, driver);
+      })
       .catch((err) => failOpen(conversationId, err))
       .finally(() => {
         building.delete(conversationId);
@@ -1973,6 +2002,9 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       });
     patch(true);
+    // The model answering in this chat hears the line too, so a question about
+    // the step is asked of a model that has read it.
+    drivers.get(conversationId)?.recordLine?.({ role: 'assistant', text });
     setTimeout(() => {
       patch(false);
       void persistConversations(get());
@@ -2101,6 +2133,7 @@ export const useApp = create<AppState>((set, get, api) => {
         },
       };
     });
+    drivers.get(conversationId)?.recordLine?.({ role: 'user', text });
   }
 
   // A message typed in the walk's chat may be about the walk itself. "I just
@@ -2323,6 +2356,15 @@ export const useApp = create<AppState>((set, get, api) => {
     );
   }
 
+  /** standingContext plus, in the guided setup's own chat, where the walk
+   *  stands, read fresh on every reply (the step moves while the chat is open).
+   *  For every brain but Harbor Lite, which reads the walk inside its own
+   *  prompt (and the Stack, which reads it per seat). */
+  function chatContext(conv: Conversation): () => string | undefined {
+    const standing = standingContext(conv);
+    return () => [standing, guidedSetupLine(conv.id)].filter(Boolean).join('\n\n') || undefined;
+  }
+
   async function buildUnguardedDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
     const { settings } = get();
     switch (conv.source.kind) {
@@ -2479,7 +2521,7 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
-        return new DesktopChatDriver(settings.daemon, conv.source.model, seed);
+        return new DesktopChatDriver(settings.daemon, conv.source.model, seed, chatContext(conv));
       }
       case 'device':
         return new OnDeviceDriver(
@@ -2488,6 +2530,7 @@ export const useApp = create<AppState>((set, get, api) => {
           seed,
           settings.perplexityResearch === true,
           standingContext(conv),
+          conv.id,
         );
       case 'cloud': {
         // Claude runs on the Anthropic SDK; every other connected provider runs
@@ -2503,7 +2546,7 @@ export const useApp = create<AppState>((set, get, api) => {
             source.model,
             seed,
             settings.anthropicWorkspaceId,
-            standingContext(conv),
+            chatContext(conv),
           );
         }
         const info = providerInfo(source.provider);
@@ -2519,7 +2562,7 @@ export const useApp = create<AppState>((set, get, api) => {
           source.model,
           info.name,
           seed,
-          standingContext(conv),
+          chatContext(conv),
           contextWindow,
         );
       }
@@ -3340,13 +3383,14 @@ export const useApp = create<AppState>((set, get, api) => {
 
       repairIntroLetter();
 
-      // Guided setup: Harbor Lite reads where the walk stands on every reply,
-      // only in the walk's own chat.
-      setHarborMiniContext(() => {
-        const st = get();
-        const p = st.settings.guidedSetup;
-        return p && st.activeId === p.conversationId
-          ? guideContextLine(p, setupFacts())
+      // Guided setup: whichever model answers in the walk's own chat reads
+      // where the walk stands on every reply. Keyed by the chat the reply is
+      // for, not the chat on screen, so a queued reply elsewhere never hears
+      // about setup and the walk's chat keeps it while the person looks away.
+      setHarborMiniContext((conversationId, audience) => {
+        const p = get().settings.guidedSetup;
+        return p && conversationId === p.conversationId
+          ? guideContextLine(p, setupFacts(), audience)
           : undefined;
       });
 
@@ -3750,7 +3794,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // demo ('mock') is a different mode; with nothing to carry, or no open
       // chat, just open a fresh chat with the chosen brain.
       const seedable =
-        source.kind === 'stack' || source.kind === 'cloud' || source.kind === 'device';
+        source.kind === 'stack' ||
+        source.kind === 'cloud' ||
+        source.kind === 'device' ||
+        source.kind === 'desktop-chat';
       if (!activeId || !conv || conv.thread.items.length === 0 || !seedable) {
         await get().newConversation(source);
         return;
@@ -3767,6 +3814,9 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       const seed = seedFromTranscript(conv.thread.items);
+      // This switch is now the chat's newest build: an open still building the
+      // old brain's driver, or an earlier switch still building, loses to it.
+      const epoch = bumpDriverEpoch(activeId);
       // Build the new driver BEFORE committing the model change. If the build
       // fails (for example a Claude model with no key stored), the conversation
       // stays on its current brain instead of showing the new model in the top
@@ -3778,8 +3828,32 @@ export const useApp = create<AppState>((set, get, api) => {
           seed,
         );
       } catch (err) {
-        get().showToast(err instanceof Error ? err.message : String(err));
+        if (driverEpoch.get(activeId) === epoch) {
+          get().showToast(err instanceof Error ? err.message : String(err));
+        }
         return;
+      }
+      // The build awaited (a key read, a session open). Whatever changed in
+      // that time wins over this switch: a later switch, a message sent to the
+      // old brain (it is answering now), or a step waiting on the person.
+      const latest = get().conversations[activeId];
+      if (driverEpoch.get(activeId) !== epoch || !latest) {
+        driver.dispose();
+        return;
+      }
+      if (latest.thread.busy || latest.thread.pendingApprovals.length) {
+        driver.dispose();
+        get().showToast(
+          latest.thread.busy
+            ? 'Let the current reply finish, then switch.'
+            : 'Answer the pending step first, then switch.',
+        );
+        return;
+      }
+      // A line the walk wrote while the driver was building is in the
+      // transcript but not the seed; hand it over so the model sees it.
+      for (const turn of seedFromTranscript(latest.thread.items).slice(seed.length)) {
+        driver.recordLine?.(turn);
       }
       // attachDriver disposes the old driver and keeps the thread, so the
       // visible history is untouched; the new driver starts with the seeded
@@ -3822,7 +3896,7 @@ export const useApp = create<AppState>((set, get, api) => {
     sendWhenAttached(conversationId, text, attachments) {
       const driver = drivers.get(conversationId);
       if (driver) {
-        driver.send(text, attachments);
+        deliver(conversationId, driver, text, attachments);
         return;
       }
       // APP-10: the driver attaches asynchronously (a session still opening on

@@ -130,9 +130,10 @@ class GuardedDriver {
       return undefined;
     }
     if (this.blocked) {
-      // After a block the rest of this answer is dropped. The lifecycle events
-      // still pass so the composer does not sit spinning.
-      if (event.type === 'task-done') this.emit(event);
+      // After a block the rest of this answer is dropped, its ending too:
+      // every block closes the turn itself (stopWith, or send's input block),
+      // so passing the driver's own task-done on would end one turn twice and
+      // the store would dequeue two waiting messages at once.
       return undefined;
     }
     if (event.type === 'task-done') {
@@ -231,7 +232,21 @@ class GuardedDriver {
       // Attachments are images. They are not screened as text here, and the
       // layer does not claim to read them: what it screens is the instruction,
       // which is where a request to do something with an image is written.
-      const result = await screenPrompt(text, this.modelPath);
+      let result: Awaited<ReturnType<typeof screenPrompt>>;
+      try {
+        result = await screenPrompt(text, this.modelPath);
+      } catch {
+        // The screen itself failed. Nothing is sent unscreened, and the turn
+        // still opens and closes, so the chat (busy from the send) never
+        // sits spinning on a message that went nowhere.
+        this.emit({ type: 'task-start', input: text });
+        this.emit({
+          type: 'task-done',
+          reason: 'error',
+          message: 'This message could not be checked, so it was not sent. Try again.',
+        });
+        return;
+      }
       if (result.blocked) {
         const message = result.decision.message ?? 'This request was not sent.';
         this.newTask();
@@ -291,6 +306,9 @@ export function guardDriver(inner: ChatDriver): ChatDriver {
     subscribe: (sink) => guarded.subscribe(sink),
     dispose: () => guarded.dispose(),
   };
+  // A line the app wrote (a scripted guide message) is not model output or a
+  // prompt to send, so it goes to the history as is.
+  if (inner.recordLine) out.recordLine = (turn) => inner.recordLine!(turn);
   if (inner.setMode) out.setMode = (mode) => inner.setMode!(mode);
   if (inner.setInstructions) out.setInstructions = (text) => inner.setInstructions!(text);
   if (inner.compact) out.compact = (focus) => inner.compact!(focus);

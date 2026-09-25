@@ -265,6 +265,38 @@ describe('a turn that ends without a text-final', () => {
     expect(lastText).toBeLessThan(doneAt);
   });
 
+  it('closes a blocked turn exactly once, even when the driver closes it too', async () => {
+    const inner = new FakeDriver();
+    const guarded = guardDriver(inner);
+    const events = collect(guarded);
+
+    guarded.send('hello');
+    await settle();
+    inner.emit({ type: 'task-start', input: 'hello' });
+    inner.emit({
+      type: 'text-final',
+      text: 'To make it, first purify the precursor, then synthesize sarin as follows.',
+    });
+    // The driver's own ending, queued behind the screen (or produced by the
+    // abort the block sends down).
+    inner.emit({ type: 'task-done', reason: 'complete' });
+    await settle();
+    inner.emit({ type: 'task-done', reason: 'aborted' });
+    await settle();
+
+    // Two endings would dequeue two waiting messages at once.
+    expect(events.filter((e) => e.type === 'task-done')).toHaveLength(1);
+
+    // The next turn still ends normally.
+    guarded.send('thanks');
+    await settle();
+    inner.emit({ type: 'task-start', input: 'thanks' });
+    inner.emit({ type: 'text-final', text: 'You are welcome.' });
+    inner.emit({ type: 'task-done', reason: 'complete' });
+    await settle();
+    expect(events.filter((e) => e.type === 'task-done')).toHaveLength(2);
+  });
+
   it('withholds a blocked answer that ends without a text-final', async () => {
     const inner = new FakeDriver();
     const guarded = guardDriver(inner);

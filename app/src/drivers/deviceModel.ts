@@ -50,7 +50,8 @@ export const TRIMMED_HISTORY_OPENER = '(Earlier messages in this chat were trimm
 /** The newest turns that fit the window beside the system prompt and room for
  *  the reply, oldest dropped first. The live question (the last message) is
  *  always kept, and history never opens on an assistant turn, since a chat
- *  template expects a user turn first. When the kept window starts on
+ *  template expects a user turn first (a chat that fits whole goes as it is).
+ *  When the kept window starts on
  *  assistant turns, a short opener goes in front rather than those turns being
  *  dropped: the guided setup posts several guide lines in a row, and dropping
  *  them left the model with only the question and none of the thread. */
@@ -71,7 +72,9 @@ export function fitDeviceHistory<M extends { role: 'user' | 'assistant'; content
     budget -= cost;
     start -= 1;
   }
-  if (start === 0 && messages[0]!.role === 'user') return messages;
+  // Nothing trimmed: the chat goes as it is, even when it opens on the guide's
+  // greeting, so the model is never told messages were dropped when none were.
+  if (start === 0) return messages;
   const kept = messages.slice(start);
   if (kept[0]!.role === 'user') return kept;
   return [{ ...kept[0]!, role: 'user', content: TRIMMED_HISTORY_OPENER }, ...kept];

@@ -425,6 +425,23 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       return { ...next, items };
     }
 
+    case 'ethics-block': {
+      // An input block: the message never reached a model, so its bubble is
+      // marked and a reseed leaves it (and the refusal answering it) out.
+      if (event.side !== 'input') return next;
+      let at = -1;
+      for (let i = next.items.length - 1; i >= 0; i--) {
+        if (next.items[i]!.kind === 'user') {
+          at = i;
+          break;
+        }
+      }
+      if (at === -1) return next;
+      const items = [...next.items];
+      items[at] = { ...(items[at] as Extract<ThreadItem, { kind: 'user' }>), withheld: true };
+      return { ...next, items };
+    }
+
     default:
       return next;
   }

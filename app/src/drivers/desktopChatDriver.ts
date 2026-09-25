@@ -5,8 +5,8 @@
 // keeps the turn history itself, since /chat is stateless, and re-sends it each
 // turn. Streaming rides streamingFetch, past Capacitor's native-HTTP patch.
 import type { ApprovalAnswer } from 'os-code/protocol';
-import type { ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter } from './types.js';
+import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
+import { DriverEmitter, readChatContext } from './types.js';
 import type { DaemonTarget } from './remoteDriver.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import type { SeedTurn } from '../state/types.js';
@@ -24,6 +24,10 @@ export class DesktopChatDriver implements ChatDriver {
     private readonly target: DaemonTarget,
     private readonly model?: string,
     seed?: SeedTurn[],
+    /** The project's standing instructions and the chat's repo context (and
+     *  the guided setup's step), read on every reply and sent as /chat's own
+     *  capped context field. A daemon that predates it ignores the field. */
+    private readonly extraSystem?: ChatContext,
   ) {
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
@@ -56,7 +60,11 @@ export class DesktopChatDriver implements ChatDriver {
           authorization: `Bearer ${this.target.token}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ messages: this.history, model: this.model }),
+        body: JSON.stringify({
+          messages: this.history,
+          model: this.model,
+          context: readChatContext(this.extraSystem),
+        }),
         signal: this.abortController.signal,
       });
       if (!res.ok || !res.body) {
@@ -121,6 +129,10 @@ export class DesktopChatDriver implements ChatDriver {
   abort(): void {
     this.aborted = true;
     this.abortController?.abort();
+  }
+
+  recordLine(turn: SeedTurn): void {
+    this.history.push({ role: turn.role, content: turn.text });
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {
