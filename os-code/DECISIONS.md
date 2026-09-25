@@ -1858,3 +1858,11 @@ execution contract. Newest at the bottom.
   since instruction files are already read. Usage data and crash reports are
   never on by default, and there is no second switch that sends anything.
   The walk stays at four steps.
+- **Every local model searches the web, founder 2026-09-25:** "local" means a
+  model you control: on the phone, your own server (BYOM), or the desktop's
+  free chat; Agentic Current bench models bring their own tools and are left
+  out. Small models ask with one `SEARCH:` line rather than a tool schema they
+  may not reproduce; Harbor Lite keeps its harness-planned search. The search
+  runs unprompted, as Harbor's always did, once per message, and never on the
+  Offline profile. The desktop's `/chat` stays inert: it only adds the
+  instruction, and the phone does the fetching.

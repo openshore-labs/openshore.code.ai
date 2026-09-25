@@ -288,6 +288,16 @@ describe('free desktop chat (/chat, read-only)', () => {
     expect(text).toMatch(/"type":"(error|done|text)"/);
   });
 
+  it('still streams when the phone asks for the search instruction', async () => {
+    const res = await fetch(`${base}/chat`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }], search: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toMatch(/"type":"(error|done|text)"/);
+  });
+
   it('a member may open free chat (not admin-gated)', async () => {
     const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
     const res = await fetch(`${base}/chat`, {

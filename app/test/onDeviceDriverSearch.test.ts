@@ -98,7 +98,7 @@ describe('OnDeviceDriver web search loop (Harbor)', () => {
     expect(generateCalls).toHaveLength(2);
   });
 
-  it('never triggers search for Harbor Lite, only Harbor', async () => {
+  it('never takes a SEARCH: line from Harbor Lite (its guide harness searches for it)', async () => {
     const { HARBOR_MINI_MODEL_ID } = await import('../src/lib/harborMini.js');
     const events: any[] = [];
     const driver = new OnDeviceDriver(HARBOR_MINI_MODEL_ID, 'Harbor Lite');

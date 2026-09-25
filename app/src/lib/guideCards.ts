@@ -641,7 +641,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'settings-harbor',
     title: 'Harbor settings and web search',
     where: 'Menu, Settings, Harbor',
-    text: 'Installs or removes the built-in models (Harbor on the phone, DeepBlue on your computer; Harbor Lite is Built in) and picks the web search provider: DuckDuckGo needs no API key, or add your own Brave Search or Tavily API key.',
+    text: 'Installs or removes the built-in models (Harbor on the phone, DeepBlue on your computer; Harbor Lite is Built in) and picks the web search provider every local model uses: DuckDuckGo needs no API key, or add your own Brave Search or Tavily API key.',
     keywords: [
       'web search',
       'duckduckgo',
