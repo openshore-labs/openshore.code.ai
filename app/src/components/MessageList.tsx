@@ -27,6 +27,12 @@ import { PlanCard } from './PlanCard.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { Icon } from './Icon.js';
+import { Keyboard } from '@capacitor/keyboard';
+import { isPhone } from '../lib/platform.js';
+
+/** How far a downward drag on the transcript travels before the keyboard goes:
+ *  past a tap's wobble, well short of a real scroll. */
+const DISMISS_DRAG_PX = 16;
 
 /** Jump to the foot with no animation. The thread's CSS smooth scroll would
  *  otherwise animate every follow, so streaming text trails below the fold. */
@@ -224,8 +230,11 @@ export function MessageList({
     return () => ro.disconnect();
   }, []);
 
-  // Drag the transcript down to put the keyboard away, the way Messages and
-  // the Claude app do. Only a clear downward drag, only while typing.
+  // Pull the transcript down to read back, and the keyboard goes away, the way
+  // the Claude app and Messages do (founder, 2026-09-25): scrolling up means
+  // skimming, and a tap on the chat box calls the keyboard back. A clear
+  // downward drag, once per gesture, only while the keyboard is up. Blur alone
+  // is not reliable in the iOS web view, so the plugin is told to hide too.
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
@@ -235,10 +244,13 @@ export function MessageList({
     };
     const onMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY;
-      if (startY === undefined || y === undefined || y - startY < 24) return;
+      if (startY === undefined || y === undefined || y - startY < DISMISS_DRAG_PX) return;
       startY = undefined;
       const active = document.activeElement;
-      if (active instanceof HTMLTextAreaElement && active.closest('.composer')) active.blur();
+      const typing = active instanceof HTMLTextAreaElement && Boolean(active.closest('.composer'));
+      if (!typing && !document.documentElement.classList.contains('kb-open')) return;
+      if (typing) (active as HTMLTextAreaElement).blur();
+      if (isPhone()) void Keyboard.hide().catch(() => {});
     };
     el.addEventListener('touchstart', onStart, { passive: true });
     el.addEventListener('touchmove', onMove, { passive: true });
