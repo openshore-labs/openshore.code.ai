@@ -28,7 +28,7 @@ export interface NavEntry {
 
 /** The one list of room names (brand sweep, founder 2026-09-24). The Sidebar,
  *  the BackBar, and the guides all read these, so a room is named one way
- *  everywhere. Title Case only for proper nouns (My Crew, Stack Health, Cloud
+ *  everywhere. Title Case only for proper nouns (Crew, Stack Health, Cloud
  *  Connections, Vault, Marketplace); Sentence case for the rest. The stack is
  *  named "Stack", never "Your stack" or "My Stack". */
 export const ROOM_LABELS: Record<NavRoom, string> = {
@@ -38,7 +38,7 @@ export const ROOM_LABELS: Record<NavRoom, string> = {
   repos: 'Repositories',
   stack: 'Stack',
   vault: 'Vault',
-  crew: 'My Crew',
+  crew: 'Crew',
   marketplace: 'Marketplace',
   stackhealth: 'Stack Health',
   launch: 'Launch with Codemagic',
