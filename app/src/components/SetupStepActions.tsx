@@ -16,7 +16,6 @@ export function SetupStepActions({ step }: { step: SetupStepId }) {
   const openSetupStep = useApp((s) => s.openSetupStep);
   const skipSetupStep = useApp((s) => s.skipSetupStep);
   const send = useApp((s) => s.send);
-  const harborDownload = useApp((s) => s.harborDownload);
   const { n, of } = stepNumber(step);
   // The first open's letter ends here: one soft tick as the buttons land,
   // saying "your turn". Only when it played through; never after a skip.
@@ -42,21 +41,28 @@ export function SetupStepActions({ step }: { step: SetupStepId }) {
           Skip for now
         </button>
       </div>
-      {harborDownload && !harborDownload.failed ? (
-        <div className="setup-actions-progress">
-          <div className="progress-track">
-            <div
-              className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
-              style={
-                harborDownload.indeterminate
-                  ? undefined
-                  : { transform: `scaleX(${harborDownload.percent / 100})` }
-              }
-            />
-          </div>
-          <div className="hint">Harbor: {harborDownload.label}</div>
-        </div>
-      ) : null}
+      <HarborDownloadProgress />
+    </div>
+  );
+}
+
+/** A Harbor download in flight, shown under whatever the walk is offering. */
+export function HarborDownloadProgress() {
+  const harborDownload = useApp((s) => s.harborDownload);
+  if (!harborDownload || harborDownload.failed) return null;
+  return (
+    <div className="setup-actions-progress">
+      <div className="progress-track">
+        <div
+          className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
+          style={
+            harborDownload.indeterminate
+              ? undefined
+              : { transform: `scaleX(${harborDownload.percent / 100})` }
+          }
+        />
+      </div>
+      <div className="hint">Harbor: {harborDownload.label}</div>
     </div>
   );
 }

@@ -1874,3 +1874,10 @@ execution contract. Newest at the bottom.
   2026-09-25:** `/chat` keeps dropping client system turns and instead
   appends a capped `context` string (8,000 characters) below its fixed line,
   so the project brief and setup step reach it. An older daemon ignores it.
+- **Setup forks after Harbor, founder 2026-09-25:** once the Harbor step ends
+  (taken or skipped) and setup is still ahead, the guide asks "start chatting
+  or keep setting up" and holds for a tap. Start chatting is listed first and
+  pauses the walk where it stands (Pick up setup resumes it); a bare "skip"
+  at the fork means chat, "next" means carry on. There is no fork when
+  nothing else is left, and a step cannot be skipped while the fork waits,
+  since that step has not been introduced yet.

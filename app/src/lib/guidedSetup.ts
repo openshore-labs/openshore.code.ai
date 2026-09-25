@@ -49,7 +49,15 @@ export interface GuidedSetupProgress {
    *  Zed's "trust projects" row): how edits are handled. 'asking' while the
    *  two buttons wait for a tap; then the mode picked, or 'later'. */
   editChoice?: 'asking' | 'later' | PermissionMode;
+  /** The fork after Harbor (founder, 2026-09-25): once Harbor is offered, the
+   *  guide asks whether to start chatting or keep setting up, so setup is
+   *  never a gate. 'asking' while the two buttons wait for a tap; 'chat' pauses
+   *  the walk (it picks up on "Pick up setup"), 'setup' carries on. */
+  nextChoice?: 'asking' | NextChoice;
 }
+
+/** The two ways on from the fork after Harbor. */
+export type NextChoice = 'chat' | 'setup';
 
 export interface SetupStepCopy {
   title: string;
@@ -153,10 +161,84 @@ export function editChoiceMessage(
 ${body}`;
 }
 
+/** The fork's two buttons, in the order they show: chatting first, since
+ *  nothing in setup is required (founder, 2026-09-25). */
+export const NEXT_CHOICES: readonly { choice: NextChoice; label: string }[] = [
+  { choice: 'chat', label: 'Start chatting' },
+  { choice: 'setup', label: 'Keep setting up' },
+];
+
+/** Steps still ahead after Harbor, for the fork's question: not done, not
+ *  skipped. The repository counts even before the computer is connected, since
+ *  it comes right after it. */
+export function stepsAhead(
+  progress: Pick<GuidedSetupProgress, 'skipped'>,
+  facts: SetupFacts,
+): SetupStepId[] {
+  return SETUP_ORDER.filter(
+    (id) => id !== 'harbor' && !progress.skipped.includes(id) && !stepHandled(id, facts),
+  );
+}
+
+/** "connect your computer, set up a repository, and connect your own API key". */
+function stepList(ids: readonly SetupStepId[]): string {
+  const names = ids.map((id) => {
+    const t = STEP_COPY[id].title;
+    return t.charAt(0).toLowerCase() + t.slice(1);
+  });
+  if (names.length <= 1) return names.join('');
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+/** The fork's question, under what just happened with Harbor. */
+export function nextChoiceQuestion(ahead: readonly SetupStepId[]): string {
+  const count = COUNT_WORDS[ahead.length] ?? String(ahead.length);
+  const steps = ahead.length === 1 ? 'one more step' : `${count} more steps`;
+  return `Want to start chatting now, or keep setting up? There ${ahead.length === 1 ? 'is' : 'are'} ${steps}: ${stepList(ahead)}. Setup waits for you either way.`;
+}
+
+/** Said when the Harbor step ends (downloading, ready, or skipped) and there
+ *  is still setup ahead: the step's own line, then the fork. The walk holds
+ *  here until a button is tapped. */
+export function harborForkMessage(
+  how: 'done' | 'skipped',
+  progress: Pick<GuidedSetupProgress, 'skipped'>,
+  facts: SetupFacts,
+): string {
+  const lead =
+    how === 'skipped'
+      ? 'No problem, we can come back to Harbor.'
+      : facts.harborReady
+        ? HARBOR_READY_MESSAGE
+        : STEP_COPY.harbor.done;
+  return `${lead}
+
+${nextChoiceQuestion(stepsAhead(progress, facts))}`;
+}
+
+/** Said once the fork is answered. Chatting: an open invitation, and where
+ *  setup waits. Setting up: straight into the next step (or the wrap-up). */
+export function nextChoiceMessage(
+  choice: NextChoice,
+  next: SetupStepId | undefined,
+  facts: SetupFacts,
+): string {
+  if (choice === 'chat') {
+    const invite = "Let's chat. Ask me anything, about OpenShore or anything else.";
+    return next
+      ? `${invite} Setup is here whenever you want it: tap Pick up setup under my first message, or say "let's set up".`
+      : invite;
+  }
+  return next ? `On we go.\n\n${stepIntro(next)}` : finishMessage(facts);
+}
+
 /** Whether the walk still has something for the person to do: a step, or
  *  the edit choice waiting on a tap. */
 export function walkActive(p: GuidedSetupProgress): boolean {
-  return Boolean(p.current && !p.finished) || p.editChoice === 'asking';
+  return (
+    Boolean(p.current && !p.finished) || p.editChoice === 'asking' || p.nextChoice === 'asking'
+  );
 }
 
 /** How the guide introduces a step: what it is, why it helps, how it works. */
@@ -287,7 +369,7 @@ const PAUSE = [
   /^\s*(?:not now|not right now|maybe later|later|no thanks)[\s.!]*$/i,
 ];
 const RESUME = new RegExp(
-  String.raw`^\s*(?:ok(?:ay)?,?\s*)?(?:let'?s|let us|i'?m ready to|ready to|i want to|resume|continue|start|back to)\s+(?:the\s+)?(?:${SETUP_WORD})(?:\s+now)?[\s.!]*$|^\s*set me up[\s.!]*$`,
+  String.raw`^\s*(?:ok(?:ay)?,?\s*)?(?:let'?s|let us|i'?m ready to|ready to|i want to|resume|continue|keep|start|back to)\s+(?:the\s+)?(?:${SETUP_WORD})(?:\s+now)?[\s.!]*$|^\s*set me up[\s.!]*$`,
   'i',
 );
 const SKIP = /^\s*(?:skip|skip (?:this|it|that)(?: one| step)?|next|next step|pass)[\s.!]*$/i;
@@ -318,6 +400,9 @@ export function guideContextLine(
   if (!progress) return undefined;
   if (audience === 'other') {
     if (progress.paused || !walkActive(progress)) return undefined;
+    if (progress.nextChoice === 'asking') {
+      return `SETUP: this chat is walking the person through setting up OpenShore. Harbor is taken care of, and they are choosing what to do next. Two buttons sit under the latest setup message: "Start chatting" (setup waits) and "Keep setting up" (${stepList(stepsAhead(progress, facts))}). Never choose for them. Answer anything they ask fully and well.`;
+    }
     if (progress.editChoice === 'asking') {
       return 'SETUP: this chat is walking the person through setting up OpenShore. The repository is connected, and they are choosing how edits are handled. Two buttons sit under the latest setup message: "Ask me first" (check before each edit) and "Let edits flow" (edits go through, each diff shows in the chat). Commands ask either way. Explain the difference if asked; never choose for them.';
     }
@@ -328,6 +413,9 @@ export function guideContextLine(
   const harbor = facts.harborReady
     ? ` Harbor is downloaded; if asked how to use it: ${HARBOR_SWITCH_HINT}`
     : '';
+  if (progress.nextChoice === 'asking' && !progress.paused) {
+    return `${FIRST_CHAT_GOAL} SETUP: Harbor is taken care of, and the person is choosing what to do next. Two buttons sit under your latest message: "Start chatting" (setup waits until they want it) and "Keep setting up" (${stepList(stepsAhead(progress, facts))}). Never choose for them. If they ask something, answer it fully and well.${harbor}`;
+  }
   if (progress.editChoice === 'asking' && !progress.paused) {
     return `${FIRST_CHAT_GOAL} SETUP: the repository is connected, and the person is choosing how edits are handled. Two buttons sit under your latest message: "Ask me first" (check before each edit) and "Let edits flow" (edits go through, each diff shows in the chat). Commands ask either way. Explain the difference if asked; never choose for them.${harbor}`;
   }
