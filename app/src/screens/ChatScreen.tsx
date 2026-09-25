@@ -504,6 +504,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 branch={thread?.repo?.branch}
                 dirty={thread?.repo?.dirty}
                 onOpenRepos={() => setView('repos')}
+                workingIn={
+                  conv.source.kind === 'desktop' && conv.source.sessionId
+                    ? conv.source.cwd
+                    : undefined
+                }
+                onNewChat={(ids) => void newConversation({ kind: 'desktop' }, { repoIds: ids })}
               />
               {thread && thread.dollars > 0 ? (
                 <>

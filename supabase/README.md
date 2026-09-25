@@ -217,7 +217,15 @@ Callback URLs **exactly** (scheme, host, and path, byte for byte). If it does
 not, GitHub never shows the consent screen; it shows **"The redirect_uri is not
 associated with this application."**
 
-GitHub App "OpenShore Code" (openshore-labs, "Any account"), settings:
+GitHub App "OpenShore Code" (slug `openshore-code`, owned by openshore-labs),
+settings:
+
+- **Visibility (read 2026-09-25): the App is PRIVATE.** github.com/apps/openshore-code
+  says "OpenShore Code is a private GitHub App", so it can be installed only on
+  openshore-labs. Anyone else can sign in but sees no repositories, because a
+  GitHub App token reaches only repositories where the App is installed. Before
+  anyone outside openshore-labs uses one-tap GitHub, open the App's settings,
+  Advanced, and choose **Make public** ("Any account").
 
 - **Callback URL**: the exact string above. A GitHub App created without a
   Callback URL rejects every `redirect_uri`, so this field must be filled in.
@@ -235,10 +243,13 @@ Which repositories a person sees is decided by the App's **installation**, not
 by the sign-in: a GitHub App user token reaches only the repositories that both
 the person and the App can reach. An App installed on an organization with
 "Only select repositories" shows just those in the repo picker, which now says
-so and links to the installation's settings page. Optionally set
-`VITE_GITHUB_APP_SLUG` (the App's `github.com/apps/<slug>` name, a Codemagic
-build var) so a person with no installation yet is sent to the install page;
-once any installation exists, GitHub reports the slug itself.
+so and links to the installation's settings page. `VITE_GITHUB_APP_SLUG`
+(`openshore-code`, set in `codemagic.yaml` and `release.yml`) sends a person
+with no installation yet to the install page; once any installation exists,
+GitHub reports the slug itself. The desktop release builds read
+`VITE_GITHUB_CLIENT_ID` (and the GitLab/Bitbucket ids) from repository
+variables; add them with the Codemagic group's values, or the desktop keeps
+the paste-a-token path.
 
 ### Troubleshooting "redirect_uri is not associated with this application"
 

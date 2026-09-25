@@ -21,6 +21,7 @@
 // No em dashes anywhere in this file (repo policy is total here).
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { loadConfig } from '../config/load.js';
+import { gitAuthEnv, runGit, tokenForUrl, type PlatformTokens } from './index.js';
 
 /** A git handle for reconcile work, time-bounded so a stalled transfer (an
  *  unreachable remote, a credential prompt that never gets answered) gives up
@@ -120,6 +121,68 @@ export interface ReconcileOptions {
   /** Push the repository's default branch too. Off unless the project opted
    *  in; the caller passes the project's choice. */
   allowDefaultBranch?: boolean;
+  /** The app's connected platform tokens. A remote on one of those platforms
+   *  (https) is pushed and fetched with its token as a one-command, host-scoped
+   *  header, so a clone the app made with a token can be pushed on a computer
+   *  that has no git credential of its own. Other remotes use the machine's
+   *  credentials exactly as before. */
+  tokens?: PlatformTokens;
+}
+
+/** How to reach one remote: with the platform token that fits its address, or
+ *  through the machine's own git setup (undefined). */
+async function remoteAuth(
+  g: SimpleGit,
+  remote: string,
+  tokens: PlatformTokens | undefined,
+): Promise<{ env: NodeJS.ProcessEnv; token: string } | undefined> {
+  if (!tokens) return undefined;
+  let url = '';
+  try {
+    url = String(await g.remote(['get-url', remote])).trim();
+  } catch {
+    return undefined;
+  }
+  const token = tokenForUrl(url, tokens);
+  return token ? { env: gitAuthEnv(url, token), token } : undefined;
+}
+
+async function pushTo(
+  g: SimpleGit,
+  cwd: string,
+  remote: string,
+  refspec: string,
+  auth: { env: NodeJS.ProcessEnv; token: string } | undefined,
+): Promise<void> {
+  if (!auth) {
+    await g.push(remote, refspec);
+    return;
+  }
+  await runGit(['push', remote, refspec], {
+    cwd,
+    env: auth.env,
+    token: auth.token,
+    timeoutMs: 20_000,
+  });
+}
+
+async function fetchFrom(
+  g: SimpleGit,
+  cwd: string,
+  remote: string,
+  branch: string,
+  auth: { env: NodeJS.ProcessEnv; token: string } | undefined,
+): Promise<void> {
+  if (!auth) {
+    await g.fetch(remote, branch);
+    return;
+  }
+  await runGit(['fetch', remote, branch], {
+    cwd,
+    env: auth.env,
+    token: auth.token,
+    timeoutMs: 20_000,
+  });
 }
 
 /** Whether this clone's project opted in to auto-pushing its default branch
@@ -160,6 +223,7 @@ export async function reconcilePush(
   if (ahead === 0) return { cwd, status: 'clean', branch, ahead: 0 };
 
   const { remote, branch: upstreamBranch } = splitTracking(status.tracking);
+  const auth = await remoteAuth(g, remote, options.tokens);
 
   // The default branch is the person's to push unless the project said
   // otherwise. Judged by the branch actually tracked, so a local "work" branch
@@ -173,7 +237,7 @@ export async function reconcilePush(
 
   // First try a plain push of the current HEAD to the branch it tracks.
   try {
-    await g.push(remote, `HEAD:${upstreamBranch}`);
+    await pushTo(g, cwd, remote, `HEAD:${upstreamBranch}`, auth);
     return { cwd, status: 'pushed', branch, ahead };
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
@@ -197,7 +261,7 @@ export async function reconcilePush(
   // Fetch and merge the upstream in. A conflict is aborted so the tree is left
   // exactly as it was, and reported rather than forced.
   try {
-    await g.fetch(remote, upstreamBranch);
+    await fetchFrom(g, cwd, remote, upstreamBranch, auth);
     await g.merge([status.tracking]);
   } catch (err) {
     try {
@@ -219,7 +283,7 @@ export async function reconcilePush(
 
   // Merge is clean: push the integrated branch.
   try {
-    await g.push(remote, `HEAD:${upstreamBranch}`);
+    await pushTo(g, cwd, remote, `HEAD:${upstreamBranch}`, auth);
     return { cwd, status: 'merged', branch, ahead };
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
@@ -233,7 +297,7 @@ export async function reconcilePush(
  *  from its own project config unless the caller decides per path. */
 export async function reconcileRepos(
   cwds: string[],
-  options: { allowDefaultBranch?: (cwd: string) => boolean } = {},
+  options: { allowDefaultBranch?: (cwd: string) => boolean; tokens?: PlatformTokens } = {},
 ): Promise<ReconcileResult[]> {
   const seen = new Set<string>();
   const out: ReconcileResult[] = [];
@@ -242,7 +306,9 @@ export async function reconcileRepos(
     if (seen.has(cwd)) continue;
     seen.add(cwd);
     try {
-      out.push(await reconcilePush(cwd, { allowDefaultBranch: allow(cwd) }));
+      out.push(
+        await reconcilePush(cwd, { allowDefaultBranch: allow(cwd), tokens: options.tokens }),
+      );
     } catch (err) {
       out.push({ cwd, status: 'error', message: String((err as Error)?.message ?? err) });
     }

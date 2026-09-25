@@ -2,7 +2,7 @@
 // clean no-op, a divergence that merges, and a divergence that conflicts (and is
 // left untouched, never force-pushed). Plus the error-string classifiers.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
@@ -255,5 +255,74 @@ describe('error classifiers', () => {
     expect(isOffline('fatal: unable to access ... Could not resolve host: github.com')).toBe(true);
     expect(isOffline('ssh: connect to host github.com port 22: Connection timed out')).toBe(true);
     expect(isOffline('! [rejected] (non-fast-forward)')).toBe(false);
+  });
+});
+
+// A clone the app made with a token has an https github.com origin and no git
+// credential on the computer. Reconcile pushes it with the app's token, as a
+// host-scoped header through git's environment for that one command. A
+// pass-through `git` on PATH records push and fetch, then runs the real git
+// with github.com pointed at a local bare repository, so no network is used.
+describe.skipIf(process.platform === 'win32')('reconcile with the app tokens', () => {
+  const realPath = process.env.PATH;
+  let log: string;
+
+  async function githubClone(): Promise<{ remote: string; clone: string }> {
+    const made = await remoteAndClone();
+    await simpleGit(made.clone).remote(['set-url', 'origin', 'https://github.com/o/r.git']);
+    return made;
+  }
+
+  function wrapGit(remote: string): void {
+    const bin = tmp('osc-gitwrap-');
+    log = join(bin, 'log');
+    writeFileSync(
+      join(bin, 'git'),
+      [
+        '#!/bin/sh',
+        'case "$1" in push|fetch)',
+        `  { printf "ARGS %s\\n" "$*"; env | grep "^GIT_CONFIG_"; } >> "${log}"`,
+        `  exec /usr/bin/git -c "url.file://${remote}.insteadOf=https://github.com/o/r.git" "$@" ;;`,
+        'esac',
+        'exec /usr/bin/git "$@"',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    process.env.PATH = `${bin}:${realPath}`;
+  }
+
+  afterEach(() => {
+    process.env.PATH = realPath;
+  });
+
+  it('pushes with the token in the environment, never the arguments', async () => {
+    const { remote, clone } = await githubClone();
+    wrapGit(remote);
+    await commitFile(clone, 'note.md', 'hello\n', 'add note');
+    const r = await reconcilePush(clone, { ...OPT_IN, tokens: { github: 'ghu_secret' } });
+    expect(r.status).toBe('pushed');
+    const recorded = readFileSync(log, 'utf8');
+    expect(recorded).toMatch(/ARGS push origin HEAD:main/);
+    expect(recorded).toContain('http.https://github.com/.extraheader');
+    expect(recorded).toContain(
+      `Authorization: Basic ${Buffer.from('x-access-token:ghu_secret').toString('base64')}`,
+    );
+    expect(
+      recorded
+        .split('\n')
+        .filter((l) => l.startsWith('ARGS'))
+        .join('\n'),
+    ).not.toContain('ghu_secret');
+    expect(readFileSync(join(clone, '.git', 'config'), 'utf8')).not.toContain('ghu_secret');
+  });
+
+  it('sends a token only to its own platform: a GitLab token stays home for github.com', async () => {
+    const { remote, clone } = await githubClone();
+    wrapGit(remote);
+    await commitFile(clone, 'note.md', 'hello\n', 'add note');
+    const r = await reconcilePush(clone, { ...OPT_IN, tokens: { gitlab: 'glpat-x' } });
+    // The machine's own path (simple-git): it pushes, and no header was set.
+    expect(r.status).toBe('pushed');
+    expect(readFileSync(log, 'utf8')).not.toContain('extraheader');
   });
 });

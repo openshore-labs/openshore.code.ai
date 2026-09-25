@@ -1890,3 +1890,13 @@ execution contract. Newest at the bottom.
   2026-09-25:** `/chat` keeps dropping client system turns and instead
   appends a capped `context` string (8,000 characters) below its fixed line,
   so the project brief and setup step reach it. An older daemon ignores it.
+- **Reconcile pushes with the app's connected token, 2026-09-25:** only for an
+  https remote on that token's own platform, per git command, host-scoped
+  through the environment, never stored. This supersedes "no push credential
+  on the computer" above for the desktop's auto-push; a phone never pushes.
+  The engine's own GitHub token (Settings or `osc auth github`) is the
+  fallback when the app has none.
+- **A started engine session keeps its folder, 2026-09-25:** the engine cannot
+  move a session, so a different first folder in the picker is offered as a
+  new chat, not a silent move. Chat-model drivers (cloud, on-device, Stack)
+  pick up a repository change on their next turn instead.

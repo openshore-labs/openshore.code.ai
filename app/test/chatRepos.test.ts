@@ -421,8 +421,12 @@ describe('the wiring', () => {
       /function standingContext[\s\S]*?repoContextLine\(conv\.repoIds \?\? \[\]\)/,
     );
     // The device driver takes it directly; the cloud and desktop-chat drivers
-    // take chatContext, which wraps it with the guided setup's live step.
-    expect((store.match(/standingContext\(conv\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // take chatContext, which wraps it with the guided setup's live step (and
+    // reads the chat fresh each reply, so a picker change reaches the model).
+    expect(
+      (store.match(/standingContext\((conv|get\(\)\.conversations\[conv\.id\] \?\? conv)\)/g) ?? [])
+        .length,
+    ).toBeGreaterThanOrEqual(2);
     expect((store.match(/chatContext\(conv\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
     expect(
       (store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length,
@@ -450,6 +454,46 @@ describe('the wiring', () => {
     expect(picker).toMatch(/repos\.access/);
     expect(picker).toMatch(/openInAppBrowser\(repos\.access!\.url, repos\.refresh\)/);
     expect(read('screens/ReposScreen.tsx')).toMatch(/githubAccessHint\(/);
+  });
+
+  it('a picker change in a live chat reaches the model on its next turn', () => {
+    // Cloud chats read the chat's repositories fresh on every reply.
+    expect(store).toMatch(
+      /function chatContext[\s\S]{0,400}standingContext\(get\(\)\.conversations\[conv\.id\] \?\? conv\)/,
+    );
+    // An on-device model and the Stack take them at build: a change marks the
+    // chat, and the next send, between turns, rebuilds from the transcript.
+    expect(store).toMatch(
+      /before\.source\.kind === 'device' \|\| before\.source\.kind === 'stack'\)[\s\S]{0,80}repoContextStale\.add\(id\)/,
+    );
+    expect(store).toMatch(
+      /repoContextStale\.has\(activeId\)[\s\S]{0,300}!c\.thread\.busy[\s\S]{0,200}dropDriver\(activeId\)/,
+    );
+  });
+
+  it('a started session says where it works and offers a new chat in the picked folder', () => {
+    // The folder the session started in is kept on the chat...
+    expect(store).toMatch(/bindSessionId\(conv\.id, sessionId, cwd\)/);
+    expect((store.match(/bindSessionId\(conv\.id, sessionId, cwd\)/g) ?? []).length).toBe(2);
+    // ...and handed to the picker, which offers a new chat when it differs.
+    expect(chat).toMatch(/workingIn=\{[\s\S]{0,120}conv\.source\.cwd/);
+    expect(chat).toMatch(
+      /onNewChat=\{\(ids\) => void newConversation\(\{ kind: 'desktop' \}, \{ repoIds: ids \}\)\}/,
+    );
+    const picker = read('components/RepoPicker.tsx');
+    expect(picker).toMatch(/firstPicked !== workingIn/);
+    expect(picker).toMatch(/New chat there/);
+  });
+
+  it('pushes a token-made clone with the connected tokens (desktop reconcile)', () => {
+    expect(store).toMatch(
+      /repoToken\(c\.id\)[\s\S]{0,120}bridge\(\)!\.reconcileRepos\(roots, tokens\)/,
+    );
+    const host = readFileSync(join(process.cwd(), 'electron', 'engineHost.ts'), 'utf8');
+    expect(host).toMatch(/tokens\?\.github \?\? getGithubToken\(\)/);
+    expect(readFileSync(join(process.cwd(), 'electron', 'main.ts'), 'utf8')).toMatch(
+      /host\.reconcileRepos\([\s\S]{0,120}platformTokens\(tokens\)\)/,
+    );
   });
 
   it('clones with the connected token, from the picker and the Repositories screen', () => {
