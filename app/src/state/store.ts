@@ -5200,8 +5200,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // The action id is a plain string; a non-repo id no-ops in both stores.
       await disconnectRepoOAuth(id as RepoPlatform);
       await secretDelete(repoSecretKey(id));
-      // The cached repo list came from this token; it leaves with it (APP-12).
-      if (id === 'github') await clearRepoCache();
+      // The cached repo list came from these tokens; it leaves with any of
+      // them (APP-12), and the next open lists what is still connected.
+      await clearRepoCache();
       set((s) => ({ connectedRepoPlatforms: { ...s.connectedRepoPlatforms, [id]: false } }));
       logEvent('repo_platform_disconnected', { platform: id });
     },

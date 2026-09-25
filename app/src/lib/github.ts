@@ -1,7 +1,7 @@
 // A tiny read-only GitHub contents client, enough to list a folder and read a
 // file's text from a repo the signed-in account can see. Used to show a
 // project's memory notes (which live in the repo) on devices with no local
-// clone, iPhone included. The token comes from repoAccessToken('github'); the
+// clone, iPhone included. The token comes from repoToken('github'); the
 // fetch is injectable so it can be tested and, on desktop, routed if needed.
 //
 // Read only on purpose: this client never writes. The agent writes the notes

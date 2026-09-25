@@ -1858,6 +1858,22 @@ execution contract. Newest at the bottom.
   since instruction files are already read. Usage data and crash reports are
   never on by default, and there is no second switch that sends anything.
   The walk stays at four steps.
+- **A short GitHub list is explained, not worked around, founder review
+  2026-09-25:** OpenShore signs in as a GitHub App, so it sees only the
+  repositories the App was given on each account. The picker reads
+  `/user/installations` and links to that installation's settings page (or the
+  App install page) rather than asking for a broader OAuth scope; a pasted
+  token gets the token page instead.
+- **A connected token rides one clone, never more, 2026-09-25:** host-scoped
+  (github.com, gitlab.com, bitbucket.org, https only) as an `http.extraheader`
+  through git's `GIT_CONFIG_COUNT` environment, so it is never in the process
+  arguments, `.git/config`, the remote, or an error. The phone sends it to its
+  own paired computer's admin-only clone route for that one clone. No push
+  credential is stored on the computer: the App token lasts eight hours and
+  refreshes only through the app, so a durable one is a separate call.
+- **"Clone to your computer" puts the clone first, 2026-09-25:** the repository
+  the person tapped is where the agent works; the platform id stays selected
+  as context and as the phone's project-memory read path.
 - **A switched-in model hears the setup step only while it is live, chat
   review 2026-09-25:** Harbor Lite keeps its whole walk line (first-chat
   persona, finished, paused). Any other model in the walk's chat gets a

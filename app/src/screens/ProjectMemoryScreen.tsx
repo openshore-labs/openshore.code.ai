@@ -9,7 +9,7 @@ import { BackBar } from '../components/BackBar.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import { isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
-import { repoAccessToken } from '../lib/gitos/repoOAuth.js';
+import { repoToken } from '../lib/gitos/repoOAuth.js';
 import { noteTitle } from '../lib/vault.js';
 import {
   readProjectSecrets,
@@ -35,14 +35,15 @@ type LoadState =
   | { phase: 'error'; message: string }
   | { phase: 'ready'; source: RepoSource; listing: MemoryListing };
 
-/** Build a reader for the chosen source, resolving a GitHub token when needed.
- *  Returns undefined when a GitHub source has no usable token (not connected). */
+/** Build a reader for the chosen source, resolving a GitHub token when needed
+ *  (the one-tap sign-in, refreshed, or a pasted access token). Returns
+ *  undefined when a GitHub source has no usable token (not connected). */
 async function readerFor(source: RepoSource): Promise<RepoReader | undefined> {
   if (source.kind === 'local') {
     const b = bridge();
     return b ? localRepoReader(source.root, b) : undefined;
   }
-  const token = await repoAccessToken('github');
+  const token = await repoToken('github');
   return token ? githubRepoReader(source.owner, source.repo, token) : undefined;
 }
 
