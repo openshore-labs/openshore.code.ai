@@ -4,12 +4,22 @@
 // expands: Cloud models and Local models. Each category has an honest empty
 // state that routes to setup. When no stack exists yet, Stack is greyed with a
 // link to build one. Models in the category sheets swipe left to pin; a pinned
-// model rides under Stack for one-tap use and swipes there to unpin.
+// model rides under Stack for one-tap use and swipes there to unpin. On a
+// phone the very top row is the model on this phone: Harbor once it is
+// downloaded, else Harbor Lite (with Harbor's download progress under it while
+// it comes down). Harbor replaces Harbor Lite there, since the better model
+// makes the guide moot (founder, 2026-09-25).
 import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
-import { isDesktop } from '../lib/platform.js';
+import { isDesktop, isPhone } from '../lib/platform.js';
+import { HARBOR_BYLINE, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
+import {
+  HARBOR_MINI_BYLINE,
+  HARBOR_MINI_MODEL_ID,
+  HARBOR_MINI_MODEL_NAME,
+} from '../lib/harborMini.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import type { DaemonStackInfo } from 'os-code/protocol';
@@ -134,8 +144,15 @@ export function ModelSheet({
   /** Which sub-sheet to open on. Defaults to root; the out-of-usage tap opens 'local'. */
   initialStage?: 'root' | 'effort' | 'cloud' | 'local';
 }) {
-  const { settings, connectedProviders, cloudKeyPresent, saveSettings, setView, sourceReady } =
-    useApp();
+  const {
+    settings,
+    connectedProviders,
+    cloudKeyPresent,
+    saveSettings,
+    setView,
+    sourceReady,
+    harborDownload,
+  } = useApp();
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
   // Play the exit before a pick propagates (UI-4): the parent unmounts this
   // sheet the moment it learns the choice, so the choice is held until the
@@ -202,7 +219,25 @@ export function ModelSheet({
   const claudeReady = cloudKeyPresent;
   const otherProviders = PROVIDERS.filter((p) => p.id !== 'anthropic' && connectedProviders[p.id]);
   const cloudEmpty = !claudeReady && otherProviders.length === 0;
-  const deviceModels = Object.entries(settings.deviceModels);
+  // The built-in guides are ready flags, not deviceModels entries, so Harbor is
+  // listed here once downloaded (it used to reach no row but the Stack's).
+  const deviceModels = [
+    ...(settings.harborReady && !settings.deviceModels[HARBOR_MODEL_ID]
+      ? ([[HARBOR_MODEL_ID, HARBOR_MODEL_NAME]] as Array<[string, string]>)
+      : []),
+    ...Object.entries(settings.deviceModels),
+  ];
+  const harborSource: ConversationSource = {
+    kind: 'device',
+    modelId: HARBOR_MODEL_ID,
+    modelName: HARBOR_MODEL_NAME,
+  };
+  const harborLiteSource: ConversationSource = {
+    kind: 'device',
+    modelId: HARBOR_MINI_MODEL_ID,
+    modelName: HARBOR_MINI_MODEL_NAME,
+  };
+  const harborComing = Boolean(harborDownload && !harborDownload.failed);
   const pins = settings.pinnedModels ?? [];
 
   const setPin = (source: ConversationSource) => {
@@ -266,6 +301,38 @@ export function ModelSheet({
                       </button>
                     </span>
                   </div>
+                )}
+              </div>
+            ) : null}
+            {isPhone() && (settings.harborReady || settings.harborMiniReady || harborComing) ? (
+              <div className="ms-group">
+                {settings.harborReady ? (
+                  <Row
+                    main={HARBOR_MODEL_NAME}
+                    sub={HARBOR_BYLINE}
+                    onClick={() => pick(harborSource)}
+                  />
+                ) : (
+                  <>
+                    {settings.harborMiniReady ? (
+                      <Row
+                        main={HARBOR_MINI_MODEL_NAME}
+                        sub={HARBOR_MINI_BYLINE}
+                        onClick={() => pick(harborLiteSource)}
+                      />
+                    ) : null}
+                    {harborComing && harborDownload ? (
+                      <div className="ms-row ms-row-disabled" aria-live="polite">
+                        <span className="ms-row-text">
+                          <span className="ms-row-main">{HARBOR_MODEL_NAME}</span>
+                          <span className="ms-row-sub">
+                            Downloading, {harborDownload.label}. It takes this spot when it is
+                            ready.
+                          </span>
+                        </span>
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
             ) : null}
