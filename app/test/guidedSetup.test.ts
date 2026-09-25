@@ -134,6 +134,15 @@ describe('what the guide says', () => {
     expect(actions).toContain('Skip for now');
   });
 
+  it('never puts the step buttons under the hello (they would flash, then jump)', () => {
+    // The letter's reading pause leaves the hello as the latest message for a
+    // few seconds; the buttons wait for the setup message instead.
+    const screen = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
+    const guard = screen.indexOf('if (itemId === `${conv.id}-hello`) return null;');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(screen.indexOf('<SetupStepActions step={guided.current} />'));
+  });
+
   it('opens on the first step and closes by inviting questions', () => {
     expect(openingMessage('harbor', NONE)).toContain(stepIntro('harbor'));
     expect(finishMessage(NONE)).toMatch(/ask me anything about OpenShore/i);

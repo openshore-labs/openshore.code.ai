@@ -572,7 +572,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                     </button>
                   ) : null;
                 }
+                // Never under the hello: in the letter's reading pause the hello
+                // is briefly the latest message, and buttons there would flash
+                // up, then jump down to the setup message once it starts.
                 if (thread?.busy || itemId !== lastAssistantId) return null;
+                if (itemId === `${conv.id}-hello`) return null;
                 if (guided.editChoice === 'asking') return <EditChoiceActions />;
                 if (guided.current && !guided.finished) {
                   return <SetupStepActions step={guided.current} />;
