@@ -203,13 +203,13 @@ describe('Anthropic provider', () => {
     });
   });
 
-  it('off: sends no thinking parameter and keeps the temperature', async () => {
+  it('off: sends no thinking parameter, and a temperature where the model takes one', async () => {
     const { bodies } = mockStream(
       sse({ type: 'message_delta', delta: { stop_reason: 'end_turn' } }),
     );
     await collect(
       provider().chat({
-        model: 'claude-opus-4-8',
+        model: 'claude-opus-4-6',
         messages: [{ role: 'user', content: 'hi' }],
         temperature: 0.2,
         reasoning: 'off',
@@ -235,10 +235,13 @@ describe('Anthropic provider', () => {
           },
           { role: 'tool', toolCallId: 'c1', content: 'text' },
         ],
+        temperature: 0.2,
         reasoning: 'on',
       }),
     );
     expect(bodies[0]!.thinking).toBeUndefined();
+    // Opus 4.8 rejects a temperature, so the fallback request carries none.
+    expect(bodies[0]!.temperature).toBeUndefined();
   });
 
   it('replays a turn’s thinking blocks ahead of its tool calls', () => {

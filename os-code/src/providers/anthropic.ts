@@ -126,7 +126,8 @@ export class AnthropicProvider implements Provider {
     if (system) body.system = system;
     // Chain of Thought on: ask Claude to think, with room for it in max_tokens.
     // Thinking does not take a custom temperature, so none is sent. Off (or
-    // unset) sends no thinking parameter, the model's own default.
+    // unset) sends no thinking parameter, the model's own default, and a
+    // temperature only where the model accepts one (claudeAcceptsTemperature).
     // One exception: a tool loop continuing from a turn that did not think
     // (an escalation from a local seat mid-task) has no signed thinking block
     // to lead its last assistant turn, which the API requires while thinking
@@ -139,7 +140,9 @@ export class AnthropicProvider implements Provider {
       const cot = claudeThinking(model, request.maxTokens ?? 8192);
       body.thinking = cot.thinking;
       body.max_tokens = cot.maxTokens;
-    } else if (request.temperature !== undefined) body.temperature = request.temperature;
+    } else if (request.temperature !== undefined && claudeAcceptsTemperature(model)) {
+      body.temperature = request.temperature;
+    }
     if (request.stop?.length) body.stop_sequences = request.stop;
     if (request.tools?.length) {
       body.tools = request.tools.map((t) => ({
@@ -318,6 +321,24 @@ export class AnthropicProvider implements Provider {
             : 'end',
     };
   }
+}
+
+/**
+ * Whether a Claude model takes a custom temperature. Opus 4.7 and newer, Sonnet
+ * 5, and Fable answer a request that carries one with a 400, so the engine's
+ * per-family sampling default (0.2 for the agent loop, 0.1 for summaries) would
+ * fail every turn on them. Only the models known to accept it get it: Opus and
+ * Sonnet 4.6 and older, Haiku 4.5, and Claude 3. Anything else, including a
+ * model newer than this list, gets none, since leaving it out is always valid.
+ */
+export function claudeAcceptsTemperature(model: string): boolean {
+  const m = model.toLowerCase();
+  return (
+    /claude-3/.test(m) ||
+    /haiku-4/.test(m) ||
+    /(opus|sonnet)-4-[0156](-|$)/.test(m) ||
+    /(opus|sonnet)-4-\d{8}/.test(m)
+  );
 }
 
 /** The hint for an error delivered inside the SSE stream, keyed on its type.
