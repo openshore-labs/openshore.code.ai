@@ -159,6 +159,10 @@ import { guardDriver } from '../drivers/guardedDriver.js';
 import {
   HARBOR_READY_MESSAGE,
   advanceMessage,
+  harborForkMessage,
+  nextChoiceMessage,
+  stepsAhead,
+  type NextChoice,
   editChoiceMessage,
   repoConnectedMessage,
   walkActive,
@@ -1154,6 +1158,9 @@ interface AppState {
   /** The repository step's one choice: how edits are handled. Undefined
    *  means "decide later" (the starting mode stays). */
   chooseEditMode(mode: PermissionMode | undefined): Promise<void>;
+  /** The fork after Harbor (lib/guidedSetup.ts): start chatting (the walk
+   *  steps back until "Pick up setup") or keep setting up. */
+  chooseNext(choice: NextChoice): void;
   /** Bring your own Brave or Tavily key for Harbor's web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
@@ -2166,6 +2173,23 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!p || p.conversationId !== conversationId) return false;
     const intent = setupIntent(text);
     if (!intent) return false;
+    // The fork after Harbor, answered in words. "Not now" or "I just want to
+    // chat" is the chat choice, and still goes to the guide, who answers it
+    // knowing setup waits. "Let's set up", "keep setting up", or "next" carry
+    // on; a bare "skip" skips the rest, which is chatting.
+    if (p.nextChoice === 'asking' && !p.paused) {
+      if (intent === 'pause') {
+        logEvent('guided_setup_fork', { choice: 'chat', via: 'typed' });
+        void get().saveSettings({
+          guidedSetup: { ...p, nextChoice: 'chat', paused: true, awaiting: undefined },
+        });
+        return false;
+      }
+      const choice: NextChoice = intent === 'resume' || /^\s*next/i.test(text) ? 'setup' : 'chat';
+      appendUserLine(conversationId, text);
+      get().chooseNext(choice);
+      return true;
+    }
     const walking = walkActive(p);
     if (intent === 'pause') {
       if (walking && !p.paused) {
@@ -2258,13 +2282,23 @@ export const useApp = create<AppState>((set, get, api) => {
     if (p.editChoice === 'asking') return;
     const facts = setupFacts();
     let next: GuidedSetupProgress = p;
-    if (!p.finished && !p.paused && p.current && stepHandled(p.current, facts)) {
+    // The fork after Harbor holds the steps too; only Harbor's ready line
+    // still lands while it waits (below).
+    const forkOpen = p.nextChoice === 'asking';
+    if (!forkOpen && !p.finished && !p.paused && p.current && stepHandled(p.current, facts)) {
       const done = p.current;
       const after = nextStep(p, facts);
       // The repository step ends on one choice (how edits are handled), asked
       // once; the next step waits for the tap (chooseEditMode).
       const asking = done === 'repo' && !p.editChoice;
-      const text = asking ? repoConnectedMessage() : advanceMessage(done, 'done', after, facts);
+      // Harbor's step ends on the fork (chat, or keep setting up) whenever
+      // setup is still ahead; the next step waits for the tap (chooseNext).
+      const fork = done === 'harbor' && !p.nextChoice && stepsAhead(p, facts).length > 0;
+      const text = asking
+        ? repoConnectedMessage()
+        : fork
+          ? harborForkMessage('done', p, facts)
+          : advanceMessage(done, 'done', after, facts);
       if (!appendGuideMessage(p.conversationId, text)) return;
       logEvent('guided_setup_step_done', { step: done });
       next = {
@@ -2274,6 +2308,7 @@ export const useApp = create<AppState>((set, get, api) => {
         awaiting: undefined,
         harborAnnounced: next.harborAnnounced || facts.harborReady,
         ...(asking ? { editChoice: 'asking' as const } : {}),
+        ...(fork ? { nextChoice: 'asking' as const, finished: false } : {}),
       };
       if (p.awaiting === done && (s.view !== 'chat' || s.activeId !== p.conversationId)) {
         s.openConversation(p.conversationId);
@@ -5782,23 +5817,63 @@ export const useApp = create<AppState>((set, get, api) => {
       await saved;
     },
 
+    chooseNext(choice) {
+      const p = get().settings.guidedSetup;
+      if (!p || p.nextChoice !== 'asking') return;
+      const facts = setupFacts();
+      // Anything connected while the fork waited is passed by.
+      const after = p.current && !stepHandled(p.current, facts) ? p.current : nextStep(p, facts);
+      if (!appendGuideMessage(p.conversationId, nextChoiceMessage(choice, after, facts))) return;
+      logEvent('guided_setup_fork', { choice, via: 'button' });
+      void get().saveSettings({
+        guidedSetup:
+          choice === 'chat'
+            ? // The walk steps back where it stands; "Pick up setup" or "let's
+              // set up" resumes it at the step that is actually next.
+              {
+                ...p,
+                nextChoice: 'chat',
+                paused: true,
+                awaiting: undefined,
+                current: after,
+                finished: !after,
+              }
+            : {
+                ...p,
+                nextChoice: 'setup',
+                current: after,
+                finished: !after,
+                harborAnnounced: p.harborAnnounced || (!after && facts.harborReady),
+              },
+      });
+    },
+
     skipSetupStep() {
       const p = get().settings.guidedSetup;
-      if (!p?.current || p.finished) return;
+      // The fork after Harbor is answered first: the next step has not even
+      // been introduced yet, so there is nothing to skip.
+      if (!p?.current || p.finished || p.nextChoice === 'asking') return;
       const facts = setupFacts();
       const skipped = [...p.skipped, p.current];
       const after = nextStep({ skipped }, facts);
-      if (!appendGuideMessage(p.conversationId, advanceMessage(p.current, 'skipped', after, facts)))
-        return;
+      // Skipping Harbor still ends on the fork (chat, or keep setting up)
+      // whenever setup is still ahead.
+      const fork =
+        p.current === 'harbor' && !p.nextChoice && stepsAhead({ skipped }, facts).length > 0;
+      const text = fork
+        ? harborForkMessage('skipped', { skipped }, facts)
+        : advanceMessage(p.current, 'skipped', after, facts);
+      if (!appendGuideMessage(p.conversationId, text)) return;
       logEvent('guided_setup_skip', { step: p.current });
       void get().saveSettings({
         guidedSetup: {
           ...p,
           skipped,
           current: after,
-          finished: !after,
+          finished: !after && !fork,
           awaiting: undefined,
           harborAnnounced: p.harborAnnounced || (!after && facts.harborReady),
+          ...(fork ? { nextChoice: 'asking' as const } : {}),
         },
       });
     },

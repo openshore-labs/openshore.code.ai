@@ -25,6 +25,7 @@ import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
 import { GuideSetupLink } from '../components/GuideSetupLink.js';
 import { SetupStepActions } from '../components/SetupStepActions.js';
 import { EditChoiceActions } from '../components/EditChoiceActions.js';
+import { NextChoiceActions } from '../components/NextChoiceActions.js';
 import { ASK_ANYTHING, walkActive } from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
 import { VoiceMode } from '../components/VoiceMode.js';
@@ -587,17 +588,28 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               // the Stack mid-walk is still in setup, and the model is told the
               // buttons are there.
               if (guided && guided.conversationId === conv.id) {
-                // Paused ("I'd rather just chat"): no buttons following the
-                // talk, just a quiet way back in, up under the hello.
+                // Paused ("I'd rather just chat", or Start chatting at the fork):
+                // no step buttons following the talk, just a quiet way back in,
+                // up under the hello. Right after Start chatting, a few openers
+                // sit under the guide's "Let's chat" so the first question is
+                // one tap.
                 if (guided.paused && walkActive(guided)) {
-                  return itemId === `${conv.id}-hello` ? (
-                    <button
-                      type="button"
-                      className="btn quiet press-fb setup-resume"
-                      onClick={resumeGuidedSetup}
-                    >
-                      Pick up setup
-                    </button>
+                  if (itemId === `${conv.id}-hello`) {
+                    return (
+                      <button
+                        type="button"
+                        className="btn quiet press-fb setup-resume"
+                        onClick={resumeGuidedSetup}
+                      >
+                        Pick up setup
+                      </button>
+                    );
+                  }
+                  return guided.nextChoice === 'chat' &&
+                    !thread?.busy &&
+                    lastItemId === itemId &&
+                    itemId.includes('-setup-') ? (
+                    <MiniFirstMoves moves={ASK_ANYTHING} onPick={(text) => send(text)} />
                   ) : null;
                 }
                 // Never under the hello: in the letter's reading pause the hello
@@ -606,6 +618,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 if (thread?.busy || itemId !== lastAssistantId) return null;
                 if (itemId === `${conv.id}-hello`) return null;
                 if (guided.editChoice === 'asking') return <EditChoiceActions />;
+                if (guided.nextChoice === 'asking') return <NextChoiceActions />;
                 if (guided.current && !guided.finished) {
                   return <SetupStepActions step={guided.current} />;
                 }
