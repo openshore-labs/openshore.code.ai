@@ -2,8 +2,8 @@
 // time, each group fading up from light to full ink the way Claude's does, the
 // model's folded reasoning, tool cards, the plan card, the
 // changed-files record, quiet status lines, and citations at the end. A
-// working row fills the gap between a send and the first token, and a "new
-// messages" pill offers the way back when the person has scrolled up.
+// working row fills the gap between a send and the first token, and a quiet
+// "back to latest" chip offers the way back when the person has scrolled up.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
@@ -26,6 +26,7 @@ import { ThinkingBlock } from './ThinkingBlock.js';
 import { PlanCard } from './PlanCard.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
+import { Icon } from './Icon.js';
 
 function AssistantBubble({
   text,
@@ -193,9 +194,10 @@ export function MessageList({
       const pinned = distanceFromBottom < 48;
       pinnedRef.current = pinned;
       if (pinned) setUnseen(0);
-      // A wider threshold than the pin gap so the pill never flickers on a hair
-      // of scroll near the foot; it earns its place once you have moved off.
-      setScrolledUp(distanceFromBottom > 240);
+      // The chip earns its place once the latest is a real distance off: half a
+      // screen, never less than 240px. Reading a long reply a paragraph at a
+      // time is not being lost, so it stays out of the way until you are.
+      setScrolledUp(distanceFromBottom > Math.max(240, el.clientHeight * 0.5));
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -228,10 +230,11 @@ export function MessageList({
   const jumpToBottom = () => {
     const el = threadRef.current;
     if (!el) return;
+    hapticTick();
     pinnedRef.current = true;
     setUnseen(0);
     setScrolledUp(false);
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    el.scrollTo({ top: el.scrollHeight, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   };
 
   // The working row shows while busy and nothing is visibly streaming.
@@ -401,18 +404,32 @@ export function MessageList({
       </div>
       {pillMounted ? (
         // The thread is its own scroller, so an absolute child would ride the
-        // content. A zero-height sticky dock holds the pill to the visible foot.
-        <div className="scroll-pill-dock">
-          <button
-            type="button"
-            className={`scroll-pill press-fb${heldUnseen.current > 0 ? '' : ' bare'}${pillClosing ? ' closing' : ''}`}
-            onClick={jumpToBottom}
-            aria-label={heldUnseen.current > 0 ? undefined : 'Jump to latest'}
-          >
-            {heldUnseen.current > 0
-              ? `${heldUnseen.current === 1 ? 'New message' : `${heldUnseen.current} new`} ↓`
-              : '↓'}
-          </button>
+        // content. A zero-height sticky dock holds the chip and the foot veil
+        // to the visible bottom at any scroll position (Creative Studio,
+        // docs/jump-to-latest-redesign.md).
+        <div className={`jump-dock${pillClosing ? ' closing' : ''}`}>
+          <div className="jump-veil" aria-hidden="true" />
+          <div className="jump-rail">
+            <button
+              type="button"
+              className={`jump-chip press-fb${heldUnseen.current > 0 ? ' has-new' : ''}`}
+              onClick={jumpToBottom}
+              aria-label={
+                heldUnseen.current > 0
+                  ? `${heldUnseen.current === 1 ? 'A new reply' : `${heldUnseen.current} new replies`} below. Jump to latest.`
+                  : 'Jump to latest'
+              }
+            >
+              {heldUnseen.current > 0 ? (
+                <span className="jump-label">
+                  {heldUnseen.current === 1 ? 'New reply' : `${heldUnseen.current} new`}
+                </span>
+              ) : null}
+              <Icon size={18} className="jump-glyph">
+                <path d="M6 9.5l6 6 6-6" />
+              </Icon>
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
