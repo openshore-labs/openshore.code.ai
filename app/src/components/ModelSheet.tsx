@@ -244,9 +244,14 @@ export function ModelSheet({
     void saveSettings({ pinnedModels: togglePin(pins, source) });
   };
 
+  // Leaving for a setup room plays the sheet's exit first, like a pick does,
+  // so the sheet never snaps away mid-glide.
   const goto = (view: Parameters<typeof setView>[0]) => {
-    setView(view);
-    onClose();
+    pending.current = () => {
+      setView(view);
+      onClose();
+    };
+    dismiss();
   };
 
   const Header = ({ title }: { title: string }) => (
@@ -405,19 +410,28 @@ export function ModelSheet({
                   </span>
                 </div>
               )}
-              {pins.map((src) => (
-                <SwipeRow
-                  key={pinKey(src)}
-                  pinned
-                  onTap={() => pick(src)}
-                  onToggle={() => setPin(src)}
-                >
-                  <div className="ms-row">
-                    <RowContent main={pinLabel(src)} sub={pinSub(src)} />
-                    <PinStar pinned onToggle={() => setPin(src)} />
-                  </div>
-                </SwipeRow>
-              ))}
+              {pins.map((src) => {
+                // A favorite whose model is not set up any more (its key was
+                // removed, its download deleted) is shown quiet and honest, not
+                // offered as a pick that would only toast "not ready".
+                const ready = sourceReady(src);
+                return (
+                  <SwipeRow
+                    key={pinKey(src)}
+                    pinned
+                    onTap={() => (ready ? pick(src) : undefined)}
+                    onToggle={() => setPin(src)}
+                  >
+                    <div className={`ms-row${ready ? '' : ' ms-row-disabled'}`}>
+                      <RowContent
+                        main={pinLabel(src)}
+                        sub={ready ? pinSub(src) : 'Not set up on this device right now'}
+                      />
+                      <PinStar pinned onToggle={() => setPin(src)} />
+                    </div>
+                  </SwipeRow>
+                );
+              })}
             </div>
 
             <div className="ms-group">

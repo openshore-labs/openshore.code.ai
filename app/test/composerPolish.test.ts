@@ -64,7 +64,7 @@ describe('dictation', () => {
 describe('attachments', () => {
   it('redraws images a model cannot read, and never pastes a binary as text', () => {
     expect(composer).toMatch(
-      /isModelImage\(f\) \? fileToAttachment\(f\) : imageToJpegAttachment\(f\)/,
+      /sendsAsIs\(f\) \? fileToAttachment\(f\) : imageToJpegAttachment\(f\)/,
     );
     expect(composer).toMatch(/await isTextFile\(f\)/);
   });

@@ -129,7 +129,14 @@ export function App() {
       // jump we do not want. Leave it be.
       if (el.closest('.composer')) return;
       window.setTimeout(() => {
-        const visibleBottom = window.innerHeight - keyboardHeight;
+        // The inset the composer lifts by (useKeyboardInset corrects a stray
+        // zero, a bare bar, and a hardware keyboard); the raw reading only
+        // when that hook has not lifted.
+        const root = document.documentElement;
+        const inset = root.classList.contains('kb-open')
+          ? parseFloat(getComputedStyle(root).getPropertyValue('--kb-inset')) || keyboardHeight
+          : keyboardHeight;
+        const visibleBottom = window.innerHeight - inset;
         if (el.getBoundingClientRect().bottom > visibleBottom - 24) {
           el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         }
