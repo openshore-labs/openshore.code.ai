@@ -1866,3 +1866,10 @@ execution contract. Newest at the bottom.
   runs unprompted, as Harbor's always did, once per message, and never on the
   Offline profile. The desktop's `/chat` stays inert: it only adds the
   instruction, and the phone does the fetching.
+- **An image asks before it leaves, founder 2026-09-25 ("Ask first"):** when
+  nothing the person placed in Stack can see an image, the connected cloud
+  reader the stack falls back to is a gap-fill, so it goes through the
+  existing Cloud spend approval card rather than a silent send (tenet 4). It
+  refines, not reverses, the earlier "it can go to a cloud provider": the
+  route is the same, the person taps it. A placed cloud reader (the anchor,
+  the Image reading cloud slot) is their own choice and never asks.

@@ -211,7 +211,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'attachments',
     title: 'Attach',
     where: 'The + at the left of the chat box',
-    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Stack or connect a cloud model that can.',
+    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Stack or connect a cloud model that can. When nothing you placed in Stack can see, it asks before an image goes to a connected cloud model.',
     keywords: [
       'attach',
       'photo',
