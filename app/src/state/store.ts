@@ -290,6 +290,7 @@ import {
 } from '../lib/gitos/index.js';
 import {
   connectRepoOAuth as runRepoOAuthConnect,
+  repoToken,
   disconnectRepoOAuth,
   resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
@@ -375,7 +376,7 @@ export interface AppSettings {
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
-  /** Web search backend for Harbor, when the user has brought their own key.
+  /** Web search backend for local models, when the user has brought their own key.
    *  Undefined means the zero-config DuckDuckGo default. */
   searchBackend?: SearchBackend;
   /** Whether the Marketplace intro walkthrough has been shown. */
@@ -396,7 +397,7 @@ export interface AppSettings {
   projects?: Project[];
   /** The project new saved chats go into. */
   activeProjectId?: string;
-  /** My Crew: user-authored agents with personas and call rules. */
+  /** Crew: user-authored agents with personas and call rules. */
   crew?: CrewAgent[];
   /** Account: personal, or a commercial org with members and a plan. */
   account?: Account;
@@ -674,6 +675,11 @@ let outboxSyncing = false;
 // Serialize repo reconcile passes: the boot check and a reconnect can otherwise
 // fire at once and push the same clones twice.
 let reconcilingRepos = false;
+// Chats whose repositories changed while their driver held the old list (an
+// on-device model and the Stack take it at build). The next send, between
+// turns, rebuilds that driver from the transcript so the new list and the
+// new working folder apply. A cloud chat reads it fresh every reply instead.
+const repoContextStale = new Set<string>();
 // Note bodies keyed by `${resourceId}::${path}`, so backlink derivation
 // (vaultReadAll on every note open) re-reads only files whose updatedAt moved.
 // Self-invalidating: a mismatched updatedAt misses; a distinct resource id
@@ -961,7 +967,7 @@ interface AppState {
 
   // Crew routines (the command center). Every call reaches the scheduler on
   // the computer that runs routines; the store keeps the last snapshot.
-  /** Open the command center (a sub-page of My Crew) and refresh. */
+  /** Open the command center (a sub-page of Crew) and refresh. */
   openCrewCommand(): void;
   /** Whether this device can set up and control routines right now (docked or
    *  on the machine), and where it stands otherwise. Viewing is always on. */
@@ -1115,7 +1121,7 @@ interface AppState {
   /** A portable JSON backup of everything not yet synced (the S2 escape hatch). */
   exportBuffer(): string;
 
-  // My Crew: user-authored agents.
+  // Crew: user-authored agents.
   /** Create a crew agent and return its id. */
   createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
   updateCrewAgent(id: string, patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>): Promise<void>;
@@ -1161,7 +1167,7 @@ interface AppState {
   /** The fork after Harbor (lib/guidedSetup.ts): start chatting (the walk
    *  steps back until "Pick up setup") or keep setting up. */
   chooseNext(choice: NextChoice): void;
-  /** Bring your own Brave or Tavily key for Harbor's web search. */
+  /** Bring your own Brave or Tavily key for local models' web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
   // Vault (the Obsidian-compatible vault, first consumer of gitOS). Personal by
@@ -1964,14 +1970,24 @@ export const useApp = create<AppState>((set, get, api) => {
   /** APP-5: the daemon's session id is state, written through `set` and
    *  persisted at once, so a kill before the first message never orphans a
    *  session on the hub. */
-  async function bindSessionId(conversationId: string, sessionId: string): Promise<void> {
+  async function bindSessionId(
+    conversationId: string,
+    sessionId: string,
+    cwd?: string,
+  ): Promise<void> {
     set((state) => {
       const c = state.conversations[conversationId];
       if (!c || c.source.kind !== 'desktop') return state;
+      // The folder the session started in, kept on the source: the engine
+      // cannot move a session, so the picker can say where this chat works.
+      const at = c.source.cwd ?? cwd;
       return {
         conversations: {
           ...state.conversations,
-          [conversationId]: { ...c, source: { ...c.source, sessionId } },
+          [conversationId]: {
+            ...c,
+            source: { ...c.source, sessionId, ...(at ? { cwd: at } : {}) },
+          },
         },
       };
     });
@@ -2417,8 +2433,12 @@ export const useApp = create<AppState>((set, get, api) => {
    *  For every brain but Harbor Lite, which reads the walk inside its own
    *  prompt (and the Stack, which reads it per seat). */
   function chatContext(conv: Conversation): () => string | undefined {
-    const standing = standingContext(conv);
-    return () => [standing, guidedSetupLine(conv.id)].filter(Boolean).join('\n\n') || undefined;
+    // Read the conversation fresh each reply too: repositories picked in a
+    // live chat reach the model on its next turn, not only after a relaunch.
+    return () =>
+      [standingContext(get().conversations[conv.id] ?? conv), guidedSetupLine(conv.id)]
+        .filter(Boolean)
+        .join('\n\n') || undefined;
   }
 
   async function buildUnguardedDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
@@ -2528,7 +2548,7 @@ export const useApp = create<AppState>((set, get, api) => {
               );
             }
             sessionId = created.id;
-            await bindSessionId(conv.id, sessionId);
+            await bindSessionId(conv.id, sessionId, cwd);
           } else {
             // G1: resume returns the journal so the driver can replay it AFTER
             // it has subscribed (IPC does not buffer a pushed replay).
@@ -2554,7 +2574,7 @@ export const useApp = create<AppState>((set, get, api) => {
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
           });
-          await bindSessionId(conv.id, sessionId);
+          await bindSessionId(conv.id, sessionId, cwd);
         }
         // Opening a desktop session is the walk-away-able moment: the run
         // continues on the daemon while the phone is closed. Register for
@@ -2577,7 +2597,13 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
-        return new DesktopChatDriver(settings.daemon, conv.source.model, seed, chatContext(conv));
+        return new DesktopChatDriver(
+          settings.daemon,
+          conv.source.model,
+          seed,
+          chatContext(conv),
+          settings.perplexityResearch === true,
+        );
       }
       case 'device':
         return new OnDeviceDriver(
@@ -2659,6 +2685,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 .join('\n\n') || undefined,
             crew,
             humanize: s.settings.humanizeWriting !== false,
+            researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
             codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,
@@ -3509,7 +3536,15 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!roots.length) return;
       reconcilingRepos = true;
       try {
-        const results = await bridge()!.reconcileRepos(roots);
+        // The platforms connected here authorize the push (host-scoped, for
+        // that one git command), so a clone made with a token is pushable.
+        const tokens: Partial<Record<RepoPlatform, string>> = {};
+        for (const c of REPO_CONNECTORS) {
+          if (!get().connectedRepoPlatforms[c.id]) continue;
+          const t = await repoToken(c.id).catch(() => undefined);
+          if (t) tokens[c.id] = t;
+        }
+        const results = await bridge()!.reconcileRepos(roots, tokens);
         const summary = summarizeReconcile(results);
         set({ repoSyncConflicts: summary.conflicts.length ? summary.conflicts : undefined });
         // reconcileToast is silent unless something is worth saying (a push, a
@@ -4096,7 +4131,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     openCrewCommand() {
-      // A sub-page of My Crew: setView pushes Crew onto the trail, so the top
+      // A sub-page of Crew: setView pushes Crew onto the trail, so the top
       // bar offers a way back to the roster.
       get().setView('crewcommand');
       logEvent('crew_command_open');
@@ -6254,6 +6289,7 @@ export const useApp = create<AppState>((set, get, api) => {
 
     deleteConversation(id) {
       dropDriver(id);
+      repoContextStale.delete(id);
       pendingSends.delete(id);
       set((s) => {
         const conversations = { ...s.conversations };
@@ -6276,6 +6312,16 @@ export const useApp = create<AppState>((set, get, api) => {
         if (interceptSetupMessage(activeId, text)) return;
       }
       if (holdForHarborLite(activeId, text, attachments)) return;
+      // Repositories changed since this driver was built: between turns,
+      // rebuild it from the transcript (the parked-send path below) so the new
+      // list and working folder apply to this message.
+      if (repoContextStale.has(activeId)) {
+        const c = get().conversations[activeId];
+        if (c && !c.thread.busy && !c.thread.pendingApprovals.length && liveDriver(activeId)) {
+          repoContextStale.delete(activeId);
+          dropDriver(activeId);
+        }
+      }
       const driver = liveDriver(activeId);
       if (!driver) {
         // The driver is still building (a fast send after reopen) or its build
@@ -6424,6 +6470,20 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async setConversationRepos(id, repoIds) {
+      const before = get().conversations[id];
+      const changed = !before || (before.repoIds ?? []).join('\n') !== repoIds.join('\n');
+      // An on-device model and the Stack take the list (and the Stack its
+      // working folder) when their driver is built; the next send rebuilds it.
+      // A desktop session stays in the folder it started in (the picker says
+      // so); a cloud chat reads the list fresh each reply.
+      if (
+        changed &&
+        before &&
+        (before.source.kind === 'device' || before.source.kind === 'stack') &&
+        drivers.has(id)
+      ) {
+        repoContextStale.add(id);
+      }
       set((s) => {
         const c = s.conversations[id];
         if (!c) return s;

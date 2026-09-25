@@ -1897,3 +1897,31 @@ execution contract. Newest at the bottom.
   at the fork means chat, "next" means carry on. There is no fork when
   nothing else is left, and a step cannot be skipped while the fork waits,
   since that step has not been introduced yet.
+- **Reconcile pushes with the app's connected token, 2026-09-25:** only for an
+  https remote on that token's own platform, per git command, host-scoped
+  through the environment, never stored. This supersedes "no push credential
+  on the computer" above for the desktop's auto-push; a phone never pushes.
+  The engine's own GitHub token (Settings or `osc auth github`) is the
+  fallback when the app has none.
+- **A started engine session keeps its folder, 2026-09-25:** the engine cannot
+  move a session, so a different first folder in the picker is offered as a
+  new chat, not a silent move. Chat-model drivers (cloud, on-device, Stack)
+  pick up a repository change on their next turn instead.
+- **Every local model searches the web, founder 2026-09-25:** "local" means a
+  model you control: on the phone, your own server (BYOM), or the desktop's
+  free chat; Agentic Current bench models bring their own tools and are left
+  out. Small models ask with one `SEARCH:` line rather than a tool schema they
+  may not reproduce; Harbor Lite keeps its harness-planned search. The search
+  runs unprompted, as Harbor's always did, once per message, and never on the
+  Offline profile. The desktop's `/chat` stays inert: it only adds the
+  instruction, and the phone does the fetching.
+- **An image asks before it leaves, founder 2026-09-25:** "Ask first unless
+  the stack has a model there that is dedicated to image reading, then it's
+  just automatic." Only a model placed in the Image reading category (either
+  slot) takes an image without a card. Every other reader asks, including an
+  anchor that can see and the connected cloud model the stack falls back to:
+  the amber Cloud spend card for a cloud reader, a plain card for your own
+  server. The route itself is unchanged from "it can go to a cloud provider";
+  the person taps it. The Image reading cloud slot's default (the most capable
+  cloud model, shown until a person assigns one) is not a placement, so it
+  asks.

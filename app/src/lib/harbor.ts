@@ -17,6 +17,7 @@
 // OnDeviceDriver / llama plugin and the same download path as any pocket
 // model. Its weights come straight from Hugging Face.
 
+import { NO_SEARCH_NOTE, SEARCH_PROTOCOL_NOTE } from 'os-code/protocol';
 import { APP_KNOWLEDGE } from './guideKnowledge.js';
 
 export const HARBOR_MODEL_ID = 'harbor';
@@ -55,12 +56,6 @@ export const HARBOR_GREETING = [
   'What do you want to build?',
 ].join('\n');
 
-// The exact line Harbor emits when it wants to search, and nothing else, so
-// OnDeviceDriver can detect it with one cheap regex instead of parsing a
-// tool-call schema a small model may not reproduce reliably. See
-// HARBOR_SEARCH_PREFIX usage in onDeviceDriver.ts.
-export const HARBOR_SEARCH_PREFIX = 'SEARCH:';
-
 function harborPersona(searchable: boolean): string {
   return [
     "You are Harbor, a coding model running fully on the user's phone, part of their OpenShore stack.",
@@ -70,9 +65,7 @@ function harborPersona(searchable: boolean): string {
     'Your main job is coding: write and explain real code right here in chat for small, self-contained tasks. You do not edit files or run commands yourself yet. For multi-file changes, repository work, or anything heavy, know your limit: say so plainly and point to a bigger model in the stack, or to docking to the computer, instead of overreaching.',
     'You can also answer questions about the OpenShore app, grounded in its own repository. Explain any front-end feature or setup step, and take the person as deep as they want on setting their system up. Never reveal backend build internals, infrastructure, or how OpenShore is implemented under the hood; keep to what the person can see and do in the app.',
     'Voice: warm, brief, plainspoken, confident.',
-    searchable
-      ? `To search the web, respond with EXACTLY one line and nothing else: "${HARBOR_SEARCH_PREFIX} your search query". Do this whenever the question needs current information, a fact you are not certain of, or anything you would otherwise have to guess at. You will then be given the results and asked to answer for real. Do not fabricate results or pretend you searched.`
-      : 'You have no web access here. Answer from what you know, and say plainly when you are not sure rather than guessing.',
+    searchable ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE,
     'Ground app questions in the facts below. If you do not know, say so and point to the right screen.',
     'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
     'Never use em dashes. Use a period or a comma instead.',
@@ -81,9 +74,8 @@ function harborPersona(searchable: boolean): string {
   ].join('\n');
 }
 
-/** searchable: false for a driver that cannot act on the SEARCH: protocol
- *  (the full stack path has no tool use yet, see stackDriver.ts); Harbor
- *  must not be told to emit a command nothing will ever execute. */
+/** searchable: false when the web is out of reach (the Offline profile);
+ *  Harbor must not be told to emit a command nothing will ever execute. */
 export function buildHarborSystemPrompt(searchable = true): string {
   return harborPersona(searchable);
 }

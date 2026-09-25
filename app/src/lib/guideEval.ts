@@ -128,7 +128,7 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
     cards: ['vault'],
     mustInclude: [['note', 'markdown', 'knowledge']],
   },
-  { id: 'crew', message: 'What does My Crew do?', route: 'app', cards: ['my-crew', 'advisors'] },
+  { id: 'crew', message: 'What does Crew do?', route: 'app', cards: ['my-crew', 'advisors'] },
   {
     id: 'routines',
     message: 'Can a crew member do a task every morning?',

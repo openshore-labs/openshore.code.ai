@@ -279,7 +279,7 @@ export interface ProjectAccess {
   grantedAt: string;
 }
 
-// One member of "My Crew": a user-authored agent with a name, a persona, and a
+// One member of "Crew": a user-authored agent with a name, a persona, and a
 // rule for how and when it is called. Crew members can be scoped to specific
 // projects, or left to run across all of them.
 export type CrewActivityLevel = 'review' | 'auto' | 'request';
