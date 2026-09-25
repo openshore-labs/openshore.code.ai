@@ -369,7 +369,7 @@ export interface AppSettings {
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
-  /** Web search backend for Harbor, when the user has brought their own key.
+  /** Web search backend for local models, when the user has brought their own key.
    *  Undefined means the zero-config DuckDuckGo default. */
   searchBackend?: SearchBackend;
   /** Whether the Marketplace intro walkthrough has been shown. */
@@ -1133,7 +1133,7 @@ interface AppState {
   /** The repository step's one choice: how edits are handled. Undefined
    *  means "decide later" (the starting mode stays). */
   chooseEditMode(mode: PermissionMode | undefined): Promise<void>;
-  /** Bring your own Brave or Tavily key for Harbor's web search. */
+  /** Bring your own Brave or Tavily key for local models' web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
   // Vault (the Obsidian-compatible vault, first consumer of gitOS). Personal by
@@ -2479,7 +2479,12 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
-        return new DesktopChatDriver(settings.daemon, conv.source.model, seed);
+        return new DesktopChatDriver(
+          settings.daemon,
+          conv.source.model,
+          seed,
+          settings.perplexityResearch === true,
+        );
       }
       case 'device':
         return new OnDeviceDriver(
@@ -2560,6 +2565,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 .join('\n\n') || undefined,
             crew,
             humanize: s.settings.humanizeWriting !== false,
+            researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
             codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,

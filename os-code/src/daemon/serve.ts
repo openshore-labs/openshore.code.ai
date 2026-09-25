@@ -55,6 +55,7 @@ import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import type { ChatMessage } from '../providers/types.js';
+import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
 
@@ -672,8 +673,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       const model =
         typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
+      // The phone runs any search itself and sends the results back as the
+      // next turn, so this surface only learns how to ask; it never fetches.
+      const system = body.search === true ? `${CHAT_SYSTEM}\n${SEARCH_PROTOCOL_NOTE}` : CHAT_SYSTEM;
       const messages: ChatMessage[] = [
-        { role: 'system', content: CHAT_SYSTEM },
+        { role: 'system', content: system },
         ...rawMessages
           .filter(
             (m: unknown): m is { role: string; content: string } =>

@@ -4,11 +4,17 @@
 // completion, so the surface physically cannot read, edit, run, or commit. It
 // keeps the turn history itself, since /chat is stateless, and re-sends it each
 // turn. Streaming rides streamingFetch, past Capacitor's native-HTTP patch.
-import type { ApprovalAnswer } from 'os-code/protocol';
+//
+// Web search: the daemon only adds the instruction (search: true); when the
+// model asks with a SEARCH: line, the phone runs the search on its own Settings
+// provider and sends the results back as the next turn. The desktop never
+// fetches anything for this chat.
+import { SearchLineFilter, type ApprovalAnswer } from 'os-code/protocol';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 import type { DaemonTarget } from './remoteDriver.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
+import { searchForModel } from '../lib/localSearch.js';
 import type { SeedTurn } from '../state/types.js';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -24,6 +30,8 @@ export class DesktopChatDriver implements ChatDriver {
     private readonly target: DaemonTarget,
     private readonly model?: string,
     seed?: SeedTurn[],
+    /** Research (default off): search on the connected Perplexity key. */
+    private readonly researchOn = false,
   ) {
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
@@ -40,14 +48,20 @@ export class DesktopChatDriver implements ChatDriver {
     this.aborted = false;
     this.abortController = new AbortController();
     this.emitter.emit({ type: 'task-start', input: text });
+    this.history.push({ role: 'user', content: text });
+    await this.turn(1, true);
+  }
+
+  /** One completion. `searchable` lets it ask for a search once; the answer
+   *  pass after the results runs with it off, so a model cannot loop. */
+  private async turn(turn: number, searchable: boolean): Promise<void> {
     this.emitter.emit({
       type: 'turn-start',
-      turn: 1,
+      turn,
       model: this.model ?? 'your computer',
       providerKind: 'local',
     });
-    this.history.push({ role: 'user', content: text });
-
+    const filter = new SearchLineFilter(searchable);
     let answer = '';
     try {
       const res = await streamingFetch(`${this.target.baseUrl}/chat`, {
@@ -56,8 +70,8 @@ export class DesktopChatDriver implements ChatDriver {
           authorization: `Bearer ${this.target.token}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ messages: this.history, model: this.model }),
-        signal: this.abortController.signal,
+        body: JSON.stringify({ messages: this.history, model: this.model, search: true }),
+        signal: this.abortController?.signal,
       });
       if (!res.ok || !res.body) {
         const body = (await res.json?.().catch(() => ({}))) as { error?: string };
@@ -89,19 +103,33 @@ export class DesktopChatDriver implements ChatDriver {
           }
           if (ev.type === 'text' && ev.delta) {
             answer += ev.delta;
-            this.emitter.emit({ type: 'text-delta', text: ev.delta });
+            const shown = filter.push(ev.delta);
+            if (shown) this.emitter.emit({ type: 'text-delta', text: shown });
           } else if (ev.type === 'error') {
             this.emitter.emit({ type: 'task-done', reason: 'error', message: ev.message });
             return;
           }
         }
       }
+      const { query, flush } = filter.end();
       if (this.aborted) {
-        if (answer.trim()) this.history.push({ role: 'assistant', content: answer });
-        this.emitter.emit({ type: 'text-final', text: answer });
+        const kept = query ? '' : answer;
+        if (kept.trim()) this.history.push({ role: 'assistant', content: kept });
+        this.emitter.emit({ type: 'text-final', text: kept });
         this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
         return;
       }
+      if (query) {
+        const results = await searchForModel(query, this.researchOn, (e) => this.emitter.emit(e));
+        if (this.aborted) {
+          this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
+          return;
+        }
+        this.history.push({ role: 'user', content: results });
+        await this.turn(turn + 1, false);
+        return;
+      }
+      if (flush) this.emitter.emit({ type: 'text-delta', text: flush });
       this.history.push({ role: 'assistant', content: answer });
       this.emitter.emit({ type: 'text-final', text: answer });
       this.emitter.emit({ type: 'task-done', reason: 'complete' });
