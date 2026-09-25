@@ -1,9 +1,9 @@
 import { Icon } from './Icon.js';
-// The attach tray: what the composer's + opens on a phone. It takes the
-// keyboard's slot (the same remembered height, see lib/keyboardHeight.ts), so
-// when the keyboard swaps for it the composer does not move, the way the
-// Claude app's tray behaves (founder, 2026-09-03: "the image selector expands
-// the chat box too"). Three ways in, each a real picker: the camera, the
+// The attach tray: what the composer's + opens on a phone. It sits under the
+// composer, as tall as its one row of tiles (--tray-inset in theme.css), so
+// the chat box itself never grows (founder, 2026-09-03: "the image selector
+// expands the chat box too") and never lifts a keyboard's height over empty
+// paper (founder, 2026-09-25). Three ways in, each a real picker: the camera, the
 // photo library, and any file. On the desktop the + goes straight to the
 // file picker and this never renders.
 
