@@ -131,6 +131,7 @@ import {
   type ProfileId,
 } from '../lib/profiles.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
+import { isSetupFailure, rescueSource } from '../lib/chatRescue.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
@@ -721,6 +722,10 @@ interface AppState {
   settings: AppSettings;
   /** Phone-side Claude key presence (the key itself never sits in state). */
   cloudKeyPresent: boolean;
+  /** The Claude key is here but a turn just proved its setup wrong (it needs a
+   *  workspace id, or was rejected). A guide skips it until it is fixed, so a
+   *  Walk me through it never opens on a brain that cannot answer. */
+  cloudKeyNeedsFix: boolean;
   /** Which cloud providers are connected (keys live in the Keychain). */
   connectedProviders: Record<string, boolean>;
   /** A provider whose Connect form Cloud Connections should open on arrival
@@ -909,7 +914,13 @@ interface AppState {
    *  reseed the new brain with the transcript, and let the next turn run on it.
    *  Falls back to a fresh chat when there is nothing to carry or the target is
    *  not a chat brain. */
-  switchModel(source: ConversationSource): Promise<void>;
+  switchModel(source: ConversationSource, opts?: { resend?: boolean }): Promise<void>;
+  /** The brain a failed chat can continue on (never the one that failed),
+   *  or undefined when only the model picker is left (lib/chatRescue.ts). */
+  rescueSourceFor(conversationId: string): ConversationSource | undefined;
+  /** No dead ends: carry the open chat to the rescue brain (downloading Harbor
+   *  Lite first if it is not here yet) and send the failed message again. */
+  continueElsewhere(): Promise<void>;
   /** Open a fresh, empty chat (the source picker decides who answers). A
    *  project is auto-created on first save, so this never dead-ends. */
   startNewChat(): void;
@@ -1824,6 +1835,16 @@ export const useApp = create<AppState>((set, get, api) => {
           return;
         }
         const conv = get().conversations[conversationId];
+        // A Claude turn that proves the key's setup wrong marks it, so the
+        // next guide opens on a brain that can answer instead of this one.
+        if (
+          event.reason === 'error' &&
+          conv?.source.kind === 'cloud' &&
+          conv.source.provider === 'anthropic' &&
+          isSetupFailure(event.message ?? '')
+        ) {
+          set({ cloudKeyNeedsFix: true });
+        }
         // Tell a person who walked away that the turn ended. The gate holds it
         // back while the app is in front, so a journal replay on open (always
         // foreground) never fires one; a desktop session the daemon already
@@ -2944,6 +2965,7 @@ export const useApp = create<AppState>((set, get, api) => {
     order: [],
     settings: { onboarded: false, claudeModel: DEFAULT_CLAUDE_MODEL, deviceModels: {} },
     cloudKeyPresent: false,
+    cloudKeyNeedsFix: false,
     connectedProviders: {},
     arrivedBack: false,
     codemagicConnected: false,
@@ -3743,7 +3765,7 @@ export const useApp = create<AppState>((set, get, api) => {
       return id;
     },
 
-    async switchModel(source) {
+    async switchModel(source, opts) {
       const { activeId } = get();
       const conv = activeId ? get().conversations[activeId] : undefined;
       // Only chat brains carry a thread forward. A repo agent ('desktop') or the
@@ -3766,7 +3788,14 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast('Answer the pending step first, then switch.');
         return;
       }
-      const seed = seedFromTranscript(conv.thread.items);
+      // Resending the failed message: seed the history before it, so the new
+      // brain does not see the same question twice in a row.
+      const lastUserAt = conv.thread.items.map((i) => i.kind).lastIndexOf('user');
+      const resendItem =
+        opts?.resend && lastUserAt >= 0 ? conv.thread.items[lastUserAt] : undefined;
+      const seed = seedFromTranscript(
+        resendItem ? conv.thread.items.slice(0, lastUserAt) : conv.thread.items,
+      );
       // Build the new driver BEFORE committing the model change. If the build
       // fails (for example a Claude model with no key stored), the conversation
       // stays on its current brain instead of showing the new model in the top
@@ -3813,6 +3842,39 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       });
       void persistConversations(get());
+      if (resendItem?.kind === 'user') get().send(resendItem.text);
+    },
+
+    rescueSourceFor(conversationId) {
+      const conv = get().conversations[conversationId];
+      if (!conv) return undefined;
+      return rescueSource(conv.source, {
+        harborLiteHost: platform() === 'ios',
+        harborLite: { modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME },
+        stackReady: get().sourceReady({ kind: 'stack' }),
+      });
+    },
+
+    async continueElsewhere() {
+      const { activeId } = get();
+      if (!activeId) return;
+      const source = get().rescueSourceFor(activeId);
+      if (!source) return;
+      const harborLite = source.kind === 'device' && source.modelId === HARBOR_MINI_MODEL_ID;
+      if (harborLite && !get().settings.harborMiniReady) {
+        get().showToast(`Getting ${HARBOR_MINI_MODEL_NAME} ready. The chat picks up when it is.`);
+        const ok = await get().ensureHarborMini();
+        if (!ok) {
+          get().showToast(
+            `${HARBOR_MINI_MODEL_NAME} did not download. Try again, or pick a model.`,
+          );
+          return;
+        }
+        // The person may have moved on while it downloaded.
+        if (get().activeId !== activeId) return;
+      }
+      logEvent('chat_rescued', { to: source.kind });
+      await get().switchModel(source, { resend: true });
     },
 
     startNewChat() {
@@ -5477,7 +5539,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // (downloaded on the spot if needed). Never a brain that cannot answer.
       let source: ConversationSource | undefined;
       if (isDesktop() && s.sourceReady({ kind: 'desktop' })) source = { kind: 'desktop' };
-      else if (s.cloudKeyPresent)
+      else if (s.cloudKeyPresent && !s.cloudKeyNeedsFix)
         source = { kind: 'cloud', provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL };
       else if (platform() === 'ios') {
         const ok = s.settings.harborMiniReady || (await get().ensureHarborMini());
@@ -6716,13 +6778,13 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async setCloudKey(key) {
       await secretSet(ANTHROPIC_KEY_KEY, key.trim());
-      set({ cloudKeyPresent: true });
+      set({ cloudKeyPresent: true, cloudKeyNeedsFix: false });
       logEvent('cloud_key_added');
     },
 
     async clearCloudKey() {
       await secretDelete(ANTHROPIC_KEY_KEY);
-      set({ cloudKeyPresent: false });
+      set({ cloudKeyPresent: false, cloudKeyNeedsFix: false });
     },
 
     async connectProvider(id, key, workspaceId) {
@@ -6730,6 +6792,7 @@ export const useApp = create<AppState>((set, get, api) => {
       set((s) => ({
         connectedProviders: { ...s.connectedProviders, [id]: true },
         cloudKeyPresent: id === 'anthropic' ? true : s.cloudKeyPresent,
+        cloudKeyNeedsFix: id === 'anthropic' ? false : s.cloudKeyNeedsFix,
         justConnected: id,
       }));
       if (id === 'anthropic') {
@@ -6746,6 +6809,7 @@ export const useApp = create<AppState>((set, get, api) => {
       set((s) => ({
         connectedProviders: { ...s.connectedProviders, [id]: false },
         cloudKeyPresent: id === 'anthropic' ? false : s.cloudKeyPresent,
+        cloudKeyNeedsFix: id === 'anthropic' ? false : s.cloudKeyNeedsFix,
       }));
       if (id === 'anthropic') {
         await get().saveSettings({ anthropicWorkspaceId: undefined });
