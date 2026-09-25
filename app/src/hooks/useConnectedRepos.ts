@@ -13,8 +13,7 @@ import { githubAppSlug, repoToken } from '../lib/gitos/repoOAuth.js';
 import { computerFor } from '../lib/repoClone.js';
 import { plainError } from '../lib/plainError.js';
 import {
-  githubAccess,
-  githubAccessHint,
+  githubStatus,
   listRemoteRepos,
   readRepoCache,
   remoteIdFromUrl,
@@ -34,8 +33,10 @@ export interface ConnectedRepos {
   loading: boolean;
   /** A platform that could not be listed, as a sentence that names the fix. */
   error?: string;
-  /** Why a GitHub repository might be missing, and where on GitHub to fix it. */
+  /** Why a GitHub repository might be missing, and where to fix it. */
   access?: RepoAccessHint;
+  /** Which GitHub account and kind of sign-in is in use. */
+  githubLine?: string;
   refresh: () => void;
 }
 
@@ -53,6 +54,7 @@ export function useConnectedRepos(enabled: boolean): ConnectedRepos {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [access, setAccess] = useState<RepoAccessHint | undefined>();
+  const [githubLine, setGithubLine] = useState<string | undefined>();
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
@@ -74,23 +76,31 @@ export function useConnectedRepos(enabled: boolean): ConnectedRepos {
       } catch {
         if (live) setWorkspaces([]);
       }
+      // GitHub also says how it is signed in and why something may be
+      // missing (githubStatus); the others list.
+      let githubHint: RepoAccessHint | undefined;
+      let githubSignIn: string | undefined;
       const results = await Promise.allSettled(
         list.map(async (platform) => {
           const token = await repoToken(platform);
-          if (!token) return { platform, rows: [] as RepoOption[], token };
-          return { platform, rows: await listRemoteRepos(platform, token), token };
+          if (!token) return { platform, rows: [] as RepoOption[] };
+          if (platform !== 'github') {
+            return { platform, rows: await listRemoteRepos(platform, token) };
+          }
+          const status = await githubStatus(token, { slug: githubAppSlug() });
+          githubHint = status.hint;
+          githubSignIn = status.line;
+          return { platform, rows: status.repos };
         }),
       );
       if (!live) return;
       const failed = new Set<RepoPlatform>();
       const fresh = new Map<RepoPlatform, RepoOption[]>();
       let firstError: string | undefined;
-      let githubToken: string | undefined;
       results.forEach((r, i) => {
         const platform = list[i]!;
         if (r.status === 'fulfilled') {
           fresh.set(platform, r.value.rows);
-          if (platform === 'github') githubToken = r.value.token;
         } else {
           failed.add(platform);
           firstError ??= plainError(r.reason);
@@ -106,13 +116,9 @@ export function useConnectedRepos(enabled: boolean): ConnectedRepos {
         return next;
       });
       setError(firstError);
+      setAccess(githubHint);
+      setGithubLine(githubSignIn);
       setLoading(false);
-      // Why a GitHub list can look short: asked only after the list itself
-      // came back, so an expired sign-in shows its own line, not this one.
-      const probe = githubToken
-        ? await githubAccess(githubToken).catch(() => undefined)
-        : undefined;
-      if (live) setAccess(githubToken ? githubAccessHint(probe, githubAppSlug()) : undefined);
     })();
     return () => {
       live = false;
@@ -147,6 +153,7 @@ export function useConnectedRepos(enabled: boolean): ConnectedRepos {
     loading,
     error,
     access,
+    githubLine,
     refresh,
   };
 }

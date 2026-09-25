@@ -9,7 +9,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EDIT_CHOICES,
   EDIT_CHOICE_QUESTION,
+  FIRST_CHAT_GOAL,
+  HARBOR_READY_MESSAGE,
   HARBOR_SWITCH_HINT,
+  NEXT_CHOICES,
+  harborForkMessage,
+  nextChoiceMessage,
+  nextChoiceQuestion,
+  stepsAhead,
   STEP_COPY,
   advanceMessage,
   editChoiceMessage,
@@ -290,6 +297,80 @@ describe('the edit choice at the end of the repository step', () => {
   });
 });
 
+// Founder, 2026-09-25: once the guide has offered Harbor, it asks whether to
+// start chatting or keep setting up, so anyone can step past setup.
+describe('the fork after Harbor', () => {
+  it('asks to chat or keep setting up, naming the steps still ahead', () => {
+    const q = nextChoiceQuestion(stepsAhead({ skipped: ['harbor'] }, NONE));
+    expect(q).toContain('start chatting now, or keep setting up');
+    expect(q).toContain(
+      'three more steps: connect your computer, set up a repository, and connect your own API key',
+    );
+    expect(nextChoiceQuestion(['key'])).toContain('is one more step: connect your own API key');
+    expect(stepsAhead({ skipped: [] }, { ...NONE, computer: true, key: true })).toEqual(['repo']);
+  });
+
+  it('leads with what happened to Harbor', () => {
+    const downloading = { ...NONE, harborDownloading: true };
+    expect(harborForkMessage('done', { skipped: [] }, downloading)).toMatch(
+      new RegExp(`^${STEP_COPY.harbor.done}`),
+    );
+    expect(harborForkMessage('done', { skipped: [] }, { ...NONE, harborReady: true })).toContain(
+      HARBOR_READY_MESSAGE,
+    );
+    expect(harborForkMessage('skipped', { skipped: ['harbor'] }, NONE)).toMatch(
+      /^No problem, we can come back to Harbor\./,
+    );
+  });
+
+  it('offers chatting first, as two equal buttons', () => {
+    expect(NEXT_CHOICES.map((c) => c.label)).toEqual(['Start chatting', 'Keep setting up']);
+  });
+
+  it('answers each choice: an open invitation, or straight into the next step', () => {
+    const chat = nextChoiceMessage('chat', 'computer', NONE);
+    expect(chat).toMatch(/^Let's chat\./);
+    expect(chat).toContain('Pick up setup');
+    // Nothing left to pick up: no pointer to a button that is not there.
+    expect(nextChoiceMessage('chat', undefined, NONE)).not.toContain('Pick up setup');
+    expect(nextChoiceMessage('setup', 'computer', NONE)).toContain(stepIntro('computer'));
+    expect(nextChoiceMessage('setup', undefined, NONE)).toBe(finishMessage(NONE));
+  });
+
+  it('tells the model about the fork while it waits, and keeps the walk active', () => {
+    const p = {
+      conversationId: 'c',
+      current: 'computer' as const,
+      skipped: [],
+      nextChoice: 'asking' as const,
+    };
+    expect(walkActive(p)).toBe(true);
+    const guide = guideContextLine(p, NONE)!;
+    expect(guide).toContain(FIRST_CHAT_GOAL);
+    expect(guide).toContain('"Start chatting"');
+    expect(guide).toContain('"Keep setting up"');
+    const other = guideContextLine(p, NONE, 'other')!;
+    expect(other).toContain('"Start chatting"');
+    expect(other).not.toContain(FIRST_CHAT_GOAL);
+  });
+
+  it('reads "keep setting up" as carrying on', () => {
+    expect(setupIntent('keep setting up')).toBe('resume');
+    expect(setupIntent('Keep setting up.')).toBe('resume');
+  });
+
+  it('never uses an em dash', () => {
+    const all = [
+      nextChoiceQuestion(['computer', 'repo', 'key']),
+      harborForkMessage('done', { skipped: [] }, NONE),
+      harborForkMessage('skipped', { skipped: ['harbor'] }, NONE),
+      nextChoiceMessage('chat', 'computer', NONE),
+      nextChoiceMessage('setup', 'computer', NONE),
+    ].join(' ');
+    expect(all).not.toContain(EM_DASH);
+  });
+});
+
 const { useApp } = await import('../src/state/store.js');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const guided = () => useApp.getState().settings.guidedSetup!;
@@ -328,6 +409,11 @@ describe('the guided walk in the store', () => {
     expect(texts().at(-1)).toContain(stepIntro('harbor'));
 
     useApp.getState().skipSetupStep();
+    await wait(5);
+    // Harbor's step ends on the fork: chat now, or keep setting up.
+    expect(guided().nextChoice).toBe('asking');
+    expect(texts().at(-1)).toMatch(/start chatting now, or keep setting up/i);
+    useApp.getState().chooseNext('setup');
     await wait(5);
     expect(guided().current).toBe('computer');
     expect(texts().at(-1)).toContain(stepIntro('computer'));
@@ -411,7 +497,11 @@ describe('the guided walk in the store', () => {
   it('says how to switch once Harbor finishes, even after the walk', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
-    for (let i = 0; i < 3; i++) {
+    useApp.getState().skipSetupStep();
+    await wait(5);
+    useApp.getState().chooseNext('setup');
+    await wait(5);
+    for (let i = 0; i < 2; i++) {
       useApp.getState().skipSetupStep();
       await wait(5);
     }
@@ -488,5 +578,124 @@ describe('the guided walk in the store', () => {
     expect(useApp.getState().settings.harborMiniReady).toBe(true);
     expect(useApp.getState().conversations[id].thread.queued).toEqual([]);
     expect(deviceSends).toEqual(['What can you do?']);
+  });
+});
+
+describe('the fork after Harbor, in the store', () => {
+  beforeEach(() => {
+    mem.clear();
+    deviceSends.length = 0;
+    useApp.setState({
+      settings: {
+        onboarded: true,
+        claudeModel: 'x',
+        deviceModels: {},
+        harborMiniReady: true,
+      },
+      conversations: {},
+      order: [],
+      activeId: undefined,
+      view: 'chat',
+      harborDownload: undefined,
+      cloudKeyPresent: false,
+      connectedProviders: {},
+      connectedRepoPlatforms: {},
+    });
+  });
+
+  it('holds after Get Harbor, and Start chatting steps the walk back', async () => {
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    useApp.getState().openSetupStep();
+    await wait(20);
+    expect(guided().nextChoice).toBe('asking');
+    expect(texts().at(-1)).toContain(STEP_COPY.harbor.done);
+    expect(texts().at(-1)).toMatch(/start chatting now, or keep setting up/i);
+    // The next step is not introduced while the fork waits.
+    expect(texts().join('\n')).not.toContain(stepIntro('computer'));
+
+    useApp.getState().chooseNext('chat');
+    await wait(5);
+    expect(guided().paused).toBe(true);
+    expect(guided().nextChoice).toBe('chat');
+    expect(texts().at(-1)).toMatch(/^Let's chat\./);
+    expect(texts().join('\n')).not.toContain(stepIntro('computer'));
+
+    // Harbor landing still says how to switch to it.
+    await wait(1600);
+    expect(texts().at(-1)).toContain(HARBOR_SWITCH_HINT);
+
+    // Pick up setup resumes at the step that was next.
+    useApp.getState().resumeGuidedSetup();
+    await wait(5);
+    expect(guided().paused).toBe(false);
+    expect(guided().current).toBe('computer');
+    expect(texts().at(-1)).toContain(stepIntro('computer'));
+  });
+
+  it('Keep setting up carries on to the next step', async () => {
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    useApp.getState().skipSetupStep();
+    await wait(5);
+    // Skipping the step Harbor had does not skip the fork, or the next step.
+    useApp.getState().skipSetupStep();
+    await wait(5);
+    expect(guided().nextChoice).toBe('asking');
+    expect(guided().skipped).toEqual(['harbor']);
+
+    useApp.getState().chooseNext('setup');
+    await wait(5);
+    expect(guided().nextChoice).toBe('setup');
+    expect(guided().paused).toBeFalsy();
+    expect(guided().current).toBe('computer');
+    expect(texts().at(-1)).toContain(stepIntro('computer'));
+  });
+
+  it('takes the answer in words too', async () => {
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    const id = guided().conversationId;
+    useApp.setState({ activeId: id });
+    useApp.getState().skipSetupStep();
+    await wait(5);
+    useApp.getState().send('keep setting up');
+    await wait(5);
+    expect(guided().nextChoice).toBe('setup');
+    expect(guided().current).toBe('computer');
+    // The walk answered it; nothing went to the model.
+    expect(deviceSends).toEqual([]);
+  });
+
+  it('"not now" at the fork is the chat choice, and the guide answers it', async () => {
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    const id = guided().conversationId;
+    useApp.setState({ activeId: id });
+    useApp.getState().skipSetupStep();
+    await wait(5);
+    useApp.getState().send('Not now, I just want to chat');
+    await wait(20);
+    expect(guided().nextChoice).toBe('chat');
+    expect(guided().paused).toBe(true);
+    expect(deviceSends).toEqual(['Not now, I just want to chat']);
+  });
+
+  it('is not asked when nothing else is left to set up', async () => {
+    useApp.setState((s) => ({
+      settings: {
+        ...s.settings,
+        daemon: { baseUrl: 'http://box', token: 't' } as never,
+        repo: { homeRepo: 'me/app' } as never,
+      },
+      cloudKeyPresent: true,
+    }));
+    await useApp.getState().beginGuidedSetup();
+    await wait(760);
+    expect(guided().current).toBe('harbor');
+    useApp.getState().skipSetupStep();
+    await wait(5);
+    expect(guided().nextChoice).toBeUndefined();
+    expect(guided().finished).toBe(true);
   });
 });

@@ -704,7 +704,11 @@ function ManageReposSheet({
           <button
             type="button"
             className="linklike"
-            onClick={() => openInAppBrowser(repos.access!.url, repos.refresh)}
+            onClick={() =>
+              repos.access!.url && !repos.access!.reconnect
+                ? openInAppBrowser(repos.access!.url, repos.refresh)
+                : onOpenRepos()
+            }
           >
             {repos.access.action}
           </button>

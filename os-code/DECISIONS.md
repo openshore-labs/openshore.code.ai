@@ -1890,6 +1890,13 @@ execution contract. Newest at the bottom.
   2026-09-25:** `/chat` keeps dropping client system turns and instead
   appends a capped `context` string (8,000 characters) below its fixed line,
   so the project brief and setup step reach it. An older daemon ignores it.
+- **Setup forks after Harbor, founder 2026-09-25:** once the Harbor step ends
+  (taken or skipped) and setup is still ahead, the guide asks "start chatting
+  or keep setting up" and holds for a tap. Start chatting is listed first and
+  pauses the walk where it stands (Pick up setup resumes it); a bare "skip"
+  at the fork means chat, "next" means carry on. There is no fork when
+  nothing else is left, and a step cannot be skipped while the fork waits,
+  since that step has not been introduced yet.
 - **Reconcile pushes with the app's connected token, 2026-09-25:** only for an
   https remote on that token's own platform, per git command, host-scoped
   through the environment, never stored. This supersedes "no push credential
@@ -1918,6 +1925,11 @@ execution contract. Newest at the bottom.
   the person taps it. The Image reading cloud slot's default (the most capable
   cloud model, shown until a person assigns one) is not a placement, so it
   asks.
+- **Correction to the short-list ruling, 2026-09-25:** the founder's list was
+  short because the sign-in saw public repositories only (the App already had
+  All repositories). GitHub's authorize call now asks for `repo read:org`,
+  ignored by a GitHub App and required by an OAuth App, and the app names the
+  sign-in kind, account, and private count so the cause is read, not guessed.
 - **Chain of Thought (2026-09-25):** off by default; the app switch overrides
   the engine config in BOTH directions (`chainOfThoughtEnabled`), unlike the
   humanizer's off-only override, because it is the person's display choice,

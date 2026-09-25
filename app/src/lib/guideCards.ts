@@ -49,7 +49,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'setup-page',
     title: 'Set up OpenShore',
     where: "The Set up OpenShore button under Harbor Lite's first message",
-    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Connect your own API key. On your computer: Set up your local stack, Open a repository, Connect your own API key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message; say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
+    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Connect your own API key. On your computer: Set up your local stack, Open a repository, Connect your own API key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message, and after Harbor it asks whether to start chatting or keep setting up, so setup never stands in the way; tap Pick up setup or say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
     keywords: [
       'set up',
       'setup',
