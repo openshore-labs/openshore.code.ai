@@ -234,7 +234,7 @@ let stackRequestSeq = 0;
 
 /** The turn's end when the person keeps an image off the cloud. */
 export const IMAGE_NOT_SENT =
-  'You declined, so the image was not sent. None of your local models can see images yet. To read images without the cloud, add a model that can, on your own server, to Stack under Image reading.';
+  'You declined, so the image was not sent. Set a model for Image reading in Stack and images go to it without asking.';
 
 // A routed specialist could not run this turn (no key, load failure, HTTP
 // error). Distinct from a generic failure so run() can degrade to the Reasoning
@@ -291,8 +291,8 @@ export class StackDriver implements ChatDriver {
   private searchedThisTurn = false;
   private deviceTurn?: { ref: Extract<StackModelRef, { kind: 'device' }>; placement?: Placement };
   private guidePrompt?: string;
-  // A card this driver put in front of the person (an image bound for a cloud
-  // model they did not place), waiting on their tap.
+  // A card this driver put in front of the person (an image bound for a model
+  // not placed for Image reading), waiting on their tap.
   private pendingAsk?: { id: string; settle: (approved: boolean) => void };
 
   constructor(
@@ -553,9 +553,8 @@ export class StackDriver implements ChatDriver {
     // the model placed for image reading if it can see and is reachable, else a
     // vision-capable model already in the stack, else a connected cloud
     // provider (the founder's "if there isn't one available and capable it can
-    // go to a cloud provider"), asked first with a card (founder, 2026-09-25).
-    // A device model cannot read images on this build, so a local model placed
-    // for vision falls back to the cloud here, through that same card.
+    // go to a cloud provider"). A device model cannot read images on this
+    // build, so a local model placed for vision falls back to the cloud here.
     const images = (attachments ?? []).filter((a) => a.isImage);
     let target: {
       ref: StackModelRef;
@@ -572,9 +571,10 @@ export class StackDriver implements ChatDriver {
         });
         return;
       }
-      // A cloud reader the person never placed only fills a gap, so the photo
-      // waits on a card they tap instead of leaving silently (tenet 4).
-      if (vision.gapFill && !(await this.askToReadWithCloud(vision.ref, images.length))) {
+      // Only a model placed for Image reading takes an image without a word
+      // (founder, 2026-09-25). Any other reader, the anchor or a connected cloud
+      // model filling the gap, waits on a card the person taps (tenet 4).
+      if (!vision.dedicated && !(await this.askToReadImage(vision.ref, images.length))) {
         if (this.aborted) this.finish('aborted');
         else this.emit({ type: 'task-done', reason: 'declined', message: IMAGE_NOT_SENT });
         return;
@@ -689,28 +689,38 @@ export class StackDriver implements ChatDriver {
 
   /** Pick the target for an image-bearing turn, or undefined when nothing can
    *  read it. A capable model placed in (or anchoring) the stack wins; otherwise
-   *  a connected cloud provider that reads images is the fallback. */
+   *  a connected cloud provider that reads images is the fallback. `dedicated`
+   *  marks a reader placed for Image reading, the one case that never asks. */
   private async routeVision(): Promise<
-    { ref: StackModelRef; placement?: Placement; category: 'vision'; gapFill?: boolean } | undefined
+    | { ref: StackModelRef; placement?: Placement; category: 'vision'; dedicated: boolean }
+    | undefined
   > {
     const pick = pickVisionRef(this.stack, (r) => this.reachable(r));
-    if (pick) return { ref: pick.ref, placement: pick.placement, category: 'vision' };
+    if (pick) {
+      return {
+        ref: pick.ref,
+        placement: pick.placement,
+        category: 'vision',
+        dedicated: pick.placement?.category === 'vision',
+      };
+    }
     const fallback = await this.cloudVisionFallback();
-    if (fallback) return { ref: fallback, category: 'vision', gapFill: true };
+    if (fallback) return { ref: fallback, category: 'vision', dedicated: false };
     return undefined;
   }
 
-  /** Ask before an image goes to a cloud model the person did not place. */
-  private askToReadWithCloud(ref: StackModelRef, count: number): Promise<boolean> {
+  /** Ask before an image goes to a model not placed for Image reading. Amber
+   *  (Cloud spend) when the reader is a cloud model, plain when it is your own. */
+  private askToReadImage(ref: StackModelRef, count: number): Promise<boolean> {
     const what = count === 1 ? 'this image' : `these ${count} images`;
-    const anchor = refName(this.stack.reasoning ?? harborRef());
     const reader = refName(ref);
+    const cloud = ref.kind === 'cloud';
     return this.askFirst({
-      kind: 'cloud-spend',
-      toolName: 'readImage',
-      risk: 'cloud-spend',
+      kind: cloud ? 'cloud-spend' : 'tool',
+      toolName: 'analyzeImage',
+      risk: cloud ? 'cloud-spend' : 'network',
       summary: `Read ${what} with ${reader}?`,
-      detail: `${anchor} can't see images, so ${what} would go to ${reader} on your own API key. Nothing is sent until you approve.`,
+      detail: `Nothing in Stack is set for Image reading, so ${what} would go to ${reader}${cloud ? ' on your own API key' : ''}. Nothing is sent until you approve. Set a model for Image reading in Stack and images go to it without asking.`,
     });
   }
 

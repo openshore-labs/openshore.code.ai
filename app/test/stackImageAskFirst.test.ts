@@ -1,8 +1,8 @@
-// An image in a Stack chat where nothing the person placed can see it (founder,
-// 2026-09-25: "Ask first"). The stack may still reach for a connected cloud
-// reader to fill the gap, but only through a card the person taps (tenet 4):
-// nothing is sent before Approve, a No ends the turn plainly, and a placed
-// cloud reader is the person's own choice, so it never asks.
+// An image in a Stack chat (founder, 2026-09-25): "Ask first unless the stack
+// has a model there that is dedicated to image reading, then it's just
+// automatic." Any other reader, a connected cloud model filling the gap or an
+// anchor that can see, waits on a card the person taps (tenet 4): nothing is
+// sent before Approve, a No ends the turn plainly, a stop counts as a No.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApprovalRequest, DriverEvent } from 'os-code/protocol';
 
@@ -97,7 +97,7 @@ describe('an image when no local model can see', () => {
       risk: 'cloud-spend',
       summary: 'Read this image with Claude?',
     });
-    expect(ask?.request.detail).toContain("Harbor Lite can't see images");
+    expect(ask?.request.detail).toContain('Nothing in Stack is set for Image reading');
     expect(h.streams).toBe(0);
     expect(events.some((e) => e.type === 'task-done')).toBe(false);
     driver.dispose();
@@ -147,17 +147,62 @@ describe('an image when no local model can see', () => {
   });
 });
 
-describe('an image when the person placed a cloud reader', () => {
-  it('never asks: the seat is their own choice', async () => {
+const claude = {
+  kind: 'cloud' as const,
+  provider: 'anthropic',
+  model: 'claude-opus',
+  label: 'Claude',
+};
+
+describe('an image when a model is placed for Image reading', () => {
+  it('goes to it automatically, no card', async () => {
     const { driver, events } = chat({
-      reasoning: { kind: 'cloud', provider: 'anthropic', model: 'claude-opus', label: 'Claude' },
-      active: [],
+      reasoning: harborRef(),
+      active: [{ ref: claude, placement: { category: 'vision' } }],
       saved: {},
     });
     driver.send('Who is this?', [photo]);
     await settle();
     expect(asked(events)).toBeUndefined();
     expect(h.streams).toBe(1);
+    expect(events.findLast((e) => e.type === 'task-done')).toMatchObject({ reason: 'complete' });
+    driver.dispose();
+  });
+});
+
+describe('an image when only a model not dedicated to Image reading can see', () => {
+  it('asks even when the anchor itself can see', async () => {
+    const { driver, events } = chat({ reasoning: claude, active: [], saved: {} });
+    driver.send('Who is this?', [photo]);
+    await settle();
+    expect(asked(events)?.request).toMatchObject({
+      kind: 'cloud-spend',
+      summary: 'Read this image with Claude?',
+    });
+    expect(h.streams).toBe(0);
+    driver.dispose();
+  });
+
+  it('asks with a plain card, not a spend card, for your own model', async () => {
+    const { driver, events } = chat({
+      reasoning: {
+        kind: 'byom',
+        id: 'byom-ollama',
+        label: 'Ollama',
+        baseUrl: 'http://box:11434/v1',
+        model: 'llava',
+      },
+      active: [],
+      saved: {},
+    });
+    driver.send('Who is this?', [photo]);
+    await settle();
+    expect(asked(events)?.request).toMatchObject({
+      kind: 'tool',
+      toolName: 'analyzeImage',
+      summary: 'Read this image with Ollama?',
+    });
+    expect(asked(events)?.request.detail).not.toContain('API key');
     driver.dispose();
   });
 });
