@@ -18,6 +18,7 @@ import { PACES, inkPlan, type PacedKind } from '../lib/introWalk.js';
 import { restampForSkip, type InkStamp } from '../lib/inkSwell.js';
 import { hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
+import { isFailedStop, isSetupFailure, pointsAtConnections } from '../lib/chatRescue.js';
 import { Markdown } from './Markdown.js';
 import { ToolCard } from './ToolCard.js';
 import { CommandCard } from './CommandCard.js';
@@ -27,6 +28,12 @@ import { PlanCard } from './PlanCard.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { Icon } from './Icon.js';
+import { Keyboard } from '@capacitor/keyboard';
+import { isPhone } from '../lib/platform.js';
+
+/** How far a downward drag on the transcript travels before the keyboard goes:
+ *  past a tap's wobble, well short of a real scroll. */
+const DISMISS_DRAG_PX = 16;
 
 /** Jump to the foot with no animation. The thread's CSS smooth scroll would
  *  otherwise animate every follow, so streaming text trails below the fold. */
@@ -143,12 +150,14 @@ const FLAT_MS = 220;
 
 /** A stopped turn that a retry could plausibly fix: anything but the
  *  person's own stop or a declined step. */
-function retryable(message: string): boolean {
-  return !/stopped at your request|declined|was declined/i.test(message);
-}
+const retryable = isFailedStop;
 
 export function MessageList({
   thread,
+  rescueLabel,
+  onRescue,
+  onPickModel,
+  onOpenConnections,
   onSwitchToLocal,
   onRetry,
   onApprovePlan,
@@ -158,6 +167,14 @@ export function MessageList({
   afterItem,
 }: {
   thread: ThreadState;
+  /** No dead ends: the brain a failed turn can continue on ("Harbor Lite"),
+   *  and the tap that carries the chat there and sends the message again. */
+  rescueLabel?: string;
+  onRescue?: () => void;
+  /** Open the model picker, the way on when nothing else here can answer. */
+  onPickModel?: () => void;
+  /** Open Cloud Connections, offered when the stop's fix lives there. */
+  onOpenConnections?: () => void;
   /** Open the Local LLMs sheet, offered when a turn stopped for no account usage. */
   onSwitchToLocal?: () => void;
   /** Resend the last message after an error. */
@@ -224,8 +241,11 @@ export function MessageList({
     return () => ro.disconnect();
   }, []);
 
-  // Drag the transcript down to put the keyboard away, the way Messages and
-  // the Claude app do. Only a clear downward drag, only while typing.
+  // Pull the transcript down to read back, and the keyboard goes away, the way
+  // the Claude app and Messages do (founder, 2026-09-25): scrolling up means
+  // skimming, and a tap on the chat box calls the keyboard back. A clear
+  // downward drag, once per gesture, only while the keyboard is up. Blur alone
+  // is not reliable in the iOS web view, so the plugin is told to hide too.
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
@@ -235,10 +255,13 @@ export function MessageList({
     };
     const onMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY;
-      if (startY === undefined || y === undefined || y - startY < 24) return;
+      if (startY === undefined || y === undefined || y - startY < DISMISS_DRAG_PX) return;
       startY = undefined;
       const active = document.activeElement;
-      if (active instanceof HTMLTextAreaElement && active.closest('.composer')) active.blur();
+      const typing = active instanceof HTMLTextAreaElement && Boolean(active.closest('.composer'));
+      if (!typing && !document.documentElement.classList.contains('kb-open')) return;
+      if (typing) (active as HTMLTextAreaElement).blur();
+      if (isPhone()) void Keyboard.hide().catch(() => {});
     };
     el.addEventListener('touchstart', onStart, { passive: true });
     el.addEventListener('touchmove', onMove, { passive: true });
@@ -387,12 +410,47 @@ export function MessageList({
                   {item.text}
                 </div>
               );
-            case 'stopped':
+            case 'stopped': {
+              // Only the last stop offers to move the chat on; an older one
+              // already has what came after it.
+              const isLatest =
+                !thread.busy && thread.items[thread.items.length - 1]?.id === item.id;
               return (
                 <div key={item.id} className="msg-stopped">
                   {item.message}
                   <div className="msg-stopped-actions">
-                    {onSwitchToLocal && offersLocalFallback(item.message) ? (
+                    {/* Every failed turn leaves a way to keep talking: carry the
+                        chat to a brain that can answer, or pick one. */}
+                    {isFailedStop(item.message) && isLatest && onRescue && rescueLabel ? (
+                      <button
+                        type="button"
+                        className="msg-stopped-action press-fb"
+                        onClick={onRescue}
+                      >
+                        Continue with {rescueLabel}
+                      </button>
+                    ) : isFailedStop(item.message) &&
+                      isLatest &&
+                      onPickModel &&
+                      !(onSwitchToLocal && offersLocalFallback(item.message)) ? (
+                      <button
+                        type="button"
+                        className="msg-stopped-action press-fb"
+                        onClick={onPickModel}
+                      >
+                        Choose another model
+                      </button>
+                    ) : null}
+                    {onOpenConnections && pointsAtConnections(item.message) ? (
+                      <button
+                        type="button"
+                        className="msg-stopped-action ghost press-fb"
+                        onClick={onOpenConnections}
+                      >
+                        Open Cloud Connections
+                      </button>
+                    ) : null}
+                    {!onRescue && onSwitchToLocal && offersLocalFallback(item.message) ? (
                       <button
                         type="button"
                         className="msg-stopped-action press-fb"
@@ -401,7 +459,10 @@ export function MessageList({
                         Switch to a local model
                       </button>
                     ) : null}
-                    {onRetry && retryable(item.message) && !thread.busy ? (
+                    {onRetry &&
+                    retryable(item.message) &&
+                    !isSetupFailure(item.message) &&
+                    !thread.busy ? (
                       <button
                         type="button"
                         className="msg-stopped-action ghost press-fb"
@@ -415,6 +476,7 @@ export function MessageList({
                   </div>
                 </div>
               );
+            }
           }
         })}
         {thread.queued.map((text, i) => (
