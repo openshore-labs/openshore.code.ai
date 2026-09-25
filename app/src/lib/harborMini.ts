@@ -130,28 +130,36 @@ export const HARBOR_MINI_PERSONA = [
 ].join('\n');
 
 // Where the guided setup stands (lib/guidedSetup.ts), supplied by the store so
-// this module stays free of it. Read on every reply, so a question asked
-// mid-walk is answered knowing the current step.
-let guideContext: () => string | undefined = () => undefined;
-export function setHarborMiniContext(fn: () => string | undefined): void {
+// this module stays free of it. Read on every reply, and keyed by the chat the
+// reply is for (never the chat on screen), so a question asked mid-walk is
+// answered knowing the current step and no other chat ever hears about it.
+export type SetupContext = (
+  conversationId: string | undefined,
+  audience: 'guide' | 'other',
+) => string | undefined;
+let guideContext: SetupContext = () => undefined;
+export function setHarborMiniContext(fn: SetupContext): void {
   guideContext = fn;
 }
 
-/** Where the guided setup stands, for any model answering in the walk's chat.
- *  A person who switches from Harbor Lite to Harbor or the Stack mid-walk is
- *  still in setup, so the model they switched to needs the same line. */
-export function guidedSetupLine(): string | undefined {
-  return guideContext();
+/** Where the guided setup stands, for a model other than Harbor Lite answering
+ *  in the walk's chat. A person who switches to Harbor or the Stack mid-walk is
+ *  still in setup, so the model they switched to needs to know the step. */
+export function guidedSetupLine(conversationId: string | undefined): string | undefined {
+  return conversationId ? guideContext(conversationId, 'other') : undefined;
 }
 
 /** One turn through the guide harness: the plan for this message, and the
  *  prompt once the driver has run any search the plan asked for. */
-export function harborMiniTurn(message: string): {
+export function harborMiniTurn(
+  message: string,
+  conversationId?: string,
+): {
   plan: GuidePlan;
   prompt: (search?: { sources?: readonly WebSearchResult[]; searchFailed?: boolean }) => string;
 } {
   const plan = planGuideTurn({ message, cards: GUIDE_CARDS });
-  const setupLine = guideContext();
+  const setupLine = conversationId ? guideContext(conversationId, 'guide') : undefined;
   return {
     plan,
     prompt: (search) =>
@@ -167,7 +175,7 @@ export function harborMiniTurn(message: string): {
 
 /** Harbor Lite's system prompt for a message, where the caller cannot search
  *  (the stack path): a planned search is reported as unavailable, honestly. */
-export function buildHarborMiniSystemPrompt(message = ''): string {
-  const turn = harborMiniTurn(message);
+export function buildHarborMiniSystemPrompt(message = '', conversationId?: string): string {
+  const turn = harborMiniTurn(message, conversationId);
   return turn.prompt(turn.plan.searchQuery ? { searchFailed: true } : undefined);
 }

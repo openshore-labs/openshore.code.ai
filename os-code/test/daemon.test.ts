@@ -17,6 +17,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  desktopChatSystem,
   isAdminProvisionedWorkspace,
   isOutboxAllowedPath,
   startDaemon,
@@ -265,6 +266,16 @@ describe('listings are owner-scoped for members (DAE-1)', () => {
 });
 
 describe('free desktop chat (/chat, read-only)', () => {
+  it("carries the chat's own context below the fixed system line, capped", () => {
+    const bare = desktopChatSystem(undefined);
+    expect(desktopChatSystem('  ')).toBe(bare);
+    expect(desktopChatSystem({ role: 'system' })).toBe(bare);
+    const withContext = desktopChatSystem('Project brief: ship the login screen.');
+    expect(withContext.startsWith(bare)).toBe(true);
+    expect(withContext).toContain('Project brief: ship the login screen.');
+    expect(desktopChatSystem('x'.repeat(50_000)).length).toBeLessThan(bare.length + 8100);
+  });
+
   it('rejects a chat with no messages', async () => {
     const res = await fetch(`${base}/chat`, {
       method: 'POST',

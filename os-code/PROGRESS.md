@@ -968,6 +968,10 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-25, conversing and building across model switches: the chat review, fixed
+
+Founder: the setup chat lost the thread after a switch to Harbor, then asked for a review of conversing and building with models swapped mid-chat, with every finding fixed. The first cause: the phone's history trim cut a run of guide lines back to the bare question, and only Harbor Lite knew the walk's step. Now a trimmed history keeps its guide lines behind a short opener. The walk's step reaches any model in the walk's chat (keyed by the chat the reply is for, dropped once setup is done or set aside), its buttons show whichever model answers, and the walk's own lines reach the live model (`recordLine`). Switching: a send is painted busy the moment it leaves (the ethics screen runs before the driver's task-start), a switch re-checks after its build and loses to a later switch or a send, and a stale open never attaches over it (`driverEpoch`). "My computer, chat" carries the thread and the project brief (`/chat` takes a capped `context`), a Claude request always opens on a user turn, and a Stack play's plan, steps, and synthesis read the conversation. Safety: a withheld message is marked and never seeded, and a blocked answer ends its turn once. Stop now answers during a phone model's warm-up and Harbor's web search. Tests: `app/test/chatSwitchContinuity.test.ts`, plus `switchModel`, `ethicsDriver`, `seedTranscript`, and `daemon`. Not yet felt on a phone.
+
 ### 2026-09-24, Zed's first-run options, ruled on by CX: one edit choice in the walk, Approvals in Settings
 
 Founder, from a photo of Zed's "Welcome to Zed" page: talk with CX about which options belong in onboarding and Settings. CX's ruling: take one idea and skip the rest, since Zed is setting up an editor and OpenShore has none. Theme is already in Settings (System, Light, Dark). Keymap and Vim mode need an editor, so skip. Agent setup is CLI Pairing, which is per project, so it becomes a guide opener ("Can I use Claude Code or Codex here?") and new grounding facts. Import settings becomes one sentence: the engine already follows OSCODE.md, CLAUDE.md, and AGENTS.md. Usage data and crash reports stay off because of the "no telemetry" promise. The trust toggle becomes a single choice. Must-fix, now done: the repo step and the `open-a-repo` guide promised "every edit shows you a diff first", but the default mode is Accept edits. Built: the repo step now ends on "Ask me first" / "Let edits flow" (plus "Decide later"). The walk holds until a tap, and "skip" there means decide later (`EDIT_CHOICES`, `repoConnectedMessage`, `chooseEditMode`, `EditChoiceActions`). The same choice is permanent in Settings under a new Approvals group ("When the agent edits"). Opt-in log events: `guided_setup_step_done`, `permission_mode_chosen`, `permission_mode_deferred`, and `permission_mode_changed {from, to, source}`, which is the regret signal. The walk stays at four steps. Tests: `app/test/guidedSetup.test.ts`. Not yet felt on a phone.
@@ -983,12 +987,3 @@ Founder: the first open landed on finished text; reveal it, pause on the welcome
 ### 2026-09-24, Harbor Lite's guide harness measured on the reference box
 
 The box (i5-7300U, 8 GB, CPU only), 49 questions with live DuckDuckGo: with the harness 94% vs 89% without on `smollm2:135m`, 94% vs 90% on the phone's Q4_K_M quant (`docs/guide-eval-2026-09-24.md`). Web and chat questions all 100%. The misses were the model restating setup advice without the size (fit-8, fit-4090, fit-mac on both runs), a stretch reply without Harbor or DeepBlue, and one em dash. So the harness now shows a fixed line after the reply with the worked-out DeepBlue size, as it already did for a stretch, and strips any em dash from Harbor Lite's words; the eval scores what the chat shows. The rest (stack, pair, bench, reach) moved between runs, so single-run noise, not yet a card fix.
-
-### 2026-09-24, the first chat opens at once; Harbor Lite really ships in the app
-
-TestFlight showed the plain chat for about a minute before the walk: no build
-carried Harbor Lite's weights, so first open downloaded them and the walk waited
-on that. `beginGuidedSetup` now opens the chat and its scripted hello at once
-and readies the model in the background; a line typed before it is ready waits
-as a queued message (`holdForHarborLite`). Codemagic now bundles the weights
-into `public/models/` (see docs/HARBOR.md), which `bundledURL` reads.

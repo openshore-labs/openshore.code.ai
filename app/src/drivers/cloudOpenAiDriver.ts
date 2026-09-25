@@ -9,8 +9,8 @@
 // through the native shim, which cannot stream: there we ask for the whole
 // answer and emit it once, the same split stackDriver's cloud path uses.
 import type { ApprovalAnswer } from 'os-code/protocol';
-import type { ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter } from './types.js';
+import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
+import { DriverEmitter, readChatContext } from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
@@ -102,8 +102,9 @@ export class CloudOpenAiDriver implements ChatDriver {
     /** The provider's display name, for error copy. */
     private readonly providerLabel: string,
     seed?: SeedTurn[],
-    /** Extra system context for this chat (the repositories it works with). */
-    private readonly extraSystem?: string,
+    /** Extra system context for this chat (the repositories it works with,
+     *  the guided setup's step), read on every reply. */
+    private readonly extraSystem?: ChatContext,
     private readonly contextWindow: number = DEFAULT_CONTEXT_WINDOW,
   ) {
     // A mid-chat switch seeds the prior turns so this model continues the thread.
@@ -139,7 +140,9 @@ export class CloudOpenAiDriver implements ChatDriver {
     const messages: OaiMessage[] = [
       {
         role: 'system',
-        content: [SYSTEM_PROMPT, effortDirective(), this.extraSystem].filter(Boolean).join('\n'),
+        content: [SYSTEM_PROMPT, effortDirective(), readChatContext(this.extraSystem)]
+          .filter(Boolean)
+          .join('\n'),
       },
       ...this.history,
     ];
@@ -283,6 +286,10 @@ export class CloudOpenAiDriver implements ChatDriver {
   abort(): void {
     this.aborted = true;
     this.controller?.abort();
+  }
+
+  recordLine(turn: SeedTurn): void {
+    this.history.push({ role: turn.role, content: turn.text });
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {
