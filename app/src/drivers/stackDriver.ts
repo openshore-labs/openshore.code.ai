@@ -20,7 +20,12 @@
 // pairing.
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
-import type { ApprovalAnswer, FetchLike, HarnessCurrentsHandle } from 'os-code/protocol';
+import type {
+  ApprovalAnswer,
+  ApprovalRequest,
+  FetchLike,
+  HarnessCurrentsHandle,
+} from 'os-code/protocol';
 import {
   uxStandardPrompt,
   humanizerStandardPrompt,
@@ -227,6 +232,10 @@ function hasVideoFrames(images: Attachment[]): boolean {
 // id and interleave their token streams into one answer.
 let stackRequestSeq = 0;
 
+/** The turn's end when the person keeps an image off the cloud. */
+export const IMAGE_NOT_SENT =
+  'You declined, so the image was not sent. None of your local models can see images yet. To read images without the cloud, add a model that can, on your own server, to Stack under Image reading.';
+
 // A routed specialist could not run this turn (no key, load failure, HTTP
 // error). Distinct from a generic failure so run() can degrade to the Reasoning
 // anchor instead of dead-ending the turn, the way the engine's router does.
@@ -282,6 +291,9 @@ export class StackDriver implements ChatDriver {
   private searchedThisTurn = false;
   private deviceTurn?: { ref: Extract<StackModelRef, { kind: 'device' }>; placement?: Placement };
   private guidePrompt?: string;
+  // A card this driver put in front of the person (an image bound for a cloud
+  // model they did not place), waiting on their tap.
+  private pendingAsk?: { id: string; settle: (approved: boolean) => void };
 
   constructor(
     private readonly stack: AppStack,
@@ -541,8 +553,9 @@ export class StackDriver implements ChatDriver {
     // the model placed for image reading if it can see and is reachable, else a
     // vision-capable model already in the stack, else a connected cloud
     // provider (the founder's "if there isn't one available and capable it can
-    // go to a cloud provider"). A device model cannot read images on this
-    // build, so a local model placed for vision falls back to the cloud here.
+    // go to a cloud provider"), asked first with a card (founder, 2026-09-25).
+    // A device model cannot read images on this build, so a local model placed
+    // for vision falls back to the cloud here, through that same card.
     const images = (attachments ?? []).filter((a) => a.isImage);
     let target: {
       ref: StackModelRef;
@@ -557,6 +570,13 @@ export class StackDriver implements ChatDriver {
           reason: 'error',
           message: `No image-reading model is reachable while ${this.profile}. Put an image-reading model in Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
         });
+        return;
+      }
+      // A cloud reader the person never placed only fills a gap, so the photo
+      // waits on a card they tap instead of leaving silently (tenet 4).
+      if (vision.gapFill && !(await this.askToReadWithCloud(vision.ref, images.length))) {
+        if (this.aborted) this.finish('aborted');
+        else this.emit({ type: 'task-done', reason: 'declined', message: IMAGE_NOT_SENT });
         return;
       }
       target = vision;
@@ -671,13 +691,44 @@ export class StackDriver implements ChatDriver {
    *  read it. A capable model placed in (or anchoring) the stack wins; otherwise
    *  a connected cloud provider that reads images is the fallback. */
   private async routeVision(): Promise<
-    { ref: StackModelRef; placement?: Placement; category: 'vision' } | undefined
+    { ref: StackModelRef; placement?: Placement; category: 'vision'; gapFill?: boolean } | undefined
   > {
     const pick = pickVisionRef(this.stack, (r) => this.reachable(r));
     if (pick) return { ref: pick.ref, placement: pick.placement, category: 'vision' };
     const fallback = await this.cloudVisionFallback();
-    if (fallback) return { ref: fallback, category: 'vision' };
+    if (fallback) return { ref: fallback, category: 'vision', gapFill: true };
     return undefined;
+  }
+
+  /** Ask before an image goes to a cloud model the person did not place. */
+  private askToReadWithCloud(ref: StackModelRef, count: number): Promise<boolean> {
+    const what = count === 1 ? 'this image' : `these ${count} images`;
+    const anchor = refName(this.stack.reasoning ?? harborRef());
+    const reader = refName(ref);
+    return this.askFirst({
+      kind: 'cloud-spend',
+      toolName: 'readImage',
+      risk: 'cloud-spend',
+      summary: `Read ${what} with ${reader}?`,
+      detail: `${anchor} can't see images, so ${what} would go to ${reader} on your own API key. Nothing is sent until you approve.`,
+    });
+  }
+
+  /** Put a card in front of the person and wait for their tap. A stop counts
+   *  as a no. */
+  private askFirst(request: Omit<ApprovalRequest, 'id'>): Promise<boolean> {
+    const id = `ask_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
+    return new Promise<boolean>((resolve) => {
+      this.pendingAsk = {
+        id,
+        settle: (approved) => {
+          this.pendingAsk = undefined;
+          this.emit({ type: 'approval-resolved', id, approved });
+          resolve(approved);
+        },
+      };
+      this.emit({ type: 'approval-request', request: { id, ...request } });
+    });
   }
 
   /** A connected, reachable cloud model that reads images, when the stack holds
@@ -1753,6 +1804,7 @@ export class StackDriver implements ChatDriver {
   abort(): void {
     this.aborted = true;
     this.abortController?.abort();
+    this.pendingAsk?.settle(false);
     const requestId = this.activeRequestId;
     if (requestId) {
       void Llama.stop({ requestId }).catch(() => {});
@@ -1777,8 +1829,12 @@ export class StackDriver implements ChatDriver {
   }
 
   answerApproval(id: string, answer: ApprovalAnswer): void {
-    // A tool step's approval is the engine's; pass the person's answer through
-    // to the engine session running it. Nothing else in this driver asks.
+    // This driver's own card (an image bound for the cloud) settles here; a
+    // tool step's approval is the engine's, so it passes through to it.
+    if (this.pendingAsk?.id === id) {
+      this.pendingAsk.settle(answer.approve);
+      return;
+    }
     this.engineDriver?.answerApproval(id, answer);
   }
 
