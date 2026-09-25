@@ -390,7 +390,7 @@ export interface AppSettings {
   projects?: Project[];
   /** The project new saved chats go into. */
   activeProjectId?: string;
-  /** My Crew: user-authored agents with personas and call rules. */
+  /** Crew: user-authored agents with personas and call rules. */
   crew?: CrewAgent[];
   /** Account: personal, or a commercial org with members and a plan. */
   account?: Account;
@@ -936,7 +936,7 @@ interface AppState {
 
   // Crew routines (the command center). Every call reaches the scheduler on
   // the computer that runs routines; the store keeps the last snapshot.
-  /** Open the command center (a sub-page of My Crew) and refresh. */
+  /** Open the command center (a sub-page of Crew) and refresh. */
   openCrewCommand(): void;
   /** Whether this device can set up and control routines right now (docked or
    *  on the machine), and where it stands otherwise. Viewing is always on. */
@@ -1090,7 +1090,7 @@ interface AppState {
   /** A portable JSON backup of everything not yet synced (the S2 escape hatch). */
   exportBuffer(): string;
 
-  // My Crew: user-authored agents.
+  // Crew: user-authored agents.
   /** Create a crew agent and return its id. */
   createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
   updateCrewAgent(id: string, patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>): Promise<void>;
@@ -3922,7 +3922,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     openCrewCommand() {
-      // A sub-page of My Crew: setView pushes Crew onto the trail, so the top
+      // A sub-page of Crew: setView pushes Crew onto the trail, so the top
       // bar offers a way back to the roster.
       get().setView('crewcommand');
       logEvent('crew_command_open');

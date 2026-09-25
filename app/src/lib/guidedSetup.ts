@@ -252,7 +252,7 @@ export function finishMessage(facts: SetupFacts): string {
 export const ASK_ANYTHING = [
   'How does Stack work?',
   'What is the Vault?',
-  'What can My Crew do?',
+  'What can Crew do?',
   'How do Projects work?',
   'Can I use Claude Code or Codex here?',
 ];

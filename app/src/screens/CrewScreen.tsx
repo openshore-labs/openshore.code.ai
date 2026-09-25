@@ -1,4 +1,4 @@
-// My Crew: your own roster of agents. Give each one a name, a persona, and a
+// Crew: your own roster of agents. Give each one a name, a persona, and a
 // rule for how and when it is called. An Activity Level decides that: it can
 // review every build before it ships, let the Reasoning LLM bring it in on its
 // own, or stay dormant until you ask for it by name. Scope each to specific
@@ -130,9 +130,9 @@ export function CrewScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="My Crew" />
+      <BackBar title="Crew" />
       <div className="screen-inner">
-        <h1>My Crew</h1>
+        <h1>Crew</h1>
         <p className="lead">
           Build your own agents. Each has a name, a persona, and a rule for how and when it is
           called. Point them at specific projects, or let them work across all of them.
