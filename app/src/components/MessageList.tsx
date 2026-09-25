@@ -400,16 +400,20 @@ export function MessageList({
         ) : null}
       </div>
       {pillMounted ? (
-        <button
-          type="button"
-          className={`scroll-pill press-fb${heldUnseen.current > 0 ? '' : ' bare'}${pillClosing ? ' closing' : ''}`}
-          onClick={jumpToBottom}
-          aria-label={heldUnseen.current > 0 ? undefined : 'Jump to latest'}
-        >
-          {heldUnseen.current > 0
-            ? `${heldUnseen.current === 1 ? 'New message' : `${heldUnseen.current} new`} ↓`
-            : '↓'}
-        </button>
+        // The thread is its own scroller, so an absolute child would ride the
+        // content. A zero-height sticky dock holds the pill to the visible foot.
+        <div className="scroll-pill-dock">
+          <button
+            type="button"
+            className={`scroll-pill press-fb${heldUnseen.current > 0 ? '' : ' bare'}${pillClosing ? ' closing' : ''}`}
+            onClick={jumpToBottom}
+            aria-label={heldUnseen.current > 0 ? undefined : 'Jump to latest'}
+          >
+            {heldUnseen.current > 0
+              ? `${heldUnseen.current === 1 ? 'New message' : `${heldUnseen.current} new`} ↓`
+              : '↓'}
+          </button>
+        </div>
       ) : null}
     </div>
   );
