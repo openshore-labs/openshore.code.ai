@@ -302,17 +302,34 @@ export function RepoPicker({
             {repos.access ? (
               <p className="hint repo-sheet-note">
                 {repos.access.text}{' '}
-                <button
-                  type="button"
-                  className="linklike"
-                  onClick={() => openInAppBrowser(repos.access!.url, repos.refresh)}
-                >
-                  {repos.access.action}
-                </button>
-                {'. Back here, '}
-                <button type="button" className="linklike" onClick={repos.refresh}>
-                  refresh the list
-                </button>
+                {repos.access.reconnect || !repos.access.url ? (
+                  // The fix is here, not on GitHub: the Repositories screen
+                  // reconnects GitHub with the access it needs.
+                  <button
+                    type="button"
+                    className="linklike"
+                    onClick={() => {
+                      close();
+                      onOpenRepos();
+                    }}
+                  >
+                    {repos.access.action}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="linklike"
+                      onClick={() => openInAppBrowser(repos.access!.url!, repos.refresh)}
+                    >
+                      {repos.access.action}
+                    </button>
+                    {'. Back here, '}
+                    <button type="button" className="linklike" onClick={repos.refresh}>
+                      refresh the list
+                    </button>
+                  </>
+                )}
                 .
               </p>
             ) : null}

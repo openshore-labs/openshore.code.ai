@@ -376,14 +376,20 @@ export function listRemoteRepos(
 
 // --- Why a GitHub list can look short --------------------------------------
 //
-// OpenShore signs in to GitHub as a GitHub App, and a GitHub App token sees
-// only the repositories that BOTH the person and the App can reach: on each
-// account or organization the App is installed on with "All repositories" or
-// a hand-picked few. A short list is almost always the App installed on an
-// organization with a few repositories picked, so the picker says so and
-// links straight to the page on GitHub where the person picks more.
+// What OpenShore sees on GitHub depends on HOW it is signed in, so the picker
+// reads that and says it plainly:
+//  - A GitHub App sign-in sees the repositories that both the person and the
+//    App can reach: on each account the App is installed on, "All
+//    repositories" or a hand-picked few.
+//  - A GitHub OAuth App sign-in, or a classic token, sees private repositories
+//    only with the `repo` scope; without it GitHub hands over public data
+//    alone. The founder's picker showed exactly the account's four public
+//    repositories (2026-09-25), which is that shape.
+//  - A fine-grained token sees what it was given on GitHub.
 
 export interface GithubInstallation {
+  /** The installation id, for listing its repositories. */
+  id?: number;
   /** The account or organization login. */
   account: string;
   selection: 'all' | 'selected';
@@ -392,19 +398,58 @@ export interface GithubInstallation {
   appSlug?: string;
 }
 
-export type GithubAccess =
-  { kind: 'app'; installations: GithubInstallation[] } | { kind: 'token'; fineGrained: boolean };
+/** How OpenShore is signed in to GitHub. */
+export type GithubSignIn = 'app' | 'oauth' | 'classic' | 'fine-grained';
 
-/** Read which accounts the GitHub App is installed on, and whether each one
- *  gave it every repository or a picked few. A pasted access token is not an
- *  App sign-in, so it answers as 'token'. Undefined when GitHub could not be
- *  asked (offline), so no hint is shown rather than a wrong one. */
+export interface GithubAccess {
+  kind: GithubSignIn;
+  /** The GitHub account the credential belongs to. */
+  login?: string;
+  /** The scopes GitHub granted an OAuth App sign-in or a classic token (its
+   *  X-OAuth-Scopes answer). Undefined when GitHub reports none, as for a
+   *  GitHub App sign-in or a fine-grained token. */
+  scopes?: string[];
+  /** For a GitHub App sign-in: where the App is installed. */
+  installations: GithubInstallation[];
+}
+
+function kindFromPrefix(token: string): GithubSignIn | undefined {
+  if (token.startsWith('ghu_')) return 'app';
+  if (token.startsWith('gho_')) return 'oauth';
+  if (token.startsWith('ghp_')) return 'classic';
+  if (token.startsWith('github_pat_')) return 'fine-grained';
+  return undefined;
+}
+
+/** Read how this credential is signed in: the account, the granted scopes,
+ *  and for a GitHub App sign-in, where the App is installed and whether each
+ *  account gave it every repository or a picked few. Undefined when GitHub
+ *  could not be asked or refused the credential (the list says that itself),
+ *  so no hint is shown rather than a wrong one. */
 export async function githubAccess(
   token: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GithubAccess | undefined> {
-  const pasted: GithubAccess = { kind: 'token', fineGrained: token.startsWith('github_pat_') };
-  if (token.startsWith('ghp_') || token.startsWith('github_pat_')) return pasted;
+  let me: Response;
+  try {
+    me = await fetchImpl('https://api.github.com/user', { headers: githubHeaders(token) });
+  } catch {
+    return undefined;
+  }
+  if (!me.ok) return undefined;
+  const user = (await me.json().catch(() => ({}))) as { login?: unknown };
+  const login = typeof user.login === 'string' ? user.login : undefined;
+  const header = me.headers.get('x-oauth-scopes');
+  const scopes =
+    header === null
+      ? undefined
+      : header
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean);
+  let kind = kindFromPrefix(token) ?? (scopes !== undefined ? 'oauth' : 'app');
+  if (kind !== 'app') return { kind, login, scopes, installations: [] };
+
   let res: Response;
   try {
     res = await fetchImpl('https://api.github.com/user/installations?per_page=100', {
@@ -415,10 +460,12 @@ export async function githubAccess(
   }
   if (!res.ok) {
     // GitHub refuses this call for anything but an App sign-in.
-    return res.status === 403 && !token.startsWith('ghu_') ? pasted : undefined;
+    if (res.status === 403 && !token.startsWith('ghu_')) kind = 'oauth';
+    return kind === 'app' ? undefined : { kind, login, scopes, installations: [] };
   }
   const body = (await res.json().catch(() => ({}))) as {
     installations?: Array<{
+      id?: unknown;
       account?: { login?: unknown };
       repository_selection?: unknown;
       html_url?: unknown;
@@ -428,6 +475,7 @@ export async function githubAccess(
   const installations = (Array.isArray(body.installations) ? body.installations : [])
     .filter((i) => typeof i.account?.login === 'string')
     .map((i) => ({
+      ...(typeof i.id === 'number' ? { id: i.id } : {}),
       account: i.account!.login as string,
       selection: i.repository_selection === 'all' ? ('all' as const) : ('selected' as const),
       manageUrl:
@@ -437,15 +485,43 @@ export async function githubAccess(
       appSlug:
         typeof i.app_slug === 'string' && /^[a-z0-9-]+$/i.test(i.app_slug) ? i.app_slug : undefined,
     }));
-  return { kind: 'app', installations };
+  return { kind: 'app', login, scopes, installations };
+}
+
+/** The repositories a GitHub App sign-in reaches through each installation,
+ *  GitHub's own answer for an App (GET /user/installations/{id}/repositories).
+ *  Merged with /user/repos, so nothing an installation grants goes missing. */
+export async function listGitHubInstallationRepos(
+  token: string,
+  installationIds: number[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<RepoOption[]> {
+  const out: RepoOption[] = [];
+  for (const id of installationIds) {
+    for (let page = 1; page <= MAX_PAGES; page += 1) {
+      const res = await fetchImpl(
+        `https://api.github.com/user/installations/${id}/repositories?per_page=100&page=${page}`,
+        { headers: githubHeaders(token) },
+      );
+      if (!res.ok) break;
+      const body = (await res.json().catch(() => ({}))) as { repositories?: GitHubRepoRow[] };
+      const rows = Array.isArray(body.repositories) ? body.repositories : [];
+      out.push(...toRepoOptions(rows));
+      if (rows.length < 100) break;
+    }
+  }
+  return out;
 }
 
 /** One line under the list saying why a repository might be missing, with the
- *  one place on GitHub that fixes it. */
+ *  one place that fixes it: a page on GitHub, or reconnecting GitHub here. */
 export interface RepoAccessHint {
   text: string;
   action: string;
-  url: string;
+  /** Where the action goes on GitHub. Absent when the fix is reconnecting. */
+  url?: string;
+  /** The fix is removing GitHub here and connecting it again. */
+  reconnect?: boolean;
 }
 
 function listNames(names: string[]): string {
@@ -455,15 +531,30 @@ function listNames(names: string[]): string {
 
 export function githubAccessHint(
   access: GithubAccess | undefined,
-  configuredSlug?: string,
+  opts: {
+    /** The GitHub App's slug from the build, when no installation names it. */
+    slug?: string;
+    /** Every repository the sign-in listed is public. */
+    publicOnly?: boolean;
+  } = {},
 ): RepoAccessHint | undefined {
   if (!access) return undefined;
-  if (access.kind === 'token') {
-    return access.fineGrained
+  const noRepoScope = access.scopes !== undefined && !access.scopes.includes('repo');
+  if (access.kind === 'oauth') {
+    return noRepoScope || opts.publicOnly
       ? {
-          text: 'Your fine-grained token decides which repositories OpenShore sees.',
+          text: 'This GitHub sign-in can see only your public repositories: GitHub gave it no access to private ones. Reconnect GitHub to allow them.',
+          action: 'Reconnect GitHub',
+          reconnect: true,
+        }
+      : undefined;
+  }
+  if (access.kind === 'classic') {
+    return noRepoScope || opts.publicOnly
+      ? {
+          text: 'Your access token can see only public repositories. Give it the repo scope on GitHub, then refresh.',
           action: 'Edit it on GitHub',
-          url: 'https://github.com/settings/personal-access-tokens',
+          url: 'https://github.com/settings/tokens',
         }
       : {
           text: 'Missing a repository? Your access token decides which ones OpenShore sees.',
@@ -471,7 +562,16 @@ export function githubAccessHint(
           url: 'https://github.com/settings/tokens',
         };
   }
-  const slug = access.installations.find((i) => i.appSlug)?.appSlug ?? configuredSlug;
+  if (access.kind === 'fine-grained') {
+    return {
+      text: opts.publicOnly
+        ? 'Your fine-grained token can see only public repositories. On GitHub, give it your private ones too.'
+        : 'Your fine-grained token decides which repositories OpenShore sees.',
+      action: 'Edit it on GitHub',
+      url: 'https://github.com/settings/personal-access-tokens',
+    };
+  }
+  const slug = access.installations.find((i) => i.appSlug)?.appSlug ?? opts.slug;
   const addUrl = slug
     ? `https://github.com/apps/${slug}/installations/new`
     : 'https://github.com/settings/installations';
@@ -492,6 +592,13 @@ export function githubAccessHint(
       url: (picked.length === 1 ? picked[0]!.manageUrl : undefined) ?? addUrl,
     };
   }
+  if (opts.publicOnly) {
+    return {
+      text: 'OpenShore sees only public repositories on this sign-in. If you have private ones, reconnect GitHub.',
+      action: 'Reconnect GitHub',
+      reconnect: true,
+    };
+  }
   return slug
     ? {
         text: 'Missing a repository? Add another account or organization on GitHub.',
@@ -499,6 +606,57 @@ export function githubAccessHint(
         url: addUrl,
       }
     : undefined;
+}
+
+/** "Signed in to GitHub as @login, through ..." for the Repositories screen,
+ *  so a person can see which account and which kind of sign-in is in use. */
+export function githubSignInLine(access: GithubAccess | undefined): string | undefined {
+  if (!access?.login) return undefined;
+  const how: Record<GithubSignIn, string> = {
+    app: 'through the OpenShore Code GitHub App',
+    oauth: 'through an OAuth app',
+    classic: 'with a classic access token',
+    'fine-grained': 'with a fine-grained access token',
+  };
+  return `Signed in to GitHub as @${access.login}, ${how[access.kind]}.`;
+}
+
+export interface GithubStatus {
+  repos: RepoOption[];
+  access?: GithubAccess;
+  hint?: RepoAccessHint;
+  line?: string;
+}
+
+/** Everything the picker and the Repositories screen show about GitHub: the
+ *  repositories (from /user/repos, plus each App installation's own list), how
+ *  the sign-in is made, and the one line that says why something is missing.
+ *  Throws the list's own sentence when GitHub refuses the credential. */
+export async function githubStatus(
+  token: string,
+  opts: { slug?: string; fetchImpl?: typeof fetch } = {},
+): Promise<GithubStatus> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const [listed, access] = await Promise.all([
+    listGitHubRepos(token, fetchImpl),
+    githubAccess(token, fetchImpl).catch(() => undefined),
+  ]);
+  let repos = listed;
+  if (access?.kind === 'app') {
+    const ids = access.installations.flatMap((i) => (i.id === undefined ? [] : [i.id]));
+    const extra = ids.length
+      ? await listGitHubInstallationRepos(token, ids, fetchImpl).catch(() => [])
+      : [];
+    const seen = new Set(repos.map((r) => r.id.toLowerCase()));
+    repos = [...repos, ...extra.filter((r) => !seen.has(r.id.toLowerCase()))];
+  }
+  const publicOnly = repos.length > 0 && repos.every((r) => r.private === false);
+  return {
+    repos,
+    access,
+    hint: githubAccessHint(access, { slug: opts.slug, publicOnly }),
+    line: githubSignInLine(access),
+  };
 }
 
 // A device-local cache so the picker opens with the list it had, then

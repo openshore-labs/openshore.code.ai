@@ -1925,3 +1925,8 @@ execution contract. Newest at the bottom.
   the person taps it. The Image reading cloud slot's default (the most capable
   cloud model, shown until a person assigns one) is not a placement, so it
   asks.
+- **Correction to the short-list ruling, 2026-09-25:** the founder's list was
+  short because the sign-in saw public repositories only (the App already had
+  All repositories). GitHub's authorize call now asks for `repo read:org`,
+  ignored by a GitHub App and required by an OAuth App, and the app names the
+  sign-in kind, account, and private count so the cause is read, not guessed.

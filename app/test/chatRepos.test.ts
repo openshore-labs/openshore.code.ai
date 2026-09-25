@@ -13,6 +13,7 @@ import {
   githubAccess,
   githubAccessHint,
   githubRepoId,
+  githubStatus,
   isGithubRepoId,
   isRemoteRepoId,
   listBitbucketRepos,
@@ -274,60 +275,170 @@ describe('the GitLab and Bitbucket roads', () => {
   });
 });
 
-describe('why a GitHub list can look short (the founder saw 4 of 12)', () => {
-  const answer = (status: number, body: unknown) =>
-    (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+describe('why a GitHub list can look short', () => {
+  /** A fake GitHub: each path answers with its body (and headers). */
+  function github(
+    routes: Record<string, { status?: number; body: unknown; headers?: Record<string, string> }>,
+  ): typeof fetch {
+    return (async (url: string) => {
+      const path = new URL(url).pathname;
+      const hit = routes[path];
+      if (!hit) return new Response('{}', { status: 404 });
+      return new Response(JSON.stringify(hit.body), {
+        status: hit.status ?? 200,
+        headers: hit.headers,
+      });
+    }) as unknown as typeof fetch;
+  }
+  const repo = (name: string, priv: boolean) => ({
+    full_name: `openshore-labs/${name}`,
+    name,
+    private: priv,
+    owner: { login: 'openshore-labs' },
+  });
+  // The founder's account on 2026-09-25: four public repositories and the
+  // rest private; the picker showed exactly the four public ones.
+  const PUBLIC = [
+    'openshore.code.ai',
+    'OpenShore.ai-marketing-site',
+    'Personal-thank-you-generator-',
+    'Vestibular-migraine-support',
+  ].map((n) => repo(n, false));
+  const PRIVATE = ['openshore-hq', 'Open-Shore-LLC-Homepage'].map((n) => repo(n, true));
+
+  it('names an OAuth App sign-in with no repo scope as the reason only public repos show', async () => {
+    const status = await githubStatus('gho_abc', {
+      fetchImpl: github({
+        '/user': { body: { login: 'openshore-labs' }, headers: { 'x-oauth-scopes': '' } },
+        '/user/repos': { body: PUBLIC },
+      }),
+    });
+    expect(status.repos).toHaveLength(4);
+    expect(status.access).toMatchObject({ kind: 'oauth', login: 'openshore-labs', scopes: [] });
+    expect(status.line).toBe('Signed in to GitHub as @openshore-labs, through an OAuth app.');
+    expect(status.hint).toEqual({
+      text: 'This GitHub sign-in can see only your public repositories: GitHub gave it no access to private ones. Reconnect GitHub to allow them.',
+      action: 'Reconnect GitHub',
+      reconnect: true,
+    });
+  });
+
+  it('says nothing is wrong when an OAuth App sign-in holds the repo scope', async () => {
+    const status = await githubStatus('gho_abc', {
+      fetchImpl: github({
+        '/user': { body: { login: 'me' }, headers: { 'x-oauth-scopes': 'repo, read:org' } },
+        '/user/repos': { body: [...PUBLIC, ...PRIVATE] },
+      }),
+    });
+    expect(status.access?.scopes).toEqual(['repo', 'read:org']);
+    expect(status.hint).toBeUndefined();
+  });
+
+  it("merges each App installation's own list, so an App sign-in sees what it was granted", async () => {
+    const status = await githubStatus('ghu_app', {
+      fetchImpl: github({
+        '/user': { body: { login: 'openshore-labs' } },
+        '/user/repos': { body: PUBLIC },
+        '/user/installations': {
+          body: {
+            installations: [
+              {
+                id: 42,
+                account: { login: 'openshore-labs' },
+                repository_selection: 'all',
+                html_url: 'https://github.com/settings/installations/42',
+                app_slug: 'openshore-code',
+              },
+            ],
+          },
+        },
+        '/user/installations/42/repositories': {
+          body: { total_count: 6, repositories: [...PUBLIC, ...PRIVATE] },
+        },
+      }),
+    });
+    expect(status.repos.map((r) => r.name)).toEqual([
+      ...PUBLIC.map((r) => r.name),
+      'openshore-hq',
+      'Open-Shore-LLC-Homepage',
+    ]);
+    expect(status.line).toBe(
+      'Signed in to GitHub as @openshore-labs, through the OpenShore Code GitHub App.',
+    );
+    // Everything granted, private ones included: only the add-an-account line.
+    expect(status.hint?.action).toBe('Add on GitHub');
+  });
+
+  it('asks an App sign-in that still sees only public repos to reconnect', () => {
+    const hint = githubAccessHint(
+      { kind: 'app', installations: [{ account: 'me', selection: 'all' }] },
+      { publicOnly: true },
+    );
+    expect(hint).toMatchObject({ action: 'Reconnect GitHub', reconnect: true });
+  });
 
   it('reads the GitHub App installations and whether each picked a few repositories', async () => {
     const access = await githubAccess(
       'ghu_app',
-      answer(200, {
-        installations: [
-          {
-            account: { login: 'openshore-labs' },
-            repository_selection: 'selected',
-            html_url: 'https://github.com/organizations/openshore-labs/settings/installations/42',
-            app_slug: 'openshore-code',
+      github({
+        '/user': { body: { login: 'me' } },
+        '/user/installations': {
+          body: {
+            installations: [
+              {
+                id: 7,
+                account: { login: 'openshore-labs' },
+                repository_selection: 'selected',
+                html_url:
+                  'https://github.com/organizations/openshore-labs/settings/installations/7',
+                app_slug: 'openshore-code',
+              },
+            ],
           },
-        ],
+        },
       }),
     );
     expect(access).toEqual({
       kind: 'app',
+      login: 'me',
+      scopes: undefined,
       installations: [
         {
+          id: 7,
           account: 'openshore-labs',
           selection: 'selected',
-          manageUrl: 'https://github.com/organizations/openshore-labs/settings/installations/42',
+          manageUrl: 'https://github.com/organizations/openshore-labs/settings/installations/7',
           appSlug: 'openshore-code',
         },
       ],
     });
-    const hint = githubAccessHint(access);
-    expect(hint).toEqual({
+    expect(githubAccessHint(access)).toEqual({
       text: 'OpenShore sees only the repositories you picked for openshore-labs on GitHub.',
       action: 'Choose repositories',
-      url: 'https://github.com/organizations/openshore-labs/settings/installations/42',
+      url: 'https://github.com/organizations/openshore-labs/settings/installations/7',
     });
   });
 
   it('never trusts a manage link or slug that is not GitHub-shaped', async () => {
     const access = await githubAccess(
       'ghu_app',
-      answer(200, {
-        installations: [
-          {
-            account: { login: 'a' },
-            repository_selection: 'selected',
-            html_url: 'https://evil.example/x',
-            app_slug: 'bad slug/..',
+      github({
+        '/user': { body: { login: 'me' } },
+        '/user/installations': {
+          body: {
+            installations: [
+              {
+                account: { login: 'a' },
+                repository_selection: 'selected',
+                html_url: 'https://evil.example/x',
+                app_slug: 'bad slug/..',
+              },
+            ],
           },
-        ],
+        },
       }),
     );
-    expect(access?.kind).toBe('app');
-    const hint = githubAccessHint(access);
-    expect(hint?.url).toBe('https://github.com/settings/installations');
+    expect(githubAccessHint(access)?.url).toBe('https://github.com/settings/installations');
   });
 
   it('sends several picked accounts, or none installed, to the App install page', () => {
@@ -347,43 +458,40 @@ describe('why a GitHub list can look short (the founder saw 4 of 12)', () => {
           },
         ],
       },
-      'openshore-code',
+      { slug: 'openshore-code' },
     );
     expect(two?.text).toBe(
       'OpenShore sees only the repositories you picked for me and org on GitHub.',
     );
     expect(two?.url).toBe('https://github.com/apps/openshore-code/installations/new');
-    const none = githubAccessHint({ kind: 'app', installations: [] }, 'openshore-code');
+    const none = githubAccessHint({ kind: 'app', installations: [] }, { slug: 'openshore-code' });
     expect(none?.action).toBe('Add it on GitHub');
-    expect(none?.url).toBe('https://github.com/apps/openshore-code/installations/new');
-    // Everything granted and no slug known: nothing worth saying.
+    // Everything granted, not public-only, and no slug known: nothing to say.
     expect(
       githubAccessHint({ kind: 'app', installations: [{ account: 'me', selection: 'all' }] }),
     ).toBeUndefined();
   });
 
-  it('points a pasted token at the token page instead, and says nothing when GitHub cannot be asked', async () => {
-    expect(await githubAccess('ghp_classic', answer(500, {}))).toEqual({
-      kind: 'token',
-      fineGrained: false,
-    });
-    expect(await githubAccess('github_pat_x', answer(500, {}))).toEqual({
-      kind: 'token',
-      fineGrained: true,
-    });
-    // An OAuth App token: GitHub refuses the installations call.
-    expect(await githubAccess('gho_x', answer(403, {}))).toEqual({
-      kind: 'token',
-      fineGrained: false,
-    });
+  it('points a pasted token at the token page, and says nothing when GitHub cannot be asked', async () => {
+    const classic = await githubAccess(
+      'ghp_classic',
+      github({ '/user': { body: { login: 'me' }, headers: { 'x-oauth-scopes': 'read:user' } } }),
+    );
+    expect(classic).toMatchObject({ kind: 'classic', scopes: ['read:user'] });
+    expect(githubAccessHint(classic)?.text).toMatch(/can see only public repositories/);
+    const fine = await githubAccess('github_pat_x', github({ '/user': { body: { login: 'me' } } }));
+    expect(fine?.kind).toBe('fine-grained');
+    expect(githubAccessHint(fine, { publicOnly: true })?.text).toMatch(/only public repositories/);
+    expect(githubAccessHint(fine)?.url).toBe('https://github.com/settings/personal-access-tokens');
+    // A refused or unreachable GitHub: no hint rather than a wrong one.
+    expect(
+      await githubAccess('ghu_x', github({ '/user': { status: 401, body: {} } })),
+    ).toBeUndefined();
     const offline = (async () => {
       throw new TypeError('Failed to fetch');
     }) as unknown as typeof fetch;
     expect(await githubAccess('ghu_x', offline)).toBeUndefined();
     expect(githubAccessHint(undefined)).toBeUndefined();
-    expect(githubAccessHint({ kind: 'token', fineGrained: true })?.url).toBe(
-      'https://github.com/settings/personal-access-tokens',
-    );
   });
 });
 
@@ -452,8 +560,14 @@ describe('the wiring', () => {
   it('says why a repository may be missing and links to the fix, then refreshes on return', () => {
     const picker = read('components/RepoPicker.tsx');
     expect(picker).toMatch(/repos\.access/);
-    expect(picker).toMatch(/openInAppBrowser\(repos\.access!\.url, repos\.refresh\)/);
-    expect(read('screens/ReposScreen.tsx')).toMatch(/githubAccessHint\(/);
+    expect(picker).toMatch(/openInAppBrowser\(repos\.access!\.url!, repos\.refresh\)/);
+    // A reconnect fix routes to the Repositories screen, which reconnects.
+    expect(picker).toMatch(/repos\.access\.reconnect[\s\S]{0,500}onOpenRepos\(\)/);
+    const screen = read('screens/ReposScreen.tsx');
+    expect(screen).toMatch(/githubStatus\(token/);
+    expect(screen).toMatch(
+      /const reconnectGithub = async[\s\S]{0,200}disconnectRepoPlatform\('github'\)[\s\S]{0,200}runOAuth\('github'/,
+    );
   });
 
   it('a picker change in a live chat reaches the model on its next turn', () => {
