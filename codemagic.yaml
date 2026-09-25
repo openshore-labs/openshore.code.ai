@@ -32,6 +32,10 @@ workflows:
         - Harbor-os-code
       vars:
         BUNDLE_ID: ai.openshore.oscode
+        # The GitHub App's public slug (github.com/apps/openshore-code), so the
+        # repo picker can send a person with no installation to the install
+        # page. Public, not a secret; the client id stays in the group.
+        VITE_GITHUB_APP_SLUG: openshore-code
         # An iOS build never launches Electron. Skip the Electron binary
         # download in the electron package's install script, and skip the
         # electron-rebuild of node-pty in the app's postinstall
@@ -223,6 +227,9 @@ workflows:
         # simply unused here. This group already exists, so this workflow needs
         # no new Codemagic setup at all.
         - Harbor-os-code
+      vars:
+        # The GitHub App's public slug, as in the iOS workflow above.
+        VITE_GITHUB_APP_SLUG: openshore-code
     scripts:
       - name: Determine and stamp the release version
         script: |

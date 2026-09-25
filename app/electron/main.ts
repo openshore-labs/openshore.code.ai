@@ -848,9 +848,21 @@ guarded('osc:cloneRepo', (url: unknown, token: unknown) =>
   host.cloneRepo(str(url, 'url'), optStr(token, 'token')),
 );
 guarded('osc:recentWorkspaces', () => host.recentWorkspaces());
-guarded('osc:reconcileRepos', (roots: unknown) =>
-  host.reconcileRepos(Array.isArray(roots) ? strList(roots, 'roots') : []),
+guarded('osc:reconcileRepos', (roots: unknown, tokens: unknown) =>
+  host.reconcileRepos(Array.isArray(roots) ? strList(roots, 'roots') : [], platformTokens(tokens)),
 );
+
+/** The renderer's connected repo tokens, keyed by platform. Anything else in
+ *  the object, or a non-string value, is dropped. */
+function platformTokens(v: unknown): Partial<Record<'github' | 'gitlab' | 'bitbucket', string>> {
+  if (!v || typeof v !== 'object') return {};
+  const out: Partial<Record<'github' | 'gitlab' | 'bitbucket', string>> = {};
+  for (const k of ['github', 'gitlab', 'bitbucket'] as const) {
+    const t = (v as Record<string, unknown>)[k];
+    if (typeof t === 'string' && t.trim()) out[k] = t;
+  }
+  return out;
+}
 
 // Crew routines. Objects pass through as-is: the host validates every field
 // through the shared routine model before anything reaches the scheduler.

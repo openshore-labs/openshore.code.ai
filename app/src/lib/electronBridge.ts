@@ -246,7 +246,12 @@ export interface OscodeBridge {
   /** Push each clone's unpushed commits to its remote (merging a moved-on
    *  remote first), so nothing a project committed lingers only on this device.
    *  Never force-pushes; surfaces conflicts. Returns one result per repo. */
-  reconcileRepos(roots: string[]): Promise<ReconcileResult[]>;
+  reconcileRepos(
+    roots: string[],
+    /** This app's connected platform tokens, so a clone it made with a token
+     *  can be pushed from a computer with no git credential of its own. */
+    tokens?: Partial<Record<'github' | 'gitlab' | 'bitbucket', string>>,
+  ): Promise<ReconcileResult[]>;
 
   // Phone pairing (the daemon).
   daemonInfo(): Promise<DaemonInfo>;

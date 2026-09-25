@@ -212,6 +212,17 @@ export type {
 } from './harness/jev.js';
 export { JevAdvisor, JEV_SYSTEMONE_PATH } from './harness/jev.js';
 
+// Web search for local models: the one-line request a model writes, and the
+// stream filter that keeps that line off the screen. Shared so the phone and
+// the desktop's free chat speak the same rule.
+export {
+  NO_SEARCH_NOTE,
+  SEARCH_PREFIX,
+  SEARCH_PROTOCOL_NOTE,
+  SearchLineFilter,
+  parseSearchLine,
+} from './harness/localSearch.js';
+
 /** Wire shapes the daemon serves that are not agent events. */
 export interface DaemonSessionInfo {
   id: string;

@@ -16,14 +16,19 @@ import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/te
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
 import { getAnthropicKey, loginWithApiKey, logoutClaude } from 'os-code/dist/src/auth/claude.js';
-import { loginWithPat, logoutGithub, isGithubConnected } from 'os-code/dist/src/auth/github.js';
+import {
+  getGithubToken,
+  loginWithPat,
+  logoutGithub,
+  isGithubConnected,
+} from 'os-code/dist/src/auth/github.js';
 import { getCredential, setCredential, deleteCredential } from 'os-code/dist/src/auth/store.js';
 import { detectHardware, budgetFor } from 'os-code/dist/src/router/resourceBudget.js';
 import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
 import { installModel, installOllamaRef } from 'os-code/dist/src/market/install.js';
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
-import { redactToken } from 'os-code/dist/src/git/index.js';
+import { redactToken, type PlatformTokens } from 'os-code/dist/src/git/index.js';
 import {
   cloneFolderName,
   cloneIntoManaged,
@@ -711,7 +716,7 @@ export class EngineHost {
   // never merge over uncommitted work, conflicts surfaced not clobbered). Only
   // real, existing directories are attempted.
   private reconcileInFlight = false;
-  async reconcileRepos(roots: string[]): Promise<ReconcileResult[]> {
+  async reconcileRepos(roots: string[], tokens?: PlatformTokens): Promise<ReconcileResult[]> {
     // A project can opt out of auto-push in its os-code.config.json
     // (sync.autoPush:false), e.g. when its branch deploys on push. Honor that
     // per repo before any git runs.
@@ -730,7 +735,11 @@ export class EngineHost {
     if (this.reconcileInFlight) return [];
     this.reconcileInFlight = true;
     try {
-      return await reconcileRepos(real);
+      // The app's connected tokens push a clone the app made with one, on a
+      // computer with no git credential of its own; this engine's own GitHub
+      // token (Settings, or `osc auth github`) stands in when the app has none.
+      const github = tokens?.github ?? getGithubToken();
+      return await reconcileRepos(real, { tokens: { ...tokens, ...(github ? { github } : {}) } });
     } finally {
       this.reconcileInFlight = false;
     }
