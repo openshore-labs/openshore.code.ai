@@ -53,12 +53,16 @@ interface OAuthProviderConfig {
 }
 
 // Only the PUBLIC client id lives here (Vite build-time env). The secret is on
-// the server. GitLab and Bitbucket scope on the authorize call; a GitHub App
-// scopes through its configured permissions, so it needs no scope param.
+// the server. GitLab and Bitbucket scope on the authorize call. GitHub asks for
+// `repo` too: a GitHub App ignores the parameter (it scopes through its
+// installed permissions), but a GitHub OAuth App behind the client id grants
+// public data only without it, which is how a sign-in ends up listing just the
+// account's public repositories (founder, 2026-09-25: 4 of them, all public).
 const OAUTH: Record<RepoPlatform, OAuthProviderConfig> = {
   github: {
     clientId: import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined,
     authorizeUrl: 'https://github.com/login/oauth/authorize',
+    scope: 'repo read:org',
   },
   gitlab: {
     clientId: import.meta.env.VITE_GITLAB_CLIENT_ID as string | undefined,

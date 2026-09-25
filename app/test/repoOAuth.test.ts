@@ -138,6 +138,15 @@ describe('connectRepoOAuth', () => {
     expect(sent).not.toHaveProperty('client_secret');
   });
 
+  it('asks GitHub for private repositories (an OAuth App grants public data only without it)', async () => {
+    // A GitHub App ignores the scope; an OAuth App behind the client id needs
+    // `repo`, or the picker lists the public repositories alone.
+    const mod = await loadModule();
+    mockFetchOnce({ accessToken: 'gho_abc' });
+    expect((await mod.connectRepoOAuth('github')).ok).toBe(true);
+    expect(lastOpenedUrl().searchParams.get('scope')).toBe('repo read:org');
+  });
+
   it('sends a S256 PKCE challenge on authorize and the matching verifier on exchange', async () => {
     const mod = await loadModule();
     mockFetchOnce({ accessToken: 'gho_abc' });
