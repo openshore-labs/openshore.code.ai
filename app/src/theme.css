@@ -7970,6 +7970,15 @@ textarea {
   font-size: var(--text-4);
   padding: 6px 0 4px;
 }
+/* Live, the thought streams inside a capped window that keeps its newest line
+   in view (ThinkingBlock scrolls it), so a long think never pushes the answer
+   off screen. The cap holds through the fold; reopened by a tap, it shows in
+   full. Static, never animated. */
+.thinking.capped .thinking-body {
+  max-height: 14em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 .todo-card {
   margin: 0 12px 6px;

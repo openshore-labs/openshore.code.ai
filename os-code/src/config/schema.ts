@@ -241,6 +241,15 @@ const HumanizerSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Chain of Thought (founder, 2026-09-25): off by default. On, every model shows
+// its reasoning above the answer (native reasoners through their own API, the
+// rest prompted to think in <think> tags); off, no model is asked to think out
+// loud and any reasoning it sends is kept out of the transcript. The app's
+// setting overrides this per session. See core/agent/chainOfThought.ts.
+const ChainOfThoughtSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 // Offline reconcile: the app pushes this repo's unpushed commits (the project's
 // memory notes ride with the code) to its tracking upstream on app open and on
 // reconnect, so nothing important lingers only on the device. A project that
@@ -326,6 +335,7 @@ export const ConfigSchema = z.object({
   vault: VaultSchema.prefault({}),
   ux: UxSchema.prefault({}),
   humanizer: HumanizerSchema.prefault({}),
+  chainOfThought: ChainOfThoughtSchema.prefault({}),
   sync: SyncSchema.prefault({}),
   harness: HarnessSchema.prefault({}),
 });

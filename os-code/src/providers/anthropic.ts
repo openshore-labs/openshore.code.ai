@@ -18,6 +18,7 @@ import { ProviderError } from './types.js';
 import type { AnthropicEndpoint } from '../config/schema.js';
 import { anthropicAuthHeaders, needsWorkspaceId, WORKSPACE_HINT } from '../auth/claude.js';
 import { idleError, idleGuard } from './streamIdle.js';
+import { claudeThinking } from '../core/agent/chainOfThought.js';
 
 export class AnthropicProvider implements Provider {
   readonly kind = 'cloud' as const;
@@ -115,14 +116,30 @@ export class AnthropicProvider implements Provider {
 
   async *chat(request: ChatRequest, signal?: AbortSignal): AsyncGenerator<ChatEvent, void, void> {
     const { system, messages } = toAnthropicMessages(request.messages);
+    const model = request.model || this.endpoint.model;
     const body: Record<string, unknown> = {
-      model: request.model || this.endpoint.model,
+      model,
       max_tokens: request.maxTokens ?? 8192,
       stream: true,
       messages,
     };
     if (system) body.system = system;
-    if (request.temperature !== undefined) body.temperature = request.temperature;
+    // Chain of Thought on: ask Claude to think, with room for it in max_tokens.
+    // Thinking does not take a custom temperature, so none is sent. Off (or
+    // unset) sends no thinking parameter, the model's own default.
+    // One exception: a tool loop continuing from a turn that did not think
+    // (an escalation from a local seat mid-task) has no signed thinking block
+    // to lead its last assistant turn, which the API requires while thinking
+    // is on, so that one request goes without thinking.
+    const lastAssistant = [...request.messages].reverse().find((m) => m.role === 'assistant');
+    const unsignedToolTurn =
+      !!lastAssistant?.toolCalls?.length && !lastAssistant.thinkingBlocks?.length;
+    const thinking = request.reasoning === 'on' && !unsignedToolTurn;
+    if (thinking) {
+      const cot = claudeThinking(model, request.maxTokens ?? 8192);
+      body.thinking = cot.thinking;
+      body.max_tokens = cot.maxTokens;
+    } else if (request.temperature !== undefined) body.temperature = request.temperature;
     if (request.stop?.length) body.stop_sequences = request.stop;
     if (request.tools?.length) {
       body.tools = request.tools.map((t) => ({
@@ -155,6 +172,9 @@ export class AnthropicProvider implements Provider {
 
     // Streamed content blocks; tool_use inputs arrive as JSON fragments.
     const toolBlocks = new Map<number, { id: string; name: string; json: string }>();
+    // Thinking blocks, rebuilt from the stream with their signatures so a turn
+    // that thought and then called a tool can be replayed on the next request.
+    const thoughtBlocks = new Map<number, Record<string, unknown>>();
     let stopReason: string | undefined;
     let sawToolUse = false;
 
@@ -203,6 +223,14 @@ export class AnthropicProvider implements Provider {
               }
               break;
             case 'content_block_start':
+              if (evt.content_block?.type === 'thinking') {
+                thoughtBlocks.set(evt.index, { type: 'thinking', thinking: '', signature: '' });
+              } else if (evt.content_block?.type === 'redacted_thinking') {
+                thoughtBlocks.set(evt.index, {
+                  type: 'redacted_thinking',
+                  data: evt.content_block.data ?? '',
+                });
+              }
               if (evt.content_block?.type === 'tool_use') {
                 sawToolUse = true;
                 toolBlocks.set(evt.index, {
@@ -215,8 +243,15 @@ export class AnthropicProvider implements Provider {
             case 'content_block_delta': {
               const d = evt.delta;
               if (d?.type === 'text_delta' && d.text) yield { type: 'text', delta: d.text };
-              if (d?.type === 'thinking_delta' && d.thinking)
+              if (d?.type === 'thinking_delta' && d.thinking) {
+                const slot = thoughtBlocks.get(evt.index);
+                if (slot) slot.thinking = String(slot.thinking ?? '') + d.thinking;
                 yield { type: 'thinking', delta: d.thinking };
+              }
+              if (d?.type === 'signature_delta' && d.signature) {
+                const slot = thoughtBlocks.get(evt.index);
+                if (slot) slot.signature = String(slot.signature ?? '') + d.signature;
+              }
               if (d?.type === 'input_json_delta') {
                 const slot = toolBlocks.get(evt.index);
                 if (slot) slot.json += d.partial_json ?? '';
@@ -263,6 +298,12 @@ export class AnthropicProvider implements Provider {
       return;
     }
 
+    if (thoughtBlocks.size) {
+      yield {
+        type: 'thinking-blocks',
+        blocks: [...thoughtBlocks.entries()].sort((a, b) => a[0] - b[0]).map(([, b]) => b),
+      };
+    }
     for (const [, slot] of [...toolBlocks.entries()].sort((a, b) => a[0] - b[0])) {
       const call: ToolCallRequest = { id: slot.id, name: slot.name, argsText: slot.json };
       yield { type: 'tool-call', call };
@@ -345,7 +386,8 @@ export function toAnthropicMessages(messages: ChatMessage[]): {
       continue;
     }
     if (m.role === 'assistant' && m.toolCalls?.length) {
-      const blocks: unknown[] = [];
+      // A thinking turn's blocks lead, verbatim, so the API can verify them.
+      const blocks: unknown[] = [...(m.thinkingBlocks ?? [])];
       const text =
         typeof m.content === 'string'
           ? m.content

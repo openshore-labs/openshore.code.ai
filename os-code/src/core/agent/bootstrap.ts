@@ -19,6 +19,7 @@ import { buildCodeMap } from '../../context/codeMap.js';
 import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
+import { chainOfThoughtEnabled } from './chainOfThought.js';
 import { engineEthicsContext } from '../ethics/host.js';
 import { nextActionFor } from '../ethics/classify.js';
 import { configureStreamIdle } from '../../providers/streamIdle.js';
@@ -60,6 +61,11 @@ export interface BootstrapOptions {
    *  session (the override only ever turns it off, never on over a project that
    *  opted out). See humanizerEnabled in humanizerStandard.ts. */
   humanize?: boolean;
+  /** The app's "Chain of Thought" setting for this session. Undefined leaves
+   *  the project config in charge (off by default); a boolean wins in either
+   *  direction, since it is the person's display choice, not a project policy.
+   *  See chainOfThoughtEnabled in chainOfThought.ts. */
+  chainOfThought?: boolean;
   /** The person's Codemagic token, so the codemagic tool can drive App Launch
    *  builds. Delivered ONLY by the local, on-device engine and only when the
    *  person turned Codemagic Access on; the daemon path never forwards it, so
@@ -126,6 +132,13 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // source. A fresh config object, never mutating a caller's (tests pass one in).
   if (!humanizerEnabled(config.humanizer?.standard, options.humanize)) {
     config = { ...config, humanizer: { ...config.humanizer, standard: 'off' } };
+  }
+
+  // The app's Chain of Thought setting, the same way: applied here so loop.ts
+  // reads config.chainOfThought as its single source.
+  const cot = chainOfThoughtEnabled(config.chainOfThought?.enabled, options.chainOfThought);
+  if (cot !== (config.chainOfThought?.enabled === true)) {
+    config = { ...config, chainOfThought: { ...config.chainOfThought, enabled: cot } };
   }
 
   // The ethics layer, wired before any provider exists. Every provider the

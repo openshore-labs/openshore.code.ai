@@ -135,6 +135,7 @@ import { isSetupFailure, rescueSource } from '../lib/chatRescue.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
+import { chainOfThoughtOn, setChainOfThought } from '../lib/chainOfThought.js';
 import {
   DEFAULT_PERMISSION_MODE,
   normalizePermissionMode,
@@ -443,6 +444,12 @@ export interface AppSettings {
    *  writing). On by default; undefined means on. Off drops the standard from
    *  the prompt, so a model runs a little faster on a shorter prompt. */
   humanizeWriting?: boolean;
+  /** Chain of Thought: show a model's reasoning above its answer, live while it
+   *  thinks, then folded to "Thought for Ns" (lib/chainOfThought.ts). OFF by
+   *  default; undefined means off. Native reasoners are asked through their own
+   *  API, every other model is prompted to think in tags. Off asks no model to
+   *  think out loud and keeps any reasoning a model sends out of the chat. */
+  chainOfThought?: boolean;
   /** Notices (lib/notices.ts): a banner when a model download finishes while
    *  you are away. On by default; undefined means on. Device local. */
   noticeDownloads?: boolean;
@@ -1945,6 +1952,10 @@ export const useApp = create<AppState>((set, get, api) => {
       }
     };
     const off = driver.subscribe((event: DriverEvent, seq: number) => {
+      // Chain of Thought off: reasoning never reaches the chat, whichever
+      // driver sent it (a desktop session opened while it was on, or an older
+      // engine that does not know the setting). The flip applies at once.
+      if (event.type === 'thinking-delta' && !chainOfThoughtOn()) return;
       pending.push({ event, seq });
       if (!scheduled) {
         scheduled = true;
@@ -2485,6 +2496,10 @@ export const useApp = create<AppState>((set, get, api) => {
           // honors the toggle too (it only ever turns the humanizer off; a
           // project's own config still wins). Undefined means on.
           humanize: settings.humanizeWriting !== false,
+          // Chain of Thought rides to the engine the same way, for this
+          // session: on asks its models to think and streams the thinking,
+          // off asks them not to. Off by default.
+          chainOfThought: settings.chainOfThought === true,
           codemagicToken,
           codemagicTarget,
           currents,
@@ -2536,6 +2551,7 @@ export const useApp = create<AppState>((set, get, api) => {
             instructions: sessionOpts.instructions,
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
+            chainOfThought: sessionOpts.chainOfThought,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
           });
@@ -3285,6 +3301,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // Mirror the persisted reasoning effort into the live value the drivers
       // read at send time (defaults to High on a fresh device).
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
+      // And Chain of Thought (off on a fresh device).
+      setChainOfThought(settings.chainOfThought === true);
 
       // A stored session is a local, encrypted-at-rest read (no network round
       // trip), so it is cheap to check before deciding the first view: a
@@ -6891,6 +6909,7 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ settings, hubRole: activeHubRole(settings) });
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
+      setChainOfThought(settings.chainOfThought === true);
       await persistSettings(settings);
     },
 

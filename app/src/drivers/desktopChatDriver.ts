@@ -15,6 +15,7 @@ import { DriverEmitter, readChatContext } from './types.js';
 import type { DaemonTarget } from './remoteDriver.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { searchForModel } from '../lib/localSearch.js';
+import { chainOfThoughtOn } from '../lib/chainOfThought.js';
 import type { SeedTurn } from '../state/types.js';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -79,6 +80,10 @@ export class DesktopChatDriver implements ChatDriver {
           model: this.model,
           context: readChatContext(this.extraSystem),
           search: true,
+          // Chain of Thought: the desktop asks its model to think (or not) and
+          // streams the thinking as its own frames. A daemon that predates the
+          // field ignores it and streams text only.
+          chainOfThought: chainOfThoughtOn(),
         }),
         signal: this.abortController?.signal,
       });
@@ -114,6 +119,8 @@ export class DesktopChatDriver implements ChatDriver {
             answer += ev.delta;
             const shown = filter.push(ev.delta);
             if (shown) this.emitter.emit({ type: 'text-delta', text: shown });
+          } else if (ev.type === 'thinking' && ev.delta && chainOfThoughtOn()) {
+            this.emitter.emit({ type: 'thinking-delta', text: ev.delta });
           } else if (ev.type === 'error') {
             this.emitter.emit({ type: 'task-done', reason: 'error', message: ev.message });
             return;

@@ -27,6 +27,13 @@ export interface ChatMessage {
   /** Tool messages answer a specific call. */
   toolCallId?: string;
   name?: string;
+  /**
+   * Claude's thinking blocks from this assistant turn (thinking with its
+   * signature, or redacted_thinking), replayed verbatim before its tool calls
+   * so a thinking turn that used a tool can continue. Opaque to everything but
+   * the Anthropic provider; other providers ignore it.
+   */
+  thinkingBlocks?: unknown[];
 }
 
 /** JSON Schema for a tool, produced from the zod definitions at the boundary. */
@@ -50,11 +57,21 @@ export interface ChatRequest {
   jsonSchema?: Record<string, unknown>;
   /** Provider-specific keep-alive (Ollama) so the resource budget is honored. */
   keepAlive?: string;
+  /**
+   * Chain of Thought for this request. 'on' asks a native reasoner to think
+   * (Claude's thinking parameter, Ollama's think flag); 'off' asks it not to
+   * where the API allows. Undefined leaves the backend's own default, so
+   * callers that predate the setting are unchanged.
+   */
+  reasoning?: 'on' | 'off';
 }
 
 export type ChatEvent =
   | { type: 'text'; delta: string }
   | { type: 'thinking'; delta: string }
+  /** The finished thinking blocks of a Claude turn, for replay (see
+   *  ChatMessage.thinkingBlocks). Sent once, before done. */
+  | { type: 'thinking-blocks'; blocks: unknown[] }
   | { type: 'tool-call'; call: ToolCallRequest }
   | { type: 'usage'; promptTokens: number; completionTokens: number }
   | { type: 'done'; stopReason: 'end' | 'tool-calls' | 'length' | 'stop' | 'aborted' };

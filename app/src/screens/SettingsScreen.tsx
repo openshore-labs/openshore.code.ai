@@ -262,6 +262,7 @@ export function SettingsScreen() {
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
   const humanizeOn = settings.humanizeWriting !== false;
+  const chainOfThoughtOn = settings.chainOfThought === true;
   // Notices are an iPhone surface; read the standing permission once so a "no"
   // in iOS Settings is said plainly instead of toggles that do nothing.
   const [noticeStatus, setNoticeStatus] = useState<NoticePermission | undefined>();
@@ -776,6 +777,60 @@ export function SettingsScreen() {
               }
             />
           ) : null}
+        </SettingsGroup>
+
+        <SettingsGroup title="Reasoning" index={group++}>
+          <SettingsRow
+            label="Chain of Thought"
+            sub="Shows a model's reasoning above its answer, then folds it away. Off by default."
+            trailing={
+              <Switch
+                checked={chainOfThoughtOn}
+                label="Chain of Thought"
+                onChange={(next) => {
+                  void saveSettings({ chainOfThought: next });
+                  showToast(
+                    next
+                      ? 'Chain of Thought on. Reasoning shows above each answer.'
+                      : 'Chain of Thought off. Models answer without thinking out loud.',
+                  );
+                }}
+              />
+            }
+          />
+          <InfoSheet
+            title="Chain of Thought"
+            renderTrigger={(open) => (
+              <SettingsRow
+                label="How this works"
+                sub="What it shows, and what it costs"
+                onClick={open}
+              />
+            )}
+          >
+            <p>
+              With Chain of Thought on, you see how a model works a problem through. Its thinking
+              streams into a quiet block above the answer while it works, and folds to one line,
+              "Thought for 12s", the moment the answer starts. Tap the line to read it again.
+            </p>
+            <p>
+              Models that reason on their own, like Claude and the Qwen3 and DeepSeek R1 families,
+              are asked through their own interface. Claude shows a readable summary of its
+              reasoning, not every token. Every other model is asked to think step by step before
+              answering, so this works on any model you run, local or cloud.
+            </p>
+            <p>
+              Thinking costs time and tokens. On a local model it slows each answer, and on a paid
+              model the thinking is billed like any other output. That is why it is off by default.
+              Off, no model is asked to think out loud, and any reasoning a model sends anyway stays
+              out of the chat.
+            </p>
+            <p>
+              It reaches your chats here and any session this app starts on your paired computer. A
+              session already open on your computer keeps the setting it started with until you
+              start a new chat, though turning it off hides the thinking right away.
+            </p>
+          </InfoSheet>
         </SettingsGroup>
 
         <SettingsGroup title="Writing" index={group++}>

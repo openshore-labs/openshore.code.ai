@@ -33,6 +33,9 @@ import {
   NO_SEARCH_NOTE,
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,
+  ThinkTagSplitter,
+  splitThinkTags,
+  type ThoughtPiece,
 } from 'os-code/protocol';
 import {
   activeHarnessId,
@@ -64,6 +67,12 @@ import {
 } from '../lib/codemagicTool.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
+import {
+  chainOfThoughtLine,
+  chainOfThoughtOn,
+  claudeRequestThinking,
+  reasoningOf,
+} from '../lib/chainOfThought.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
@@ -296,6 +305,10 @@ export class StackDriver implements ChatDriver {
   // the results back to, and Harbor Lite's pre-searched prompt for this turn.
   private searchFilter = new SearchLineFilter(false);
   private searchedThisTurn = false;
+  // Chain of Thought for the message in flight (read once when it starts, so a
+  // flip mid-reply cannot half-apply), and the device reply's <think> splitter.
+  private cot = false;
+  private thinkSplitter = new ThinkTagSplitter();
   private deviceTurn?: { ref: Extract<StackModelRef, { kind: 'device' }>; placement?: Placement };
   private guidePrompt?: string;
   // A card this driver put in front of the person (an image bound for a model
@@ -553,6 +566,7 @@ export class StackDriver implements ChatDriver {
     this.aborted = false;
     this.abortController = new AbortController();
     this.searchedThisTurn = false;
+    this.cot = chainOfThoughtOn();
     this.guidePrompt = undefined;
     this.history.push({ role: 'user', content: text });
     this.emit({ type: 'task-start', input: text });
@@ -1161,7 +1175,8 @@ export class StackDriver implements ChatDriver {
       });
       if (!res.ok) throw new RouteUnavailable(`${refName(ref)} answered ${res.status}.`);
       const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-      const out = data?.choices?.[0]?.message?.content ?? '';
+      // An internal step shows no thinking; any <think> text stays out of it.
+      const out = splitThinkTags(data?.choices?.[0]?.message?.content ?? '').text;
       if (out) opts?.onDelta?.(out);
       return out;
     }
@@ -1176,6 +1191,15 @@ export class StackDriver implements ChatDriver {
     const decoder = new TextDecoder();
     let out = '';
     let buffer = '';
+    // An internal step shows no thinking; any <think> text stays out of it.
+    const splitter = new ThinkTagSplitter();
+    const keep = (pieces: ThoughtPiece[]) => {
+      for (const p of pieces) {
+        if (p.kind !== 'text') continue;
+        out += p.text;
+        opts?.onDelta?.(p.text);
+      }
+    };
     for (;;) {
       const { value, done: streamDone } = await reader.read();
       if (streamDone || this.aborted) break;
@@ -1189,16 +1213,35 @@ export class StackDriver implements ChatDriver {
         if (payload === '[DONE]') continue;
         try {
           const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
-          if (typeof delta === 'string' && delta) {
-            out += delta;
-            opts?.onDelta?.(delta);
-          }
+          if (typeof delta === 'string' && delta) keep(splitter.push(delta));
         } catch {
           // skip a keepalive or partial line
         }
       }
     }
+    keep(splitter.end());
     return out;
+  }
+
+  /** A piece of the model's thinking, shown only while Chain of Thought is on. */
+  private emitThought(text: string | undefined): void {
+    if (this.cot && text && !this.aborted) this.emit({ type: 'thinking-delta', text });
+  }
+
+  /** The system prompt plus the think-in-tags line, for a model that does not
+   *  reason through its own API, while Chain of Thought is on. */
+  private withThinking(system: string, model: string): string {
+    const line = chainOfThoughtLine(model, this.cot);
+    return line ? `${system}\n\n${line}` : system;
+  }
+
+  /** Route a split slice of a reply: answer text to `text`, thinking to the
+   *  thinking block (while on) or nowhere (while off). */
+  private routeThought(pieces: ThoughtPiece[], text: (delta: string) => void): void {
+    for (const p of pieces) {
+      if (p.kind === 'text') text(p.text);
+      else this.emitThought(p.text);
+    }
   }
 
   private finish(reason: 'complete' | 'aborted' | 'error', message?: string): void {
@@ -1215,9 +1258,7 @@ export class StackDriver implements ChatDriver {
       await Llama.addListener('token', ({ requestId, delta }) => {
         if (requestId !== this.activeRequestId) return;
         this.armWatchdog(requestId);
-        this.answer += delta;
-        const shown = this.searchFilter.push(delta);
-        if (shown) this.emit({ type: 'text-delta', text: shown });
+        this.routeThought(this.thinkSplitter.push(delta), (t) => this.deviceText(t));
       }),
     );
     this.deviceListeners.push(
@@ -1225,6 +1266,7 @@ export class StackDriver implements ChatDriver {
         if (requestId !== this.activeRequestId) return;
         this.clearDeviceTimers();
         this.activeRequestId = undefined;
+        this.routeThought(this.thinkSplitter.end(), (t) => this.deviceText(t));
         const { query, flush } = this.searchFilter.end();
         const turn = this.deviceTurn;
         if (stopReason === 'end' && query && turn && !this.aborted) {
@@ -1246,6 +1288,13 @@ export class StackDriver implements ChatDriver {
         } else this.finish(stopReason === 'stopped' ? 'aborted' : 'complete');
       }),
     );
+  }
+
+  /** Answer text from the device model, through the search-line filter. */
+  private deviceText(delta: string): void {
+    this.answer += delta;
+    const shown = this.searchFilter.push(delta);
+    if (shown) this.emit({ type: 'text-delta', text: shown });
   }
 
   private async runDevice(
@@ -1293,8 +1342,13 @@ export class StackDriver implements ChatDriver {
     const requestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
     this.activeRequestId = requestId;
     this.deviceModelName = ref.modelName;
-    const system = this.systemFor(ref, placement, online);
-    const maxTokens = guide ? 512 : 1024;
+    // Chain of Thought: Harbor Lite's guide turns are left alone (a 512-token
+    // reply cannot carry a thought); any other pocket model thinks in tags,
+    // with room for the thought beside the answer.
+    this.thinkSplitter = new ThinkTagSplitter();
+    const base = this.systemFor(ref, placement, online);
+    const system = guide ? base : this.withThinking(base, ref.modelId);
+    const maxTokens = guide ? 512 : this.cot ? 2048 : 1024;
     const res = await Llama.generate({
       requestId,
       system,
@@ -1471,10 +1525,13 @@ export class StackDriver implements ChatDriver {
       last.content = built.content;
       if (hasVideoFrames(images)) sys = `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}`;
     }
+    // Chain of Thought on: Claude thinks through its own API, and the summary
+    // streams into the thinking block above the answer.
     const stream = client.messages.stream(
-      { model, max_tokens: 2048, system: sys, messages },
+      { model, ...claudeRequestThinking(model, 2048, this.cot), system: sys, messages },
       { signal: this.abortController?.signal },
     );
+    if (this.cot) stream.on('thinking', (delta) => this.emitThought(delta));
     stream.on('text', (delta) => {
       if (this.aborted) return;
       this.answer += delta;
@@ -1520,13 +1577,16 @@ export class StackDriver implements ChatDriver {
       const stream = client.messages.stream(
         {
           model,
-          max_tokens: 2048,
+          ...claudeRequestThinking(model, 2048, this.cot),
           system,
           messages,
           tools: [codemagicToolSpec as unknown as Anthropic.Tool],
         },
         { signal: this.abortController?.signal },
       );
+      // The assistant turn below is pushed with final.content, so a thinking
+      // turn's signed blocks ride back with its tool_use, as the API requires.
+      if (this.cot) stream.on('thinking', (delta) => this.emitThought(delta));
       // A newline between rounds so a second round's prose does not butt against
       // the first, once a tool result has come back.
       let started = false;
@@ -1594,12 +1654,15 @@ export class StackDriver implements ChatDriver {
     searchable = false,
   ): Promise<void> {
     const filter = new SearchLineFilter(searchable && !this.searchedThisTurn);
-    const show = (delta: string) => {
+    const splitter = new ThinkTagSplitter();
+    const text = (delta: string) => {
       this.answer += delta;
       const shown = filter.push(delta);
       if (shown) this.emit({ type: 'text-delta', text: shown });
     };
+    const show = (delta: string) => this.routeThought(splitter.push(delta), text);
     const settle = async () => {
+      this.routeThought(splitter.end(), text);
       const { query, flush } = filter.end();
       if (query && !this.aborted) {
         await this.answerWithSearch(query, label, 'cloud', () =>
@@ -1610,8 +1673,9 @@ export class StackDriver implements ChatDriver {
       if (flush) this.emit({ type: 'text-delta', text: flush });
       this.finish(this.aborted ? 'aborted' : 'complete');
     };
-    const sys =
+    const withVideo =
       images.length && hasVideoFrames(images) ? `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}` : system;
+    const sys = this.withThinking(withVideo, model);
     const messages: Array<{ role: string; content: unknown }> = [
       { role: 'system', content: sys },
       ...this.history.map((m) => ({ role: m.role, content: m.content as unknown })),
@@ -1642,7 +1706,9 @@ export class StackDriver implements ChatDriver {
       }
       if (!this.aborted) {
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-        const content = data?.choices?.[0]?.message?.content;
+        const message = data?.choices?.[0]?.message;
+        this.emitThought(reasoningOf(message));
+        const content = message?.content;
         if (typeof content === 'string' && content) show(content);
       }
       await settle();
@@ -1673,7 +1739,9 @@ export class StackDriver implements ChatDriver {
         const payload = trimmed.slice(5).trim();
         if (payload === '[DONE]') continue;
         try {
-          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
+          const chunk = JSON.parse(payload)?.choices?.[0]?.delta;
+          this.emitThought(reasoningOf(chunk));
+          const delta = chunk?.content;
           if (typeof delta === 'string' && delta) show(delta);
         } catch {
           // skip a partial or non-JSON keepalive line
@@ -1715,7 +1783,7 @@ export class StackDriver implements ChatDriver {
     };
     if (key) authHeaders.authorization = `Bearer ${key}`;
     const messages: Array<Record<string, unknown>> = [
-      { role: 'system', content: system },
+      { role: 'system', content: this.withThinking(system, model) },
       ...this.history.map((m) => ({ role: m.role, content: m.content })),
     ];
     const nativeShim = platform() === 'ios' || platform() === 'electron';
@@ -1772,6 +1840,7 @@ export class StackDriver implements ChatDriver {
     round: number,
   ): Promise<{ toolCalls: ToolCallAccum[]; assistantMessage: Record<string, unknown> }> {
     let started = false;
+    const splitter = new ThinkTagSplitter();
     const pushText = (delta: string) => {
       if (this.aborted || !delta) return;
       if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) {
@@ -1805,7 +1874,10 @@ export class StackDriver implements ChatDriver {
         }>;
       };
       const msg = data.choices?.[0]?.message;
-      if (typeof msg?.content === 'string') pushText(msg.content);
+      this.emitThought(reasoningOf(msg));
+      if (typeof msg?.content === 'string') {
+        this.routeThought([...splitter.push(msg.content), ...splitter.end()], pushText);
+      }
       const raw = msg?.tool_calls ?? [];
       const toolCalls: ToolCallAccum[] = raw.map((tc) => ({
         id: tc.id,
@@ -1830,6 +1902,11 @@ export class StackDriver implements ChatDriver {
     const acc = new Map<number, ToolCallAccum>();
     let text = '';
     let buffer = '';
+    // Only the answer part is kept for the transcript and the replayed turn.
+    const keepText = (t: string) => {
+      text += t;
+      pushText(t);
+    };
     for (;;) {
       const { value, done } = await reader.read();
       if (done || this.aborted) break;
@@ -1844,17 +1921,16 @@ export class StackDriver implements ChatDriver {
         try {
           const choice = (JSON.parse(payload) as { choices?: Array<Record<string, any>> })
             ?.choices?.[0];
+          this.emitThought(reasoningOf(choice?.delta));
           const dtext = choice?.delta?.content;
-          if (typeof dtext === 'string' && dtext) {
-            text += dtext;
-            pushText(dtext);
-          }
+          if (typeof dtext === 'string' && dtext) this.routeThought(splitter.push(dtext), keepText);
           mergeToolCallDeltas(acc, choice?.delta?.tool_calls);
         } catch {
           // skip a partial or non-JSON keepalive line
         }
       }
     }
+    this.routeThought(splitter.end(), keepText);
     const toolCalls = finalizeToolCalls(acc);
     const assistantMessage: Record<string, unknown> = toolCalls.length
       ? {
