@@ -43,10 +43,17 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
+/** The user turn that opens a trimmed history when the kept window starts on
+ *  the assistant's own lines. */
+export const TRIMMED_HISTORY_OPENER = '(Earlier messages in this chat were trimmed to fit.)';
+
 /** The newest turns that fit the window beside the system prompt and room for
  *  the reply, oldest dropped first. The live question (the last message) is
  *  always kept, and history never opens on an assistant turn, since a chat
- *  template expects a user turn first. */
+ *  template expects a user turn first. When the kept window starts on
+ *  assistant turns, a short opener goes in front rather than those turns being
+ *  dropped: the guided setup posts several guide lines in a row, and dropping
+ *  them left the model with only the question and none of the thread. */
 export function fitDeviceHistory<M extends { role: 'user' | 'assistant'; content: string }>(
   system: string,
   messages: M[],
@@ -54,7 +61,8 @@ export function fitDeviceHistory<M extends { role: 'user' | 'assistant'; content
   contextTokens: number = DEVICE_CONTEXT_TOKENS,
 ): M[] {
   if (messages.length === 0) return messages;
-  let budget = contextTokens - replyTokens - estimateTokens(system);
+  let budget =
+    contextTokens - replyTokens - estimateTokens(system) - estimateTokens(TRIMMED_HISTORY_OPENER);
   let start = messages.length - 1;
   budget -= estimateTokens(messages[start]!.content);
   while (start > 0) {
@@ -63,8 +71,10 @@ export function fitDeviceHistory<M extends { role: 'user' | 'assistant'; content
     budget -= cost;
     start -= 1;
   }
-  while (start < messages.length - 1 && messages[start]!.role !== 'user') start += 1;
-  return start === 0 ? messages : messages.slice(start);
+  if (start === 0 && messages[0]!.role === 'user') return messages;
+  const kept = messages.slice(start);
+  if (kept[0]!.role === 'user') return kept;
+  return [{ ...kept[0]!, role: 'user', content: TRIMMED_HISTORY_OPENER }, ...kept];
 }
 
 /** What a device reply that ended with no words says, instead of ending
