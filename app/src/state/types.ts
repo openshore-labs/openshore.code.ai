@@ -14,7 +14,15 @@ import { claudeModelLabel } from '../lib/claudeModels.js';
 import { providerInfo, providerModelLabel, providerModelVision } from '../lib/providers.js';
 
 export type ThreadItem =
-  | { kind: 'user'; id: string; text: string }
+  | {
+      kind: 'user';
+      id: string;
+      text: string;
+      /** The ethics layer stopped this message before it reached a model. It
+       *  stays on screen as the record, and never rides into a model's history
+       *  (a switch or a relaunch reseeds from the transcript). */
+      withheld?: boolean;
+    }
   | {
       kind: 'assistant';
       id: string;
@@ -467,12 +475,33 @@ export interface SeedTurn {
 
 export function seedFromTranscript(items: ThreadItem[]): SeedTurn[] {
   const out: SeedTurn[] = [];
+  // A message the ethics layer withheld never reached a model; it (and the
+  // refusal answering it) stays out, so a switch cannot deliver it after all.
+  let withheld = false;
   for (const it of items) {
-    if (it.kind === 'user') out.push({ role: 'user', text: it.text });
-    else if (it.kind === 'assistant' && it.text.trim())
-      out.push({ role: 'assistant', text: it.text });
+    if (it.kind === 'user') {
+      withheld = Boolean(it.withheld);
+      if (!withheld) out.push({ role: 'user', text: it.text });
+      continue;
+    }
+    if (withheld) continue;
+    if (it.kind === 'assistant' && it.text.trim()) out.push({ role: 'assistant', text: it.text });
+    // A plan card is the model's own proposal, and a clarify card its
+    // questions: both are what the person's next message answers, so a new
+    // model needs them to make sense of "go ahead" or a picked option.
+    else if (it.kind === 'plan' && it.text.trim()) out.push({ role: 'assistant', text: it.text });
+    else if (it.kind === 'clarify') out.push({ role: 'assistant', text: clarifyText(it) });
   }
   return out;
+}
+
+/** A clarify card as the words the model asked, for a new model's history. */
+function clarifyText(item: Extract<ThreadItem, { kind: 'clarify' }>): string {
+  const questions = item.questions.map((q, i) => {
+    const options = q.options?.length ? ` (${q.options.join(' / ')})` : '';
+    return `${i + 1}. ${q.question}${options}`;
+  });
+  return [item.summary.trim(), ...questions].filter(Boolean).join('\n');
 }
 
 // Can this brain actually see an attached image? Resolved at send time, per the

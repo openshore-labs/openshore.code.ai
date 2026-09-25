@@ -17,12 +17,14 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  desktopChatSystem,
   isAdminProvisionedWorkspace,
   isOutboxAllowedPath,
   startDaemon,
   type DaemonOptions,
   type RunningDaemon,
 } from '../src/daemon/serve.js';
+import { SEARCH_PROTOCOL_NOTE } from '../src/harness/localSearch.js';
 import {
   TerminalManager,
   TerminalUnavailable,
@@ -265,6 +267,23 @@ describe('listings are owner-scoped for members (DAE-1)', () => {
 });
 
 describe('free desktop chat (/chat, read-only)', () => {
+  it("carries the chat's own context below the fixed system line, capped", () => {
+    const bare = desktopChatSystem(undefined);
+    expect(desktopChatSystem('  ')).toBe(bare);
+    expect(desktopChatSystem({ role: 'system' })).toBe(bare);
+    const withContext = desktopChatSystem('Project brief: ship the login screen.');
+    expect(withContext.startsWith(bare)).toBe(true);
+    expect(withContext).toContain('Project brief: ship the login screen.');
+    expect(desktopChatSystem('x'.repeat(50_000)).length).toBeLessThan(bare.length + 8100);
+  });
+
+  it('adds the search instruction only when the phone asks for it', () => {
+    expect(desktopChatSystem(undefined)).not.toContain(SEARCH_PROTOCOL_NOTE);
+    const withSearch = desktopChatSystem('Project brief.', true);
+    expect(withSearch).toContain(SEARCH_PROTOCOL_NOTE);
+    expect(withSearch).toContain('Project brief.');
+  });
+
   it('rejects a chat with no messages', async () => {
     const res = await fetch(`${base}/chat`, {
       method: 'POST',
@@ -966,6 +985,71 @@ describe('clone target names (DAE-16)', () => {
       });
       expect(res.status, url).toBe(400);
     }
+  });
+});
+
+describe('the phone sees what is on this computer, and clones land once', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+
+  function plantClone(name: string, origin: string): string {
+    const dir = join(home, 'OSCode', name);
+    mkdirSync(join(dir, '.git'), { recursive: true });
+    writeFileSync(join(dir, '.git', 'config'), `[remote "origin"]\n\turl = ${origin}\n`);
+    return dir;
+  }
+
+  it('lists a clone under ~/OSCode before its first chat, with its origin and no credentials', async () => {
+    process.env.HOME = home;
+    const dir = plantClone(
+      'openshore-hq',
+      'https://x-access-token:ghu_leak@github.com/o/openshore-hq.git',
+    );
+    const ws = (await (
+      await fetch(`${base}/workspaces`, { headers: auth(adminToken) })
+    ).json()) as {
+      workspaces: Array<{ cwd: string; name: string; remote?: string }>;
+    };
+    expect(ws.workspaces).toContainEqual({
+      cwd: dir,
+      name: 'openshore-hq',
+      remote: 'https://github.com/o/openshore-hq.git',
+    });
+    expect(JSON.stringify(ws)).not.toContain('ghu_leak');
+  });
+
+  it('answers a clone of a repository already there with its folder, and refuses a name clash', async () => {
+    process.env.HOME = home;
+    const dir = plantClone('site', 'git@github.com:o/site.git');
+    const same = await fetch(`${base}/workspaces/clone`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ url: 'https://github.com/o/site.git', token: 'ghu_tok' }),
+    });
+    expect(same.status).toBe(200);
+    expect(await same.json()).toEqual({ cwd: dir, name: 'site' });
+
+    const clash = await fetch(`${base}/workspaces/clone`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ url: 'https://github.com/someone-else/site.git', token: 'ghu_tok' }),
+    });
+    expect(clash.status).toBe(400);
+    const body = (await clash.json()) as { error: string };
+    expect(body.error).toMatch(/A different repository already uses the folder OSCode\/site/);
+    expect(body.error).not.toContain('ghu_tok');
+  });
+
+  it('keeps cloning admin-only: a member cannot provision the computer', async () => {
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_clone' });
+    const res = await fetch(`${base}/workspaces/clone`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ url: 'https://github.com/o/r.git', token: 'ghu_tok' }),
+    });
+    expect(res.status).toBe(403);
   });
 });
 

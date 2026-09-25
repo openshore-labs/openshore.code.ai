@@ -19,7 +19,8 @@ import { BackBar } from '../components/BackBar.js';
 import { ProjectCurrents } from '../components/ProjectCurrents.js';
 import { Sheet } from '../components/Sheet.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
-import { isGithubRepoId, repoLabel } from '../lib/chatRepos.js';
+import { PLATFORM_NAME, isGithubRepoId, isRemoteRepoId, repoLabel } from '../lib/chatRepos.js';
+import { openInAppBrowser } from '../lib/platform.js';
 import {
   PERMISSION_LADDER,
   canEdit,
@@ -369,8 +370,14 @@ export function ProjectDetailScreen() {
             <>
               <div className="repo-chips">
                 {project.repoIds.map((id) => (
-                  <span key={id} className={`repo-chip${isGithubRepoId(id) ? '' : ' local'}`}>
-                    {isGithubRepoId(id) ? <GithubGlyph /> : <FolderGlyph />}
+                  <span key={id} className={`repo-chip${isRemoteRepoId(id) ? '' : ' local'}`}>
+                    {isGithubRepoId(id) ? (
+                      <GithubGlyph />
+                    ) : isRemoteRepoId(id) ? (
+                      <BranchGlyph />
+                    ) : (
+                      <FolderGlyph />
+                    )}
                     <span className="repo-chip-name">{repoLabel(id)}</span>
                   </span>
                 ))}
@@ -643,7 +650,7 @@ function ManageReposSheet({
   onOpenRepos: () => void;
 }) {
   const repos = useConnectedRepos(open);
-  const repoOptions = [...repos.workspaces, ...repos.github];
+  const repoOptions = [...repos.workspaces, ...repos.remote];
   const [draft, setDraft] = useState<string[]>(project.repoIds);
   // Re-seed the draft each time the sheet opens on a project.
   const [seededFor, setSeededFor] = useState<string | undefined>();
@@ -673,8 +680,11 @@ function ManageReposSheet({
                 />
                 <span>
                   {r.name}
-                  {r.kind === 'github' && r.detail ? (
-                    <span className="hint"> · {r.detail} on GitHub</span>
+                  {r.kind !== 'workspace' && r.detail ? (
+                    <span className="hint">
+                      {' '}
+                      · {r.detail} on {PLATFORM_NAME[r.kind]}
+                    </span>
                   ) : null}
                 </span>
               </label>
@@ -685,9 +695,22 @@ function ManageReposSheet({
         <p className="hint">
           {repos.loading
             ? 'Loading your repositories.'
-            : 'Connect your computer or GitHub to attach repositories.'}
+            : (repos.error ?? 'Connect your computer or GitHub to attach repositories.')}
         </p>
       )}
+      {repos.access ? (
+        <p className="hint">
+          {repos.access.text}{' '}
+          <button
+            type="button"
+            className="linklike"
+            onClick={() => openInAppBrowser(repos.access!.url, repos.refresh)}
+          >
+            {repos.access.action}
+          </button>
+          .
+        </p>
+      ) : null}
       <div className="sheet-actions">
         <button className="btn primary" onClick={() => void onSave(draft)}>
           Save
@@ -705,6 +728,17 @@ function ComposeIcon() {
     <Icon size={22}>
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    </Icon>
+  );
+}
+
+function BranchGlyph() {
+  return (
+    <Icon size={14}>
+      <circle cx="7" cy="6" r="2.2" />
+      <circle cx="7" cy="18" r="2.2" />
+      <circle cx="17" cy="9" r="2.2" />
+      <path d="M7 8.2v7.6M17 11.2c0 3-3.5 3.3-6 3.9-1.8.4-3 1-4 2.3" />
     </Icon>
   );
 }

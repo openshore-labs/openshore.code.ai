@@ -67,7 +67,7 @@ import { streamingFetch } from '../lib/streamingFetch.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
-import { buildVisionContent, describeError } from './cloudClaudeDriver.js';
+import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import {
   briefTodos,
@@ -88,7 +88,7 @@ import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
-import { buildHarborMiniSystemPrompt, isHarborMini } from '../lib/harborMini.js';
+import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
@@ -241,6 +241,13 @@ export const IMAGE_NOT_SENT =
 // anchor instead of dead-ending the turn, the way the engine's router does.
 class RouteUnavailable extends Error {}
 
+/** The error a stopped step unwinds with; run() reads its name as a calm end. */
+function abortError(): Error {
+  const err = new Error('Stopped.');
+  err.name = 'AbortError';
+  return err;
+}
+
 function locationOf(ref: StackModelRef): 'home' | 'cloud' | 'device' {
   // A BYOM endpoint goes over the network (its own or someone else's server),
   // so it shares the cloud reachability rules: available online, held back on
@@ -320,10 +327,26 @@ export class StackDriver implements ChatDriver {
   }
 
   send(text: string, attachments?: Attachment[]): void {
-    void this.run(text, attachments);
+    // One run at a time: a message sent after a Stop that landed mid warm-up
+    // waits for that run to unwind (a model load cannot be cancelled) rather
+    // than racing it on the shared history and model slot.
+    this.running = this.running.then(() => this.run(text, attachments)).catch(() => undefined);
   }
 
-  private emit = (e: Parameters<DriverEmitter['emit']>[0]) => this.emitter.emit(e);
+  /** The run in flight, so the next one starts only once it has unwound. */
+  private running: Promise<void> = Promise.resolve();
+  /** The turn already ended (a Stop during warm-up closes it at once), so
+   *  whatever the unwinding run still says is dropped, its ending too. */
+  private settled = false;
+  /** An on-device model is loading for this turn; nothing to stop yet. */
+  private warming = false;
+
+  private emit = (e: Parameters<DriverEmitter['emit']>[0]) => {
+    if (e.type === 'task-start') this.settled = false;
+    else if (this.settled) return;
+    if (e.type === 'task-done') this.settled = true;
+    this.emitter.emit(e);
+  };
 
   // ---- routing ------------------------------------------------------------
 
@@ -445,7 +468,8 @@ export class StackDriver implements ChatDriver {
   private systemFor(ref: StackModelRef, placement?: Placement, search?: boolean): string {
     const guideSystem =
       ref.kind === 'device' && isHarborMini(ref.modelId)
-        ? (this.guidePrompt ?? buildHarborMiniSystemPrompt(this.lastUserText()))
+        ? (this.guidePrompt ??
+          buildHarborMiniSystemPrompt(this.lastUserText(), this.context.conversationId))
         : ref.kind === 'device' && isHarbor(ref.modelId)
           ? buildHarborSystemPrompt(search === true)
           : undefined;
@@ -465,6 +489,12 @@ export class StackDriver implements ChatDriver {
         ? `You are working in the project "${this.context.projectName}".`
         : '';
       parts.push([head, proj].filter(Boolean).join('\n'));
+    }
+    // Mid-walk, whatever seat answers still needs to know where setup stands
+    // (Harbor Lite already reads it inside its own prompt).
+    if (!(ref.kind === 'device' && isHarborMini(ref.modelId))) {
+      const walk = guidedSetupLine(this.context.conversationId);
+      if (walk) parts.push(walk);
     }
     const crewNote = this.crewGuidance();
     if (crewNote) parts.push(crewNote);
@@ -789,7 +819,7 @@ export class StackDriver implements ChatDriver {
       planText = await this.completeOnce(
         reasoning,
         undefined,
-        planPrompt(text, this.stack, contextNote),
+        planPrompt(text, this.stack, contextNote, this.conversationDigest()),
       );
     } catch {
       return false;
@@ -921,13 +951,34 @@ export class StackDriver implements ChatDriver {
     this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
+  /** The earlier turns of this chat, newest kept, for the play's prompts: a
+   *  step cannot resolve "it" or "that" without them, and a thread carried in
+   *  from another model lives only here. Bounded, so a long chat never crowds
+   *  out the step itself. The live message (the last entry) is left out; each
+   *  prompt carries it on its own. */
+  private conversationDigest(maxChars = 6000): string | undefined {
+    const earlier = this.history.slice(0, -1);
+    const lines: string[] = [];
+    let used = 0;
+    for (let i = earlier.length - 1; i >= 0; i--) {
+      const m = earlier[i]!;
+      const line = `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`;
+      if (used + line.length > maxChars) break;
+      lines.unshift(line);
+      used += line.length;
+    }
+    return lines.length ? lines.join('\n') : undefined;
+  }
+
   /** The prompt for one step: the goal, this step's brief, and the prior steps'
    *  results as context so a handoff carries the work forward. */
   private stepPrompt(step: PlayStep, play: Play, results: StepResult[]): string {
     const priorLines = results.length
       ? ['Work done so far by the team:', ...results.map((r) => `- ${r.title}: ${r.text}`), '']
       : [];
+    const conversation = this.conversationDigest();
     return [
+      conversation ? `The conversation so far, for context:\n${conversation}\n` : '',
       `Overall goal: ${play.summary}`,
       ...priorLines,
       `Your step: ${step.title}.`,
@@ -943,8 +994,10 @@ export class StackDriver implements ChatDriver {
 
   /** The final synthesis: compose the answer to the user from the team's work. */
   private synthesisPrompt(userText: string, play: Play, results: StepResult[]): string {
+    const conversation = this.conversationDigest();
     return [
       "Compose the final answer to the user, using the team's work below. Do not mention the internal steps or handoffs; just give the finished result.",
+      ...(conversation ? [`The conversation so far, for context:\n${conversation}`] : []),
       `User request: ${userText}`,
       `Goal: ${play.summary}`,
       'Team work:',
@@ -1177,7 +1230,9 @@ export class StackDriver implements ChatDriver {
         if (stopReason === 'end' && query && turn && !this.aborted) {
           void this.answerWithSearch(query, turn.ref.modelName, 'local', () =>
             this.runDevice(turn.ref, turn.placement),
-          ).catch((err) => this.finish('error', describeError(err)));
+          ).catch((err) =>
+            this.aborted ? this.finish('aborted') : this.finish('error', describeError(err)),
+          );
           return;
         }
         if (flush) this.emit({ type: 'text-delta', text: flush });
@@ -1200,14 +1255,23 @@ export class StackDriver implements ChatDriver {
     await this.listenersReady;
     // The phone's one model slot is shared with every device chat (APP-3):
     // confirm the slot holds this model before every reply, never assume it.
-    const ready = await ensureDeviceModel(
-      {
-        id: ref.modelId,
-        name: ref.modelName,
-        contextSize: DEVICE_CONTEXT_TOKENS,
-      },
-      (message) => this.emit({ type: 'status', message }),
-    );
+    this.warming = true;
+    let ready: Awaited<ReturnType<typeof ensureDeviceModel>>;
+    try {
+      ready = await ensureDeviceModel(
+        {
+          id: ref.modelId,
+          name: ref.modelName,
+          contextSize: DEVICE_CONTEXT_TOKENS,
+        },
+        (message) => this.emit({ type: 'status', message }),
+      );
+    } finally {
+      this.warming = false;
+    }
+    // Stopped while the model loaded: the turn is already closed (abort), so
+    // never start the reply the person asked to stop.
+    if (this.aborted) throw abortError();
     if (!ready.ok) throw new RouteUnavailable(ready.detail);
     const guide = isHarborMini(ref.modelId);
     const online = this.webReachable();
@@ -1218,12 +1282,11 @@ export class StackDriver implements ChatDriver {
           this.context.researchOn === true,
           this.emit,
           online,
+          this.context.conversationId,
         )
       ).prompt;
-      if (this.aborted) {
-        this.finish('aborted');
-        return;
-      }
+      // Stopped during the guide's web search: unwind the way a stopped load does.
+      if (this.aborted) throw abortError();
     }
     this.deviceTurn = { ref, placement };
     this.searchFilter = new SearchLineFilter(!guide && online && !this.searchedThisTurn);
@@ -1395,10 +1458,9 @@ export class StackDriver implements ChatDriver {
       fetch: streamingFetch,
       ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
     });
-    const messages: Anthropic.MessageParam[] = this.history.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const messages: Anthropic.MessageParam[] = opensOnUser(
+      this.history.map((m) => ({ role: m.role, content: m.content })),
+    );
     let sys = system;
     if (images.length && messages.length) {
       // Fold the images into the current (last) user turn as image blocks, with
@@ -1446,10 +1508,9 @@ export class StackDriver implements ChatDriver {
       fetch: streamingFetch,
       ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
     });
-    const messages: Anthropic.MessageParam[] = this.history.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const messages: Anthropic.MessageParam[] = opensOnUser(
+      this.history.map((m) => ({ role: m.role, content: m.content })),
+    );
     const MAX_ROUNDS = 16;
     for (let round = 0; round < MAX_ROUNDS; round++) {
       if (this.aborted) {
@@ -1815,6 +1876,9 @@ export class StackDriver implements ChatDriver {
     this.aborted = true;
     this.abortController?.abort();
     this.pendingAsk?.settle(false);
+    // A model load cannot be stopped, but the turn can: close it now so Stop
+    // answers at once, and the run drops out when the load finishes.
+    if (this.warming) this.finish('aborted');
     const requestId = this.activeRequestId;
     if (requestId) {
       void Llama.stop({ requestId }).catch(() => {});
@@ -1838,6 +1902,10 @@ export class StackDriver implements ChatDriver {
     this.engineTurnSettle?.();
   }
 
+  recordLine(turn: SeedTurn): void {
+    this.history.push({ role: turn.role, content: turn.text });
+  }
+
   answerApproval(id: string, answer: ApprovalAnswer): void {
     // This driver's own card (an image bound for the cloud) settles here; a
     // tool step's approval is the engine's, so it passes through to it.
@@ -1849,6 +1917,8 @@ export class StackDriver implements ChatDriver {
   }
 
   dispose(): void {
+    // Silent first: a teardown is not a Stop the chat should record.
+    this.emitter.clear();
     this.abort();
     // Nothing is listening after dispose; the timers armed above have no
     // turn left to finish.
@@ -1858,6 +1928,5 @@ export class StackDriver implements ChatDriver {
     this.engineDriver = undefined;
     for (const h of this.deviceListeners) void h.remove();
     this.deviceListeners = [];
-    this.emitter.clear();
   }
 }

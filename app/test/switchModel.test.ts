@@ -50,18 +50,32 @@ vi.mock('../src/lib/insights.js', () => ({
   clearInsights: async () => {},
 }));
 
-// Fake drivers that record the seed handed to their constructor.
+// Fake drivers that record the seed handed to their constructor, and what
+// they were asked to send. A send echoes its task-start the way every real
+// driver does, and leaves the turn open (a reply on its way).
 let lastDeviceSeed: SeedTurn[] | undefined;
 let lastCloudSeed: SeedTurn[] | undefined;
+let lastDesktopChatSeed: SeedTurn[] | undefined;
+const sends: string[] = [];
 
 class FakeDriver {
-  subscribe() {
-    return () => {};
+  private sink?: (event: unknown, seq: number) => void;
+  disposed = false;
+  subscribe(sink: (event: unknown, seq: number) => void) {
+    this.sink = sink;
+    return () => {
+      this.sink = undefined;
+    };
   }
-  send() {}
+  send(text: string) {
+    sends.push(text);
+    queueMicrotask(() => this.sink?.({ type: 'task-start', input: text }, 0));
+  }
   abort() {}
   answerApproval() {}
-  dispose() {}
+  dispose() {
+    this.disposed = true;
+  }
 }
 
 vi.mock('../src/drivers/onDeviceDriver.js', () => ({
@@ -81,6 +95,16 @@ vi.mock('../src/drivers/cloudClaudeDriver.js', () => ({
     constructor(_key: string, _model: string, seed?: SeedTurn[]) {
       super();
       lastCloudSeed = seed;
+    }
+  },
+}));
+
+vi.mock('../src/drivers/desktopChatDriver.js', () => ({
+  DesktopChatDriver: class extends FakeDriver {
+    readonly kind = 'desktop-chat' as const;
+    constructor(_target: unknown, _model: string | undefined, seed?: SeedTurn[]) {
+      super();
+      lastDesktopChatSeed = seed;
     }
   },
 }));
@@ -114,6 +138,8 @@ function reset() {
   secrets.clear();
   lastDeviceSeed = undefined;
   lastCloudSeed = undefined;
+  lastDesktopChatSeed = undefined;
+  sends.length = 0;
   useApp.setState({
     settings: { onboarded: true, claudeModel: 'x', deviceModels: {} },
     conversations: {},
@@ -177,5 +203,81 @@ describe('mid-chat model switch', () => {
     expect(lastCloudSeed).toEqual([{ role: 'user', text: 'hi' }]);
     const note = conv.thread.items.find((i) => i.kind === 'note') as { text: string } | undefined;
     expect(note?.text).toContain("sends this chat's history");
+  });
+});
+
+describe('switching mid-chat does not race a send', () => {
+  beforeEach(reset);
+
+  const flush = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+
+  it('a message sent while the new brain builds stays with the old one, and the switch stands down', async () => {
+    secrets.set(ANTHROPIC_KEY_KEY, 'sk-test');
+    useApp.setState({
+      conversations: { c1: convWith([{ role: 'user', text: 'hi' }]) },
+      order: ['c1'],
+      activeId: 'c1',
+    });
+    useApp.getState().openConversation('c1');
+    await flush();
+    // The switch starts building (it awaits the key), and a message goes out.
+    const switching = useApp
+      .getState()
+      .switchModel({ kind: 'cloud', provider: 'anthropic', model: 'claude-x' });
+    useApp.getState().send('one more thing');
+    await switching;
+    // The ethics screen runs before the driver hears the message.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const conv = useApp.getState().conversations.c1!;
+    expect(sends).toEqual(['one more thing']);
+    // The old brain is answering, so the chat stays on it.
+    expect(conv.source.kind).toBe('device');
+    expect(conv.thread.busy).toBe(true);
+  });
+
+  it('shows a sent message once, busy from the moment it leaves', async () => {
+    useApp.setState({
+      conversations: { c1: convWith([{ role: 'user', text: 'hi' }]) },
+      order: ['c1'],
+      activeId: 'c1',
+    });
+    useApp.getState().openConversation('c1');
+    await flush();
+    useApp.getState().send('next');
+    // Painted before the driver has said a word.
+    expect(useApp.getState().conversations.c1!.thread.busy).toBe(true);
+    await flush();
+    const users = useApp
+      .getState()
+      .conversations.c1!.thread.items.filter((i) => i.kind === 'user' && i.text === 'next');
+    expect(users).toHaveLength(1);
+  });
+
+  it("carries the thread to your computer's local chat", async () => {
+    useApp.setState({
+      settings: {
+        onboarded: true,
+        claudeModel: 'x',
+        deviceModels: {},
+        daemon: { baseUrl: 'http://box', token: 't' } as never,
+      },
+      conversations: {
+        c1: convWith([
+          { role: 'user', text: 'remember X' },
+          { role: 'assistant', text: 'noted' },
+        ]),
+      },
+      order: ['c1'],
+      activeId: 'c1',
+    });
+    await useApp.getState().switchModel({ kind: 'desktop-chat', model: 'qwen' } as never);
+    expect(useApp.getState().order).toEqual(['c1']);
+    expect(useApp.getState().conversations.c1!.source.kind).toBe('desktop-chat');
+    expect(lastDesktopChatSeed).toEqual([
+      { role: 'user', text: 'remember X' },
+      { role: 'assistant', text: 'noted' },
+    ]);
   });
 });

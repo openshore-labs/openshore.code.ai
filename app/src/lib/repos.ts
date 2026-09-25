@@ -24,7 +24,9 @@ export const REPO_CONNECTORS: RepoConnectorInfo[] = [
     id: 'github',
     name: 'GitHub',
     keyHint: 'ghp_... or a fine-grained token',
-    tokenUrl: 'https://github.com/settings/tokens',
+    // A fine-grained token picks its repositories on this page; a classic one
+    // (ghp_) needs the repo scope to see private repositories.
+    tokenUrl: 'https://github.com/settings/personal-access-tokens/new',
   },
   {
     id: 'gitlab',
@@ -33,10 +35,13 @@ export const REPO_CONNECTORS: RepoConnectorInfo[] = [
     tokenUrl: 'https://gitlab.com/-/user_settings/personal_access_tokens',
   },
   {
+    // Bitbucket app passwords stopped working on 2026-06-09. An Atlassian API
+    // token is used with the account email, so it is pasted as email:token; a
+    // repository or workspace access token is pasted on its own.
     id: 'bitbucket',
     name: 'Bitbucket',
-    keyHint: 'an API token or app password',
-    tokenUrl: 'https://bitbucket.org/account/settings/app-passwords/',
+    keyHint: 'email:API token, or an access token',
+    tokenUrl: 'https://id.atlassian.com/manage-profile/security/api-tokens',
   },
 ];
 

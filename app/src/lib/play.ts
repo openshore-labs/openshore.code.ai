@@ -284,7 +284,14 @@ function rosterLines(stack: AppStack): string {
 /** The plan call: the reasoning LLM frames the prompt and, when it is clear,
  *  lays out the play. It returns ONLY JSON. Kept provider-agnostic so the same
  *  prompt works for Claude, an OpenAI-compatible model, or a capable local one. */
-export function planPrompt(userText: string, stack: AppStack, contextNote?: string): string {
+export function planPrompt(
+  userText: string,
+  stack: AppStack,
+  contextNote?: string,
+  /** The chat so far (conversationDigest), so "it" and "that" in the request
+   *  resolve against what was already said, a switched-in thread included. */
+  conversation?: string,
+): string {
   return [
     'You are the reasoning lead of a small team of models. Turn the user request into a plan.',
     'First decide if the request is clear enough to act on. Ask a question ONLY when a wrong assumption would waste real work; do not ask about taste or things you can reasonably choose. Most requests are clear.',
@@ -296,6 +303,7 @@ export function planPrompt(userText: string, stack: AppStack, contextNote?: stri
     '',
     contextNote ? `Context: ${contextNote}` : '',
     '',
+    conversation ? `The conversation so far, for context:\n${conversation}\n` : '',
     'Reply with ONLY a JSON object, no prose, in this shape:',
     '{',
     '  "clear": boolean,',

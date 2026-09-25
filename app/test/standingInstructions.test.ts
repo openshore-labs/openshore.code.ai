@@ -102,6 +102,12 @@ async function projectWithInstructions(): Promise<void> {
   await useApp.getState().updateProject(id, { instructions: INSTRUCTIONS });
 }
 
+/** Constructor args with any per-reply context getter called, as a driver
+ *  would call it when it sends. */
+function resolveContext(args: unknown): unknown {
+  return Array.isArray(args) ? args.map((a) => (typeof a === 'function' ? a() : a)) : args;
+}
+
 describe('standing instructions ride into every driver (B6)', () => {
   beforeEach(() => {
     mem.clear();
@@ -133,7 +139,8 @@ describe('standing instructions ride into every driver (B6)', () => {
       .getState()
       .newConversation({ kind: 'cloud', provider: 'anthropic', model: 'claude-x' });
     expect(captured.claude).toHaveLength(1);
-    expect(JSON.stringify(captured.claude[0])).toContain(INSTRUCTIONS);
+    // The chat's context is read on every reply (a getter), so call it.
+    expect(JSON.stringify(resolveContext(captured.claude[0]))).toContain(INSTRUCTIONS);
   });
 
   it('an OpenAI-compatible provider receives the project instructions', async () => {
@@ -141,6 +148,7 @@ describe('standing instructions ride into every driver (B6)', () => {
     await projectWithInstructions();
     await useApp.getState().newConversation({ kind: 'cloud', provider: 'openai', model: 'gpt-5' });
     expect(captured.openai).toHaveLength(1);
-    expect(JSON.stringify(captured.openai[0])).toContain(INSTRUCTIONS);
+    // The chat's context is read on every reply (a getter), so call it.
+    expect(JSON.stringify(resolveContext(captured.openai[0]))).toContain(INSTRUCTIONS);
   });
 });

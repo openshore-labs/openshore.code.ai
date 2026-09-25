@@ -117,7 +117,9 @@ describe('the thread around the composer', () => {
   });
 
   it('a downward drag on the transcript puts the keyboard away', () => {
-    expect(thread).toMatch(/y - startY < 24/);
+    expect(thread).toMatch(/y - startY < DISMISS_DRAG_PX/);
+    expect(thread).toMatch(/const DISMISS_DRAG_PX = 16;/);
+    expect(thread).toMatch(/if \(isPhone\(\)\) void Keyboard\.hide\(\)/);
   });
 
   it('a long todo list scrolls inside its card', () => {
