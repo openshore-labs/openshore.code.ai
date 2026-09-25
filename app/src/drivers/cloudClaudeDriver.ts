@@ -7,6 +7,7 @@ import type { ApprovalAnswer } from 'os-code/protocol';
 import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter, readChatContext } from './types.js';
 import { effortDirective } from '../lib/effort.js';
+import { chainOfThoughtOn, claudeRequestThinking } from '../lib/chainOfThought.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
@@ -138,10 +139,14 @@ export class CloudClaudeDriver implements ChatDriver {
     // Accumulate the streamed text so an abort can keep the visible partial in
     // model history (Claude's own apps re-feed the partial when you continue).
     let partial = '';
+    // Chain of Thought on: Claude thinks through its own API and the summary
+    // streams into the thinking block. Read once per turn, so a flip mid-reply
+    // cannot half-apply.
+    const cot = chainOfThoughtOn();
     try {
       const stream = this.client.messages.stream({
         model: this.model,
-        max_tokens: 16000,
+        ...claudeRequestThinking(this.model, 16000, cot),
         system: [
           SYSTEM_PROMPT,
           effortDirective(),
@@ -153,6 +158,11 @@ export class CloudClaudeDriver implements ChatDriver {
         messages: opensOnUser(this.history),
       });
       this.activeStream = stream;
+      if (cot) {
+        stream.on('thinking', (delta) => {
+          if (delta) this.emitter.emit({ type: 'thinking-delta', text: delta });
+        });
+      }
       stream.on('text', (delta) => {
         partial += delta;
         this.emitter.emit({ type: 'text-delta', text: delta });

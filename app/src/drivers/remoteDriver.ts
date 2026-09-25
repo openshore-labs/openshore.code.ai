@@ -213,6 +213,8 @@ export async function daemonCreateSession(
     instructions?: string;
     permissionMode?: PermissionMode;
     humanize?: boolean;
+    /** Chain of Thought for this session (off unless true). */
+    chainOfThought?: boolean;
     /** The Agentic Current that is on, as the handle its engine tool needs. */
     currents?: CurrentsHandles;
     /** The Harness Current that is on (Jev), as its per-session handle. */
@@ -227,6 +229,7 @@ export async function daemonCreateSession(
       ...(opts.instructions ? { instructions: opts.instructions } : {}),
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
+      ...(typeof opts.chainOfThought === 'boolean' ? { chainOfThought: opts.chainOfThought } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
       ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
     }),

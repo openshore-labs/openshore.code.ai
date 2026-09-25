@@ -4,7 +4,13 @@
 // a web search the model explicitly asks for, which the user can point at
 // their own key instead of the DuckDuckGo default.
 import type { PluginListenerHandle } from '@capacitor/core';
-import { SEARCH_PROTOCOL_NOTE, SearchLineFilter, type ApprovalAnswer } from 'os-code/protocol';
+import {
+  SEARCH_PROTOCOL_NOTE,
+  SearchLineFilter,
+  ThinkTagSplitter,
+  type ApprovalAnswer,
+  type ThoughtPiece,
+} from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
@@ -21,6 +27,7 @@ import { sanitizeGuideText } from '../lib/guideHarness.js';
 import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
+import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import type { SeedTurn } from '../state/types.js';
 
 const EM_DASH = String.fromCharCode(8212);
@@ -63,6 +70,10 @@ export class OnDeviceDriver implements ChatDriver {
   private searchedThisTurn = false;
   /** Keeps a SEARCH: request off the screen while the reply streams. */
   private searchFilter = new SearchLineFilter(false);
+  /** Chain of Thought for the reply in flight (read once per generation), and
+   *  the splitter that keeps <think> text out of the answer either way. */
+  private cot = false;
+  private thinkSplitter = new ThinkTagSplitter();
 
   private readonly guide: boolean;
   /** Every pocket model searches by asking with a SEARCH: line, except Harbor
@@ -109,7 +120,23 @@ export class OnDeviceDriver implements ChatDriver {
     // Mid-walk, a model switched in from Harbor Lite still needs to know where
     // setup stands (Harbor Lite reads it inside its own prompt).
     const walk = isHarborMini(this.modelId) ? undefined : guidedSetupLine(this.conversationId);
-    return [base, this.extraSystem?.trim(), walk].filter(Boolean).join('\n\n');
+    // Chain of Thought: Harbor Lite's scripted guide turns are left alone (a
+    // 512-token reply and a card harness cannot carry a thought); any other
+    // pocket model is asked to think in tags while the setting is on.
+    const cot = this.guideTurn ? undefined : chainOfThoughtLine(this.modelId, this.cot);
+    return [base, this.extraSystem?.trim(), walk, cot].filter(Boolean).join('\n\n');
+  }
+
+  /** Send the answer part of a reply on, and its thinking to the thinking
+   *  block while Chain of Thought is on (nowhere while it is off). */
+  private route(pieces: ThoughtPiece[]): void {
+    for (const p of pieces) {
+      if (p.kind === 'text') {
+        this.answer += p.text;
+        const shown = this.searchFilter.push(p.text);
+        if (shown) this.emit({ type: 'text-delta', text: shown });
+      } else if (this.cot) this.emit({ type: 'thinking-delta', text: p.text });
+    }
   }
 
   private async attachListeners(): Promise<void> {
@@ -122,11 +149,13 @@ export class OnDeviceDriver implements ChatDriver {
         this.armWatchdog(requestId);
         // Harbor Lite never shows an em dash (house rule); the final text
         // gets the full clean-up, the live stream just swaps the character.
-        const shown = this.guideTurn
-          ? delta.split(EM_DASH).join(',')
-          : this.searchFilter.push(delta);
-        this.answer += delta;
-        if (shown) this.emit({ type: 'text-delta', text: shown });
+        if (this.guideTurn) {
+          const shown = delta.split(EM_DASH).join(',');
+          this.answer += delta;
+          if (shown) this.emit({ type: 'text-delta', text: shown });
+          return;
+        }
+        this.route(this.thinkSplitter.push(delta));
       }),
     );
     this.deviceListeners.push(
@@ -246,10 +275,14 @@ export class OnDeviceDriver implements ChatDriver {
   private async generate(): Promise<void> {
     this.answer = '';
     this.searchFilter = new SearchLineFilter(this.searchable && !this.searchedThisTurn);
+    this.cot = chainOfThoughtOn();
+    this.thinkSplitter = new ThinkTagSplitter();
     const requestId = `req_${requestSeq++}`;
     this.activeRequestId = requestId;
     const system = this.systemPrompt();
-    const maxTokens = this.guide ? (this.searchable ? 768 : 512) : 1024;
+    // A thought needs room beside the answer, so a reasoning reply gets more.
+    const base = this.guide ? (this.searchable ? 768 : 512) : 1024;
+    const maxTokens = this.cot && !this.guideTurn ? base * 2 : base;
     const res = await Llama.generate({
       requestId,
       system,
@@ -269,6 +302,7 @@ export class OnDeviceDriver implements ChatDriver {
     stopReason: 'end' | 'stopped' | 'error',
     detail?: string,
   ): Promise<void> {
+    if (!this.guideTurn) this.route(this.thinkSplitter.end());
     const text = this.guideTurn ? sanitizeGuideText(this.answer).trim() : this.answer.trim();
     const { query, flush } = this.searchFilter.end();
     if (stopReason === 'error') {

@@ -77,6 +77,23 @@ the app toggle's OFF reaches a paired desktop. Refresh the snapshot deliberately
 by reading the live page again; never wire it to a live fetch, since the page is
 world-editable. Scope is this repo for now, as the single source of truth.
 
+## Chain of Thought is BUILT (off by default, founder 2026-09-25)
+
+A Settings switch (Settings, Reasoning, `settings.chainOfThought`), OFF by
+default. On, a model's reasoning streams into the thinking block above its
+answer and folds to "Thought for Ns" when the answer starts, the way Claude
+shows it. Native reasoners are asked through their own API (Claude's adaptive
+thinking with `display: "summarized"`, Ollama's `think`, a server's reasoning
+field); every other model is prompted to think in `<think>` tags. Off asks no
+model to think and keeps any reasoning out of the chat. One pure core,
+`os-code/src/core/agent/chainOfThought.ts` (through `os-code/protocol`), is
+shared by the engine loop and every app driver; the app's live value is
+`app/src/lib/chainOfThought.ts`; it rides to paired sessions as
+`BootstrapOptions.chainOfThought`. Guards: `os-code/test/chainOfThought.test.ts`
+and `app/test/chainOfThought.test.ts`. Do NOT turn it on by default (thinking
+costs time on the reference box and money on a paid seat), and do NOT copy the
+raw thought into history (the answer stays clean either way).
+
 ## Motion and interaction polish is a standard, not a nice-to-have (standing rule, founder 2026-09-02)
 
 The bar is the same as the Uki app's: peaceful, tranquil, premium. "Smooth and

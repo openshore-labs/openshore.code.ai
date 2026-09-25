@@ -16,6 +16,12 @@ import type { ToolContext, ToolDef, ToolRegistry } from '../tools/index.js';
 import { effectiveMode } from './modes.js';
 import { uxStandardPrompt } from './uxStandard.js';
 import { humanizerStandardPrompt } from './humanizerStandard.js';
+import {
+  ThinkTagSplitter,
+  chainOfThoughtPrompt,
+  reasonsNatively,
+  splitThinkTags,
+} from './chainOfThought.js';
 import { memorySegment, projectMemoryPrompt } from './projectMemory.js';
 import {
   extractTextCalls,
@@ -428,6 +434,11 @@ export class AgentSession {
   }
 
   /** True when the active seat runs the lean prompt (a small or tiny class). */
+  /** Chain of Thought is on for this session (the app setting, else config). */
+  private get chainOfThought(): boolean {
+    return this.deps.config.chainOfThought?.enabled === true;
+  }
+
   private get leanSeat(): boolean {
     return this.modelProfile ? LEAN_CLASSES.has(this.modelProfile.modelClass) : false;
   }
@@ -542,6 +553,12 @@ export class AgentSession {
     } else {
       if (ux?.standard !== 'off') parts.push(uxStandardPrompt(ux?.notes));
       if (humanizer?.standard !== 'off') parts.push(humanizerStandardPrompt(humanizer?.notes));
+    }
+    // Chain of Thought, when the person turned it on: a model that does not
+    // reason through its own API is asked to think in <think> tags, which the
+    // stream splitter folds into the thinking block (chainOfThought.ts).
+    if (this.chainOfThought && !reasonsNatively(this.active.model)) {
+      parts.push(chainOfThoughtPrompt());
     }
     if (codeMap) {
       parts.push(`Repository map (files and symbols):\n${codeMap}`);
@@ -674,6 +691,20 @@ export class AgentSession {
 
       let streamedText = '';
       const nativeCalls: ToolCallRequest[] = [];
+      // Claude's signed thinking blocks from this turn, replayed with its tool
+      // calls. The splitter routes <think> text out of the answer: to the
+      // thinking block while Chain of Thought is on, and nowhere while it is off.
+      let thinkingBlocks: unknown[] | undefined;
+      const cot = this.chainOfThought;
+      const splitter = new ThinkTagSplitter();
+      const route = (pieces: Array<{ kind: 'text' | 'thinking'; text: string }>) => {
+        for (const piece of pieces) {
+          if (piece.kind === 'text') {
+            streamedText += piece.text;
+            this.emit({ type: 'text-delta', text: piece.text });
+          } else if (cot) this.emit({ type: 'thinking-delta', text: piece.text });
+        }
+      };
       let promptTokens = 0;
       let completionTokens = 0;
 
@@ -690,17 +721,20 @@ export class AgentSession {
               : undefined,
             jsonSchema: useGrammar ? toolCallJsonSchema(this.deps.tools) : undefined,
             keepAlive: config.resourceBudget.keepAlive,
+            reasoning: cot ? 'on' : 'off',
           },
           this.abortController.signal,
         );
         for await (const event of stream) {
           switch (event.type) {
             case 'text':
-              streamedText += event.delta;
-              this.emit({ type: 'text-delta', text: event.delta });
+              route(splitter.push(event.delta));
               break;
             case 'thinking':
-              this.emit({ type: 'thinking-delta', text: event.delta });
+              if (cot) this.emit({ type: 'thinking-delta', text: event.delta });
+              break;
+            case 'thinking-blocks':
+              thinkingBlocks = event.blocks;
               break;
             case 'tool-call':
               nativeCalls.push(event.call);
@@ -719,6 +753,7 @@ export class AgentSession {
               break;
           }
         }
+        route(splitter.end());
       } catch (err) {
         const handled = await this.handleProviderFailure(err, turn);
         if (handled === 'retry') continue;
@@ -900,6 +935,7 @@ export class AgentSession {
         this.history.push({
           role: 'assistant',
           content: streamedText,
+          ...(thinkingBlocks?.length ? { thinkingBlocks } : {}),
           toolCalls: [
             ...calls.map((c) => ({
               id: c.id,
@@ -1525,6 +1561,7 @@ export class AgentSession {
         messages: [{ role: 'user', content: text }],
         maxTokens: 600,
         temperature: 0.1,
+        reasoning: 'off',
       },
       signal,
     )) {
@@ -1544,7 +1581,8 @@ export class AgentSession {
       promptTokens || estimateTokens(text),
       completionTokens || estimateTokens(out),
     );
-    return out.trim();
+    // A model that thinks in <think> tags on its own never leaks them here.
+    return splitThinkTags(out).text.trim();
   }
 }
 

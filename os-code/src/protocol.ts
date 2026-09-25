@@ -47,6 +47,18 @@ export {
   humanizerEnabled,
 } from './core/agent/humanizerStandard.js';
 export type { HumanizerSign } from './core/agent/humanizerStandard.js';
+// Chain of Thought (off by default): the <think> tag splitter, the prompt a
+// non-reasoning model gets, and the Claude thinking parameter, shared so the
+// app's drivers route reasoning exactly as the engine does.
+export {
+  ThinkTagSplitter,
+  splitThinkTags,
+  chainOfThoughtEnabled,
+  chainOfThoughtPrompt,
+  reasonsNatively,
+  claudeThinking,
+} from './core/agent/chainOfThought.js';
+export type { ThoughtPiece } from './core/agent/chainOfThought.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // The always-on ethics layer. Pure modules only: the tier logic, the

@@ -6,6 +6,7 @@ import type { OscConfig } from '../config/schema.js';
 import type { ChatMessage, ContentPart, Provider } from '../providers/types.js';
 import type { ProviderRegistry } from '../providers/registry.js';
 import { adapterFor } from '../providers/adapters/index.js';
+import { splitThinkTags } from '../core/agent/chainOfThought.js';
 import { AnthropicProvider } from '../providers/anthropic.js';
 import type { DelegableRole } from './roles.js';
 import type { ResolvedRole, ResolvedStack } from './stack.js';
@@ -152,6 +153,9 @@ export class Router {
         messages,
         temperature: adapter.temperature(),
         keepAlive: this.config.resourceBudget.keepAlive,
+        // A specialist's answer is folded into the parent's, never shown with
+        // its own thinking, so it thinks only when Chain of Thought is on.
+        reasoning: this.config.chainOfThought?.enabled ? 'on' : 'off',
       },
       options?.signal,
     )) {
@@ -170,6 +174,7 @@ export class Router {
       promptTokens: promptTokens || Math.ceil((system.length + task.length) / 4),
       completionTokens: completionTokens || Math.ceil(answer.length / 4),
     });
-    return answer.trim() || '(the specialist returned nothing)';
+    // Any <think> text a specialist wrote on its own stays out of its answer.
+    return splitThinkTags(answer).text.trim() || '(the specialist returned nothing)';
   }
 }

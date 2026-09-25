@@ -236,6 +236,7 @@ export class EngineHost {
       projectName?: string;
       projectSecrets?: string;
       humanize?: boolean;
+      chainOfThought?: boolean;
       codemagicToken?: string;
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
       currents?: CurrentsHandles;
@@ -260,6 +261,7 @@ export class EngineHost {
       projectName: opts.projectName,
       projectSecrets: opts.projectSecrets,
       humanize: opts.humanize,
+      chainOfThought: opts.chainOfThought,
       codemagicToken: opts.codemagicToken,
       codemagicTarget: opts.codemagicTarget,
       currents,

@@ -61,6 +61,12 @@ import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import type { ChatMessage } from '../providers/types.js';
+import {
+  ThinkTagSplitter,
+  chainOfThoughtPrompt,
+  reasonsNatively,
+  type ThoughtPiece,
+} from '../core/agent/chainOfThought.js';
 import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
@@ -700,8 +706,17 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
       // Client system turns are dropped below; the chat's context rides its
       // own capped field instead (desktopChatSystem).
+      // Chain of Thought from the app (off unless it says on): a native
+      // reasoner is asked through its API, any other model is prompted to
+      // think in tags, and the splitter below keeps tags out of the answer.
+      const cot = body.chainOfThought === true;
+      const system = desktopChatSystem(body.context, body.search === true);
       const messages: ChatMessage[] = [
-        { role: 'system', content: desktopChatSystem(body.context, body.search === true) },
+        {
+          role: 'system',
+          content:
+            cot && !reasonsNatively(model) ? `${system}\n\n${chainOfThoughtPrompt()}` : system,
+        },
         ...rawMessages
           .filter(
             (m: unknown): m is { role: string; content: string } =>
@@ -720,13 +735,29 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const controller = new AbortController();
       req.on('close', () => controller.abort());
       try {
-        for await (const ev of orchestrator.provider.chat({ model, messages }, controller.signal)) {
+        const splitter = new ThinkTagSplitter();
+        const send = (pieces: ThoughtPiece[]) => {
+          for (const p of pieces) {
+            if (p.kind === 'text') {
+              res.write(`data: ${JSON.stringify({ type: 'text', delta: p.text })}\n\n`);
+            } else if (cot) {
+              res.write(`data: ${JSON.stringify({ type: 'thinking', delta: p.text })}\n\n`);
+            }
+          }
+        };
+        for await (const ev of orchestrator.provider.chat(
+          { model, messages, reasoning: cot ? 'on' : 'off' },
+          controller.signal,
+        )) {
           // Tools are never sent, so a tool-call event cannot occur; only text
-          // is streamed. Anything else is ignored, keeping the surface inert.
-          if (ev.type === 'text' && ev.delta) {
-            res.write(`data: ${JSON.stringify({ type: 'text', delta: ev.delta })}\n\n`);
+          // (and, with Chain of Thought on, the thinking) is streamed. Anything
+          // else is ignored, keeping the surface inert.
+          if (ev.type === 'text' && ev.delta) send(splitter.push(ev.delta));
+          else if (ev.type === 'thinking' && ev.delta && cot) {
+            res.write(`data: ${JSON.stringify({ type: 'thinking', delta: ev.delta })}\n\n`);
           }
         }
+        send(splitter.end());
         res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
       } catch (err) {
         res.write(
@@ -909,6 +940,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const { mode: permissionMode, note: modeNote } = effectiveRemoteMode(requestedMode);
       // The app's Humanize Writing setting for this session (only ever an off).
       const humanize = typeof body.humanize === 'boolean' ? body.humanize : undefined;
+      // The app's Chain of Thought setting for this session (on or off).
+      const chainOfThought =
+        typeof body.chainOfThought === 'boolean' ? body.chainOfThought : undefined;
       // The Agentic Current the person turned on, as the handle its tool needs.
       // A malformed handle is dropped, never a refused session. A CLI handle is
       // honored only when that CLI is really on this hub's PATH, so the tool
@@ -935,6 +969,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           projectName,
           permissionMode,
           humanize,
+          chainOfThought,
           currents,
           harnessCurrents,
         });

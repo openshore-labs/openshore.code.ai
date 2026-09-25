@@ -29,6 +29,8 @@ interface ShowInfo {
   contextTokens?: number;
   vision?: boolean;
   toolCapable?: boolean;
+  /** Ollama reports "thinking" for a model that takes the think flag. */
+  thinking?: boolean;
 }
 
 export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
@@ -134,6 +136,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
             info.vision = true;
           }
           if (caps.length > 0) info.toolCapable = caps.includes('tools');
+          if (caps.includes('thinking')) info.thinking = true;
         }
       }
     } catch (err) {
@@ -202,6 +205,12 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     }
     if (request.jsonSchema) body.format = request.jsonSchema;
     if (request.keepAlive) body.keep_alive = request.keepAlive;
+    // Chain of Thought: a thinking-capable model is told to think or not. Only
+    // sent to a model that reports the capability; Ollama refuses the flag on
+    // a model without it. Unset leaves Ollama's own default.
+    if (request.reasoning && (await this.showInfo(request.model)).thinking) {
+      body.think = request.reasoning === 'on';
+    }
     const options: Record<string, unknown> = {};
     if (request.temperature !== undefined) options.temperature = request.temperature;
     if (request.maxTokens !== undefined) options.num_predict = request.maxTokens;
@@ -336,8 +345,10 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       if (choice.finish_reason) finish = choice.finish_reason;
       const delta = choice.delta ?? {};
       if (delta.content) yield { type: 'text', delta: String(delta.content) };
-      if (delta.reasoning_content)
-        yield { type: 'thinking', delta: String(delta.reasoning_content) };
+      // DeepSeek-style servers send reasoning_content; vLLM, OpenRouter, and
+      // Ollama's /v1 send reasoning.
+      const reasoning = delta.reasoning_content ?? delta.reasoning;
+      if (typeof reasoning === 'string' && reasoning) yield { type: 'thinking', delta: reasoning };
       if (Array.isArray(delta.tool_calls)) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index ?? 0;

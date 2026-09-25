@@ -1918,3 +1918,15 @@ execution contract. Newest at the bottom.
   the person taps it. The Image reading cloud slot's default (the most capable
   cloud model, shown until a person assigns one) is not a placement, so it
   asks.
+- **Chain of Thought (2026-09-25):** off by default; the app switch overrides
+  the engine config in BOTH directions (`chainOfThoughtEnabled`), unlike the
+  humanizer's off-only override, because it is the person's display choice,
+  not a project policy. Native reasoners are judged by model name
+  (`reasonsNatively`) so the app and engine agree with no probe; everything
+  else is prompted to think in `<think>` tags and split by one shared
+  splitter. Claude gets adaptive thinking with `display: "summarized"`
+  (newer models return empty thoughts without it) and no temperature, and its
+  signed blocks are replayed with its tool calls. Harbor Lite's guide turns
+  are exempt (a 512-token scripted reply cannot carry a thought). The store
+  drops thinking events while off, so a flip hides reasoning at once even in
+  a desktop session that started with it on.

@@ -682,6 +682,20 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     ],
   },
   {
+    id: 'chain-of-thought',
+    title: 'Chain of Thought',
+    where: 'Menu, Settings, Reasoning',
+    text: 'Off by default. Turn it on to see how a model reasons: its thinking streams above the answer while it works, then folds to one line you can tap open.',
+    keywords: [
+      'chain of thought',
+      'show reasoning',
+      'see thinking',
+      'show thinking',
+      'thought process',
+      'why did it answer',
+    ],
+  },
+  {
     id: 'notifications',
     title: 'Notifications',
     where: 'Menu, Settings, Notifications (iPhone)',

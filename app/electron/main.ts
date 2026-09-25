@@ -738,6 +738,7 @@ function sessionOpts(v: unknown) {
     projectName: optStr(o.projectName, 'projectName'),
     projectSecrets: optStr(o.projectSecrets, 'projectSecrets'),
     humanize: optBool(o.humanize, 'humanize'),
+    chainOfThought: optBool(o.chainOfThought, 'chainOfThought'),
     codemagicToken: optStr(o.codemagicToken, 'codemagicToken'),
     codemagicTarget,
     // The Agentic Current's handle: the shared parser drops anything malformed,

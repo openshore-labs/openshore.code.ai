@@ -139,6 +139,8 @@ export interface OscodeBridge {
       projectName?: string;
       projectSecrets?: string;
       humanize?: boolean;
+      /** Chain of Thought for this session (off unless true). */
+      chainOfThought?: boolean;
       /** The person's Codemagic token, so the engine's codemagic tool can drive
        *  App Launch builds. Delivered only on this local engine and only when
        *  Codemagic Access is on; never sent to a remote daemon. */

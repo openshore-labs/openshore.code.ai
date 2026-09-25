@@ -8,10 +8,11 @@
 // desktop shell these providers send no CORS headers, so the request goes
 // through the native shim, which cannot stream: there we ask for the whole
 // answer and emit it once, the same split stackDriver's cloud path uses.
-import type { ApprovalAnswer } from 'os-code/protocol';
+import { ThinkTagSplitter, type ApprovalAnswer, type ThoughtPiece } from 'os-code/protocol';
 import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter, readChatContext } from './types.js';
 import { effortDirective } from '../lib/effort.js';
+import { chainOfThoughtLine, chainOfThoughtOn, reasoningOf } from '../lib/chainOfThought.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { platform } from '../lib/platform.js';
@@ -137,10 +138,32 @@ export class CloudOpenAiDriver implements ChatDriver {
     this.emitter.emit({ type: 'task-start', input: text });
     this.emitter.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
     this.history.push({ role: 'user', content: this.userContent(text, attachments) });
+    // Chain of Thought, read once per turn. The splitter takes <think> text out
+    // of the answer either way: into the thinking block while on, nowhere while
+    // off. A reasoning field from the server is shown only while on.
+    const cot = chainOfThoughtOn();
+    const splitter = new ThinkTagSplitter();
+    let answer = '';
+    const route = (pieces: ThoughtPiece[]) => {
+      for (const p of pieces) {
+        if (p.kind === 'text') {
+          answer += p.text;
+          this.emitter.emit({ type: 'text-delta', text: p.text });
+        } else if (cot) this.emitter.emit({ type: 'thinking-delta', text: p.text });
+      }
+    };
+    const thought = (r: string | undefined) => {
+      if (cot && r) this.emitter.emit({ type: 'thinking-delta', text: r });
+    };
     const messages: OaiMessage[] = [
       {
         role: 'system',
-        content: [SYSTEM_PROMPT, effortDirective(), readChatContext(this.extraSystem)]
+        content: [
+          SYSTEM_PROMPT,
+          effortDirective(),
+          chainOfThoughtLine(this.model, cot),
+          readChatContext(this.extraSystem),
+        ]
           .filter(Boolean)
           .join('\n'),
       },
@@ -153,7 +176,6 @@ export class CloudOpenAiDriver implements ChatDriver {
       authorization: `Bearer ${this.apiKey}`,
     };
 
-    let answer = '';
     try {
       if (platform() === 'ios' || platform() === 'electron') {
         // The native shim buffers the whole response; ask for one answer.
@@ -168,10 +190,11 @@ export class CloudOpenAiDriver implements ChatDriver {
           choices?: Array<{ message?: { content?: string } }>;
           usage?: OaiUsage;
         } & SonarSources;
-        const content = data?.choices?.[0]?.message?.content;
+        const message = data?.choices?.[0]?.message;
+        const content = message?.content;
+        if (!this.aborted) thought(reasoningOf(message));
         if (typeof content === 'string' && content && !this.aborted) {
-          answer = content;
-          this.emitter.emit({ type: 'text-delta', text: content });
+          route([...splitter.push(content), ...splitter.end()]);
         }
         this.emitCitations(sonarCitations(data));
         this.emitUsage(data.usage, estimatePrompt);
@@ -212,11 +235,9 @@ export class CloudOpenAiDriver implements ChatDriver {
                 choices?: Array<{ delta?: { content?: string } }>;
                 usage?: OaiUsage;
               } & SonarSources;
+              thought(reasoningOf(json?.choices?.[0]?.delta));
               const delta = json?.choices?.[0]?.delta?.content;
-              if (typeof delta === 'string' && delta) {
-                answer += delta;
-                this.emitter.emit({ type: 'text-delta', text: delta });
-              }
+              if (typeof delta === 'string' && delta) route(splitter.push(delta));
               if (json?.usage) usage = json.usage;
               const chunkSources = sonarCitations(json);
               if (chunkSources.length) sources = chunkSources;
@@ -225,6 +246,7 @@ export class CloudOpenAiDriver implements ChatDriver {
             }
           }
         }
+        route(splitter.end());
         this.emitCitations(sources);
         this.emitUsage(usage, estimatePrompt);
       }
