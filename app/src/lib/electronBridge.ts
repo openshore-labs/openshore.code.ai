@@ -232,8 +232,17 @@ export interface OscodeBridge {
 
   // Repos.
   pickFolder(): Promise<string | null>;
-  cloneRepo(url: string): Promise<{ cwd: string; name: string } | { error: string }>;
-  recentWorkspaces(): Promise<Array<{ cwd: string; name: string; lastUsed?: string }>>;
+  /** Clone into ~/OSCode. `token` is the connected platform's token for a
+   *  private repository, used for this one clone and never stored. */
+  cloneRepo(
+    url: string,
+    token?: string,
+  ): Promise<{ cwd: string; name: string } | { error: string }>;
+  /** Recent session folders, then every clone under ~/OSCode, each with its
+   *  origin address when it has one. */
+  recentWorkspaces(): Promise<
+    Array<{ cwd: string; name: string; lastUsed?: string; remote?: string }>
+  >;
   /** Push each clone's unpushed commits to its remote (merging a moved-on
    *  remote first), so nothing a project committed lingers only on this device.
    *  Never force-pushes; surfaces conflicts. Returns one result per repo. */

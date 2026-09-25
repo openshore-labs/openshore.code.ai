@@ -53,6 +53,14 @@ const KNOWN: Array<[RegExp, string]> = [
   ],
   // Repositories.
   [
+    /could not read username|authentication failed|terminal prompts disabled|invalid username or (password|token)/i,
+    'That repository is private and your computer has no access to it. Connect its platform in Repositories, then try again.',
+  ],
+  [
+    /a different repository already uses the folder/i,
+    'Another repository already has that folder name on your computer. Rename or move that folder, then try again.',
+  ],
+  [
     /repository not found|could not read from remote/i,
     'That repository was not found, or it is private. Check the address and your access.',
   ],

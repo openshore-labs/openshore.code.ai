@@ -11282,3 +11282,27 @@ button.settings-row:active {
 .chat-spend.spend {
   color: var(--cloud);
 }
+
+/* A selected platform repository the agent cannot work in yet: one line that
+   says so and one button that clones it to the computer (or picks the copy
+   already there). Quiet, between the Selected card and the rest. */
+.repo-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -4px 4px 14px;
+}
+.repo-open .hint {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.repo-open .btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+}
+/* A line under the list: why a repository may be missing, or a platform that
+   could not be listed while the rest still show. */
+.repo-sheet-note {
+  margin: 0 4px 10px;
+}

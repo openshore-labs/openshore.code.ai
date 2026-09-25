@@ -1,7 +1,7 @@
 // The engine host: everything the renderer reaches through IPC, implemented
 // against the os-code engine in the Electron main process. One place, typed,
 // no Node in the renderer, keys never leave the machine.
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
@@ -23,7 +23,13 @@ import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
 import { installModel, installOllamaRef } from 'os-code/dist/src/market/install.js';
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
-import { clone } from 'os-code/dist/src/git/index.js';
+import { redactToken } from 'os-code/dist/src/git/index.js';
+import {
+  cloneFolderName,
+  cloneIntoManaged,
+  listWorkspaces,
+  type WorkspaceRow,
+} from 'os-code/dist/src/git/workspaces.js';
 import { reconcileRepos, type ReconcileResult } from 'os-code/dist/src/git/reconcile.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
 import { loadCredentials, revokeCredential } from 'os-code/dist/src/core/security/credentials.js';
@@ -680,19 +686,22 @@ export class EngineHost {
 
   // ------------------------------------------------------------------- repos
 
-  async cloneRepo(url: string): Promise<{ cwd: string; name: string } | { error: string }> {
+  async cloneRepo(
+    url: string,
+    token?: string,
+  ): Promise<{ cwd: string; name: string } | { error: string }> {
     if (!/^(https:\/\/|git@)/.test(url.trim())) {
       return { error: 'That does not look like a git URL.' };
     }
-    const name = basename(url.trim().replace(/\.git$/, '')) || 'repo';
-    const parent = join(homedir(), 'OSCode');
-    mkdirSync(parent, { recursive: true });
-    const target = join(parent, name);
+    const name = cloneFolderName(url);
+    if (!name) return { error: 'The repository name in that url is not usable as a folder name.' };
+    // The connected platform's token, for a private repository: one clone, a
+    // header scoped to the platform's host, never stored (os-code git/index.ts).
     try {
-      if (!existsSync(target)) await clone(url.trim(), target);
-      return { cwd: target, name };
+      const cwd = await cloneIntoManaged(url.trim(), name, { token });
+      return { cwd, name };
     } catch (err) {
-      return { error: `Could not clone: ${(err as Error).message}` };
+      return { error: `Could not clone: ${redactToken((err as Error).message, token)}` };
     }
   }
 
@@ -727,16 +736,8 @@ export class EngineHost {
     }
   }
 
-  recentWorkspaces() {
-    const seen = new Set<string>();
-    const out: Array<{ cwd: string; name: string; lastUsed?: string }> = [];
-    for (const session of listSessions()) {
-      if (seen.has(session.cwd) || !existsSync(session.cwd)) continue;
-      seen.add(session.cwd);
-      out.push({ cwd: session.cwd, name: basename(session.cwd), lastUsed: session.updatedAt });
-      if (out.length >= 12) break;
-    }
-    return out;
+  recentWorkspaces(): WorkspaceRow[] {
+    return listWorkspaces(listSessions());
   }
 
   // ----------------------------------------------------------- crew routines

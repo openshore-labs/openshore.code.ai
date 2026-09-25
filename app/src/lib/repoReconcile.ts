@@ -3,18 +3,18 @@
 // desktop main process (the reconcile engine in os-code); these are the pure
 // pieces around it, so they are easy to test and reason about.
 import type { ReconcileResult } from 'os-code/protocol';
-import { isGithubRepoId } from './chatRepos.js';
+import { isRemoteRepoId } from './chatRepos.js';
 import type { Project } from '../state/types.js';
 
 /** The local clone to reconcile for each project: its primary (first
- *  non-GitHub) repo id, which is a working-tree path on this desktop. GitHub
- *  ids have no local clone here and are skipped. Deduplicated, so a repo shared
+ *  workspace) repo id, which is a working-tree path on this desktop. Platform
+ *  ids (GitHub, GitLab, Bitbucket) have no local clone here and are skipped. Deduplicated, so a repo shared
  *  by two projects is pushed once. */
 export function projectWorkspaces(projects: Project[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const p of projects) {
-    const ws = p.repoIds.find((id) => !isGithubRepoId(id));
+    const ws = p.repoIds.find((id) => !isRemoteRepoId(id));
     if (ws && !seen.has(ws)) {
       seen.add(ws);
       out.push(ws);

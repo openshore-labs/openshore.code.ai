@@ -231,6 +231,15 @@ GitHub App "OpenShore Code" (openshore-labs, "Any account"), settings:
 Deploy: `supabase functions deploy repo-oauth` (verify_jwt is false in
 `config.toml`, since the provider redirect carries no bearer).
 
+Which repositories a person sees is decided by the App's **installation**, not
+by the sign-in: a GitHub App user token reaches only the repositories that both
+the person and the App can reach. An App installed on an organization with
+"Only select repositories" shows just those in the repo picker, which now says
+so and links to the installation's settings page. Optionally set
+`VITE_GITHUB_APP_SLUG` (the App's `github.com/apps/<slug>` name, a Codemagic
+build var) so a person with no installation yet is sent to the install page;
+once any installation exists, GitHub reports the slug itself.
+
 ### Troubleshooting "redirect_uri is not associated with this application"
 
 The address the app sends is not (yet) registered on the App the client id
