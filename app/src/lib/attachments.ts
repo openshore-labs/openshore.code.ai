@@ -82,18 +82,37 @@ export function isModelImage(file: { type?: string }): boolean {
   return IMAGE_MIME.test(file.type ?? '');
 }
 
-/** Redraw an image the platform can decode but a model cannot read (HEIC,
- *  TIFF, BMP, AVIF, SVG) as a JPEG attachment. Rejects when the platform
- *  cannot decode it either, so the caller can say so plainly. */
-export async function imageToJpegAttachment(file: File): Promise<Attachment> {
+/** Can this image go to the model as it is? A readable format at a sane size;
+ *  anything else is redrawn (imageToJpegAttachment). */
+export function sendsAsIs(file: { type?: string; size: number }): boolean {
+  return isModelImage(file) && file.size <= IMAGE_REDRAW_BYTES;
+}
+
+/** The longest side an attached image is sent at. Past it (or past
+ *  IMAGE_REDRAW_BYTES) a photo is redrawn smaller, so a 48MP camera shot never
+ *  trips a provider's image size limit at send. */
+export const IMAGE_MAX_DIM = 2048;
+export const IMAGE_REDRAW_BYTES = 3_500_000;
+
+/** Redraw an image as a JPEG attachment, no longer than `maxDim` on its long
+ *  side: for a format a model cannot read (HEIC, TIFF, BMP, AVIF, SVG) and for
+ *  an oversized photo. Rejects when the platform cannot decode it either, so
+ *  the caller can say so plainly. */
+export async function imageToJpegAttachment(
+  file: File,
+  maxDim: number = IMAGE_MAX_DIM,
+): Promise<Attachment> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
     img.decoding = 'async';
     img.src = url;
     await img.decode();
-    const w = img.naturalWidth || 1024;
-    const h = img.naturalHeight || 1024;
+    const w0 = img.naturalWidth || 1024;
+    const h0 = img.naturalHeight || 1024;
+    const scale = Math.min(1, maxDim / Math.max(w0, h0));
+    const w = Math.max(1, Math.round(w0 * scale));
+    const h = Math.max(1, Math.round(h0 * scale));
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;

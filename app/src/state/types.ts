@@ -436,6 +436,22 @@ export function sourceShortLabel(source?: ConversationSource): string {
   }
 }
 
+/** Where a source answers, for the model pill's dot: teal for local and
+ *  private (this phone, or chat with your computer's local models), amber for
+ *  a cloud model (spend). A stack or a coding session on your computer can
+ *  mix both, so it claims neither. */
+export function sourcePlace(source?: ConversationSource): 'local' | 'cloud' | undefined {
+  switch (source?.kind) {
+    case 'cloud':
+      return 'cloud';
+    case 'device':
+    case 'desktop-chat':
+      return 'local';
+    default:
+      return undefined;
+  }
+}
+
 function isProbablyPhone(): boolean {
   return typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
 }

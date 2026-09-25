@@ -22,7 +22,12 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react';
-import { sourceLabel, sourceShortLabel, type ConversationSource } from '../state/types.js';
+import {
+  sourceLabel,
+  sourcePlace,
+  sourceShortLabel,
+  type ConversationSource,
+} from '../state/types.js';
 import { useApp } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { hapticTick } from '../lib/haptics.js';
@@ -35,14 +40,15 @@ import {
   fileToAttachment,
   groupAttachments,
   imageToJpegAttachment,
-  isModelImage,
+  sendsAsIs,
   isTextFile,
   isVideoFile,
   type Attachment,
 } from '../lib/attachments.js';
 import { buildVideoAttachment } from '../lib/videoAttach.js';
 import type { ComposerRestore } from '../lib/heldMessage.js';
-import { pickVideoBackend } from '../lib/videoBackends.js';
+import { PHONE_VIDEO_MAX_BYTES, pickVideoBackend } from '../lib/videoBackends.js';
+import { isPhone } from '../lib/platform.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
@@ -424,9 +430,19 @@ export function Composer({
   useEffect(() => {
     if (focusSignal) areaRef.current?.focus();
   }, [focusSignal]);
+  // What the last send was made of, so a message handed back (a paywall, a
+  // dismissed chooser) returns as it was typed: the words in the field and the
+  // folded pastes as chips, not one merged wall of text.
+  const lastSent = useRef<{ body: string; text: string; pasted: PastedChunk[] } | null>(null);
   useEffect(() => {
     if (!restore) return;
-    setValue(restore.text);
+    const sent = lastSent.current;
+    if (sent && sent.body === restore.text && sent.pasted.length) {
+      setValue(sent.text);
+      setPasted(sent.pasted);
+    } else {
+      setValue(restore.text);
+    }
     setAttachments(restore.attachments ?? []);
     areaRef.current?.focus();
     // Only a new seq restores; the payload rides along with it.
@@ -571,6 +587,7 @@ export function Composer({
       return;
     }
     lastSendAt.current = Date.now();
+    lastSent.current = { body, text, pasted };
     onSend(body, outgoing);
     resetField();
     setAttachments([]);
@@ -601,18 +618,32 @@ export function Composer({
   // phone, a canvas on the web), and those frames ride along as image
   // attachments. Screen recordings and screenshots flow through the same way,
   // with no approval step: attaching is not a tool call.
+  // Jobs the person cancelled: their frames are dropped if they land later.
+  const cancelledJobs = useRef(new Set<string>());
+  const cancelVideo = (jobId: string) => {
+    cancelledJobs.current.add(jobId);
+    removeChip(jobId, () => setVideoJobs((prev) => prev.filter((x) => x.id !== jobId)));
+  };
   const ingestVideo = async (file: File) => {
+    if (isPhone() && file.size > PHONE_VIDEO_MAX_BYTES) {
+      showToast(`${file.name || 'That video'} is over 300 MB. Trim it or send a shorter clip.`);
+      return;
+    }
     const jobId = `job-${chunkSeq++}`;
     setVideoJobs((prev) => [...prev, { id: jobId, name: file.name || 'video', done: 0, total: 0 }]);
     const onProgress = (done: number, total: number) =>
       setVideoJobs((prev) => prev.map((x) => (x.id === jobId ? { ...x, done, total } : x)));
     try {
       const built = await buildVideoAttachment(file, pickVideoBackend(), onProgress);
-      setAttachments((prev) => [...prev, ...built.frames]);
+      if (!cancelledJobs.current.has(jobId)) setAttachments((prev) => [...prev, ...built.frames]);
     } catch {
-      showToast('Could not read that video. Try a shorter or standard-format clip.');
+      if (!cancelledJobs.current.has(jobId)) {
+        showToast('Could not read that video. Try a shorter or standard-format clip.');
+      }
     } finally {
-      setVideoJobs((prev) => prev.filter((x) => x.id !== jobId));
+      if (!cancelledJobs.current.delete(jobId)) {
+        setVideoJobs((prev) => prev.filter((x) => x.id !== jobId));
+      }
     }
   };
 
@@ -634,12 +665,13 @@ export function Composer({
       if (!visionSupported) {
         showToast(IMAGE_UNSUPPORTED);
       } else {
-        // HEIC, TIFF, and the like are redrawn as JPEG so the model can see
-        // them; one the phone cannot decode either is named, never dropped.
+        // HEIC, TIFF, and the like, and oversized photos, are redrawn as a
+        // JPEG the model can take; one the phone cannot decode either is
+        // named, never dropped.
         const next: Attachment[] = [];
         for (const f of images) {
           try {
-            next.push(await (isModelImage(f) ? fileToAttachment(f) : imageToJpegAttachment(f)));
+            next.push(await (sendsAsIs(f) ? fileToAttachment(f) : imageToJpegAttachment(f)));
           } catch {
             showToast(`Could not read ${f.name || 'that image'}.`);
           }
@@ -726,6 +758,7 @@ export function Composer({
   };
 
   const modelLabel = sourceShortLabel(source);
+  const place = sourcePlace(source);
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -945,13 +978,24 @@ export function Composer({
               );
             })}
             {videoJobs.map((job) => (
-              <span key={job.id} className="composer-chip" aria-live="polite">
+              <span
+                key={job.id}
+                className={`composer-chip${leaving.has(job.id) ? ' closing' : ''}`}
+                aria-live="polite"
+              >
                 <FrameRing done={job.done} total={job.total} />
                 <span className="composer-chip-name">
                   {job.total > 0
                     ? `Reading ${job.name} · ${job.done}/${job.total}`
                     : `Reading ${job.name}…`}
                 </span>
+                <button
+                  className="composer-chip-x press-fb"
+                  aria-label={`Stop reading ${job.name}`}
+                  onClick={() => cancelVideo(job.id)}
+                >
+                  <CloseGlyph size={12} />
+                </button>
               </span>
             ))}
             {pasted.map((p, i) => (
@@ -1062,6 +1106,7 @@ export function Composer({
             }}
             aria-label={`Model: ${source ? sourceLabel(source) : 'Stack'}`}
           >
+            {place ? <span className={`composer-pill-place ${place}`} aria-hidden="true" /> : null}
             <span className="composer-pill-text">{modelLabel}</span>
             <span className="composer-pill-chevron" aria-hidden="true" />
           </button>
