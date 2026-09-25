@@ -150,7 +150,7 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
       'Routines run on your main computer, on your own models, while it is on. You set one up while connected to that computer, then watch and steer it from anywhere.',
       'If you have not paired yet, open Desktop + phone and pair this device. Tailscale must be on for both, the same connection the big models use.',
       'Make sure the work lives on your computer: open Repositories and clone the repository you want the crew to work in, if it is not there already.',
-      'Open My Crew, then Crew command, and set up the Morning review routine. It reads what changed overnight and leaves a checklist, read-only, so it never needs an approval.',
+      'Open Crew, then Crew command, and set up the Morning review routine. It reads what changed overnight and leaves a checklist, read-only, so it never needs an approval.',
       'Away from home you can always watch your crew and read its results here. To change or run a routine, reconnect to your computer over Tailscale first.',
     ],
     done: 'A routine shows in Crew command with its next run time, and its first report lands in your vault.',

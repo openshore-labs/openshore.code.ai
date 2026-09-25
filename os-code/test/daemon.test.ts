@@ -24,6 +24,7 @@ import {
   type DaemonOptions,
   type RunningDaemon,
 } from '../src/daemon/serve.js';
+import { SEARCH_PROTOCOL_NOTE } from '../src/harness/localSearch.js';
 import {
   TerminalManager,
   TerminalUnavailable,
@@ -276,6 +277,13 @@ describe('free desktop chat (/chat, read-only)', () => {
     expect(desktopChatSystem('x'.repeat(50_000)).length).toBeLessThan(bare.length + 8100);
   });
 
+  it('adds the search instruction only when the phone asks for it', () => {
+    expect(desktopChatSystem(undefined)).not.toContain(SEARCH_PROTOCOL_NOTE);
+    const withSearch = desktopChatSystem('Project brief.', true);
+    expect(withSearch).toContain(SEARCH_PROTOCOL_NOTE);
+    expect(withSearch).toContain('Project brief.');
+  });
+
   it('rejects a chat with no messages', async () => {
     const res = await fetch(`${base}/chat`, {
       method: 'POST',
@@ -297,6 +305,16 @@ describe('free desktop chat (/chat, read-only)', () => {
     // the stream ends with an error frame. The point is the endpoint streams.
     const text = await res.text();
     expect(text).toMatch(/"type":"(error|done|text)"/);
+  });
+
+  it('still streams when the phone asks for the search instruction', async () => {
+    const res = await fetch(`${base}/chat`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }], search: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toMatch(/"type":"(error|done|text)"/);
   });
 
   it('a member may open free chat (not admin-gated)', async () => {

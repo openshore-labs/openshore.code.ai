@@ -372,7 +372,7 @@ export interface AppSettings {
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
-  /** Web search backend for Harbor, when the user has brought their own key.
+  /** Web search backend for local models, when the user has brought their own key.
    *  Undefined means the zero-config DuckDuckGo default. */
   searchBackend?: SearchBackend;
   /** Whether the Marketplace intro walkthrough has been shown. */
@@ -393,7 +393,7 @@ export interface AppSettings {
   projects?: Project[];
   /** The project new saved chats go into. */
   activeProjectId?: string;
-  /** My Crew: user-authored agents with personas and call rules. */
+  /** Crew: user-authored agents with personas and call rules. */
   crew?: CrewAgent[];
   /** Account: personal, or a commercial org with members and a plan. */
   account?: Account;
@@ -963,7 +963,7 @@ interface AppState {
 
   // Crew routines (the command center). Every call reaches the scheduler on
   // the computer that runs routines; the store keeps the last snapshot.
-  /** Open the command center (a sub-page of My Crew) and refresh. */
+  /** Open the command center (a sub-page of Crew) and refresh. */
   openCrewCommand(): void;
   /** Whether this device can set up and control routines right now (docked or
    *  on the machine), and where it stands otherwise. Viewing is always on. */
@@ -1117,7 +1117,7 @@ interface AppState {
   /** A portable JSON backup of everything not yet synced (the S2 escape hatch). */
   exportBuffer(): string;
 
-  // My Crew: user-authored agents.
+  // Crew: user-authored agents.
   /** Create a crew agent and return its id. */
   createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
   updateCrewAgent(id: string, patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>): Promise<void>;
@@ -1160,7 +1160,7 @@ interface AppState {
   /** The repository step's one choice: how edits are handled. Undefined
    *  means "decide later" (the starting mode stays). */
   chooseEditMode(mode: PermissionMode | undefined): Promise<void>;
-  /** Bring your own Brave or Tavily key for Harbor's web search. */
+  /** Bring your own Brave or Tavily key for local models' web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
   // Vault (the Obsidian-compatible vault, first consumer of gitOS). Personal by
@@ -2562,7 +2562,13 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
-        return new DesktopChatDriver(settings.daemon, conv.source.model, seed, chatContext(conv));
+        return new DesktopChatDriver(
+          settings.daemon,
+          conv.source.model,
+          seed,
+          chatContext(conv),
+          settings.perplexityResearch === true,
+        );
       }
       case 'device':
         return new OnDeviceDriver(
@@ -2644,6 +2650,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 .join('\n\n') || undefined,
             crew,
             humanize: s.settings.humanizeWriting !== false,
+            researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
             codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,
@@ -4089,7 +4096,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     openCrewCommand() {
-      // A sub-page of My Crew: setView pushes Crew onto the trail, so the top
+      // A sub-page of Crew: setView pushes Crew onto the trail, so the top
       // bar offers a way back to the roster.
       get().setView('crewcommand');
       logEvent('crew_command_open');

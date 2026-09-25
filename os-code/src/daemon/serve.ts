@@ -61,6 +61,7 @@ import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import type { ChatMessage } from '../providers/types.js';
+import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { logger } from '../util/log.js';
 
@@ -99,9 +100,13 @@ const CHAT_CONTEXT_MAX = 8000;
  *  context (the project's standing instructions, the guided setup's step),
  *  trimmed and capped, so the phone's brief reaches this model the way it
  *  reaches every other brain. Anything that is not a string is ignored. */
-export function desktopChatSystem(context: unknown): string {
+export function desktopChatSystem(context: unknown, search = false): string {
   const extra = typeof context === 'string' ? context.trim().slice(0, CHAT_CONTEXT_MAX) : '';
-  return extra ? `${CHAT_SYSTEM}\n\n${extra}` : CHAT_SYSTEM;
+  // With search on, the phone runs any search itself and sends the results
+  // back as the next turn, so this surface only learns how to ask; it never
+  // fetches.
+  const base = search ? `${CHAT_SYSTEM}\n${SEARCH_PROTOCOL_NOTE}` : CHAT_SYSTEM;
+  return extra ? `${base}\n\n${extra}` : base;
 }
 
 // Request bodies are bounded (DAE-8): a JSON body over the cap is answered 413
@@ -696,7 +701,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // Client system turns are dropped below; the chat's context rides its
       // own capped field instead (desktopChatSystem).
       const messages: ChatMessage[] = [
-        { role: 'system', content: desktopChatSystem(body.context) },
+        { role: 'system', content: desktopChatSystem(body.context, body.search === true) },
         ...rawMessages
           .filter(
             (m: unknown): m is { role: string; content: string } =>

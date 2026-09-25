@@ -1,10 +1,10 @@
 // The pocket brain: a model running fully on this device through the llama
 // plugin. Chat-only by design in v1 (repo tools live on the desktop
 // connection), private by construction: nothing ever leaves the phone, except
-// a web search Harbor explicitly asks for, which the user can point at their
-// own key instead of the DuckDuckGo default.
+// a web search the model explicitly asks for, which the user can point at
+// their own key instead of the DuckDuckGo default.
 import type { PluginListenerHandle } from '@capacitor/core';
-import type { ApprovalAnswer } from 'os-code/protocol';
+import { SEARCH_PROTOCOL_NOTE, SearchLineFilter, type ApprovalAnswer } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
@@ -15,33 +15,24 @@ import {
   fitDeviceHistory,
   forgetDeviceModel,
 } from './deviceModel.js';
-import { buildHarborSystemPrompt, isHarbor, HARBOR_SEARCH_PREFIX } from '../lib/harbor.js';
-import {
-  buildHarborMiniSystemPrompt,
-  guidedSetupLine,
-  harborMiniTurn,
-  isHarborMini,
-} from '../lib/harborMini.js';
-import type { WebSearchResult } from '../lib/webSearch.js';
+import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
+import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { sanitizeGuideText } from '../lib/guideHarness.js';
-
-const EM_DASH = String.fromCharCode(8212);
-import { formatSearchResults, resolveSearchKey, webSearch } from '../lib/webSearch.js';
+import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter } from './types.js';
 import type { SeedTurn } from '../state/types.js';
 
+const EM_DASH = String.fromCharCode(8212);
+
 const SYSTEM_PROMPT = [
   'You are OpenShore, a friendly coding companion running fully on this device.',
   'Be concise and useful. Use markdown for code.',
-  'You have no internet and no file access here. For repo work, the user can connect this app to their computer.',
+  'You have no file access here. For repo work, the user can connect this app to their computer.',
+  SEARCH_PROTOCOL_NOTE,
   'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
   'Never use em dashes. Use a period or a comma instead.',
 ].join('\n');
-
-// The whole response must be exactly this one line for it to count as a
-// search request, not just a mention of the word "search" mid-answer.
-const SEARCH_LINE = new RegExp(`^${HARBOR_SEARCH_PREFIX}\\s*(.+)$`, 'i');
 
 let requestSeq = 0;
 
@@ -70,8 +61,12 @@ export class OnDeviceDriver implements ChatDriver {
   private turn = 1;
   /** At most one search per user message, so a confused model can't loop. */
   private searchedThisTurn = false;
+  /** Keeps a SEARCH: request off the screen while the reply streams. */
+  private searchFilter = new SearchLineFilter(false);
 
   private readonly guide: boolean;
+  /** Every pocket model searches by asking with a SEARCH: line, except Harbor
+   *  Lite, whose guide harness searches for it before it writes a word. */
   private readonly searchable: boolean;
   /** Harbor Lite's prompt for the live turn, built by the guide harness from
    *  the question (only the facts it needs, any web results, any setup fit). */
@@ -97,8 +92,8 @@ export class OnDeviceDriver implements ChatDriver {
      *  only the walk's own chat, whichever chat is on screen. */
     private readonly conversationId?: string,
   ) {
-    this.searchable = isHarbor(modelId);
-    this.guide = isHarborMini(modelId) || this.searchable;
+    this.searchable = !isHarborMini(modelId);
+    this.guide = isHarborMini(modelId) || isHarbor(modelId);
     this.guideTurn = isHarborMini(modelId);
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
@@ -108,7 +103,7 @@ export class OnDeviceDriver implements ChatDriver {
   private systemPrompt(): string {
     const base = isHarborMini(this.modelId)
       ? (this.turnPrompt ?? buildHarborMiniSystemPrompt('', this.conversationId))
-      : this.searchable
+      : isHarbor(this.modelId)
         ? buildHarborSystemPrompt()
         : SYSTEM_PROMPT;
     // Mid-walk, a model switched in from Harbor Lite still needs to know where
@@ -127,9 +122,11 @@ export class OnDeviceDriver implements ChatDriver {
         this.armWatchdog(requestId);
         // Harbor Lite never shows an em dash (house rule); the final text
         // gets the full clean-up, the live stream just swaps the character.
-        const shown = this.guideTurn ? delta.split(EM_DASH).join(',') : delta;
+        const shown = this.guideTurn
+          ? delta.split(EM_DASH).join(',')
+          : this.searchFilter.push(delta);
         this.answer += delta;
-        this.emit({ type: 'text-delta', text: shown });
+        if (shown) this.emit({ type: 'text-delta', text: shown });
       }),
     );
     this.deviceListeners.push(
@@ -235,33 +232,20 @@ export class OnDeviceDriver implements ChatDriver {
   // app facts do not cover a factual question, and works out any setup fit.
   // A search that fails (offline, rate limited) is said plainly, never faked.
   private async prepareGuideTurn(text: string): Promise<void> {
-    const turn = harborMiniTurn(text, this.conversationId);
-    this.afterNote = turn.plan.after;
-    let sources: WebSearchResult[] | undefined;
-    let searchFailed = false;
-    if (turn.plan.searchQuery) {
-      this.emit({
-        type: 'status',
-        message: `Searching the web for "${turn.plan.searchQuery}".`,
-      });
-      try {
-        const key = await resolveSearchKey(this.researchOn);
-        sources = await webSearch(turn.plan.searchQuery, key, 3);
-        if (sources.length) {
-          this.emit({
-            type: 'citations',
-            citations: sources.map((r) => ({ title: r.title, url: r.url, snippet: r.snippet })),
-          });
-        }
-      } catch {
-        searchFailed = true;
-      }
-    }
-    this.turnPrompt = turn.prompt({ sources, searchFailed });
+    const turn = await prepareGuideTurn(
+      text,
+      this.researchOn,
+      (e) => this.emit(e),
+      true,
+      this.conversationId,
+    );
+    this.afterNote = turn.after;
+    this.turnPrompt = turn.prompt;
   }
 
   private async generate(): Promise<void> {
     this.answer = '';
+    this.searchFilter = new SearchLineFilter(this.searchable && !this.searchedThisTurn);
     const requestId = `req_${requestSeq++}`;
     this.activeRequestId = requestId;
     const system = this.systemPrompt();
@@ -286,6 +270,7 @@ export class OnDeviceDriver implements ChatDriver {
     detail?: string,
   ): Promise<void> {
     const text = this.guideTurn ? sanitizeGuideText(this.answer).trim() : this.answer.trim();
+    const { query, flush } = this.searchFilter.end();
     if (stopReason === 'error') {
       // Whatever the slot holds after an error is suspect; reload next time.
       forgetDeviceModel();
@@ -301,28 +286,12 @@ export class OnDeviceDriver implements ChatDriver {
       return;
     }
 
-    const searchMatch = this.searchable && !this.searchedThisTurn ? text.match(SEARCH_LINE) : null;
-    if (searchMatch) {
+    if (query && stopReason === 'end') {
       this.searchedThisTurn = true;
-      const query = searchMatch[1]!.trim();
       // The search line itself is a control message, not a real reply: leave
       // it out of the visible transcript and out of history, so the model
       // does not later "remember" having already announced it.
-      this.emit({ type: 'status', message: `Searching the web for "${query}".` });
-      let resultText: string;
-      try {
-        const key = await resolveSearchKey(this.researchOn);
-        const results = await webSearch(query, key);
-        resultText = formatSearchResults(query, results);
-        if (results.length) {
-          this.emit({
-            type: 'citations',
-            citations: results.map((r) => ({ title: r.title, url: r.url, snippet: r.snippet })),
-          });
-        }
-      } catch (err) {
-        resultText = `Search failed: ${err instanceof Error ? err.message : String(err)}. Answer from what you already know instead, and say you could not search.`;
-      }
+      const resultText = await searchForModel(query, this.researchOn, (e) => this.emit(e));
       // Stopped during the search: the turn is already closed.
       if (this.aborted) return;
       this.history.push({ role: 'user', content: resultText });
@@ -333,10 +302,20 @@ export class OnDeviceDriver implements ChatDriver {
         model: this.modelName,
         providerKind: 'local',
       });
-      await this.generate();
+      try {
+        await this.generate();
+      } catch (err) {
+        this.activeRequestId = undefined;
+        this.emit({
+          type: 'task-done',
+          reason: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
       return;
     }
 
+    if (flush) this.emit({ type: 'text-delta', text: flush });
     if (text) this.history.push({ role: 'assistant', content: text });
     this.emit({ type: 'text-final', text });
     const after = this.afterNote;

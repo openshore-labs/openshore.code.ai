@@ -20,8 +20,20 @@
 // pairing.
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
-import type { ApprovalAnswer, FetchLike, HarnessCurrentsHandle } from 'os-code/protocol';
-import { uxStandardPrompt, humanizerStandardPrompt, JevAdvisor } from 'os-code/protocol';
+import type {
+  ApprovalAnswer,
+  ApprovalRequest,
+  FetchLike,
+  HarnessCurrentsHandle,
+} from 'os-code/protocol';
+import {
+  uxStandardPrompt,
+  humanizerStandardPrompt,
+  JevAdvisor,
+  NO_SEARCH_NOTE,
+  SEARCH_PROTOCOL_NOTE,
+  SearchLineFilter,
+} from 'os-code/protocol';
 import {
   activeHarnessId,
   harnessCurrentInfo,
@@ -55,7 +67,7 @@ import { streamingFetch } from '../lib/streamingFetch.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
-import { buildVisionContent, opensOnUser } from './cloudClaudeDriver.js';
+import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import {
   briefTodos,
@@ -77,6 +89,7 @@ import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
+import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
@@ -121,6 +134,9 @@ export interface StackContext {
    *  on another service (a Hermes box, via its session header) continues the
    *  same thread turn after turn instead of starting over per call. */
   conversationId?: string;
+  /** Research (default off): a local model's web search runs on the connected
+   *  Perplexity key instead of the Settings provider (see resolveSearchKey). */
+  researchOn?: boolean;
   /** The Harness Current that is on (Jev), as its handle with the resolved key.
    *  When present, a paid/cloud turn is steered by Jev: it may re-route to a
    *  cheaper reachable seat (the gate) or to the seat placed for the work kind
@@ -216,6 +232,10 @@ function hasVideoFrames(images: Attachment[]): boolean {
 // id and interleave their token streams into one answer.
 let stackRequestSeq = 0;
 
+/** The turn's end when the person keeps an image off the cloud. */
+export const IMAGE_NOT_SENT =
+  'You declined, so the image was not sent. Set a model for Image reading in Stack and images go to it without asking.';
+
 // A routed specialist could not run this turn (no key, load failure, HTTP
 // error). Distinct from a generic failure so run() can degrade to the Reasoning
 // anchor instead of dead-ending the turn, the way the engine's router does.
@@ -271,6 +291,16 @@ export class StackDriver implements ChatDriver {
   // from the roster, never hardcoded here (a room renders a current through the
   // roster, the same rule the agentic currents hold).
   private readonly harness?: { id: HarnessCurrentId; label: string; advisor: JevAdvisor };
+  // Web search for local models: the stream filter that keeps a SEARCH: line
+  // off the screen, at most one search per message, the device seat to hand
+  // the results back to, and Harbor Lite's pre-searched prompt for this turn.
+  private searchFilter = new SearchLineFilter(false);
+  private searchedThisTurn = false;
+  private deviceTurn?: { ref: Extract<StackModelRef, { kind: 'device' }>; placement?: Placement };
+  private guidePrompt?: string;
+  // A card this driver put in front of the person (an image bound for a model
+  // not placed for Image reading), waiting on their tap.
+  private pendingAsk?: { id: string; settle: (approved: boolean) => void };
 
   constructor(
     private readonly stack: AppStack,
@@ -322,6 +352,11 @@ export class StackDriver implements ChatDriver {
 
   private reachable(ref: StackModelRef): boolean {
     return locationAllowed(this.profile, locationOf(ref));
+  }
+
+  /** The web is in reach whenever the cloud is: not on the Offline profile. */
+  private webReachable(): boolean {
+    return locationAllowed(this.profile, 'cloud');
   }
 
   /** Pick the model for this turn: a placed specialist if reachable, else the
@@ -427,19 +462,23 @@ export class StackDriver implements ChatDriver {
     return '';
   }
 
-  private systemFor(ref: StackModelRef, placement?: Placement): string {
+  /** `search` is set only on a local model's own answer turn: true when the
+   *  web is in reach (it may ask with a SEARCH: line), false when it is not.
+   *  Unset (a play step, a cloud seat), the prompt says nothing about it. */
+  private systemFor(ref: StackModelRef, placement?: Placement, search?: boolean): string {
     const guideSystem =
       ref.kind === 'device' && isHarborMini(ref.modelId)
-        ? buildHarborMiniSystemPrompt(this.lastUserText(), this.context.conversationId)
+        ? (this.guidePrompt ??
+          buildHarborMiniSystemPrompt(this.lastUserText(), this.context.conversationId))
         : ref.kind === 'device' && isHarbor(ref.modelId)
-          ? buildHarborSystemPrompt(false)
+          ? buildHarborSystemPrompt(search === true)
           : undefined;
-    // Harbor's own web-search protocol only exists in the standalone guide
-    // chat (OnDeviceDriver); placed in a full stack it answers from what it
-    // knows, same as any other Reasoning LLM here (no tool use in v1, see the
-    // file header). Its persona still applies so it identifies itself
-    // correctly and stays honest about not being a coder.
+    // Harbor's persona carries its own search line, and Harbor Lite's guide
+    // harness searches for it; every other local model reads the rule here.
     const parts = [guideSystem ?? BASE_SYSTEM];
+    if (!guideSystem && search !== undefined) {
+      parts.push(search ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE);
+    }
     // Reasoning effort: a specialist's own effort when it was placed with one
     // (the Vision position sets this), otherwise the live composer choice.
     parts.push(effortDirective(placement?.effort));
@@ -513,6 +552,8 @@ export class StackDriver implements ChatDriver {
   private async run(text: string, attachments?: Attachment[]): Promise<void> {
     this.aborted = false;
     this.abortController = new AbortController();
+    this.searchedThisTurn = false;
+    this.guidePrompt = undefined;
     this.history.push({ role: 'user', content: text });
     this.emit({ type: 'task-start', input: text });
 
@@ -558,6 +599,14 @@ export class StackDriver implements ChatDriver {
           reason: 'error',
           message: `No image-reading model is reachable while ${this.profile}. Put an image-reading model in Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
         });
+        return;
+      }
+      // Only a model placed for Image reading takes an image without a word
+      // (founder, 2026-09-25). Any other reader, the anchor or a connected cloud
+      // model filling the gap, waits on a card the person taps (tenet 4).
+      if (!vision.dedicated && !(await this.askToReadImage(vision.ref, images.length))) {
+        if (this.aborted) this.finish('aborted');
+        else this.emit({ type: 'task-done', reason: 'declined', message: IMAGE_NOT_SENT });
         return;
       }
       target = vision;
@@ -641,7 +690,7 @@ export class StackDriver implements ChatDriver {
           this.emit({
             type: 'task-done',
             reason: 'error',
-            message: err2 instanceof Error ? err2.message : String(err2),
+            message: describeError(err2),
           });
         }
         return;
@@ -649,7 +698,7 @@ export class StackDriver implements ChatDriver {
       this.emit({
         type: 'task-done',
         reason: 'error',
-        message: err instanceof Error ? err.message : String(err),
+        message: describeError(err),
       });
     }
   }
@@ -670,15 +719,56 @@ export class StackDriver implements ChatDriver {
 
   /** Pick the target for an image-bearing turn, or undefined when nothing can
    *  read it. A capable model placed in (or anchoring) the stack wins; otherwise
-   *  a connected cloud provider that reads images is the fallback. */
+   *  a connected cloud provider that reads images is the fallback. `dedicated`
+   *  marks a reader placed for Image reading, the one case that never asks. */
   private async routeVision(): Promise<
-    { ref: StackModelRef; placement?: Placement; category: 'vision' } | undefined
+    | { ref: StackModelRef; placement?: Placement; category: 'vision'; dedicated: boolean }
+    | undefined
   > {
     const pick = pickVisionRef(this.stack, (r) => this.reachable(r));
-    if (pick) return { ref: pick.ref, placement: pick.placement, category: 'vision' };
+    if (pick) {
+      return {
+        ref: pick.ref,
+        placement: pick.placement,
+        category: 'vision',
+        dedicated: pick.placement?.category === 'vision',
+      };
+    }
     const fallback = await this.cloudVisionFallback();
-    if (fallback) return { ref: fallback, category: 'vision' };
+    if (fallback) return { ref: fallback, category: 'vision', dedicated: false };
     return undefined;
+  }
+
+  /** Ask before an image goes to a model not placed for Image reading. Amber
+   *  (Cloud spend) when the reader is a cloud model, plain when it is your own. */
+  private askToReadImage(ref: StackModelRef, count: number): Promise<boolean> {
+    const what = count === 1 ? 'this image' : `these ${count} images`;
+    const reader = refName(ref);
+    const cloud = ref.kind === 'cloud';
+    return this.askFirst({
+      kind: cloud ? 'cloud-spend' : 'tool',
+      toolName: 'analyzeImage',
+      risk: cloud ? 'cloud-spend' : 'network',
+      summary: `Read ${what} with ${reader}?`,
+      detail: `Nothing in Stack is set for Image reading, so ${what} would go to ${reader}${cloud ? ' on your own API key' : ''}. Nothing is sent until you approve. Set a model for Image reading in Stack and images go to it without asking.`,
+    });
+  }
+
+  /** Put a card in front of the person and wait for their tap. A stop counts
+   *  as a no. */
+  private askFirst(request: Omit<ApprovalRequest, 'id'>): Promise<boolean> {
+    const id = `ask_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
+    return new Promise<boolean>((resolve) => {
+      this.pendingAsk = {
+        id,
+        settle: (approved) => {
+          this.pendingAsk = undefined;
+          this.emit({ type: 'approval-resolved', id, approved });
+          resolve(approved);
+        },
+      };
+      this.emit({ type: 'approval-request', request: { id, ...request } });
+    });
   }
 
   /** A connected, reachable cloud model that reads images, when the stack holds
@@ -1126,7 +1216,8 @@ export class StackDriver implements ChatDriver {
         if (requestId !== this.activeRequestId) return;
         this.armWatchdog(requestId);
         this.answer += delta;
-        this.emit({ type: 'text-delta', text: delta });
+        const shown = this.searchFilter.push(delta);
+        if (shown) this.emit({ type: 'text-delta', text: shown });
       }),
     );
     this.deviceListeners.push(
@@ -1134,6 +1225,17 @@ export class StackDriver implements ChatDriver {
         if (requestId !== this.activeRequestId) return;
         this.clearDeviceTimers();
         this.activeRequestId = undefined;
+        const { query, flush } = this.searchFilter.end();
+        const turn = this.deviceTurn;
+        if (stopReason === 'end' && query && turn && !this.aborted) {
+          void this.answerWithSearch(query, turn.ref.modelName, 'local', () =>
+            this.runDevice(turn.ref, turn.placement),
+          ).catch((err) =>
+            this.aborted ? this.finish('aborted') : this.finish('error', describeError(err)),
+          );
+          return;
+        }
+        if (flush) this.emit({ type: 'text-delta', text: flush });
         if (stopReason === 'error') {
           // Whatever the slot holds after an error is suspect; reload next time.
           forgetDeviceModel();
@@ -1171,11 +1273,28 @@ export class StackDriver implements ChatDriver {
     // never start the reply the person asked to stop.
     if (this.aborted) throw abortError();
     if (!ready.ok) throw new RouteUnavailable(ready.detail);
+    const guide = isHarborMini(ref.modelId);
+    const online = this.webReachable();
+    if (guide && this.guidePrompt === undefined) {
+      this.guidePrompt = (
+        await prepareGuideTurn(
+          this.lastUserText(),
+          this.context.researchOn === true,
+          this.emit,
+          online,
+          this.context.conversationId,
+        )
+      ).prompt;
+      // Stopped during the guide's web search: unwind the way a stopped load does.
+      if (this.aborted) throw abortError();
+    }
+    this.deviceTurn = { ref, placement };
+    this.searchFilter = new SearchLineFilter(!guide && online && !this.searchedThisTurn);
     const requestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
     this.activeRequestId = requestId;
     this.deviceModelName = ref.modelName;
-    const system = this.systemFor(ref, placement);
-    const maxTokens = isHarborMini(ref.modelId) ? 512 : 1024;
+    const system = this.systemFor(ref, placement, online);
+    const maxTokens = guide ? 512 : 1024;
     const res = await Llama.generate({
       requestId,
       system,
@@ -1222,6 +1341,30 @@ export class StackDriver implements ChatDriver {
     this.clearAbortBeat();
   }
 
+  // ---- local web search ---------------------------------------------------
+
+  /** A local model asked for a search: run it on the Settings provider, hand
+   *  the results back as the next turn, and let the same model answer for
+   *  real. Once per message, so a confused model cannot loop. The SEARCH: line
+   *  never reaches the transcript or the history. */
+  private async answerWithSearch(
+    query: string,
+    model: string,
+    providerKind: 'local' | 'cloud',
+    again: () => Promise<void>,
+  ): Promise<void> {
+    this.searchedThisTurn = true;
+    const resultText = await searchForModel(query, this.context.researchOn === true, this.emit);
+    this.answer = '';
+    if (this.aborted) {
+      this.finish('aborted');
+      return;
+    }
+    this.history.push({ role: 'user', content: resultText });
+    this.emit({ type: 'turn-start', turn: this.history.length, model, providerKind });
+    await again();
+  }
+
   // ---- cloud backends -----------------------------------------------------
 
   private async runCloud(
@@ -1265,7 +1408,13 @@ export class StackDriver implements ChatDriver {
     // A BYOM key is optional: a local or trusted-network server may accept
     // unauthenticated requests, so an absent key is not an error here.
     const key = (await secretGet(byomSecretKey(ref.id))) ?? undefined;
-    const system = this.systemFor(ref, placement);
+    // A plain text turn on your own model may search the web the way a pocket
+    // model does. An Agentic Current's bench model brings its own tools.
+    const search =
+      !images.length && !this.context.codemagicAccess && !isCurrentBenchId(ref.id)
+        ? this.webReachable()
+        : undefined;
+    const system = this.systemFor(ref, placement, search);
     const extra = benchExtraHeaders(ref.id, this.context.conversationId);
     // An image turn takes the plain vision path; otherwise Codemagic Access on
     // runs the tool-use loop, off keeps the original single-turn path.
@@ -1281,7 +1430,16 @@ export class StackDriver implements ChatDriver {
         extra,
       );
     } else {
-      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, [], extra);
+      await this.runOpenAiCompatible(
+        ref.label,
+        ref.baseUrl,
+        key,
+        ref.model,
+        system,
+        [],
+        extra,
+        search === true,
+      );
     }
   }
 
@@ -1432,7 +1590,26 @@ export class StackDriver implements ChatDriver {
     system: string,
     images: Attachment[] = [],
     extraHeaders: Record<string, string> = {},
+    /** A local model's turn that may ask for a web search (a SEARCH: line). */
+    searchable = false,
   ): Promise<void> {
+    const filter = new SearchLineFilter(searchable && !this.searchedThisTurn);
+    const show = (delta: string) => {
+      this.answer += delta;
+      const shown = filter.push(delta);
+      if (shown) this.emit({ type: 'text-delta', text: shown });
+    };
+    const settle = async () => {
+      const { query, flush } = filter.end();
+      if (query && !this.aborted) {
+        await this.answerWithSearch(query, label, 'cloud', () =>
+          this.runOpenAiCompatible(label, base, key, model, system, images, extraHeaders),
+        );
+        return;
+      }
+      if (flush) this.emit({ type: 'text-delta', text: flush });
+      this.finish(this.aborted ? 'aborted' : 'complete');
+    };
     const sys =
       images.length && hasVideoFrames(images) ? `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}` : system;
     const messages: Array<{ role: string; content: unknown }> = [
@@ -1466,12 +1643,9 @@ export class StackDriver implements ChatDriver {
       if (!this.aborted) {
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
         const content = data?.choices?.[0]?.message?.content;
-        if (typeof content === 'string' && content) {
-          this.answer += content;
-          this.emit({ type: 'text-delta', text: content });
-        }
+        if (typeof content === 'string' && content) show(content);
       }
-      this.finish(this.aborted ? 'aborted' : 'complete');
+      await settle();
       return;
     }
 
@@ -1500,16 +1674,13 @@ export class StackDriver implements ChatDriver {
         if (payload === '[DONE]') continue;
         try {
           const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
-          if (typeof delta === 'string' && delta) {
-            this.answer += delta;
-            this.emit({ type: 'text-delta', text: delta });
-          }
+          if (typeof delta === 'string' && delta) show(delta);
         } catch {
           // skip a partial or non-JSON keepalive line
         }
       }
     }
-    this.finish(this.aborted ? 'aborted' : 'complete');
+    await settle();
   }
 
   // Execute one codemagic tool call on-device and return the observation. Shared
@@ -1704,6 +1875,7 @@ export class StackDriver implements ChatDriver {
   abort(): void {
     this.aborted = true;
     this.abortController?.abort();
+    this.pendingAsk?.settle(false);
     // A model load cannot be stopped, but the turn can: close it now so Stop
     // answers at once, and the run drops out when the load finishes.
     if (this.warming) this.finish('aborted');
@@ -1735,8 +1907,12 @@ export class StackDriver implements ChatDriver {
   }
 
   answerApproval(id: string, answer: ApprovalAnswer): void {
-    // A tool step's approval is the engine's; pass the person's answer through
-    // to the engine session running it. Nothing else in this driver asks.
+    // This driver's own card (an image bound for the cloud) settles here; a
+    // tool step's approval is the engine's, so it passes through to it.
+    if (this.pendingAsk?.id === id) {
+      this.pendingAsk.settle(answer.approve);
+      return;
+    }
     this.engineDriver?.answerApproval(id, answer);
   }
 

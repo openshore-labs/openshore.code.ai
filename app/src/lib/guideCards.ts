@@ -80,7 +80,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'menu',
     title: 'The Menu',
     where: 'Phone: the Menu button at top left, or swipe from the edge. Computer: the sidebar',
-    text: 'Top: Chats, Projects, Terminal, Repositories, Stack, Vault. Bottom: Admin (company admins), My Crew, Marketplace (Coming soon), Stack Health, Launch with Codemagic, Cloud Connections, Desktop + phone, Settings. A Sign in row shows when you are signed out.',
+    text: 'Top: Chats, Projects, Terminal, Repositories, Stack, Vault. Bottom: Admin (company admins), Crew, Marketplace (Coming soon), Stack Health, Launch with Codemagic, Cloud Connections, Desktop + phone, Settings. A Sign in row shows when you are signed out.',
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
   },
 
@@ -211,7 +211,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'attachments',
     title: 'Attach',
     where: 'The + at the left of the chat box',
-    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Stack or connect a cloud model that can.',
+    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Stack or connect a cloud model that can. A model set for Image reading in Stack gets images right away; otherwise the chat asks before an image goes out.',
     keywords: [
       'attach',
       'photo',
@@ -550,8 +550,8 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'my-crew',
-    title: 'My Crew',
-    where: 'Menu, My Crew',
+    title: 'Crew',
+    where: 'Menu, Crew',
     text: 'Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap + New crew member to add one.',
     keywords: [
       'crew',
@@ -567,7 +567,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'advisors',
     title: 'The advisor team',
-    where: 'Menu, My Crew, Add the advisor team',
+    where: 'Menu, Crew, Add the advisor team',
     text: 'One tap adds eight advisors: Technical Advisor (reviews the work), Marketing, Finance, and Creative Studio (join when a decision needs them), and Research, Coordinator, Sounding Board, and Strategy (answer when asked). They advise; you decide.',
     keywords: [
       'advisor',
@@ -583,7 +583,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'routines',
     title: 'Routines',
-    where: 'Menu, My Crew, Crew command',
+    where: 'Menu, Crew, Crew command',
     text: 'A routine gives a crew member a task, a workspace, days, and a time. It runs on your own computer while your computer is on, and leaves a dated note in the Vault. Access is Read-only or May edit files, and commands still wait for your approval. There is a Morning review preset and Run now.',
     keywords: [
       'routine',
@@ -641,7 +641,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'settings-harbor',
     title: 'Harbor settings and web search',
     where: 'Menu, Settings, Harbor',
-    text: 'Installs or removes the built-in models (Harbor on the phone, DeepBlue on your computer; Harbor Lite is Built in) and picks the web search provider: DuckDuckGo needs no API key, or add your own Brave Search or Tavily API key.',
+    text: 'Installs or removes the built-in models (Harbor on the phone, DeepBlue on your computer; Harbor Lite is Built in) and picks the web search provider every local model uses: DuckDuckGo needs no API key, or add your own Brave Search or Tavily API key.',
     keywords: [
       'web search',
       'duckduckgo',
