@@ -8189,45 +8189,111 @@ textarea {
   font-size: var(--text-2);
 }
 
-.scroll-pill-dock {
+.jump-dock {
   position: sticky;
   bottom: 0;
   height: 0;
-}
-.scroll-pill {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  padding: 7px 14px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: var(--text-3);
-  font-weight: var(--weight-semibold);
-  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.22);
-  animation: pill-in var(--dur-2) var(--ease-arrive);
   z-index: 4;
 }
-/* When the pill is only a jump affordance (scrolled up, nothing new), it drops
-   its label and reads as a round floating button, the iMessage shape. */
-.scroll-pill.bare {
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  font-size: var(--text-5);
-  line-height: 1;
+/* The foot veil: when you have scrolled up, the transcript dissolves into the
+   paper just above the composer, the way water goes clear at the shallows. It
+   says "there is more below" before the chip does, and it gives the chip a
+   calm surface to sit on instead of a line of text. */
+.jump-veil {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 96px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 85%);
+  pointer-events: none;
+  animation: jump-veil-in var(--dur-5) var(--ease-standard) backwards;
 }
-@keyframes pill-in {
+/* The rail matches the reading column, so on a wide window the chip sits at
+   the column's right edge, over the send button, never out at the glass. */
+.jump-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+/* The chip: a raised paper disc with a hairline and a soft lift, the same
+   family as the composer card below it. Quiet by default; it is a way back,
+   not a call to action, so it never wears solid ink over the reader's text. */
+.jump-chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+  font-size: var(--text-3);
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.12);
+  animation: jump-in var(--dur-5) var(--ease-arrive) backwards;
+}
+/* News below: the chip opens into a labelled pill in ink, so a reply that
+   landed while you were reading up is the one time it asks for a look. */
+.jump-chip.has-new {
+  padding: 0 12px 0 15px;
+  color: var(--ink);
+}
+.jump-label {
+  animation: jump-label-in var(--dur-4) var(--ease-arrive) backwards;
+}
+.jump-glyph {
+  display: block;
+  flex: none;
+}
+@media (hover: hover) {
+  .jump-chip:hover {
+    color: var(--ink);
+  }
+}
+.jump-dock.closing .jump-chip {
+  animation: jump-out var(--dur-3) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+.jump-dock.closing .jump-veil {
+  animation: jump-veil-out var(--dur-3) var(--ease-accel) forwards;
+}
+@keyframes jump-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(6px);
+    transform: translateY(8px) scale(0.92);
   }
+}
+@keyframes jump-out {
   to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+  }
+}
+@keyframes jump-label-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes jump-veil-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes jump-veil-out {
+  to {
+    opacity: 0;
   }
 }
 .thread {
@@ -8701,15 +8767,6 @@ textarea {
 .reveal-inner {
   min-height: 0;
   overflow: hidden;
-}
-.scroll-pill.closing {
-  animation: pill-out var(--dur-3) var(--ease-accel) forwards;
-}
-@keyframes pill-out {
-  to {
-    opacity: 0;
-    transform: translateX(-50%) translateY(6px);
-  }
 }
 .composer-menu.closing {
   animation: menu-out var(--dur-3) var(--ease-accel) forwards;
