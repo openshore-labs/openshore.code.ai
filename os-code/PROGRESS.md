@@ -426,6 +426,12 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Repositories on a device (built 2026-09-25).** Founder first: tap
+      "Choose repositories" in the picker, give OpenShore Code all of
+      openshore-labs. Then on the iPhone, paired: clone openshore-hq from the
+      picker and confirm a new chat works in ~/OSCode/openshore-hq. Set
+      `VITE_GITHUB_APP_SLUG` in Codemagic. Follow-up: the computer still needs
+      its own push credential (`gh auth login`) for reconcile and the agent.
 - [ ] **Harbor and DeepBlue's 3B are not Apache (checked 2026-09-24; a
       founder or Board call).** Qwen2.5-Coder-3B's model card says the Qwen
       Research License: research and non-commercial use, commercial use needs
@@ -968,6 +974,10 @@ extended that day by the graduated enforcement ladder (migration
 
 ## Log
 
+### 2026-09-25, the Repositories review: every GitHub repository reachable, cloned with the connected token
+
+Founder, from two screenshots: the repo picker listed 4 repositories where the Claude GitHub connection shows many more; review the repository section, GitHub first, and make the others work. Root cause: OpenShore signs in as a GitHub App, and an App token sees only the repositories the App was given; on openshore-labs it was installed with a few picked, so `/user/repos` was right and the app never said so (Claude's own GitHub App is a separate installation). Fixed, with the rest the review found. (1) The picker, the project sheet, and the GitHub card read `/user/installations` and say "OpenShore sees only the repositories you picked for openshore-labs on GitHub. Choose repositories", opening that installation's settings (or the App install page; `VITE_GITHUB_APP_SLUG` is optional), and re-read the list on return. (2) The picker read the raw stored token, so an 8-hour GitHub App token went stale; one reader, `repoToken`, refreshes a one-tap sign-in (single-flight, a GitHub refresh token is single use) and serves a pasted token as is, which also fixes the project-memory view ignoring pasted tokens. (3) The Repositories screen promised private repositories clone with the connected platform, and nothing passed it; the token now rides one clone as a host-scoped header through git's environment config, never in args, `.git/config`, the remote, or an error, on the desktop and through `POST /workspaces/clone` (`os-code/src/git/index.ts`, `src/git/workspaces.ts`, `app/src/lib/repoClone.ts`). (4) A selected GitHub repository was context only; the picker offers "Clone to your computer" (or "Use that copy" when a clone already holds it, matched by origin), which puts the folder first so the agent works there. (5) A clone made from the phone never listed until a chat ran in it; workspaces now include every clone under ~/OSCode with its origin (credentials stripped), a repeat request joins a running clone, and a same-named folder holding another repository is refused. (6) GitLab and Bitbucket connected but never listed; they list now under `gitlab:` and `bitbucket:` ids no folder check mistakes for a path, and since Bitbucket app passwords died 2026-06-09 its card takes `email:API token` (Basic) or an access token (bearer). (7) Errors read as sentences, not "GitHub answered 401.", and the list pages to 1000 repositories, not 300. Tests: `app/test/chatRepos.test.ts`, `repoOAuth.test.ts`, `plainError.test.ts`, `os-code/test/repoClone.test.ts`, `daemon.test.ts`. Rendered in headless Chromium against a mocked GitHub. Not yet on a device.
+
 ### 2026-09-24, Zed's first-run options, ruled on by CX: one edit choice in the walk, Approvals in Settings
 
 Founder, from a photo of Zed's "Welcome to Zed" page: talk with CX about which options belong in onboarding and Settings. CX's ruling: take one idea and skip the rest, since Zed is setting up an editor and OpenShore has none. Theme is already in Settings (System, Light, Dark). Keymap and Vim mode need an editor, so skip. Agent setup is CLI Pairing, which is per project, so it becomes a guide opener ("Can I use Claude Code or Codex here?") and new grounding facts. Import settings becomes one sentence: the engine already follows OSCODE.md, CLAUDE.md, and AGENTS.md. Usage data and crash reports stay off because of the "no telemetry" promise. The trust toggle becomes a single choice. Must-fix, now done: the repo step and the `open-a-repo` guide promised "every edit shows you a diff first", but the default mode is Accept edits. Built: the repo step now ends on "Ask me first" / "Let edits flow" (plus "Decide later"). The walk holds until a tap, and "skip" there means decide later (`EDIT_CHOICES`, `repoConnectedMessage`, `chooseEditMode`, `EditChoiceActions`). The same choice is permanent in Settings under a new Approvals group ("When the agent edits"). Opt-in log events: `guided_setup_step_done`, `permission_mode_chosen`, `permission_mode_deferred`, and `permission_mode_changed {from, to, source}`, which is the regret signal. The walk stays at four steps. Tests: `app/test/guidedSetup.test.ts`. Not yet felt on a phone.
@@ -983,12 +993,3 @@ Founder: the first open landed on finished text; reveal it, pause on the welcome
 ### 2026-09-24, Harbor Lite's guide harness measured on the reference box
 
 The box (i5-7300U, 8 GB, CPU only), 49 questions with live DuckDuckGo: with the harness 94% vs 89% without on `smollm2:135m`, 94% vs 90% on the phone's Q4_K_M quant (`docs/guide-eval-2026-09-24.md`). Web and chat questions all 100%. The misses were the model restating setup advice without the size (fit-8, fit-4090, fit-mac on both runs), a stretch reply without Harbor or DeepBlue, and one em dash. So the harness now shows a fixed line after the reply with the worked-out DeepBlue size, as it already did for a stretch, and strips any em dash from Harbor Lite's words; the eval scores what the chat shows. The rest (stack, pair, bench, reach) moved between runs, so single-run noise, not yet a card fix.
-
-### 2026-09-24, the first chat opens at once; Harbor Lite really ships in the app
-
-TestFlight showed the plain chat for about a minute before the walk: no build
-carried Harbor Lite's weights, so first open downloaded them and the walk waited
-on that. `beginGuidedSetup` now opens the chat and its scripted hello at once
-and readies the model in the background; a line typed before it is ready waits
-as a queued message (`holdForHarborLite`). Codemagic now bundles the weights
-into `public/models/` (see docs/HARBOR.md), which `bundledURL` reads.

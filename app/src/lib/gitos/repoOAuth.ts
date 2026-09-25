@@ -455,12 +455,20 @@ export function friendlyError(code: string): string {
   return FRIENDLY[code] ?? 'Sign-in failed. Try again.';
 }
 
+// One refresh per provider at a time. A GitHub App refresh token is single
+// use, so two callers refreshing together (the picker and a clone) would spend
+// it twice: the second exchange fails and hands back the expired token. The
+// second caller waits on the first instead.
+const refreshing = new Map<RepoPlatform, Promise<string | undefined>>();
+
 /** A valid access token, refreshing through the function first if the cached
  *  one is near expiry. Undefined when not OAuth-connected or a refresh fails
  *  (a revoked grant, a network blip). Tokens that never expire (a classic
  *  GitHub App user token) are returned as is. */
 export async function repoAccessToken(id: RepoPlatform): Promise<string | undefined> {
   if (!(await isRepoOAuthConnected(id))) return undefined;
+  const pending = refreshing.get(id);
+  if (pending) return pending;
   const [access, expiryRaw, refresh] = await Promise.all([
     secretGet(repoSecretKey(id)),
     secretGet(expiryKey(id)),
@@ -470,13 +478,44 @@ export async function repoAccessToken(id: RepoPlatform): Promise<string | undefi
   if (access && (!expiresAt || expiresAt - Date.now() > 60_000)) return access;
   if (!refresh) return access ?? undefined;
 
+  const inFlight = refreshing.get(id);
+  if (inFlight) return inFlight;
+  const run = (async () => {
+    try {
+      const tokens = await postFunction('refresh', { provider: id, refreshToken: refresh });
+      await storeTokens(id, tokens);
+      return tokens.accessToken;
+    } catch {
+      // A refresh that raced one which just finished spent a used token; the
+      // winner's fresh access token is already stored, so prefer it.
+      const stored = await secretGet(repoSecretKey(id));
+      return (stored && stored !== access ? stored : access) ?? undefined;
+    }
+  })();
+  refreshing.set(id, run);
   try {
-    const tokens = await postFunction('refresh', { provider: id, refreshToken: refresh });
-    await storeTokens(id, tokens);
-    return tokens.accessToken;
-  } catch {
-    return access ?? undefined;
+    return await run;
+  } finally {
+    refreshing.delete(id);
   }
+}
+
+/** The token every repository call uses, whichever way the platform was
+ *  connected: the one-tap sign-in (refreshed when it is near expiry; a GitHub
+ *  App token lasts eight hours) or a pasted access token (used as is).
+ *  Undefined when the platform is not connected on this device. */
+export async function repoToken(id: RepoPlatform): Promise<string | undefined> {
+  if (await isRepoOAuthConnected(id)) return repoAccessToken(id);
+  return (await secretGet(repoSecretKey(id))) ?? undefined;
+}
+
+/** The GitHub App's public slug (its github.com/apps/<slug> address), when the
+ *  build names it, so the picker can send a person to add the App to another
+ *  account. Optional: once the App is installed anywhere, GitHub reports the
+ *  slug itself. */
+export function githubAppSlug(): string | undefined {
+  const raw = (import.meta.env.VITE_GITHUB_APP_SLUG as string | undefined)?.trim();
+  return raw && /^[a-z0-9-]+$/i.test(raw) ? raw : undefined;
 }
 
 /** Forget the OAuth tokens for a platform. The provider grant itself is revoked
