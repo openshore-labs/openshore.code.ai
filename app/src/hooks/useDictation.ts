@@ -19,7 +19,7 @@ interface SpeechRecognitionLike {
   stop(): void;
   abort(): void;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: { error?: string }) => void) | null;
   onend: (() => void) | null;
 }
 interface SpeechRecognitionEventLike {
@@ -43,12 +43,28 @@ export interface Dictation {
   stop: () => void;
 }
 
-export function useDictation(onText: (text: string) => void): Dictation {
+/** Why dictation could not start or stopped early, for a plain-language toast.
+ *  `denied`: the person (or Settings) refused the microphone or speech access. */
+export type DictationFailure = 'denied' | 'failed';
+
+export function useDictation(
+  onText: (text: string) => void,
+  onFail?: (why: DictationFailure) => void,
+): Dictation {
   const native = isPhone();
   const [supported, setSupported] = useState<boolean>(() => (native ? false : Boolean(webCtor())));
   const [listening, setListening] = useState(false);
   const onTextRef = useRef(onText);
   onTextRef.current = onText;
+  const onFailRef = useRef(onFail);
+  onFailRef.current = onFail;
+  // One number per listening session. A stop bumps it, so a late partial or a
+  // final result that lands after the person tapped stop (or sent) is dropped
+  // instead of writing the old transcript back into a cleared field.
+  const sessionRef = useRef(0);
+  // True from the tap until the engine is live: a second tap in that window
+  // must not register a second set of listeners.
+  const startingRef = useRef(false);
 
   const handlesRef = useRef<PluginListenerHandle[]>([]);
   const webRef = useRef<SpeechRecognitionLike | null>(null);
@@ -69,6 +85,8 @@ export function useDictation(onText: (text: string) => void): Dictation {
   }, [native]);
 
   const stopNative = useCallback(() => {
+    sessionRef.current += 1;
+    startingRef.current = false;
     for (const h of handlesRef.current) void h.remove();
     handlesRef.current = [];
     void OscodeSpeech.stop().catch(() => {});
@@ -76,20 +94,43 @@ export function useDictation(onText: (text: string) => void): Dictation {
   }, []);
 
   const startNative = useCallback(async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    const session = ++sessionRef.current;
+    const live = () => sessionRef.current === session;
     const perm = await OscodeSpeech.requestPermission().catch(() => ({ granted: false }));
-    if (!perm.granted) return;
-    const partial = await OscodeSpeech.addListener('partial', (d) => onTextRef.current(d.text));
+    if (!live()) return;
+    if (!perm.granted) {
+      startingRef.current = false;
+      onFailRef.current?.('denied');
+      return;
+    }
+    const partial = await OscodeSpeech.addListener('partial', (d) => {
+      if (live()) onTextRef.current(d.text);
+    });
     const result = await OscodeSpeech.addListener('result', (d) => {
+      if (!live()) return;
       onTextRef.current(d.text);
       stopNative();
     });
-    const error = await OscodeSpeech.addListener('error', () => stopNative());
+    const error = await OscodeSpeech.addListener('error', () => {
+      if (!live()) return;
+      stopNative();
+      onFailRef.current?.('failed');
+    });
     handlesRef.current = [partial, result, error];
+    if (!live()) {
+      for (const h of handlesRef.current) void h.remove();
+      handlesRef.current = [];
+      return;
+    }
     try {
       await OscodeSpeech.start();
-      setListening(true);
+      startingRef.current = false;
+      if (live()) setListening(true);
     } catch {
       stopNative();
+      onFailRef.current?.('failed');
     }
   }, [stopNative]);
 
@@ -97,10 +138,13 @@ export function useDictation(onText: (text: string) => void): Dictation {
     const Ctor = webCtor();
     if (!Ctor) return;
     const rec = new Ctor();
+    const session = ++sessionRef.current;
+    const live = () => sessionRef.current === session;
     rec.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (event) => {
+      if (!live()) return;
       let text = '';
       for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
       onTextRef.current(text);
@@ -109,7 +153,12 @@ export function useDictation(onText: (text: string) => void): Dictation {
       webRef.current = null;
       setListening(false);
     };
-    rec.onerror = finish;
+    rec.onerror = (event) => {
+      const denied = event?.error === 'not-allowed' || event?.error === 'service-not-allowed';
+      const quiet = event?.error === 'no-speech' || event?.error === 'aborted';
+      if (live() && !quiet) onFailRef.current?.(denied ? 'denied' : 'failed');
+      finish();
+    };
     rec.onend = finish;
     webRef.current = rec;
     setListening(true);
@@ -117,9 +166,13 @@ export function useDictation(onText: (text: string) => void): Dictation {
   }, []);
 
   const stop = useCallback(() => {
-    if (native) stopNative();
-    else webRef.current?.stop();
-  }, [native, stopNative]);
+    if (native) {
+      if (startingRef.current || listening) stopNative();
+      return;
+    }
+    sessionRef.current += 1;
+    webRef.current?.stop();
+  }, [native, stopNative, listening]);
 
   const toggle = useCallback(() => {
     if (!supported) return;
@@ -128,8 +181,10 @@ export function useDictation(onText: (text: string) => void): Dictation {
       else void startNative();
       return;
     }
-    if (webRef.current) webRef.current.stop();
-    else startWeb();
+    if (webRef.current) {
+      sessionRef.current += 1;
+      webRef.current.stop();
+    } else startWeb();
   }, [supported, native, listening, stopNative, startNative, startWeb]);
 
   useEffect(
