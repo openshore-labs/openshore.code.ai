@@ -51,6 +51,7 @@ function stripComments(src: string): string {
 const RETIRED: Array<{ pattern: RegExp; use: string }> = [
   { pattern: /\bYour [Ss]tack\b/, use: 'Stack (the room); "your stack" only mid-sentence' },
   { pattern: /\bMy Stack\b/, use: 'Stack' },
+  { pattern: /\bMy Crew\b/, use: 'Crew' },
   { pattern: /\bDesktop and phone\b/, use: 'Desktop + phone' },
   { pattern: /\bDesktop connection\b/, use: 'Desktop + phone' },
   { pattern: /\bHub address\b/, use: 'Address' },
@@ -125,7 +126,6 @@ describe('retired UI strings', () => {
 // rest, where only the first word is capitalized (and a proper noun inside it,
 // like Codemagic).
 const PROPER_NOUN_ROOMS = new Set([
-  'My Crew',
   'Cloud Connections',
   'Stack Health',
   'Vault',
@@ -177,7 +177,7 @@ describe('room names come from one list', () => {
   });
 
   it("every screen's top bar names its room from the list", () => {
-    // Titles outside the nav list: Crew command (reached from My Crew), Admin
+    // Titles outside the nav list: Crew command (reached from Crew), Admin
     // (company admins), and pages inside a room. A name the person chose (a
     // project, a note) is an expression, not a literal, so it never shows here.
     const NOT_ROOMS = new Set([

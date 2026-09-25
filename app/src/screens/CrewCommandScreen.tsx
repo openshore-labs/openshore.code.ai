@@ -3,7 +3,7 @@
 // for me", the way a bot roster with presence does, except every bot here is
 // a crew member running on the person's own computer and models.
 //
-// The room is a sub-page of My Crew. Its parts, top to bottom: the live
+// The room is a sub-page of Crew. Its parts, top to bottom: the live
 // headline and counts; anything waiting on the person; the roster with each
 // member's presence; the routines themselves (the clock, the access, the
 // switch); and the results inbox, newest first, each opening a result sheet

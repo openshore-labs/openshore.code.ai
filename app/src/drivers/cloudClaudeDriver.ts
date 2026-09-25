@@ -232,7 +232,7 @@ function isOutOfUsage(err: unknown): boolean {
   return false;
 }
 
-function describeError(err: unknown): string {
+export function describeError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) {
     return 'Claude rejected the API key. Update it under Connections.';
   }

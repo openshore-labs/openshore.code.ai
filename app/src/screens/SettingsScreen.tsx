@@ -326,7 +326,7 @@ export function SettingsScreen() {
     setSearchKeyValue('');
     if (!key) return;
     await setSearchBackend(searchChoice, key);
-    showToast(`${SEARCH_BACKEND_LABEL[searchChoice]} connected for Harbor's web search.`);
+    showToast(`${SEARCH_BACKEND_LABEL[searchChoice]} connected for web search.`);
   };
 
   const copyLog = async () => {
@@ -1042,8 +1042,8 @@ export function SettingsScreen() {
       <Sheet open={sheet === 'search'} onClose={close}>
         <SheetHead title="Web search" onClose={close} />
         <p className="sheet-sub">
-          Harbor searches the web when it needs to. DuckDuckGo needs no API key. Bring your own
-          Brave Search or Tavily API key to search on your own account.
+          Your local models search the web when they need to. DuckDuckGo needs no API key. Bring
+          your own Brave Search or Tavily API key to search on your own account.
         </p>
         <div className="segmented" role="tablist" aria-label="Search provider">
           {(['brave', 'tavily'] as const).map((c) => (
