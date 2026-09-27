@@ -191,7 +191,7 @@ describe('memory off removes the vault context pack', () => {
     // Every host (CLI, daemon, routines, desktop) opens through bootstrap, so
     // each gets Current State; a session without a vault root still does.
     expect(packOn({ config: configWith({}), vaultContext: undefined })).toBe(true);
-    expect(packOn({ config: configWith({}), vaultContext: undefined, vault: false })).toBe(true);
+    expect(packOn({ config: configWith({}), vaultContext: undefined, vaultRoot: null })).toBe(true);
     expect(packOn({ config: configWith({}), vaultContext: undefined, memory: false })).toBe(false);
   });
 
@@ -204,7 +204,7 @@ describe('memory off removes the vault context pack', () => {
 
 // Vault M5 (CTO J8): a session works on the caller's own vault root. A path
 // gives the tools and the pack on that root, null gives no vault tools, and
-// the legacy flag's false reads as null until the daemon stops passing it.
+// unset keeps the machine's vault. The legacy boolean flag is gone.
 describe("the session's own vault root", () => {
   function bootRoot(options: Partial<BootstrapOptions>) {
     const result = bootstrapSession({
@@ -226,17 +226,13 @@ describe("the session's own vault root", () => {
     expect(tools).toContain('vaultRead');
   });
 
-  it('null, or the legacy false, gives no vault tools and no root', () => {
-    for (const options of [{ vaultRoot: null }, { vault: false }] as const) {
-      const { tools, root } = bootRoot(options);
-      expect(root).toBeUndefined();
-      expect(tools.filter((n) => n.startsWith('vault'))).toEqual([]);
-    }
+  it('null gives no vault tools and no root', () => {
+    const { tools, root } = bootRoot({ vaultRoot: null });
+    expect(root).toBeUndefined();
+    expect(tools.filter((n) => n.startsWith('vault'))).toEqual([]);
   });
 
-  it("vaultRoot wins over the legacy flag, and unset keeps the machine's vault", () => {
-    const mine = join(home, 'mine');
-    expect(bootRoot({ vaultRoot: mine, vault: false }).root).toBe(mine);
+  it("unset keeps the machine's vault", () => {
     expect(bootRoot({}).root).toBe(loadVaultDir().dir);
   });
 });

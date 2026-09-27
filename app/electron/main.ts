@@ -52,6 +52,7 @@ import {
 import { readVaultConfigFile } from 'os-code/dist/src/core/vault/configFile.js';
 import { isVaultConfigName } from 'os-code/dist/src/harness/vault/configDir.js';
 import { HANDOFF_MAX_BYTES } from 'os-code/dist/src/harness/handoff.js';
+import { clearHandoffs } from 'os-code/dist/src/core/agent/handoffStore.js';
 import {
   isVaultNotePath,
   listVaultFolder,
@@ -1031,6 +1032,13 @@ guarded('osc:vaultIndexSave', (blob: unknown) => {
 // from this machine's config on every call (projectPolicy never lets a
 // project file set these keys); the renderer compiles them with the core's
 // compileVaultPrivacy, so the app's pack and the engine's judge alike.
+// Clear the engine's stored handoffs (Vault M5, CTO J13): part of the action
+// that clears the chats, so no "where you left off" summary outlives them.
+guarded('osc:clearHandoffs', () => {
+  clearHandoffs();
+  return { cleared: true };
+});
+
 guarded('osc:vaultPrivacy', () => {
   const cfg = vaultPrivacyConfig(loadConfig().config);
   return {

@@ -42,7 +42,14 @@ import { tailscaleIp } from '../connect/tailscale.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { effectiveMode } from '../core/agent/modes.js';
-import { LocalDriver, deleteSession, listSessions, sealSessionsAtRest } from './session.js';
+import {
+  LocalDriver,
+  deleteSession,
+  listSessions,
+  sealSessionsAtRest,
+  storedSessionProject,
+} from './session.js';
+import { clearHandoffs, deleteHandoff } from '../core/agent/handoffStore.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { HOME_SHELL_ID } from './homeShellId.js';
 import { PushNotifier, savePushConfig } from './push.js';
@@ -713,6 +720,20 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       return;
     }
+    // ---- Clear the stored handoffs (Vault M5, CTO J13). ----
+    // Part of the action that clears the chats: every "where you left off"
+    // summary on this machine goes. Admin only, since the store is keyed by a
+    // hash and holds every owner's; a member's go with each session they
+    // delete (DELETE /sessions/:id below).
+    if (req.method === 'DELETE' && url.pathname === '/handoffs') {
+      if (!hasRole(auth, 'admin')) {
+        sendJson(res, 403, { error: 'Only the owner of this computer can clear every handoff.' });
+        return;
+      }
+      clearHandoffs();
+      sendJson(res, 200, { cleared: true });
+      return;
+    }
     // ---- The vault, scoped to the caller's own root (Vault M5, CTO J7). ----
     // Not owner-only (D9): the owner and the legacy token reach the machine's
     // vault, a member reaches their own root. The handler lives in
@@ -1086,10 +1107,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           chainOfThought,
           currents,
           harnessCurrents,
-          // Each agent works on its caller's own root (CTO J8). `vault` stays
-          // false for a member until every engine reads `vaultRoot`, so no
-          // build ever hands a member the owner's folder.
-          vault: hasRole(auth, 'admin'),
+          // Each agent works on its caller's own root (CTO J8): a member's
+          // own folder, never the owner's.
           vaultRoot,
           ...(handoff ? { handoff } : {}),
           ...(vaultPins ? { vaultPins } : {}),
@@ -1334,6 +1353,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           sendJson(res, 403, { error: `Session ${id} belongs to another user.` });
           return;
         }
+        // The handoff this session's project holds goes with the chat (CTO
+        // J13), read before the stored files are removed.
+        const owner = live ? live.owner : stored?.ownerUserId;
+        const cwd = live ? live.cwd : stored?.cwd;
+        const { projectName } = storedSessionProject(id);
+        if (cwd) deleteHandoff({ owner, cwd, projectName });
         if (live) {
           live.abort();
           forgetDriver(live);
@@ -1383,7 +1408,6 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               profile: 'remote-attached',
               sessionId: id,
               terminalReader,
-              vault: ownerAdmin,
               vaultRoot: ownerRoot,
             });
             trackDriver(revived);

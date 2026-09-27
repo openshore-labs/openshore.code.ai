@@ -245,6 +245,11 @@ export class EngineHost {
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
       currents?: CurrentsHandles;
       harnessCurrents?: HarnessCurrentsHandle;
+      /** A handoff from the chat this session continues (Vault M5, CTO J12),
+       *  already capped by main; the engine prepends it to the first task. */
+      handoff?: string;
+      /** The project's own pinned note paths (CTO J14), already capped. */
+      vaultPins?: string[];
     } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
@@ -274,6 +279,8 @@ export class EngineHost {
       codemagicTarget: opts.codemagicTarget,
       currents,
       harnessCurrents: opts.harnessCurrents,
+      ...(opts.handoff ? { handoff: opts.handoff } : {}),
+      ...(opts.vaultPins?.length ? { vaultPins: opts.vaultPins } : {}),
     };
     const { driver, warnings } = bootstrapSession(bootOptions);
     this.attach(driver); // a fresh session has an empty journal; nothing to replay

@@ -705,6 +705,30 @@ describe('routine scheduler', () => {
     expect(routineInstructions(routine)).toContain("saved to their vault as this run's note");
   });
 
+  // Vault M5 (CTO J13): a Crew run neither writes nor reads a handoff, so a
+  // scripted run's summary never becomes the person's "where you left off" on
+  // the same project, whatever owner key it would carry.
+  it('a headless run writes and reads no handoff; a desk session does', () => {
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
+    );
+    const routine = store.createRoutine(input({ access: 'edit' }));
+    let onHandoff: unknown = 'unset';
+    const opened = defaultOpenSession(routine, 'default', (options) => {
+      const result = bootstrapSession({ ...options, persist: false });
+      onHandoff = (result.agent as unknown as { deps: { onHandoff?: unknown } }).deps.onHandoff;
+      return result;
+    });
+    (opened.driver as unknown as { dispose(): void }).dispose();
+    expect(onHandoff).toBeUndefined();
+    const desk = bootstrapSession({ cwd: workspace, profile: 'local-interactive', persist: false });
+    expect((desk.agent as unknown as { deps: { onHandoff?: unknown } }).deps.onHandoff).toBeTypeOf(
+      'function',
+    );
+    desk.driver.dispose();
+  });
+
   it('never replaces a note already at the run note name, and leaves no temp file', () => {
     const routine = store.createRoutine(input());
     const clock = { now: at(0, 6, 0, 5) };

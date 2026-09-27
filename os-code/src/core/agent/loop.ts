@@ -1128,6 +1128,10 @@ export class AgentSession {
       };
       let promptTokens = 0;
       let completionTokens = 0;
+      // The Anthropic prompt cache's reads and writes (CTO J17), last seen
+      // wins like the counts; undefined when the provider reports none.
+      let cacheReadTokens: number | undefined;
+      let cacheWriteTokens: number | undefined;
 
       try {
         const stream = this.active.provider.chat(
@@ -1169,6 +1173,8 @@ export class AgentSession {
               // delta does not wipe out the prompt count.
               if (event.promptTokens) promptTokens = event.promptTokens;
               if (event.completionTokens) completionTokens = event.completionTokens;
+              if (event.cacheReadTokens !== undefined) cacheReadTokens = event.cacheReadTokens;
+              if (event.cacheWriteTokens !== undefined) cacheWriteTokens = event.cacheWriteTokens;
               break;
             case 'done':
               break;
@@ -1201,6 +1207,7 @@ export class AgentSession {
         this.active.provider.kind,
         promptTokens,
         completionTokens,
+        { cacheReadTokens, cacheWriteTokens },
       );
 
       // ------------------------------------------------------------------
@@ -2050,6 +2057,7 @@ export class AgentSession {
     kind: 'local' | 'cloud',
     promptTokens: number,
     completionTokens: number,
+    cache: { cacheReadTokens?: number; cacheWriteTokens?: number } = {},
   ): number {
     this.deps.guardrails.noteTokens(promptTokens + completionTokens);
     let dollars = 0;
@@ -2060,7 +2068,17 @@ export class AgentSession {
     const contextPercent = this.contextTokens
       ? Math.min(100, Math.round((estimateMessages(this.history) / this.contextTokens) * 100))
       : 0;
-    this.emit({ type: 'usage', promptTokens, completionTokens, dollars, contextPercent });
+    // The cache fields ride only when the provider reported them (additive,
+    // CTO J17), so the eval's DriveTrace can sum reads and writes per task.
+    this.emit({
+      type: 'usage',
+      promptTokens,
+      completionTokens,
+      dollars,
+      contextPercent,
+      ...(cache.cacheReadTokens !== undefined ? { cacheReadTokens: cache.cacheReadTokens } : {}),
+      ...(cache.cacheWriteTokens !== undefined ? { cacheWriteTokens: cache.cacheWriteTokens } : {}),
+    });
     return dollars;
   }
 

@@ -117,11 +117,6 @@ export interface BootstrapOptions {
    *  the person set. Only tightening is honored: the profile's hard step
    *  ceiling still applies on top. */
   caps?: { wallClockSeconds?: number; maxSteps?: number };
-  /** Legacy (before Vault M5): whether this session gets the vault tools on
-   *  the machine's vault. Superseded by `vaultRoot`, which wins when set;
-   *  kept only until the daemon passes `vaultRoot` (then it goes). false
-   *  reads as `vaultRoot: null`. */
-  vault?: boolean;
   /** Where this session's vault context pack comes from (Vault M4, CTO I7,
    *  I8): the engine's source prepares Current State, the index and the
    *  planned note bodies once per task, and the loop renders the pack per
@@ -131,12 +126,12 @@ export interface BootstrapOptions {
    *  The loop leaves it out with Memory off (the switch folded in above) or
    *  `vault.context: 'off'`, so a caller need not gate it. */
   vaultContext?: VaultContextSource;
-  /** This session's own vault root (Vault M5, CTO J8), replacing `vault`: a
-   *  path gives the vault tools and the pack on that root (the daemon passes
+  /** This session's own vault root (Vault M5, CTO J8): a path gives the
+   *  vault tools and the pack on that root (the daemon passes
    *  `vaultRootFor(auth)` at create and `vaultRootForOwner(ownerUserId)` at
    *  rehydrate, so a member's agent works on its own root, never the
-   *  owner's); null gives no vault tools. Undefined keeps today's behaviour
-   *  (the `vault` flag over the machine's vault). */
+   *  owner's); null gives no vault tools. Undefined keeps the machine's
+   *  vault (the CLI and the desktop). */
   vaultRoot?: string | null;
   /** A handoff from the chat this session continues (CTO J12), prepended to
    *  the first task's preamble only (never on a revived session that already
@@ -257,13 +252,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
 
   // This session's vault root (J8): a path gives the tools and the pack on
   // that root (a member's own on a shared hub), null gives none, undefined
-  // keeps the machine's vault. The legacy flag reads false as null.
-  const vaultRoot: string | null | undefined =
-    options.vaultRoot !== undefined
-      ? options.vaultRoot
-      : options.vault === false
-        ? null
-        : undefined;
+  // keeps the machine's vault.
+  const vaultRoot: string | null | undefined = options.vaultRoot;
 
   const tools = buildToolRegistry({
     stackHasVision:
@@ -387,8 +377,14 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // The handoff store (J13), keyed by this session's owner, workspace and
   // project. The owner is read when a handoff is written or read, since the
   // daemon records it just after this returns. `vault.handoff: 'off'` and
-  // Memory off (folded into config above) stop both.
-  const handoffOn = config.vault?.handoff !== 'off' && config.memory?.enabled !== false;
+  // Memory off (folded into config above) stop both. A headless run (a Crew
+  // routine) neither writes nor reads one: its own vault note records the
+  // run, and a scripted run's summary must never become the person's "where
+  // you left off" on the same project, whatever owner key it would carry.
+  const handoffOn =
+    options.profile !== 'headless' &&
+    config.vault?.handoff !== 'off' &&
+    config.memory?.enabled !== false;
   const handoffScope = (): HandoffScope => ({
     owner: driver.owner,
     cwd: options.cwd,
