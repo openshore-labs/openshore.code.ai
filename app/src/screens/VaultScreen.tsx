@@ -147,12 +147,13 @@ import { hapticApproval, hapticCommit } from '../lib/haptics.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
-import { isDesktop, openExternal, platform } from '../lib/platform.js';
+import { isDesktop, isPhone, openExternal, platform } from '../lib/platform.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
 import {
   datePartsOf,
   isAttachmentPath,
+  type WikilinkContext,
   type HermesNote,
   type HermesNoteMeta,
 } from 'os-code/protocol';
@@ -163,6 +164,7 @@ import { Icon } from '../components/Icon.js';
 import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
 import { VaultBacklinks } from '../components/vault/VaultBacklinks.js';
 import { VaultLinkSuggest } from '../components/vault/VaultLinkSuggest.js';
+import { VaultAccessoryBar } from '../components/vault/VaultAccessoryBar.js';
 import { VaultNoteOptions } from '../components/vault/VaultNoteOptions.js';
 import { VaultTrashRow, VaultTrashView } from '../components/vault/VaultTrashView.js';
 import { VaultFolderSheet } from '../components/vault/VaultFolderSheet.js';
@@ -499,19 +501,30 @@ export function VaultScreen() {
   const [resolveFailed, setResolveFailed] = useState(false);
   const [updatedShown, setUpdatedShown] = useState(false);
   const lastReload = useRef<number | undefined>(undefined);
-  // Live [[wikilink]] autocomplete. When the caret sits inside an unclosed
-  // "[[ ...", linkQuery is what has been typed since the brackets and linkStart
-  // is the index of the "[[", so a pick replaces exactly that span.
-  const [linkQuery, setLinkQuery] = useState<string | null>(null);
-  const [linkStart, setLinkStart] = useState(0);
+  // Live [[wikilink]] suggestions (6.7; CTO K14, CX X15): the open link
+  // under the caret, or null. A pick replaces through an existing `]]` or
+  // `|` (wikilinkReplaceRange) and inserts through the native undo stack.
+  const [linkCtx, setLinkCtx] = useState<WikilinkContext | null>(null);
 
-  // Recompute the autocomplete context from the editor value and caret.
+  // Recompute the link context from the editor value and caret.
   const refreshLinkContext = useCallback((value: string, caret: number) => {
     const ctx = wikilinkContext(value, caret);
-    if (!ctx) return setLinkQuery(null);
-    setLinkStart(ctx.start);
-    setLinkQuery(ctx.query);
+    setLinkCtx((now) =>
+      !ctx
+        ? null
+        : now && now.start === ctx.start && now.end === ctx.end && now.query === ctx.query
+          ? now
+          : ctx,
+    );
   }, []);
+  // `[[Note#` offers that note's headings, from the index (no read).
+  const headingsOf = useCallback(
+    (path: string) =>
+      currentVaultIndex()
+        ?.index.entry(path)
+        ?.headings.map((h) => h.text) ?? [],
+    [],
+  );
 
   const currentProviderId: StorageProviderId =
     (settings.gitosResources as GitosResource[] | undefined)?.find(
@@ -1683,26 +1696,21 @@ export function VaultScreen() {
       ? vaultEditedByLine(vaultNote.editedBy, vaultNote.updatedAt, uid)
       : undefined;
 
-    const insertWikilink = (targetName: string) => {
-      const el = editorRef.current;
-      const caret = el?.selectionStart ?? draft.length;
-      const before = draft.slice(0, linkStart);
-      const after = draft.slice(caret);
-      const inserted = `[[${targetName}]]`;
-      const next = before + inserted + after;
-      setDraft(next);
-      vaultNoteDraft(vaultNote.path, next);
-      void vaultLeaseTouch();
-      lastInputAt.current = Date.now();
-      setUpdatedShown(false);
-      scheduleSave(vaultNote.path, next);
-      setLinkQuery(null);
-      const pos = before.length + inserted.length;
-      requestAnimationFrame(() => {
-        el?.focus();
-        el?.setSelectionRange(pos, pos);
-      });
-    };
+    // One suggestion list: under the editor on the desktop, as chips inside
+    // the accessory bar on the phone (CX X15). A pick inserts into the
+    // editor, whose own onChange then saves it.
+    const phone = isPhone();
+    const suggest = (layout: 'list' | 'chips') => (
+      <VaultLinkSuggest
+        paths={paths}
+        sourcePath={vaultNote.path}
+        context={linkCtx}
+        editor={editorRef}
+        headingsOf={headingsOf}
+        onDismiss={() => setLinkCtx(null)}
+        layout={layout}
+      />
+    );
 
     // The way back to the tree, in the top bar (the iOS grammar) and as the
     // "All notes" crumb beneath it; both save first.
@@ -1833,16 +1841,20 @@ export function VaultScreen() {
                 onSelect={(e) =>
                   refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
                 }
-                onBlur={() => setLinkQuery(null)}
+                onBlur={() => setLinkCtx(null)}
               />
-              <VaultLinkSuggest
-                paths={paths}
-                sourcePath={vaultNote.path}
-                query={linkQuery}
-                onPick={insertWikilink}
-              />
+              {phone ? null : suggest('list')}
             </div>
-          ) : (
+          ) : null}
+          {/* The phone's bar on the keyboard, lifted by transform only: the
+              link suggestions live inside it there (CX X15). */}
+          <VaultAccessoryBar
+            shown={editing && !locked && phone}
+            editor={editorRef}
+            onCaret={refreshLinkContext}
+            suggest={suggest('chips')}
+          />
+          {editing && !locked ? null : (
             // A calm reload settles the page in (opacity only); re-keyed so
             // each reload plays it once.
             <div
