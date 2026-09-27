@@ -1766,6 +1766,255 @@ textarea {
    backlinks skeleton, the outline sheet, the Today button (CTO K7, K14, K15;
    CX X11, X15 to X17). */
 
+/* The link listbox. `chips` is the one-row strip the phone shows in the
+   accessory bar (the base .vault-link-suggest rule above); `list` is the
+   desktop's vertical list pinned under the editor. The row the keys are on
+   carries .is-active and aria-selected. */
+.vault-link-suggest--list {
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: visible;
+  overflow-y: auto;
+  max-height: 260px;
+  margin-top: 8px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+.vault-link-suggest--list .vault-link-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  white-space: normal;
+}
+.vault-link-suggest--chips .vault-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.vault-link-chip.is-active {
+  background: var(--surface);
+  border-color: var(--ink-soft);
+}
+.vault-link-suggest--list .vault-link-chip.is-active {
+  background: var(--surface);
+}
+.vault-link-label {
+  color: var(--ink);
+  font-size: var(--text-4);
+}
+.vault-link-new .vault-link-label {
+  color: var(--accent);
+}
+.vault-link-heading .vault-link-label {
+  color: var(--ink-soft);
+}
+.vault-link-sub {
+  color: var(--muted);
+  font-size: var(--text-2);
+}
+.vault-link-suggest--chips .vault-link-sub {
+  font-size: var(--text-1);
+}
+
+/* The phone's accessory bar: fixed to the bottom and lifted onto the
+   keyboard by a transform of --kb-inset, so it never reflows (rule 4). Off
+   the keyboard (or leaving) it slides down and fades. */
+.vault-accessory {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  transform: translateY(calc(-1 * var(--kb-inset, 0px)));
+  transition:
+    transform var(--dur-4) var(--ease-standard),
+    opacity var(--dur-3) var(--ease-standard);
+  animation: vault-accessory-in var(--dur-3) var(--ease-standard) backwards;
+}
+:root:not(.kb-open) .vault-accessory,
+.vault-accessory.closing {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+@keyframes vault-accessory-in {
+  from {
+    opacity: 0;
+  }
+}
+.vault-accessory .vault-link-suggest {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+.vault-accessory:has(.vault-link-suggest) .vault-accessory-tools {
+  display: none;
+}
+.vault-accessory-tools {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 4px;
+}
+.vault-accessory-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+.vault-accessory-glyph {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+.vault-accessory-hide {
+  margin-left: auto;
+  color: var(--ink-soft);
+}
+/* Room under the text for the bar, only while the keyboard is up. */
+.vault-accessory-spacer {
+  display: none;
+}
+:root.kb-open .vault-accessory-spacer {
+  display: block;
+  height: 56px;
+}
+
+/* The card under a note: Linked mentions, Links from this note, Unlinked
+   mentions, one quiet section each. Rows step in by --stagger. */
+.vault-context-section + .vault-context-section {
+  margin-top: 16px;
+}
+.vault-context-row {
+  animation: vault-context-in var(--dur-3) var(--ease-standard) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+@keyframes vault-context-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.vault-outgoing-missing .vault-mention-title {
+  color: var(--muted);
+  font-weight: var(--weight-regular);
+}
+.vault-unlinked-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vault-unlinked-open {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vault-unlinked-link {
+  flex: 0 0 auto;
+  min-height: 44px;
+  margin-top: 10px;
+}
+.vault-unlinked-find {
+  margin-top: 10px;
+}
+
+/* The Linked mentions skeleton: three rows on the house shimmer loop. */
+.vault-skel {
+  margin-top: 10px;
+}
+.vault-skel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 2px;
+  border-top: 1px solid var(--border);
+}
+.vault-skel-line {
+  display: block;
+  height: 10px;
+  width: 86%;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 20%,
+    var(--surface-hover) 50%,
+    var(--surface) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer var(--loop-3) linear infinite;
+}
+.vault-skel-title {
+  width: 42%;
+  height: 12px;
+}
+
+/* The outline sheet: headings indented by level, H4 and deeper with H3. */
+.vault-outline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+}
+.vault-outline-item {
+  animation: vault-context-in var(--dur-3) var(--ease-standard) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.vault-outline-row {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: var(--text-5);
+  text-align: left;
+}
+.vault-outline-depth-0 {
+  font-weight: var(--weight-semibold);
+}
+.vault-outline-depth-1 {
+  padding-left: 28px;
+}
+.vault-outline-depth-2 {
+  padding-left: 44px;
+  color: var(--ink-soft);
+}
+
+/* The Today button in the Vault header: the house 44px icon button. */
+.vault-today-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-skel-line,
+  .vault-context-row,
+  .vault-outline-item,
+  .vault-accessory {
+    animation: none;
+  }
+}
+
 /* ---- M6 stream H end ---- */
 
 /* ---- M6 stream W2 begin ----
