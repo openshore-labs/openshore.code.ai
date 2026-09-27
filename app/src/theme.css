@@ -1896,6 +1896,146 @@ textarea {
    sheet and the skipped-notes card, the Trash view, the Undo toast (CTO K3
    to K6, R1 to R3; CX X5 to X10). */
 
+/* The rename sheet's steps (name and folder, the folder list, Update links?)
+   settle in on the crossfade clock as each replaces the last. The Folder row
+   reads as a row: label, value, chevron. Opacity and transform only. */
+.vault-rename-step {
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-rename-folder {
+  margin-bottom: 12px;
+}
+.vault-rename-label {
+  color: var(--muted);
+  font-size: var(--text-3);
+}
+.vault-rename-value {
+  margin-left: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vault-rename-here {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.vault-rename-problem {
+  color: var(--danger);
+  margin: 0 0 12px;
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-rename-new {
+  margin-top: 10px;
+}
+.vault-rename-sub {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+.vault-rename-quiet-sub {
+  margin: 0;
+  text-align: center;
+}
+
+/* The standing card on a renamed note while some links still point at the
+   old name (CX X7): the room's card shape, arriving on fade-rise. */
+.vault-links-left {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-links-left-title {
+  overflow-wrap: anywhere;
+}
+
+/* The folder sheet: its counts, stated before anything acts (K5), and the
+   New folder field. */
+.vault-folder-counts {
+  margin: 0 0 12px;
+}
+.vault-folder-new {
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+
+/* Trash (CX X10): an in-room page. Rows arrive one after another on the
+   stagger; titles and sub-labels wrap for Dynamic Type (X18). */
+.vault-trash-lead,
+.vault-trash-team {
+  margin: 0 0 10px;
+}
+.vault-trash-error {
+  color: var(--danger);
+}
+.vault-trash-empty {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-trash-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+.vault-trash-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--border);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.vault-trash-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.vault-trash-title {
+  overflow-wrap: anywhere;
+}
+.vault-trash-sub {
+  color: var(--muted);
+  font-size: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.vault-trash-restore {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+}
+.vault-trash-actions {
+  margin-top: 4px;
+}
+.vault-trash-entry {
+  margin-top: 6px;
+}
+.vault-trash-count {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* The Undo toast (CX X9): the app toast's pill with an action. The text may
+   ellipsize; the Undo button never does and is at least 44 px tall. It
+   arrives and leaves on the plain toast's own motion (.toast, .toast.closing). */
+.toast.vault-undo-toast {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 18px;
+  white-space: normal;
+  overflow: visible;
+}
+.vault-undo-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vault-undo-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--bg);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
 /* ---- M6 stream G end ---- */
 
 /* ---- M6 stream H begin ----
