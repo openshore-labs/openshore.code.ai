@@ -269,11 +269,15 @@ const drive = makeProvider('gdrive');
 // A compare-and-swap storage other than the folder (iCloud, once its native
 // half checks the guard), for the "every provider" cases (Vault M2).
 const cloud = makeProvider('icloud', true);
+// The paired computer's vault (Vault M5, CTO J9): compare-and-swap, like the
+// daemon's routes.
+const hub = makeProvider('hub', true);
 const byId: Record<string, ReturnType<typeof makeProvider>> = {
   local,
   files: folder,
   gdrive: drive,
   icloud: cloud,
+  hub,
 };
 // The personal vault's default provider, under the names the older cases use.
 const files = local.files;
@@ -3009,5 +3013,116 @@ describe('the Vault index (M3 3.2)', () => {
     await useApp.getState().vaultOpen('Plan.md');
     await useApp.getState().vaultSave('Plan.md', '# Plan\nFirst, edited\n');
     expect(files.get('Plan.md')).toBe('# Plan\nFirst, edited\n');
+  });
+});
+
+// Vault M5, CTO J9 (D2): what pairing does to the personal vault. An empty
+// vault on This device by default points at the computer with one toast; one
+// that holds notes (or text waiting to save) gets the one-time move card,
+// whose move writes every copy ifAbsent; a storage the person chose is never
+// repointed; unpairing returns the vault to where it was and moves nothing
+// back.
+describe('pairing and the vault on your computer', () => {
+  beforeEach(reset);
+  const box = { baseUrl: 'http://box.tail1.ts.net:4820', token: 't' };
+  const providerNow = () =>
+    useApp.getState().settings.gitosResources?.find((r) => r.id === 'vault.personal');
+
+  it('an empty Local vault repoints to the computer, and unpairing returns it', async () => {
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(providerNow()?.providerId).toBe('hub'));
+    expect(providerNow()?.chosenAt).toBeUndefined();
+    expect(useApp.getState().toast).toMatch(/lives on your computer/);
+    expect(useApp.getState().settings.vaultBeforeHub).toEqual({
+      providerId: 'local',
+      hub: box.baseUrl,
+    });
+    hub.files.set('Written on the computer.md', 'x');
+    await useApp.getState().removeHub(box.baseUrl);
+    await vi.waitFor(() => expect(providerNow()?.providerId).toBe('local'));
+    expect(useApp.getState().settings.vaultBeforeHub).toBeUndefined();
+    // Nothing moved back.
+    expect(local.files.size).toBe(0);
+    expect(hub.files.has('Written on the computer.md')).toBe(true);
+  });
+
+  it('a Local vault with notes gets the one-time move card, and its move never replaces', async () => {
+    files.set('Mine.md', 'my note');
+    files.set('Same.md', 'on both');
+    hub.files.set('Same.md', 'different on the computer');
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() =>
+      expect(useApp.getState().settings.vaultHubOffer).toEqual({
+        hub: box.baseUrl,
+        state: 'offered',
+      }),
+    );
+    expect(providerNow()?.providerId).toBe('local');
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultHubOfferShown()).toBe(true);
+    const r = await useApp.getState().vaultAcceptHubMove();
+    expect(r.ok).toBe(true);
+    expect(providerNow()?.providerId).toBe('hub');
+    expect(hub.files.get('Mine.md')).toBe('my note');
+    // The computer's own note kept its name; ours landed beside it.
+    expect(hub.files.get('Same.md')).toBe('different on the computer');
+    expect(r.forked).toHaveLength(1);
+    expect(hub.counts.writes.every((w) => w.guard && 'ifAbsent' in w.guard)).toBe(true);
+    expect(useApp.getState().settings.vaultHubOffer).toBeUndefined();
+    expect(useApp.getState().settings.vaultBeforeHub?.providerId).toBe('local');
+    // Unpairing returns to This device, and the notes there are as they were.
+    await useApp.getState().removeHub(box.baseUrl);
+    await vi.waitFor(() => expect(providerNow()?.providerId).toBe('local'));
+    expect(files.get('Mine.md')).toBe('my note');
+  });
+
+  it('a declined card stays declined for that computer', async () => {
+    files.set('Mine.md', 'my note');
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(useApp.getState().settings.vaultHubOffer?.state).toBe('offered'));
+    await useApp.getState().vaultDeclineHubMove();
+    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    expect(useApp.getState().settings.vaultHubOffer?.state).toBe('declined');
+    expect(useApp.getState().vaultHubOfferShown()).toBe(false);
+  });
+
+  it('text waiting to save counts as notes: the card, never a quiet repoint', async () => {
+    mem.set(
+      PENDING,
+      JSON.stringify({
+        'local::vault.personal::Draft.md': {
+          providerId: 'local',
+          resourceId: 'vault.personal',
+          path: 'Draft.md',
+          text: 'typed offline',
+          at: 'x',
+        },
+      }),
+    );
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(useApp.getState().settings.vaultHubOffer?.state).toBe('offered'));
+    expect(providerNow()?.providerId ?? 'local').toBe('local');
+  });
+
+  it('a storage the person chose is never repointed, and a desktop keeps its own folder', async () => {
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        gitosResources: [{ ...personalOn('local')[0]!, chosenAt: '2026-09-01T00:00:00Z' }],
+      },
+    });
+    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    expect(providerNow()?.providerId).toBe('local');
+    expect(useApp.getState().settings.vaultHubOffer).toBeUndefined();
+    reset();
+    desk.on = true;
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    expect(providerNow()?.providerId ?? 'local').toBe('local');
   });
 });
