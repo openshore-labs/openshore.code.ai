@@ -1947,3 +1947,23 @@ execution contract. Newest at the bottom.
   older, Haiku 4.5, Claude 3), an allowlist rather than a denylist, so a
   Claude model newer than the list gets none; leaving it out is always valid,
   sending it to Opus 4.7+, Sonnet 5, or Fable is a 400.
+- **Vault v1 rulings (founder, 2026-09-27):** every recommendation in
+  `docs/vault-v1-plan.md` accepted as written, D1 to D15, with one change:
+  opening an existing Obsidian vault in place on iPhone moves INTO v1 (it is
+  the only way the same notes show in Obsidian and OpenShore on a phone,
+  since Obsidian on iPhone opens vaults only in its own local folder or in
+  `iCloud Drive/Obsidian`). Multiple vaults stays v1.1. The rulings in
+  short: Google Drive held back (not selectable for a new vault, an existing
+  Drive vault read-only and movable); a paired phone defaults to "Your
+  computer", an unpaired one to this device, and the iPhone may instead pick
+  its Obsidian vault; handoff notes reach the vault only by the person's one
+  tap; agent writes stay always-ask with one batched card per task; the
+  context pack goes to cloud seats for pinned and retrieved notes with an
+  amber card, `Private/`, `Journal/`, and `#private` local-only, nothing to
+  the cloud under a secrets lockdown; lean classes get the pack only when
+  `osc eval --deep` shows no loss on the reference box; the desktop moves to
+  the folder by a one-tap card, keeping the Local copy; vault settings live
+  in `.oscode/vault.json` and can only narrow reach; shared-hub members get
+  their own roots; the team vault ships at the M2 bar or as BETA; the editor
+  stays a textarea in v1; each claim needs the evidence D12 names; no
+  sealing of notes in v1; the team vault joins model context in v1.1.

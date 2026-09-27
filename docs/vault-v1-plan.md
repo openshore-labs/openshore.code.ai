@@ -1,6 +1,9 @@
 # Vault v1: review and ship plan (2026-09-26)
 
-Status: a proposal. Nothing in it is built. The founder asked for a code review
+Status: approved by the founder on 2026-09-27, every recommendation accepted
+(D1 to D15 below, recorded in `os-code/DECISIONS.md`), with one change: the
+iPhone opening an existing Obsidian vault in place moves into v1 (item 2.10).
+Nothing is built yet; M0 is next. The founder asked for a code review
 of Vault and a plan to get it ready to ship v1: fully functional, a key feature
 for moving between models and for giving them the right context, Obsidian as
 the baseline, great out of the box and fully customizable. Every verified
@@ -179,7 +182,8 @@ The paragraph to hold the team to:
 > Crew routines, and Obsidian share, and it is the context that survives a
 > model switch. On the desktop it is `~/OSCode/Vault` or any folder the person
 > picks, an existing Obsidian vault included; a paired phone reads and writes
-> that same vault while the computer is on, and says so. Before each turn the
+> that same vault while the computer is on, and says so; and an iPhone can
+> instead open the person's own Obsidian vault in place. Before each turn the
 > harness gives the seated model a small, cited pack of notes sized to that
 > seat's real context window, and a transcript card names the notes it used;
 > on a switch the next model gets a handoff sized to its own window. Nothing
@@ -557,6 +561,20 @@ folder.
 `NSFileVersion` versions feed the resolve sheet and are then marked resolved.
 Closes [data-15]. Where: `OscodeIcloudPlugin.swift`, `icloud.ts`. Test: a
 device checklist line (8.1); the repo has no Swift unit harness.
+
+**2.10 The iPhone opens an existing Obsidian vault in place (L; founder
+ruling 2026-09-27; needs 0.6 and 2.1).** Draft, being refined. A storage
+sheet row, "Use your Obsidian vault", opens the iOS folder picker on the
+person's vault (`On My iPhone/Obsidian/<vault>` or `iCloud Drive/Obsidian/<vault>`);
+the app keeps a security-scoped bookmark, reads and writes under file
+coordination, downloads evicted items before a read, and checks the
+modification date before every write, so Obsidian and OpenShore can both
+edit the same notes without either overwriting the other. `.obsidian/` and
+`.trash/` never list. Closes [obs-10] [obs-3] (iPhone half). Where:
+`app/plugins/oscode-icloud/ios/Sources/OscodeIcloudPlugin/OscodeIcloudPlugin.swift`,
+a provider in `app/src/lib/gitos/`, `VaultScreen.tsx`. Test: the provider
+enrolled in `providerContract.test.ts` with a mocked plugin; device checklist
+lines (8.1).
 
 ### M3. One vault core and one index
 
@@ -988,8 +1006,8 @@ and anything that widens reach), app settings, the in-vault `.oscode/vault.json`
   system.
 - **A live-preview editor (CodeMirror 6) and a two-pane desktop layout**
   [ui-21] (D11).
-- **Multiple vaults, and opening an Obsidian vault in place on iOS** [data-21]
-  [obs-10] (D14).
+- **Multiple vaults** [data-21] (D14). Opening an Obsidian vault in place on
+  iPhone is IN v1 (2.10).
 - **Embeddings by default**: BM25 is the default; embeddings come only with a
   configured embedder and an eval that shows a gain [keyask-7].
 - **Automatic handoff notes in the vault and an `Agent/` inbox carve-out**
@@ -1002,7 +1020,9 @@ and anything that widens reach), app settings, the in-vault `.oscode/vault.json`
 
 ## Decisions only the founder can make
 
-Each with a recommendation.
+Each with a recommendation. **Ruled 2026-09-27: all fifteen as recommended,
+except D14, where the iPhone half moves into v1** (recorded in
+`os-code/DECISIONS.md`).
 
 1. **D1. Google Drive in v1?** Hold it (0.18): not selectable for a new vault,
    an existing Drive vault goes read-only and can be moved off. Including it
@@ -1011,7 +1031,8 @@ Each with a recommendation.
 2. **D2. The paired phone's vault.** "Your computer" by default while paired;
    this device, with honest copy, when unpaired. Offer iCloud on a Mac (point
    `vault.dir` at the iCloud container) in the folder picker, never as the
-   default.
+   default. On iPhone the person may instead pick their own Obsidian vault
+   (2.10); that is their choice, never a default.
 3. **D3. Handoff notes in the vault.** A one-tap save by the person in v1,
    which needs no carve-out. Revisit a harness-written carve-out, like the
    routine note, once there is usage.
@@ -1040,7 +1061,10 @@ Each with a recommendation.
     each class. "Faster": fewer turns and less wall time on the reference box,
     for the class named. The founder sets the thresholds.
 13. **D13. Sealing notes.** Record "not in v1" in DECISIONS.
-14. **D14. Multiple vaults and in-place folders on iOS.** v1.1.
+14. **D14. Multiple vaults and in-place folders on iOS.** Recommended v1.1 for
+    both. **Ruled:** the iPhone opening an existing Obsidian vault in place is
+    v1 (2.10), since it is the only way the same notes show in Obsidian and
+    OpenShore on a phone; multiple vaults stays v1.1.
 15. **D15. The team vault in model context.** v1.1, after the M2 bar, with a
     search RPC and an injection review; until then the team vault is for
     people only, and the copy says so.
