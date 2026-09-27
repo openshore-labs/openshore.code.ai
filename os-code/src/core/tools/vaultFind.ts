@@ -130,6 +130,17 @@ export function closed(ctx: ToolContext, path: string): boolean {
 // ---------------------------------------------------------------------------
 // Privacy (CTO I4, I5)
 
+/** Read the vault's own settings again before a vault tool runs (Vault M7,
+ *  CTO L5): the privacy the call is judged by then holds the union with the
+ *  vault's file. Kept 2 s by the holder, so a burst of calls reads once. */
+export async function refreshVault(ctx: ToolContext): Promise<void> {
+  try {
+    await ctx.vaultRefresh?.();
+  } catch {
+    // The holder keeps its last good settings.
+  }
+}
+
 /** Whether the seat answering now sends its requests off this network.
  *  Unset reads as leaving, the safe reading. */
 export function seatLeaves(ctx: ToolContext): boolean {
@@ -538,7 +549,10 @@ export const vaultReadTool: ToolDef<typeof readSchema> = {
   risk: 'read',
   pathJail: 'own',
   pathOf: (args) => notePathOrUndefined(splitSubpath(args.path).target),
-  execute: (args, ctx) => readVaultNote(ctx, args.path, args.section),
+  execute: async (args, ctx) => {
+    await refreshVault(ctx);
+    return readVaultNote(ctx, args.path, args.section);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -697,7 +711,10 @@ export const vaultSearchTool: ToolDef<typeof searchSchema> = {
   description: VAULT_TOOL_TEXT.vaultSearch,
   schema: searchSchema,
   risk: 'read',
-  execute: (args, ctx) => searchVault(ctx, args),
+  execute: async (args, ctx) => {
+    await refreshVault(ctx);
+    return searchVault(ctx, args);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -763,7 +780,10 @@ export const vaultBacklinksTool: ToolDef<typeof backlinksSchema> = {
   risk: 'read',
   pathJail: 'own',
   pathOf: (args) => notePathOrUndefined(splitSubpath(args.path).target),
-  execute: (args, ctx) => vaultBacklinksFor(ctx, args.path),
+  execute: async (args, ctx) => {
+    await refreshVault(ctx);
+    return vaultBacklinksFor(ctx, args.path);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -790,10 +810,12 @@ export const vaultLookupTool: ToolDef<typeof lookupSchema> = {
   pathJail: 'own',
   pathOf: (args) =>
     args.path !== undefined ? notePathOrUndefined(splitSubpath(args.path).target) : undefined,
-  execute: (args, ctx) =>
-    args.path !== undefined
+  execute: async (args, ctx) => {
+    await refreshVault(ctx);
+    return args.path !== undefined
       ? readVaultNote(ctx, args.path, args.section)
-      : searchVault(ctx, { query: args.query ?? '' }),
+      : searchVault(ctx, { query: args.query ?? '' });
+  },
 };
 
 /** The separate vault read tools the merged vaultLookup stands in for on a

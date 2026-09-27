@@ -13,7 +13,7 @@
 // `.obsidian/` plugin data and attachments never cross; CTO F7.4) and it must
 // resolve inside the vault folder (the Jail, symlink-safe). A write's guard
 // is validated the same way.
-import { existsSync, rmSync, type BigIntStats } from 'node:fs';
+import { existsSync, realpathSync, rmSync, type BigIntStats } from 'node:fs';
 import {
   link,
   lstat,
@@ -27,9 +27,14 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Jail } from '../security/jail.js';
-import { checkNewNoteName, foldPath, isNotePath } from '../../harness/vault/paths.js';
+import {
+  checkNewNoteName,
+  foldPath,
+  isAgentWritablePath,
+  isNotePath,
+} from '../../harness/vault/paths.js';
 import {
   VAULT_ATTACHMENT_MAX_BYTES,
   attachmentMime,
@@ -278,16 +283,60 @@ export async function statVaultFile(root: string, path: string): Promise<VaultFi
   return st && { path, updatedAt: st.updatedAt, size: st.size, version: st.version };
 }
 
+/** The real path of `abs`: its own realpath when it exists, else the
+ *  realpath of its nearest existing parent with the rest joined on, so a
+ *  link anywhere along the way is followed the way a write would follow it. */
+export function deepestRealpath(abs: string): string {
+  let existing = resolve(abs);
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      const real = realpathSync(existing);
+      return tail.length ? join(real, ...tail.reverse()) : real;
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return resolve(abs);
+      tail.push(basename(existing));
+      existing = parent;
+    }
+  }
+}
+
+/** Whether a write to `abs` lands somewhere the agent may write in the vault
+ *  at `root` (Vault M7, CTO L8), judged on the RESOLVED path: the target's
+ *  real path, or its nearest existing parent's, relative to the real root,
+ *  must pass `isAgentWritablePath`. So a planted `x.md -> .oscode/vault.json`,
+ *  or a folder linked into `.oscode/` or `.obsidian/`, is refused though its
+ *  typed name is clean. Outside the root is refused too. */
+export function resolvedAgentWritable(root: string, abs: string): boolean {
+  let rootReal: string;
+  try {
+    rootReal = realpathSync(root);
+  } catch {
+    rootReal = resolve(root);
+  }
+  const rel = relative(rootReal, deepestRealpath(abs));
+  if (rel === '' || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) return false;
+  return isAgentWritablePath(rel.split(sep).join('/'));
+}
+
 /** Write a note through the engine's writeNote: temp file then rename, and the
  *  guard checked after the temp file is complete, as late as it can be. A
- *  conflict is a result that leaves the note as it was. */
+ *  conflict is a result that leaves the note as it was. The resolved path is
+ *  checked for every caller (main's IPC, the daemon's notes PUT): a note that
+ *  is a link into a dot folder (`.oscode/`, `.obsidian/`) is never written
+ *  through (Vault M7, CTO L8); the settings file has its own writer. */
 export async function writeVaultFile(
   root: string,
   path: string,
   text: string,
   guard?: NoteGuard,
 ): Promise<VaultWriteResult> {
-  const r = await writeNote(vaultNoteAbs(root, path), text, guard);
+  const abs = vaultNoteAbs(root, path);
+  if (!resolvedAgentWritable(root, abs)) {
+    throw new Error('blocked: this note leads into a settings folder, so it is not written here');
+  }
+  const r = await writeNote(abs, text, guard);
   if (r.ok) {
     return { ok: true, file: { path, text, updatedAt: r.updatedAt, version: r.version } };
   }

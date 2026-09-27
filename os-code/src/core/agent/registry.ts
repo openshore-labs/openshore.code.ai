@@ -29,7 +29,14 @@ import {
   vaultSearchTool,
 } from '../tools/vaultFind.js';
 import { compileVaultPrivacy } from '../../harness/vault/privacy.js';
-import type { VaultPrivacy, VaultPrivacyConfig } from '../../harness/vault/types.js';
+import type {
+  ResolvedVaultSettings,
+  VaultPrivacy,
+  VaultPrivacyConfig,
+  VaultPrivacyNarrowing,
+} from '../../harness/vault/types.js';
+import { vaultSettingsFor } from '../vault/settingsFile.js';
+import { logger } from '../../util/log.js';
 import { projectMemoryWriteTool } from '../tools/projectMemory.js';
 import { todoWriteTool } from '../tools/todoWrite.js';
 import { loadVaultDir } from '../../config/load.js';
@@ -176,6 +183,81 @@ export function lazyVaultPrivacy(cfg: VaultPrivacyConfig): VaultPrivacy {
   };
 }
 
+/** The vault's privacy for one session (Vault M7, CTO L4, L5): the machine's
+ *  rules unioned with the vault's own file (`.oscode/vault.json`), which can
+ *  only hide more or keep more on this computer. `visibility` stays sync;
+ *  `refresh` re-reads the settings (kept 2 s, `force` at a task start) and
+ *  recompiles only when the file's narrowing changed. */
+export interface VaultPrivacyHolder extends VaultPrivacy {
+  refresh(options?: { force?: boolean }): Promise<void>;
+  /** The last settings read that could be trusted, or undefined before the
+   *  first refresh. */
+  settings(): ResolvedVaultSettings | undefined;
+}
+
+const holderLog = logger('vault-settings');
+
+/**
+ * Build the holder for the vault at `root` (a path, or a getter so a caller
+ * that repoints the context's root is followed). Like lazyVaultPrivacy it
+ * compiles on first use, so a machine config the compiler refuses fails the
+ * vault tools loudly, never by opening every note.
+ *
+ * The last good narrowing (L4): a file that read `ok` sets it, no file clears
+ * it, and a file that is `unreadable` or `unavailable` (or a read that threw)
+ * keeps the one before, so a sync client mid-download never opens a note the
+ * file keeps local. The engine keeps it in memory for the process.
+ */
+export function vaultPrivacyHolder(
+  cfg: VaultPrivacyConfig,
+  root: string | (() => string | undefined),
+): VaultPrivacyHolder {
+  let narrowing: VaultPrivacyNarrowing | undefined;
+  let narrowingKey = '';
+  let settings: ResolvedVaultSettings | undefined;
+  let compiled: VaultPrivacy | undefined;
+  let lastRoot: string | undefined;
+  const rootNow = (): string | undefined => (typeof root === 'string' ? root : root());
+  return {
+    visibility(note) {
+      compiled ??= compileVaultPrivacy(cfg, narrowing);
+      return compiled.visibility(note);
+    },
+    settings: () => settings,
+    async refresh(options) {
+      const dir = rootNow();
+      if (!dir) return;
+      if (lastRoot !== undefined && lastRoot !== dir) {
+        // A repointed root starts from nothing of the old one's.
+        narrowing = undefined;
+        narrowingKey = '';
+        settings = undefined;
+        compiled = undefined;
+      }
+      lastRoot = dir;
+      let next: ResolvedVaultSettings;
+      try {
+        next = await vaultSettingsFor(dir, options);
+      } catch (err) {
+        holderLog.warn('vault settings unavailable; keeping the last good', { err: String(err) });
+        return;
+      }
+      if (next.fileState === 'unreadable' || next.fileState === 'unavailable') {
+        settings ??= next;
+        return;
+      }
+      settings = next;
+      const fresh = next.fileState === 'ok' ? next.narrowing : undefined;
+      const key = JSON.stringify(fresh ?? null);
+      if (key !== narrowingKey) {
+        narrowing = fresh;
+        narrowingKey = key;
+        compiled = undefined;
+      }
+    },
+  };
+}
+
 /** The machine's vault privacy config, schema defaults filling what a bare
  *  config leaves out. */
 export function vaultPrivacyConfig(config: OscConfig): VaultPrivacyConfig {
@@ -201,6 +283,9 @@ export function buildToolContext(options: {
   /** Off leaves the vault root unset, so no vault tool can reach the folder
    *  (a member's session on a shared hub). Undefined means on. */
   vault?: boolean;
+  /** This session's own vault root in place of the machine's (a member's on
+   *  a shared hub, CTO J8). Ignored when `vault` is off. */
+  vaultRoot?: string;
 }): ToolContext {
   const { cwd, config, router, providers, projectName, egressLockdown } = options;
   const egress = new EgressPolicy(config.egress);
@@ -231,12 +316,9 @@ export function buildToolContext(options: {
   // a project file, which could steer what the agent reads without a prompt);
   // unset means ~/OSCode/Vault, alongside the OSCode clones the daemon makes. A
   // session without the vault (a member's, on a shared hub) gets no root.
-  const vaultRoot = options.vault === false ? undefined : loadVaultDir().dir;
-  // Which notes are hidden and which stay on this computer, from the machine's
-  // vault config only (projectPolicy classes these keys machine).
-  const vaultPrivacy = vaultRoot ? lazyVaultPrivacy(vaultPrivacyConfig(config)) : undefined;
+  const vaultRoot = options.vault === false ? undefined : (options.vaultRoot ?? loadVaultDir().dir);
 
-  return {
+  const ctx: ToolContext = {
     cwd,
     jail,
     egress,
@@ -245,7 +327,17 @@ export function buildToolContext(options: {
     delegate: (role, task, images, options) => router.delegate(role, task, images, options),
     searchRepo,
     vaultRoot,
-    ...(vaultPrivacy ? { vaultPrivacy } : {}),
     projectName,
   };
+  // Which notes are hidden and which stay on this computer: the machine's
+  // vault config (projectPolicy classes these keys machine) unioned with the
+  // vault's own file, which only narrows (Vault M7, CTO L4). The holder follows
+  // the context's root, so a caller that repoints it is followed.
+  if (vaultRoot) {
+    const holder = vaultPrivacyHolder(vaultPrivacyConfig(config), () => ctx.vaultRoot);
+    ctx.vaultPrivacy = holder;
+    ctx.vaultRefresh = (opts) => holder.refresh(opts);
+    ctx.vaultSettings = () => holder.settings();
+  }
+  return ctx;
 }
