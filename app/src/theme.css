@@ -1259,7 +1259,9 @@ textarea {
    the controls coming back read as the card leaving, never a cut. Opacity
    and transform only. */
 .vault-drive-card.closing,
-.vault-conflict-card.closing {
+.vault-conflict-card.closing,
+.vault-move-card.closing,
+.vault-missing-card.closing {
   animation: vault-drive-card-out var(--dur-4) var(--ease-standard) forwards;
 }
 @keyframes vault-drive-card-out {
@@ -1284,8 +1286,79 @@ textarea {
    a newer other version re-keys the pane, which settles in on fade-rise. */
 .vault-resolve-sub,
 .vault-resolve-again,
+.vault-resolve-counter,
 .vault-compare-pane {
   animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-resolve-counter {
+  margin: 0 0 2px;
+}
+.vault-resolve-close {
+  margin: 8px 2px 0;
+}
+
+/* Vault M1 (1.3): the one-time desktop move card, in the room's card shape
+   with a faint local-teal wash (the move stays on this computer). It arrives
+   on fade-rise and folds out on the Drive card's exit; a new folder path
+   re-keys and settles in. Opacity and transform only. */
+.vault-move-card {
+  background: var(--local-soft);
+  border-color: color-mix(in srgb, var(--local) 30%, transparent);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-move-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.vault-missing-card {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+
+/* Vault M1 (1.4): the desktop folder under This folder's row, and the result
+   of a pick. The path wraps and is selectable, never scrolled sideways. */
+.vault-folder-block {
+  margin: 2px 0 4px 12px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vault-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+  user-select: text;
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-folder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vault-folder-action {
+  padding: 4px 10px;
+  font-size: var(--text-2);
+}
+.vault-folder-line {
+  margin: 0;
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-folder-line.warn {
+  color: var(--warn);
+}
+.vault-pick-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-pick-question {
+  animation: fade-rise var(--dur-3) var(--ease-arrive) backwards;
 }
 .vault-resolve-tabs {
   margin: 4px 0 10px;

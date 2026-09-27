@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -37,6 +39,15 @@ import {
   statVaultFile,
   writeVaultFile,
 } from '../electron/vaultFs.js';
+import {
+  VaultDirChooser,
+  cloudKindOf,
+  refusePick,
+  surveyVaultFolder,
+  vaultDisplay,
+  type VaultDirEnv,
+} from '../electron/vaultDir.js';
+import { loadVaultDir, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 
 beforeEach(() => {
   for (const fn of Object.values(h.b)) fn.mockReset();
@@ -249,5 +260,220 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
     ]) {
       expect(isVaultNotePath(p)).toBe(isNotePath(p));
     }
+  });
+});
+
+// The folder picker as main runs it (osc:vaultChooseDir, osc:vaultRefineDir;
+// CTO F7, CX 1.4): a temp home stands in for the person's, the dialog's
+// answer is passed straight in, and vault.dir is written through the
+// engine's real config writer into a temp OSC_HOME.
+describe('picking the vault folder (Vault M1 1.4)', () => {
+  let home: string;
+  let env: VaultDirEnv;
+  let chooser: VaultDirChooser;
+  let saves: string[];
+  let failSave: boolean;
+  beforeEach(() => {
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'osc-pick-')));
+    process.env.OSC_HOME = join(home, '.os-code');
+    mkdirSync(join(home, 'OSCode', 'Vault'), { recursive: true });
+    env = {
+      home,
+      oscHome: join(home, '.os-code'),
+      managedRoot: join(home, 'OSCode'),
+      defaultVaultDir: join(home, 'OSCode', 'Vault'),
+      platform: 'linux',
+    };
+    saves = [];
+    failSave = false;
+    chooser = new VaultDirChooser({
+      env: () => env,
+      current: () => {
+        const v = loadVaultDir();
+        // The engine's default is the real home's; this test's is the temp one.
+        return saves.length ? v : { dir: env.defaultVaultDir };
+      },
+      save: (dir) => {
+        if (failSave) throw new Error('disk full');
+        saveGlobalConfig({ vault: { dir } });
+        saves.push(dir);
+      },
+      obsidianApp: () => true,
+    });
+  });
+  afterEach(() => {
+    delete process.env.OSC_HOME;
+    chmodSync(home, 0o755);
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('a picked temp folder lists its notes, hides .obsidian/, and saves its realpath', () => {
+    const brain = join(home, 'Brain');
+    mkdirSync(join(brain, '.obsidian', 'plugins', 'x'), { recursive: true });
+    writeFileSync(join(brain, '.obsidian', 'plugins', 'x', 'data.json'), '{"key":"secret"}');
+    writeFileSync(join(brain, '.obsidian', 'Hidden.md'), 'no');
+    mkdirSync(join(brain, 'ideas'));
+    writeFileSync(join(brain, 'ideas', 'b.md'), 'b');
+    writeFileSync(join(brain, 'a.md'), 'a');
+    writeFileSync(join(brain, 'pic.png'), 'png');
+    const r = chooser.pick(brain);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(loadVaultDir().dir).toBe(brain);
+    expect(r.info).toMatchObject({ dir: brain, exists: true, obsidian: 'vault', count: 2 });
+    expect(r.survey).toMatchObject({ notes: 2, otherFiles: 1, obsidian: true, capped: false });
+    // Main's list of the new root, as osc:vaultList runs it.
+    expect(listVaultFolder(loadVaultDir().dir).map((f) => f.path)).toEqual(['a.md', 'ideas/b.md']);
+    expect(r.previous?.display).toBe(vaultDisplay(env.defaultVaultDir, home, 'linux'));
+  });
+
+  it('osc:vaultRead of .obsidian plugin data is refused after a pick', async () => {
+    const brain = join(home, 'Brain');
+    mkdirSync(join(brain, '.obsidian', 'plugins', 'x'), { recursive: true });
+    writeFileSync(join(brain, '.obsidian', 'plugins', 'x', 'data.json'), '{"key":"secret"}');
+    chooser.pick(brain);
+    await expect(
+      readVaultFile(loadVaultDir().dir, '.obsidian/plugins/x/data.json'),
+    ).rejects.toThrow(/blocked/);
+  });
+
+  it('refuses home, ~/.os-code, ~/OSCode, a drive root, and inside OSCode, each with its code', () => {
+    mkdirSync(join(home, '.os-code', 'inner'), { recursive: true });
+    mkdirSync(join(home, 'OSCode', 'repo'), { recursive: true });
+    const cases: Array<[string, string]> = [
+      [home, 'home'],
+      [join(home, '.os-code'), 'osc-home'],
+      [join(home, '.os-code', 'inner'), 'osc-home'],
+      [join(home, 'OSCode'), 'managed-holds'],
+      [join(home, 'OSCode', 'repo'), 'managed-inside'],
+      ['/', 'root'],
+    ];
+    for (const [dir, code] of cases) {
+      const r = chooser.pick(dir);
+      expect(r, dir).toMatchObject({ ok: false, refused: code });
+    }
+    expect(refusePick(join(home, '..'), env)).toBe('home-ancestor');
+    // The default vault inside OSCode is allowed, and nothing was saved.
+    expect(refusePick(env.defaultVaultDir, env)).toBeUndefined();
+    expect(saves).toEqual([]);
+    const inside = chooser.pick(join(home, 'OSCode', 'repo'));
+    expect(inside).toMatchObject({ defaultDisplay: '~/OSCode/Vault', managedDisplay: '~/OSCode' });
+  });
+
+  it.skipIf(process.getuid?.() === 0)('refuses a read-only folder, and saves nothing', () => {
+    const ro = join(home, 'ReadOnly');
+    mkdirSync(ro);
+    chmodSync(ro, 0o555);
+    expect(chooser.pick(ro)).toMatchObject({ ok: false, refused: 'not-writable' });
+    chmodSync(ro, 0o755);
+    expect(saves).toEqual([]);
+  });
+
+  it('a cancelled dialog does nothing, and the same folder is not a refusal', () => {
+    expect(chooser.pick(undefined)).toEqual({ ok: false, cancelled: true });
+    expect(chooser.pick(env.defaultVaultDir)).toMatchObject({ ok: false, same: true });
+    expect(saves).toEqual([]);
+  });
+
+  it('a config write that fails changes nothing and says so by code', () => {
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    failSave = true;
+    expect(chooser.pick(notes)).toEqual({ ok: false, refused: 'save-failed' });
+  });
+
+  it('an empty folder reports no notes and its other files', () => {
+    const empty = join(home, 'Empty');
+    mkdirSync(empty);
+    writeFileSync(join(empty, 'photo.jpg'), 'x');
+    const r = chooser.pick(empty);
+    expect(r.ok && r.survey).toMatchObject({ notes: 0, otherFiles: 1, obsidian: false });
+  });
+
+  it('a subfolder of a vault offers the whole vault, never climbing above home', () => {
+    const brain = join(home, 'Brain');
+    mkdirSync(join(brain, '.obsidian'), { recursive: true });
+    mkdirSync(join(brain, 'Projects'));
+    const r = chooser.pick(join(brain, 'Projects'));
+    expect(r.ok && r.survey.inside).toEqual({ name: 'Brain' });
+    const up = chooser.refine({ to: 'enclosing' });
+    expect(up.ok && up.info.dir).toBe(brain);
+    // From the vault itself there is nothing above it inside home.
+    expect(() => chooser.refine({ to: 'enclosing' })).toThrow(/blocked/);
+  });
+
+  it('a nested vault is a vault: the nearest one wins', () => {
+    const outer = join(home, 'Outer');
+    mkdirSync(join(outer, '.obsidian'), { recursive: true });
+    mkdirSync(join(outer, 'Inner', '.obsidian'), { recursive: true });
+    mkdirSync(join(outer, 'Inner', 'Deep'));
+    const inner = chooser.pick(join(outer, 'Inner'));
+    expect(inner.ok && inner.survey.obsidian).toBe(true);
+    expect(inner.ok && inner.survey.inside).toBeUndefined();
+    const deep = chooser.pick(join(outer, 'Inner', 'Deep'));
+    expect(deep.ok && deep.survey.inside).toEqual({ name: 'Inner' });
+  });
+
+  it('a folder holding vaults names them, and only those names can be chosen', () => {
+    const parent = join(home, 'Obsidian');
+    mkdirSync(join(parent, 'Work', '.obsidian'), { recursive: true });
+    mkdirSync(join(parent, 'Home', '.obsidian'), { recursive: true });
+    mkdirSync(join(parent, 'Plain'));
+    const r = chooser.pick(parent);
+    expect(r.ok && r.survey.holds).toEqual(['Home', 'Work']);
+    expect(() => chooser.refine({ to: 'child', name: 'Plain' })).toThrow(/blocked/);
+    expect(() => chooser.refine({ to: 'child', name: '../Brain' })).toThrow(/blocked/);
+    expect(() => chooser.refine({ to: 'child', name: '.obsidian' })).toThrow(/blocked/);
+    expect(() => chooser.refine({ to: '/etc' })).toThrow(/blocked/);
+    const work = chooser.refine({ to: 'child', name: 'Work' });
+    expect(work.ok && work.info.dir).toBe(join(parent, 'Work'));
+  });
+
+  it('Go back repoints to the folder before, and nothing is copied', () => {
+    writeFileSync(join(env.defaultVaultDir, 'old.md'), 'old');
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    chooser.pick(notes);
+    expect(listVaultFolder(loadVaultDir().dir)).toEqual([]);
+    const back = chooser.refine({ to: 'previous' });
+    expect(back.ok && back.info.dir).toBe(env.defaultVaultDir);
+    expect(listVaultFolder(notes)).toEqual([]);
+  });
+
+  it('a huge folder stops the walk at its limits and says so', () => {
+    const big = join(home, 'Big');
+    mkdirSync(big);
+    for (let i = 0; i < 30; i++) writeFileSync(join(big, `n${i}.md`), 'x');
+    const s = surveyVaultFolder(big, env, { notes: 10, entries: 50_000, ms: 3_000 });
+    expect(s).toMatchObject({ notes: 10, capped: true });
+  });
+
+  it('reads the sync service from the real path, and claims none it cannot tell', () => {
+    const mac: VaultDirEnv = { ...env, platform: 'darwin' };
+    const at = (...p: string[]) => join(home, ...p);
+    expect(cloudKindOf(at('Library', 'Mobile Documents', 'com~apple~CloudDocs', 'V'), mac)).toBe(
+      'icloud',
+    );
+    expect(
+      cloudKindOf(
+        at(
+          'Library',
+          'Mobile Documents',
+          'iCloud~ai~openshore~oscode',
+          'Documents',
+          'vault.personal',
+        ),
+        mac,
+      ),
+    ).toBe('icloud-openshore');
+    expect(cloudKindOf(at('Library', 'CloudStorage', 'Dropbox-Personal', 'V'), mac)).toBe(
+      'dropbox',
+    );
+    expect(cloudKindOf(at('Library', 'CloudStorage', 'GoogleDrive-me', 'My Drive'), mac)).toBe(
+      'gdrive',
+    );
+    expect(cloudKindOf(at('Library', 'CloudStorage', 'Somebody'), mac)).toBe('other');
+    expect(cloudKindOf(at('Dropbox', 'Notes'), env)).toBe('dropbox');
+    expect(cloudKindOf(at('Notes'), env)).toBeUndefined();
   });
 });

@@ -38,26 +38,51 @@ import { VAULT_AUTOSAVE_MS, vaultAutosave } from '../lib/vaultAutosave.js';
 import {
   DRIVE_RECONNECT_FAILED_LINE,
   DRIVE_WEB_URL,
+  VAULT_FOLDER_MISSING_LINE,
+  VAULT_LARGE_NOTES,
+  VAULT_NOT_FOUND_PILL,
+  VAULT_OBSIDIAN_HOWTO,
+  VAULT_OPEN_CHATS_LINE,
+  VAULT_OPEN_OBSIDIAN,
+  VAULT_OPENING_LINE,
+  VAULT_PRIVACY_BUTTON,
+  VAULT_SAME_FOLDER_LINE,
   VAULT_UPDATED_SUFFIX,
   copyProviderOf,
+  vaultCloudLine,
   vaultConflictCard,
   vaultCopy,
   vaultDriveCard,
   vaultDriveMoveRefusal,
-  vaultFolderRowLine,
+  vaultEarlierFolderHeld,
+  vaultFolderFacts,
+  vaultFolderOffer,
+  vaultFolderQuestion,
   vaultHeldHint,
   vaultHeldKeep,
   vaultHeldLine,
   vaultLead,
+  vaultMentionsOnDemand,
+  vaultMissingFolderCard,
   vaultMoveLine,
+  vaultMovingLine,
   vaultOffersProvider,
   vaultOnboard,
+  vaultPickRefusal,
+  vaultPickResultCopy,
+  vaultPickerRow,
+  vaultRevealLabel,
   vaultSheetLine,
+  vaultWarningLine,
   vaultWelcomeNote,
   type VaultDriveLink,
   type VaultOnboard,
 } from '../lib/vaultCopy.js';
 import { copyText } from '../lib/clipboard.js';
+import { openPrivacySettings, openVaultInObsidian, revealVaultFolder } from '../lib/vaultFolder.js';
+import { folderNotesSince } from '../lib/vaultOffer.js';
+import type { VaultDirInfo, VaultPickResult, VaultRefineChoice } from '../lib/electronBridge.js';
+import type { StoredFile } from '../lib/gitos/providers.js';
 import { Sheet } from '../components/Sheet.js';
 import { VaultResolveSheet } from '../components/VaultResolveSheet.js';
 import { hapticApproval, hapticCommit } from '../lib/haptics.js';
@@ -71,6 +96,19 @@ import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
+
+/** A move's forked pairs as the move-mode resolve sheet steps through them:
+ *  which one is on screen, both of its texts as read, and how the last
+ *  choice went. */
+interface ForkSteps {
+  pairs: Array<{ from: string; to: string }>;
+  i: number;
+  shown?: { there: StoredFile; moved: StoredFile };
+  busy: boolean;
+  failed?: boolean;
+  partial?: boolean;
+  again?: boolean;
+}
 
 /** How long the editor must be quiet before the resolve sheet rises over it
  *  (Creative Studio 1c): never mid-keystroke, so the text the person is
@@ -124,6 +162,17 @@ export function VaultScreen() {
     vaultNoteDraft,
     vaultReturnFolder,
     vaultTakeReturnFolder,
+    vaultFolder,
+    vaultMoving,
+    vaultListed,
+    vaultLoadFolder,
+    vaultChooseFolder,
+    vaultRefineFolder,
+    vaultFolderOfferShown,
+    vaultDeclineFolderMove,
+    vaultReadForkPair,
+    vaultSettleFork,
+    vaultDesktopChatOpen,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -181,7 +230,18 @@ export function VaultScreen() {
   // shows as a card with a one-tap way off, and the controls that edit,
   // create, and delete are left out, not dimmed.
   const driveReadOnly = team ? undefined : vaultReadOnly();
-  const locked = readOnly || Boolean(driveReadOnly);
+  // The desktop vault's folder is not there (renamed, moved, or on a drive
+  // that is not connected): the room says so and writes nothing, and never
+  // falls back quietly to another folder (CX 1.4).
+  const personalOnFolder =
+    !team &&
+    (settings.gitosResources as GitosResource[] | undefined)?.find(
+      (r) => r.id === VAULT_RESOURCE_ID,
+    )?.providerId === 'files';
+  const folderGone = personalOnFolder && vaultFolder?.exists === false;
+  // A move is running: the room holds still, so nothing typed can miss the
+  // copy (CX 1.3).
+  const locked = readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone;
   const teamAvailable = teamVaultAvailable();
 
   const [folder, setFolder] = useState('');
@@ -203,6 +263,23 @@ export function VaultScreen() {
   // card offers a move that can work (0.18). Undefined while unknown.
   const [driveLink, setDriveLink] = useState<VaultDriveLink | undefined>();
   const [moving, setMoving] = useState(false);
+  // The desktop folder picker (1.4): the dialog is up, the last pick's result
+  // (the storage sheet shows it), whether its one question was answered, and
+  // the line a refusal or a same-folder pick leaves under the picker row.
+  const [picking, setPicking] = useState(false);
+  const [pick, setPick] = useState<Extract<VaultPickResult, { ok: true }> | undefined>();
+  const [pickAnswered, setPickAnswered] = useState(false);
+  const [pickLine, setPickLine] = useState<
+    { text: string; warn: boolean; privacy?: boolean } | undefined
+  >();
+  // A refused move from the move card, said inside the card (CX 1.3).
+  const [offerFailed, setOfferFailed] = useState<string | undefined>();
+  // A move's forked pairs, one at a time in the move-mode resolve sheet (1d).
+  const [forks, setForks] = useState<ForkSteps | undefined>();
+  const [forksOpen, setForksOpen] = useState(false);
+  // Linked mentions in a vault over VAULT_LARGE_NOTES notes run on request.
+  const [mentionsAsked, setMentionsAsked] = useState<string | undefined>();
+  const [mentionsBusy, setMentionsBusy] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   // Compare-and-swap (1.1): when the person last typed, whether the resolve
   // sheet is up, what a choice is doing, and whether the meta line carries
@@ -244,6 +321,7 @@ export function VaultScreen() {
   // usable only on a device that can actually reach it.
   useEffect(() => {
     if (!storageOpen) return;
+    if (isDesktop()) void vaultLoadFolder();
     let live = true;
     void Promise.all(PROVIDER_ROSTER.map((p) => probeReady(p.id))).then((flags) => {
       if (!live) return;
@@ -259,7 +337,7 @@ export function VaultScreen() {
     return () => {
       live = false;
     };
-  }, [storageOpen]);
+  }, [storageOpen, vaultLoadFolder]);
 
   useEffect(() => {
     void vaultRefresh();
@@ -273,9 +351,10 @@ export function VaultScreen() {
   const onFolder = !team && currentProviderId === 'files';
   useEffect(() => {
     if (!onFolder) return;
-    const off = onDeviceFolderChanged(
-      (change) => void vaultRecheck({ reason: 'watch', paths: change.paths, tree: change.tree }),
-    );
+    const off = onDeviceFolderChanged((change) => {
+      if (change.rootGone) void vaultLoadFolder();
+      void vaultRecheck({ reason: 'watch', paths: change.paths, tree: change.tree });
+    });
     const onFocus = () => void vaultRecheck({ reason: 'focus' });
     const onVisible = () => {
       if (document.visibilityState === 'visible') onFocus();
@@ -288,7 +367,7 @@ export function VaultScreen() {
       document.removeEventListener('visibilitychange', onVisible);
       watchDeviceFolder(false);
     };
-  }, [onFolder, vaultRecheck]);
+  }, [onFolder, vaultRecheck, vaultLoadFolder]);
   useEffect(() => {
     if (onFolder) watchDeviceFolder(true, vaultNote?.path);
   }, [onFolder, vaultNote?.path]);
@@ -341,7 +420,10 @@ export function VaultScreen() {
     lastReload.current = vaultNote.reloaded;
     setBacklinks([]);
     setMentionsError(undefined);
+    setMentionsAsked(undefined);
     const path = vaultNote.path;
+    // A vault this size reads every note only when the person asks (CX 1.4).
+    if (vaultFiles.length > VAULT_LARGE_NOTES) return;
     let live = true;
     vaultReadAll().then(
       (notes) => {
@@ -595,9 +677,10 @@ export function VaultScreen() {
   // any note that landed beside one already there, and on a refusal whether
   // any copy was left behind. The pending draft goes first, to the vault it
   // was typed into.
-  const moveVault = async (id: StorageProviderId) => {
+  const moveVault = async (id: StorageProviderId, from: 'sheet' | 'card' = 'sheet') => {
     flushSave();
     setMoving(true);
+    setOfferFailed(undefined);
     const result = await vaultMoveTo(id).catch(() => undefined);
     // A Drive vault that could not be read may have lost its Google account
     // (a sign-out, an expired grant): then retrying cannot help, and the
@@ -614,8 +697,166 @@ export function VaultScreen() {
       }
     }
     setMoving(false);
+    // The move card keeps a refused move's line inside itself, since a toast
+    // would fade, and its button becomes Try again (CX 1.3).
+    if (from === 'card' && !result?.ok) {
+      setOfferFailed(vaultMoveLine(result, labelOf(id)));
+      return;
+    }
     setStorageOpen(false);
-    showToast(vaultMoveLine(result, labelOf(id), result?.ok ? copyOf(id)?.obsidian : undefined));
+    closePick();
+    const forked = result?.ok ? result.forked : [];
+    // Forked pairs open the move-mode sheet once the storage sheet has left,
+    // so sheets never stack; its toast leaves the forked sentence to the
+    // sheet (Creative Studio 1d).
+    showToast(
+      vaultMoveLine(
+        result && forked.length ? { ...result, forked: [] } : result,
+        labelOf(id),
+        result?.ok ? copyOf(id)?.obsidian : undefined,
+      ),
+    );
+    if (forked.length) {
+      setTimeout(() => void openForks(forked), from === 'sheet' ? sheetExitMs() : 0);
+    }
+  };
+
+  // ---- a move's forked pairs (Creative Studio 1d) -------------------------
+  // One sheet steps through them. Keep both simply advances (both files are
+  // there); the other two rows take two taps. After the last pair it closes.
+  const loadFork = async (steps: ForkSteps, i: number): Promise<ForkSteps | undefined> => {
+    for (let at = i; at < steps.pairs.length; at++) {
+      const shown = await vaultReadForkPair(steps.pairs[at]!);
+      // A pair whose files are not both there any more has nothing to choose.
+      if (shown) return { ...steps, i: at, shown, failed: false, partial: false, again: false };
+    }
+    return undefined;
+  };
+  const openForks = async (pairs: Array<{ from: string; to: string }>) => {
+    const first = await loadFork({ pairs, i: 0, busy: false }, 0);
+    if (!first) return;
+    setForks(first);
+    setForksOpen(true);
+    hapticApproval();
+  };
+  const closeForks = () => {
+    setForksOpen(false);
+    setTimeout(() => setForks(undefined), sheetExitMs());
+  };
+  const nextFork = async (steps: ForkSteps) => {
+    const next = await loadFork(steps, steps.i + 1);
+    if (next) setForks(next);
+    else closeForks();
+  };
+  const chooseFork = async (choice: 'both' | 'mine' | 'theirs' | 'discard') => {
+    if (!forks?.shown || forks.busy) return;
+    hapticCommit();
+    if (choice === 'both' || choice === 'discard') {
+      await nextFork(forks);
+      return;
+    }
+    const pair = forks.pairs[forks.i]!;
+    setForks({ ...forks, busy: true, failed: false });
+    const r = await vaultSettleFork(pair, choice, forks.shown).catch(() => ({ ok: false }));
+    if (r.ok && !('partial' in r && r.partial)) {
+      await nextFork({ ...forks, busy: false });
+      return;
+    }
+    if ('changed' in r && r.changed) {
+      // Something wrote to one of them meanwhile: show them as they are now.
+      const fresh = await loadFork({ ...forks, busy: false }, forks.i);
+      if (fresh && fresh.i === forks.i) setForks({ ...fresh, again: true });
+      else if (fresh) setForks(fresh);
+      else closeForks();
+      return;
+    }
+    setForks({ ...forks, busy: false, failed: !r.ok, partial: r.ok });
+  };
+
+  // ---- the folder picker (1.4) --------------------------------------------
+  // Every action is a no-argument IPC in main; the renderer never sends a
+  // path. A pick repoints at once; the sheet then shows what it found.
+  const closePick = () => {
+    setPick(undefined);
+    setPickAnswered(false);
+    setPickLine(undefined);
+  };
+  const showPick = (result: VaultPickResult | undefined, from: 'sheet' | 'card') => {
+    if (!result || 'cancelled' in result) return;
+    if (result.ok) {
+      setPick(result);
+      setPickAnswered(false);
+      setPickLine(undefined);
+      // From the card, the storage sheet opens on the pick's result (CX 1.3).
+      if (from === 'card') setStorageOpen(true);
+      return;
+    }
+    if ('same' in result) {
+      setPickLine({ text: VAULT_SAME_FOLDER_LINE, warn: false });
+      if (from === 'card') setStorageOpen(true);
+      return;
+    }
+    const os = vaultFolder?.os ?? '';
+    const text = vaultPickRefusal(result.refused, os);
+    if (from === 'card') {
+      showToast(text);
+      return;
+    }
+    setPickLine({ text, warn: true, privacy: result.refused === 'denied' && os === 'darwin' });
+  };
+  const runPick = async (from: 'sheet' | 'card') => {
+    if (picking) return;
+    setPickLine(undefined);
+    setPicking(true);
+    const result = await vaultChooseFolder().catch(() => undefined);
+    setPicking(false);
+    showPick(result, from);
+  };
+  const refinePick = async (choice: VaultRefineChoice | { to: 'stay' }) => {
+    hapticCommit();
+    if (choice.to === 'stay') {
+      setPickAnswered(true);
+      return;
+    }
+    const back = choice.to === 'previous' ? pickCopy?.back : undefined;
+    const result = await vaultRefineFolder(choice).catch(() => undefined);
+    if (result?.ok) {
+      setPick(result);
+      setPickAnswered(true);
+      setPickLine(undefined);
+      if (back) showToast(back.toast);
+      if (choice.to === 'previous') closePick();
+      return;
+    }
+    showPick(result, 'sheet');
+  };
+  const pickCopy = pick
+    ? vaultPickResultCopy({
+        display: pick.info.display,
+        ...(pick.previous ? { previous: pick.previous } : {}),
+        ...(currentProviderId === 'local' ? { fromLocal: { notes: vaultFiles.length } } : {}),
+        large: pick.survey.capped || pick.survey.notes > VAULT_LARGE_NOTES,
+      })
+    : undefined;
+
+  // Linked mentions for a note in a large vault, when the person asks.
+  const findMentions = async (path: string) => {
+    setMentionsBusy(true);
+    setMentionsError(undefined);
+    try {
+      const notes = await vaultReadAll();
+      setBacklinks(backlinksTo(path, notes));
+      const missed = notes.failed.filter((p) => p !== path).length;
+      setMentionsError(
+        missed
+          ? `${missed} ${missed === 1 ? 'note' : 'notes'} could not be read, so this list may be missing some.`
+          : undefined,
+      );
+    } catch {
+      setMentionsError('Linked mentions could not be read right now.');
+    }
+    setMentionsAsked(path);
+    setMentionsBusy(false);
   };
   // Where a read-only Drive vault goes in one tap: plain files on the
   // computer, or this device on the phone.
@@ -855,6 +1096,11 @@ export function VaultScreen() {
               edits do not collide.
             </p>
           ) : null}
+          {vaultMoving ? (
+            <p className="hint" role="status" style={{ marginTop: 8 }}>
+              {vaultMovingLine(vaultFolder?.display ?? labelOf('files'))}
+            </p>
+          ) : null}
           {renderDriveCard(true)}
           {renderError('note')}
           <ConflictCard
@@ -936,6 +1182,26 @@ export function VaultScreen() {
             </div>
           )}
 
+          {!editing && vaultFiles.length > VAULT_LARGE_NOTES && mentionsAsked !== vaultNote.path ? (
+            <div className="card" style={{ marginTop: 18 }}>
+              <div className="card-row">
+                <h3 style={{ marginBottom: 0 }}>Linked mentions</h3>
+              </div>
+              <p className="hint" style={{ marginTop: 0 }}>
+                {vaultMentionsOnDemand(vaultFiles.length).hint}
+              </p>
+              <button
+                type="button"
+                className="btn ghost press-fb"
+                disabled={mentionsBusy}
+                onClick={() => void findMentions(vaultNote.path)}
+              >
+                {mentionsBusy
+                  ? vaultMentionsOnDemand(vaultFiles.length).busy
+                  : vaultMentionsOnDemand(vaultFiles.length).button}
+              </button>
+            </div>
+          ) : null}
           {!editing && (backlinks.length > 0 || mentionsError) ? (
             <div className="card" style={{ marginTop: 18 }}>
               <div className="card-row">
@@ -1040,14 +1306,29 @@ export function VaultScreen() {
   }
 
   // ---- tree view ----------------------------------------------------------
+  // The one-time desktop move card (1.3): at the root only, after Not saved
+  // and before Coding projects. While it shows, the lead leaves out its own
+  // pointer to This folder, since the card says it better.
+  const offerShown = !team && vaultFolderOfferShown();
+  const offer = vaultFolderOffer(vaultFiles.length, vaultFolder?.count, {
+    display: vaultFolder?.display,
+    newSince: folderNotesSince(settings.vaultMoveOffer, vaultFolder?.count),
+  });
+  const missingCard = vaultMissingFolderCard(vaultFolder?.display ?? labelOf('files'));
+  const pickerRow = vaultPickerRow(on);
+  const closeStorage = () => {
+    setStorageOpen(false);
+    closePick();
+  };
   return (
     <div className="screen">
       <BackBar title="Vault" />
       <div className="screen-inner">
         <div className="stack-head">
           <h1>Vault</h1>
-          {/* A read-only Drive vault leaves New note out; its card says why. */}
-          {!driveReadOnly ? (
+          {/* A read-only Drive vault leaves New note out; its card says why.
+              So does a moving vault, and a folder that is not there. */}
+          {!driveReadOnly && !vaultMoving && !folderGone ? (
             <button
               type="button"
               className="icon-btn press-fb"
@@ -1087,7 +1368,7 @@ export function VaultScreen() {
           </div>
         ) : null}
         <p className="lead">
-          {team ? vaultCopy(on, 'org').storage : vaultLead(personalCopy)}
+          {team ? vaultCopy(on, 'org').storage : vaultLead(personalCopy, { offerShown })}
           {!team ? (
             <>
               {' '}
@@ -1105,7 +1386,33 @@ export function VaultScreen() {
         {/* Every vault's held text this account may see, near the top of the
             list at every folder level, so nothing typed is ever out of sight
             (0.4). */}
-        <NotSaved held={heldVisible} labelled discard={(id) => void vaultDiscardHeld(id)} />
+        <NotSaved
+          held={heldVisible}
+          labelled
+          folderNow={vaultFolder?.dir}
+          discard={(id) => void vaultDiscardHeld(id)}
+        />
+        <VaultMoveCard
+          shown={offerShown && !folder}
+          offer={offer}
+          display={vaultFolder?.display}
+          busy={moving || Boolean(vaultMoving)}
+          failed={offerFailed}
+          onMove={() => void moveVault('files', 'card')}
+          onDecline={() => void vaultDeclineFolderMove()}
+          onOtherFolder={() => void runPick('card')}
+        />
+        <VaultMissingCard
+          shown={Boolean(folderGone)}
+          title={missingCard.title}
+          line={missingCard.line}
+          retry={missingCard.retry}
+          choose={missingCard.choose}
+          onRetry={() => {
+            void vaultLoadFolder().then(() => vaultRefresh());
+          }}
+          onChoose={() => void runPick('card')}
+        />
 
         {!team && !folder && (settings.projects?.length ?? 0) > 0 ? (
           <div className="card" style={{ marginBottom: 14 }}>
@@ -1208,8 +1515,14 @@ export function VaultScreen() {
           </p>
         ) : null}
 
-        {vaultFiles.length === 0 && driveExplains ? null : vaultFiles.length === 0 &&
-          vaultError === 'load' ? (
+        {vaultFiles.length === 0 && (driveExplains || folderGone) ? null : vaultFiles.length ===
+            0 && !vaultListed ? (
+          // A vault still listing, never the empty ramp over notes that are
+          // on their way (CX 1.4).
+          <p className="hint" role="status">
+            {VAULT_OPENING_LINE}
+          </p>
+        ) : vaultFiles.length === 0 && vaultError === 'load' ? (
           <div className="card empty-notice">
             <h3>Your vault storage is offline.</h3>
             <p className="sub">
@@ -1266,6 +1579,30 @@ export function VaultScreen() {
         )}
       </div>
 
+      {/* A move's forked pairs (Creative Studio 1d). Closing keeps both. */}
+      <VaultResolveSheet
+        open={forksOpen && Boolean(forks?.shown)}
+        mode="move"
+        title={forks ? noteTitle(forks.pairs[forks.i]!.from) : ''}
+        mine={forks?.shown?.moved.text ?? ''}
+        theirs={forks?.shown?.there}
+        again={forks?.again}
+        busy={Boolean(forks?.busy)}
+        failed={Boolean(forks?.failed)}
+        move={
+          forks
+            ? {
+                i: forks.i + 1,
+                n: forks.pairs.length,
+                copyTitle: noteTitle(forks.pairs[forks.i]!.to),
+                partial: forks.partial,
+              }
+            : undefined
+        }
+        onChoose={(choice) => void chooseFork(choice)}
+        onClose={closeForks}
+      />
+
       <Sheet open={Boolean(newOpen)} onClose={() => setNewOpen(false)}>
         {newOpen ? (
           <>
@@ -1307,10 +1644,10 @@ export function VaultScreen() {
         ) : null}
       </Sheet>
 
-      <Sheet open={Boolean(storageOpen)} onClose={() => setStorageOpen(false)}>
+      <Sheet open={Boolean(storageOpen)} onClose={closeStorage}>
         {storageOpen ? (
           <>
-            <SheetHead title="Where your vault lives" onClose={() => setStorageOpen(false)} />
+            <SheetHead title="Where your vault lives" onClose={closeStorage} />
             <p className="sheet-sub">
               You choose the storage that holds your notes. A move copies every note across first,
               and leaves the old copy where it was.
@@ -1342,10 +1679,13 @@ export function VaultScreen() {
                     showToast('Disconnected Google Drive.');
                   };
                   const line = copyOf(p.id);
+                  // On the desktop, This folder shows where it is (1.4).
+                  const folderRow = p.id === 'files' && on === 'electron' ? vaultFolder : undefined;
+                  const notFound = folderRow?.exists === false;
                   return (
                     <div key={p.id} className="vault-provider-row">
                       <button
-                        className="btn ghost vault-provider"
+                        className="btn ghost vault-provider press-fb"
                         disabled={moving}
                         onClick={() => void move()}
                       >
@@ -1357,7 +1697,9 @@ export function VaultScreen() {
                             </span>
                           ) : null}
                         </span>
-                        {isCurrent ? (
+                        {notFound ? (
+                          <span className="nav-lock-pill">{VAULT_NOT_FOUND_PILL}</span>
+                        ) : isCurrent ? (
                           <span className="pill local">Here now</span>
                         ) : isReady ? (
                           <span className="pill local">Move here</span>
@@ -1365,6 +1707,7 @@ export function VaultScreen() {
                           <span className="nav-lock-pill">{p.offPill ?? 'Arriving'}</span>
                         )}
                       </button>
+                      {folderRow ? <FolderBlock info={folderRow} /> : null}
                       {p.id === 'gdrive' && driveConnected && !isCurrent ? (
                         <button
                           className="btn ghost vault-provider-disconnect"
@@ -1387,25 +1730,62 @@ export function VaultScreen() {
                   .
                 </p>
               ) : null}
-              {/* The way out (0.11): a real export on the iPhone; on the
-                  desktop, where an export could not reach the disk, the move
-                  to This folder, plain files Obsidian opens. */}
-              {vaultWayOut(on, currentProviderId) === 'export' ? (
-                <button className="btn ghost" onClick={() => void exportNotes()}>
-                  Export as plain files
-                </button>
-              ) : vaultWayOut(on, currentProviderId) === 'folder' ? (
-                <button
-                  className="btn ghost vault-provider"
-                  disabled={moving}
-                  onClick={() => void moveVault('files')}
-                >
-                  <span className="grow" style={{ textAlign: 'left' }}>
-                    Keep as plain files
-                    <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
-                      {vaultFolderRowLine(on)}
+              {/* The desktop folder picker (1.4): a pick only repoints, and
+                  the sheet then shows what it found. Desktop only. */}
+              {pickerRow ? (
+                <div className="vault-provider-row">
+                  <button
+                    type="button"
+                    className="btn ghost vault-provider press-fb"
+                    disabled={moving || picking}
+                    onClick={() => void runPick('sheet')}
+                  >
+                    <span className="grow" style={{ textAlign: 'left' }}>
+                      {pickerRow.label}
+                      <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+                        {pickerRow.sub}
+                      </span>
                     </span>
-                  </span>
+                    {picking ? <span className="pill muted">{pickerRow.busy}</span> : null}
+                  </button>
+                  {pickLine ? (
+                    <p
+                      key={pickLine.text}
+                      className={`hint vault-folder-line${pickLine.warn ? ' warn' : ''}`}
+                      role="status"
+                    >
+                      {pickLine.text}
+                    </p>
+                  ) : null}
+                  {pickLine?.privacy ? (
+                    <button
+                      type="button"
+                      className="btn ghost press-fb vault-folder-action"
+                      onClick={() => void openPrivacySettings()}
+                    >
+                      {VAULT_PRIVACY_BUTTON}
+                    </button>
+                  ) : null}
+                  {pick && pickCopy ? (
+                    <PickResult
+                      key={pick.info.dir}
+                      pick={pick}
+                      copy={pickCopy}
+                      answered={pickAnswered}
+                      chatsOpen={vaultDesktopChatOpen()}
+                      busy={moving}
+                      onChoose={(choice) => void refinePick(choice)}
+                      onMove={() => void moveVault('files')}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              {/* The way out (0.11): a real export on the iPhone. On the
+                  desktop, This folder is always offered above, with its path
+                  and an open-folder button, so it is the one way out. */}
+              {vaultWayOut(on, currentProviderId) === 'export' ? (
+                <button className="btn ghost press-fb" onClick={() => void exportNotes()}>
+                  Export as plain files
                 </button>
               ) : null}
             </div>
@@ -1426,10 +1806,13 @@ export function VaultScreen() {
 function NotSaved({
   held,
   labelled = false,
+  folderNow,
   discard,
 }: {
   held: VaultHeldDraft[];
   labelled?: boolean;
+  /** The desktop vault folder now, so text from an earlier one names it. */
+  folderNow?: string;
   discard: (id: string) => void;
 }) {
   const showToast = useApp((s) => s.showToast);
@@ -1450,7 +1833,9 @@ function NotSaved({
           <div key={h.id} className="vault-held-item">
             <span className="vault-held-title">{noteTitle(h.path)}</span>
             <span className="hint">
-              {[labelled ? heldPlace(h) : undefined, heldWhen(h.at)].filter(Boolean).join(' · ')}
+              {[labelled ? heldPlace(h, folderNow) : undefined, heldWhen(h.at)]
+                .filter(Boolean)
+                .join(' · ')}
             </span>
             <p className="sub" style={{ margin: '4px 0 0' }}>
               {h.reason}
@@ -1496,8 +1881,12 @@ function NotSaved({
 }
 
 /** Which vault held text belongs to, in the room's words. */
-function heldPlace(h: VaultHeldDraft): string {
+function heldPlace(h: VaultHeldDraft, folderNow?: string): string {
   if (h.providerId === 'org') return 'Team vault';
+  // Text typed in a folder the vault no longer uses names that folder.
+  if (h.providerId === 'files' && h.folder && h.folder !== folderNow) {
+    return vaultEarlierFolderHeld(h.folderDisplay ?? h.folder).place;
+  }
   const label = PROVIDER_ROSTER.find((r) => r.id === h.providerId)?.label ?? h.providerId;
   return `Personal vault, ${label}`;
 }
@@ -1678,6 +2067,280 @@ function ConflictCard({
       >
         {card.action}
       </button>
+    </div>
+  );
+}
+
+// The one-time desktop move card (Vault M1 1.3, D7; Creative Studio 2). It
+// rides useExitPresence like the Drive card: on a successful move it folds
+// out with the words it last showed, never a cut. Both buttons are
+// decisions, so there is no X. A refused move keeps the card, says why inside
+// it, and its button becomes Try again.
+function VaultMoveCard({
+  shown,
+  offer,
+  display,
+  busy,
+  failed,
+  onMove,
+  onDecline,
+  onOtherFolder,
+}: {
+  shown: boolean;
+  offer: ReturnType<typeof vaultFolderOffer>;
+  display?: string;
+  busy: boolean;
+  failed?: string;
+  onMove: () => void;
+  onDecline: () => void;
+  onOtherFolder: () => void;
+}) {
+  const presence = useExitPresence(shown, driveCardExitMs());
+  const last = useRef({ offer, display, failed });
+  if (shown) last.current = { offer, display, failed };
+  if (!presence.mounted) return null;
+  const t = last.current;
+  const off = busy || presence.closing;
+  return (
+    <div
+      className={`card vault-move-card${presence.closing ? ' closing' : ''}`}
+      style={{ margin: '0 0 14px' }}
+    >
+      {t.offer.lead ? (
+        <p className="hint" style={{ marginTop: 0 }}>
+          {t.offer.lead}
+        </p>
+      ) : null}
+      <h3 style={{ marginBottom: 4 }}>{t.offer.title}</h3>
+      <p className="sub" style={{ marginTop: 0 }}>
+        {t.offer.body}
+      </p>
+      {t.display ? (
+        <p className="hint" style={{ margin: '6px 0 0' }}>
+          <code className="vault-path" key={t.display} title={t.display}>
+            {t.display}
+          </code>{' '}
+          {!busy ? (
+            <button type="button" className="linklike press-fb" onClick={onOtherFolder}>
+              {t.offer.link}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+      <p className="hint" style={{ margin: '6px 0 0' }}>
+        {t.offer.hint}
+      </p>
+      <div className="vault-move-actions">
+        <button type="button" className="btn primary press-fb" disabled={off} onClick={onMove}>
+          {busy ? t.offer.busy : t.failed ? t.offer.retry : t.offer.primary}
+        </button>
+        {!busy ? (
+          <button type="button" className="btn quiet press-fb" disabled={off} onClick={onDecline}>
+            {t.offer.decline}
+          </button>
+        ) : null}
+      </div>
+      {t.failed && !busy ? (
+        <p className="hint" role="status" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>
+          {t.failed}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// The vault folder is not there (CX 1.4): the room says so, hides every
+// control that writes, and never falls back quietly to another folder.
+function VaultMissingCard({
+  shown,
+  title,
+  line,
+  retry,
+  choose,
+  onRetry,
+  onChoose,
+}: {
+  shown: boolean;
+  title: string;
+  line: string;
+  retry: string;
+  choose: string;
+  onRetry: () => void;
+  onChoose: () => void;
+}) {
+  const presence = useExitPresence(shown, driveCardExitMs());
+  const last = useRef({ title, line });
+  if (shown) last.current = { title, line };
+  if (!presence.mounted) return null;
+  return (
+    <div
+      className={`card vault-missing-card${presence.closing ? ' closing' : ''}`}
+      role="status"
+      style={{ margin: '0 0 14px' }}
+    >
+      <h3 style={{ marginBottom: 4 }}>{last.current.title}</h3>
+      <p className="sub" style={{ marginTop: 0 }}>
+        {last.current.line}
+      </p>
+      <div className="vault-move-actions">
+        <button
+          type="button"
+          className="btn primary press-fb"
+          disabled={presence.closing}
+          onClick={onRetry}
+        >
+          {retry}
+        </button>
+        <button
+          type="button"
+          className="btn ghost press-fb"
+          disabled={presence.closing}
+          onClick={onChoose}
+        >
+          {choose}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// The desktop folder under This folder's row (Creative Studio 3a): where it
+// is, any line about it, and the actions that fit this computer. Open in
+// Obsidian shows only for a folder Obsidian already knows.
+function FolderBlock({ info }: { info: VaultDirInfo }) {
+  const showToast = useApp((s) => s.showToast);
+  return (
+    <div className="vault-folder-block">
+      <code className="vault-path" key={info.dir} title={info.dir}>
+        {info.display}
+      </code>
+      {info.warning ? (
+        <p className="hint vault-folder-line warn" role="status">
+          {vaultWarningLine(info.warning)}
+        </p>
+      ) : null}
+      {!info.exists ? (
+        <p className="hint vault-folder-line warn" role="status">
+          {VAULT_FOLDER_MISSING_LINE}
+        </p>
+      ) : (
+        <>
+          <div className="vault-folder-actions">
+            <button
+              type="button"
+              className="btn ghost press-fb vault-folder-action"
+              onClick={() =>
+                void revealVaultFolder().then((ok) => {
+                  if (!ok) showToast('That folder could not be opened right now.');
+                })
+              }
+            >
+              {vaultRevealLabel(info.os)}
+            </button>
+            {info.obsidian === 'vault' ? (
+              <button
+                type="button"
+                className="btn ghost press-fb vault-folder-action"
+                onClick={() => void openVaultInObsidian()}
+              >
+                {VAULT_OPEN_OBSIDIAN}
+              </button>
+            ) : null}
+          </div>
+          {info.obsidian === 'installed' ? (
+            <p className="hint vault-folder-line">{VAULT_OBSIDIAN_HOWTO}</p>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+// What a pick found, under the picker row (CX 1.4): where the vault is now,
+// the facts, at most one question, the lines that apply, and the ways to act
+// on the change. It arrives on fade-rise; an answer settles the facts in.
+function PickResult({
+  pick,
+  copy,
+  answered,
+  chatsOpen,
+  busy,
+  onChoose,
+  onMove,
+}: {
+  pick: Extract<VaultPickResult, { ok: true }>;
+  copy: ReturnType<typeof vaultPickResultCopy>;
+  answered: boolean;
+  chatsOpen: boolean;
+  busy: boolean;
+  onChoose: (choice: VaultRefineChoice | { to: 'stay' }) => void;
+  onMove: () => void;
+}) {
+  const picked = pick.info.display.split(/[\\/]/).filter(Boolean).pop() ?? pick.info.display;
+  const question = answered ? undefined : vaultFolderQuestion(picked, pick.survey);
+  const cloud = vaultCloudLine(pick.survey.cloud);
+  return (
+    <div className="vault-folder-block vault-pick-result" role="status">
+      <p className="vault-folder-line" style={{ fontWeight: 600 }}>
+        {copy.heading}
+      </p>
+      <p className="hint vault-folder-line" key={`facts:${answered}`}>
+        {vaultFolderFacts(pick.survey)}
+      </p>
+      {question ? (
+        <div className="vault-pick-question">
+          <p className="hint vault-folder-line">{question.line}</p>
+          <div className="sheet-actions" style={{ marginTop: 6 }}>
+            {question.choices.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                className={`btn ${c.tone} vault-provider press-fb`}
+                onClick={() => onChoose(c.choice)}
+              >
+                <span className="grow" style={{ textAlign: 'left' }}>
+                  {c.label}
+                  {c.sub ? (
+                    <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+                      {c.sub}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            ))}
+          </div>
+          {question.hint ? <p className="hint vault-folder-line">{question.hint}</p> : null}
+        </div>
+      ) : null}
+      {cloud ? <p className="hint vault-folder-line">{cloud}</p> : null}
+      {copy.large ? <p className="hint vault-folder-line">{copy.large}</p> : null}
+      {chatsOpen ? <p className="hint vault-folder-line">{VAULT_OPEN_CHATS_LINE}</p> : null}
+      {copy.move ? (
+        <button
+          type="button"
+          className="btn primary vault-provider press-fb"
+          disabled={busy}
+          onClick={onMove}
+        >
+          <span className="grow" style={{ textAlign: 'left' }}>
+            {copy.move.label}
+            <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+              {copy.move.sub}
+            </span>
+          </span>
+        </button>
+      ) : null}
+      {copy.back ? (
+        <p className="hint vault-folder-line">
+          <button
+            type="button"
+            className="linklike press-fb"
+            onClick={() => onChoose({ to: 'previous' })}
+          >
+            {copy.back.label}
+          </button>
+        </p>
+      ) : null}
     </div>
   );
 }

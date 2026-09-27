@@ -2086,3 +2086,50 @@ execution contract. Newest at the bottom.
   name with `ifAbsent` (the M0 rule), while a live save that finds its note
   gone on a closed note holds the text under Not saved. The compare ignores
   line endings and trailing spaces, so a spacing-only difference says so.
+- Creative Studio, Vault M1 (2026-09-27): the resolve sheet calls the sides
+  yours and the other version (a move: the one you moved and the one already
+  there), names no writer it cannot prove, shows a neutral compare, and
+  recommends Keep both; closing it defers and leaving the note keeps both; a
+  clean note reloads in place with 'Updated from elsewhere' and no toast; the
+  desktop move card sits at the Vault root until the person moves or keeps
+  the vault on this device, then never returns; the storage sheet shows This
+  folder's path with an open-folder button and Open in Obsidian only for a
+  folder Obsidian already knows, and Use a folder… repoints without copying;
+  the desktop Keep as plain files row is retired as a duplicate of This
+  folder.
+- CX, Vault M1 (2026-09-27): who lands on the folder is decided by what the
+  Local store holds (a new desktop vault is made on the folder, an empty
+  default Local one repoints with one toast, one with notes gets the card, a
+  vault the person placed is left alone and every move stamps `chosenAt`); a
+  declined card returns once, seven days on, only if the folder grew; a move
+  holds the room still; the picker refuses with a code whose words live in
+  the copy map, never refuses a synced folder, asks one question for a folder
+  in or around Obsidian vaults, walks a folder within 10,000 notes, 50,000
+  entries, or 3 s, reads Linked mentions on request above 1,000 notes, and a
+  missing folder locks writes without ever falling back to another folder.
+- **Vault M1 1.3 and 1.4 build calls (2026-09-27):** as in 1.1, Creative
+  Studio holds for copy and layout and CX for behavior. So the card reads
+  Creative Studio's words ("Keep it on this device", "Move to This folder")
+  but follows CX's return rule (once, after seven days, only if the folder
+  grew; a second decline is final), and its one return lead is CX's line
+  reworded to that button: "{folder} has N new notes since you kept your
+  vault on this device." A refused move from the card is said inside the
+  card with Try again (CX); from the storage sheet it stays a toast. The
+  task named the move-mode sheet, so a move with forked pairs opens it on its
+  own after the storage sheet's exit (Creative Studio 1d), not CX's fork
+  card. Refusals use Creative Studio's sentences keyed by CX's codes, shown
+  inline under the picker row with the macOS privacy button (CX), except
+  from the card, where the sheet is not open and a toast carries it; a list
+  failure other than a macOS denial reads "That folder could not be read."
+  The picker row is Creative Studio's "Use a folder…"; the result block is
+  CX's (heading, facts, one question, the sync line, the large-vault line,
+  the open-chats line only while a desktop chat is open, Go back, and from
+  This device the move), and its Bring action is not built until the CTO
+  signs off on `osc:vaultBringPrevious`. Text stashed in a folder the vault
+  no longer uses carries that folder on its stash entry and is held under
+  Not saved naming it, on its own entry id, instead of keying the stash by
+  folder; the folder's cached bodies are dropped on a repoint. Main never
+  creates a configured folder that has gone missing (only the default), so
+  a write there fails into the 0.4 stash. `saveGlobalConfig`'s writer now
+  keeps the file's mode (0o600 for a new file) and fsyncs before the rename;
+  `vault.dir` is an existing machine key, so no new key is classified.

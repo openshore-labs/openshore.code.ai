@@ -306,14 +306,30 @@ import { versionOf, type WriteGuard, type WriteResult } from '../lib/gitos/provi
 import {
   VAULT_GONE_REASON,
   VAULT_NO_COPY_NAME_REASON,
+  vaultEarlierFolderHeld,
+  vaultFolderOffer,
   vaultGoneToast,
+  vaultRepointToast,
   vaultLeaveToast,
   vaultReplayCopiesLine,
   vaultResolveToast,
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
-import { bridge, type DesktopStatus, type PendingUpdate } from '../lib/electronBridge.js';
+import {
+  bridge,
+  type DesktopStatus,
+  type PendingUpdate,
+  type VaultDirInfo,
+  type VaultPickResult,
+  type VaultRefineChoice,
+} from '../lib/electronBridge.js';
+import { chooseVaultFolder, refineVaultFolder, vaultFolderInfo } from '../lib/vaultFolder.js';
+import {
+  declineFolderMove,
+  shouldOfferFolderMove,
+  type VaultMoveOfferState,
+} from '../lib/vaultOffer.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   dataUnlockState,
@@ -388,6 +404,9 @@ export interface AppSettings {
   /** gitOS resources: repos and vaults, each pointing at a storage provider.
    *  Metadata only; the bytes live behind the provider seam. */
   gitosResources?: GitosResource[];
+  /** The desktop's one-time move card (Vault M1 1.3): what was declined and
+   *  when. Device local, never synced. Cleared by any vault move. */
+  vaultMoveOffer?: VaultMoveOfferState;
   /** Whether the small built-in guide (Harbor Lite) has been downloaded to this device. */
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
@@ -611,6 +630,10 @@ export interface VaultHeldDraft {
    *  it, or team text set aside after its session ended), so the text lasts
    *  only until the app closes. */
   durable: boolean;
+  /** The desktop folder only: the folder it was typed in, when that is not
+   *  the one the vault uses now (CTO F7.6), and how it reads. */
+  folder?: string;
+  folderDisplay?: string;
 }
 
 /** The held drafts the person signed in now may see: every personal one, and
@@ -1033,6 +1056,15 @@ interface AppState {
   /** A note that changed somewhere else under unsaved edits, waiting for the
    *  person's choice (the resolve sheet). At most one at a time. */
   vaultConflict?: VaultConflict;
+  /** The desktop vault folder as main reports it (Vault M1 1.4): where it
+   *  is, whether it is there, and whether Obsidian opens it. Undefined off
+   *  the desktop or before main answered. */
+  vaultFolder?: VaultDirInfo;
+  /** A vault move is running: the room holds still (nothing that writes). */
+  vaultMoving?: boolean;
+  /** The vault on screen has finished at least one list since it was last
+   *  pointed somewhere, so an empty list means empty, never "still opening". */
+  vaultListed?: boolean;
   /** A folder the Vault list should show next, set when the store closes a
    *  note on its own (it was moved or deleted somewhere else). The screen
    *  takes it once and clears it. */
@@ -1473,6 +1505,35 @@ interface AppState {
    *  the resource. Refused (ok false, nothing repointed) when the target is
    *  not usable or any source note could not be read. */
   vaultMoveTo(providerId: StorageProviderId): Promise<VaultMoveResult>;
+  /** Ask main where the desktop vault folder is (vaultFolder). */
+  vaultLoadFolder(): Promise<VaultDirInfo | undefined>;
+  /** Run the system folder picker in main (a pick only repoints). On a
+   *  change, text stashed against the old folder is held under Not saved and
+   *  the vault re-lists. Undefined off the desktop. */
+  vaultChooseFolder(): Promise<VaultPickResult | undefined>;
+  /** One of the choices a pick's result offered (CX 1.4), then the same. */
+  vaultRefineFolder(choice: VaultRefineChoice): Promise<VaultPickResult | undefined>;
+  /** Whether a chat on this computer's engine is open now, so the storage
+   *  sheet says open chats keep their old folder only when one is (CX 1.4). */
+  vaultDesktopChatOpen(): boolean;
+  /** Whether the one-time desktop move card shows now (Vault M1 1.3). */
+  vaultFolderOfferShown(): boolean;
+  /** The card's quiet button: keep the vault on this device. */
+  vaultDeclineFolderMove(): Promise<void>;
+  /** Both notes of a move's forked pair, read from the folder: the one
+   *  already there (`from`) and the one moved beside it (`to`). */
+  vaultReadForkPair(pair: {
+    from: string;
+    to: string;
+  }): Promise<{ there: StoredFile; moved: StoredFile } | undefined>;
+  /** Settle one forked pair: 'mine' gives the name to the moved note (then
+   *  removes its copy), 'theirs' keeps the one already there (removes the
+   *  moved copy). Nothing is written unless both are still what was shown. */
+  vaultSettleFork(
+    pair: { from: string; to: string },
+    choice: 'mine' | 'theirs',
+    shown: { there: StoredFile; moved: StoredFile },
+  ): Promise<{ ok: boolean; changed?: boolean; partial?: boolean }>;
   /** Run the Google Drive OAuth connect flow. Never throws. */
   connectGdriveAccount(): Promise<{ ok: boolean; error?: string }>;
   /** Revoke and forget the connected Google account. */
@@ -3363,6 +3424,11 @@ export const useApp = create<AppState>((set, get, api) => {
     rev?: number;
     /** When it was stashed, on this device's clock (ordering only). */
     at: string;
+    /** The desktop folder only: the folder the text was typed in (its
+     *  realpath) and how it reads, so text typed before the vault was
+     *  pointed at another folder never replays into the new one (CTO F7.6). */
+    folder?: string;
+    folderDisplay?: string;
   };
   type VaultPending = Record<string, VaultPendingEntry>;
   // A stash from before entries named their provider cannot be matched to one
@@ -3511,10 +3577,17 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     reason: string,
-    opts: { at?: string; memoryOnly?: boolean } = {},
+    opts: { at?: string; memoryOnly?: boolean; folder?: string; folderDisplay?: string } = {},
   ): Promise<boolean> {
     const durable = !opts.memoryOnly && speaksNow(t);
-    const h = { ...heldDraft(t, path, text, reason, opts.at), durable };
+    const h: VaultHeldDraft = {
+      ...heldDraft(t, path, text, reason, opts.at),
+      durable,
+      // Text from an earlier folder keeps its own entry, so a later hold of
+      // the same path in the folder used now never replaces it.
+      ...(opts.folder ? { id: `${vaultKey(t, path)}::${opts.folder}`, folder: opts.folder } : {}),
+      ...(opts.folderDisplay ? { folderDisplay: opts.folderDisplay } : {}),
+    };
     let landed = false;
     try {
       landed = await editVaultHeld(keepNewest(h), durable);
@@ -3578,6 +3651,281 @@ export const useApp = create<AppState>((set, get, api) => {
     logEvent('vault_team_text_unsent');
   }
 
+  // Re-list the desktop folder when it is the vault on screen.
+  async function refreshFolderList(): Promise<void> {
+    const t = vaultTarget();
+    if (!t || t.providerId !== 'files' || get().vaultScope !== 'personal') return;
+    const files = await listVaultNotes(t).catch(() => undefined);
+    if (files && isActiveVault(t)) set({ vaultFiles: files });
+  }
+
+  // After main repointed the vault folder (a pick, or a choice after one):
+  // text stashed against the old folder is held under Not saved naming it,
+  // the folder's cached bodies are dropped, and the room re-lists from the
+  // new folder, saying it is opening until the list lands (CTO F7.6, CX 1.4).
+  async function afterVaultPick(
+    result: VaultPickResult,
+    before: string | undefined,
+  ): Promise<void> {
+    if (!result.ok) {
+      if ('same' in result) set({ vaultFolder: result.info });
+      logEvent('vault_folder_pick', {
+        result: 'cancelled' in result ? 'cancelled' : 'same' in result ? 'same' : result.refused,
+      });
+      return;
+    }
+    set({ vaultFolder: result.info });
+    logEvent('vault_folder_pick', {
+      result: 'ok',
+      obsidian: result.survey.obsidian,
+      inside: Boolean(result.survey.inside),
+      holds: result.survey.holds?.length ?? 0,
+      cloud: result.survey.cloud ?? 'none',
+    });
+    if (before === result.info.dir) return;
+    for (const key of [...vaultBodyCache.keys()]) {
+      if (key.startsWith('files::')) vaultBodyCache.delete(key);
+    }
+    await holdOtherFolderDrafts(result.info.dir, true);
+    if (vaultProviderId(get().settings) === 'files') {
+      const open = get().vaultNote;
+      if (open && get().vaultScope === 'personal') {
+        // The open note belonged to the old folder.
+        await leaveVaultConflict();
+        vaultLiveDraft = undefined;
+        set({ vaultNote: undefined });
+      }
+      set({ vaultListed: false, vaultFiles: [] });
+    }
+    await get().vaultRefresh();
+  }
+
+  // CX 1.3 (b): a desktop personal vault on Local by default, never by the
+  // person's choice, whose list succeeded empty and which holds no stashed or
+  // held text, has nothing to move: it points at the folder with one toast.
+  // A failed list never counts as empty. True when it repointed.
+  async function repointEmptyLocal(t: VaultTarget, files: StoredFileMeta[]): Promise<boolean> {
+    if (files.length || t.providerId !== 'local' || t.resourceId !== VAULT_RESOURCE_ID) {
+      return false;
+    }
+    const s = get();
+    if (!isDesktop() || s.vaultScope !== 'personal' || s.vaultMoving) return false;
+    const folder = s.vaultFolder;
+    if (!folder?.exists) return false;
+    const row = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+    if (!row || row.chosenAt) return false;
+    const mine = (e: { providerId: string; resourceId: string }) =>
+      e.providerId === 'local' && e.resourceId === VAULT_RESOURCE_ID;
+    if (s.vaultHeld.some(mine)) return false;
+    const stashed = await editVaultPending((p) => Object.values(p).some(mine)).catch(() => true);
+    if (stashed) return false;
+    const resources = (s.settings.gitosResources ?? []).map((r) =>
+      r.id === VAULT_RESOURCE_ID ? { ...r, providerId: 'files' as const } : r,
+    );
+    await s.saveSettings({ gitosResources: resources });
+    logEvent('vault_repointed_empty');
+    s.showToast(vaultRepointToast(folder.display));
+    set({ vaultListed: false });
+    await get().vaultRefresh();
+    return true;
+  }
+
+  // The move itself (vaultMoveTo): copy every note, check the target holds
+  // them all, then repoint.
+  async function moveVaultInner(providerId: StorageProviderId): Promise<VaultMoveResult> {
+    const refused = (
+      reason: VaultMoveResult['reason'],
+      skipped: string[] = [],
+      left: string[] = [],
+    ): VaultMoveResult => ({
+      ok: false,
+      moved: [],
+      skipped,
+      forked: [],
+      ...(left.length ? { left } : {}),
+      reason,
+    });
+    // Moving is about where the PERSONAL vault's bytes live. The team vault is
+    // a separate shared resource, never a move target, so reject it outright
+    // and read the source through the personal provider (not the active
+    // scope's), so a move initiated while viewing the team vault is still safe.
+    // Google Drive takes no new vault in v1 (D1): a move there would write
+    // through the loss path that made existing Drive vaults read-only.
+    if (providerId === 'org' || vaultReadOnlyReason(providerId)) return refused('unavailable');
+    const from = vaultProviderId(get().settings);
+    if (providerId === from) return { ok: true, moved: [], skipped: [], forked: [] };
+    const target = providerFor(providerId);
+    const source = providerFor(from);
+    if (!target || !source || !(await probeReady(providerId))) return refused('unavailable');
+    const home: VaultTarget = {
+      provider: source,
+      providerId: from,
+      resourceId: VAULT_RESOURCE_ID,
+    };
+    // Drafts stranded offline belong to the old home: put them back there
+    // first (with the usual never-over-newer rule), so the copy below
+    // carries them. A read-only home holds them instead.
+    await replayVaultPending(home);
+    // Read every note before writing anything. Only notes move (`.md`
+    // outside dot folders, so `.obsidian/` and attachments stay put), and a
+    // note that is still downloading, reads back empty against a non-empty
+    // listing, or fails to read refuses the whole move: repointing without
+    // it would drop it from the vault the person sees (data-14).
+    let files: StoredFileMeta[];
+    try {
+      files = await listVaultNotes(home);
+    } catch {
+      return refused('unreadable');
+    }
+    const notes: Array<{ path: string; text: string; updatedAt: string }> = [];
+    const skipped: string[] = [];
+    for (const f of files) {
+      if (f.evicted) {
+        skipped.push(f.path);
+        continue;
+      }
+      try {
+        const note = await source.read(VAULT_RESOURCE_ID, f.path);
+        if (!note || (note.text === '' && f.size > 0)) skipped.push(f.path);
+        else notes.push({ path: f.path, text: note.text, updatedAt: f.updatedAt });
+      } catch {
+        skipped.push(f.path);
+      }
+    }
+    if (skipped.length) return refused('unreadable', skipped);
+    // Copy every note across before repointing, so a mid-move failure leaves
+    // the source vault intact. The source bytes are left in place as a
+    // safety copy; a later cleanup pass can reclaim them.
+    const landed: string[] = [];
+    // The files this attempt wrote where the target held nothing. A refused
+    // move takes them back (never a file that was there before), so its
+    // "nothing moved" is true and a retry starts clean: a stale copy left
+    // here would otherwise keep the note's name on the retry (copy-1).
+    const created: string[] = [];
+    const forked: VaultMoveResult['forked'] = [];
+    const takeBack = async (): Promise<string[]> => {
+      const left: string[] = [];
+      for (const p of created) {
+        try {
+          await target.remove(VAULT_RESOURCE_ID, p);
+        } catch {
+          left.push(p);
+        }
+      }
+      return left;
+    };
+    try {
+      // A move never overwrites a note already at the target, whatever its
+      // age: the target may be a folder the agent, Obsidian, or another
+      // device already writes (COR-9, and the reason a desktop move to "This
+      // folder" is safe). The same text is already there, so nothing is
+      // written; different text lands beside it under a conflict name that
+      // is itself free on the target.
+      const taken = new Set(
+        (await target.list(VAULT_RESOURCE_ID)).map((f) => f.path.toLowerCase()),
+      );
+      const when = new Date();
+      const at = { provider: target, resourceId: VAULT_RESOURCE_ID };
+      for (const note of notes) {
+        let n = 0;
+        // The next conflict name the target has not shown.
+        const nextFree = (): string => {
+          let dest: string;
+          do dest = vaultConflictCopyPath(note.path, when, ++n);
+          while (taken.has(dest.toLowerCase()));
+          return dest;
+        };
+        let dest = note.path;
+        if (taken.has(note.path.toLowerCase())) {
+          const theirs = await target.read(VAULT_RESOURCE_ID, note.path);
+          if (theirs?.text === note.text) {
+            landed.push(note.path);
+            continue;
+          }
+          dest = nextFree();
+        }
+        // Every copy is a create (ifAbsent): a name the listing did not
+        // show but the target holds (a writer landing mid-move) is never
+        // replaced; the same text there is done, different text forks.
+        let saved: StoredFile | undefined;
+        let same = false;
+        for (let tries = 0; tries < 20; tries++) {
+          const r = await putVaultNote(at, dest, note.text, { ifAbsent: true });
+          if (r.ok) {
+            saved = r.file;
+            break;
+          }
+          if (r.conflict !== 'exists') mustLand(r);
+          taken.add(dest.toLowerCase());
+          if (r.theirs?.text === note.text) {
+            same = true;
+            break;
+          }
+          dest = nextFree();
+        }
+        if (same) {
+          landed.push(dest);
+          continue;
+        }
+        if (!saved) throw new Error('No free name for the moved copy.');
+        created.push(saved.path);
+        taken.add(saved.path.toLowerCase());
+        landed.push(saved.path);
+        if (saved.path !== note.path) forked.push({ from: note.path, to: saved.path });
+      }
+    } catch {
+      return refused('copy-failed', [], await takeBack());
+    }
+    // Check the target really holds every copy before the vault points at
+    // it, note for note (a stricter check than matching counts), or the
+    // move is refused and the vault stays where it was.
+    let there: StoredFileMeta[];
+    try {
+      there = (await target.list(VAULT_RESOURCE_ID)).filter((f) => isNotePath(f.path));
+    } catch {
+      return refused('unverified', [], await takeBack());
+    }
+    const onTarget = new Set(there.map((f) => f.path));
+    const missing = landed.filter((p) => !onTarget.has(p));
+    if (missing.length) return refused('unverified', missing, await takeBack());
+    // Every move is the person's own choice, stamped so a storage they
+    // picked is never repointed or offered a move again (CX 1.3), and any
+    // move ends the desktop move offer.
+    const chosenAt = new Date().toISOString();
+    const current = get().settings.gitosResources ?? [];
+    const resources = current.some((r) => r.id === VAULT_RESOURCE_ID)
+      ? current.map((r) => (r.id === VAULT_RESOURCE_ID ? { ...r, providerId, chosenAt } : r))
+      : [
+          ...current,
+          {
+            id: VAULT_RESOURCE_ID,
+            name: 'Vault',
+            kind: 'vault' as const,
+            providerId,
+            createdAt: chosenAt,
+            chosenAt,
+          },
+        ];
+    await get().saveSettings({ gitosResources: resources, vaultMoveOffer: undefined });
+    // A draft still stashed against the old home never replays onto the new
+    // one, and never waits there unseen: it is held for the person.
+    const left = await editVaultPending((p) => {
+      const out: VaultPendingEntry[] = [];
+      for (const [key, e] of Object.entries(p)) {
+        if (e.providerId !== from || e.resourceId !== VAULT_RESOURCE_ID) continue;
+        out.push(e);
+        delete p[key];
+      }
+      return out;
+    }).catch(() => [] as VaultPendingEntry[]);
+    const reason =
+      'Saved offline before the vault moved, so it was not replayed onto the new storage. Copy it into the note if you still need it.';
+    for (const e of left) await holdVaultDraft(e, e.path, e.text, reason, { at: e.at });
+    if (get().vaultScope === 'personal') set({ vaultFiles: there });
+    logEvent('vault_moved', { to: providerId, forked: forked.length });
+    return { ok: true, moved: notes.map((n) => n.path), skipped: [], forked };
+  }
+
   function pendingEntry(
     t: VaultTargetRef,
     path: string,
@@ -3587,6 +3935,7 @@ export const useApp = create<AppState>((set, get, api) => {
   ): VaultPendingEntry {
     const { providerId, resourceId } = t;
     const owner = providerId === 'org' ? t.owner : undefined;
+    const folder = providerId === 'files' ? get().vaultFolder : undefined;
     return {
       providerId,
       resourceId,
@@ -3596,7 +3945,35 @@ export const useApp = create<AppState>((set, get, api) => {
       ...(base ? { base } : {}),
       ...(base && rev !== undefined ? { rev } : {}),
       at: new Date().toISOString(),
+      ...(folder ? { folder: folder.dir, folderDisplay: folder.display } : {}),
     };
+  }
+
+  // Text stashed against the desktop folder while the vault used another one
+  // (CTO F7.6): it never replays into the folder the vault uses now. It goes
+  // under Not saved, naming the folder it was typed in. `all` also takes
+  // entries stashed before they carried a folder, which is right at the
+  // moment of a repoint, when every such entry belongs to the folder just left.
+  async function holdOtherFolderDrafts(dir: string, all: boolean): Promise<void> {
+    const other = await editVaultPending((p) => {
+      const out: VaultPendingEntry[] = [];
+      for (const [key, e] of Object.entries(p)) {
+        if (e.providerId !== 'files') continue;
+        if (e.folder === dir || (!all && e.folder === undefined)) continue;
+        out.push(e);
+        delete p[key];
+      }
+      return out;
+    }).catch(() => [] as VaultPendingEntry[]);
+    for (const e of other) {
+      const display = e.folderDisplay ?? e.folder ?? 'the earlier folder';
+      await holdVaultDraft(e, e.path, e.text, vaultEarlierFolderHeld(display).reason, {
+        at: e.at,
+        folder: e.folder,
+        folderDisplay: display,
+      });
+    }
+    if (other.length) set({ vaultError: 'held' });
   }
 
   // A write failed. A permanent refusal is held, since retrying cannot fix
@@ -3758,6 +4135,8 @@ export const useApp = create<AppState>((set, get, api) => {
   // them all, and anything still failing stays for the next attempt. Never
   // throws: a replay is always a side trip after a success.
   async function replayVaultPending(t: VaultTarget): Promise<void> {
+    const folderNow = t.providerId === 'files' ? get().vaultFolder?.dir : undefined;
+    if (folderNow) await holdOtherFolderDrafts(folderNow, false);
     let mine: VaultPendingEntry[];
     try {
       // A note with a choice open is the person's to settle: its stashed
@@ -7200,7 +7579,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // Leaving the note with a choice open keeps both (CS 1c).
       await leaveVaultConflict();
       vaultLiveDraft = undefined;
-      set({ vaultScope: scope, vaultNote: undefined, vaultFiles: [] });
+      set({ vaultScope: scope, vaultNote: undefined, vaultFiles: [], vaultListed: false });
       logEvent('vault_scope', { scope });
       await get().vaultRefresh();
     },
@@ -7233,12 +7612,17 @@ export const useApp = create<AppState>((set, get, api) => {
       // registry when their wiring lands.
       if (get().vaultScope === 'personal') {
         const resources = get().settings.gitosResources ?? [];
+        // On the desktop the vault is the folder the agent, routines, and
+        // Obsidian share (Vault M1 1.3): main says where it is, and a brand
+        // new personal vault is made there, with no card and no toast.
+        const desk = isDesktop() && (await probeReady('files').catch(() => false));
+        if (desk) await get().vaultLoadFolder();
         if (!resources.some((r) => r.id === VAULT_RESOURCE_ID)) {
           const vault: GitosResource = {
             id: VAULT_RESOURCE_ID,
             name: 'Vault',
             kind: 'vault',
-            providerId: 'local',
+            providerId: desk ? 'files' : 'local',
             createdAt: new Date().toISOString(),
           };
           await get().saveSettings({ gitosResources: [...resources, vault] });
@@ -7248,7 +7632,7 @@ export const useApp = create<AppState>((set, get, api) => {
       await loadVaultHeld();
       const target = vaultTarget();
       if (!target) {
-        set({ vaultFiles: [], vaultError: undefined });
+        set({ vaultFiles: [], vaultError: undefined, vaultListed: true });
         return;
       }
       let files: StoredFileMeta[];
@@ -7258,19 +7642,24 @@ export const useApp = create<AppState>((set, get, api) => {
         // Keep the last-known file list so the screen can show an offline
         // state rather than the first-run "empty vault" greeting over notes
         // that really exist.
-        set({ vaultError: 'load' });
+        set({ vaultError: 'load', vaultListed: true });
         // A Drive vault with no Google account on this device fails for want
         // of the account, not the connection: its read-only card says so, and
         // this toast would blame the network.
         const driveGone =
           target.providerId === 'gdrive' && !(await isGdriveConnected().catch(() => false));
-        if (!driveGone) {
+        // A desktop folder that is not there has its own card, which says so.
+        const folderGone = target.providerId === 'files' && get().vaultFolder?.exists === false;
+        if (!driveGone && !folderGone) {
           get().showToast('Could not reach your vault storage. Showing the last loaded notes.');
         }
         return;
       }
       if (!isActiveVault(target)) return;
-      set({ vaultFiles: files, vaultError: undefined });
+      set({ vaultFiles: files, vaultError: undefined, vaultListed: true });
+      // An empty default Local vault on the desktop has nothing to move, so
+      // it simply points at the folder (CX 1.3 b).
+      if (await repointEmptyLocal(target, files)) return;
       // The list came back, so the provider is reachable: flush any drafts
       // stranded by an earlier offline write.
       await replayVaultPending(target);
@@ -7744,192 +8133,119 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultMoveTo(providerId) {
-      const refused = (
-        reason: VaultMoveResult['reason'],
-        skipped: string[] = [],
-        left: string[] = [],
-      ): VaultMoveResult => ({
-        ok: false,
-        moved: [],
-        skipped,
-        forked: [],
-        ...(left.length ? { left } : {}),
-        reason,
+      // The room holds still while notes move (CX 1.3): nothing that writes.
+      set({ vaultMoving: true });
+      try {
+        return await moveVaultInner(providerId);
+      } finally {
+        set({ vaultMoving: false });
+      }
+    },
+
+    async vaultLoadFolder() {
+      const info = await vaultFolderInfo();
+      if (info) set({ vaultFolder: info });
+      return info;
+    },
+
+    async vaultChooseFolder() {
+      const before = get().vaultFolder?.dir;
+      const result = await chooseVaultFolder();
+      if (result) await afterVaultPick(result, before);
+      return result;
+    },
+
+    async vaultRefineFolder(choice) {
+      const before = get().vaultFolder?.dir;
+      const result = await refineVaultFolder(choice);
+      if (result) await afterVaultPick(result, before);
+      return result;
+    },
+
+    vaultDesktopChatOpen() {
+      return Object.entries(get().conversations).some(
+        ([id, c]) => c.source.kind === 'desktop' && hasLiveDriver(id),
+      );
+    },
+
+    vaultFolderOfferShown() {
+      const s = get();
+      if (!isDesktop() || s.vaultScope !== 'personal' || s.vaultMoving) return false;
+      const row = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+      if (!row || row.providerId !== 'local' || row.chosenAt) return false;
+      const folder = s.vaultFolder;
+      if (!folder?.exists || !s.vaultListed || s.vaultError === 'load') return false;
+      if (!s.vaultFiles.length) return false;
+      return shouldOfferFolderMove(s.settings.vaultMoveOffer, Date.now(), folder.count);
+    },
+
+    async vaultDeclineFolderMove() {
+      const s = get();
+      await s.saveSettings({
+        vaultMoveOffer: declineFolderMove(
+          s.settings.vaultMoveOffer,
+          Date.now(),
+          s.vaultFolder?.count,
+        ),
       });
-      // Moving is about where the PERSONAL vault's bytes live. The team vault is
-      // a separate shared resource, never a move target, so reject it outright
-      // and read the source through the personal provider (not the active
-      // scope's), so a move initiated while viewing the team vault is still safe.
-      // Google Drive takes no new vault in v1 (D1): a move there would write
-      // through the loss path that made existing Drive vaults read-only.
-      if (providerId === 'org' || vaultReadOnlyReason(providerId)) return refused('unavailable');
-      const from = vaultProviderId(get().settings);
-      if (providerId === from) return { ok: true, moved: [], skipped: [], forked: [] };
-      const target = providerFor(providerId);
-      const source = providerFor(from);
-      if (!target || !source || !(await probeReady(providerId))) return refused('unavailable');
-      const home: VaultTarget = {
-        provider: source,
-        providerId: from,
-        resourceId: VAULT_RESOURCE_ID,
-      };
-      // Drafts stranded offline belong to the old home: put them back there
-      // first (with the usual never-over-newer rule), so the copy below
-      // carries them. A read-only home holds them instead.
-      await replayVaultPending(home);
-      // Read every note before writing anything. Only notes move (`.md`
-      // outside dot folders, so `.obsidian/` and attachments stay put), and a
-      // note that is still downloading, reads back empty against a non-empty
-      // listing, or fails to read refuses the whole move: repointing without
-      // it would drop it from the vault the person sees (data-14).
-      let files: StoredFileMeta[];
+      logEvent('vault_move_offer', { action: 'not_now' });
+      s.showToast(vaultFolderOffer(s.vaultFiles.length, undefined).declineToast);
+    },
+
+    async vaultReadForkPair(pair) {
+      const folder = providerFor('files');
+      if (!folder) return undefined;
       try {
-        files = await listVaultNotes(home);
+        const [there, moved] = await Promise.all([
+          folder.read(VAULT_RESOURCE_ID, pair.from),
+          folder.read(VAULT_RESOURCE_ID, pair.to),
+        ]);
+        return there && moved ? { there, moved } : undefined;
       } catch {
-        return refused('unreadable');
+        return undefined;
       }
-      const notes: Array<{ path: string; text: string; updatedAt: string }> = [];
-      const skipped: string[] = [];
-      for (const f of files) {
-        if (f.evicted) {
-          skipped.push(f.path);
-          continue;
-        }
+    },
+
+    async vaultSettleFork(pair, choice, shown) {
+      const folder = providerFor('files');
+      if (!folder) return { ok: false };
+      const at = { provider: folder, resourceId: VAULT_RESOURCE_ID };
+      // The moved copy is removed only while it still holds exactly the text
+      // that was moved, so nothing written to it since is ever deleted.
+      const removeMovedCopy = async (): Promise<'gone' | 'changed' | 'failed'> => {
         try {
-          const note = await source.read(VAULT_RESOURCE_ID, f.path);
-          if (!note || (note.text === '' && f.size > 0)) skipped.push(f.path);
-          else notes.push({ path: f.path, text: note.text, updatedAt: f.updatedAt });
+          const now = await folder.read(VAULT_RESOURCE_ID, pair.to);
+          if (!now) return 'gone';
+          if (now.text !== shown.moved.text) return 'changed';
+          await folder.remove(VAULT_RESOURCE_ID, pair.to);
+          return 'gone';
         } catch {
-          skipped.push(f.path);
+          return 'failed';
         }
-      }
-      if (skipped.length) return refused('unreadable', skipped);
-      // Copy every note across before repointing, so a mid-move failure leaves
-      // the source vault intact. The source bytes are left in place as a
-      // safety copy; a later cleanup pass can reclaim them.
-      const landed: string[] = [];
-      // The files this attempt wrote where the target held nothing. A refused
-      // move takes them back (never a file that was there before), so its
-      // "nothing moved" is true and a retry starts clean: a stale copy left
-      // here would otherwise keep the note's name on the retry (copy-1).
-      const created: string[] = [];
-      const forked: VaultMoveResult['forked'] = [];
-      const takeBack = async (): Promise<string[]> => {
-        const left: string[] = [];
-        for (const p of created) {
-          try {
-            await target.remove(VAULT_RESOURCE_ID, p);
-          } catch {
-            left.push(p);
-          }
-        }
-        return left;
       };
-      try {
-        // A move never overwrites a note already at the target, whatever its
-        // age: the target may be a folder the agent, Obsidian, or another
-        // device already writes (COR-9, and the reason a desktop move to "This
-        // folder" is safe). The same text is already there, so nothing is
-        // written; different text lands beside it under a conflict name that
-        // is itself free on the target.
-        const taken = new Set(
-          (await target.list(VAULT_RESOURCE_ID)).map((f) => f.path.toLowerCase()),
-        );
-        const when = new Date();
-        const at = { provider: target, resourceId: VAULT_RESOURCE_ID };
-        for (const note of notes) {
-          let n = 0;
-          // The next conflict name the target has not shown.
-          const nextFree = (): string => {
-            let dest: string;
-            do dest = vaultConflictCopyPath(note.path, when, ++n);
-            while (taken.has(dest.toLowerCase()));
-            return dest;
-          };
-          let dest = note.path;
-          if (taken.has(note.path.toLowerCase())) {
-            const theirs = await target.read(VAULT_RESOURCE_ID, note.path);
-            if (theirs?.text === note.text) {
-              landed.push(note.path);
-              continue;
-            }
-            dest = nextFree();
-          }
-          // Every copy is a create (ifAbsent): a name the listing did not
-          // show but the target holds (a writer landing mid-move) is never
-          // replaced; the same text there is done, different text forks.
-          let saved: StoredFile | undefined;
-          let same = false;
-          for (let tries = 0; tries < 20; tries++) {
-            const r = await putVaultNote(at, dest, note.text, { ifAbsent: true });
-            if (r.ok) {
-              saved = r.file;
-              break;
-            }
-            if (r.conflict !== 'exists') mustLand(r);
-            taken.add(dest.toLowerCase());
-            if (r.theirs?.text === note.text) {
-              same = true;
-              break;
-            }
-            dest = nextFree();
-          }
-          if (same) {
-            landed.push(dest);
-            continue;
-          }
-          if (!saved) throw new Error('No free name for the moved copy.');
-          created.push(saved.path);
-          taken.add(saved.path.toLowerCase());
-          landed.push(saved.path);
-          if (saved.path !== note.path) forked.push({ from: note.path, to: saved.path });
+      if (choice === 'theirs') {
+        const r = await removeMovedCopy();
+        if (r === 'changed') return { ok: false, changed: true };
+        if (r === 'failed') return { ok: false };
+      } else {
+        let written: WriteResult;
+        try {
+          written = await putVaultNote(at, pair.from, shown.moved.text, {
+            ifMatch: versionOf(shown.there),
+          });
+        } catch {
+          return { ok: false };
         }
-      } catch {
-        return refused('copy-failed', [], await takeBack());
-      }
-      // Check the target really holds every copy before the vault points at
-      // it, note for note (a stricter check than matching counts), or the
-      // move is refused and the vault stays where it was.
-      let there: StoredFileMeta[];
-      try {
-        there = (await target.list(VAULT_RESOURCE_ID)).filter((f) => isNotePath(f.path));
-      } catch {
-        return refused('unverified', [], await takeBack());
-      }
-      const onTarget = new Set(there.map((f) => f.path));
-      const missing = landed.filter((p) => !onTarget.has(p));
-      if (missing.length) return refused('unverified', missing, await takeBack());
-      const current = get().settings.gitosResources ?? [];
-      const resources = current.some((r) => r.id === VAULT_RESOURCE_ID)
-        ? current.map((r) => (r.id === VAULT_RESOURCE_ID ? { ...r, providerId } : r))
-        : [
-            ...current,
-            {
-              id: VAULT_RESOURCE_ID,
-              name: 'Vault',
-              kind: 'vault' as const,
-              providerId,
-              createdAt: new Date().toISOString(),
-            },
-          ];
-      await get().saveSettings({ gitosResources: resources });
-      // A draft still stashed against the old home never replays onto the new
-      // one, and never waits there unseen: it is held for the person.
-      const left = await editVaultPending((p) => {
-        const out: VaultPendingEntry[] = [];
-        for (const [key, e] of Object.entries(p)) {
-          if (e.providerId !== from || e.resourceId !== VAULT_RESOURCE_ID) continue;
-          out.push(e);
-          delete p[key];
+        if (!written.ok) return { ok: false, changed: true };
+        const r = await removeMovedCopy();
+        if (r !== 'gone') {
+          await refreshFolderList();
+          return { ok: true, partial: true };
         }
-        return out;
-      }).catch(() => [] as VaultPendingEntry[]);
-      const reason =
-        'Saved offline before the vault moved, so it was not replayed onto the new storage. Copy it into the note if you still need it.';
-      for (const e of left) await holdVaultDraft(e, e.path, e.text, reason, { at: e.at });
-      if (get().vaultScope === 'personal') set({ vaultFiles: there });
-      logEvent('vault_moved', { to: providerId, forked: forked.length });
-      return { ok: true, moved: notes.map((n) => n.path), skipped: [], forked };
+      }
+      await refreshFolderList();
+      logEvent('vault_fork_settled', { choice });
+      return { ok: true };
     },
 
     async connectGdriveAccount() {

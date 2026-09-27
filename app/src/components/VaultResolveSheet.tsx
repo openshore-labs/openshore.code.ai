@@ -14,6 +14,10 @@
 // - Nothing claims success early: every row waits while a choice runs, the
 //   sheet closes only once it lands, and a failure says so and re-enables.
 //
+// In move mode (Creative Studio 1d) the same sheet steps through a move's
+// forked pairs, "1 of 3": the one you moved against the one already there.
+// Both files exist, so closing keeps both, and the sheet says so.
+//
 // Presentational: the Vault screen owns the store calls and passes the result
 // back through `busy` and `failed`. Every string is in lib/vaultCopy.ts.
 import { useEffect, useMemo, useState } from 'react';
@@ -23,6 +27,7 @@ import { SheetHead } from './SheetHead.js';
 import {
   VAULT_RESOLVE_AGAIN,
   VAULT_RESOLVE_SAME,
+  vaultMoveResolveCopy,
   vaultResolveCopy,
   vaultResolveWhen,
   type VaultResolveMode,
@@ -81,11 +86,15 @@ export function VaultResolveSheet({
   again,
   busy,
   failed,
+  move,
   onChoose,
   onClose,
 }: {
   open: boolean;
-  mode: VaultResolveMode;
+  mode: VaultResolveMode | 'move';
+  /** Move mode: which pair of how many, the moved note's name now, and
+   *  whether the last choice landed only in part. */
+  move?: { i: number; n: number; copyTitle: string; partial?: boolean };
   /** The note's title. */
   title: string;
   /** The person's text now. */
@@ -104,20 +113,35 @@ export function VaultResolveSheet({
 }) {
   const [tab, setTab] = useState<Tab>('changes');
   const [armed, setArmed] = useState<Choice | undefined>();
-  const theirsKey = theirs?.version ?? theirs?.updatedAt ?? '';
-  // A new other version, or the sheet opening again, starts unarmed.
+  const theirsKey = `${move?.i ?? ''}:${theirs?.version ?? theirs?.updatedAt ?? ''}`;
+  const compares = mode !== 'missing';
+  // A new other version, a new pair, or the sheet opening again, starts
+  // unarmed.
   useEffect(() => {
     setArmed(undefined);
   }, [theirsKey, open, mode]);
+  // Each pair opens on its Changes tab.
+  useEffect(() => {
+    setTab('changes');
+  }, [move?.i]);
 
   const when =
     mode === 'edit' && theirs && loadedAt !== undefined
       ? vaultResolveWhen(theirs.updatedAt, loadedAt)
       : undefined;
-  const copy = vaultResolveCopy(mode, { title, when });
+  const moveCopy =
+    mode === 'move'
+      ? vaultMoveResolveCopy({
+          title,
+          copyTitle: move?.copyTitle ?? title,
+          i: move?.i ?? 1,
+          n: move?.n ?? 1,
+        })
+      : undefined;
+  const copy = moveCopy ?? vaultResolveCopy(mode === 'move' ? 'edit' : mode, { title, when });
   const lines = useMemo(
-    () => (mode === 'edit' && theirs ? compareLines(theirs.text, mine) : []),
-    [mode, theirs, mine],
+    () => (compares && theirs ? compareLines(theirs.text, mine) : []),
+    [compares, theirs, mine],
   );
 
   const pick = (row: VaultResolveRow) => {
@@ -131,7 +155,7 @@ export function VaultResolveSheet({
   };
 
   const pane = () => {
-    if (mode !== 'edit' || !theirs || !copy.tabs) return null;
+    if (!compares || !theirs || !copy.tabs) return null;
     if (tab === 'mine' || tab === 'theirs') {
       return <pre className="vault-compare-full">{tab === 'mine' ? mine : theirs.text}</pre>;
     }
@@ -157,6 +181,11 @@ export function VaultResolveSheet({
   return (
     <Sheet open={open} onClose={onClose} className="vault-resolve" initialFocus="dialog">
       <SheetHead title={copy.title} onClose={onClose} />
+      {moveCopy?.counter ? (
+        <p className="hint vault-resolve-counter" key={`n:${theirsKey}`}>
+          {moveCopy.counter}
+        </p>
+      ) : null}
       <p key={`sub:${theirsKey}`} className="sheet-sub vault-resolve-sub">
         {copy.sub}
       </p>
@@ -208,6 +237,11 @@ export function VaultResolveSheet({
           {copy.failure}
         </p>
       ) : null}
+      {moveCopy && move?.partial ? (
+        <p className="hint vault-resolve-failed" role="status">
+          {moveCopy.partial}
+        </p>
+      ) : null}
       <div className="sheet-actions">
         {copy.rows.map((row) => {
           const isArmed = armed === row.choice;
@@ -229,6 +263,7 @@ export function VaultResolveSheet({
           );
         })}
       </div>
+      {moveCopy ? <p className="hint vault-resolve-close">{moveCopy.closeLine}</p> : null}
     </Sheet>
   );
 }

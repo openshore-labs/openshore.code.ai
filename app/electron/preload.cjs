@@ -100,6 +100,12 @@ contextBridge.exposeInMainWorld('oscode', {
   vaultRemove: invoke('osc:vaultRemove'),
   vaultWatch: invoke('osc:vaultWatch'),
   onVaultChanged: listen('osc:vault-changed'),
+  vaultDirInfo: invoke('osc:vaultDirInfo'),
+  vaultChooseDir: invoke('osc:vaultChooseDir'),
+  vaultRefineDir: invoke('osc:vaultRefineDir'),
+  vaultReveal: invoke('osc:vaultReveal'),
+  vaultOpenObsidian: invoke('osc:vaultOpenObsidian'),
+  openPrivacySettings: invoke('osc:openPrivacySettings'),
 
   secureHas: invoke('osc:secureHas'),
   secureGet: invoke('osc:secureGet'),

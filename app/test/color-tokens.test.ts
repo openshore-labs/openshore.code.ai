@@ -137,6 +137,7 @@ const LOCAL_ALLOW: Record<string, string> = {
   'cc-member.working': 'the same working state, on the roster',
   'cc-routine.working': 'the same working state, on a routine card',
   'store-row-meta': 'the on-device capability glyph on a store row',
+  'vault-move-card': 'the Vault move card: notes moving into a folder on this computer',
 };
 
 describe('color tokens', () => {

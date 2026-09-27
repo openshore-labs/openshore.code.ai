@@ -48,7 +48,23 @@ import {
   vaultCopy,
   vaultDriveCard,
   vaultDriveMoveRefusal,
-  vaultFolderRowLine,
+  VAULT_FOLDER_MISSING_LINE,
+  VAULT_GUIDE_PICKER_LINE,
+  VAULT_OBSIDIAN_HOWTO,
+  VAULT_OPEN_CHATS_LINE,
+  vaultCloudLine,
+  vaultEarlierFolderHeld,
+  vaultFolderFacts,
+  vaultFolderOffer,
+  vaultFolderQuestion,
+  vaultIcloudCasOnPhone,
+  vaultMoveResolveCopy,
+  vaultPickRefusal,
+  vaultPickResultCopy,
+  vaultPickerRow,
+  vaultRepointToast,
+  vaultRevealLabel,
+  vaultWarningLine,
   vaultGuideText,
   vaultHeldHint,
   vaultHeldKeep,
@@ -253,12 +269,13 @@ describe('the Vault copy map (0.19)', () => {
     expect(note).toMatch(/\[\[Ideas\]\]/);
   });
 
-  it("the desktop's Keep as plain files row speaks for This folder, not the vault it leaves", () => {
-    const files = vaultCopy('electron', 'files');
-    expect(vaultFolderRowLine('electron')).toBe(
-      `Moves your vault to This folder. ${files.storage} ${files.obsidian}`,
-    );
-    expect(vaultFolderRowLine('electron')).not.toMatch(/\bagents?\b/i);
+  // Creative Studio 3c: the desktop's Keep as plain files row is retired as a
+  // duplicate of This folder, so the 0.11 way out is This folder itself,
+  // offered on the desktop whichever storage holds the vault.
+  it('on the desktop the storage sheet always offers This folder, the one way out', () => {
+    for (const current of ['local', 'files', 'gdrive']) {
+      expect(vaultOffersProvider('electron', 'files'), current).toBe(true);
+    }
   });
 
   it('never shows This folder on the phone, or iCloud on the desktop, as a row that "arrives"', () => {
@@ -575,6 +592,21 @@ describe('the resolve sheet says only what it knows (1.1)', () => {
         lines.push(vaultResolveToast(choice, { title: 'Ideas', copyTitle: 'X', missing }));
       }
     }
+    // Move mode (1d), one pair and several.
+    for (const n of [1, 3]) {
+      const m = vaultMoveResolveCopy({ title: 'Ideas', copyTitle: 'Ideas (conflict)', i: 1, n });
+      lines.push(
+        m.title,
+        m.sub,
+        m.failure,
+        m.partial,
+        m.closeLine,
+        ...(m.counter ? [m.counter] : []),
+      );
+      lines.push(...Object.values(m.tabs!), ...Object.values(m.legend!));
+      lines.push(...Object.values(m.srPrefix!));
+      for (const r of m.rows) lines.push(r.label, r.sub, ...(r.armed ? [r.armed] : []));
+    }
     lines.push(
       VAULT_RESOLVE_AGAIN,
       VAULT_RESOLVE_SAME,
@@ -635,5 +667,213 @@ describe('the resolve sheet says only what it knows (1.1)', () => {
       'Text you had not saved in "Ideas" is kept as "Ideas (conflict 2026-09-27 1405)", since the note changed elsewhere.',
     );
     expect(one).not.toMatch(/offline/i);
+  });
+});
+
+describe('the desktop move card and the folder picker (1.3, 1.4)', () => {
+  it('the card says the plural and the singular, and the folder notes it keeps', () => {
+    const three = vaultFolderOffer(3, 2);
+    expect(three.title).toBe('One folder for you and your agent');
+    expect(three.body).toBe(
+      'Your 3 notes are sealed on this device, where your agent, routines, and Obsidian cannot open them. Move them into the folder your agent already uses, and you all work from the same plain .md files.',
+    );
+    expect(three.hint).toBe(
+      'The sealed copy stays on this device. The 2 notes already in the folder stay as they are.',
+    );
+    expect(vaultFolderOffer(1, 1).body).toMatch(/^Your note is sealed on this device/);
+    expect(vaultFolderOffer(1, 1).hint).toBe(
+      'The sealed copy stays on this device. The note already in the folder stays as it is.',
+    );
+    // An empty folder, or one that could not be counted, says only what holds.
+    expect(vaultFolderOffer(2, 0).hint).toBe('The sealed copy stays on this device.');
+    expect(vaultFolderOffer(2, undefined).hint).toBe('The sealed copy stays on this device.');
+    expect(three.primary).toBe('Move to This folder');
+    expect(three.busy).toBe('Moving your notes…');
+    expect(three.decline).toBe('Keep it on this device');
+    expect(three.link).toBe('Use a different folder…');
+    expect(three.declineToast).toBe(
+      'Your vault stays on this device. Where it lives can move it any time.',
+    );
+    // Its quiet button is a decision, never a "not now" that promises a return.
+    expect(three.decline).not.toMatch(/not now/i);
+    expect(three.lead).toBeUndefined();
+  });
+
+  it('the one return says what changed since the decline', () => {
+    expect(vaultFolderOffer(3, 9, { display: '~/OSCode/Vault', newSince: 4 }).lead).toBe(
+      '~/OSCode/Vault has 4 new notes since you kept your vault on this device.',
+    );
+    expect(vaultFolderOffer(3, 9, { display: '~/OSCode/Vault', newSince: 1 }).lead).toBe(
+      '~/OSCode/Vault has a new note since you kept your vault on this device.',
+    );
+  });
+
+  it('the card is offered only where the vault is sealed on the desktop', () => {
+    // The card's own sentence is about a Local vault the agent cannot open:
+    // only the desktop's Local copy points elsewhere for the agent.
+    expect(vaultCopy('electron', 'local').agentElsewhere).toBe(DESKTOP_AGENT_LINE);
+    for (const on of ['ios', 'web'] as const) {
+      expect(vaultCopy(on, 'local').agentElsewhere).not.toBe(DESKTOP_AGENT_LINE);
+    }
+    expect(vaultCopy('electron', 'files').agentElsewhere).toBeUndefined();
+    // While it shows, the lead drops its own pointer to This folder.
+    const c = vaultCopy('electron', 'local');
+    expect(vaultLead(c)).toContain(DESKTOP_AGENT_LINE);
+    expect(vaultLead(c, { offerShown: true })).not.toContain(DESKTOP_AGENT_LINE);
+    expect(vaultLead(c, { offerShown: true })).toBe(c.storage);
+  });
+
+  it('an empty Local vault that repoints says where it is now', () => {
+    expect(vaultRepointToast('~/OSCode/Vault')).toBe(
+      'Your vault now uses ~/OSCode/Vault, the same folder as your agent and routines.',
+    );
+  });
+
+  it("the picker row's words never render off the desktop (the phone case)", () => {
+    expect(vaultPickerRow('ios')).toBeUndefined();
+    expect(vaultPickerRow('web')).toBeUndefined();
+    expect(vaultPickerRow('electron')).toEqual({
+      label: 'Use a folder…',
+      sub: 'Pick another folder, an existing Obsidian vault included. Notes are not copied.',
+      busy: 'Opening',
+    });
+    // And This folder itself is not offered on the phone at all.
+    expect(vaultOffersProvider('ios', 'files')).toBe(false);
+  });
+
+  it("the open-folder button uses each platform's own words", () => {
+    expect(vaultRevealLabel('darwin')).toBe('Open in Finder');
+    expect(vaultRevealLabel('win32')).toBe('Open in File Explorer');
+    expect(vaultRevealLabel('linux')).toBe('Open folder');
+    expect(VAULT_OBSIDIAN_HOWTO).toBe(
+      'To open it in Obsidian, choose Open folder as vault there and pick this folder.',
+    );
+    expect(VAULT_FOLDER_MISSING_LINE).toBe(
+      'This folder is not there right now. If it is on a drive, connect the drive, or use another folder.',
+    );
+    expect(VAULT_OPEN_CHATS_LINE).toBe(
+      'New chats use this folder. Chats already open finish in the old one.',
+    );
+  });
+
+  it('every refusal has one plain sentence, on each platform', () => {
+    const reasons = [
+      'root',
+      'home',
+      'home-ancestor',
+      'osc-home',
+      'managed-holds',
+      'managed-inside',
+      'not-writable',
+      'denied',
+      'unreadable',
+      'save-failed',
+    ];
+    for (const os of ['darwin', 'win32', 'linux']) {
+      for (const r of reasons) {
+        const line = vaultPickRefusal(r, os);
+        expect(line, `${os}/${r}`).toMatch(/^[A-Za-z].*\.$/);
+        expect(line, `${os}/${r}`).not.toMatch(/undefined/);
+      }
+    }
+    expect(vaultPickRefusal('denied', 'darwin')).toBe(
+      'macOS did not let OpenShore open that folder. Allow it in System Settings, Privacy & Security, Files and Folders, then pick it again.',
+    );
+    expect(vaultPickRefusal('denied', 'linux')).not.toMatch(/macOS/);
+    expect(vaultPickRefusal('save-failed', 'linux')).toBe(
+      'Could not save your folder choice, so nothing changed.',
+    );
+  });
+
+  it("the relative-path warning is the engine's own words, then the fix here", () => {
+    expect(vaultWarningLine('vault.dir "notes" is not an absolute path.')).toBe(
+      'vault.dir "notes" is not an absolute path. Or use a folder below, which saves a full path.',
+    );
+  });
+
+  it('text typed in an earlier folder names that folder', () => {
+    expect(vaultEarlierFolderHeld('~/Notes')).toEqual({
+      place: 'Personal vault, earlier folder ~/Notes',
+      reason:
+        'Typed in ~/Notes before your vault moved to another folder, so it was not saved there.',
+    });
+  });
+
+  it('the facts say what the folder holds, and an empty one why other files do not show', () => {
+    const base = { notes: 0, capped: false, otherFiles: 0, obsidian: false };
+    expect(vaultFolderFacts(base)).toBe('No notes here yet.');
+    expect(vaultFolderFacts({ ...base, otherFiles: 3 })).toBe(
+      'No notes here yet. The 3 other files here stay as they are, since the Vault shows only .md notes.',
+    );
+    expect(vaultFolderFacts({ ...base, notes: 1 })).toBe('A folder with 1 note.');
+    expect(vaultFolderFacts({ ...base, notes: 12, obsidian: true })).toBe(
+      "An Obsidian vault with 12 notes. Obsidian's own settings are left alone.",
+    );
+    expect(vaultFolderFacts({ ...base, notes: 10_000, capped: true, obsidian: true })).toMatch(
+      /more than 10,000 notes/,
+    );
+  });
+
+  it('a folder in or around Obsidian vaults asks one question, recommended first', () => {
+    const inside = vaultFolderQuestion('Projects', { obsidian: false, inside: { name: 'Brain' } });
+    expect(inside?.line).toBe('"Projects" is a folder inside your Obsidian vault "Brain".');
+    expect(inside?.choices.map((c) => [c.label, c.tone])).toEqual([
+      ['Use all of "Brain"', 'primary'],
+      ['Keep just "Projects"', 'quiet'],
+    ]);
+    const one = vaultFolderQuestion('Obsidian', { obsidian: false, holds: ['Brain'] });
+    expect(one?.choices[0]).toMatchObject({ label: 'Use "Brain"', choice: { to: 'child' } });
+    const many = vaultFolderQuestion('Obsidian', {
+      obsidian: false,
+      holds: ['A', 'B'],
+      holdsMore: 11,
+    });
+    expect(many?.line).toBe('This folder holds 13 Obsidian vaults. Which one is your vault?');
+    expect(many?.hint).toBe(
+      '11 more are inside. Use Choose a folder to pick one of them directly.',
+    );
+    // A vault is a vault, even inside another one: no question.
+    expect(vaultFolderQuestion('Brain', { obsidian: true, inside: { name: 'X' } })).toBeUndefined();
+    expect(
+      vaultFolderQuestion('Documents', { obsidian: false, icloudRoot: true })?.choices[0]?.label,
+    ).toBe('Use vault.personal');
+  });
+
+  it('a synced folder gets one neutral line that never names Obsidian', () => {
+    for (const kind of ['icloud', 'dropbox', 'onedrive', 'gdrive', 'box', 'other']) {
+      const line = vaultCloudLine(kind)!;
+      expect(line).toMatch(/keeps this folder in sync/);
+      expect(line).not.toMatch(/obsidian/i);
+    }
+    expect(vaultCloudLine('other')).toMatch(/^A sync service keeps/);
+    expect(vaultCloudLine(undefined)).toBeUndefined();
+    // OpenShore's own iCloud vault carries its caveat until 2.1 ships.
+    expect(vaultIcloudCasOnPhone).toBe(false);
+    expect(vaultCloudLine('icloud-openshore')).toMatch(/one device at a time/);
+    expect(vaultCloudLine('icloud-openshore')).not.toMatch(/obsidian/i);
+  });
+
+  it('the result block offers Go back and, from This device, the move', () => {
+    const r = vaultPickResultCopy({
+      display: '~/Brain',
+      previous: { display: '~/OSCode/Vault' },
+      fromLocal: { notes: 3 },
+      large: true,
+    });
+    expect(r.heading).toBe('Your vault is now ~/Brain.');
+    expect(r.back).toEqual({
+      label: 'Go back to ~/OSCode/Vault',
+      toast: 'Your vault is back in ~/OSCode/Vault.',
+    });
+    expect(r.move?.label).toBe('Move 3 notes here');
+    expect(r.large).toBe('In a vault this size, Linked mentions load when you ask for them.');
+    expect(vaultPickResultCopy({ display: '~/B', large: false }).back).toBeUndefined();
+  });
+
+  it("Harbor Lite's guide says where the picker is", () => {
+    expect(vaultGuideText()).toContain(VAULT_GUIDE_PICKER_LINE);
+    expect(VAULT_GUIDE_PICKER_LINE).toBe(
+      'On your computer, Use a folder… in Where it lives points the vault at any folder, an existing Obsidian vault included.',
+    );
   });
 });

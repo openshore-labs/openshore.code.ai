@@ -33,7 +33,13 @@ import {
   parseCurrentsHandles,
   parseHarnessCurrentsHandle,
 } from 'os-code/dist/src/currents/model.js';
-import { loadVaultDir } from 'os-code/dist/src/config/load.js';
+import {
+  defaultVaultDir,
+  loadVaultDir,
+  oscHome,
+  saveGlobalConfig,
+} from 'os-code/dist/src/config/load.js';
+import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
 import {
   listVaultFolder,
   parseVaultGuard,
@@ -44,6 +50,7 @@ import {
   writeVaultFile,
 } from './vaultFs.js';
 import { VaultWatcher } from './vaultWatch.js';
+import { VaultDirChooser, realOr, vaultDirExists, type VaultDirEnv } from './vaultDir.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
@@ -937,8 +944,16 @@ guarded('osc:hardware', () => host.hardware());
 // lstat token), and every write goes through the engine's writeNote (temp file
 // then rename) with the renderer's guard checked before it publishes
 // (compare-and-swap, Vault M1 1.1). The root is read again on every call.
+// The default folder is made on first use; a configured folder that has gone
+// missing (renamed, or on a drive that is not connected) is never recreated
+// here, so notes are never scattered between two places (CX 1.3, 1.4).
 function vaultDir(): string {
-  return loadVaultDir().dir;
+  const dir = loadVaultDir().dir;
+  if (!vaultDirExists(dir)) {
+    if (dir !== defaultVaultDir()) throw new Error('The vault folder is not there right now.');
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
 }
 
 guarded('osc:vaultList', () => listVaultFolder(vaultDir()));
@@ -965,8 +980,76 @@ guarded('osc:vaultWatch', (on: unknown, openPath: unknown) => {
   const root = vaultDir();
   const open = optStr(openPath, 'openPath');
   if (open !== undefined) vaultNoteAbs(root, open);
-  else mkdirSync(root, { recursive: true });
   vaultWatcher.start(root, open);
+});
+
+// Where the vault lives, and the one way to change it (Vault M1 1.4, CTO F7).
+// Every IPC here takes no path: the folder comes from the system dialog, and
+// a refinement names a choice main itself offered. Main checks the folder,
+// lists it once (so a macOS privacy prompt appears in context), and writes
+// vault.dir as an absolute realpath through the engine's config writer, which
+// keeps the file's mode. A pick only repoints; the old folder is untouched.
+// Open engine sessions keep the root they started with.
+function vaultEnv(): VaultDirEnv {
+  return {
+    home: realOr(homedir()),
+    oscHome: realOr(oscHome()),
+    managedRoot: managedRoot(),
+    defaultVaultDir: realOr(defaultVaultDir()),
+    platform: process.platform,
+    env: process.env,
+  };
+}
+const vaultDirs = new VaultDirChooser({
+  env: vaultEnv,
+  current: () => loadVaultDir(),
+  save: (dir) => void saveGlobalConfig({ vault: { dir } }),
+  obsidianApp: () => Boolean(app.getApplicationNameForProtocol('obsidian://')),
+  log: (message) => console.error(`[vault] ${message}`),
+});
+// After a repoint the watcher follows the new root, and the room re-lists.
+function afterVaultRepoint(result: { ok: boolean }): void {
+  if (!result.ok) return;
+  if (vaultWatcher.watching) {
+    const dir = loadVaultDir().dir;
+    if (vaultDirExists(dir)) vaultWatcher.start(dir);
+    else vaultWatcher.stop();
+  }
+  win?.webContents.send('osc:vault-changed', { paths: [], tree: true });
+}
+guarded('osc:vaultDirInfo', () => vaultDirs.info());
+guarded('osc:vaultChooseDir', async () => {
+  const options = {
+    properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+    title: 'Choose your vault folder',
+    buttonLabel: 'Use this folder',
+    ...(process.platform === 'darwin' ? { message: 'An existing Obsidian vault works too.' } : {}),
+  };
+  const picked = win
+    ? await dialog.showOpenDialog(win, options)
+    : await dialog.showOpenDialog(options);
+  const result = vaultDirs.pick(picked.canceled ? undefined : picked.filePaths[0]);
+  afterVaultRepoint(result);
+  return result;
+});
+guarded('osc:vaultRefineDir', (choice: unknown) => {
+  const result = vaultDirs.refine(choice);
+  afterVaultRepoint(result);
+  return result;
+});
+guarded('osc:vaultReveal', async () => {
+  const error = await shell.openPath(loadVaultDir().dir);
+  return error ? { ok: false } : { ok: true };
+});
+guarded('osc:vaultOpenObsidian', async () => {
+  await shell.openExternal(`obsidian://open?path=${encodeURIComponent(loadVaultDir().dir)}`);
+});
+// macOS only: the Files and Folders pane, a fixed URL, for a declined prompt.
+guarded('osc:openPrivacySettings', async () => {
+  if (process.platform !== 'darwin') return;
+  await shell.openExternal(
+    'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders',
+  );
 });
 
 // Read-only access to a repo working tree, for the project-memory viewer. Two

@@ -32,9 +32,26 @@ const failKeys = new Set<string>();
 // the way platform.ts behaves.
 const lockedKeys = new Set<string>();
 
+// The desktop, for the Vault M1 1.3 and 1.4 cases: whether this is the
+// computer, what main says about the vault folder, and what a pick returns.
+const desk = vi.hoisted(() => ({
+  on: false,
+  info: undefined as Record<string, unknown> | undefined,
+  pick: undefined as unknown,
+}));
+vi.mock('../src/lib/vaultFolder.js', () => ({
+  canPickVaultFolder: () => desk.on,
+  vaultFolderInfo: async () => (desk.on ? desk.info : undefined),
+  chooseVaultFolder: async () => desk.pick,
+  refineVaultFolder: async () => desk.pick,
+  revealVaultFolder: async () => true,
+  openVaultInObsidian: async () => {},
+  openPrivacySettings: async () => {},
+}));
+
 vi.mock('../src/lib/platform.js', () => ({
-  platform: () => 'web',
-  isDesktop: () => false,
+  platform: () => (desk.on ? 'electron' : 'web'),
+  isDesktop: () => desk.on,
   isPhone: () => false,
   openExternal: () => {},
   dataUnlockState: async () => 'ok',
@@ -365,6 +382,9 @@ function reset() {
   );
   leaseHolder = 'me';
   driveConnected = true;
+  desk.on = false;
+  desk.info = undefined;
+  desk.pick = undefined;
   useApp.setState({
     settings: {
       onboarded: true,
@@ -380,6 +400,9 @@ function reset() {
     vaultError: undefined,
     vaultHeld: [],
     vaultLeaseHeldByOther: undefined,
+    vaultFolder: undefined,
+    vaultListed: undefined,
+    vaultMoving: undefined,
     toast: undefined,
   });
 }
@@ -1797,5 +1820,282 @@ describe('compare-and-swap on the folder (1.1)', () => {
       path: 'late.md',
       text: 'the agent wrote this',
     });
+  });
+});
+
+// Vault M1 1.3: on the desktop the vault is the folder the agent, routines,
+// and Obsidian share. A new personal vault is made there; an empty default
+// Local one simply points there; a Local one holding notes gets the one-time
+// card and moves through vaultMoveTo, keeping the sealed copy (D7).
+describe('the desktop defaults to the folder (1.3)', () => {
+  const FOLDER = {
+    dir: '/home/me/OSCode/Vault',
+    display: '~/OSCode/Vault',
+    exists: true,
+    os: 'linux',
+    obsidian: 'none',
+    count: 0,
+  };
+  beforeEach(() => {
+    reset();
+    desk.on = true;
+    desk.info = { ...FOLDER };
+  });
+  const row = () =>
+    (useApp.getState().settings.gitosResources ?? []).find((r) => r.id === 'vault.personal');
+
+  it('a fresh desktop lands on the folder with no card and no toast', async () => {
+    folder.files.set('Run 2026-09-27.md', 'routine note');
+    await useApp.getState().vaultRefresh();
+    expect(row()?.providerId).toBe('files');
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['Run 2026-09-27.md']);
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(false);
+    expect(useApp.getState().toast).toBeUndefined();
+    expect(useApp.getState().vaultListed).toBe(true);
+  });
+
+  it('off the desktop a fresh vault is still made on This device', async () => {
+    desk.on = false;
+    await useApp.getState().vaultRefresh();
+    expect(row()?.providerId).toBe('local');
+  });
+
+  it('an empty default Local vault repoints once, with the toast, copying nothing', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    folder.files.set('agent.md', 'from the agent');
+    await useApp.getState().vaultRefresh();
+    expect(row()?.providerId).toBe('files');
+    expect(row()?.chosenAt).toBeUndefined();
+    expect(useApp.getState().toast).toBe(
+      'Your vault now uses ~/OSCode/Vault, the same folder as your agent and routines.',
+    );
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['agent.md']);
+    expect(folder.counts.writes).toEqual([]);
+  });
+
+  it('an empty Local vault with stashed text stays put', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    mem.set(
+      PENDING,
+      JSON.stringify({
+        'local::vault.personal::a.md': {
+          providerId: 'local',
+          resourceId: 'vault.personal',
+          path: 'a.md',
+          text: 'typed',
+          at: new Date().toISOString(),
+        },
+      }),
+    );
+    local.fail.write = true;
+    await useApp.getState().vaultRefresh();
+    expect(row()?.providerId).toBe('local');
+  });
+
+  it('a failed Local list neither repoints nor offers', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    fail.list = true;
+    await useApp.getState().vaultRefresh();
+    expect(row()?.providerId).toBe('local');
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(false);
+  });
+
+  it('a Local vault the person chose is never offered or repointed', async () => {
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        gitosResources: [{ ...personalOn('local')[0]!, chosenAt: '2026-09-01T00:00:00Z' }],
+      },
+    });
+    await useApp.getState().vaultRefresh();
+    expect(row()?.providerId).toBe('local');
+    files.set('a.md', 'alpha');
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(false);
+  });
+
+  it('three Local notes show the card, and the move lands them all, keeping the Local copy', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    files.set('a.md', 'alpha');
+    files.set('ideas/b.md', 'beta');
+    files.set('c.md', 'gamma');
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(true);
+    const res = await useApp.getState().vaultMoveTo('files');
+    expect(res.ok).toBe(true);
+    // Matching counts, note for note, and the sealed source untouched (D7).
+    expect(res.moved).toHaveLength(3);
+    expect([...folder.files.keys()].sort()).toEqual(['a.md', 'c.md', 'ideas/b.md']);
+    expect(useApp.getState().vaultFiles).toHaveLength(3);
+    expect([...files.keys()].sort()).toEqual(['a.md', 'c.md', 'ideas/b.md']);
+    expect(files.get('ideas/b.md')).toBe('beta');
+    // The move is the person's choice: stamped, and the offer is over.
+    expect(row()?.providerId).toBe('files');
+    expect(row()?.chosenAt).toBeDefined();
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(false);
+    expect(useApp.getState().vaultMoving).toBe(false);
+  });
+
+  it('Keep it on this device hides the card; it returns once, after 7 days, only if the folder grew', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    files.set('a.md', 'alpha');
+    desk.info = { ...FOLDER, count: 2 };
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(true);
+    await useApp.getState().vaultDeclineFolderMove();
+    expect(useApp.getState().toast).toBe(
+      'Your vault stays on this device. Where it lives can move it any time.',
+    );
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(false);
+    expect(useApp.getState().settings.vaultMoveOffer).toMatchObject({
+      dismissals: 1,
+      folderNotes: 2,
+    });
+    // Eight days on, the folder unchanged: still hidden.
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        vaultMoveOffer: { dismissals: 1, at: eightDaysAgo, folderNotes: 2 },
+      },
+    });
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(false);
+    // The agent wrote more there: it comes back, once.
+    useApp.setState({ vaultFolder: { ...FOLDER, count: 5 } });
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(true);
+    await useApp.getState().vaultDeclineFolderMove();
+    expect(useApp.getState().settings.vaultMoveOffer?.dismissals).toBe(2);
+    useApp.setState({ vaultFolder: { ...FOLDER, count: 50 } });
+    expect(useApp.getState().vaultFolderOfferShown()).toBe(false);
+    // The vault never moved.
+    expect(row()?.providerId).toBe('local');
+  });
+});
+
+// Vault M1 1.4 (CTO F7.6): a pick only repoints, and text typed against the
+// old folder never replays into the new one.
+describe('picking another folder (1.4)', () => {
+  const OLD = {
+    dir: '/home/me/OSCode/Vault',
+    display: '~/OSCode/Vault',
+    exists: true,
+    os: 'linux',
+    obsidian: 'none',
+  };
+  const NEW = { ...OLD, dir: '/home/me/Brain', display: '~/Brain', obsidian: 'vault' };
+  beforeEach(() => {
+    reset();
+    desk.on = true;
+    desk.info = { ...OLD };
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+  });
+
+  it('a draft stashed in the old folder is held naming it, never replayed into the new one', async () => {
+    await useApp.getState().vaultRefresh();
+    // Typed in the old folder while its write failed: stashed, with the folder.
+    folder.fail.write = true;
+    await useApp.getState().vaultSave('Plan.md', 'typed in the old folder');
+    folder.fail.write = false;
+    expect(Object.values(pending())[0]).toMatchObject({ folder: OLD.dir });
+    desk.info = { ...NEW };
+    desk.pick = {
+      ok: true,
+      info: { ...NEW },
+      survey: { notes: 0, capped: false, otherFiles: 0, obsidian: true },
+      previous: { display: OLD.display },
+    };
+    const r = await useApp.getState().vaultChooseFolder();
+    expect(r?.ok).toBe(true);
+    expect(useApp.getState().vaultFolder?.dir).toBe(NEW.dir);
+    // Nothing landed in the (new) folder, and nothing waits to replay there.
+    expect(folder.files.has('Plan.md')).toBe(false);
+    expect(pending()).toEqual({});
+    const held = useApp.getState().vaultHeld;
+    expect(held).toHaveLength(1);
+    expect(held[0]).toMatchObject({
+      text: 'typed in the old folder',
+      folder: OLD.dir,
+      folderDisplay: OLD.display,
+      reason:
+        'Typed in ~/OSCode/Vault before your vault moved to another folder, so it was not saved there.',
+    });
+  });
+
+  it('a refused pick changes nothing', async () => {
+    await useApp.getState().vaultRefresh();
+    desk.pick = { ok: false, refused: 'home' };
+    const r = await useApp.getState().vaultChooseFolder();
+    expect(r).toEqual({ ok: false, refused: 'home' });
+    expect(useApp.getState().vaultFolder?.dir).toBe(OLD.dir);
+  });
+});
+
+// Creative Studio 1d: settling a move's forked pair in the folder.
+describe("settling a move's forked pairs (1d)", () => {
+  const pair = { from: 'a.md', to: 'a (conflict 2026-09-27 1405).md' };
+  beforeEach(() => {
+    reset();
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    folder.files.set(pair.from, 'already there');
+    folder.files.set(pair.to, 'the one you moved');
+  });
+
+  it('Keep the one you moved leaves one file, under the name, with the moved text', async () => {
+    const shown = (await useApp.getState().vaultReadForkPair(pair))!;
+    expect(shown.there.text).toBe('already there');
+    const r = await useApp.getState().vaultSettleFork(pair, 'mine', shown);
+    expect(r).toEqual({ ok: true });
+    expect([...folder.files.keys()]).toEqual([pair.from]);
+    expect(folder.files.get(pair.from)).toBe('the one you moved');
+    // The rename wrote with the version it was shown (compare-and-swap).
+    expect(folder.counts.writes.at(-1)?.guard).toEqual({ ifMatch: shown.there.version });
+  });
+
+  it('Keep the one already there removes only the moved copy', async () => {
+    const shown = (await useApp.getState().vaultReadForkPair(pair))!;
+    expect(await useApp.getState().vaultSettleFork(pair, 'theirs', shown)).toEqual({ ok: true });
+    expect([...folder.files.keys()]).toEqual([pair.from]);
+    expect(folder.files.get(pair.from)).toBe('already there');
+  });
+
+  it('a note that changed since it was shown is never written over or deleted', async () => {
+    const shown = (await useApp.getState().vaultReadForkPair(pair))!;
+    folder.files.set(pair.from, 'the agent wrote this since');
+    expect(await useApp.getState().vaultSettleFork(pair, 'mine', shown)).toEqual({
+      ok: false,
+      changed: true,
+    });
+    expect(folder.files.get(pair.from)).toBe('the agent wrote this since');
+    expect(folder.files.get(pair.to)).toBe('the one you moved');
+    folder.files.set(pair.to, 'edited copy');
+    expect(await useApp.getState().vaultSettleFork(pair, 'theirs', shown)).toEqual({
+      ok: false,
+      changed: true,
+    });
+    expect(folder.files.get(pair.to)).toBe('edited copy');
+  });
+
+  it('a copy that cannot be removed after the rename says so, in part', async () => {
+    const shown = (await useApp.getState().vaultReadForkPair(pair))!;
+    folder.fail.remove = true;
+    expect(await useApp.getState().vaultSettleFork(pair, 'mine', shown)).toEqual({
+      ok: true,
+      partial: true,
+    });
+    expect(folder.files.get(pair.from)).toBe('the one you moved');
   });
 });

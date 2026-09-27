@@ -31,6 +31,72 @@ export interface VaultChange {
   rootGone?: boolean;
 }
 
+/** Why main refused a folder as the vault (electron/vaultDir.ts). The words
+ *  are in lib/vaultCopy.ts vaultPickRefusal. */
+export type VaultPickRefusal =
+  | 'root'
+  | 'home'
+  | 'home-ancestor'
+  | 'osc-home'
+  | 'managed-holds'
+  | 'managed-inside'
+  | 'not-writable'
+  | 'denied'
+  | 'unreadable'
+  | 'save-failed';
+
+/** The sync service a vault folder sits in, read by main from its real path. */
+export type VaultCloudKind =
+  'icloud' | 'icloud-openshore' | 'dropbox' | 'onedrive' | 'gdrive' | 'box' | 'other';
+
+/** The desktop vault folder as main reports it (Vault M1 1.4). */
+export interface VaultDirInfo {
+  dir: string;
+  /** Home as ~ on macOS and Linux, the full path on Windows. */
+  display: string;
+  /** The engine's own warning about a relative vault.dir, shown verbatim. */
+  warning?: string;
+  exists: boolean;
+  os: string;
+  obsidian: 'vault' | 'installed' | 'none';
+  count?: number;
+  capped?: boolean;
+}
+
+/** What one bounded walk of a picked folder found. */
+export interface VaultSurvey {
+  notes: number;
+  capped: boolean;
+  otherFiles: number;
+  obsidian: boolean;
+  inside?: { name: string };
+  holds?: string[];
+  holdsMore?: number;
+  icloudRoot?: boolean;
+  cloud?: VaultCloudKind;
+}
+
+/** What a folder pick or a refinement did. */
+export type VaultPickResult =
+  | {
+      ok: true;
+      info: VaultDirInfo;
+      survey: VaultSurvey;
+      previous?: { display: string; notes?: number };
+    }
+  | { ok: false; cancelled: true }
+  | { ok: false; same: true; info: VaultDirInfo }
+  | {
+      ok: false;
+      refused: VaultPickRefusal;
+      defaultDisplay?: string;
+      managedDisplay?: string;
+    };
+
+/** A refinement main offered in the result block; never a path. */
+export type VaultRefineChoice =
+  { to: 'enclosing' } | { to: 'child'; name: string } | { to: 'previous' };
+
 /** The machine in numbers, from the engine's own resource budget (the same
  *  one osc init and doctor use), so a fit verdict never parses prose. `gpu` is
  *  true only for a dedicated GPU worth budgeting around (4 GB VRAM or more);
@@ -335,6 +401,20 @@ export interface OscodeBridge {
   vaultWatch(on: boolean, openPath?: string): Promise<void>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
+  /** Where the vault folder is, whether it is there, and whether Obsidian
+   *  opens it (Vault M1 1.4). */
+  vaultDirInfo(): Promise<VaultDirInfo>;
+  /** The system folder picker, run and checked in main; takes no path. */
+  vaultChooseDir(): Promise<VaultPickResult>;
+  /** One of the choices the result block offered (a vault around or inside
+   *  the pick, or the folder before it); never a path. */
+  vaultRefineDir(choice: VaultRefineChoice): Promise<VaultPickResult>;
+  /** Open the vault folder in Finder, File Explorer, or the file manager. */
+  vaultReveal(): Promise<{ ok: boolean }>;
+  /** Open the vault folder in Obsidian (obsidian://open, built in main). */
+  vaultOpenObsidian(): Promise<void>;
+  /** macOS: open Privacy & Security, Files and Folders. */
+  openPrivacySettings(): Promise<void>;
 
   // Read-only access to a repo working tree, for the project-memory viewer. The
   // notes live in the repo under "OpenShore Project <name> MDs/"; these list a

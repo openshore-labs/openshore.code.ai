@@ -5,12 +5,18 @@
 // (trust.ts), and never sets machine config at all. A missing file is fine, a
 // malformed file gets a precise, human error naming the file and the field.
 import {
+  closeSync,
   copyFileSync,
+  fchmodSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
-  writeFileSync,
+  statSync,
+  unlinkSync,
+  writeSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
@@ -280,10 +286,34 @@ export function saveGlobalConfig(partial: unknown): string {
 
 /** Write via a temp file on the same directory, then rename over the target.
  *  The rename is atomic on a POSIX filesystem, so a reader never sees a partial
- *  file and a crash mid-write leaves the previous config intact. */
-function writeFileAtomic(path: string, data: string): void {
+ *  file and a crash mid-write leaves the previous config intact. The temp file
+ *  carries the existing file's mode (0o600 for a new file), so a person's chmod
+ *  survives a save, and it is synced before the rename, so the rename never
+ *  publishes bytes still in a cache (Vault M1, CTO F7.3). */
+export function writeFileAtomic(path: string, data: string): void {
+  let mode = 0o600;
+  try {
+    mode = statSync(path).mode & 0o7777;
+  } catch {
+    // No file yet: owner-only, since the config names key variables.
+  }
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tmp, data);
+  const fd = openSync(tmp, 'wx', mode);
+  try {
+    // open() applies the umask; set the mode exactly, where the OS has one.
+    if (process.platform !== 'win32') fchmodSync(fd, mode);
+    writeSync(fd, data);
+    fsyncSync(fd);
+  } catch (err) {
+    closeSync(fd);
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // Best effort: the temp name is unique to this write.
+    }
+    throw err;
+  }
+  closeSync(fd);
   renameSync(tmp, path);
 }
 

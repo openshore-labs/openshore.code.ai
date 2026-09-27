@@ -132,6 +132,10 @@ export interface GitosResource {
   kind: 'vault' | 'repo';
   providerId: StorageProviderId;
   createdAt: string;
+  /** When the person last moved this resource themselves (any vaultMoveTo),
+   *  so a storage they chose on purpose is never repointed or offered a move
+   *  (Vault M1 1.3). Absent on a resource nobody has moved. */
+  chosenAt?: string;
 }
 
 /** The backends a user can point a resource at, in picker order. Only

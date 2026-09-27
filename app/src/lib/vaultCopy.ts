@@ -144,16 +144,12 @@ export function vaultSheetLine(c: VaultCopy): string {
   return [c.storage, c.obsidian, c.agent].filter(Boolean).join(' ');
 }
 
-/** The desktop storage sheet's way out: a move to This folder, in This
- *  folder's own words (never the words of the vault it leaves). */
-export function vaultFolderRowLine(platform: Platform): string {
-  const f = vaultCopy(platform, 'files');
-  return ['Moves your vault to This folder.', f.storage, f.obsidian].filter(Boolean).join(' ');
-}
-
-/** The line under the room's title. */
-export function vaultLead(c: VaultCopy): string {
-  return [c.storage, c.agent ?? c.agentElsewhere].filter(Boolean).join(' ');
+/** The line under the room's title. `offerShown` drops the pointer to This
+ *  folder while the desktop move card says it better (Creative Studio 2). */
+export function vaultLead(c: VaultCopy, opts: { offerShown?: boolean } = {}): string {
+  return [c.storage, c.agent ?? (opts.offerShown ? undefined : c.agentElsewhere)]
+    .filter(Boolean)
+    .join(' ');
 }
 
 export interface VaultOnboard {
@@ -246,6 +242,7 @@ export function vaultGuideText(): string {
     `On a phone paired with a computer, ${lowerFirst(PHONE_AGENT_LINE)}`,
     "A member using someone else's computer has no vault in their sessions yet.",
     `The team vault: ${vaultCopy('ios', 'org').storage}`,
+    VAULT_GUIDE_PICKER_LINE,
   ].join(' ');
 }
 
@@ -609,4 +606,403 @@ export function vaultReplayCopiesLine(copies: string[]): string {
 // comes from "Ideas.md".
 function copyOrigin(copy: string): string {
   return copy.replace(/ \(conflict \d{4}-\d{2}-\d{2} \d{4}( \d+)?\)(\.md)$/i, '$2');
+}
+
+// ---- Resolve, move mode (1d) ------------------------------------------------
+// A move whose notes landed beside same-named notes with different text: one
+// sheet steps through the pairs. The sides are "the one you moved" and "the
+// one already there", the nouns the forked move line already uses. Both files
+// exist, so closing keeps both, and the sheet says so.
+
+/** Every line of the move-mode sheet for one pair. `copyTitle` is the name the
+ *  moved note has now; `i` of `n` steps through the pairs. */
+export function vaultMoveResolveCopy(opts: {
+  title: string;
+  copyTitle: string;
+  i: number;
+  n: number;
+}): VaultResolveCopy & { counter?: string; closeLine: string; partial: string } {
+  const { title, copyTitle, i, n } = opts;
+  return {
+    title: 'Two versions of a note',
+    ...(n > 1 ? { counter: `${i} of ${n}` } : {}),
+    sub: `"${title}" was already in the folder with different text when your vault moved. Choose which one keeps the name.`,
+    closeLine: 'Closing keeps both.',
+    tabs: { changes: 'Changes', mine: 'You moved', theirs: 'Already there' },
+    legend: { mine: 'Only in the one you moved', theirs: 'Only in the one already there' },
+    srPrefix: { mine: 'You moved: ', theirs: 'Already there: ' },
+    rows: [
+      {
+        choice: 'both',
+        label: 'Keep both',
+        sub: `They stay side by side, the one you moved as "${copyTitle}".`,
+        primary: true,
+      },
+      {
+        choice: 'mine',
+        label: 'Keep the one you moved',
+        sub: 'It takes the name, and the one that was there is deleted.',
+        armed: 'Really delete the other? Tap to confirm.',
+      },
+      {
+        choice: 'theirs',
+        label: 'Keep the one already there',
+        sub: 'The one you moved is deleted.',
+        armed: 'Really delete it? Tap to confirm.',
+      },
+    ],
+    failure: 'That did not go through, so both are still there. Try again.',
+    partial: `Kept the one you moved, but its copy could not be removed: "${copyTitle}".`,
+  };
+}
+
+// ---- The one-time desktop move card (1.3, D7) -------------------------------
+// A desktop vault still sealed on This device by default, never by the
+// person's choice, is offered one move into the folder the agent, routines,
+// and Obsidian already use. Both buttons are decisions; the quiet one is
+// phrased as a choice, not "Not now". The sealed copy stays (D7).
+
+export interface VaultFolderOffer {
+  title: string;
+  body: string;
+  hint: string;
+  link: string;
+  primary: string;
+  busy: string;
+  decline: string;
+  declineToast: string;
+  retry: string;
+  /** Only on the one return (CX 1.3): what changed since the decline. */
+  lead?: string;
+}
+
+/** The card's lines. `n` is the notes in the sealed vault, `k` the notes
+ *  already in the folder (undefined when the folder could not be counted),
+ *  and `newSince` the notes the folder gained since a decline, on a return. */
+export function vaultFolderOffer(
+  n: number,
+  k: number | undefined,
+  opts: { display?: string; newSince?: number } = {},
+): VaultFolderOffer {
+  const body =
+    n === 1
+      ? 'Your note is sealed on this device, where your agent, routines, and Obsidian cannot open it. Move it into the folder your agent already uses, and you all work from the same plain .md files.'
+      : `Your ${n} notes are sealed on this device, where your agent, routines, and Obsidian cannot open them. Move them into the folder your agent already uses, and you all work from the same plain .md files.`;
+  const kept =
+    k === undefined || k === 0
+      ? ''
+      : k === 1
+        ? ' The note already in the folder stays as it is.'
+        : ` The ${k} notes already in the folder stay as they are.`;
+  const offer: VaultFolderOffer = {
+    title: 'One folder for you and your agent',
+    body,
+    hint: `The sealed copy stays on this device.${kept}`,
+    link: 'Use a different folder…',
+    primary: 'Move to This folder',
+    busy: 'Moving your notes…',
+    decline: 'Keep it on this device',
+    declineToast: 'Your vault stays on this device. Where it lives can move it any time.',
+    retry: 'Try again',
+  };
+  const m = opts.newSince ?? 0;
+  if (m > 0 && opts.display) {
+    offer.lead =
+      m === 1
+        ? `${opts.display} has a new note since you kept your vault on this device.`
+        : `${opts.display} has ${m} new notes since you kept your vault on this device.`;
+  }
+  return offer;
+}
+
+/** The one toast when an empty Local vault repoints to the folder (CX 1.3 b). */
+export function vaultRepointToast(display: string): string {
+  return `Your vault now uses ${display}, the same folder as your agent and routines.`;
+}
+
+/** On a note opened while the vault is moving (CX 1.3). */
+export function vaultMovingLine(display: string): string {
+  return `Your vault is moving to ${display}. You can edit again when it is done.`;
+}
+
+// ---- The folder rows in the desktop storage sheet (1.4) ---------------------
+
+/** The open-folder button, in the platform's own words. */
+export function vaultRevealLabel(os: string): string {
+  if (os === 'darwin') return 'Open in Finder';
+  if (os === 'win32') return 'Open in File Explorer';
+  return 'Open folder';
+}
+
+export const VAULT_OPEN_OBSIDIAN = 'Open in Obsidian';
+/** Obsidian is installed but has not opened this folder yet. */
+export const VAULT_OBSIDIAN_HOWTO =
+  'To open it in Obsidian, choose Open folder as vault there and pick this folder.';
+/** The vault folder is not there right now. */
+export const VAULT_FOLDER_MISSING_LINE =
+  'This folder is not there right now. If it is on a drive, connect the drive, or use another folder.';
+export const VAULT_NOT_FOUND_PILL = 'Not found';
+/** After a pick, only when a chat on this computer is open (CTO F7). */
+export const VAULT_OPEN_CHATS_LINE =
+  'New chats use this folder. Chats already open finish in the old one.';
+/** Picking the folder already in use. */
+export const VAULT_SAME_FOLDER_LINE = 'Your vault already uses this folder.';
+/** The macOS privacy refusal's button. */
+export const VAULT_PRIVACY_BUTTON = 'Open Privacy & Security';
+/** Harbor Lite's line about the picker. */
+export const VAULT_GUIDE_PICKER_LINE =
+  'On your computer, Use a folder… in Where it lives points the vault at any folder, an existing Obsidian vault included.';
+
+/** The picker row, on the desktop only: undefined anywhere else, so its words
+ *  never render off the computer. */
+export function vaultPickerRow(
+  platform: Platform,
+): { label: string; sub: string; busy: string } | undefined {
+  if (platform !== 'electron') return undefined;
+  return {
+    label: 'Use a folder…',
+    sub: 'Pick another folder, an existing Obsidian vault included. Notes are not copied.',
+    busy: 'Opening',
+  };
+}
+
+/** loadVaultDir's own warning, verbatim, with the fix on this sheet (CTO T3). */
+export function vaultWarningLine(warning: string): string {
+  return `${warning} Or use a folder below, which saves a full path.`;
+}
+
+/** Why main refused a folder, in one plain sentence each (Creative Studio 3b). */
+export function vaultPickRefusal(reason: string, os: string): string {
+  switch (reason) {
+    case 'root':
+      return 'That is the top of a drive. Pick a folder inside it.';
+    case 'home':
+      return 'That is your whole home folder. Pick a folder inside it.';
+    case 'home-ancestor':
+      return 'That folder holds your home folder. Pick a folder inside your home folder.';
+    case 'osc-home':
+      return 'OpenShore keeps its own settings there. Pick another folder.';
+    case 'managed-holds':
+      return "That folder holds OpenShore's workspaces. Pick another folder.";
+    case 'managed-inside':
+      return 'OpenShore keeps its workspaces there. Pick another folder.';
+    case 'not-writable':
+      return 'OpenShore cannot save notes in that folder. Pick one you can edit.';
+    case 'denied':
+      return os === 'darwin'
+        ? 'macOS did not let OpenShore open that folder. Allow it in System Settings, Privacy & Security, Files and Folders, then pick it again.'
+        : 'That folder could not be read. Pick another folder.';
+    case 'save-failed':
+      return 'Could not save your folder choice, so nothing changed.';
+    default:
+      return 'That folder could not be read. Pick another folder.';
+  }
+}
+
+/** The Not saved place and reason for text typed against an earlier folder
+ *  (CTO F7.6). */
+export function vaultEarlierFolderHeld(display: string): { place: string; reason: string } {
+  return {
+    place: `Personal vault, earlier folder ${display}`,
+    reason: `Typed in ${display} before your vault moved to another folder, so it was not saved there.`,
+  };
+}
+
+/** Whether the iPhone checks before it saves to iCloud (plan 2.1). Until it
+ *  does, OpenShore's own iCloud vault carries the caveat below. */
+export const vaultIcloudCasOnPhone = false;
+
+const CLOUD_NAMES: Record<string, string> = {
+  icloud: 'iCloud Drive',
+  dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
+  gdrive: 'Google Drive',
+  box: 'Box',
+  other: 'A sync service',
+};
+
+/** The one line about a synced folder, or undefined for a folder no service
+ *  can be told for (CX 1.4). Never names Obsidian. */
+export function vaultCloudLine(kind: string | undefined): string | undefined {
+  if (!kind) return undefined;
+  if (kind === 'icloud-openshore') {
+    return vaultIcloudCasOnPhone
+      ? undefined
+      : "This is your iPhone's iCloud vault, so notes reach your iPhone through iCloud. For now, change a note on one device at a time, since the iPhone can still save over a change it has not seen yet.";
+  }
+  const name = CLOUD_NAMES[kind] ?? CLOUD_NAMES.other!;
+  return `${name} keeps this folder in sync. A note kept only online downloads when you open it, which needs a connection. If two devices change the same note before they sync, a second copy may appear beside it, and both show here. To work offline, set the folder to stay downloaded on this computer.`;
+}
+
+/** A vault this size reads Linked mentions on request (CX 1.4). */
+export const VAULT_LARGE_NOTES = 1000;
+
+/** The facts line under the result block's heading. */
+export function vaultFolderFacts(s: {
+  notes: number;
+  capped: boolean;
+  otherFiles: number;
+  obsidian: boolean;
+}): string {
+  if (s.obsidian) {
+    return s.capped
+      ? "An Obsidian vault with more than 10,000 notes. Obsidian's own settings are left alone."
+      : `An Obsidian vault with ${s.notes} ${s.notes === 1 ? 'note' : 'notes'}. Obsidian's own settings are left alone.`;
+  }
+  if (s.notes === 0) {
+    if (!s.otherFiles) return 'No notes here yet.';
+    return s.otherFiles === 1
+      ? 'No notes here yet. The 1 other file here stays as it is, since the Vault shows only .md notes.'
+      : `No notes here yet. The ${s.otherFiles} other files here stay as they are, since the Vault shows only .md notes.`;
+  }
+  if (s.capped) return 'A folder with more than 10,000 notes.';
+  return s.notes === 1 ? 'A folder with 1 note.' : `A folder with ${s.notes} notes.`;
+}
+
+/** One question after a pick, when the folder sits in or around Obsidian
+ *  vaults or is OpenShore's iCloud folder, in that priority (CX 1.4). */
+export type VaultFolderQuestion = {
+  line: string;
+  hint?: string;
+  choices: Array<{
+    label: string;
+    sub?: string;
+    tone: 'primary' | 'ghost' | 'quiet';
+    choice: { to: 'enclosing' } | { to: 'child'; name: string } | { to: 'stay' };
+  }>;
+};
+
+export function vaultFolderQuestion(
+  picked: string,
+  s: {
+    obsidian: boolean;
+    inside?: { name: string };
+    holds?: string[];
+    holdsMore?: number;
+    icloudRoot?: boolean;
+  },
+): VaultFolderQuestion | undefined {
+  if (s.obsidian) return undefined;
+  if (s.inside) {
+    const vault = s.inside.name;
+    return {
+      line: `"${picked}" is a folder inside your Obsidian vault "${vault}".`,
+      choices: [
+        {
+          label: `Use all of "${vault}"`,
+          sub: 'Links work the way they do in Obsidian.',
+          tone: 'primary',
+          choice: { to: 'enclosing' },
+        },
+        {
+          label: `Keep just "${picked}"`,
+          sub: 'Your agent sees only this folder, and links to notes outside it will not open here.',
+          tone: 'quiet',
+          choice: { to: 'stay' },
+        },
+      ],
+    };
+  }
+  const holds = s.holds ?? [];
+  if (holds.length === 1 && !s.holdsMore) {
+    const name = holds[0]!;
+    return {
+      line: `This folder holds an Obsidian vault, "${name}". Use it as your vault?`,
+      choices: [
+        { label: `Use "${name}"`, tone: 'primary', choice: { to: 'child', name } },
+        { label: 'Use the whole folder', tone: 'quiet', choice: { to: 'stay' } },
+      ],
+    };
+  }
+  if (holds.length) {
+    const total = holds.length + (s.holdsMore ?? 0);
+    const q: VaultFolderQuestion = {
+      line: `This folder holds ${total} Obsidian vaults. Which one is your vault?`,
+      choices: [
+        ...holds.map((name) => ({
+          label: name,
+          tone: 'ghost' as const,
+          choice: { to: 'child' as const, name },
+        })),
+        { label: 'Use the whole folder', tone: 'quiet', choice: { to: 'stay' } },
+      ],
+    };
+    if (s.holdsMore) {
+      q.hint = `${s.holdsMore} more are inside. Use Choose a folder to pick one of them directly.`;
+    }
+    return q;
+  }
+  if (s.icloudRoot) {
+    return {
+      line: `This is OpenShore's iCloud folder. Your iPhone's vault is the folder "vault.personal" inside it.`,
+      choices: [
+        {
+          label: 'Use vault.personal',
+          tone: 'primary',
+          choice: { to: 'child', name: 'vault.personal' },
+        },
+        { label: 'Keep this folder', tone: 'quiet', choice: { to: 'stay' } },
+      ],
+    };
+  }
+  return undefined;
+}
+
+/** The result block's other lines (CX 1.4). */
+export function vaultPickResultCopy(opts: {
+  display: string;
+  previous?: { display: string };
+  fromLocal?: { notes: number };
+  large: boolean;
+}): {
+  heading: string;
+  large?: string;
+  back?: { label: string; toast: string };
+  move?: { label: string; sub: string };
+} {
+  const out: ReturnType<typeof vaultPickResultCopy> = {
+    heading: `Your vault is now ${opts.display}.`,
+  };
+  if (opts.large) out.large = 'In a vault this size, Linked mentions load when you ask for them.';
+  if (opts.previous) {
+    out.back = {
+      label: `Go back to ${opts.previous.display}`,
+      toast: `Your vault is back in ${opts.previous.display}.`,
+    };
+  }
+  if (opts.fromLocal && opts.fromLocal.notes > 0) {
+    const n = opts.fromLocal.notes;
+    out.move = {
+      label: n === 1 ? 'Move 1 note here' : `Move ${n} notes here`,
+      sub: 'Copies your sealed notes into this folder. Nothing here is replaced, and a sealed copy stays in OpenShore on this computer.',
+    };
+  }
+  return out;
+}
+
+/** The vault folder is missing (CX 1.4): the room says so and writes nothing. */
+export function vaultMissingFolderCard(display: string): {
+  title: string;
+  line: string;
+  retry: string;
+  choose: string;
+} {
+  return {
+    title: 'Your vault folder is missing',
+    line: `OpenShore cannot find ${display}. It may have been moved or renamed, or it may be on a drive that is not connected.`,
+    retry: 'Try again',
+    choose: 'Choose a folder',
+  };
+}
+
+/** While a newly pointed folder is still listing: never the empty ramp. */
+export const VAULT_OPENING_LINE = 'Opening your vault.';
+
+/** Linked mentions in a vault over VAULT_LARGE_NOTES notes, on request. */
+export function vaultMentionsOnDemand(n: number): { hint: string; button: string; busy: string } {
+  return {
+    hint: `This vault has ${n} notes, so Linked mentions load when you ask. Finding them reads every note, which takes a moment.`,
+    button: 'Find linked mentions',
+    busy: `Reading ${n} notes`,
+  };
 }

@@ -4,12 +4,14 @@
 // intact rather than a torn file.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -71,6 +73,30 @@ describe('saveGlobalConfig durability', () => {
     saveGlobalConfig({ daemon: { port: 5001 } });
     const strays = readdirSync(home).filter((f) => f.includes('.tmp'));
     expect(strays).toEqual([]);
+  });
+
+  // Vault M1, CTO F7.3: the desktop app writes vault.dir through this writer,
+  // and its temp-and-rename must not silently reset a person's chmod.
+  it.skipIf(process.platform === 'win32')('keeps an existing 0o600 mode across a save', () => {
+    const path = globalConfigPath();
+    writeFileSync(path, '{}\n');
+    chmodSync(path, 0o600);
+    saveGlobalConfig({ vault: { dir: join(home, 'Notes') } });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(loadVaultDir().dir).toBe(join(home, 'Notes'));
+  });
+
+  it.skipIf(process.platform === 'win32')('keeps a wider mode the person chose', () => {
+    const path = globalConfigPath();
+    writeFileSync(path, '{}\n');
+    chmodSync(path, 0o640);
+    saveGlobalConfig({ daemon: { port: 5002 } });
+    expect(statSync(path).mode & 0o777).toBe(0o640);
+  });
+
+  it.skipIf(process.platform === 'win32')('writes a new config owner-only', () => {
+    saveGlobalConfig({ daemon: { port: 5003 } });
+    expect(statSync(globalConfigPath()).mode & 0o777).toBe(0o600);
   });
 });
 

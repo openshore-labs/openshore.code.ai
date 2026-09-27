@@ -44,6 +44,25 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/guarded\('osc:createSession'[\s\S]*?dir\(/);
   });
 
+  // Vault M1 1.4, CTO F7: the renderer never sends a vault path. The folder
+  // controls take no argument, and the one refinement names a choice main
+  // checks against what it found itself.
+  it('the vault folder IPCs take no path from the renderer', () => {
+    for (const ch of [
+      'osc:vaultDirInfo',
+      'osc:vaultChooseDir',
+      'osc:vaultReveal',
+      'osc:vaultOpenObsidian',
+      'osc:openPrivacySettings',
+    ]) {
+      expect(main, ch).toMatch(new RegExp(`guarded\\('${ch}', (async )?\\(\\) =>`));
+    }
+    expect(main).toMatch(/guarded\('osc:vaultRefineDir', \(choice: unknown\) =>/);
+    expect(main).toContain("title: 'Choose your vault folder'");
+    // Written through the engine's one config writer, as an absolute realpath.
+    expect(main).toMatch(/saveGlobalConfig\(\{ vault: \{ dir \} \}\)/);
+  });
+
   it('exposes secureHas so the renderer can tell absent from unreadable (P0-3)', () => {
     expect(preload).toContain("secureHas: invoke('osc:secureHas')");
     expect(main).toMatch(/guarded\('osc:secureHas'/);

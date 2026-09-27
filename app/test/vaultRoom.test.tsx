@@ -35,6 +35,21 @@ const app = vi.hoisted(() => {
   const created: string[] = [];
   const opened: string[] = [];
   const drive = { readOnly: undefined as string | undefined, connected: true, configured: true };
+  // What the folder controls answer: a pick's result, whether the move card
+  // is offered, and the two texts of each forked pair.
+  const folderIo = {
+    pick: undefined as unknown,
+    offer: false,
+    declined: 0,
+    settled: [] as string[],
+    pairs: {} as Record<
+      string,
+      {
+        there: { path: string; text: string; updatedAt: string; version: string };
+        moved: { path: string; text: string; updatedAt: string; version: string };
+      }
+    >,
+  };
   const state: State = {
     vaultNote: undefined,
     vaultCloseNote: () => {
@@ -88,8 +103,27 @@ const app = vi.hoisted(() => {
     vaultLeaveConflict: async () => {},
     vaultNoteDraft: () => {},
     vaultTakeReturnFolder: () => undefined,
+    // Vault M1 1.3 and 1.4: the desktop folder, the move card, the picker.
+    vaultFolder: undefined as Record<string, unknown> | undefined,
+    vaultMoving: false,
+    vaultListed: true,
+    vaultLoadFolder: async () => app.state.vaultFolder,
+    vaultChooseFolder: async () => folderIo.pick,
+    vaultRefineFolder: async () => folderIo.pick,
+    vaultFolderOfferShown: () => folderIo.offer,
+    vaultDeclineFolderMove: async () => {
+      folderIo.declined++;
+      folderIo.offer = false;
+      listeners.forEach((l) => l());
+    },
+    vaultReadForkPair: async (pair: { from: string; to: string }) => folderIo.pairs[pair.from],
+    vaultSettleFork: async (pair: { from: string; to: string }, choice: string) => {
+      folderIo.settled.push(`${choice}:${pair.from}`);
+      return { ok: true };
+    },
+    vaultDesktopChatOpen: () => false,
   };
-  return { state, listeners, views, toasts, created, opened, drive };
+  return { state, listeners, views, toasts, created, opened, drive, folderIo };
 });
 vi.mock('../src/state/store.js', async () => {
   const { useSyncExternalStore } = await import('react');
@@ -112,10 +146,36 @@ vi.mock('../src/lib/gitos/index.js', async (importOriginal) => ({
   probeReady: async () => false,
 }));
 const external = vi.hoisted(() => [] as string[]);
-vi.mock('../src/lib/platform.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/lib/platform.js')>()),
-  openExternal: (url: string) => {
-    external.push(url);
+// Whether this render is the desktop app (the move card and the folder rows
+// are desktop only).
+const onDesk = vi.hoisted(() => ({ on: false }));
+vi.mock('../src/lib/platform.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/lib/platform.js')>();
+  return {
+    ...actual,
+    platform: () => (onDesk.on ? 'electron' : actual.platform()),
+    isDesktop: () => onDesk.on || actual.isDesktop(),
+    openExternal: (url: string) => {
+      external.push(url);
+    },
+  };
+});
+// The folder controls reach main through the bridge; here they only record.
+const folderCalls = vi.hoisted(() => [] as string[]);
+vi.mock('../src/lib/vaultFolder.js', () => ({
+  canPickVaultFolder: () => onDesk.on,
+  vaultFolderInfo: async () => undefined,
+  chooseVaultFolder: async () => undefined,
+  refineVaultFolder: async () => undefined,
+  revealVaultFolder: async () => {
+    folderCalls.push('reveal');
+    return true;
+  },
+  openVaultInObsidian: async () => {
+    folderCalls.push('obsidian');
+  },
+  openPrivacySettings: async () => {
+    folderCalls.push('privacy');
   },
 }));
 // The top bar reads the rest of the store; the fallback is what is tested.
@@ -413,5 +473,271 @@ describe('the Vault screen with a choice open (1.1)', () => {
     expect(app.toasts).toEqual([]);
     await dom.type(EDITOR, 'written elsewhere, and mine');
     expect(dom.text()).not.toContain('Updated from elsewhere');
+  });
+});
+
+// Vault M1 1.3 (Creative Studio 2, 1d; CX 1.3): the one-time desktop move
+// card, and the move-mode sheet for a move's forked pairs.
+describe('the desktop move card (1.3)', () => {
+  let dom: TestDom;
+  const FOLDER = {
+    dir: '/home/me/OSCode/Vault',
+    display: '~/OSCode/Vault',
+    exists: true,
+    os: 'linux',
+    obsidian: 'none',
+    count: 2,
+  };
+  const card = () => dom.container.querySelector('.vault-move-card');
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    onDesk.on = true;
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [
+      { path: 'a.md', updatedAt: 'x', size: 1 },
+      { path: 'b.md', updatedAt: 'x', size: 1 },
+      { path: 'ideas/c.md', updatedAt: 'x', size: 1 },
+    ];
+    app.state.vaultFolder = { ...FOLDER };
+    app.state.settings = {};
+    app.toasts.length = 0;
+    app.folderIo.offer = true;
+    app.folderIo.declined = 0;
+    app.folderIo.settled.length = 0;
+    app.folderIo.pairs = {};
+    Object.assign(app.drive, { readOnly: undefined, connected: true, configured: true });
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    onDesk.on = false;
+    app.folderIo.offer = false;
+    app.state.vaultFolder = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultMoveTo = async () => ({ ok: false, skipped: [] });
+  });
+
+  it('shows at the root with the folder path, and not in a subfolder', async () => {
+    await dom.render(<VaultRoom />);
+    expect(card()).not.toBeNull();
+    const text = card()!.textContent!;
+    expect(text).toContain('One folder for you and your agent');
+    expect(text).toContain('Your 3 notes are sealed on this device');
+    expect(text).toContain('~/OSCode/Vault');
+    expect(text).toContain('The 2 notes already in the folder stay as they are.');
+    expect(dom.buttons()).toContain('Move to This folder');
+    expect(dom.buttons()).toContain('Keep it on this device');
+    // The lead leaves its own pointer to This folder to the card.
+    expect(dom.text()).not.toContain('Move the vault to This folder to share it.');
+    await dom.click('ideas');
+    expect(card()?.className ?? 'closing').toContain('closing');
+  });
+
+  it('Keep it on this device hides it for good', async () => {
+    await dom.render(<VaultRoom />);
+    await dom.click('Keep it on this device');
+    expect(app.folderIo.declined).toBe(1);
+    await dom.render(<VaultRoom />);
+    // It folds out (never a snap), then is gone.
+    expect(card()?.className ?? 'closing').toContain('closing');
+  });
+
+  it('a person-chosen or folder vault never shows it', async () => {
+    app.folderIo.offer = false;
+    await dom.render(<VaultRoom />);
+    expect(card()).toBeNull();
+    expect(dom.text()).toContain('Move the vault to This folder to share it.');
+  });
+
+  it('a refused move keeps the card, says why inside it, and offers Try again', async () => {
+    app.state.vaultMoveTo = async () => ({
+      ok: false,
+      moved: [],
+      skipped: [],
+      forked: [],
+      reason: 'copy-failed',
+    });
+    await dom.render(<VaultRoom />);
+    await dom.click('Move to This folder');
+    await dom.settle();
+    expect(card()!.textContent).toContain('Could not copy your notes to This folder');
+    expect(dom.buttons()).toContain('Try again');
+    expect(app.toasts).toEqual([]);
+  });
+
+  it('a move with two forks opens the move sheet at 1 of 2; closing keeps both; Keep the one you moved takes two taps', async () => {
+    const pair = (from: string, to: string) => ({
+      there: { path: from, text: 'already there', updatedAt: 'x', version: 'v1' },
+      moved: { path: to, text: 'the one you moved', updatedAt: 'x', version: 'v2' },
+    });
+    app.folderIo.pairs = {
+      'a.md': pair('a.md', 'a (conflict 2026-09-27 1405).md'),
+      'b.md': pair('b.md', 'b (conflict 2026-09-27 1405).md'),
+    };
+    app.state.vaultMoveTo = async () => ({
+      ok: true,
+      moved: ['a.md', 'b.md', 'ideas/c.md'],
+      skipped: [],
+      forked: [
+        { from: 'a.md', to: 'a (conflict 2026-09-27 1405).md' },
+        { from: 'b.md', to: 'b (conflict 2026-09-27 1405).md' },
+      ],
+    });
+    await dom.render(<VaultRoom />);
+    await dom.click('Move to This folder');
+    await dom.settle();
+    await new Promise((r) => setTimeout(r, 10));
+    await dom.settle();
+    // The toast leaves the forked sentence to the sheet.
+    expect(app.toasts).toEqual([
+      'Your vault moved to This folder. Obsidian opens this folder as a vault.',
+    ]);
+    const sheet = () => dom.container.querySelector('.vault-resolve');
+    expect(sheet()).not.toBeNull();
+    expect(sheet()!.textContent).toContain('Two versions of a note');
+    expect(sheet()!.textContent).toContain('1 of 2');
+    expect(sheet()!.textContent).toContain('Closing keeps both.');
+    const row = (c: string) =>
+      dom.container.querySelector<HTMLButtonElement>(`[data-choice="${c}"]`)!;
+    const { act } = await import('react');
+    const tap = (el: HTMLElement) =>
+      act(async () => {
+        const w = globalThis.window as unknown as { Event: typeof Event };
+        el.dispatchEvent(new w.Event('click', { bubbles: true }));
+      });
+    // The first tap only arms it.
+    await tap(row('mine'));
+    expect(app.folderIo.settled).toEqual([]);
+    expect(row('mine').textContent).toContain('Really delete the other? Tap to confirm.');
+    await tap(row('mine'));
+    await dom.settle();
+    expect(app.folderIo.settled).toEqual(['mine:a.md']);
+    expect(sheet()!.textContent).toContain('2 of 2');
+    // Closing now keeps both of the second pair: nothing more is settled.
+    await tap(sheet()!.querySelector<HTMLButtonElement>('.mode-close')!);
+    await dom.settle();
+    expect(app.folderIo.settled).toEqual(['mine:a.md']);
+  });
+});
+
+// Vault M1 1.4 (Creative Studio 3a): the desktop folder rows.
+describe('the desktop folder rows in Where it lives (1.4)', () => {
+  let dom: TestDom;
+  const FOLDER = {
+    dir: '/home/me/Brain',
+    display: '~/Brain',
+    exists: true,
+    os: 'darwin',
+    obsidian: 'vault',
+    count: 4,
+  };
+  beforeEach(async () => {
+    onDesk.on = true;
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [{ path: 'a.md', updatedAt: 'x', size: 1 }];
+    app.state.settings = {
+      gitosResources: [
+        { id: 'vault.personal', name: 'Vault', kind: 'vault', providerId: 'files', createdAt: 'x' },
+      ],
+    };
+    app.toasts.length = 0;
+    folderCalls.length = 0;
+    app.folderIo.offer = false;
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    onDesk.on = false;
+    app.state.vaultFolder = undefined;
+    app.state.settings = {};
+    app.state.vaultFiles = [];
+    app.folderIo.pick = undefined;
+  });
+  const openSheet = async () => {
+    await dom.render(<VaultRoom />);
+    await dom.click('Where it lives');
+    await dom.settle();
+  };
+
+  it('shows the path, Open in Finder, and Open in Obsidian only for a folder Obsidian knows', async () => {
+    app.state.vaultFolder = { ...FOLDER };
+    await openSheet();
+    expect(dom.container.querySelector('.vault-path')?.textContent).toBe('~/Brain');
+    expect(dom.buttons()).toContain('Open in Finder');
+    expect(dom.buttons()).toContain('Open in Obsidian');
+    await dom.click('Open in Obsidian');
+    await dom.click('Open in Finder');
+    await dom.settle();
+    expect(folderCalls).toEqual(['obsidian', 'reveal']);
+    // The retired duplicate row is gone.
+    expect(dom.text()).not.toContain('Keep as plain files');
+  });
+
+  it('Obsidian installed but the folder not a vault yet: the step, never a button', async () => {
+    app.state.vaultFolder = { ...FOLDER, obsidian: 'installed', os: 'linux' };
+    await openSheet();
+    expect(dom.buttons()).not.toContain('Open in Obsidian');
+    expect(dom.buttons()).toContain('Open folder');
+    expect(dom.text()).toContain('To open it in Obsidian, choose Open folder as vault there');
+  });
+
+  it('a missing folder shows Not found and the warn line, and the room writes nothing', async () => {
+    app.state.vaultFolder = { ...FOLDER, exists: false };
+    app.state.vaultFiles = [];
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Your vault folder is missing');
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    await dom.click('Where it lives');
+    await dom.settle();
+    expect(dom.text()).toContain('Not found');
+    expect(dom.text()).toContain('This folder is not there right now.');
+  });
+
+  it("shows the engine's relative-path warning verbatim under the path", async () => {
+    app.state.vaultFolder = { ...FOLDER, warning: 'vault.dir "notes" is not an absolute path.' };
+    await openSheet();
+    expect(dom.text()).toContain(
+      'vault.dir "notes" is not an absolute path. Or use a folder below, which saves a full path.',
+    );
+  });
+
+  it('after a pick the sheet shows what it found, and no toast fires', async () => {
+    app.state.vaultFolder = { ...FOLDER };
+    app.folderIo.pick = {
+      ok: true,
+      info: { ...FOLDER, dir: '/home/me/Brain/Projects', display: '~/Brain/Projects' },
+      survey: {
+        notes: 3,
+        capped: false,
+        otherFiles: 0,
+        obsidian: false,
+        inside: { name: 'Brain' },
+      },
+      previous: { display: '~/OSCode/Vault' },
+    };
+    await openSheet();
+    await dom.click(
+      'Use a folder…Pick another folder, an existing Obsidian vault included. Notes are not copied.',
+    );
+    await dom.settle();
+    const text = dom.text();
+    expect(text).toContain('Your vault is now ~/Brain/Projects.');
+    expect(text).toContain('A folder with 3 notes.');
+    expect(text).toContain('"Projects" is a folder inside your Obsidian vault "Brain".');
+    expect(dom.buttons()).toContain('Go back to ~/OSCode/Vault');
+    expect(app.toasts).toEqual([]);
+  });
+
+  it('a refusal shows under the picker row, in the sheet', async () => {
+    app.state.vaultFolder = { ...FOLDER };
+    app.folderIo.pick = { ok: false, refused: 'home' };
+    await openSheet();
+    await dom.click(
+      'Use a folder…Pick another folder, an existing Obsidian vault included. Notes are not copied.',
+    );
+    await dom.settle();
+    expect(dom.text()).toContain('That is your whole home folder. Pick a folder inside it.');
+    expect(app.toasts).toEqual([]);
   });
 });
