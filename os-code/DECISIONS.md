@@ -1967,3 +1967,35 @@ execution contract. Newest at the bottom.
   their own roots; the team vault ships at the M2 bar or as BETA; the editor
   stays a textarea in v1; each claim needs the evidence D12 names; no
   sealing of notes in v1; the team vault joins model context in v1.1.
+- **Project trust (founder "do project trust first", 2026-09-27; v1 Phase 0
+  item 1, `docs/zed-proposal.md` and `docs/v1-direction-review.md`):** a
+  folder's own `os-code.config.json` can make OpenShore stricter from any
+  folder, but anything that loosens it waits until the person trusts that
+  folder on this machine, and some keys never come from a project file at
+  all. Every config key is classified once in
+  `os-code/src/config/projectPolicy.ts` (project, tighten, trusted, machine),
+  and a test fails on any key left out. Trust and the "always allow in this
+  project" grants live in `~/.os-code/trust.json`, keyed by the folder's real
+  path and its origin, with a digest of what trust vouched for, so a pull
+  that changes the check command, an allow rule, or a `.claude` hook asks
+  again. The person trusts from one card in the chat ("Use them" / "Not
+  now"; `POST /sessions/:id/trust`, owner only on a shared hub; IPC
+  `osc:trustFolder`) or `osc trust`; it applies from the next session.
+  Judgment calls: `providers` is machine-only even for a trusted folder (a
+  project picks among this machine's providers through `stack` once trusted,
+  and can never name a server or a key variable); a project's rules never
+  replace the person's (its ask and deny rules go first, then the person's,
+  then the grants, then a trusted folder's allow rules); "local" is judged
+  by address everywhere it gates something (the cloud card, the pill, the
+  secrets gate, free desktop chat), through a separate `remote` flag on
+  providers so cost accounting and model classing keep reading `kind`; a
+  `*.ts.net` host is local only under this machine's own tailnet suffix; the
+  agent never writes under `.git`, and writes to `os-code.config.json`,
+  `.claude/`, and `.codex/` always ask, in every mode; CLI Pairing refuses in
+  an untrusted folder that carries `.claude` or `.codex` settings, since
+  `claude -p` skips Claude Code's own trust prompt. **Supersedes** the
+  2026-09-05 DAE-9 scope (only `daemon.*`, later `vault.*`, was machine
+  config; now the policy table decides every key), the storage of "always
+  allow in this project" (it wrote into the repo's tracked file; now the
+  machine), and board call 5's project opt-in for pushing the default branch
+  (still the project's switch, but only once the folder is trusted).

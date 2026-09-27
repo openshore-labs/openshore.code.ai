@@ -69,6 +69,19 @@ export type ThreadItem =
     }
   | { kind: 'status'; id: string; text: string }
   | { kind: 'note'; id: string; text: string }
+  // Project trust: this folder's own os-code.config.json asks for settings
+  // that stay off until the person trusts the folder on that computer. One
+  // decision, "Use them" or "Not now"; trusting applies from the next chat.
+  | {
+      kind: 'trust';
+      id: string;
+      folder: string;
+      waiting: string[];
+      state: 'untrusted' | 'changed' | 'trusted' | 'dismissed';
+      /** Why trusting did not go through (a member on a shared hub, a
+       *  computer that could not be reached), in plain words. */
+      error?: string;
+    }
   | { kind: 'stopped'; id: string; message: string }
   // The plan-first flow's clarifying questions, as a tappable picker. Tapping an
   // option (or typing) sends the answer, which is folded back into the framing.

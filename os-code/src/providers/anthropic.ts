@@ -22,6 +22,8 @@ import { claudeThinking } from '../core/agent/chainOfThought.js';
 
 export class AnthropicProvider implements Provider {
   readonly kind = 'cloud' as const;
+  /** A cloud API: always off this computer's network. */
+  readonly remote = true;
 
   constructor(
     readonly id: string,

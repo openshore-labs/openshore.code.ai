@@ -614,6 +614,24 @@ export class RemoteDriver implements ChatDriver {
     }
   }
 
+  async trustFolder(): Promise<{ ok: true; folder: string } | { error: string }> {
+    try {
+      const res = await fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/trust`, {
+        method: 'POST',
+        headers: { ...headers(this.target), 'content-type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(10_000),
+      });
+      const body = (await res.json()) as
+        { ok: true; folder: string } | { error: string; message?: string };
+      if ('ok' in body && body.ok) return body;
+      const failed = body as { error: string; message?: string };
+      return { error: failed.message ?? failed.error };
+    } catch {
+      return { error: 'Could not reach your computer to trust this folder.' };
+    }
+  }
+
   // ---- chat-to-terminal bridge ----
   // Output for a started run streams back as command-* events on the same SSE
   // subscription, so these methods only kick off / drive a run. A short timeout

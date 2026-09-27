@@ -108,6 +108,26 @@ export interface PermissionResult {
   decision: Decision;
   /** One human sentence explaining the decision, shown in approval prompts. */
   reason: string;
+  /** An ask no permission mode may turn into an allow (Accept edits and
+   *  Bypass included): a write to a file that decides what code runs. */
+  sticky?: boolean;
+}
+
+/**
+ * Workspace files the agent must not quietly rewrite, because they decide what
+ * code runs. Writes under .git are refused outright: .git/config can name a
+ * program git runs on its own (core.fsmonitor, core.hooksPath), so one silent
+ * write would turn the next `git status` into code execution. OpenShore's own
+ * os-code.config.json and the coding CLIs' settings folders (Claude Code hooks,
+ * a Codex config) always ask, in every mode, since a quiet edit there changes
+ * what runs next time. `path` is workspace-relative, as the jail computed it.
+ */
+export function protectedWrite(path: string): 'deny' | 'ask' | undefined {
+  const segments = posix.normalize(path).replace(/^\.\//, '').split('/');
+  if (segments.includes('.git')) return 'deny';
+  if (segments[segments.length - 1] === 'os-code.config.json') return 'ask';
+  if (segments.includes('.claude') || segments.includes('.codex')) return 'ask';
+  return undefined;
 }
 
 export class PermissionEngine {
@@ -160,6 +180,25 @@ export class PermissionEngine {
     // dotted spelling (`./secrets/k`, `src/../secrets/k`) must match the same
     // globs as the plain one, whoever built the query.
     const path = q.path === undefined ? undefined : posix.normalize(q.path);
+
+    // Files that decide what code runs, before any grant, rule, or trusted
+    // repo can make a write to them quiet (see protectedWrite).
+    if (q.risk === 'write' && path !== undefined) {
+      const guard = protectedWrite(path);
+      if (guard === 'deny') {
+        return {
+          decision: 'deny',
+          reason: 'the agent never writes inside .git, where a setting can make git run a program',
+        };
+      }
+      if (guard === 'ask') {
+        return {
+          decision: 'ask',
+          reason: 'this file decides what runs, so a change to it always asks',
+          sticky: true,
+        };
+      }
+    }
 
     // Narrow, built-in exception (founder ruling): the coding agent keeps each
     // project's five memory notes current, and those writes land silently but

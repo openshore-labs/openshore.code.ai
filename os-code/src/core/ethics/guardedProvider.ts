@@ -73,6 +73,10 @@ export class GuardedProvider implements Provider {
     return this.inner.kind;
   }
 
+  get remote(): boolean {
+    return this.inner.remote;
+  }
+
   /** The provider being wrapped. For diagnostics only; never to route around. */
   get wrapped(): Provider {
     return this.inner;

@@ -764,6 +764,7 @@ guarded('osc:compact', (sessionId: unknown, focus: unknown) =>
 guarded('osc:listFiles', (sessionId: unknown, query: unknown) =>
   host.listFiles(str(sessionId, 'sessionId'), str(query, 'query')),
 );
+guarded('osc:trustFolder', (sessionId: unknown) => host.trustFolder(str(sessionId, 'sessionId')));
 guarded('osc:resumeSession', (id: unknown) => host.resumeSession(str(id, 'id')));
 guarded('osc:listSessions', () => host.listStoredSessions());
 guarded('osc:send', (sessionId: unknown, text: unknown) =>

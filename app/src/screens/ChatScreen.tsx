@@ -142,6 +142,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     rescueSourceFor,
     continueElsewhere,
     approvePlan,
+    trustProjectFolder,
+    dismissProjectTrust,
     revisePlan,
     startNewChat,
     compactActive,
@@ -586,6 +588,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               setFocusSignal((n) => n + 1);
             }}
             onClarifyPick={(text) => send(text)}
+            onTrustFolder={(itemId) => void trustProjectFolder(itemId)}
+            onDismissTrust={dismissProjectTrust}
             afterItem={(itemId) => {
               if (!conv) return null;
               // The guided setup's chat: the current step's buttons follow the

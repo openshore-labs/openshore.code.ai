@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
+import { trustSessionFolder } from 'os-code/dist/src/core/agent/projectTrust.js';
 import {
   listSessions,
   sealSessionsAtRest,
@@ -350,6 +351,15 @@ export class EngineHost {
 
   listFiles(sessionId: string, query: string): string[] {
     return this.drivers.get(sessionId)?.listFiles(query) ?? [];
+  }
+
+  /** The person's tap on the trust card: trust this session's folder on this
+   *  computer. Its own settings apply from the next session there; the session
+   *  hears it, so the card folds on every device watching. */
+  trustFolder(sessionId: string): { ok: true; folder: string } | { error: string } {
+    const driver = this.drivers.get(sessionId);
+    if (!driver) return { error: 'That session is not open.' };
+    return trustSessionFolder(driver);
   }
 
   // ---------------------------------------------------- chat-to-terminal lane

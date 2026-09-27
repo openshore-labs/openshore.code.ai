@@ -139,6 +139,19 @@ export type AgentEvent =
   // this never fires. `job` names which mechanical decision it did, `line` is
   // the honest one-liner for the card, and `spend` is true when a cloud call
   // was made so a client can render it amber (tenet 4: cloud is amber spend).
+  // Project trust: this folder's own os-code.config.json asks for settings
+  // that stay off until the person trusts the folder on this machine (or the
+  // folder carries a coding CLI's own settings and CLI Pairing is on). Emitted
+  // once when a session starts with something waiting, and again with state
+  // 'trusted' when the person trusts it, so every client can fold the card.
+  // `waiting` is plain words, one phrase per setting; it names what the file
+  // asks for, never a secret.
+  | {
+      type: 'project-trust';
+      state: 'untrusted' | 'changed' | 'trusted';
+      folder: string;
+      waiting: string[];
+    }
   | {
       type: 'harness-current';
       current: string;

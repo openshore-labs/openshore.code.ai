@@ -95,6 +95,12 @@ export interface Provider {
   id: string;
   label: string;
   kind: 'local' | 'cloud';
+  /** True when requests leave this computer's own network (loopback, LAN, or
+   *  the person's own tailnet), judged by the endpoint's address, never by a
+   *  config label. Every 'cloud' provider is remote; an OpenAI-compatible
+   *  server on the internet is too. What leaves asks first and never carries
+   *  the project's secrets. */
+  remote: boolean;
   capabilities(model: string): Promise<ProviderCapabilities>;
   chat(request: ChatRequest, signal?: AbortSignal): AsyncGenerator<ChatEvent, void, void>;
   /** Models this endpoint can serve right now (empty when unknown). */
@@ -131,4 +137,9 @@ export class ProviderError extends Error {
     super(message);
     this.name = 'ProviderError';
   }
+}
+
+/** True when a provider's requests leave this computer's own network. */
+export function leavesThisNetwork(provider: Pick<Provider, 'kind' | 'remote'>): boolean {
+  return provider.kind === 'cloud' || provider.remote;
 }

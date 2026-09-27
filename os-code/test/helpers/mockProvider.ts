@@ -11,6 +11,8 @@ export type ScriptedTurn = ChatEvent[];
 
 export class MockProvider implements Provider {
   readonly kind: 'local' | 'cloud';
+  /** Off this network: a cloud mock is; a local one is not. */
+  readonly remote: boolean;
   readonly requests: ChatRequest[] = [];
   private turns: ScriptedTurn[];
   caps: ProviderCapabilities;
@@ -22,6 +24,7 @@ export class MockProvider implements Provider {
   ) {
     this.turns = [...turns];
     this.kind = options.kind ?? 'local';
+    this.remote = this.kind === 'cloud';
     this.caps = {
       supportsTools: true,
       supportsVision: false,

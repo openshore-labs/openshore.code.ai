@@ -69,6 +69,10 @@ export class ElectronDriver implements ChatDriver {
     return requireBridge().listFiles(this.sessionId, query);
   }
 
+  trustFolder(): Promise<{ ok: true; folder: string } | { error: string }> {
+    return requireBridge().trustFolder(this.sessionId);
+  }
+
   // ---- chat-to-terminal bridge ----
   // Output for a started run streams back as command-* events on the same
   // onEvent channel the main process already forwards, so these only kick off /

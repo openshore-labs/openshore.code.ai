@@ -1,5 +1,5 @@
 {
-  "$comment": "Every knob OS Code has, with its default. An EMPTY config is valid: defaults give you a working single-model setup once osc init picks your orchestrator. Copy this file to os-code.config.json (per project) or ~/.os-code/config.json (global) and keep only what you change.",
+  "$comment": "Every knob OS Code has, with its default. An EMPTY config is valid: defaults give you a working single-model setup once osc init picks your orchestrator. Copy this file to ~/.os-code/config.json (your computer) and keep only what you change. A project's own os-code.config.json is read under project trust: it can make OpenShore stricter from any folder, its other settings apply once you trust that folder on your computer (osc trust, or the card in the app), and providers, imageGen, catalog, license, vault, daemon, trustedRepos, and the search key names come only from your computer's file.",
 
   "providers": {
     "ollama": {

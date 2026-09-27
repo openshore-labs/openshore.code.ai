@@ -3,6 +3,7 @@
 // Local endpoints (Ollama, LM Studio, a self-hosted SearXNG on the LAN or
 // tailnet) are always allowed: local-first traffic is the point of the product.
 import { isIP } from 'node:net';
+import { ownTailnetSuffix } from '../../connect/tailscale.js';
 
 export interface EgressConfig {
   /** Master switch for the web tools (search + fetch). Default on, always visible. */
@@ -49,15 +50,22 @@ function normalizeIpLiteral(host: string): string {
   return h;
 }
 
+/**
+ * True when a host is on this computer's own network: loopback, the LAN
+ * (private ranges, link-local, mDNS), or the person's own tailnet (its
+ * 100.64.0.0/10 addresses, or a MagicDNS name under this machine's own tailnet
+ * suffix). Any other *.ts.net name is NOT local: Tailscale Funnel serves those
+ * on the public internet, so a stranger's Funnel host would otherwise pass as
+ * "local" and receive whatever local-only traffic goes to it.
+ */
 export function isLocalHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  if (
-    host === 'localhost' ||
-    host.endsWith('.localhost') ||
-    host.endsWith('.local') ||
-    host.endsWith('.ts.net')
-  ) {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
     return true;
+  }
+  if (host.endsWith('.ts.net')) {
+    const own = ownTailnetSuffix();
+    return Boolean(own) && host.endsWith(`.${own}`);
   }
   if (isIP(host) === 4) return PRIVATE_V4.some((re) => re.test(host));
   const v6 = normalizeIpLiteral(host);
@@ -198,5 +206,15 @@ export class EgressBlocked extends Error {
   ) {
     super(reason);
     this.name = 'EgressBlocked';
+  }
+}
+
+/** True when a URL's host is on this computer's own network (see isLocalHost).
+ *  An unparsable URL is not. */
+export function isLocalUrl(url: string): boolean {
+  try {
+    return isLocalHost(new URL(url).hostname);
+  } catch {
+    return false;
   }
 }

@@ -9,6 +9,7 @@ import { loginCommand } from '../src/commands/login.js';
 import { authGithubCommand } from '../src/commands/authGithub.js';
 import { pairCommand } from '../src/commands/pair.js';
 import { doctorCommand } from '../src/commands/doctor.js';
+import { trustCommand } from '../src/commands/trust.js';
 import { serveCommand } from '../src/commands/serve.js';
 import { attachCommand } from '../src/commands/attach.js';
 import {
@@ -86,6 +87,13 @@ program
   .command('doctor')
   .description('check every link in the chain, with one-line fixes')
   .action(doctorCommand);
+program
+  .command('trust')
+  .description("trust this folder's own os-code.config.json on this computer")
+  .option('--status', 'show what this folder asks for, and change nothing')
+  .option('--forget', 'stop trusting this folder')
+  .option('-y, --yes', 'trust without asking')
+  .action(trustCommand);
 
 program
   .command('serve')

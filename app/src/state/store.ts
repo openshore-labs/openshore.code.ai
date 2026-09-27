@@ -1393,6 +1393,11 @@ interface AppState {
   approvePlan(): void;
   /** Plan mode: keep the plan in view and hand the person the composer. */
   revisePlan(): void;
+  /** The trust card's "Use them": trust the active session's folder on the
+   *  computer it runs on (its own settings apply from the next chat there). */
+  trustProjectFolder(itemId: string): Promise<void>;
+  /** The trust card's "Not now": leave the folder's settings off. */
+  dismissProjectTrust(itemId: string): void;
   /** Set the permission mode for new sessions and the live one. */
   /** `source` names where the change came from, for the opt-in activity
    *  log's regret signal (a walk choice changed soon after). */
@@ -7421,6 +7426,53 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!c) return s;
         const items = c.thread.items.map((i) =>
           i.kind === 'plan' && i.status === 'proposed' ? { ...i, status: 'revising' as const } : i,
+        );
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: { ...c, thread: { ...c.thread, items } },
+          },
+        };
+      });
+    },
+
+    async trustProjectFolder(itemId) {
+      const { activeId } = get();
+      if (!activeId) return;
+      const setTrustItem = (patch: { state?: 'trusted'; error?: string }) =>
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c) return s;
+          const items = c.thread.items.map((i) =>
+            i.kind === 'trust' && i.id === itemId ? { ...i, ...patch } : i,
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [activeId]: { ...c, thread: { ...c.thread, items } },
+            },
+          };
+        });
+      const driver = drivers.get(activeId);
+      if (!driver?.trustFolder) {
+        setTrustItem({
+          error: 'This chat is not running on your computer, so there is nothing to trust here.',
+        });
+        return;
+      }
+      const result = await driver.trustFolder();
+      if ('error' in result) setTrustItem({ error: result.error });
+      else setTrustItem({ state: 'trusted', error: undefined });
+    },
+
+    dismissProjectTrust(itemId) {
+      const { activeId } = get();
+      if (!activeId) return;
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        const items = c.thread.items.map((i) =>
+          i.kind === 'trust' && i.id === itemId ? { ...i, state: 'dismissed' as const } : i,
         );
         return {
           conversations: {

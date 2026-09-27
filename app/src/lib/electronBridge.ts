@@ -164,6 +164,9 @@ export interface OscodeBridge {
     focus?: string,
   ): Promise<{ before: number; after: number } | { error: string }>;
   listFiles(sessionId: string, query: string): Promise<string[]>;
+  /** Trust this session's folder on this computer (the trust card's tap): its
+   *  own os-code.config.json applies from the next session there. */
+  trustFolder(sessionId: string): Promise<{ ok: true; folder: string } | { error: string }>;
   /** Resume a session and return its journal so the renderer can replay it AFTER
    *  subscribing (IPC is not buffered, so a pushed replay would be lost). */
   resumeSession(

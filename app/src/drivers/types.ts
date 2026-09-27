@@ -48,6 +48,12 @@ export interface ChatDriver {
   compact?(focus?: string): Promise<{ before: number; after: number } | { error: string }>;
   listFiles?(query: string): Promise<string[]>;
   /**
+   * Project trust (engine-backed drivers only): trust this session's folder on
+   * the computer it runs on, so the folder's own os-code.config.json applies
+   * from the next session there. On a shared hub only the owner may.
+   */
+  trustFolder?(): Promise<{ ok: true; folder: string } | { error: string }>;
+  /**
    * The chat-to-terminal bridge (desktop-backed drivers only). Run a command
    * the user asked for on the connected machine; output streams back as
    * command-* events on the same subscription. Returns the runId, or undefined

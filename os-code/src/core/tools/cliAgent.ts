@@ -14,6 +14,8 @@ import { capContent, type ToolDef } from './index.js';
 import { redactSecrets } from '../security/redaction.js';
 import { runCommand } from '../exec/commandRunner.js';
 import { CURRENTS_LIMITS, type CliAgentCommand } from '../../currents/model.js';
+import { cliFolderTrust } from '../../config/load.js';
+import { hasAgentCliSettings } from '../../config/trust.js';
 
 const schema = z.object({
   task: z
@@ -60,6 +62,16 @@ export const cliAgentTool: ToolDef<typeof schema> = {
         ok: false,
         content:
           'No coding CLI is paired on this session. Ask the person to turn on CLI Pairing in Settings on a computer with Claude Code or Codex installed.',
+      };
+    }
+    // `claude -p` (and codex exec) skip the CLI's own folder-trust prompt, so a
+    // repository's .claude hooks or .codex config would run unasked. In a
+    // folder that carries them, OpenShore's trust stands in for the CLI's.
+    if (hasAgentCliSettings(ctx.cwd) && cliFolderTrust(ctx.cwd).state !== 'trusted') {
+      const name = cli === 'claude' ? 'Claude Code' : 'Codex';
+      return {
+        ok: false,
+        content: `Not run: this folder carries its own ${name} settings (.claude or .codex), which can run commands when ${name} starts, and a headless run does not ask about them. Trust this folder first (the card in the app, or "osc trust" in this folder), then try again.`,
       };
     }
     const timeoutSeconds = args.timeoutSeconds ?? 600;

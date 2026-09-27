@@ -135,6 +135,21 @@ Emergency door is a targeted `.skip` with a reason, never a loosened guard.
 The coding agent's UX standard (`os-code/src/core/agent/uxStandard.ts`)
 carries the same bar for everything built through OpenShore.
 
+## Project trust is a rule, not a feature (standing rule, 2026-09-27)
+
+A repository's own `os-code.config.json` is a proposal, never the person's
+settings. It can make OpenShore stricter from any folder; anything that
+loosens it (its check command, allow rules, model choices) applies only once
+the person trusts that folder on this machine; and machine config (model
+servers, key variable names, the vault folder, the catalog, trusted repos)
+never comes from a project file at all. Every config key is classified in
+`os-code/src/config/projectPolicy.ts`, and `os-code/test/projectTrust.test.ts`
+fails on an unclassified key and holds one test per attack vector. A new
+config key is not done until it is classified there. Trust and "always allow
+in this project" grants live on the machine (`~/.os-code/trust.json`), never
+in the repo. "Local" is judged by address (`isLocalHost`, `leavesThisNetwork`),
+never by a provider's config label.
+
 ## Em dash policy is TOTAL here (standing rule)
 
 No em dash anywhere in tracked source, comments included, encoded spellings

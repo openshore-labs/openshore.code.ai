@@ -2,8 +2,15 @@
 // LocalDriver + AgentSession. The run command, the daemon, and the eval
 // harness all build sessions through here so wiring never drifts.
 import type { OscConfig } from '../../config/schema.js';
-import { addProjectPermissionRule, loadConfig } from '../../config/load.js';
+import {
+  addProjectPermissionRule,
+  cliFolderTrust,
+  loadConfig,
+  type ProjectTrust,
+} from '../../config/load.js';
+import { hasAgentCliSettings } from '../../config/trust.js';
 import { ProviderRegistry } from '../../providers/registry.js';
+import { leavesThisNetwork } from '../../providers/types.js';
 import { getAnthropicKey } from '../../auth/claude.js';
 import { resolveStack } from '../../router/stack.js';
 import { Router } from '../../router/router.js';
@@ -127,9 +134,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const projectName = options.projectName ?? stored.projectName;
   const instructions = options.instructions ?? stored.instructions;
   let config = options.config;
+  let projectTrust: ProjectTrust | undefined;
   if (!config) {
     const loaded = loadConfig(options.cwd);
     config = loaded.config;
+    projectTrust = loaded.projectTrust;
     warnings.push(...loaded.warnings);
   }
 
@@ -189,7 +198,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // are dropped here, not merely hidden in the prompt), and a secrets-bearing
   // session runs under egress lockdown so no tool can send them off the device.
   // See loop.ts for the matching "no cloud escalation while secrets are present".
-  const orchestratorKind = stack.orchestrator.provider.kind === 'cloud' ? 'cloud' : 'local';
+  //
+  // "Local" is judged by where the orchestrator's requests go (loopback, the
+  // LAN, the person's own tailnet), never by a config label: an OpenAI-
+  // compatible server on the internet is as far off the device as a cloud API.
+  const orchestratorKind = leavesThisNetwork(stack.orchestrator.provider) ? 'cloud' : 'local';
   const { projectSecrets, egressLockdown } = gateProjectSecrets(
     orchestratorKind,
     options.projectSecrets,
@@ -252,6 +265,31 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   });
   // From here on, an ethics block shows up in the transcript of this session.
   ethicsSink.emit = (event) => driver.emit(event);
+
+  // Project trust: say what this folder asks for that stays off until the
+  // person trusts it, once, at the start of a fresh session (a revived one
+  // already carries it in its journal). CLI Pairing adds its own line when the
+  // folder carries a coding CLI's settings, since that tool refuses there.
+  if (!options.sessionId) {
+    const waiting = [...(projectTrust?.waiting ?? [])];
+    let state = projectTrust?.state;
+    if (options.currents?.cli && hasAgentCliSettings(options.cwd)) {
+      const cli = cliFolderTrust(options.cwd);
+      if (cli.state !== 'trusted') {
+        const name = options.currents.cli.command === 'claude' ? 'Claude Code' : 'Codex';
+        waiting.push(`lets ${name} run with this folder's own settings`);
+        if (state !== 'changed') state = cli.state === 'changed' ? 'changed' : 'untrusted';
+      }
+    }
+    if (waiting.length && (state === 'untrusted' || state === 'changed')) {
+      driver.emit({
+        type: 'project-trust',
+        state,
+        folder: projectTrust?.folder ?? options.cwd,
+        waiting,
+      });
+    }
+  }
 
   // Wire the readTerminal accessor to this driver's id, if the daemon provided
   // a terminal reader. Keyed by session id so the tool only ever sees this
