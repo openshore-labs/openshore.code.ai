@@ -1,5 +1,6 @@
 -- pgTAP coverage for the Org Vault v1 migration (0019, Vault M2 item 2.3, CTO
--- ruling G3). Run with `supabase test db` against a database that has every
+-- ruling G3) and the move migration (0020, Vault M6 item 6.2, CTO ruling K12),
+-- plus team Restore over 0019's RPCs (K6). Run with `supabase test db` against a database that has every
 -- migration applied. Its own transaction and its own plan(), so its count
 -- never collides with rls.test.sql's.
 --
@@ -12,7 +13,7 @@
 -- privilege; 23505 is a unique_violation.
 
 begin;
-select plan(56);
+select plan(89);
 
 -- ------------------------------------------------------------ fixtures
 --   f1 = author (confirmed, active)
@@ -321,12 +322,234 @@ select throws_ok(
   'P0001', null::text,
   'a revision row cannot be updated, even by the owner');
 
+-- ------------------------------------------------------------ move (0020)
+select set_config('request.jwt.claims',
+  '{"sub":"f1000000-0000-0000-0000-000000000001","email":"author@example.com","role":"authenticated"}', true);
+set local role authenticated;
+
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'moving', null, true)->>'ok',
+  'true',
+  'fixture: a note to move');
+
+insert into saved
+  select 'mv1', rev from public.org_vault_notes
+  where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'move-src.md';
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'notes/moved.md',
+    (select v from saved where k = 'plan_v1'))->>'conflict',
+  'changed',
+  'a move with a stale base rev is changed');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'notes/moved.md',
+    (select v from saved where k = 'plan_v1'))#>>'{theirs,body}',
+  'moving',
+  'a stale move carries theirs');
+
+select is(
+  (select count(*) from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'notes/moved.md'),
+  0::bigint,
+  'a stale move writes nothing at the destination');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'nowhere.md', 'somewhere.md',
+    1000000000)->>'conflict',
+  'missing',
+  'moving a note that is not there is missing');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'OLD.md',
+    (select v from saved where k = 'mv1'))->>'conflict',
+  'exists',
+  'a move onto a taken name, in any letter case, is exists');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'OLD.md',
+    (select v from saved where k = 'mv1'))#>>'{theirs,path}',
+  'old.md',
+  'exists carries theirs under its real path');
+
+select is(
+  (select array_agg(body order by path) from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path in ('move-src.md', 'old.md')
+     and not deleted),
+  array['moving', 'today'],
+  'a refused move leaves both notes as they were');
+
+select throws_ok(
+  $$ select public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', '../escape.md', 1) $$,
+  'P0001', null::text,
+  'a move to a traversal path is refused');
+
+select throws_ok(
+  $$ select public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'x.md', null) $$,
+  'P0001', null::text,
+  'a move without if_match is refused');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'notes/moved.md',
+    (select v from saved where k = 'mv1'))->>'ok',
+  'true',
+  'a move at the current rev lands');
+
+insert into saved
+  select 'mv2', rev from public.org_vault_notes
+  where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'notes/moved.md' and not deleted;
+
+select is(
+  (select body from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'notes/moved.md' and not deleted),
+  'moving',
+  'the body arrives at the new path');
+
+select ok(
+  (select v from saved where k = 'mv2') > (select v from saved where k = 'mv1'),
+  'the moved note carries a new sequence rev');
+
+select is(
+  (select deleted from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'move-src.md'),
+  true,
+  'the source path is a tombstone, so other devices learn it is gone');
+
+select is(
+  (select body from public.org_vault_revisions
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'move-src.md' and reason = 'renamed'),
+  'moving',
+  'a move records a renamed revision at the old path');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'notes/moved.md', 'back.md',
+    (select v from saved where k = 'mv1'))->>'conflict',
+  'changed',
+  'a rev from before the move never matches the moved note');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'notes/moved.md', 'notes/Moved.md',
+    (select v from saved where k = 'mv2'))->>'path',
+  'notes/Moved.md',
+  'a case-only rename of the same note is allowed');
+
+select is(
+  (select count(*) from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and lower(path) = 'notes/moved.md'),
+  1::bigint,
+  'a case-only rename updates the same row and leaves no tombstone');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'notes/Moved.md', 'move-src.md',
+    (select rev from public.org_vault_notes
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'notes/Moved.md'))->>'ok',
+  'true',
+  'a move onto a tombstone brings that name back');
+
+select is(
+  (select body from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'move-src.md' and not deleted),
+  'moving',
+  'and the revived note holds the moved body');
+
+insert into saved
+  select 'mv3', rev from public.org_vault_notes
+  where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'move-src.md';
+reset role;
+
+-- A stranger (never a member) is refused, even with the right rev.
+select set_config('request.jwt.claims',
+  '{"sub":"f4000000-0000-0000-0000-000000000004","email":"stranger@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$ select public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'stolen.md',
+       (select v from saved where k = 'mv3')) $$,
+  'P0001', null::text,
+  'a non-member''s org_vault_move is refused');
+reset role;
+
+-- ------------------------------------------------------------ team trash
+-- K6: a trash is org_vault_remove; Restore is org_vault_write if_absent from
+-- the latest 'deleted' revision, at the original path or "{title} (restored)".
+select set_config('request.jwt.claims',
+  '{"sub":"f2000000-0000-0000-0000-000000000002","email":"mate@example.com","role":"authenticated"}', true);
+set local role authenticated;
+
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'ideas/idea.md', 'keep me', null, true)->>'ok',
+  'true',
+  'fixture: a note to trash');
+select is(
+  public.org_vault_remove('0f000000-0000-0000-0000-00000000000f', 'ideas/idea.md',
+    (select rev from public.org_vault_notes
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'ideas/idea.md'))->>'ok',
+  'true',
+  'a trash is a guarded remove');
+
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'ideas/idea.md',
+    (select body from public.org_vault_revisions
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'ideas/idea.md' and reason = 'deleted'
+     order by recorded_at desc, id desc limit 1),
+    null, true)->>'ok',
+  'true',
+  'restore to the original path lands');
+select is(
+  (select body from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'ideas/idea.md' and not deleted),
+  'keep me',
+  'the restored note holds the trashed body');
+
+-- The name is taken (in another case) by the time Restore runs.
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'draft.md', 'first', null, true)->>'ok',
+  'true',
+  'fixture: a draft');
+select is(
+  public.org_vault_remove('0f000000-0000-0000-0000-00000000000f', 'draft.md',
+    (select rev from public.org_vault_notes
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'draft.md'))->>'ok',
+  'true',
+  'fixture: the draft is trashed');
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'Draft.md', 'second', null, true)->>'ok',
+  'true',
+  'fixture: a new note takes the name in another case');
+
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'draft.md',
+    (select body from public.org_vault_revisions
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'draft.md' and reason = 'deleted'
+     order by recorded_at desc, id desc limit 1),
+    null, true)->>'conflict',
+  'exists',
+  'restore meeting a taken name is exists, never a replace');
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'draft (restored).md',
+    (select body from public.org_vault_revisions
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'draft.md' and reason = 'deleted'
+     order by recorded_at desc, id desc limit 1),
+    null, true)->>'ok',
+  'true',
+  'restore then lands at "{title} (restored)"');
+select is(
+  (select array_agg(path || '=' || body order by path) from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and lower(path) in ('draft.md', 'draft (restored).md')
+     and not deleted),
+  array['Draft.md=second', 'draft (restored).md=first'],
+  'both notes are kept: the new one and the restored one');
+reset role;
+
 -- ------------------------------------------------------------ roles
 set local role anon;
 select throws_ok(
   $$ select public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'a.md', 'x', null, true) $$,
   '42501', null::text,
   'anon cannot call org_vault_write');
+select throws_ok(
+  $$ select public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'a.md', 1) $$,
+  '42501', null::text,
+  'anon cannot call org_vault_move');
 reset role;
 
 -- ------------------------------------------------------------ removed member
@@ -369,6 +592,11 @@ select throws_ok(
   $$ select public.org_vault_remove('0f000000-0000-0000-0000-00000000000f', 'old.md', 1) $$,
   'P0001', null::text,
   'a removed member''s org_vault_remove is refused');
+select throws_ok(
+  $$ select public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'move-src.md', 'taken.md',
+       (select v from saved where k = 'mv3')) $$,
+  'P0001', null::text,
+  'a removed member''s org_vault_move is refused');
 reset role;
 
 -- ------------------------------------------------------------ purge

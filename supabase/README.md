@@ -82,8 +82,8 @@ What 0015 does, by finding:
 
 Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32
-assertions over the cases above) and `tests/org_vault.test.sql` (56 assertions
-over 0019, below). CI runs the same command in the `sql` job of
+assertions over the cases above) and `tests/org_vault.test.sql` (89 assertions
+over 0019 and 0020, below). CI runs the same command in the `sql` job of
 `.github/workflows/ci.yml`. `deno test functions/_shared/entitlement.test.ts` covers
 the pure decisions (cross-rail guard, checkout routing, Apple product and
 freshness checks, ignored prices).
@@ -133,6 +133,30 @@ order by org_id, folded;
 
 No rows means 0019 changes no data. Each row lists the paths that will be
 renamed after the first one; tell the teammates who own them.
+
+## Migration 0020 (Org Vault move): what changed and how to ship it
+
+`migrations/0020_org_vault_move.sql` adds one RPC for the team vault's rename
+(Vault v1 plan item 6.2, CTO rulings K3 and K12):
+
+- `org_vault_move(org, from, to, if_match)` moves a live note when its rev is
+  still `if_match`. It never replaces: a taken name, judged under
+  `lower(path)` like 0019's unique index, answers `exists` with `theirs`; a
+  stale rev is `changed` with `theirs`; a source that is gone is `missing`. A
+  case-only rename of the same note is allowed and updates that row in place.
+- The old version is kept as a `renamed` revision row; a move to a new name
+  tombstones the source and writes the destination, each with a sequence rev.
+- Same membership rule and grants as `org_vault_write` (authenticated only).
+
+Team Trash needs no SQL of its own (K6, R3): a trash is `org_vault_remove`,
+Restore is `org_vault_write` with `if_absent` from the latest `deleted`
+revision (at the original path, or `{title} (restored).md` when that name is
+taken), and there is no Empty, since `org_vault_purge` from 0019 already
+drops tombstones and revision rows after 30 days.
+
+**Order (founder gate):** 0020 goes to production AFTER 0019 (it calls 0019's
+lock, snapshot, and sequence), and before the team client that calls
+`org_vault_move` merges to main. `supabase db push` applies them in order.
 
 ### Warning: `supabase config push` and email confirmations (P0-4)
 
