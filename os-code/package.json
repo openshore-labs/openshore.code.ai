@@ -19,7 +19,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench:vault-index": "tsx scripts/bench-vault-index.ts"
   },
   "dependencies": {
     "@mozilla/readability": "0.6.0",
