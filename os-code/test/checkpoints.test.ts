@@ -259,3 +259,34 @@ async function waitFor(check: () => boolean, ms = 10_000): Promise<void> {
     await new Promise((r) => setTimeout(r, 20));
   }
 }
+
+describe('the shadow store stays bounded', () => {
+  it('lets aged-out records go and collects what they held; kept ones still undo', async () => {
+    write('a.txt', 'v0\n');
+    const shadow = new ShadowCheckpoints(folder, { keep: 2, gcEvery: 1, pruneAge: 'now' });
+    const records = [];
+    for (let i = 1; i <= 4; i++) {
+      records.push((await task(shadow, () => write('a.txt', `v${i}\n`)))!);
+    }
+    expect(shadow.list().map((r) => r.id)).toEqual([records[2]!.id, records[3]!.id]);
+    const gitDir = checkpointDir(folder);
+    const refs = execFileSync('git', ['--git-dir', gitDir, 'for-each-ref', '--format=%(refname)'], {
+      encoding: 'utf8',
+    });
+    expect(refs).not.toContain(records[0]!.id);
+    expect(refs).toContain(records[3]!.id);
+    // The oldest record's first snapshot is gone from the store.
+    expect(() =>
+      execFileSync('git', ['--git-dir', gitDir, 'cat-file', '-e', records[0]!.before], {
+        stdio: 'ignore',
+      }),
+    ).toThrow();
+    expect(await shadow.restore(records[0]!.id, 'undo')).toMatchObject({
+      error: expect.any(String),
+    });
+    expect(await shadow.restore(records[3]!.id, 'undo')).toEqual({ ok: true, paths: ['a.txt'] });
+    expect(read('a.txt')).toBe('v3\n');
+    expect(await shadow.restore(records[3]!.id, 'redo')).toEqual({ ok: true, paths: ['a.txt'] });
+    expect(read('a.txt')).toBe('v4\n');
+  });
+});

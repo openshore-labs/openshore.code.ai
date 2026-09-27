@@ -46,7 +46,7 @@ import { WhatLeavesSheet } from '../components/WhatLeavesSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
-import { WAYFINDING, WAYFINDING_IDS, memoryOverride, wayfindingOn } from '../lib/currents.js';
+import { WAYFINDING, WAYFINDING_READY, memoryOverride, wayfindingOn } from '../lib/currents.js';
 import { PROVIDER_ROSTER } from '../lib/gitos/providers.js';
 import { vaultDevicePatch, vaultDeviceView } from '../lib/vaultDevice.js';
 import {
@@ -275,6 +275,9 @@ export function SettingsScreen() {
     setVaultScope,
     vaultRequestSheet,
   } = useApp();
+  const restorePurchases = useApp((s) => s.restorePurchases);
+  const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
+  const userEntitlement = useApp((s) => s.userEntitlement);
   // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
   const [vaultSettingsOpen, setVaultSettingsOpen] = useState(false);
   const memoryOn = memoryOverride(settings) !== false;
@@ -359,7 +362,7 @@ export function SettingsScreen() {
     const text = insightsAsText();
     try {
       await navigator.clipboard.writeText(text);
-      showToast('Activity log copied. Paste it back to the team.');
+      showToast('Activity log copied. Paste it wherever you are asking for help.');
     } catch {
       showToast('Copy is unavailable here. The log stays on this device.');
     }
@@ -373,8 +376,31 @@ export function SettingsScreen() {
   const accountValue = signedIn
     ? account?.type === 'commercial' && org
       ? tierById(org.tierId).name
-      : 'Free'
+      : PAY_GATES_ENABLED && personalUnlockedNow()
+        ? 'Personal'
+        : 'Free'
     : 'Optional';
+  // Personal's standing on this device, in plain words: free for everyone
+  // while the pay gates are off (the beta), else active (until when) or not.
+  const personalUntil = userEntitlement?.validUntil
+    ? new Date(userEntitlement.validUntil).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : undefined;
+  const personalValue = !PAY_GATES_ENABLED
+    ? 'Free in the beta'
+    : personalUnlockedNow()
+      ? 'Active'
+      : 'Not yet';
+  const personalSub = !PAY_GATES_ENABLED
+    ? 'Everything is open to everyone during the beta.'
+    : personalUnlockedNow()
+      ? personalUntil
+        ? `The coding agent is yours. Renews or ends ${personalUntil}.`
+        : 'The coding agent is yours.'
+      : 'Chat is free. Personal unlocks the coding agent, bought in the app on iPhone.';
 
   const termDesktopLocal = isDesktop() && Boolean(bridge()) && !settings.preferRemoteHub;
   const termTargetId = terminalTargetId({
@@ -434,10 +460,22 @@ export function SettingsScreen() {
         <SettingsGroup title="Account" index={group++}>
           <SettingsRow
             label={accountLabel}
-            sub={signedIn ? email : 'Personal use needs no account'}
+            sub={signedIn ? email : 'Chatting and building need no account'}
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
+          <SettingsRow label="Personal" subWrap sub={personalSub} value={personalValue} />
+          {PAY_GATES_ENABLED && configured ? (
+            <SettingsRow
+              label="Restore purchases"
+              sub={
+                signedIn
+                  ? 'Bought Personal already? Unlock it on this device.'
+                  : 'Sign in first, then restore.'
+              }
+              onClick={() => void restorePurchases()}
+            />
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup title="Privacy" index={group++}>
@@ -1007,7 +1045,7 @@ export function SettingsScreen() {
 
         {/* Wayfinding: how the agent finds its way. On by default. */}
         <SettingsGroup title="Wayfinding" index={group++}>
-          {WAYFINDING_IDS.map((id) => (
+          {WAYFINDING_READY.map((id) => (
             <Fragment key={id}>
               <SettingsRow
                 label={WAYFINDING[id].label}

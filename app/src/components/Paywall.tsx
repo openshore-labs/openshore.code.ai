@@ -5,9 +5,17 @@
 // button; the sheet points the user to buy it in the app on their iPhone, then
 // refresh here to unlock the same account on this computer. Chat keeps working
 // behind this, so the dismiss is non-punitive.
+import { useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
-import { iapAvailable } from '../lib/iap.js';
+import { PERSONAL_YEARLY_PRODUCT_ID, iapAvailable, products } from '../lib/iap.js';
+import { PERSONAL_UNLOCK_PRICE_YEAR } from '../lib/plans.js';
+import { openExternal } from '../lib/platform.js';
+
+/** Apple requires the terms and the privacy policy on a subscription screen
+ *  (guideline 3.1.2); both live on the site. */
+export const TERMS_URL = 'https://openshore.ai/terms/';
+export const PRIVACY_URL = 'https://openshore.ai/privacy/';
 
 const BULLETS = [
   'Run the agent on any repository, on your computer',
@@ -20,23 +28,39 @@ export function Paywall() {
   const buyPersonal = useApp((s) => s.buyPersonal);
   const restorePurchases = useApp((s) => s.restorePurchases);
   const closePaywall = useApp((s) => s.closePaywall);
+  const signedIn = useApp((s) => Boolean(s.authSession));
   // Hooks run unconditionally, before the reason gate.
   const { closing, dismiss } = useSheetExit(closePaywall);
+  const ios = iapAvailable();
+  // The App Store's localized price (the one the person is charged), asked
+  // for once the sheet opens; the fallback label covers a slow or failed ask.
+  const [storePrice, setStorePrice] = useState<string | undefined>();
+  useEffect(() => {
+    if (!reason || !ios || !PAY_GATES_ENABLED) return;
+    let live = true;
+    products([PERSONAL_YEARLY_PRODUCT_ID])
+      .then(({ products: found }) => {
+        const price = found.find((p) => p.id === PERSONAL_YEARLY_PRODUCT_ID)?.displayPrice;
+        if (live && price) setStorePrice(price);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [reason, ios]);
   if (!reason) return null;
 
-  const ios = iapAvailable();
   // The Marketplace is Coming soon, so the sheet never sells it (brand sweep
   // 2026-09-24): one headline for either reason.
   const headline = 'Unlock the agent.';
   const subhead =
     'Chat is yours for free. Personal turns OpenShore into a coding agent that reads your repository, writes real edits, and runs the tools to prove them.';
-  // The App Store returns the localized price at purchase; $20/year is the set
-  // price and the label the founder configures the product at. No price shows
-  // while the pay gates are off (pricing is a Board gate).
+  // No price shows while the pay gates are off (pricing is a Board gate).
+  const price = storePrice ?? `$${PERSONAL_UNLOCK_PRICE_YEAR}`;
   const priceLine = PAY_GATES_ENABLED
     ? ios
-      ? '$20 per year. One person, the whole app.'
-      : '$20 per year. One person, the whole app. Bought on your iPhone.'
+      ? `${price} per year. One person, the whole app.`
+      : `${price} per year. One person, the whole app. Bought on your iPhone.`
     : null;
 
   return (
@@ -51,10 +75,16 @@ export function Paywall() {
           ))}
         </ul>
         {priceLine ? <p className="paywall-price">{priceLine}</p> : null}
+        {!signedIn ? (
+          <p className="sheet-sub">
+            Chatting needs no account. Buying Personal does, so it follows you from your iPhone to
+            your computer.
+          </p>
+        ) : null}
         <div className="sheet-actions">
           {ios ? (
             <button className="btn primary press-fb" onClick={() => void buyPersonal()}>
-              {PAY_GATES_ENABLED ? 'Unlock Personal · $20/year' : 'Unlock Personal'}
+              {PAY_GATES_ENABLED ? `Unlock Personal · ${price}/year` : 'Unlock Personal'}
             </button>
           ) : (
             <p className="sheet-sub" style={{ marginTop: 0 }}>
@@ -69,6 +99,22 @@ export function Paywall() {
             Not now. Keep chatting.
           </button>
         </div>
+        <p className="paywall-legal">
+          <button
+            type="button"
+            className="link-quiet press-fb"
+            onClick={() => openExternal(TERMS_URL)}
+          >
+            Terms of Use
+          </button>
+          <button
+            type="button"
+            className="link-quiet press-fb"
+            onClick={() => openExternal(PRIVACY_URL)}
+          >
+            Privacy Policy
+          </button>
+        </p>
       </div>
     </div>
   );

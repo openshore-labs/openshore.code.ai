@@ -112,6 +112,7 @@ import {
   type ServerOrg,
 } from './orgSync.js';
 import {
+  currentEntitlement as iapCurrentEntitlement,
   iapAvailable,
   purchase as iapPurchase,
   restore as iapRestore,
@@ -535,7 +536,7 @@ export type ViewName =
 
 // Which locked surface triggered the Personal upgrade sheet. Free is chat only;
 // the coding agent and the Marketplace need the Personal unlock.
-export type PaywallReason = 'coding' | 'marketplace';
+export type PaywallReason = 'coding' | 'marketplace' | 'crew';
 
 export interface AppSettings {
   onboarded: boolean;
@@ -1118,6 +1119,48 @@ let pendingCallback: { session: Session; recovery: boolean } | undefined;
 // transaction, the link call failed (offline, a 401), so the signed receipt is
 // kept sealed on the device and retried on the next foreground or Restore.
 const PENDING_APPLE_LINK_KEY = 'oscode.iap.pendingLink.v1';
+/** The last server-verified Personal entitlement, so a launch with no network
+ *  (a local-model product must open offline) keeps what the person paid for
+ *  until it runs out, instead of locking the coding agent. */
+const ENTITLEMENT_CACHE_KEY = 'oscode.entitlement.personal.v1';
+
+/** What an entitlement refresh learned: the server answered, it could not be
+ *  reached, or nobody is signed in. */
+export type EntitlementRefresh = 'ok' | 'offline' | 'signed-out';
+
+/** The entitlement a launch starts from before the server answers: the last
+ *  one the server verified (while it lasts), else, on an iPhone, StoreKit's
+ *  own verified subscription. Exported for its test. */
+export async function restoreOfflineEntitlement(
+  apply: (e: Entitlement) => void,
+  deps: {
+    read?: () => Promise<Entitlement | null | undefined>;
+    storeKit?: () => Promise<{ active: boolean; expiresAt?: string } | undefined>;
+  } = {},
+): Promise<void> {
+  try {
+    const cached = await (
+      deps.read ?? (() => storeGetJson<Entitlement | null>(ENTITLEMENT_CACHE_KEY))
+    )();
+    if (cached && isEntitled(cached)) {
+      apply(cached);
+      return;
+    }
+    const kit =
+      deps.storeKit ??
+      (() =>
+        iapAvailable()
+          ? iapCurrentEntitlement(PERSONAL_YEARLY_PRODUCT_ID)
+          : Promise.resolve(undefined));
+    const live = await kit();
+    if (live?.active) {
+      const e: Entitlement = { tierId: 'personal', status: 'active', validUntil: live.expiresAt };
+      if (isEntitled(e)) apply(e);
+    }
+  } catch {
+    // Nothing kept and nothing verifiable here: the server decides once reached.
+  }
+}
 
 // Hub pairing credentials live in the secret store (Keychain, safeStorage),
 // keyed by hub, never in the settings blob (APP-11). In memory the DaemonTarget
@@ -1660,7 +1703,7 @@ interface AppState {
   /** Re-read the signed-in user's server role into serverRole. */
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
-  refreshEntitlement(): Promise<void>;
+  refreshEntitlement(): Promise<EntitlementRefresh>;
   /** Re-check entitlement when the app returns to the foreground, so a purchase
    *  completed in the browser lands without the user hunting for a refresh.
    *  Fires only when signed in and not already unlocked, and is self-throttled. */
@@ -4157,6 +4200,8 @@ export const useApp = create<AppState>((set, get, api) => {
     // team vault's titles leave with the session. A sign-out never keeps it.
     const open = get().vaultNote;
     const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
+    // The cached entitlement belonged to this account; it leaves with it.
+    void storeSetJson(ENTITLEMENT_CACHE_KEY, null).catch(() => {});
     set({
       authSession: undefined,
       serverRole: undefined,
@@ -6649,6 +6694,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (get().initStarted) return;
       set({ initStarted: true });
 
+      // What the person paid for holds on a launch with no network: the last
+      // server-verified entitlement first, then (iPhone) StoreKit's own
+      // verified answer, until the server is reached again.
+      void restoreOfflineEntitlement((e) => {
+        if (!get().userEntitlement) set({ userEntitlement: e });
+      });
+
       // Wire the team vault (org tier) to the signed-in session: a fresh-token
       // getter and a readiness predicate, so the Supabase-backed provider can
       // authenticate without importing the store (which would be a cycle).
@@ -7294,7 +7346,19 @@ export const useApp = create<AppState>((set, get, api) => {
           get().showToast(err instanceof Error ? err.message : 'Could not complete the purchase.');
           return;
         }
-        if (result.state !== 'purchased' || !result.jws) return;
+        if (result.state === 'pending') {
+          // Ask to Buy, or a payment that needs another step: Apple finishes it
+          // later and Restore (or the next launch) picks it up.
+          get().showToast(
+            'Waiting for approval. Personal unlocks as soon as Apple completes the purchase.',
+          );
+          return;
+        }
+        if (result.state === 'cancelled') return;
+        if (result.state !== 'purchased' || !result.jws) {
+          get().showToast('The purchase did not complete. Nothing was charged. Try again.');
+          return;
+        }
         // Apple has charged and finished the transaction by now. If the link
         // to the server fails here (offline, a dead session), the receipt is
         // kept and retried on the next foreground or Restore (UI-10); the copy
@@ -7334,14 +7398,27 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       // A receipt from a purchase the server never saw goes first (UI-10).
       await retryPendingAppleLink();
-      const session = await freshAuth();
-      if (!session) return;
+      let session: Session | undefined;
+      try {
+        session = await freshAuth();
+      } catch {
+        get().showToast('You are offline. Restore once you are back online.');
+        return;
+      }
+      if (!session) {
+        get().showToast('Sign in again, then restore.');
+        return;
+      }
       if (!iapAvailable()) {
         // Not an Apple device: a web/desktop buyer's entitlement is already on
         // the account, so a refresh is the "restore".
-        await get().refreshEntitlement();
+        const refreshed = await get().refreshEntitlement();
         get().showToast(
-          get().personalUnlockedNow() ? 'Personal restored.' : 'No Personal subscription found.',
+          refreshed === 'offline'
+            ? 'Could not reach OpenShore. Try again when you are online.'
+            : get().personalUnlockedNow()
+              ? 'Personal restored.'
+              : 'No Personal subscription found on this account.',
         );
         return;
       }
@@ -7866,6 +7943,12 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async createRoutine(input) {
+      // Routines sit inside Personal (CFO): with the pay gates on, making one
+      // is a Personal feature like the coding agent. Off in the beta.
+      if (!get().personalUnlockedNow()) {
+        get().openPaywall('crew');
+        return undefined;
+      }
       if (!get().crewControl().can) {
         get().showToast(CONTROL_REQUIRES_DOCK);
         return undefined;
@@ -7879,6 +7962,9 @@ export const useApp = create<AppState>((set, get, api) => {
         const routine = await client.create(input);
         logEvent('routine_created', { access: input.access ?? 'read-only' });
         await get().refreshRoutines();
+        // A routine that needs you should reach your phone: register for the
+        // computer's notifications now, not only when a desktop chat opens.
+        void ensureDesktopPush();
         return routine;
       } catch (err) {
         get().showToast(err instanceof Error ? err.message : String(err));
@@ -7927,6 +8013,10 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async runRoutineNow(id) {
+      if (!get().personalUnlockedNow()) {
+        get().openPaywall('crew');
+        return;
+      }
       if (!get().crewControl().can) {
         get().showToast(CONTROL_REQUIRES_DOCK);
         return;
@@ -8553,10 +8643,11 @@ export const useApp = create<AppState>((set, get, api) => {
       try {
         session = await freshAuth();
       } catch {
-        // Offline: keep whatever entitlement we last knew.
-        return;
+        // Offline: keep whatever entitlement we last knew (the cache below
+        // carries it across a launch).
+        return 'offline';
       }
-      if (!session) return;
+      if (!session) return 'signed-out';
       const serverId = get().settings.account?.org?.serverId;
       // Individual (Personal) entitlement: readable whenever signed in, with no
       // org. This is the path a solo Personal buyer needs; the old code gated
@@ -8572,19 +8663,21 @@ export const useApp = create<AppState>((set, get, api) => {
           `select=tier_id,status,valid_until&user_id=eq.${session.user.id}`,
         );
         const row = rows[0];
-        set({
-          userEntitlement: row
-            ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
-            : undefined,
-        });
+        const userEntitlement: Entitlement | undefined = row
+          ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
+          : undefined;
+        set({ userEntitlement });
+        // Kept on the device for the next launch that has no network.
+        void storeSetJson(ENTITLEMENT_CACHE_KEY, userEntitlement ?? null).catch(() => {});
       } catch {
         // Offline or transient: keep whatever we last knew.
+        return 'offline';
       }
       // Org entitlement: only when the account is a synced commercial org. Gates
       // team-seat growth (growthGatedByBilling), unchanged.
       if (!serverId) {
         set({ entitlement: undefined });
-        return;
+        return 'ok';
       }
       try {
         const rows = await supabaseSelect<{
@@ -8605,6 +8698,7 @@ export const useApp = create<AppState>((set, get, api) => {
       } catch {
         // Offline or transient: keep whatever entitlement we last knew.
       }
+      return 'ok';
     },
 
     async reconcileEntitlementOnForeground() {

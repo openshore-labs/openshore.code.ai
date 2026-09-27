@@ -708,7 +708,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'wayfinding',
     title: 'Wayfinding',
     where: 'Menu, Settings, Wayfinding',
-    text: "How the agent finds its way, on by default. Memory: the agent keeps notes on each coding project inside that project's own repository. Skills are reusable markdown recipes. Browser drives a browser on your paired computer and asks before every action. Research (off by default) runs web research through Perplexity once a Perplexity API key is connected.",
+    text: "How the agent finds its way, on by default. Memory: the agent keeps notes on each coding project inside that project's own repository. Research (off by default) runs web research through Perplexity once a Perplexity API key is connected.",
     keywords: [
       'wayfinding',
       'memory',

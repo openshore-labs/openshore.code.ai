@@ -150,6 +150,24 @@ in this project" grants live on the machine (`~/.os-code/trust.json`), never
 in the repo. "Local" is judged by address (`isLocalHost`, `leavesThisNetwork`),
 never by a provider's config label.
 
+## This build is Personal: release tiers (standing rule, founder 2026-09-27)
+
+v1 is **Personal**: one person, their desktop and their own phone. Chats,
+Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
+Connections, Desktop + phone, Settings, and buying Personal. v2 is Agentic and
+Harness Currents, Stack Health, and Launch with Codemagic; v3 the Marketplace;
+v4 Enterprise (Admin, teams, shared projects, the team vault, project
+permissions, shared-hub members). "Build personal for now and get that working
+fully." One gate, `app/src/lib/focus.ts` (`featureOn`, `roomOpen`,
+`RELEASE_TIER`): a build is Personal unless `VITE_RELEASE_TIER` names a later
+tier, and nothing shipped sets it. Later tiers' code stays in the tree with
+every door shut and no launch-time work. The suite runs at tier 4;
+`app/test/tierPersonal.test.ts` reloads the modules as a Personal build. A new
+feature names its tier in `FEATURE_TIER` before it has a door; a v1 room never
+depends on a later tier; unlocking a tier is a founder call recorded in
+`os-code/DECISIONS.md`. The Currents sections below describe built v2 code, not
+the shipping build. `docs/release-tiers.md`.
+
 ## What leaves this device is a list, not a claim (standing rule, 2026-09-27)
 
 Everything OpenShore sends off a device is written down once, in plain words,

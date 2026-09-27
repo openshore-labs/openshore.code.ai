@@ -5567,6 +5567,22 @@ button.vault-tag {
   margin: 0 0 14px;
 }
 
+/* The paywall's legal line (Apple 3.1.2): Terms of Use and the Privacy
+   Policy, quiet links under the actions. */
+.paywall-legal {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 12px 0 0;
+}
+.link-quiet {
+  font-size: var(--text-2);
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 6px 4px;
+}
+
 /* The small "Personal" pill on a locked nav item. */
 .nav-lock-pill,
 .nav-soon-pill {

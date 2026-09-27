@@ -47,7 +47,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'account',
     recipient: 'OpenShore (us)',
     what: 'Your email and password to sign in, then your plan, your organization, and team projects.',
-    when: 'Only when you sign in. Personal use needs no account.',
+    when: 'Only when you sign in. Chatting and building need no account; buying Personal does.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
   },

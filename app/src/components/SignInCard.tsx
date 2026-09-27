@@ -8,6 +8,7 @@
 // (R-19: text typed under one account never replays under another's). Team
 // text stashed offline does not show under Not saved, so a sign-out with any
 // left asks first, and deleting it is its own button, never a silent wipe.
+import { featureOn } from '../lib/focus.js';
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -211,8 +212,12 @@ export function SignInCard() {
         <h3>{mode === 'signin' ? 'Sign in' : 'Create account'}</h3>
         <div className="sub" style={{ marginBottom: 10 }}>
           {mode === 'signin'
-            ? 'Sign in to sync your company account and role. Personal use needs no account.'
-            : 'Create an account to sync your company role across your devices. Personal use needs no account.'}
+            ? featureOn('teams')
+              ? 'Sign in to sync your company account and role. Chatting and building need no account.'
+              : 'Sign in to buy or restore Personal and to get notifications from your computer on your phone. Chatting and building need no account.'
+            : featureOn('teams')
+              ? 'Create an account to sync your company role across your devices. Chatting and building need no account.'
+              : 'Create an account to buy Personal and to get notifications from your computer on your phone. Chatting and building need no account.'}
         </div>
         <div className="field">
           <input

@@ -1,5 +1,6 @@
 // Stack: the one mandatory orchestrator and the optional specialists.
 // Editable on the desktop; the phone shows the live picture from the daemon.
+import { InstallByName } from '../components/InstallByName.js';
 import { useCallback, useEffect, useState } from 'react';
 import type { DaemonStackInfo } from 'os-code/protocol';
 import { stackAdmin, useApp } from '../state/store.js';
@@ -331,7 +332,9 @@ export function StackScreen() {
                   <p className="hint">
                     No local models yet.{' '}
                     {status.ollama.up
-                      ? 'Get DeepBlue below, sized to your computer.'
+                      ? pickFor === 'orchestrator'
+                        ? 'Get DeepBlue below, sized to your computer, or install one by name.'
+                        : 'Install one by name below.'
                       : status.ollama.detail}{' '}
                     <button
                       className="linklike"
@@ -358,6 +361,7 @@ export function StackScreen() {
                 </>
               )}
             </div>
+            {status.ollama.up ? <InstallByName /> : null}
           </>
         ) : null}
       </Sheet>

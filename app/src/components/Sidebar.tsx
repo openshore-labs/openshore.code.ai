@@ -293,7 +293,7 @@ export function Sidebar({
           </span>
           <span className="sidebar-signin-label">
             <span className="sidebar-signin-title">Sign in</span>
-            <span className="sidebar-signin-sub">Sync chats across your devices</span>
+            <span className="sidebar-signin-sub">To buy Personal and get phone notifications</span>
           </span>
         </button>
       ) : null}

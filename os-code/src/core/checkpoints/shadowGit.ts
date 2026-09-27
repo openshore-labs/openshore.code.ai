@@ -63,6 +63,8 @@ interface StoreFile {
   version: 1;
   folder: string;
   records: CheckpointRecord[];
+  /** Records aged out since the last collection. */
+  agedOut?: number;
 }
 
 /** Folders with more files than this get no checkpoints (a home folder
@@ -73,6 +75,12 @@ export const CHECKPOINT_MAX_FILES = 20_000;
 export const CHECKPOINT_MAX_FILE_BYTES = 20 * 1024 * 1024;
 /** Records kept per folder; older ones age out. */
 export const CHECKPOINT_KEEP = 200;
+/** After this many records age out, the shadow store collects what they held,
+ *  so disk use stays bounded. */
+export const CHECKPOINT_GC_EVERY = 20;
+/** Only objects older than this are collected, so a task still running (its
+ *  "before" snapshot not yet recorded) never loses what it started from. */
+export const CHECKPOINT_PRUNE_AGE = '2.days.ago';
 
 // Dependency and cache folders: rebuilt, never authored, often huge. The
 // project's own .gitignore applies on top of these.
@@ -125,12 +133,18 @@ function safeRelative(path: string): boolean {
 export interface ShadowOptions {
   maxFiles?: number;
   maxFileBytes?: number;
+  keep?: number;
+  gcEvery?: number;
+  pruneAge?: string;
 }
 
 export class ShadowCheckpoints {
   readonly dir: string;
   private readonly maxFiles: number;
   private readonly maxFileBytes: number;
+  private readonly keep: number;
+  private readonly gcEvery: number;
+  private readonly pruneAge: string;
 
   constructor(
     readonly cwd: string,
@@ -139,6 +153,9 @@ export class ShadowCheckpoints {
     this.dir = checkpointDir(cwd);
     this.maxFiles = options.maxFiles ?? CHECKPOINT_MAX_FILES;
     this.maxFileBytes = options.maxFileBytes ?? CHECKPOINT_MAX_FILE_BYTES;
+    this.keep = options.keep ?? CHECKPOINT_KEEP;
+    this.gcEvery = options.gcEvery ?? CHECKPOINT_GC_EVERY;
+    this.pruneAge = options.pruneAge ?? CHECKPOINT_PRUNE_AGE;
   }
 
   private git(args: string[], input?: string): Promise<string> {
@@ -275,18 +292,11 @@ export class ShadowCheckpoints {
         // what it could read is staged, which is what a snapshot needs.
       });
       const tree = (await this.git(['write-tree'])).trim();
-      let parent: string | undefined;
-      try {
-        parent = (
-          await this.git(['rev-parse', '--verify', '--quiet', 'refs/heads/checkpoints'])
-        ).trim();
-      } catch {
-        parent = undefined;
-      }
-      const commit = (
-        await this.git(['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', label])
-      ).trim();
-      await this.git(['update-ref', 'refs/heads/checkpoints', commit]);
+      // Each snapshot stands alone (no parent chain), held by the record that
+      // uses it, so a record that ages out lets its snapshots be collected.
+      // The latest one is held too, for the task that is running now.
+      const commit = (await this.git(['commit-tree', tree, '-m', label])).trim();
+      await this.git(['update-ref', 'refs/osc/last', commit]);
       return commit;
     } catch {
       return undefined;
@@ -332,11 +342,18 @@ export class ShadowCheckpoints {
           at: new Date().toISOString(),
           files,
         };
+        await this.git(['update-ref', `refs/osc/r/${record.id}/before`, before]);
+        await this.git(['update-ref', `refs/osc/r/${record.id}/after`, after]);
         const store = this.read();
-        store.records = [...store.records.filter((r) => r.id !== record.id), record].slice(
-          -CHECKPOINT_KEEP,
-        );
+        const all = [...store.records.filter((r) => r.id !== record.id), record];
+        const dropped = all.slice(0, Math.max(0, all.length - this.keep));
+        store.records = all.slice(-this.keep);
+        store.agedOut = (store.agedOut ?? 0) + dropped.length;
+        for (const old of dropped) await this.dropRefs(old.id);
+        const collect = store.agedOut >= this.gcEvery;
+        if (collect) store.agedOut = 0;
         this.write(store);
+        if (collect) await this.collect();
         return record;
       } catch {
         return undefined;
@@ -385,6 +402,8 @@ export class ShadowCheckpoints {
           const redo = await this.snapshotNow(`before undo of ${record.id}`);
           if (!redo)
             return { error: 'Could not save the current files first, so nothing was changed.' };
+          // Held by the record, so Redo survives a collection.
+          await this.git(['update-ref', `refs/osc/r/${record.id}/redo-${redo.slice(0, 12)}`, redo]);
           for (const path of paths) {
             const status = record.files.find((f) => f.path === path)!.status;
             await this.put(path, status === 'added' ? undefined : record.before);
@@ -405,6 +424,26 @@ export class ShadowCheckpoints {
       this.write(store);
       return { ok: true, paths };
     });
+  }
+
+  /** Let go of every snapshot an aged-out record held. */
+  private async dropRefs(id: string): Promise<void> {
+    const refs = (
+      await this.git(['for-each-ref', '--format=%(refname)', `refs/osc/r/${id}/`]).catch(() => '')
+    )
+      .split('\n')
+      .map((r) => r.trim())
+      .filter(Boolean);
+    for (const ref of refs) await this.git(['update-ref', '-d', ref]).catch(() => undefined);
+  }
+
+  /** Collect what aged-out records held. Objects younger than the prune age
+   *  stay, so a running task's starting snapshot is never taken. A shadow
+   *  store from before this change chained every snapshot; that chain goes. */
+  private async collect(): Promise<void> {
+    await this.git(['update-ref', '-d', 'refs/heads/checkpoints']).catch(() => undefined);
+    await this.git(['reflog', 'expire', '--expire=now', '--all']).catch(() => undefined);
+    await this.git(['gc', '--quiet', `--prune=${this.pruneAge}`]).catch(() => undefined);
   }
 
   private async inTree(commit: string, path: string): Promise<boolean> {
@@ -434,7 +473,12 @@ export class ShadowCheckpoints {
     try {
       const parsed = JSON.parse(readFileSync(this.storePath(), 'utf8')) as Partial<StoreFile>;
       if (Array.isArray(parsed.records)) {
-        return { version: 1, folder: this.cwd, records: parsed.records };
+        return {
+          version: 1,
+          folder: this.cwd,
+          records: parsed.records,
+          agedOut: typeof parsed.agedOut === 'number' ? parsed.agedOut : 0,
+        };
       }
     } catch {
       // Missing or unreadable: no checkpoints to offer.

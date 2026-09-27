@@ -2684,3 +2684,42 @@ execution contract. Newest at the bottom.
   (a scratch config, the same doors as the engine's eval approver), and the
   eval approver gained a file-move door (mv, cp, mkdir, ls inside the
   workspace, no chaining, nothing outside).
+- **Release tiers (founder, 2026-09-27):** "pull crew and terminal into standard
+  v1. V2 will be currents, stack health, and launch. V3 marketplace. And v4 is
+  the enterprise track with admin configuration and project permissions ...
+  Let's just build personal for now and get that working fully." One gate,
+  `app/src/lib/focus.ts` (the earlier focus flag, rebuilt as tiers), read by
+  every door; a build is Personal unless `VITE_RELEASE_TIER` names 2, 3 or 4,
+  and nothing shipped sets it, so every build is Personal today. The test
+  suite runs at tier 4 so the later tiers' code stays tested, and
+  `test/tierPersonal.test.ts` reloads the modules as a Personal build.
+  Judgment calls: Vault stays in v1 (the founder named no later tier for it);
+  Wayfinding Memory stays (Skills and Browser switches are hidden because
+  nothing reads them, not because of a tier); "teams" covers team projects,
+  sharing, the roster, project permissions, the team vault and the Business
+  account choice, so a new account in a Personal build is Personal with no
+  question; an account saved as a company by an earlier build keeps its type
+  on disk (its team surfaces are hidden, its data untouched); a Current placed
+  in a stack by an earlier build sits out of a Personal turn without losing its
+  placement; the Harbor download stays in place instead of the Library intro
+  over the Marketplace; the guide's cards and facts name only the build's
+  rooms; What leaves this device lists only what the build can do. Unlocking a
+  tier for release is a founder call recorded here. `docs/release-tiers.md`.
+- **Personal v1 readiness (2026-09-27, from an audit of the Personal flows):**
+  the Personal price label is $50 a year (the founder's figure and the CFO's
+  ruling; the Board vote stands) and the App Store's own localized price wins
+  wherever StoreKit reports one; the paywall carries Terms of Use and the
+  Privacy Policy (Apple 3.1.2, `openshore.ai/terms/` and `/privacy/`). Copy
+  says what is true: chatting and building need no account, buying Personal
+  does, chats are not synced between devices. An offline launch keeps the last
+  server-verified entitlement until it lapses, else on an iPhone StoreKit's own
+  verified subscription (a local unlock only; the server still decides once
+  reached). Settings shows Personal's standing and Restore. Crew's create and
+  Run now sit behind `personalUnlockedNow()` like the coding agent (no effect
+  while the gates are off). A Claude key needs a workspace id only when Claude
+  says so. Install by name moved into Stack (the Marketplace is v3). The
+  terminal says when it lost the computer or was refused. A revived daemon
+  session keeps the app's Humanize, Memory and Chain of Thought switches
+  (info.json `switches`). Undo's snapshots are held by per-record refs and
+  collected after 20 records age out, never objects younger than two days, so
+  a running task's starting point is never taken.

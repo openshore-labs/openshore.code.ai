@@ -210,6 +210,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const stored = options.sessionId ? storedSessionProject(options.sessionId) : {};
   const projectName = options.projectName ?? stored.projectName;
   const instructions = options.instructions ?? stored.instructions;
+  // The app's switches the same way: a revived session keeps the person's
+  // Humanize Writing, Memory, and Chain of Thought choices.
+  const humanize = options.humanize ?? stored.switches?.humanize;
+  const memorySwitch = options.memory ?? stored.switches?.memory;
+  const chainOfThought = options.chainOfThought ?? stored.switches?.chainOfThought;
   let config = options.config;
   let projectTrust: ProjectTrust | undefined;
   if (!config) {
@@ -231,20 +236,20 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // only ever turns the humanizer off (a project's config 'off' or notes always
   // hold); applied here so loop.ts keeps reading config.humanizer as its single
   // source. A fresh config object, never mutating a caller's (tests pass one in).
-  if (!humanizerEnabled(config.humanizer?.standard, options.humanize)) {
+  if (!humanizerEnabled(config.humanizer?.standard, humanize)) {
     config = { ...config, humanizer: { ...config.humanizer, standard: 'off' } };
   }
 
   // The app's Memory switch, the same way: it only ever turns project memory
   // off, and folding it into config here means the registry, the loop, and
   // (when they land) the pack and the handoff read one value.
-  if (!memoryEnabled(config.memory?.enabled, options.memory)) {
+  if (!memoryEnabled(config.memory?.enabled, memorySwitch)) {
     config = { ...config, memory: { ...config.memory, enabled: false } };
   }
 
   // The app's Chain of Thought setting, the same way: applied here so loop.ts
   // reads config.chainOfThought as its single source.
-  const cot = chainOfThoughtEnabled(config.chainOfThought?.enabled, options.chainOfThought);
+  const cot = chainOfThoughtEnabled(config.chainOfThought?.enabled, chainOfThought);
   if (cot !== (config.chainOfThought?.enabled === true)) {
     config = { ...config, chainOfThought: { ...config.chainOfThought, enabled: cot } };
   }
@@ -375,7 +380,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const driver = new LocalDriver(options.cwd, {
     id: options.sessionId,
     persist: options.persist,
-    project: { projectName, instructions },
+    project: {
+      projectName,
+      instructions,
+      switches: { humanize, memory: memorySwitch, chainOfThought },
+    },
     handoff,
   });
   // From here on, an ethics block shows up in the transcript of this session.

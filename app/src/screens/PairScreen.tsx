@@ -138,11 +138,11 @@ function DesktopPair() {
               <div className="sub">
                 {info?.running
                   ? info.mode === 'loopback'
-                    ? 'On, but only for this computer. Tailscale is not up, so the phone cannot reach it yet. Start it (sudo tailscale up).'
+                    ? 'On, but only for this computer. Tailscale is not up, so the phone cannot reach it yet. Open the Tailscale app and sign in (on Linux, run sudo tailscale up).'
                     : `Serving on ${info.host}:${info.port} over the tailnet.`
                   : info?.tailscaleUp
                     ? 'Off. Turn it on and the phone app can connect.'
-                    : 'Tailscale is not up on this computer. Start it (sudo tailscale up), then turn this on.'}
+                    : 'Tailscale is not up on this computer. Open the Tailscale app and sign in (on Linux, run sudo tailscale up), then turn this on.'}
               </div>
             </div>
             <button

@@ -78,6 +78,17 @@ export interface SessionInfo {
 export interface SessionProject {
   projectName?: string;
   instructions?: string;
+  /** The app's per-session switches, kept so a session revived after a
+   *  restart (the daemon's rehydrate) keeps the person's choices: Humanize
+   *  Writing, Memory, and Chain of Thought. Plain booleans, no content. */
+  switches?: SessionSwitches;
+}
+
+/** The app's per-session switches (see BootstrapOptions). */
+export interface SessionSwitches {
+  humanize?: boolean;
+  memory?: boolean;
+  chainOfThought?: boolean;
 }
 
 /** info.json as it sits on disk: the listing fields plus the sealed project. */
@@ -197,6 +208,13 @@ export function storedSessionProject(id: string): SessionProject {
     const project: SessionProject = {};
     if (typeof file.projectName === 'string') project.projectName = openField(file.projectName);
     if (typeof file.instructions === 'string') project.instructions = openField(file.instructions);
+    if (file.switches && typeof file.switches === 'object') {
+      const switches: SessionSwitches = {};
+      for (const key of ['humanize', 'memory', 'chainOfThought'] as const) {
+        if (typeof file.switches[key] === 'boolean') switches[key] = file.switches[key];
+      }
+      if (Object.keys(switches).length) project.switches = switches;
+    }
     return project;
   } catch {
     return {};
@@ -324,9 +342,12 @@ export class LocalDriver implements SessionDriver {
         updatedAt: new Date().toISOString(),
       };
       // The project it was opened for, so a revived session keeps it.
-      const { projectName, instructions } = options.project ?? {};
+      const { projectName, instructions, switches } = options.project ?? {};
       if (projectName) info.projectName = sealField(projectName);
       if (instructions?.trim()) info.instructions = sealField(instructions);
+      if (switches && Object.values(switches).some((v) => typeof v === 'boolean')) {
+        info.switches = switches;
+      }
       if (!existsSync(infoPath)) {
         writeInfoAtomic(infoPath, info);
       } else {
