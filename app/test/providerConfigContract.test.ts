@@ -39,9 +39,20 @@ vi.mock('../src/lib/platform.js', () => ({
   storeKeys: async (prefix: string) => [...h.mem.keys()].filter((k) => k.startsWith(prefix)),
 }));
 vi.mock('../src/lib/electronBridge.js', () => ({ bridge: () => h.bridge.current }));
+// The team vault reads its settings row (Vault M7, 0021) through the one fake
+// of its server half, with no row yet: absent by design.
+vi.mock('../src/lib/supabase.js', async () => {
+  const { createFakeOrgVaultServer } = await import('./fixtures/fakeOrgVaultServer.js');
+  const team = createFakeOrgVaultServer('vault');
+  return {
+    isConfigured: () => true,
+    select: (table: string, token: string, query: string) => team.select(table, token, query),
+    rpc: (fn: string, token: string, args: Record<string, unknown>) => team.rpc(fn, token, args),
+  };
+});
 
 import { localProvider } from '../src/lib/gitos/local.js';
-import { orgVaultProvider } from '../src/lib/gitos/orgVault.js';
+import { orgVaultProvider, setOrgVaultAuth } from '../src/lib/gitos/orgVault.js';
 import { gdriveProvider } from '../src/lib/gitos/gdrive.js';
 import { deviceFolderProvider } from '../src/lib/gitos/deviceFolder.js';
 import {
@@ -105,6 +116,11 @@ beforeEach(() => {
     vaultReadConfig: (name: unknown) => readVaultConfigFile(vault, name),
   };
 });
+
+setOrgVaultAuth(
+  async () => 'tok',
+  () => true,
+);
 
 const PROVIDERS: Array<[string, StorageProvider]> = [
   ['local', localProvider],

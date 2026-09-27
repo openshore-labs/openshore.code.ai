@@ -24,7 +24,13 @@ import {
   OrgVaultNotReady,
   orgVaultBaseRev,
   ORG_VAULT_MEMBERS_TTL_MS,
+  OrgVaultDeleteRefused,
+  OrgVaultLapsed,
+  onOrgVaultPlan,
+  orgVaultPlan,
+  setOrgVaultDeleteRole,
 } from '../src/lib/gitos/orgVault.js';
+import { vaultTeamEditableUntil } from '../src/lib/vaultCopy.js';
 
 const ORG = 'org-123';
 const mockSelect = vi.mocked(select);
@@ -471,5 +477,318 @@ describe('org vault editedBy', () => {
     resetOrgVault();
     await orgVaultProvider.list(ORG);
     expect(memberSelects()).toHaveLength(2);
+  });
+});
+
+// ---- Vault M6 on the team vault (CTO K3, K6, R3; migration 0020) ----------
+
+const rpcsNamed = (fn: string) => server.rpcs.filter((r) => r.fn === fn);
+const version = (r: { ok: boolean; file?: { version?: string } }) => (r.ok ? r.file!.version! : '');
+
+describe('org vault rename (org_vault_move)', () => {
+  it('moves under the rev, and adopts the path and rev the server answers', async () => {
+    const w = await orgVaultProvider.write(ORG, 'Plans.md', 'the plan', { ifAbsent: true });
+    const r = await orgVaultProvider.rename!(ORG, 'Plans.md', 'Work/Plans.md', {
+      ifMatch: version(w),
+    });
+    expect(rpcsNamed('org_vault_move')[0]!.args).toEqual({
+      p_org: ORG,
+      p_from: 'Plans.md',
+      p_to: 'Work/Plans.md',
+      p_if_match: Number(version(w)),
+    });
+    const now = server.notes.get('Work/Plans.md')!;
+    expect(r).toEqual({
+      ok: true,
+      file: { path: 'Work/Plans.md', updatedAt: now.updated_at, size: 8, version: String(now.rev) },
+    });
+  });
+
+  it('adopts a path the server spells differently from the one sent', async () => {
+    const w = await orgVaultProvider.write(ORG, 'a.md', 'x', { ifAbsent: true });
+    mockRpc.mockImplementationOnce((async () => ({
+      ok: true,
+      path: 'Work/a.md',
+      rev: 42,
+      updated_at: '2026-09-27T01:00:00.000Z',
+      size: 1,
+    })) as typeof rpc);
+    const r = await orgVaultProvider.rename!(ORG, 'a.md', 'work/a.md', { ifMatch: version(w) });
+    expect(r).toMatchObject({ ok: true, file: { path: 'Work/a.md', version: '42' } });
+  });
+
+  it('a base that is not a rev never moves anything', async () => {
+    await orgVaultProvider.write(ORG, 'a.md', 'x', { ifAbsent: true });
+    const r = await orgVaultProvider.rename!(ORG, 'a.md', 'b.md', {
+      ifMatch: '2026-09-01T00:00:00.000Z',
+    });
+    expect(r).toMatchObject({ ok: false, conflict: 'changed', theirs: { text: 'x' } });
+    expect(rpcsNamed('org_vault_move')).toEqual([]);
+  });
+
+  it('refuses a name that is not a note before any call', async () => {
+    await expect(
+      orgVaultProvider.rename!(ORG, 'a.md', '.trash/a.md', { ifMatch: '1' }),
+    ).rejects.toBeInstanceOf(OrgVaultRefusal);
+    expect(server.rpcs).toEqual([]);
+  });
+
+  it('reads the listing only for a name outside ASCII (the folded check)', async () => {
+    const w = await orgVaultProvider.write(ORG, 'a.md', 'x', { ifAbsent: true });
+    server.selects.length = 0;
+    await orgVaultProvider.rename!(ORG, 'a.md', 'b.md', { ifMatch: version(w) });
+    expect(notesSelects()).toEqual([]);
+  });
+});
+
+describe('org vault Trash (Restore only, R3)', () => {
+  it('trashes under the rev and lists it; the entry comes back from its revision', async () => {
+    const w = await orgVaultProvider.write(ORG, 'Ideas/x.md', 'body', { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'Ideas/x.md',
+      ifMatch: version(w),
+    });
+    expect(rpcsNamed('org_vault_remove')[0]!.args).toMatchObject({
+      p_path: 'Ideas/x.md',
+      p_if_match: Number(version(w)),
+    });
+    expect(t).toMatchObject({ ok: true, notes: 1, entry: { kind: 'note', path: 'Ideas/x.md' } });
+    const listed = await orgVaultProvider.listTrash!(ORG);
+    expect(listed).toEqual([
+      {
+        id: t.ok ? t.entry.id : '',
+        path: 'Ideas/x.md',
+        kind: 'note',
+        size: 0,
+        trashedAt: server.revisions.at(-1)!.recorded_at,
+      },
+    ]);
+    const back = await orgVaultProvider.restore!(ORG, listed[0]!.id);
+    expect(back).toMatchObject({ ok: true, renamed: false, file: { path: 'Ideas/x.md' } });
+    // Restore is org_vault_write with if_absent from the revision's body.
+    expect(rpcsNamed('org_vault_write').at(-1)!.args).toMatchObject({
+      p_path: 'Ideas/x.md',
+      p_body: 'body',
+      p_if_absent: true,
+    });
+  });
+
+  it('lists a tombstone only while its newest revision of any reason is deleted', async () => {
+    // Moved away: the old path is a tombstone whose newest revision is renamed.
+    const a = await orgVaultProvider.write(ORG, 'moved.md', 'm', { ifAbsent: true });
+    await orgVaultProvider.rename!(ORG, 'moved.md', 'elsewhere.md', { ifMatch: version(a) });
+    // Deleted, then moved onto and away again: renamed is newest, so not listed.
+    const b = await orgVaultProvider.write(ORG, 'twice.md', 't', { ifAbsent: true });
+    await orgVaultProvider.trash!(ORG, { kind: 'note', path: 'twice.md', ifMatch: version(b) });
+    const c = await orgVaultProvider.write(ORG, 'twice.md', 't2', { ifAbsent: true });
+    await orgVaultProvider.rename!(ORG, 'twice.md', 'other.md', { ifMatch: version(c) });
+    // Moved away, then made and deleted there: deleted is newest, so listed.
+    const d = await orgVaultProvider.write(ORG, 'back.md', 'd', { ifAbsent: true });
+    await orgVaultProvider.rename!(ORG, 'back.md', 'gone.md', { ifMatch: version(d) });
+    const e = await orgVaultProvider.write(ORG, 'back.md', 'e', { ifAbsent: true });
+    await orgVaultProvider.trash!(ORG, { kind: 'note', path: 'back.md', ifMatch: version(e) });
+    // Deleted and made again: live, so not in Trash.
+    const f = await orgVaultProvider.write(ORG, 'alive.md', 'f', { ifAbsent: true });
+    await orgVaultProvider.trash!(ORG, { kind: 'note', path: 'alive.md', ifMatch: version(f) });
+    await orgVaultProvider.write(ORG, 'alive.md', 'f2', { ifAbsent: true });
+    expect((await orgVaultProvider.listTrash!(ORG)).map((x) => x.path)).toEqual(['back.md']);
+  });
+
+  it('a note already gone is changed with no theirs, and nothing is listed', async () => {
+    const w = await orgVaultProvider.write(ORG, 'g.md', 'x', { ifAbsent: true });
+    server.drop('g.md');
+    server.revisions.length = 0;
+    const t = await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'g.md',
+      ifMatch: version(w),
+    });
+    expect(t).toEqual({ ok: false, conflict: 'changed' });
+  });
+
+  it('a second restore of the same entry lands nowhere new', async () => {
+    const w = await orgVaultProvider.write(ORG, 'p.md', 'body', { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'p.md',
+      ifMatch: version(w),
+    });
+    const id = t.ok ? t.entry.id : '';
+    const first = await orgVaultProvider.restore!(ORG, id);
+    const again = await orgVaultProvider.restore!(ORG, id);
+    expect(again).toEqual(first);
+    expect([...server.notes.values()].filter((n) => !n.deleted).map((n) => n.path)).toEqual([
+      'p.md',
+    ]);
+  });
+
+  it('has no Empty Trash: the purge takes what has been there 30 days', () => {
+    expect(orgVaultProvider.emptyTrash).toBeUndefined();
+  });
+
+  it('maps OV403 to the admins-only line, as the whole line', async () => {
+    server.settingsRow = {
+      settings: {},
+      delete_role: 'admin',
+      context_folder: null,
+      rev: 1,
+      updated_at: '2026-09-27T00:00:00.000Z',
+      updated_by: null,
+    };
+    server.isAdmin = false;
+    const w = await orgVaultProvider.write(ORG, 'n.md', 'x', { ifAbsent: true });
+    const err = await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'n.md',
+      ifMatch: version(w),
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OrgVaultDeleteRefused);
+    expect((err as OrgVaultDeleteRefused).message).toBe(
+      'Not deleted. Only admins can delete team notes.',
+    );
+    expect((err as OrgVaultDeleteRefused).whole).toBe(true);
+    expect((err as OrgVaultDeleteRefused).permanent).toBe(true);
+    expect(server.bytes('n.md')).toBe('x');
+    // A move is not gated by the delete rule (0021, 5.).
+    const r = await orgVaultProvider.rename!(ORG, 'n.md', 'm.md', { ifMatch: version(w) });
+    expect(r.ok).toBe(true);
+  });
+});
+
+// ---- Vault M7 on the team vault (CTO L17; CX Y14, Y15; migration 0021) ----
+
+describe('org vault plan (OV402) and settings', () => {
+  it('maps OV402 to the calm lapsed state: the line, permanent, and the plan', async () => {
+    const heard: unknown[] = [];
+    onOrgVaultPlan((org, plan) => heard.push([org, plan]));
+    server.entitled = false;
+    const err = await orgVaultProvider
+      .write(ORG, 'a.md', 'x', { ifAbsent: true })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OrgVaultLapsed);
+    expect((err as OrgVaultLapsed).message).toBe(
+      'The team plan is not active, so team notes cannot change.',
+    );
+    expect((err as OrgVaultLapsed).permanent).toBe(true);
+    expect(orgVaultPlan(ORG)).toMatchObject({ entitled: false });
+    expect(heard).toEqual([[ORG, { entitled: false, isAdmin: false, deleteRole: 'member' }]]);
+    // Reading is untouched: a lapsed team still reads and lists.
+    server.put('b.md', 'still here');
+    expect((await orgVaultProvider.read(ORG, 'b.md'))?.text).toBe('still here');
+  });
+
+  it("the settings read brings the plan: admin, delete role, and a never-paid team's date", async () => {
+    server.entitledUntil = '2026-11-01T00:00:00.000Z';
+    server.isAdmin = false;
+    const read = await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
+    expect(read).toEqual({ ok: false, reason: 'absent' });
+    expect(orgVaultPlan(ORG)).toEqual({
+      entitled: true,
+      entitledUntil: '2026-11-01T00:00:00.000Z',
+      isAdmin: false,
+      deleteRole: 'member',
+    });
+    expect(vaultTeamEditableUntil('2026-11-01T12:00:00.000Z')).toBe(
+      'Team notes stay editable until November 1, 2026.',
+    );
+  });
+
+  it('reads the row as the vault file in jsonb key order, with its rev', async () => {
+    server.putSettings({ version: 1, delete: 'permanent', tree: { sort: 'modified' } });
+    const read = await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
+    expect(read).toEqual({
+      ok: true,
+      text: '{\n  "tree": {\n    "sort": "modified"\n  },\n  "delete": "permanent",\n  "version": 1\n}\n',
+      version: '1',
+    });
+    // Obsidian's files never live on the server.
+    expect(await orgVaultProvider.readConfig!(ORG, 'obsidian/app')).toEqual({
+      ok: false,
+      reason: 'absent',
+    });
+  });
+
+  it('a server without 0021 reads the defaults', async () => {
+    const real = mockRpc.getMockImplementation()!;
+    mockRpc.mockImplementation((async (fn: string, tok: string, args: Record<string, unknown>) => {
+      if (fn === 'org_vault_settings_get') {
+        throw Object.assign(new Error('not found'), { status: 404, code: 'PGRST202' });
+      }
+      return real(fn, tok, args);
+    }) as typeof rpc);
+    expect(await orgVaultProvider.readConfig!(ORG, 'oscode/vault')).toEqual({
+      ok: false,
+      reason: 'unsupported',
+    });
+  });
+
+  it('writes under the rev, echoing who may delete and the folder from the same read', async () => {
+    server.settingsRow = {
+      settings: { version: 1 },
+      delete_role: 'admin',
+      context_folder: 'Team/Context',
+      rev: 3,
+      updated_at: '2026-09-27T00:00:00.000Z',
+      updated_by: null,
+    };
+    const read = await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
+    const r = await orgVaultProvider.writeConfig!(
+      ORG,
+      'oscode/vault',
+      '{"version":1,"delete":"trash"}',
+      {
+        ifMatch: read.ok ? read.version : '',
+      },
+    );
+    expect(rpcsNamed('org_vault_settings_put')[0]!.args).toEqual({
+      p_org: ORG,
+      p_settings: { version: 1, delete: 'trash' },
+      p_delete_role: 'admin',
+      p_context_folder: 'Team/Context',
+      p_base_rev: 3,
+    });
+    expect(r).toMatchObject({ ok: true, file: { path: '.oscode/vault.json', version: '4' } });
+  });
+
+  it('ifAbsent is rev 0; a row there already is exists with theirs', async () => {
+    server.putSettings({ version: 1 });
+    const r = await orgVaultProvider.writeConfig!(ORG, 'oscode/vault', '{"version":1}', {
+      ifAbsent: true,
+    });
+    expect(rpcsNamed('org_vault_settings_put')[0]!.args).toMatchObject({ p_base_rev: 0 });
+    expect(r).toMatchObject({ ok: false, conflict: 'exists', theirs: { version: '1' } });
+  });
+
+  it("a member's write is refused by the server, and nothing changes", async () => {
+    server.isAdmin = false;
+    await expect(
+      orgVaultProvider.writeConfig!(ORG, 'oscode/vault', '{"version":1}', { ifAbsent: true }),
+    ).rejects.toBeInstanceOf(OrgVaultRefusal);
+    expect(server.settingsRow).toBeUndefined();
+  });
+
+  it('a lapsed plan refuses a settings write with OV402', async () => {
+    server.entitled = false;
+    await expect(
+      orgVaultProvider.writeConfig!(ORG, 'oscode/vault', '{"version":1}', { ifAbsent: true }),
+    ).rejects.toBeInstanceOf(OrgVaultLapsed);
+  });
+
+  it('refuses text that is not one JSON object before any call', async () => {
+    await expect(
+      orgVaultProvider.writeConfig!(ORG, 'oscode/vault', '[1]', { ifAbsent: true }),
+    ).rejects.toThrow(/one JSON object/);
+    expect(rpcsNamed('org_vault_settings_put')).toEqual([]);
+  });
+
+  it('an admin sets who may delete, keeping the settings as they are', async () => {
+    server.putSettings({ version: 1, tree: { sort: 'name' } });
+    expect(await setOrgVaultDeleteRole(ORG, 'admin')).toBe('ok');
+    expect(server.settingsRow).toMatchObject({
+      delete_role: 'admin',
+      settings: { version: 1, tree: { sort: 'name' } },
+    });
+    expect(orgVaultPlan(ORG)?.deleteRole).toBe('admin');
   });
 });

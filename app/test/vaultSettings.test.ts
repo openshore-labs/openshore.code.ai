@@ -274,13 +274,18 @@ describe('writeConfig on each provider (stream E)', () => {
   });
 
   describe('settingsWrite on the storages on main (L7, L16)', () => {
-    it('lights where writeConfig is, and the team vault reads defaults', () => {
+    it('lights where writeConfig is, and on the team vault for an admin only', () => {
       const lit = (id: Parameters<typeof m.gitos.providerFor>[0]) =>
         m.caps.vaultCaps(m.gitos.providerFor(id)!, { readOnly: false }).settingsWrite;
       expect(lit('local')).toBe(true);
       expect(lit('files')).toBe(true);
       expect(lit('hub')).toBe(true);
-      expect(lit('org')).toBe(false);
+      // The held team branch (0021): the settings row, admins only (CX Y14).
+      expect(lit('org')).toBe(true);
+      expect(
+        m.caps.vaultCaps(m.gitos.providerFor('org')!, { readOnly: false, settingsAdmin: false })
+          .settingsWrite,
+      ).toBe(false);
       expect(lit('gdrive')).toBe(false);
       expect(lit('icloud')).toBe(false);
     });
@@ -1473,7 +1478,7 @@ describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
     expect(settings).not.toMatch(/SettingsGroup title="Vault/);
   });
 
-  it('the team vault on main reads the defaults, read-only, with its footer', async () => {
+  it('the team vault reads its own settings: admins change them, members read them', async () => {
     const { vaultSettingsTeamFooter, vaultCapLine } = await import('../src/lib/vaultCopy.js');
     expect(vaultSettingsTeamFooter({ admin: false })).toBe('Your admins set these.');
     expect(vaultSettingsTeamFooter({ admin: true, org: 'Acme' })).toBe(
@@ -1481,8 +1486,13 @@ describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
     );
     expect(vaultCapLine('org', 'settingsWrite')).toMatch(/cannot change here/);
     const host = readFileSync(join(SRC, 'components/vault/VaultSettingsHost.tsx'), 'utf8');
-    expect(host).toMatch(/\(!team && vaultSettings\) \|\| VAULT_SETTINGS_DEFAULTS/);
-    expect(host).toMatch(/\? vaultCapLine\('org', 'settingsWrite'\)/);
+    // The held team branch (0021): the row's own settings, not the defaults;
+    // a member's sheet reads only under the footer; a lapsed plan says why.
+    expect(host).toMatch(
+      /const s: ResolvedVaultSettings = vaultSettings \|\| VAULT_SETTINGS_DEFAULTS/,
+    );
+    expect(host).toMatch(/readOnly: !caps\.settingsWrite/);
+    expect(host).toMatch(/teamLapsed\s*\?\s*VAULT_TEAM_LAPSED_LEAD/);
   });
 });
 

@@ -41,6 +41,9 @@ export class SupabaseRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** PostgREST's `code`: the SQLSTATE a function raised (OV402, OV403 for
+     *  the team vault, migration 0021) or its own (PGRST202). */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'SupabaseRequestError';
@@ -71,6 +74,24 @@ async function readError(res: Response): Promise<string> {
   } catch {
     return `Request failed (${res.status}).`;
   }
+}
+
+/** A PostgREST failure as a SupabaseRequestError, with its `code` when the
+ *  body names one. */
+async function requestError(res: Response): Promise<SupabaseRequestError> {
+  let body: { error_description?: string; msg?: string; message?: string; code?: unknown } = {};
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    // No JSON body: the status says it.
+  }
+  const message =
+    body.error_description ?? body.msg ?? body.message ?? `Request failed (${res.status}).`;
+  return new SupabaseRequestError(
+    message,
+    res.status,
+    typeof body.code === 'string' ? body.code : undefined,
+  );
 }
 
 /** Email + password sign-in. */
@@ -228,7 +249,7 @@ export async function rpc<T>(
   });
   // The status rides along so a caller can tell a refusal (a raised P0001
   // arrives as a 400) from a failure worth retrying.
-  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
+  if (!res.ok) throw await requestError(res);
   return (await res.json()) as T;
 }
 
@@ -237,7 +258,7 @@ export async function select<T>(table: string, accessToken: string, query: strin
   const res = await fetch(`${base()}/rest/v1/${table}?${query}`, {
     headers: authHeaders(accessToken),
   });
-  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
+  if (!res.ok) throw await requestError(res);
   return (await res.json()) as T[];
 }
 

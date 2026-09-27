@@ -10,8 +10,9 @@
 // - A folder pick opens the list once the settings sheet has left, then the
 //   settings sheet comes back (R5); a pick for "New notes go in" also sets
 //   where new notes go.
-// - A team vault on main reads the defaults, read-only, with the team footer
-//   (L16): nothing team-shaped writes here.
+// - A team vault reads its settings row (0021): an admin changes them and who
+//   may delete, a member reads them with "Your admins set these." (CX Y14),
+//   and a lapsed plan reads only, with the lead's line (Y15).
 import { useEffect, useMemo, useState } from 'react';
 import {
   VAULT_SETTINGS_DEFAULTS,
@@ -33,6 +34,11 @@ import {
   VAULT_SETTINGS_FOOTER_LOCAL,
   copyProviderOf,
   vaultCapLine,
+  VAULT_TEAM_DELETE_ROLES,
+  VAULT_TEAM_LAPSED_LEAD,
+  VAULT_TEAM_SETTINGS_TITLE,
+  VAULT_TEAM_WHO_DELETES,
+  VAULT_TEAM_WHO_DELETES_SUB,
   vaultCopy,
   vaultHandoffToast,
   vaultNotesInChatsToast,
@@ -143,13 +149,14 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     vaultLoadSettings,
     vaultEngineRoomSource,
     vaultSaveSetting,
+    vaultSetTeamDeleteRole,
+    vaultTeamPlan,
     saveSettings,
     showToast,
   } = useApp();
   const copy = useMemo(() => vaultSettingsSheetCopy(), []);
   const team = vaultScope === 'team';
-  // A team vault on main has no settings file to read (L16): the defaults.
-  const s: ResolvedVaultSettings = (!team && vaultSettings) || VAULT_SETTINGS_DEFAULTS;
+  const s: ResolvedVaultSettings = vaultSettings || VAULT_SETTINGS_DEFAULTS;
   const providerId: StorageProviderId = team
     ? 'org'
     : ((settings.gitosResources ?? []).find((r) => r.id === VAULT_RESOURCE_ID)?.providerId ??
@@ -174,7 +181,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     if (!open) return;
     setSave(undefined);
     setConflict(undefined);
-    if (!team) void vaultLoadSettings({ force: true });
+    void vaultLoadSettings({ force: true });
   }, [open, team, vaultLoadSettings]);
 
   // The desktop shows the machine's own lists, read-only (CX Y3).
@@ -251,8 +258,14 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     (r) => r?.kind === 'cloud',
   );
   const away = providerId === 'hub' && hubReach() === 'away';
+  const teamAdmin = vaultTeamPlan?.isAdmin ?? isOrgAdmin(settings.account);
+  const teamLapsed = team && vaultTeamPlan?.entitled === false;
   const lockLine = team
-    ? vaultCapLine('org', 'settingsWrite')
+    ? teamLapsed
+      ? VAULT_TEAM_LAPSED_LEAD
+      : caps.settingsWrite || !teamAdmin
+        ? undefined
+        : vaultCapLine('org', 'settingsWrite')
     : caps.settingsWrite
       ? undefined
       : away
@@ -260,7 +273,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         : (vaultReadOnly() ?? vaultCapLine(copyProvider, 'settingsWrite'));
   const footer = team
     ? vaultSettingsTeamFooter({
-        admin: isOrgAdmin(settings.account),
+        admin: teamAdmin,
         ...(settings.account?.org?.name ? { org: settings.account.org.name } : {}),
       })
     : providerId === 'local'
@@ -297,6 +310,26 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
   };
   const rows = pick ? pickRows(pick, copy, folders, notes) : undefined;
 
+  // Who may delete team notes (Y14): one guarded write of the settings row.
+  const deleteRoles = (['admin', 'member'] as const).map((value) => ({
+    value,
+    label: VAULT_TEAM_DELETE_ROLES[value],
+  }));
+  const setDeleteRole = async (role: 'admin' | 'member') => {
+    setSave('saving');
+    setConflict(undefined);
+    const r = await vaultSetTeamDeleteRole(role);
+    if (r === 'ok') {
+      setSave('saved');
+      return;
+    }
+    setSave(r === 'failed' ? 'failed' : undefined);
+    if (r === 'changed') {
+      const now = useApp.getState().vaultTeamPlan?.deleteRole ?? 'member';
+      showToast(copy.conflict(VAULT_TEAM_WHO_DELETES, VAULT_TEAM_DELETE_ROLES[now]));
+    }
+  };
+
   return (
     <>
       <VaultSettingsSheet
@@ -306,6 +339,19 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         settings={s}
         platform={isPhone() ? 'phone' : 'desktop'}
         team={team}
+        {...(team
+          ? {
+              title: VAULT_TEAM_SETTINGS_TITLE,
+              readOnly: !caps.settingsWrite,
+              teamDelete: {
+                label: VAULT_TEAM_WHO_DELETES,
+                sub: VAULT_TEAM_WHO_DELETES_SUB,
+                options: deleteRoles,
+                value: vaultTeamPlan?.deleteRole ?? 'member',
+                ...(caps.settingsWrite ? { onChange: (v) => void setDeleteRole(v) } : {}),
+              },
+            }
+          : {})}
         storageName={PROVIDER_ROSTER.find((r) => r.id === providerId)?.label ?? providerId}
         footer={footer}
         {...(lockLine ? { lockLine } : {})}

@@ -2486,3 +2486,48 @@ export function vaultPackEngineLine(
 }
 
 // ---- M8 end ----
+
+// ---- Team vault begin ----
+// The team vault's M6 and M7 lines (the held vault-m2-team branch; CX Y14,
+// Y15). Neutral words, no price or tier name (pricing is a Board gate).
+
+/** A member's delete refused by the server under admins-only (OV403, Y14). */
+export const VAULT_TEAM_DELETE_REFUSED = 'Not deleted. Only admins can delete team notes.';
+
+/** Options' note for a member when only admins may delete (Y14). */
+export const VAULT_TEAM_DELETE_ADMINS_ONLY = 'Only admins can delete team notes here.';
+
+/** The lapsed plan's lead (Y15): read-only, calm, export still there. */
+export const VAULT_TEAM_LAPSED_LEAD =
+  "Your organization's plan is not active, so team notes are read-only. Everyone can still read and export all of them.";
+
+/** The lapsed lead's export line on the web, where Export is not offered. */
+export const VAULT_TEAM_LAPSED_WEB = 'Open OpenShore on your computer or iPhone to export them.';
+
+/** The one more line an admin reads in the lapsed lead, and its button. */
+export const VAULT_TEAM_LAPSED_ADMIN = 'Editing comes back when the plan is active again.';
+export const VAULT_TEAM_OPEN_ADMIN = 'Open Admin';
+
+/** A save refused mid-edit because the plan lapsed (OV402): the Not saved
+ *  reason. The text is held, never lost. */
+export const VAULT_TEAM_LAPSED_NOT_SAVED =
+  'The team plan is not active, so team notes cannot change.';
+
+/** The notice a never-paid team reads while its deadline is set
+ *  (`entitled_until`, migration 0021): shown before any refusal. */
+export function vaultTeamEditableUntil(until: string | Date): string | undefined {
+  const d = typeof until === 'string' ? new Date(until) : until;
+  if (Number.isNaN(d.getTime())) return undefined;
+  const date = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return `Team notes stay editable until ${date}.`;
+}
+
+/** The team settings sheet (Y14): its title, the lead's link to it, and the
+ *  who-may-delete row. */
+export const VAULT_TEAM_SETTINGS_TITLE = 'Team vault settings';
+export const VAULT_TEAM_SETTINGS_LINK = 'Team settings';
+export const VAULT_TEAM_WHO_DELETES = 'Who can delete team notes';
+export const VAULT_TEAM_WHO_DELETES_SUB = 'Everyone can still read and export every note.';
+export const VAULT_TEAM_DELETE_ROLES = { admin: 'Admins', member: 'Everyone' } as const;
+
+// ---- Team vault end ----

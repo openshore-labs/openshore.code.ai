@@ -547,6 +547,13 @@ for (const p of enforcing) {
 // leaves the bytes, an ifMatch on a file gone is `missing` and makes nothing,
 // and a write's version is the one readConfig and the next ifMatch accept.
 // Every `obsidian/*` name is refused before anything is written.
+//
+// The team vault keeps its settings in a jsonb column, not a file (0021), so
+// Postgres keeps the keys in its own order and none of the whitespace. Its
+// row compares text through `same`, the JSON as the column holds it; every
+// file row keeps `same` as the identity, so their bytes stay exact.
+
+const { orgVaultSettingsText } = await import('../src/lib/gitos/orgVault.js');
 
 const settingsRows: Array<{
   name: string;
@@ -555,6 +562,8 @@ const settingsRows: Array<{
   replace: (text: string) => void;
   remove: () => void;
   obsidianUntouched: () => boolean;
+  /** How this storage's text compares (the identity for a file). */
+  same?: (text: string) => string;
 }> = [
   {
     name: 'This folder (desktop)',
@@ -602,6 +611,19 @@ const settingsRows: Array<{
     },
     obsidianUntouched: () => [...hub.config.keys()].every((k) => !k.startsWith('obsidian/')),
   },
+  {
+    name: 'Team vault',
+    provider: orgVaultProvider,
+    bytes: () =>
+      h.team!.settingsRow ? orgVaultSettingsText(h.team!.settingsRow.settings) : undefined,
+    // Another admin's save, with a fresh rev.
+    replace: (t) => h.team!.putSettings(JSON.parse(t) as Record<string, unknown>),
+    remove: () => {
+      h.team!.settingsRow = undefined;
+    },
+    obsidianUntouched: () => h.team!.rpcs.every((r) => r.fn !== 'org_vault_settings_put'),
+    same: (t) => orgVaultSettingsText(JSON.parse(t)),
+  },
 ];
 
 const V1 = '{\n  "version": 1\n}\n';
@@ -611,6 +633,7 @@ for (const p of settingsRows) {
   describe(`writeConfig contract: ${p.name}`, () => {
     const write = (text: string, guard: { ifMatch: string } | { ifAbsent: true }) =>
       p.provider.writeConfig!(R, 'oscode/vault', text, guard);
+    const same = (t: string | undefined) => (t === undefined ? t : (p.same ?? ((x) => x))(t));
 
     it('declares writeConfig beside compareAndSwap', () => {
       expect(typeof p.provider.writeConfig).toBe('function');
@@ -619,22 +642,28 @@ for (const p of settingsRows) {
 
     it('ifAbsent makes the file, and readConfig reads the same text and version', async () => {
       const r = await write(V1, { ifAbsent: true });
-      expect(r).toMatchObject({ ok: true, file: { path: '.oscode/vault.json', text: V1 } });
-      expect(p.bytes()).toBe(V1);
+      expect(r).toMatchObject({ ok: true, file: { path: '.oscode/vault.json' } });
+      expect(same(r.ok ? r.file.text : '')).toBe(same(V1));
+      expect(same(p.bytes())).toBe(same(V1));
       const read = await p.provider.readConfig!(R, 'oscode/vault');
-      expect(read).toEqual({ ok: true, text: V1, version: r.ok ? r.file.version : '' });
+      expect(read).toEqual({
+        ok: true,
+        text: r.ok ? r.file.text : '',
+        version: r.ok ? r.file.version : '',
+      });
     });
 
     it("a write's version is accepted by the next ifMatch, and each write is a new one", async () => {
       const first = await write(V1, { ifAbsent: true });
       const v1 = first.ok ? first.file.version! : '';
       const second = await write(V2, { ifMatch: v1 });
-      expect(second).toMatchObject({ ok: true, file: { text: V2 } });
+      expect(second.ok).toBe(true);
+      expect(same(second.ok ? second.file.text : '')).toBe(same(V2));
       const v2 = second.ok ? second.file.version! : '';
       expect(v2).toBeTruthy();
       expect(v2).not.toBe(v1);
       expect((await write(V1, { ifMatch: v2 })).ok).toBe(true);
-      expect(p.bytes()).toBe(V1);
+      expect(same(p.bytes())).toBe(same(V1));
     });
 
     it('a stale ifMatch is changed with theirs, and leaves their bytes', async () => {
@@ -642,11 +671,13 @@ for (const p of settingsRows) {
       p.replace('{"version":1,"tree":{"sort":"modified"}}');
       const r = await write(V2, { ifMatch: first.ok ? first.file.version! : '' });
       expect(r).toMatchObject({ ok: false, conflict: 'changed' });
-      expect(!r.ok && r.theirs?.text).toBe('{"version":1,"tree":{"sort":"modified"}}');
+      expect(same(!r.ok ? r.theirs?.text : '')).toBe(
+        same('{"version":1,"tree":{"sort":"modified"}}'),
+      );
       // Theirs carries the version the re-read gives, so one re-apply lands.
       const now = await p.provider.readConfig!(R, 'oscode/vault');
       expect(!r.ok && r.theirs?.version).toBe(now.ok ? now.version : 'no');
-      expect(p.bytes()).toBe('{"version":1,"tree":{"sort":"modified"}}');
+      expect(same(p.bytes())).toBe(same('{"version":1,"tree":{"sort":"modified"}}'));
       const again = await write(V2, { ifMatch: !r.ok ? r.theirs!.version! : '' });
       expect(again.ok).toBe(true);
     });
@@ -655,8 +686,8 @@ for (const p of settingsRows) {
       p.replace('{"version":1}');
       const r = await write(V1, { ifAbsent: true });
       expect(r).toMatchObject({ ok: false, conflict: 'exists' });
-      expect(!r.ok && r.theirs?.text).toBe('{"version":1}');
-      expect(p.bytes()).toBe('{"version":1}');
+      expect(same(!r.ok ? r.theirs?.text : '')).toBe(same('{"version":1}'));
+      expect(same(p.bytes())).toBe(same('{"version":1}'));
     });
 
     it('ifMatch on a file gone is missing, and makes nothing', async () => {

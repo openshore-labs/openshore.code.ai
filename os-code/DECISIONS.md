@@ -2728,3 +2728,21 @@ execution contract. Newest at the bottom.
   needs the active project's config read on demand (a session's report goes
   stale, and a project can span several repos); the engine still enforces
   a project's off.
+
+- **Team vault M6 and M7 client (2026-09-27, held `vault-m2-team`, plan 6.2,
+  6.3, 7.4):** the team client gains `rename` (`org_vault_move`, adopting the
+  answered path and rev), `trash`, `listTrash` and `restore` (a tombstone is
+  listed only while its newest revision of any reason is `deleted`; entries
+  are keyed by path, restore takes the newest `deleted` revision, and a name
+  that already holds exactly that text counts as the restore done, so a
+  second tap makes no copy), no `emptyTrash` (R3, the purge), and
+  `readConfig`/`writeConfig` over `org_vault_settings_get`/`_put`. The
+  settings text is the jsonb rendered in Postgres's key order, so the
+  writeConfig contract row for the team compares the JSON the column holds
+  (a per-row `same`, the identity for every file row); `vaultCaps` takes
+  `settingsAdmin` so only admins save; OV402 marks the plan lapsed (the room
+  read-only, Export kept) and OV403 is the whole Y14 line, carried to the
+  toast as `line`. Trash entries carry `size: 0` (the listing reads no
+  bodies; the Trash view never shows size). A member under admins-only sees
+  Delete disabled with "Only admins can delete team notes here." rather than
+  absent.

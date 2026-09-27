@@ -53,6 +53,15 @@ import {
 } from '../lib/vaultExport.js';
 import { VAULT_AUTOSAVE_MS, vaultAutosave } from '../lib/vaultAutosave.js';
 import {
+  VAULT_TEAM_DELETE_ADMINS_ONLY,
+  VAULT_TEAM_LAPSED_ADMIN,
+  VAULT_TEAM_LAPSED_LEAD,
+  VAULT_TEAM_LAPSED_WEB,
+  VAULT_TEAM_OPEN_ADMIN,
+  VAULT_TEAM_SETTINGS_LINK,
+  vaultTeamEditableUntil,
+} from '../lib/vaultCopy.js';
+import {
   DRIVE_RECONNECT_FAILED_LINE,
   DRIVE_WEB_URL,
   VAULT_FOLDER_MISSING_LINE,
@@ -259,6 +268,8 @@ export function VaultScreen() {
     vaultPending,
     vaultSaving,
     vaultTeamExpired,
+    vaultTeamPlan,
+    setView,
     vaultTargetRef,
     vaultReadOnly,
     vaultDiscardHeld,
@@ -421,6 +432,13 @@ export function VaultScreen() {
   // The team sign-in expired with a team note open: the note stays, read-only,
   // until the person signs back in or leaves it (2.6).
   const teamExpired = team && Boolean(vaultTeamExpired);
+  // The team's plan is not active (CX Y15; 0021's OV402): every note reads and
+  // exports, and nothing changes, calmly; New note, Today, Rename and Delete
+  // leave, and Options says why.
+  const teamLapsed = team && vaultTeamPlan?.entitled === false;
+  // Only admins may delete team notes here, and this person is not one (Y14).
+  const teamDeleteBlocked =
+    team && vaultTeamPlan?.deleteRole === 'admin' && vaultTeamPlan.isAdmin === false;
   // The personal vault is on the paired computer and it did not answer (CTO
   // J9): the list is the last one seen, an open note still saves (its change
   // waits here), and the tree holds still, so New note and Delete leave.
@@ -432,7 +450,12 @@ export function VaultScreen() {
     )?.providerId === 'hub';
   const hubAway = personalOnHub && reach === 'away';
   const locked =
-    readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone || teamExpired;
+    readOnly ||
+    Boolean(driveReadOnly) ||
+    Boolean(vaultMoving) ||
+    folderGone ||
+    teamExpired ||
+    teamLapsed;
   // What this storage may do now (CTO K1): every M6 action's visibility
   // follows this one answer.
   const caps = vaultCapsNow();
@@ -446,11 +469,18 @@ export function VaultScreen() {
           (r) => r.id === VAULT_RESOURCE_ID,
         )?.providerId ?? 'local') as StorageProviderId,
       );
-  const capNotes = capKey
-    ? (['rename', 'trash'] as const)
-        .filter((cap) => !storageCaps[cap])
-        .map((cap) => vaultCapLine(capKey, cap))
-    : [];
+  const capNotes = [
+    ...(capKey
+      ? (['rename', 'trash'] as const)
+          .filter((cap) => !storageCaps[cap])
+          .map((cap) => vaultCapLine(capKey, cap))
+      : []),
+    ...(teamLapsed
+      ? [VAULT_TEAM_LAPSED_LEAD]
+      : teamDeleteBlocked
+        ? [VAULT_TEAM_DELETE_ADMINS_ONLY]
+        : []),
+  ];
   const teamAvailable = teamVaultAvailable();
   // The project a note's "Pin to project context" pins to: the active one.
   const pinProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
@@ -624,7 +654,7 @@ export function VaultScreen() {
   useEffect(() => {
     void vaultLoadSettings({ force: true });
   }, [vaultLoadSettings, currentProviderId, vaultScope]);
-  const vs = (!team && vaultSettings) || VAULT_SETTINGS_DEFAULTS;
+  const vs = vaultSettings || VAULT_SETTINGS_DEFAULTS;
   // The open note's provenance (CTO L9), from the text as loaded or saved.
   const noteText = vaultNote?.text;
   const noteProvenance = useMemo(() => {
@@ -1384,7 +1414,7 @@ export function VaultScreen() {
     void vaultDeleteNote(path, at).then((r) => {
       if (!r) return;
       if (!r.ok) {
-        showToast(vaultTrashFailed(title));
+        showToast(r.line ?? vaultTrashFailed(title));
         return;
       }
       if (!r.undo) {
@@ -1547,7 +1577,7 @@ export function VaultScreen() {
     void vaultDeleteFolder(target).then((r) => {
       if (!r) return;
       if (!r.ok) {
-        showToast(vaultTrashFailed(name));
+        showToast(r.line ?? vaultTrashFailed(name));
         return;
       }
       setFolder(target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '');
@@ -2213,7 +2243,7 @@ export function VaultScreen() {
             flushSave();
             setTimeout(() => openRename('note', path), sheetExitMs());
           }}
-          deleteDisabled={Boolean(driveReadOnly) || hubAway}
+          deleteDisabled={Boolean(driveReadOnly) || hubAway || teamLapsed || teamDeleteBlocked}
           onClose={() => {
             setMenuOpen(false);
             setConfirmDelete(false);
@@ -2333,10 +2363,15 @@ export function VaultScreen() {
         <div className="stack-head">
           <h1>Vault</h1>
           <div className="vault-head-actions">
-            {!vaultMoving && !folderGone ? todayButton : null}
+            {!vaultMoving && !folderGone && !teamLapsed ? todayButton : null}
             {/* A read-only Drive vault leaves New note out; its card says why.
                 So does a moving vault, and a folder that is not there. */}
-            {!driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway ? (
+            {!driveReadOnly &&
+            !vaultMoving &&
+            !folderGone &&
+            !readOnly &&
+            !hubAway &&
+            !teamLapsed ? (
               <button
                 type="button"
                 className="icon-btn vault-new-btn press-fb"
@@ -2377,7 +2412,11 @@ export function VaultScreen() {
           </div>
         ) : null}
         <p className="lead">
-          {team ? vaultCopy(on, 'org').storage : vaultLead(personalCopy, { offerShown })}
+          {team
+            ? teamLapsed
+              ? VAULT_TEAM_LAPSED_LEAD
+              : vaultCopy(on, 'org').storage
+            : vaultLead(personalCopy, { offerShown })}
           {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
             <>
               {' '}
@@ -2391,6 +2430,18 @@ export function VaultScreen() {
               </button>
             </>
           ) : null}
+          {team && vaultTeamPlan?.isAdmin && !teamLapsed ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="linklike press-fb"
+                onClick={() => setSettingsOpen(true)}
+              >
+                {VAULT_TEAM_SETTINGS_LINK}
+              </button>
+            </>
+          ) : null}
           {!team ? (
             <>
               {' '}
@@ -2400,6 +2451,22 @@ export function VaultScreen() {
             </>
           ) : null}
         </p>
+        {teamLapsed && !vaultTeamExportable(on) ? (
+          <p className="hint">{VAULT_TEAM_LAPSED_WEB}</p>
+        ) : null}
+        {teamLapsed && vaultTeamPlan?.isAdmin ? (
+          <p className="hint">
+            {VAULT_TEAM_LAPSED_ADMIN}{' '}
+            <button type="button" className="linklike press-fb" onClick={() => setView('admin')}>
+              {VAULT_TEAM_OPEN_ADMIN}
+            </button>
+          </p>
+        ) : null}
+        {team && !teamLapsed && vaultTeamPlan?.entitledUntil ? (
+          <p className="hint" role="status">
+            {vaultTeamEditableUntil(vaultTeamPlan.entitledUntil)}
+          </p>
+        ) : null}
 
         {renderError('tree')}
         {renderLeaseLine()}

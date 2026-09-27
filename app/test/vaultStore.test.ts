@@ -292,6 +292,8 @@ const ORG = 'org-1';
 const team = new Map<string, { body: string; rev: number }>();
 const teamNet = {
   fail: undefined as Error | undefined,
+  /** Thrown by the RPCs only, so the reads before them still answer. */
+  rpcFail: undefined as Error | undefined,
   beforePut: undefined as ((args: Record<string, unknown>) => Promise<void>) | undefined,
   puts: [] as Array<{ token: string; path: string; body: string; base: number }>,
   // How many one-note reads (stat or read, a `path=eq.` select) were asked.
@@ -341,6 +343,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
     rpc: async (fn: string, token: string, args: Record<string, unknown>) => {
       if (!fn.startsWith('org_vault_')) return null;
       if (teamNet.fail) throw teamNet.fail;
+      if (teamNet.rpcFail) throw teamNet.rpcFail;
       const path = args.p_path as string;
       const theirs = (p: string) => {
         const r = row(p);
@@ -406,6 +409,8 @@ vi.mock('../src/lib/gitos/index.js', async () => {
       wiring.storeToken = token;
     },
     resetOrgVault: org.resetOrgVault,
+    onOrgVaultPlan: org.onOrgVaultPlan,
+    setOrgVaultDeleteRole: org.setOrgVaultDeleteRole,
   };
 });
 
@@ -441,6 +446,7 @@ function reset() {
   for (const p of Object.values(byId)) p.reset();
   team.clear();
   teamNet.fail = undefined;
+  teamNet.rpcFail = undefined;
   teamNet.beforePut = undefined;
   teamNet.puts = [];
   teamNet.heads = 0;
@@ -972,6 +978,47 @@ describe('failures are loud, classified, and never lose text (0.4)', () => {
     });
     expect(useApp.getState().toast).toMatch(/Not a member of this org/);
     expect(useApp.getState().toast).not.toMatch(/connection returns/);
+  });
+
+  it('a plan that lapsed mid-edit (OV402) holds the text and turns the team read-only, calmly', async () => {
+    teamScope();
+    teamNet.fail = new SupabaseRequestError('the plan is not active', 400, 'OV402');
+    await useApp.getState().vaultSave('plan.md', 'our plan');
+    expect(pending()).toEqual({});
+    expect(useApp.getState().vaultHeld[0]).toMatchObject({
+      path: 'plan.md',
+      text: 'our plan',
+      reason: 'The team plan is not active, so team notes cannot change.',
+    });
+    expect(useApp.getState().vaultTeamPlan).toMatchObject({ entitled: false });
+    const caps = useApp.getState().vaultCapsNow();
+    expect([caps.rename, caps.trash, caps.taskWriteBack, caps.settingsWrite]).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    teamNet.fail = undefined;
+    useApp.setState({ vaultTeamPlan: undefined });
+  });
+
+  it("a member's delete refused under admins-only (OV403) says the Y14 line, and nothing goes", async () => {
+    teamScope();
+    team.set('n.md', { body: 'keep', rev: 5 });
+    await useApp.getState().vaultRefresh();
+    teamNet.rpcFail = new SupabaseRequestError(
+      'only admins can delete team notes here',
+      400,
+      'OV403',
+    );
+    const r = await useApp.getState().vaultDeleteNote('n.md');
+    expect(r).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: 'Not deleted. Only admins can delete team notes.',
+    });
+    expect(team.get('n.md')?.body).toBe('keep');
+    teamNet.rpcFail = undefined;
   });
 
   it('a team network failure still stashes and retries', async () => {
@@ -2545,10 +2592,19 @@ describe('Vault M2 2.1 in the store', () => {
       rev: 7,
       at: '2026-09-27T00:00:00.000Z',
     };
-    teamScope();
-    mem.set(PENDING, JSON.stringify({ [`org::${ORG}::plan.md`]: entry }));
-    expect(await useApp.getState().unsentTeamTextCount()).toBe(1);
-    expect(JSON.parse(mem.get(PENDING)!)[`org::${ORG}::plan.md`]).toEqual(entry);
+    // The team client compares revs on this branch; the row before it does is
+    // held by taking the flag away for the test, as the row above adds it.
+    const org = wiring.org!.orgVaultProvider as { compareAndSwap?: true };
+    const had = org.compareAndSwap;
+    delete org.compareAndSwap;
+    try {
+      teamScope();
+      mem.set(PENDING, JSON.stringify({ [`org::${ORG}::plan.md`]: entry }));
+      expect(await useApp.getState().unsentTeamTextCount()).toBe(1);
+      expect(JSON.parse(mem.get(PENDING)!)[`org::${ORG}::plan.md`]).toEqual(entry);
+    } finally {
+      if (had) org.compareAndSwap = had;
+    }
   });
 
   it('the store keeps no team rev of its own', async () => {

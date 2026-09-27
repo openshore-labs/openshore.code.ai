@@ -1,7 +1,10 @@
 // A fake of the team vault's server half, in memory: the PostgREST selects the
-// provider makes on org_vault_notes and org_members, and the two guarded RPCs
-// from supabase/migrations/0019_org_vault_v1.sql, org_vault_write and
-// org_vault_remove, with their decision table as written there. Revs come from
+// provider makes on org_vault_notes, org_vault_revisions and org_members, the
+// two guarded RPCs from supabase/migrations/0019_org_vault_v1.sql,
+// org_vault_write and org_vault_remove, 0020's org_vault_move, and 0021's
+// settings pair and gates (OV402 when the plan is not active, OV403 for a
+// member's delete under admins-only), each by its decision table as written
+// there. Revs come from
 // one sequence and never repeat, so a note removed and made again never
 // matches an old base. Shared by test/orgVault.test.ts and the team row of
 // test/providerContract.test.ts, so there is one fake, not two.
@@ -19,9 +22,37 @@ export interface FakeNote {
   deleted: boolean;
 }
 
+/** A revision row (0019): the displaced version, and why. */
+export interface FakeRevision {
+  id: number;
+  path: string;
+  rev: number;
+  body: string;
+  reason: 'overwritten' | 'deleted' | 'renamed';
+  recorded_at: string;
+}
+
+/** The org's settings row (0021); undefined is no row (the defaults). */
+export interface FakeSettingsRow {
+  settings: Record<string, unknown>;
+  delete_role: 'admin' | 'member';
+  context_folder: string | null;
+  rev: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
 export interface FakeOrgVaultServer {
   org: string;
   notes: Map<string, FakeNote>;
+  revisions: FakeRevision[];
+  settingsRow: FakeSettingsRow | undefined;
+  /** org_vault_entitled: false makes every write RPC raise OV402. */
+  entitled: boolean;
+  /** entitled_until as settings_get answers it (a never-paid team's date). */
+  entitledUntil: string | null;
+  /** org_vault_is_admin for the caller. */
+  isAdmin: boolean;
   members: Array<{ user_id: string | null; email: string; status: string }>;
   /** Every select query string, in order, keyed by table. */
   selects: Array<{ table: string; query: string }>;
@@ -33,8 +64,11 @@ export interface FakeOrgVaultServer {
   rpcFailure: unknown;
   /** Another writer: sets a live note with a fresh rev, as a teammate's save would. */
   put(path: string, body: string, by?: string): FakeNote;
-  /** Another writer's delete: the row becomes a tombstone with a fresh rev. */
+  /** Another writer's delete: the row becomes a tombstone with a fresh rev,
+   *  and the displaced version a 'deleted' revision. */
   drop(path: string): void;
+  /** Another admin's settings write: the row replaced with a fresh rev. */
+  putSettings(settings: Record<string, unknown>): void;
   /** The live body at a path, or undefined. */
   bytes(path: string): string | undefined;
   select(table: string, token: string, query: string): Promise<unknown[]>;
@@ -51,8 +85,26 @@ function filterValue(raw: string): string {
   return v;
 }
 
+const raise = (message: string, extra: Record<string, unknown> = {}) =>
+  Object.assign(new Error(message), { status: 400, ...extra });
+
+/** 0021's org_vault_settings_ok: the L2 keys a team shares, each its type. */
+function settingsOk(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  return Object.entries(v).every(([k, x]) =>
+    ['newNotes', 'daily', 'templates', 'attachments', 'links', 'editor', 'tree'].includes(k)
+      ? Boolean(x) && typeof x === 'object' && !Array.isArray(x)
+      : k === 'version'
+        ? typeof x === 'number'
+        : k === 'delete'
+          ? x === 'trash' || x === 'permanent'
+          : false,
+  );
+}
+
 export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
   let seq = 1_000_000_000;
+  let revisionId = 0;
   let clock = Date.parse('2026-09-27T00:00:00.000Z');
   const nextRev = () => ++seq;
   const now = () => new Date((clock += 1000)).toISOString();
@@ -81,9 +133,43 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
     return n;
   };
 
+  const snapshot = (s: FakeOrgVaultServer, n: FakeNote, reason: FakeRevision['reason']) => {
+    s.revisions.push({
+      id: ++revisionId,
+      path: n.path,
+      rev: n.rev,
+      body: n.body,
+      reason,
+      recorded_at: now(),
+    });
+  };
+  const settingsGet = (s: FakeOrgVaultServer) => ({
+    settings: s.settingsRow?.settings ?? {},
+    delete_role: s.settingsRow?.delete_role ?? 'member',
+    context_folder: s.settingsRow?.context_folder ?? null,
+    rev: s.settingsRow?.rev ?? 0,
+    updated_at: s.settingsRow?.updated_at ?? null,
+    updated_by: s.settingsRow?.updated_by ?? null,
+    entitled: s.entitled,
+    entitled_until: s.entitledUntil,
+    is_admin: s.isAdmin,
+  });
+  const requireEntitled = (s: FakeOrgVaultServer) => {
+    if (!s.entitled) {
+      throw raise("the organization's plan is not active, so team notes are read-only", {
+        code: 'OV402',
+      });
+    }
+  };
+
   const server: FakeOrgVaultServer = {
     org,
     notes: new Map(),
+    revisions: [],
+    settingsRow: undefined,
+    entitled: true,
+    entitledUntil: null,
+    isAdmin: true,
     members: [],
     selects: [],
     rpcs: [],
@@ -96,7 +182,20 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
 
     drop(path) {
       const n = server.notes.get(path);
-      if (n) server.notes.set(path, { ...n, deleted: true, body: '', rev: nextRev() });
+      if (!n || n.deleted) return;
+      snapshot(server, n, 'deleted');
+      server.notes.set(path, { ...n, deleted: true, body: '', rev: nextRev() });
+    },
+
+    putSettings(settings) {
+      server.settingsRow = {
+        settings,
+        delete_role: server.settingsRow?.delete_role ?? 'member',
+        context_folder: server.settingsRow?.context_folder ?? null,
+        rev: (server.settingsRow?.rev ?? 0) + 1,
+        updated_at: now(),
+        updated_by: 'u-other-admin',
+      };
     },
 
     bytes(path) {
@@ -117,9 +216,31 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
           .filter((m) => !status || m.status === status)
           .map((m) => ({ user_id: m.user_id, email: m.email }));
       }
+      if (table === 'org_vault_revisions') {
+        let revs = [...server.revisions];
+        for (const f of get('path')) {
+          if (f.startsWith('eq.')) revs = revs.filter((r) => r.path === filterValue(f.slice(3)));
+        }
+        for (const f of get('reason')) {
+          if (f.startsWith('eq.')) revs = revs.filter((r) => r.reason === f.slice(3));
+          const inList = /^in\.\((.*)\)$/.exec(decodeURIComponent(f));
+          if (inList) revs = revs.filter((r) => inList[1]!.split(',').includes(r.reason));
+        }
+        for (const f of get('id')) {
+          if (f.startsWith('lt.')) revs = revs.filter((r) => r.id < Number(f.slice(3)));
+          if (f.startsWith('eq.')) revs = revs.filter((r) => r.id === Number(f.slice(3)));
+        }
+        if (get('order')[0] === 'id.desc') revs.sort((a, b) => b.id - a.id);
+        revs = revs.slice(0, Math.min(Number(get('limit')[0] ?? 1000), 1000));
+        const rcols = (get('select')[0] ?? '*').split(',');
+        return revs.map((r) =>
+          Object.fromEntries(rcols.map((c) => [c, (r as unknown as Record<string, unknown>)[c]])),
+        );
+      }
       if (table !== 'org_vault_notes') return [];
       let rows = [...server.notes.values()];
       if (get('deleted')[0] === 'is.false') rows = rows.filter((n) => !n.deleted);
+      if (get('deleted')[0] === 'is.true') rows = rows.filter((n) => n.deleted);
       for (const f of get('path')) {
         if (f.startsWith('eq.')) {
           const p = filterValue(f.slice(3));
@@ -152,7 +273,64 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
         throw Object.assign(new Error('not a member of this org'), { status: 400 });
       }
       const path = args.p_path as string;
+      if (fn === 'org_vault_settings_get') return settingsGet(server);
+      if (fn === 'org_vault_settings_put') {
+        if (!settingsOk(args.p_settings)) throw raise('those vault settings are not allowed');
+        if (args.p_delete_role !== 'admin' && args.p_delete_role !== 'member') {
+          throw raise('who may delete is admin or member');
+        }
+        if (typeof args.p_base_rev !== 'number') {
+          throw raise('a settings write needs the base rev (0 for none yet)');
+        }
+        if (!server.isAdmin) throw raise('only admins can change team vault settings');
+        requireEntitled(server);
+        if ((server.settingsRow?.rev ?? 0) !== args.p_base_rev) {
+          return { ok: false, conflict: 'changed', theirs: settingsGet(server) };
+        }
+        server.settingsRow = {
+          settings: args.p_settings as Record<string, unknown>,
+          delete_role: args.p_delete_role,
+          context_folder: (args.p_context_folder as string | null) ?? null,
+          rev: (server.settingsRow?.rev ?? 0) + 1,
+          updated_at: now(),
+          updated_by: server.caller,
+        };
+        return { ok: true, rev: server.settingsRow.rev, updated_at: server.settingsRow.updated_at };
+      }
+      if (fn === 'org_vault_move') {
+        requireEntitled(server);
+        const from = args.p_from as string;
+        const to = args.p_to as string;
+        const ifMatch = args.p_if_match as number | null | undefined;
+        if (ifMatch === null || ifMatch === undefined) throw raise('a move needs if_match');
+        const cur = live(server, from);
+        if (!cur) return { ok: false, conflict: 'missing' };
+        if (cur.rev !== ifMatch) return { ok: false, conflict: 'changed', theirs: theirs(cur) };
+        const size = (n: FakeNote) => new TextEncoder().encode(n.body).length;
+        if (from === to) {
+          return {
+            ok: true,
+            path: cur.path,
+            rev: cur.rev,
+            updated_at: cur.updated_at,
+            size: size(cur),
+          };
+        }
+        const other = [...server.notes.values()].find(
+          (x) => !x.deleted && x.path !== from && x.path.toLowerCase() === to.toLowerCase(),
+        );
+        if (other) return { ok: false, conflict: 'exists', theirs: theirs(other) };
+        snapshot(server, cur, 'renamed');
+        if (from.toLowerCase() === to.toLowerCase()) {
+          server.notes.delete(from);
+        } else {
+          server.notes.set(from, { ...cur, deleted: true, body: '', rev: nextRev() });
+        }
+        const n = set(server, to, cur.body, server.caller);
+        return { ok: true, path: n.path, rev: n.rev, updated_at: n.updated_at, size: size(n) };
+      }
       if (fn === 'org_vault_write') {
+        requireEntitled(server);
         const body = (args.p_body as string | undefined) ?? '';
         const ifMatch = args.p_if_match as number | null | undefined;
         const ifAbsent = Boolean(args.p_if_absent);
@@ -172,6 +350,7 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
           const cur = live(server, path);
           if (!cur) return { ok: false, conflict: 'missing' };
           if (cur.rev !== ifMatch) return { ok: false, conflict: 'changed', theirs: theirs(cur) };
+          snapshot(server, cur, 'overwritten');
           n = set(server, path, body, server.caller);
         }
         return {
@@ -183,6 +362,10 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
         };
       }
       if (fn === 'org_vault_remove') {
+        requireEntitled(server);
+        if (server.settingsRow?.delete_role === 'admin' && !server.isAdmin) {
+          throw raise('only admins can delete team notes here', { code: 'OV403' });
+        }
         const ifMatch = args.p_if_match as number | null | undefined;
         if (ifMatch === null || ifMatch === undefined) {
           throw Object.assign(new Error('a remove needs if_match'), { status: 400 });

@@ -97,12 +97,21 @@ export type VaultOpFailure = 'storage' | 'unsupported';
 
 /** Did a provider call throw? Then the storage itself failed, and every later
  *  call would fail the same way (R1). */
-async function attempt<T>(run: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
+async function attempt<T>(
+  run: () => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; line?: string }> {
   try {
     return { ok: true, value: await run() };
-  } catch {
-    return { ok: false };
+  } catch (err) {
+    return { ok: false, ...wholeLine(err) };
   }
+}
+
+/** A storage refusal whose message is the whole line to say (`whole`, the
+ *  team vault's admins-only delete, CX Y14), else nothing. */
+function wholeLine(err: unknown): { line?: string } {
+  const e = err as { whole?: unknown; message?: unknown } | undefined;
+  return e?.whole === true && typeof e.message === 'string' ? { line: e.message } : {};
 }
 
 const MD_END = /\.md$/i;
@@ -718,6 +727,8 @@ export type VaultDeleteResult =
       ok: false;
       reason: 'changed' | 'downloading' | 'missing' | VaultOpFailure;
       theirs?: StoredFile;
+      /** The storage's own whole line for a refusal (CX Y14). */
+      line?: string;
     };
 
 /** Is Trash real on this storage? One tap deletes only where it is (R2). */
@@ -761,7 +772,9 @@ export async function deleteNote(deps: VaultOpsDeps, path: string): Promise<Vaul
       attachments: 0,
     };
   });
-  return run.ok ? run.value : { ok: false, reason: 'storage' };
+  return run.ok
+    ? run.value
+    : { ok: false, reason: 'storage', ...(run.line ? { line: run.line } : {}) };
 }
 
 /** Move a folder to Trash, whatever is in it (Trash is recoverable, so the
@@ -785,7 +798,9 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
       attachments: r.attachments,
     };
   });
-  return run.ok ? run.value : { ok: false, reason: 'storage' };
+  return run.ok
+    ? run.value
+    : { ok: false, reason: 'storage', ...(run.line ? { line: run.line } : {}) };
 }
 
 export type VaultRestoreResult =

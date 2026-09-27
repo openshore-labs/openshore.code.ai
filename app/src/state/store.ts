@@ -374,6 +374,10 @@ import {
   isGdriveConnected,
   setOrgVaultAuth,
   resetOrgVault,
+  onOrgVaultPlan,
+  setOrgVaultDeleteRole,
+  type OrgVaultPlan,
+  type OrgVaultDeleteRole,
   isNotePath,
   type GitosResource,
   type Lease,
@@ -957,7 +961,13 @@ export interface VaultMoveResult {
  *  `undefined`. */
 export type VaultDeleteOutcome =
   | { ok: true; trashed: boolean; undo?: VaultUndo; notes: number; attachments: number }
-  | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
+  | {
+      ok: false;
+      reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading';
+      /** The storage's own whole line for a refusal (the team vault's
+       *  admins-only delete, CX Y14), said as it is. */
+      line?: string;
+    };
 
 /** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
  *  note opens as it is, a new one opens in the editor with its line, and a
@@ -1354,6 +1364,12 @@ interface AppState {
    *  team", until the person leaves it or the same account signs back in.
    *  Nothing else of the team vault shows meanwhile. */
   vaultTeamExpired?: boolean;
+  /** The team's plan as its settings read last said (Vault M7, CX Y14,
+   *  Y15; migration 0021): not entitled is the calm read-only state, every
+   *  note still reads and exports; `entitledUntil` is a never-paid team's
+   *  notice; `isAdmin` and `deleteRole` decide the settings sheet and who may
+   *  delete. Undefined before the first read and after a sign-out. */
+  vaultTeamPlan?: OrgVaultPlan;
   /** Which vault the Vault screen is showing: the personal one (on the chosen
    *  storage provider) or the shared team vault (org tier, Supabase-backed).
    *  Team is only reachable when signed in as an active member of an org. */
@@ -1933,6 +1949,10 @@ interface AppState {
   vaultLoadTrash(): Promise<TrashEntry[] | undefined>;
   /** Restore one Trash entry where it came from, never overwriting. */
   vaultRestoreTrash(id: string): Promise<VaultRestoreResult>;
+  /** An admin sets who may delete team notes (CX Y14; migration 0021):
+   *  'changed' when another admin's save landed first (the sheet shows the
+   *  value there now), 'failed' when it could not be written. */
+  vaultSetTeamDeleteRole(role: OrgVaultDeleteRole): Promise<'ok' | 'changed' | 'failed'>;
   /** Empty Trash (not a team vault's, R3). */
   vaultEmptyTrash(): Promise<
     { ok: true; removed: number; asked: number } | { ok: false; reason: string }
@@ -4019,6 +4039,7 @@ export const useApp = create<AppState>((set, get, api) => {
     resetOrgVault();
     forgetTeamBodies();
     stopVaultPoll();
+    set({ vaultTeamPlan: undefined });
     let kept = 0;
     if (expired && uid) {
       keptTeamOwner = uid;
@@ -5452,7 +5473,8 @@ export const useApp = create<AppState>((set, get, api) => {
       (active &&
         (Boolean(st.vaultLeaseHeldByOther) ||
           Boolean(st.vaultMoving) ||
-          (t.providerId === 'org' && Boolean(st.vaultTeamExpired)) ||
+          (t.providerId === 'org' &&
+            (Boolean(st.vaultTeamExpired) || st.vaultTeamPlan?.entitled === false)) ||
           (t.providerId === 'files' && st.vaultFolder?.exists === false)));
     // The vault's Delete choice (L11): For good turns Trash off here.
     const settings = cachedVaultSettings(foldersKey(t));
@@ -5461,6 +5483,11 @@ export const useApp = create<AppState>((set, get, api) => {
       {
         readOnly,
         ...(t.providerId === 'hub' ? { reach: hubReach() } : {}),
+        // Only an admin saves a team's settings (CX Y14); before the first
+        // read, the account's own role says.
+        ...(t.providerId === 'org'
+          ? { settingsAdmin: st.vaultTeamPlan?.isAdmin ?? isOrgAdmin(st.settings.account) }
+          : {}),
       },
       settings ? { delete: settings.delete } : undefined,
     );
@@ -6474,6 +6501,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // Unsent team text stays only for the account that typed it.
     resetOrgVault();
     forgetTeamBodies();
+    set({ vaultTeamPlan: undefined });
     // The same person signing back in after an expiry that kept a team note
     // open goes on with that note, now able to save (Vault M2 2.6).
     const resume =
@@ -6557,6 +6585,13 @@ export const useApp = create<AppState>((set, get, api) => {
         () => accessToken(),
         () => get().teamVaultAvailable(),
       );
+      // The team's plan, from each settings read and from a write refused
+      // with OV402: only the signed-in org's, so a late answer for another
+      // org never paints this one (CX Y15).
+      onOrgVaultPlan((resourceId, plan) => {
+        if (resourceId !== get().settings.account?.org?.serverId) return;
+        set({ vaultTeamPlan: plan });
+      });
 
       // P0-3: the sealed store settles its key first. 'locked' means a key
       // exists but could not be read this launch; every sealed value reads as
@@ -10071,7 +10106,9 @@ export const useApp = create<AppState>((set, get, api) => {
         const refusal = vaultRefusal(err);
         get().showToast(
           refusal
-            ? `Could not delete that note. ${asSentence(refusal)}`
+            ? (err as { whole?: unknown }).whole === true
+              ? refusal
+              : `Could not delete that note. ${asSentence(refusal)}`
             : 'Could not delete that note. Check your vault storage connection.',
         );
         return false;
@@ -10196,7 +10233,7 @@ export const useApp = create<AppState>((set, get, api) => {
           );
           return undefined;
         }
-        return { ok: false, reason: r.reason };
+        return { ok: false, reason: r.reason, ...(r.line ? { line: r.line } : {}) };
       }
       await afterNoteGone(t, path);
       logEvent('vault_note_trash');
@@ -10210,7 +10247,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
       if (await leaseRefuses(t)) return undefined;
       const r = await opsDeleteFolder(opsDeps(t), folder);
-      if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
+      if (!r.ok) {
+        return {
+          ok: false,
+          reason: r.reason === 'changed' ? 'storage' : r.reason,
+          ...(r.line ? { line: r.line } : {}),
+        };
+      }
       const open = get().vaultNote;
       if (open && open.path.startsWith(`${folder}/`)) await afterNoteGone(t, open.path);
       await moveEmptyFolders(t, folder);
@@ -10233,6 +10276,16 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultLoadTrash() {
       const t = vaultTarget();
       return t ? refreshVaultTrash(t) : undefined;
+    },
+
+    async vaultSetTeamDeleteRole(role) {
+      const orgId = get().settings.account?.org?.serverId;
+      if (!orgId || get().vaultTeamPlan?.isAdmin !== true) return 'failed';
+      try {
+        return await setOrgVaultDeleteRole(orgId, role);
+      } catch {
+        return 'failed';
+      }
     },
 
     async vaultRestoreTrash(id) {

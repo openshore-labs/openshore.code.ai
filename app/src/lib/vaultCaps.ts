@@ -23,6 +23,8 @@
 //   writes its settings file under compare-and-swap (`writeConfig`), and only
 //   while writable and not away. A vault's own `delete: permanent` (L11)
 //   turns one-tap Trash off, so every delete asks twice "for good".
+// - On a team vault only an admin saves the settings (CX Y14; 0021 refuses a
+//   member there too): `settingsAdmin: false` keeps the sheet read-only.
 import type { VaultDeleteMode } from 'os-code/protocol';
 import type { StorageProvider } from './gitos/providers.js';
 
@@ -61,6 +63,9 @@ export interface VaultCapsState {
   /** Your computer's reach (`HubReach`); `away` is read-only. Absent or
    *  `unknown` for every other storage and before the first answer. */
   reach?: 'unknown' | 'reachable' | 'away';
+  /** A team vault: whether this person is an admin, who alone saves its
+   *  settings (CX Y14). Absent for every other storage. */
+  settingsAdmin?: boolean;
 }
 
 /** The vault's own settings that narrow the caps (Vault M7, CTO L11): the
@@ -96,6 +101,6 @@ export function vaultCaps(
     taskWriteBack: writable,
     linkRewrite: writable,
     today: cas,
-    settingsWrite: writable && has(p, 'writeConfig'),
+    settingsWrite: writable && has(p, 'writeConfig') && s.settingsAdmin !== false,
   };
 }

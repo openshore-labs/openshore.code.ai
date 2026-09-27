@@ -193,11 +193,17 @@ describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
     }
   });
 
-  it('the team vault on main has no writeConfig, so its settings read as defaults', () => {
-    expect(providerFor('org')!.writeConfig).toBeUndefined();
-    expect(vaultCapLine('org', 'settingsWrite')).toBe(
-      'Team vault settings cannot change here yet.',
-    );
+  it('the team vault saves its settings for an admin only (CX Y14)', () => {
+    const team = providerFor('org')!;
+    expect(typeof team.writeConfig).toBe('function');
+    expect(vaultCaps(team, { readOnly: false, settingsAdmin: true }).settingsWrite).toBe(true);
+    expect(vaultCaps(team, { readOnly: false, settingsAdmin: false }).settingsWrite).toBe(false);
+    // A member keeps every note action; only the sheet reads.
+    const member = vaultCaps(team, { readOnly: false, settingsAdmin: false });
+    expect(member).toEqual({ ...vaultCaps(team, WRITABLE), settingsWrite: false });
+    // A lapsed plan is read-only: nothing writes, the sheet included (Y15).
+    const lapsed = vaultCaps(team, { readOnly: true, settingsAdmin: true });
+    expect(lapsed.settingsWrite || lapsed.rename || lapsed.trash).toBe(false);
   });
 });
 
@@ -267,17 +273,19 @@ const MAIN: Record<string, Record<string, boolean>> = {
     today: false,
     settingsWrite: false,
   },
+  // The held team branch (0020, 0021): a native move, a real Trash with
+  // Restore and no Empty (R3), the settings row; no attachments.
   org: {
-    rename: false,
-    renameNative: false,
-    folders: false,
-    trash: false,
+    rename: true,
+    renameNative: true,
+    folders: true,
+    trash: true,
     emptyTrash: false,
     attachments: false,
-    taskWriteBack: false,
-    linkRewrite: false,
-    today: false,
-    settingsWrite: false,
+    taskWriteBack: true,
+    linkRewrite: true,
+    today: true,
+    settingsWrite: true,
   },
 };
 

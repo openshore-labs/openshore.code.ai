@@ -266,6 +266,20 @@ export interface VaultSettingsSheetProps {
   onPickFolder: (field: VaultSettingsPickField) => void;
   /** Open the storage sheet, after the exit. */
   onOpenStorage: () => void;
+  /** The sheet's title in place of the copy's (the team's, CX Y14). */
+  title?: string;
+  /** Every file row reads only, with no line of its own at the top (a team
+   *  member, whose footer already says who sets these, Y14). */
+  readOnly?: boolean;
+  /** A team vault's "Who can delete team notes" (Y14): the value, and the
+   *  change for an admin; without `onChange` the row reads only. */
+  teamDelete?: {
+    label: string;
+    sub: string;
+    options: readonly { value: 'admin' | 'member'; label: string }[];
+    value: 'admin' | 'member';
+    onChange?: (value: 'admin' | 'member') => void;
+  };
 }
 
 /** The attributes that set `--vault-font` and `--vault-size-step` on the
@@ -504,6 +518,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     onDevice,
     onPickFolder,
     onOpenStorage,
+    teamDelete,
   } = props;
   const uid = useId();
   const ids = {
@@ -512,7 +527,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
   };
   const desktop = platform === 'desktop';
   const lockLine = s.fileState === 'unreadable' ? c.unreadable : props.lockLine;
-  const locked = Boolean(lockLine);
+  const locked = Boolean(lockLine) || Boolean(props.readOnly);
   const opts = options(c);
 
   // Y2: which "From Obsidian" rows are showing their one line.
@@ -591,7 +606,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
           className="vault-settings-item vault-settings-row vault-settings-locked"
           key={key}
           aria-disabled="true"
-          aria-describedby={ids.lock}
+          aria-describedby={lockLine ? ids.lock : undefined}
         >
           <RowText label={label} />
           <span className="vault-settings-value">{value}</span>
@@ -748,7 +763,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     <Sheet open={open} onClose={onClose} className="vault-settings">
       {open ? (
         <>
-          <SheetHead title={c.title} onClose={onClose} />
+          <SheetHead title={props.title ?? c.title} onClose={onClose} />
           <p id={ids.status} className="vault-settings-status" role="status">
             {statusText ? (
               <span key={save} className="vault-settings-status-text">
@@ -841,6 +856,32 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
                 >
                   <RowText label={c.deleteLabel} sub={caps.trashLine} subId={`${uid}-trash-line`} />
                 </div>
+              ) : null}
+              {teamDelete ? (
+                teamDelete.onChange && !locked ? (
+                  <div className="vault-settings-item" key="team-delete">
+                    {segRow(
+                      'team-delete',
+                      [],
+                      teamDelete.label,
+                      teamDelete.options,
+                      teamDelete.value,
+                      teamDelete.onChange,
+                      teamDelete.sub,
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className="vault-settings-item vault-settings-row vault-settings-locked"
+                    key="team-delete"
+                    aria-disabled="true"
+                  >
+                    <RowText label={teamDelete.label} sub={teamDelete.sub} />
+                    <span className="vault-settings-value">
+                      {teamDelete.options.find((o) => o.value === teamDelete.value)?.label}
+                    </span>
+                  </div>
+                )
               ) : null}
               {s.ignore.paths.length ? (
                 <div className="vault-settings-item vault-settings-row vault-settings-row-stack">
