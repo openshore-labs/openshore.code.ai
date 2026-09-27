@@ -1453,6 +1453,36 @@ textarea {
   animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
 }
 
+/* The save chip in the note bar (Vault M2 2.2): quiet muted text for Saved and
+   Saving, the warn color when the text is kept on this device to save later.
+   Re-keyed per status, so each change settles in on fade-rise. */
+.vault-save-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px 8px;
+  min-width: 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-save-chip.offline {
+  color: var(--warn);
+}
+.vault-save-count {
+  color: var(--ink-soft);
+}
+
+/* A conflict copy's badge in the tree: plum, the "needs you" color, at the
+   trailing edge of its row so the name reads first. */
+.vault-conflict-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--attention-soft);
+  color: var(--attention);
+}
+
 .vault-title {
   font-family: var(--font-display);
   font-weight: var(--weight-medium);

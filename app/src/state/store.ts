@@ -622,6 +622,14 @@ export interface VaultTargetRef {
  *  copies it and discards it, so leaving the note or backgrounding the app
  *  cannot lose it. Team text leaves with its account instead: a sign-out, or
  *  another account signing in. */
+/** One stashed note waiting to be saved (vaultPending), without its text. */
+export interface VaultPendingRef {
+  providerId: StorageProviderId;
+  resourceId: string;
+  owner?: string;
+  path: string;
+}
+
 export interface VaultHeldDraft {
   /** One per vault and path; a newer hold for the same note replaces it. */
   id: string;
@@ -658,8 +666,9 @@ export function vaultHeldFor(held: VaultHeldDraft[], userId: string | undefined)
 
 /** A vault note that changed somewhere else while this device had unsaved
  *  edits in it (Vault M1, 1.1), waiting for the person to choose what to keep.
- *  Only a provider that enforces compare-and-swap (the desktop folder, in M1)
- *  raises one. While it is set, typing goes to the durable stash, never the
+ *  Every provider that enforces compare-and-swap raises one (Vault M2 2.2):
+ *  the desktop folder, This device, and iCloud and the team vault once their
+ *  providers check the guard. While it is set, typing goes to the durable stash, never the
  *  note, and the stash replay leaves that note alone. */
 export interface VaultConflict {
   path: string;
@@ -1084,6 +1093,12 @@ interface AppState {
    *  otherwise (`durable: false`). It holds team text of accounts not signed
    *  in now, so a screen shows vaultHeldVisible(), never this list. */
   vaultHeld: VaultHeldDraft[];
+  /** Every note with text stashed on this device to save when its storage
+   *  answers, as refs (no text): the save chip's pending count (Vault M2
+   *  2.2). Kept in step with the stash by every edit of it. */
+  vaultPending: VaultPendingRef[];
+  /** A save is on its way to the storage right now (the chip's Saving). */
+  vaultSaving?: boolean;
   /** True when a live single-writer lease on the personal vault is held by
    *  another device, so this one shows read-only. Cloud folder syncs (iCloud,
    *  Drive) have no Git-aware locking, so the lease bounds the concurrent-edit
@@ -3516,6 +3531,13 @@ export const useApp = create<AppState>((set, get, api) => {
       const before = JSON.stringify(p);
       const out = edit(p);
       if (JSON.stringify(p) !== before) await saveVaultPending(p);
+      const refs = Object.values(p).map(({ providerId, resourceId, owner, path }) => ({
+        providerId,
+        resourceId,
+        ...(owner ? { owner } : {}),
+        path,
+      }));
+      if (JSON.stringify(refs) !== JSON.stringify(get().vaultPending)) set({ vaultPending: refs });
       return out;
     });
     vaultPendingChain = run.catch(() => {});
@@ -4168,7 +4190,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // so it comes back under its name, still never over anything.
       if (!r.ok && r.conflict === 'missing')
         r = await putVaultNote(t, e.path, e.text, guardFor(undefined));
-      if (r.ok) return undefined;
+      if (r.ok) {
+        adoptReplayed(t, e, r.file);
+        return undefined;
+      }
       if (r.conflict === 'downloading') mustLand(r);
       current = r.theirs;
     } else {
@@ -4184,7 +4209,7 @@ export const useApp = create<AppState>((set, get, api) => {
         unchanged = current !== undefined && versionOf(current) === e.base;
       }
       if (!now || unchanged) {
-        mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base)));
+        adoptReplayed(t, e, mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base))));
         return undefined;
       }
       current ??= now.evicted ? undefined : await t.provider.read(t.resourceId, e.path);
@@ -4195,6 +4220,24 @@ export const useApp = create<AppState>((set, get, api) => {
     const copy = await writeConflictCopy(t, e.path, e.text, new Date());
     if (!copy) throw new Error('No free name for the conflict copy.');
     return copy;
+  }
+
+  // A replayed draft that landed on the note open now is what that note last
+  // saved as: the open note takes its text and version, so the next keystroke
+  // saves against it instead of meeting this device's own replay as a change
+  // from elsewhere (a Retry from the save chip replays while a note is open).
+  function adoptReplayed(t: VaultTargetRef, e: VaultPendingEntry, saved: StoredFile): void {
+    const open = get().vaultNote;
+    if (!isActiveVault(t) || open?.path !== e.path) return;
+    set({
+      vaultNote: {
+        ...open,
+        text: saved.text,
+        updatedAt: saved.updatedAt,
+        version: saved.version,
+        fresh: undefined,
+      },
+    });
   }
 
   // Replay the drafts stashed against this provider and resource, and for the
@@ -4298,6 +4341,8 @@ export const useApp = create<AppState>((set, get, api) => {
   // resolves to the version the note is at when it is done, as far as this
   // device knows, for the next link when the note has closed meanwhile.
   const vaultSaveChains = new Map<string, Promise<string | undefined>>();
+  // How many vaultSave calls are running, for the save chip (vaultSaving).
+  let vaultSavesInFlight = 0;
 
   // Run one step as the next link of a note's save chain, so it never sees
   // this device's own save half done (a re-check, a resolve choice).
@@ -4789,6 +4834,7 @@ export const useApp = create<AppState>((set, get, api) => {
     searchKeyConfigured: false,
     vaultFiles: [],
     vaultHeld: [],
+    vaultPending: [],
     vaultScope: 'personal',
     connectedRepoPlatforms: {},
     authConfigured: authConfigured(),
@@ -8081,10 +8127,15 @@ export const useApp = create<AppState>((set, get, api) => {
       })();
       const link = run.catch(() => undefined);
       vaultSaveChains.set(key, link);
+      // The chip says Saving while any save is on its way (2.2).
+      vaultSavesInFlight++;
+      if (!get().vaultSaving) set({ vaultSaving: true });
       try {
         await run;
       } finally {
         if (vaultSaveChains.get(key) === link) vaultSaveChains.delete(key);
+        vaultSavesInFlight--;
+        if (vaultSavesInFlight === 0) set({ vaultSaving: false });
       }
     },
 

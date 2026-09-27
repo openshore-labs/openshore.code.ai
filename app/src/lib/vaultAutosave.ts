@@ -17,6 +17,8 @@ export interface VaultAutosave {
   flush(): void;
   /** Drop the pending text without sending it. */
   cancel(): void;
+  /** Text is typed and waiting for the debounce (the save chip's Saving). */
+  isPending(): boolean;
 }
 
 /** A target is a vault on a storage, and for the team vault the account the
@@ -59,6 +61,9 @@ export function vaultAutosave<T extends TargetLike>(opts: {
     cancel() {
       stop();
       pending = undefined;
+    },
+    isPending() {
+      return pending !== undefined;
     },
   };
 }

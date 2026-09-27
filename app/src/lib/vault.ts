@@ -278,3 +278,22 @@ export function treeAt(folder: string, files: StoredFileMeta[]): TreeEntry[] {
   notes.sort((a, b) => a.name.localeCompare(b.name));
   return [...folderEntries, ...notes];
 }
+
+/** How many notes of one vault wait on this device to be saved (the save
+ *  chip's count, Vault M2 2.2): stash entries for that storage and resource,
+ *  team text only under the account signed in now, and never the note whose
+ *  choice is open (its text waits on the person, not on the storage). */
+export function vaultPendingCount(
+  pending: ReadonlyArray<{ providerId: string; resourceId: string; owner?: string; path: string }>,
+  target: { providerId: string; resourceId: string } | undefined,
+  opts: { conflictPath?: string; uid?: string } = {},
+): number {
+  if (!target) return 0;
+  return pending.filter(
+    (e) =>
+      e.providerId === target.providerId &&
+      e.resourceId === target.resourceId &&
+      (e.providerId !== 'org' || (e.owner !== undefined && e.owner === opts.uid)) &&
+      e.path !== opts.conflictPath,
+  ).length;
+}

@@ -625,6 +625,37 @@ function copyOrigin(copy: string): string {
   return copy.replace(/ \(conflict \d{4}-\d{2}-\d{2} \d{4}( \d+)?\)(\.md)$/i, '$2');
 }
 
+// ---- Save status and conflict copies (2.2) -----------------------------------
+// A quiet chip in the note bar says where the text on screen stands: Saved,
+// Saving, or kept on this device to save later, with how many notes wait and
+// a way to try now. A conflict copy wears a badge in the tree, so the person
+// can find the text that landed beside a note.
+
+/** Where the open note's text stands. */
+export type VaultSaveStatus = 'saved' | 'saving' | 'offline';
+
+/** The save chip's words: the label, how many notes wait (offline only), and
+ *  the retry button's label (offline only). */
+export function vaultSaveChip(
+  status: VaultSaveStatus,
+  pending: number,
+): { label: string; count?: string; retry?: string } {
+  if (status === 'saved') return { label: 'Saved' };
+  if (status === 'saving') return { label: 'Saving' };
+  return {
+    label: 'Offline, kept on this device',
+    ...(pending > 0
+      ? { count: pending === 1 ? '1 note waiting' : `${pending} notes waiting` }
+      : {}),
+    retry: 'Try again',
+  };
+}
+
+/** The badge a conflict copy (lib/vault.ts isConflictCopy) wears in the tree. */
+export const VAULT_CONFLICT_BADGE = 'Conflict';
+/** What the badge means, for a screen reader. */
+export const VAULT_CONFLICT_BADGE_LABEL = 'A copy kept beside a note when two versions met';
+
 // ---- Resolve, move mode (1d) ------------------------------------------------
 // A move whose notes landed beside same-named notes with different text: one
 // sheet steps through the pairs. The sides are "the one you moved" and "the

@@ -969,3 +969,31 @@ describe('the desktop move card and the folder picker (1.3, 1.4)', () => {
     );
   });
 });
+
+describe('the save chip and conflict badges (M2 2.2)', () => {
+  it('says Saved, Saving, or kept on this device with a count and Try again', async () => {
+    const { vaultSaveChip } = await import('../src/lib/vaultCopy.js');
+    expect(vaultSaveChip('saved', 0)).toEqual({ label: 'Saved' });
+    expect(vaultSaveChip('saving', 3)).toEqual({ label: 'Saving' });
+    expect(vaultSaveChip('offline', 1)).toEqual({
+      label: 'Offline, kept on this device',
+      count: '1 note waiting',
+      retry: 'Try again',
+    });
+    expect(vaultSaveChip('offline', 4).count).toBe('4 notes waiting');
+    // No count it cannot back up.
+    expect(vaultSaveChip('offline', 0)).not.toHaveProperty('count');
+  });
+
+  it('badges exactly the keep-both names the store and the server make', async () => {
+    const { isConflictCopy: isVaultConflictCopy } = await import('../src/lib/vault.js');
+    const { vaultConflictCopyPath } = await import('os-code/protocol');
+    const at = new Date('2026-09-27T14:05:00Z');
+    expect(isVaultConflictCopy(vaultConflictCopyPath('ideas/Plan.md', at))).toBe(true);
+    expect(isVaultConflictCopy(vaultConflictCopyPath('Plan.md', at, 3))).toBe(true);
+    expect(isVaultConflictCopy('Plan (conflict 2026-09-27 1405).md')).toBe(true);
+    expect(isVaultConflictCopy('Plan.md')).toBe(false);
+    expect(isVaultConflictCopy('Conflict resolution.md')).toBe(false);
+    expect(isVaultConflictCopy('Plan (conflict).md')).toBe(false);
+  });
+});

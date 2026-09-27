@@ -251,10 +251,14 @@ let driveConnected = true;
 const local = makeProvider('local');
 const folder = makeProvider('files', true);
 const drive = makeProvider('gdrive');
+// A compare-and-swap storage other than the folder (iCloud, once its native
+// half checks the guard), for the "every provider" cases (Vault M2).
+const cloud = makeProvider('icloud', true);
 const byId: Record<string, ReturnType<typeof makeProvider>> = {
   local,
   files: folder,
   gdrive: drive,
+  icloud: cloud,
 };
 // The personal vault's default provider, under the names the older cases use.
 const files = local.files;
@@ -2411,5 +2415,94 @@ describe('Vault M2 2.1 in the store', () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(new URL('../src/state/store.ts', import.meta.url), 'utf8');
     expect(src).not.toMatch(/orgVaultBaseRev|seedOrgVaultBaseRev/);
+  });
+});
+
+describe('conflicts and the save status on every compare-and-swap storage (M2 2.2)', () => {
+  const C = cloud.files;
+  async function onCloud(path = 'n.md', text = 'loaded') {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('icloud') },
+    });
+    C.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined, vaultReturnFolder: undefined, vaultPending: [] });
+  });
+
+  it('a conflict result stops the write and raises the choice, on any such storage', async () => {
+    await onCloud();
+    C.set('n.md', 'written on the iPad');
+    await useApp.getState().vaultSave('n.md', 'typed here');
+    expect(C.get('n.md')).toBe('written on the iPad');
+    expect(useApp.getState().vaultConflict).toMatchObject({ path: 'n.md', kind: 'changed' });
+    // Typing on goes to the stash, never the note.
+    await useApp.getState().vaultSave('n.md', 'typed here, more');
+    expect(C.get('n.md')).toBe('written on the iPad');
+    expect(pending()['icloud::vault.personal::n.md']).toMatchObject({ text: 'typed here, more' });
+  });
+
+  it('a focus return re-checks the open note on any such storage', async () => {
+    await onCloud();
+    C.set('n.md', 'written on the iPad');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    expect(useApp.getState().vaultNote?.text).toBe('written on the iPad');
+    expect(useApp.getState().vaultNote?.reloadedFrom).toBe('elsewhere');
+  });
+
+  it('the pending refs follow the stash, and a Retry that lands empties them', async () => {
+    await onCloud();
+    cloud.fail.write = true;
+    await useApp.getState().vaultSave('n.md', 'typed offline');
+    expect(useApp.getState().vaultPending).toEqual([
+      { providerId: 'icloud', resourceId: 'vault.personal', path: 'n.md' },
+    ]);
+    expect(useApp.getState().vaultError).toBe('save');
+    cloud.fail.write = false;
+    await useApp.getState().vaultRefresh();
+    expect(C.get('n.md')).toBe('typed offline');
+    expect(useApp.getState().vaultPending).toEqual([]);
+  });
+
+  it('a replay that lands on the open note becomes its version, so the next save is not a conflict', async () => {
+    await onCloud();
+    cloud.fail.write = true;
+    await useApp.getState().vaultSave('n.md', 'typed offline');
+    cloud.fail.write = false;
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultNote).toMatchObject({
+      text: 'typed offline',
+      version: cloud.version('n.md'),
+    });
+    await useApp.getState().vaultSave('n.md', 'typed offline, then more');
+    expect(useApp.getState().vaultConflict).toBeUndefined();
+    expect(C.get('n.md')).toBe('typed offline, then more');
+  });
+
+  it('vaultSaving is true while a save is on its way', async () => {
+    await onCloud();
+    const seen: boolean[] = [];
+    const off = useApp.subscribe((s) => seen.push(Boolean(s.vaultSaving)));
+    await useApp.getState().vaultSave('n.md', 'saved');
+    off();
+    expect(seen).toContain(true);
+    expect(useApp.getState().vaultSaving).toBe(false);
+  });
+
+  it('the pending count leaves out the note whose choice is open, and other accounts', async () => {
+    const { vaultPendingCount } = await import('../src/lib/vault.js');
+    const t = { providerId: 'org', resourceId: ORG };
+    const list = [
+      { providerId: 'org', resourceId: ORG, owner: 'u1', path: 'a.md' },
+      { providerId: 'org', resourceId: ORG, owner: 'u2', path: 'b.md' },
+      { providerId: 'org', resourceId: ORG, owner: 'u1', path: 'c.md' },
+      { providerId: 'local', resourceId: 'vault.personal', path: 'd.md' },
+    ];
+    expect(vaultPendingCount(list, t, { uid: 'u1' })).toBe(2);
+    expect(vaultPendingCount(list, t, { uid: 'u1', conflictPath: 'c.md' })).toBe(1);
+    expect(vaultPendingCount(list, undefined)).toBe(0);
   });
 });

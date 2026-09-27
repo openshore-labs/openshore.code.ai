@@ -877,3 +877,84 @@ describe('the desktop folder rows in Where it lives (1.4)', () => {
     app.folderIo.pairs = {};
   });
 });
+
+// Vault M2 2.2: where the text stands, and conflict copies in the tree.
+describe('the save chip and conflict badges (M2 2.2)', () => {
+  let dom: TestDom;
+  const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
+  let refreshed = 0;
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    refreshed = 0;
+    app.state.vaultRefresh = async () => {
+      refreshed++;
+    };
+    app.state.vaultNote = { path: 'Plan.md', text: 'loaded', updatedAt: 'v1', fresh: true };
+    app.state.vaultConflict = undefined;
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'v1', size: 6 }];
+    app.state.vaultPending = [];
+    app.state.vaultSaving = false;
+    app.state.vaultError = undefined;
+    Object.assign(app.drive, { readOnly: undefined, connected: true, configured: true });
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultNote = undefined;
+    app.state.vaultPending = [];
+    app.state.vaultSaving = false;
+    app.state.vaultError = undefined;
+    app.state.vaultRefresh = async () => {};
+  });
+  const chip = () => dom.container.querySelector('.vault-save-chip');
+
+  it('says Saved, then Saving while typed text waits', async () => {
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Saved');
+    await dom.type(EDITOR, 'loaded, and more');
+    expect(chip()?.textContent).toBe('Saving');
+  });
+
+  it('says the text is kept on this device, how many notes wait, and retries', async () => {
+    app.state.vaultPending = [
+      { providerId: 'local', resourceId: 'vault.personal', path: 'Plan.md' },
+      { providerId: 'local', resourceId: 'vault.personal', path: 'Other.md' },
+      { providerId: 'files', resourceId: 'vault.personal', path: 'Elsewhere.md' },
+    ];
+    await dom.render(<VaultRoom />);
+    expect(chip()?.getAttribute('role')).toBe('status');
+    expect(chip()?.textContent).toContain('Offline, kept on this device');
+    expect(chip()?.textContent).toContain('2 notes waiting');
+    const before = refreshed;
+    await dom.click('Try again');
+    expect(refreshed).toBe(before + 1);
+  });
+
+  it('is left out while a choice about the note is open', async () => {
+    app.state.vaultConflict = {
+      path: 'Plan.md',
+      target: { providerId: 'local', resourceId: 'vault.personal' },
+      kind: 'changed',
+      base: 'loaded',
+      copyPath: 'Plan (conflict 2026-09-27 1405).md',
+      foundAt: 0,
+      deferred: true,
+    };
+    await dom.render(<VaultRoom />);
+    expect(chip()).toBeNull();
+    app.state.vaultConflict = undefined;
+  });
+
+  it('a conflict copy wears a badge in the tree, and a plain note does not', async () => {
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [
+      { path: 'Plan.md', updatedAt: 'v1', size: 6 },
+      { path: 'Plan (conflict 2026-09-27 1405).md', updatedAt: 'v1', size: 6 },
+    ];
+    await dom.render(<VaultRoom />);
+    const badges = dom.container.querySelectorAll('.vault-conflict-badge');
+    expect(badges).toHaveLength(1);
+    expect(badges[0]!.closest('button')!.textContent).toContain('Plan (conflict 2026-09-27 1405)');
+  });
+});

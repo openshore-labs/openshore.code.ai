@@ -2207,3 +2207,16 @@ execution contract. Newest at the bottom.
   instead of seeding one; the one-time stash conversion to `base = String(rev)`
   runs only once the team provider reports `compareAndSwap`, so today's
   provider keeps its old entries as they were.
+- **Vault M2 wave 2 item 2.2 (2026-09-27):** the save chip sits in the note
+  bar and reads Saved, Saving (typed text waiting for the debounce, or a save
+  on its way), or "Offline, kept on this device" with "N notes waiting" and
+  Try again (the house word, per the copy glossary, where the plan said
+  Retry); its count is every stash entry of the vault on screen except the
+  note whose choice is open, and Try again is the room's refresh, which
+  replays the stash; a replay that lands on the open note becomes that note's
+  version, so a Try again never meets its own write as a conflict; the tree
+  badges conflict copies with the existing `isConflictCopy`; every return to
+  the window re-checks the open note on any compare-and-swap storage, and the
+  separate refresh on becoming visible is folded into that re-check's relist;
+  the team RPC's `conflict_path` toast is superseded by G3 (the resolve
+  sheet instead).

@@ -16,11 +16,13 @@ import { ErrorBoundary } from '../components/ErrorBoundary.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import {
   backlinksTo,
+  isConflictCopy,
   noteFolder,
   noteTitle,
   nonNoteExtension,
   normalizeNotePath,
   treeAt,
+  vaultPendingCount,
   wikilinkContext,
 } from '../lib/vault.js';
 import {
@@ -48,6 +50,8 @@ import {
   VAULT_PRIVACY_BUTTON,
   VAULT_SAME_FOLDER_LINE,
   VAULT_UPDATED_SUFFIX,
+  VAULT_CONFLICT_BADGE,
+  VAULT_CONFLICT_BADGE_LABEL,
   copyProviderOf,
   vaultCloudLine,
   vaultConflictCard,
@@ -73,11 +77,13 @@ import {
   vaultPickResultCopy,
   vaultPickerRow,
   vaultRevealLabel,
+  vaultSaveChip,
   vaultSheetLine,
   vaultWarningLine,
   vaultWelcomeNote,
   type VaultDriveLink,
   type VaultOnboard,
+  type VaultSaveStatus,
 } from '../lib/vaultCopy.js';
 import { copyText } from '../lib/clipboard.js';
 import { openPrivacySettings, openVaultInObsidian, revealVaultFolder } from '../lib/vaultFolder.js';
@@ -141,6 +147,8 @@ export function VaultScreen() {
     vaultMoveTo,
     vaultError,
     vaultHeld,
+    vaultPending,
+    vaultSaving,
     vaultTargetRef,
     vaultReadOnly,
     vaultDiscardHeld,
@@ -360,6 +368,15 @@ export function VaultScreen() {
       if (change.rootGone) void vaultLoadFolder();
       void vaultRecheck({ reason: 'watch', paths: change.paths, tree: change.tree });
     });
+    return () => {
+      off();
+      watchDeviceFolder(false);
+    };
+  }, [onFolder, vaultRecheck, vaultLoadFolder]);
+  // Every return to the window re-checks the open note, on every storage
+  // that can see a change under the editor (compare-and-swap; the store
+  // decides), and re-lists the tree (Vault M2 2.2).
+  useEffect(() => {
     const onFocus = () => void vaultRecheck({ reason: 'focus' });
     const onVisible = () => {
       if (document.visibilityState === 'visible') onFocus();
@@ -367,12 +384,10 @@ export function VaultScreen() {
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      off();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
-      watchDeviceFolder(false);
     };
-  }, [onFolder, vaultRecheck, vaultLoadFolder]);
+  }, [vaultRecheck]);
   useEffect(() => {
     if (onFolder) watchDeviceFolder(true, vaultNote?.path);
   }, [onFolder, vaultNote?.path]);
@@ -573,12 +588,12 @@ export function VaultScreen() {
   // belongs to, so a stale timer cannot recreate what was just deleted).
   const cancelSave = autosave.cancel;
   // Flush on background (iOS may suspend or jetsam the app) and on unmount.
-  // On return to foreground, refresh so edits synced from another device (or
-  // the desktop agent) show up without a manual reopen.
+  // The return to the foreground is the focus re-check above, which also
+  // re-lists, so edits synced from another device (or the desktop agent)
+  // show up without a manual reopen.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flushSave();
-      else void vaultRefresh();
     };
     document.addEventListener('visibilitychange', onVisibility);
     let remove: (() => void) | undefined;
@@ -599,7 +614,7 @@ export function VaultScreen() {
       remove?.();
       flushSave();
     };
-  }, [flushSave, vaultRefresh]);
+  }, [flushSave]);
 
   const openNote = (path: string) => {
     // Persist any in-flight edit to the current note before switching away.
@@ -1084,6 +1099,20 @@ export function VaultScreen() {
       setFolder(parent);
       vaultCloseNote();
     };
+    // Where the text on screen stands (2.2): kept on this device while any
+    // note of this vault waits to be saved, Saving while typed text waits for
+    // the debounce or a save is on its way, else Saved. Left out while the
+    // note takes no writes, and while a choice is open (its card says it).
+    const pendingHere = vaultPendingCount(vaultPending ?? [], here, {
+      conflictPath: conflictHere?.path,
+      uid,
+    });
+    const saveStatus: VaultSaveStatus =
+      pendingHere > 0 || vaultError === 'save'
+        ? 'offline'
+        : vaultSaving || autosave.isPending()
+          ? 'saving'
+          : 'saved';
     return (
       <div className="screen">
         <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
@@ -1093,6 +1122,13 @@ export function VaultScreen() {
               All notes
             </button>
             <div style={{ flex: 1 }} />
+            {!locked && !conflictHere ? (
+              <SaveChip
+                status={saveStatus}
+                pending={pendingHere}
+                onRetry={() => void vaultRefresh()}
+              />
+            ) : null}
             {/* A read-only note leaves out the controls that write, instead of
                 dimming them: the card (or the lease line) says why. */}
             {!locked ? (
@@ -1611,6 +1647,12 @@ export function VaultScreen() {
                   onClick={() => openNote(e.path)}
                 >
                   {e.name}
+                  {isConflictCopy(e.path) ? (
+                    <span className="pill vault-conflict-badge">
+                      {VAULT_CONFLICT_BADGE}
+                      <span className="visually-hidden">. {VAULT_CONFLICT_BADGE_LABEL}</span>
+                    </span>
+                  ) : null}
                 </button>
               ),
             )}
@@ -1835,6 +1877,37 @@ export function VaultScreen() {
         ) : null}
       </Sheet>
     </div>
+  );
+}
+
+// The save chip (2.2): Saved, Saving, or kept on this device with how many
+// notes wait and a Try again. Re-keyed on the status, so each change settles in
+// on fade-rise rather than cutting. Only the offline state is announced: a
+// Saving and Saved on every pause would talk over the person typing.
+function SaveChip({
+  status,
+  pending,
+  onRetry,
+}: {
+  status: VaultSaveStatus;
+  pending: number;
+  onRetry: () => void;
+}) {
+  const chip = vaultSaveChip(status, pending);
+  return (
+    <span
+      key={status}
+      className={`vault-save-chip ${status}`}
+      {...(status === 'offline' ? { role: 'status' } : {})}
+    >
+      {chip.label}
+      {chip.count ? <span className="vault-save-count">{chip.count}</span> : null}
+      {chip.retry ? (
+        <button type="button" className="linklike press-fb" onClick={onRetry}>
+          {chip.retry}
+        </button>
+      ) : null}
+    </span>
   );
 }
 
