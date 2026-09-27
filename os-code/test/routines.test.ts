@@ -280,6 +280,37 @@ describe('routine scheduler', () => {
     expect(readdirSync(join(vault, 'Crew', 'Morning review'))).toHaveLength(1);
   });
 
+  it('heads the note with the date and time, and gives a second run in the same minute its own file', () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 6, 0, 5) };
+    const { scheduler, opened } = makeScheduler(clock);
+    const d = clock.now;
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    scheduler.runNow(routine.id);
+    opened[0]!.emit({ type: 'text-final', text: 'First run.' });
+    clock.now = at(0, 6, 0, 40);
+    opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+    const first = scheduler.get(routine.id)!.lastRun!.notePath!;
+
+    scheduler.runNow(routine.id);
+    opened[1]!.emit({ type: 'text-final', text: 'Second run.' });
+    clock.now = at(0, 6, 0, 55);
+    opened[1]!.emit({ type: 'task-done', reason: 'complete' });
+    const second = scheduler.get(routine.id)!.lastRun!.notePath!;
+
+    expect(first).toBe(`Crew/Morning review/${date} 06-00.md`);
+    expect(second).toBe(`Crew/Morning review/${date} 06-00 (2).md`);
+    expect(readdirSync(join(vault, 'Crew', 'Morning review')).sort()).toEqual([
+      `${date} 06-00 (2).md`,
+      `${date} 06-00.md`,
+    ]);
+    const firstNote = readFileSync(join(vault, first), 'utf8');
+    expect(firstNote.split('\n')[0]).toBe(`# Morning review: ${date} at 06:00`);
+    expect(firstNote).toContain('First run.');
+    expect(readFileSync(join(vault, second), 'utf8')).toContain('Second run.');
+  });
+
   it('records a slot the computer slept through as skipped, once, and never replays it', async () => {
     const routine = store.createRoutine(input());
     const clock = { now: at(1, 6, 45) };

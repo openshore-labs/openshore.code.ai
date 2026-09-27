@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { ConfigSchema, DaemonSchema, type OscConfig } from './schema.js';
 import type { z } from 'zod';
 
@@ -51,6 +51,9 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/** The config blocks read from the global file alone, never a project's. */
+const MACHINE_ONLY_KEYS = ['daemon', 'vault'] as const;
+
 /** Deep merge where `over` wins; arrays replace rather than concatenate. */
 export function deepMerge(base: unknown, over: unknown): unknown {
   if (isPlainObject(base) && isPlainObject(over)) {
@@ -79,14 +82,22 @@ export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
       // The daemon block is machine config and never comes from a project file
       // (DAE-9): a repo the daemon runs from can be written by a member through
       // the outbox, so honoring daemon.* there would let a commit widen the
-      // outbox roots or move the bind. Dropped with one warning, never merged.
+      // outbox roots or move the bind. The vault block is machine config for
+      // the same reason: the vault tools read under vault.dir without a prompt,
+      // so a repo that could move it would choose what the agent reads, and
+      // would split the agent's notes from the app's and the routines' folder.
+      // Each is dropped with one warning, never merged.
       let contribution = value;
-      if (path === projectPath && isPlainObject(value) && 'daemon' in value) {
-        const { daemon: _ignored, ...rest } = value;
+      if (path === projectPath && isPlainObject(value)) {
+        const rest: Record<string, unknown> = { ...value };
+        for (const key of MACHINE_ONLY_KEYS) {
+          if (!(key in rest)) continue;
+          delete rest[key];
+          warnings.push(
+            `${key} settings are machine config; ignored from os-code.config.json (${path}). Set them in ${globalConfigPath()}.`,
+          );
+        }
         contribution = rest;
-        warnings.push(
-          `daemon settings are machine config; ignored from os-code.config.json (${path}). Set them in ${globalConfigPath()}.`,
-        );
       }
       merged = deepMerge(merged, contribution);
       sources.push(path);
@@ -103,6 +114,11 @@ export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
     );
   }
 
+  // A vault folder that cannot be used (a relative path) falls back to the
+  // default; say so here, so doctor and the session warnings carry it.
+  const vault = resolveVaultDir(parsed.data.vault?.dir);
+  if (vault.warning) warnings.push(vault.warning);
+
   return { config: parsed.data, sources, warnings };
 }
 
@@ -118,6 +134,56 @@ export function loadDaemonConfig(): DaemonConfig {
   const raw = isPlainObject(value) && isPlainObject(value.daemon) ? value.daemon : {};
   const parsed = DaemonSchema.safeParse(raw);
   return parsed.success ? parsed.data : DaemonSchema.parse({});
+}
+
+/** The vault folder when none is configured: beside the OSCode clones. */
+export function defaultVaultDir(): string {
+  return join(homedir(), 'OSCode', 'Vault');
+}
+
+export interface VaultDir {
+  /** The absolute vault folder every process uses. */
+  dir: string;
+  /** Set when the configured value could not be used and the default stands. */
+  warning?: string;
+}
+
+/**
+ * Resolve a configured vault folder. A leading "~" expands to the home folder
+ * and the result must be absolute, so a session, the routine scheduler, and the
+ * desktop app land on the same folder whatever their working directory. A
+ * relative path is never resolved against a process cwd: it falls back to the
+ * default with a warning. Unset means ~/OSCode/Vault.
+ */
+export function resolveVaultDir(configured: string | undefined): VaultDir {
+  const raw = configured?.trim();
+  if (!raw) return { dir: defaultVaultDir() };
+  const expanded =
+    raw === '~'
+      ? homedir()
+      : raw.startsWith('~/') || raw.startsWith('~\\')
+        ? join(homedir(), raw.slice(2))
+        : raw;
+  if (!isAbsolute(expanded)) {
+    return {
+      dir: defaultVaultDir(),
+      warning: `vault.dir "${raw}" is not an absolute path, so the vault stays at ${defaultVaultDir()}. Use a full path, or one starting with ~/.`,
+    };
+  }
+  return { dir: resolve(expanded) };
+}
+
+/**
+ * The vault folder, parsed from the GLOBAL file alone: vault.* is machine
+ * config (see MACHINE_ONLY_KEYS), so no project file can move where the agent
+ * reads without a prompt. The one helper the engine's vault tools, the routine
+ * scheduler, and the desktop app all resolve the folder through. Never throws:
+ * an unreadable global file falls back to the default.
+ */
+export function loadVaultDir(): VaultDir {
+  const { value } = readJson(globalConfigPath());
+  const vault = isPlainObject(value) && isPlainObject(value.vault) ? value.vault : {};
+  return resolveVaultDir(typeof vault.dir === 'string' ? vault.dir : undefined);
 }
 
 /** Write the global config, creating ~/.os-code on first run. The read-modify-

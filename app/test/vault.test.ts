@@ -13,6 +13,7 @@ import {
   wikilinksToMarkdown,
 } from '../src/lib/vault.js';
 import { vaultUrlTransform } from '../src/components/VaultMarkdown.js';
+import { isNotePath } from '../src/lib/gitos/providers.js';
 
 describe('wikilink parsing (Obsidian grammar)', () => {
   it('parses plain, aliased, and heading-suffixed links', () => {
@@ -66,6 +67,77 @@ describe('note paths', () => {
     const nfd = normalizeNotePath('cafe\u0301'); // e + combining acute
     const nfc = normalizeNotePath('caf\u00e9'); // precomposed e-acute
     expect(nfd).toBe(nfc);
+  });
+});
+
+describe('only notes are notes (0.6)', () => {
+  // One rule at the seam: a .md file with no dot segment. Every provider's
+  // list() and a vault move go through it.
+  const table: Array<[string, boolean]> = [
+    ['Note.md', true],
+    ['ideas/Plan.md', true],
+    ['UPPER.MD', true],
+    ['v1.2 plan.md', true],
+    ['photo.png.md', true],
+    ['Decision: auth?.md', true],
+    ['.obsidian/workspace.json', false],
+    ['.obsidian/app.json', false],
+    ['.obsidian/snippets/theme.md', false],
+    ['.trash/Old.md', false],
+    ['.oscode/lease.json', false],
+    ['.git/HEAD', false],
+    ['ideas/.hidden.md', false],
+    ['.Far.md.icloud', false],
+    ['attachments/pic.png', false],
+    ['spec.pdf', false],
+    ['Board.canvas', false],
+    ['Tasks.base', false],
+    ['notes.txt', false],
+    ['README', false],
+  ];
+  it.each(table)('%s is a note: %s', (path, note) => {
+    expect(isNotePath(path)).toBe(note);
+  });
+});
+
+describe('.md is never appended to a known non-markdown name (0.6, obs-12)', () => {
+  it('refuses an attachment name instead of turning it into a note', () => {
+    for (const name of [
+      'diagram.png',
+      'photo.JPG',
+      'pic.jpeg',
+      'anim.gif',
+      'shot.webp',
+      'logo.svg',
+      'spec.pdf',
+      'Board.canvas',
+      'Tasks.base',
+      'memo.mp3',
+      'clip.mp4',
+      'take.mov',
+      '.obsidian/app.json',
+      'attachments/diagram.png',
+    ]) {
+      expect(normalizeNotePath(name), name).toBeUndefined();
+    }
+  });
+
+  it('still appends .md to a note name with any other dot', () => {
+    expect(normalizeNotePath('v1.2 plan')).toBe('v1.2 plan.md');
+    expect(normalizeNotePath('Meeting 2026.09.27')).toBe('Meeting 2026.09.27.md');
+    expect(normalizeNotePath('Mr. Smith')).toBe('Mr. Smith.md');
+    expect(normalizeNotePath('pics.png/Note')).toBe('pics.png/Note.md');
+    expect(normalizeNotePath('photo.png.md')).toBe('photo.png.md');
+  });
+
+  it('a wikilink to diagram.png no longer creates diagram.png.md', () => {
+    const md = wikilinksToMarkdown('See [[diagram.png]] and [[spec.pdf|the spec]].', []);
+    expect(md).not.toContain('.png.md');
+    expect(md).not.toContain('.pdf.md');
+    // The link still renders (dashed), but a tap hands vaultCreate a name
+    // that normalizes to nothing, so no note is written.
+    expect(md).toContain('[diagram.png](vault:diagram.png?new)');
+    expect(normalizeNotePath('diagram.png')).toBeUndefined();
   });
 });
 

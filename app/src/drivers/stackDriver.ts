@@ -166,6 +166,24 @@ export function benchExtraHeaders(
   return { 'x-hermes-session-id': `oscode-${conversationId}` };
 }
 
+/** How a play's engine step opens its session on the paired computer.
+ *  acceptEdits, the same mapping routines use: in-jail edits flow, while shell,
+ *  push, and cloud spend still raise an approval into the chat. The project's
+ *  name and standing instructions ride along the way a desktop-created session
+ *  carries them, so the step works to the project's instructions and files
+ *  project memory in the same folder. projectSecrets are deliberately never
+ *  sent to the docked session. */
+export function engineStepSessionOpts(
+  context: StackContext,
+): NonNullable<Parameters<typeof daemonCreateSession>[2]> {
+  return {
+    permissionMode: 'acceptEdits',
+    humanize: context.humanize,
+    projectName: context.projectName,
+    instructions: context.projectInstructions,
+  };
+}
+
 /** Whether the Humanize Writing standard rides into this model's prompt. On by
  *  default; off when the person turned the setting off. On-device pocket models
  *  are skipped to protect their small context (they are not the surface where
@@ -1042,13 +1060,11 @@ export class StackDriver implements ChatDriver {
     if (!target || !cwd) return null;
     try {
       if (!this.engineDriver) {
-        // acceptEdits, the same mapping routines use: in-jail edits flow, while
-        // shell, push, and cloud spend still raise an approval into the chat.
-        // projectSecrets are deliberately never sent to the docked session.
-        const sessionId = await daemonCreateSession(target, cwd, {
-          permissionMode: 'acceptEdits',
-          humanize: this.context.humanize,
-        });
+        const sessionId = await daemonCreateSession(
+          target,
+          cwd,
+          engineStepSessionOpts(this.context),
+        );
         this.engineDriver = new RemoteDriver(sessionId, target);
         this.engineUnsub = this.engineDriver.subscribe((event) => this.forwardEngineEvent(event));
       }

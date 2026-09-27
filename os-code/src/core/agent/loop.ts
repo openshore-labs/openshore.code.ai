@@ -22,7 +22,7 @@ import {
   reasonsNatively,
   splitThinkTags,
 } from './chainOfThought.js';
-import { memorySegment, projectMemoryPrompt } from './projectMemory.js';
+import { PROJECT_MEMORY_WRITE_TOOL, memorySegment, projectMemoryPrompt } from './projectMemory.js';
 import {
   extractTextCalls,
   repairPrompt,
@@ -464,6 +464,9 @@ export class AgentSession {
 
   private systemPrompt(toolMode: 'native' | 'text'): string {
     const { toolContext, codeMap } = this.deps;
+    // The prompt names only tools this seat is offered, so a lean seat is never
+    // told to reach for one it cannot see.
+    const offered = this.offeredToolNames(toolMode);
     // A lean seat (a small or tiny class) gets a short, direct core. The full
     // core below is written for a capable model working with a person: report
     // like a colleague, ask before touching something that works, open with a
@@ -476,7 +479,11 @@ export class AgentSession {
           "You are OS Code, a careful coding agent running on the user's own machine.",
           `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
           'Do the task yourself with the tools. Read a file with readFile. Change part of a file with editFile: give path, search (exact lines copied from the file) and replace (their replacement). Write a whole file with writeFile. Never ask for permission or confirmation; make the change.',
-          'A tool result is shown to you once; do not repeat a call whose result you already have. Do not check git status or use any git tool unless the task itself is about version control or commits, most tasks need none of that. When asked what some code returns or prints, run it with runShell (for example: node -e "import(\'./file.mjs\').then(m => console.log(m.fn()))") and reply with the real output instead of working it out in your head. When the change is made, or the question is answered, reply in plain text, briefly. When asked for a value, reply with the value only.',
+          `A tool result is shown to you once; do not repeat a call whose result you already have. Do not check git status or use any git tool unless the task itself is about version control or commits, most tasks need none of that.${
+            offered.has('runShell')
+              ? ' When asked what some code returns or prints, run it with runShell (for example: node -e "import(\'./file.mjs\').then(m => console.log(m.fn()))") and reply with the real output instead of working it out in your head.'
+              : ''
+          } When the change is made, or the question is answered, reply in plain text, briefly. When asked for a value, reply with the value only.`,
           'Never use em dashes in your replies. Use a period or a comma instead.',
         ]
       : [
@@ -510,9 +517,13 @@ export class AgentSession {
     // Project memory: read the Current State top sheet first, dig page by page
     // only as needed, and keep the five notes current as work lands
     // (projectMemory.ts). Engages whenever the session has a memory folder,
-    // which is any real workspace.
+    // which is any real workspace, and the seat is offered the write tool the
+    // block teaches: a lean seat whose cut drops projectMemoryWrite is not told
+    // to use it.
     const memorySeg = memorySegment(toolContext.projectName, toolContext.cwd);
-    if (memorySeg) parts.push(projectMemoryPrompt(memorySeg));
+    if (memorySeg && offered.has(PROJECT_MEMORY_WRITE_TOOL)) {
+      parts.push(projectMemoryPrompt(memorySeg));
+    }
     // Project secrets, present only for a local orchestrator (bootstrap drops
     // them for a cloud one). They ride in so the model can use the project's
     // credentials without asking for a paste; the session runs under egress
@@ -1468,6 +1479,15 @@ export class AgentSession {
       });
     }
     return this.limitToolSpecs(specs);
+  }
+
+  /** The tools this seat is offered, by name, for the system prompt: the whole
+   *  registry in text mode (the protocol lists every tool), otherwise what
+   *  survives the seat's cut. Plan mode is left out on purpose: its own block
+   *  tells the model the write tools wait for an approved plan. */
+  private offeredToolNames(toolMode: 'native' | 'text'): Set<string> {
+    const specs = this.deps.tools.specs();
+    return new Set((toolMode === 'text' ? specs : this.limitToolSpecs(specs)).map((s) => s.name));
   }
 
   /** Keep at most `maxToolsShown` specs for the active profile, most useful

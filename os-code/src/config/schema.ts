@@ -212,10 +212,11 @@ export const UiSchema = z.object({
 
 export const VaultSchema = z.object({
   // Where the agent's on-device knowledge vault lives on disk. Plain markdown
-  // files, so Obsidian or any editor opens the folder directly. Unset means
-  // ~/OSCode/Vault (resolved in buildToolContext, since the schema has no home
-  // dir). The agent reads and writes it through the vault tools; every write
-  // asks first.
+  // files, so Obsidian or any editor opens the folder directly. Machine config:
+  // read from the global file alone (loadVaultDir in load.ts), never from a
+  // project's os-code.config.json. A leading "~" expands to home and the path
+  // must be absolute; unset means ~/OSCode/Vault. The agent reads and writes it
+  // through the vault tools; every write asks first.
   dir: z.string().optional(),
 });
 

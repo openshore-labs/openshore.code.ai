@@ -205,6 +205,32 @@ describe('gdrive provider (H-1)', () => {
     expect(drive.get(orphanId)!.trashed).toBe(true);
   });
 
+  it('lists only notes, never a dot-folder or an attachment (0.6)', async () => {
+    const r = res();
+    // A tree an earlier move copied in: a note, Obsidian's config, an image.
+    const node = (name: string, parent: string, mimeType = 'text/plain') => {
+      const id = nextId();
+      drive.set(id, {
+        id,
+        name,
+        mimeType,
+        parents: parent ? [parent] : [],
+        content: 'x',
+        modifiedTime: nextTime(),
+        trashed: false,
+      });
+      return id;
+    };
+    const root = node(r, '', FOLDER_MIME);
+    node('Note.md', root);
+    node('pic.png', root);
+    node('app.json', node('.obsidian', root, FOLDER_MIME));
+    node('Old.md', node('.trash', root, FOLDER_MIME));
+    const list = await gdriveProvider.list(r);
+    expect(list.map((f) => f.path)).toEqual(['Note.md']);
+    expect(await gdriveProvider.stat(r, '.obsidian/app.json')).toBeUndefined();
+  });
+
   it('creates only one root folder under concurrent first contact (COR-7)', async () => {
     const r = res();
     await Promise.all([gdriveProvider.list(r), gdriveProvider.write(r, 'x.md', 'x')]);

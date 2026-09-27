@@ -17,7 +17,7 @@
 // missing cache entry could otherwise fork one logical path into two file
 // ids (CTO must-fix, os-code/DECISIONS.md).
 import { gdriveAccessToken } from './gdriveAuth.js';
-import type { Lease, StorageProvider, StoredFile } from './providers.js';
+import { isNotePath, type Lease, type StorageProvider, type StoredFile } from './providers.js';
 
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
@@ -379,9 +379,13 @@ async function writeLease(handle: ResourceHandle, lease: Lease): Promise<void> {
 
 // --------------------------------------------------------------- provider
 
+// Only notes list (0.6): the index mirrors every file the walk found, so a
+// dot-folder or other non-note an earlier move copied in stays out of the
+// Vault here.
 async function listFiles(resourceId: string) {
   const handle = await handleFor(resourceId);
   return Object.entries(handle.index.files)
+    .filter(([path]) => isNotePath(path))
     .map(([path, meta]) => ({ path, updatedAt: meta.updatedAt, size: meta.size }))
     .sort((a, b) => a.path.localeCompare(b.path));
 }

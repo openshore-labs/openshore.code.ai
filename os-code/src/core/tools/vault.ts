@@ -4,7 +4,8 @@
 // every WRITE is always-ask: it prompts the user with a diff and never lands a
 // byte without approval (the founder's ruling, enforced by alwaysAsk here plus
 // the permission engine honoring it before any auto-allow path).
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readdir, stat } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
@@ -118,6 +119,9 @@ const readSchema = z.object({
   path: z.string().describe('Note path under the vault, e.g. "decisions/auth.md".'),
 });
 
+/** The largest note vaultRead takes whole, the same bound readFile holds. */
+const MAX_NOTE_BYTES = 2_000_000;
+
 export const vaultReadTool: ToolDef<typeof readSchema> = {
   name: 'vaultRead',
   description:
@@ -131,41 +135,151 @@ export const vaultReadTool: ToolDef<typeof readSchema> = {
     const rel = normalizeNotePath(args.path);
     const abs = jail.resolve(rel);
     if (!existsSync(abs)) return { ok: true, content: `No vault note at ${rel} yet.` };
-    return { ok: true, content: capContent(readFileSync(abs, 'utf8')) };
+    // Look before reading: a folder named like a note, a note too large to
+    // take whole, or a binary file each get a plain answer the model can act
+    // on, never a raw error, and nothing large is read into memory first.
+    const info = statSync(abs);
+    if (!info.isFile()) {
+      return {
+        ok: false,
+        content: `${rel} is a folder, not a note. List what is inside it with vaultList and folder "${rel}".`,
+      };
+    }
+    if (info.size > MAX_NOTE_BYTES) {
+      return {
+        ok: false,
+        content: `${rel} is ${(info.size / 1_000_000).toFixed(1)} MB, too large to read whole. Ask the person which part of it matters.`,
+      };
+    }
+    const bytes = readFileSync(abs);
+    if (bytes.includes(0)) {
+      return { ok: false, content: `${rel} looks binary; not printing it.` };
+    }
+    return { ok: true, content: capContent(bytes.toString('utf8')) };
   },
 };
 
 const listSchema = z.object({
   folder: z.string().optional().describe('Optional subfolder to list; omit for the whole vault.'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Skip this many notes, to page through a long list. Omit to start at the first.'),
 });
 
-function walk(dir: string, root: string, out: string[]): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
-    const abs = join(dir, entry.name);
-    if (entry.isDirectory()) walk(abs, root, out);
-    else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-      const rel = relative(root, abs).split(sep).join('/');
-      out.push(`${rel} (${statSync(abs).size}b)`);
+/** Notes one vaultList call returns. A real Obsidian vault holds thousands,
+ *  and one uncapped list would flood a seat's context in a single call. */
+const LIST_PAGE = 200;
+/** Folder entries the walk visits before it stops counting, so a vault on a
+ *  huge or network-mounted folder cannot hold the call (or the daemon) for long. */
+const WALK_CEILING = 20_000;
+/** Folders named in the "narrow with folder" line. */
+const FOLDER_HINTS = 8;
+
+/** Walk the vault for notes (dot entries skipped), asynchronously so a large
+ *  folder never blocks the daemon's other sessions, and stopping once it has
+ *  visited `ceiling` entries. Paths are vault-relative ("base/..." when a
+ *  folder was asked for), "/"-separated. */
+async function walkNotes(
+  start: string,
+  base: string,
+  ceiling: number,
+): Promise<{ notes: string[]; stopped: boolean }> {
+  const notes: string[] = [];
+  const pending = [start];
+  let visited = 0;
+  while (pending.length) {
+    const dir = pending.shift()!;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (++visited > ceiling) return { notes, stopped: true };
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) pending.push(abs);
+      else if (entry.isFile() && /\.md$/i.test(entry.name)) {
+        const rel = relative(start, abs).split(sep).join('/');
+        notes.push(base ? `${base}/${rel}` : rel);
+      }
     }
   }
+  return { notes, stopped: false };
+}
+
+/** Top folders under the listed one with their note counts, largest first, so
+ *  the model can narrow a long list to the part it needs. */
+function folderHints(notes: string[], base: string): string {
+  const counts = new Map<string, number>();
+  for (const note of notes) {
+    const rest = base ? note.slice(base.length + 1) : note;
+    const slash = rest.indexOf('/');
+    if (slash === -1) continue;
+    const folder = base ? `${base}/${rest.slice(0, slash)}` : rest.slice(0, slash);
+    counts.set(folder, (counts.get(folder) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, FOLDER_HINTS)
+    .map(([folder, n]) => `"${folder}" (${n})`)
+    .join(', ');
 }
 
 export const vaultListTool: ToolDef<typeof listSchema> = {
   name: 'vaultList',
-  description:
-    "List the notes in the user's vault (paths and sizes), so you can find and build on existing notes before writing new ones.",
+  description: `List the notes in the user's vault (paths and sizes), so you can find and build on existing notes before writing new ones. Returns up to ${LIST_PAGE} notes with a count; narrow with folder, or page on with offset.`,
   schema: listSchema,
   risk: 'read',
   async execute(args, ctx) {
     const root = ctx.vaultRoot;
     if (!root || !existsSync(root)) return { ok: true, content: 'The vault is empty.' };
-    const start = args.folder ? new Jail(root).resolve(normalizeFolder(args.folder)) : root;
+    const base = args.folder ? normalizeFolder(args.folder) : '';
+    const start = base ? new Jail(root).resolve(base) : root;
     if (!existsSync(start)) return { ok: true, content: 'The vault is empty.' };
-    const notes: string[] = [];
-    walk(start, root, notes);
-    if (!notes.length) return { ok: true, content: 'The vault is empty.' };
+    const { notes, stopped } = await walkNotes(start, base, WALK_CEILING);
+    if (!notes.length) {
+      return {
+        ok: true,
+        content: stopped
+          ? `No notes in the first ${WALK_CEILING} entries of ${base || 'the vault'}. Narrow with folder.`
+          : 'The vault is empty.',
+      };
+    }
     notes.sort();
-    return { ok: true, content: notes.join('\n') };
+    const offset = Math.min(args.offset ?? 0, notes.length);
+    const page = notes.slice(offset, offset + LIST_PAGE);
+    const where = base ? ` under ${base}` : '';
+    const total = stopped ? `At least ${notes.length}` : `${notes.length}`;
+    const lines = [
+      page.length
+        ? `${total} note${notes.length === 1 ? '' : 's'}${where}. Showing ${offset + 1} to ${offset + page.length}.`
+        : `${total} note${notes.length === 1 ? '' : 's'}${where}; none after offset ${offset}.`,
+    ];
+    for (const rel of page) {
+      let size = '';
+      try {
+        size = ` (${(await stat(join(root, rel))).size}b)`;
+      } catch {
+        // Gone since the walk; list it without a size.
+      }
+      lines.push(`${rel}${size}`);
+    }
+    const after = notes.length - offset - page.length;
+    if (after > 0 || stopped) {
+      const hints = folderHints(notes, base);
+      const tail: string[] = [];
+      if (after > 0) tail.push(`${stopped ? 'At least ' : ''}${after} more.`);
+      if (stopped) tail.push(`Stopped counting after ${WALK_CEILING} entries.`);
+      tail.push(hints ? `Narrow with folder: ${hints}.` : 'Narrow with folder.');
+      if (after > 0) tail.push(`Or page on with offset ${offset + page.length}.`);
+      lines.push(tail.join(' '));
+    }
+    return { ok: true, content: capContent(lines.join('\n')) };
   },
 };

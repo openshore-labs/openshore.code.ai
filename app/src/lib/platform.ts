@@ -111,6 +111,23 @@ export function storeDelete(key: string): Promise<void> {
   return serialized(key, () => storeDeleteRaw(key));
 }
 
+/** The names of every stored key that starts with `prefix`, never their
+ *  values. A recovery scan for a caller that keeps an index beside per-key
+ *  bodies: the Local vault provider lists a note again when its body outlived
+ *  its index entry (data-8). */
+export async function storeKeys(prefix: string): Promise<string[]> {
+  if (platform() === 'ios') {
+    const { keys } = await Preferences.keys();
+    return keys.filter((k) => k.startsWith(prefix));
+  }
+  const out: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(prefix)) out.push(key);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Encryption at rest. A single data-encryption key (DEK) lives in the most
 // secure store each platform offers: the iOS Keychain, the Electron OS keychain

@@ -42,7 +42,7 @@ import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { HOME_SHELL_ID } from './homeShellId.js';
 import { PushNotifier, savePushConfig } from './push.js';
 import { PairClaimStore, deviceLabelFrom, type PairClaimStatus } from './pairClaims.js';
-import { mintCredential } from '../core/security/credentials.js';
+import { loadCredentials, mintCredential } from '../core/security/credentials.js';
 import { redactToken } from '../git/index.js';
 import {
   cloneFolderName,
@@ -972,6 +972,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           chainOfThought,
           currents,
           harnessCurrents,
+          // A member's agent gets no vault tools on a shared hub: the vault is
+          // the machine owner's one folder, holding the owner's notes and the
+          // admins' Crew results, until each member has a root of their own.
+          vault: hasRole(auth, 'admin'),
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);
@@ -1188,6 +1192,16 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // admin-only, so a member cannot reach a legacy or another user's session.
       const ownedBy = (owner: string | undefined): boolean =>
         hasRole(auth, 'admin') || owner === auth.userId;
+      // The vault is the machine owner's one folder, so only a session whose
+      // OWNER holds admin gets the vault tools. Decided by the owner, not the
+      // caller, so an admin touching a member's stored session never hands
+      // that member the vault on the rehydrate. No recorded owner means the
+      // session is admin-only already; the shared token is the machine owner.
+      const ownerHoldsAdmin = (owner: string | undefined): boolean => {
+        if (owner === undefined || owner === 'legacy') return true;
+        if (owner === auth.userId) return hasRole(auth, 'admin');
+        return loadCredentials().some((c) => c.userId === owner && c.role === 'admin');
+      };
 
       // DELETE /sessions/:id -> remove the stored session (DAE-12). Owner or
       // admin. Answered before any rehydrate: deleting must never boot an
@@ -1239,6 +1253,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               profile: 'remote-attached',
               sessionId: id,
               terminalReader,
+              vault: ownerHoldsAdmin(stored.ownerUserId),
             });
             trackDriver(revived);
             driver = revived;
