@@ -46,8 +46,17 @@ export interface PackInput {
   query: string;
   /** This project's Current State, read from the repo, not the vault. */
   currentState?: { path: string; text: string };
-  /** Pinned note paths (frontmatter pins now, project pins in 5.5). */
+  /** Frontmatter pins (a full-mode layer). */
   pins: readonly string[];
+  /**
+   * The project's own pins (Vault M5, CTO J14): note paths the person placed
+   * on the project (`Project.vaultPins`, at most 8), never a config key. They
+   * ride in BOTH modes, in the pin layer, at most `PACK_PINS_MAX` and half the
+   * budget, with privacy applied (hidden never, local-only withheld from a
+   * leaving seat and counted in `withheld`). Absent reads as none. Planned
+   * and rendered by stream A; until then the builder ignores it.
+   */
+  projectPins?: readonly string[];
   /** The latest handoff (empty until 5.4). */
   handoff?: string;
   /** The most tokens the pack may take (`packBudgetTokens`). */
@@ -75,6 +84,10 @@ export interface ContextPack {
   /** The index was not ready in time, so the pack is Current State only. */
   cold: boolean;
 }
+
+/** The most a task waits for a vault's saved index before it goes on with
+ *  Current State alone (CTO I7), on the engine and in the app (J1). */
+export const VAULT_PACK_COLD_MS = 250;
 
 /** The most note bodies one plan asks the host to read. */
 export const PACK_PLAN_MAX_READS = 16;
@@ -586,6 +599,8 @@ export interface PreparedVaultContext {
   bodies: ReadonlyMap<string, string>;
   currentState?: { path: string; text: string };
   pins: readonly string[];
+  /** The project's own pins (CTO J14), read first by the host. */
+  projectPins?: readonly string[];
   handoff?: string;
   privacy: VaultPrivacy;
 }

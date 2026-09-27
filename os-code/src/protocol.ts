@@ -163,8 +163,10 @@ export {
 // (M5) render the exact pack the engine does.
 export {
   PACK_BY_CLASS,
+  PACK_PINS_MAX,
   PACK_PLAN_MAX_READS,
   VAULT_NOTES_FRAMING,
+  VAULT_PACK_COLD_MS,
   buildContextPack,
   packBudgetTokens,
   packModeFor,
@@ -191,6 +193,56 @@ export {
   servedContextTokens,
 } from './harness/profile.js';
 export type { ModelClass } from './harness/profile.js';
+// Every app seat's class and profile (Vault M5, CTO J2, J4), derived exactly as
+// the engine derives its own.
+export { MODEL_CLASSES, deriveModelClass, deriveProfile } from './harness/profile.js';
+export type { DeriveInput, ModelClassPolicy, ModelClassProfile } from './harness/profile.js';
+// What counts as this computer's own network (Vault M5, CTO J2): one pure
+// judge, by address, shared with the engine's isLocalHost.
+export { hostIsLocal, isIPv4Literal, isIPv6Literal, tailnetSuffixOf } from './harness/locality.js';
+export type { HostIsLocalOptions } from './harness/locality.js';
+// The handoff (Vault M5, CTO J11 to J13): extractive, offline, no thinking.
+export {
+  HANDOFF_MAX_AGE_DAYS,
+  HANDOFF_MAX_BYTES,
+  HANDOFF_MAX_TOKENS,
+  HANDOFF_MIN_TURNS,
+  HANDOFF_WINDOW_FRACTION,
+  buildHandoff,
+  fitSeed,
+  handoffBudgetTokens,
+} from './harness/handoff.js';
+export type { Handoff, HandoffTurn } from './harness/handoff.js';
+// The vault tools' shared descriptions (Vault M5, CTO J10).
+export { VAULT_TOOL_TEXT, vaultToolText } from './harness/vault/toolText.js';
+export type { VaultToolName } from './harness/vault/toolText.js';
+// The daemon's vault wire (Vault M5, CTO J6, J7): the hub's routes, the
+// additive /chat and session-create fields.
+export {
+  VAULT_CONFIG_ROUTE,
+  VAULT_INDEX_ROUTE,
+  VAULT_NOTES_ROUTE,
+  VAULT_PRIVACY_ROUTE,
+  VAULT_ROUTE_PREFIX,
+  VAULT_WIRE_LIST_MAX,
+  VAULT_WIRE_NOTE_MAX_BYTES,
+  vaultNoteRoute,
+} from './daemon/vaultWire.js';
+export type {
+  ChatContextPackEvent,
+  ChatVaultFields,
+  HubNoteMeta,
+  SessionCreateVaultFields,
+  VaultConfigResponse,
+  VaultNoteConflictResponse,
+  VaultNoteDeleteResponse,
+  VaultNotePutBody,
+  VaultNotePutResponse,
+  VaultNoteReadResponse,
+  VaultNotesListResponse,
+  VaultPrivacyWire,
+  VaultWireError,
+} from './daemon/vaultWire.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // The always-on ethics layer. Pure modules only: the tier logic, the

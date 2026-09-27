@@ -582,6 +582,51 @@ describe('a project file and the Vault', () => {
     expect(loadConfig(project).config.providers.ollama).not.toHaveProperty('numCtx');
   });
 
+  // Vault M5, CTO J18: the handoff may be turned off from any folder and back
+  // on only with trust; prompt caching is the machine's own call.
+  it("may turn the handoff off from an untrusted folder ('off')", () => {
+    writeProject({ vault: { handoff: 'off' } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.vault.handoff).toBe('off');
+    expect(projectTrust.waiting).toEqual([]);
+  });
+
+  it("cannot turn the handoff back on over the person's off until trusted", () => {
+    writeGlobal({ vault: { handoff: 'off' } });
+    writeProject({ vault: { handoff: 'auto' } });
+    const before = loadConfig(project);
+    expect(before.config.vault.handoff).toBe('off');
+    expect(before.projectTrust.waiting).toEqual([
+      'turns the handoff back on, so a summary of earlier work reaches the model',
+    ]);
+    trustProjectFolder(project);
+    expect(loadConfig(project).config.vault.handoff).toBe('auto');
+  });
+
+  it('defaults the handoff to auto', () => {
+    expect(loadConfig(project).config.vault.handoff).toBe('auto');
+  });
+
+  it('cannot turn on prompt caching (providers.<id>.promptCache)', () => {
+    writeGlobal({ providers: { anthropic: { kind: 'anthropic' } } });
+    writeProject({
+      providers: { anthropic: { kind: 'anthropic', promptCache: 'auto' } },
+    });
+    trustProjectFolder(project);
+    const anthropic = loadConfig(project).config.providers.anthropic;
+    expect(anthropic).toBeDefined();
+    expect(anthropic).not.toHaveProperty('promptCache');
+  });
+
+  it("keeps the person's own promptCache (machine config)", () => {
+    writeGlobal({ providers: { anthropic: { kind: 'anthropic', promptCache: 'auto' } } });
+    writeProject({ providers: { anthropic: { kind: 'anthropic', promptCache: 'off' } } });
+    const anthropic = loadConfig(project).config.providers.anthropic;
+    expect(anthropic && 'promptCache' in anthropic ? anthropic.promptCache : undefined).toBe(
+      'auto',
+    );
+  });
+
   it('may choose the merged vault tool for a class (it only shapes the menu)', () => {
     writeProject({ harness: { profiles: { overrides: { small: { mergedVaultTool: false } } } } });
     const { config, projectTrust } = loadConfig(project);

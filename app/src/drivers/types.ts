@@ -2,7 +2,7 @@
 // engine over IPC, the desktop daemon over SSE from the phone, a model running
 // on the phone itself, cloud Claude, and the demo. They all emit the engine's
 // DriverEvent protocol, so the chat UI has exactly one rendering path.
-import type { ApprovalAnswer, DriverEvent, PermissionMode } from 'os-code/protocol';
+import type { ApprovalAnswer, DriverEvent, ModelClass, PermissionMode } from 'os-code/protocol';
 import type { Attachment } from '../lib/attachments.js';
 import type { SeedTurn } from '../state/types.js';
 
@@ -134,6 +134,41 @@ export type ChatContext = string | (() => string | undefined);
 export function readChatContext(context: ChatContext | undefined): string | undefined {
   const text = typeof context === 'function' ? context() : context;
   return text?.trim() || undefined;
+}
+
+/** The seat a vault pack is rendered for (Vault M5, CTO J1, J2, J4): its
+ *  class (`deriveModelClass`), the window it is served, and whether its
+ *  requests leave this network (judged by address, `hostIsLocal`). Built by
+ *  `packSeatFor` (lib/vaultSeat.ts); null there means the seat gets no pack. */
+export interface PackSeat {
+  modelClass: ModelClass;
+  servedTokens: number;
+  leavesNetwork: boolean;
+}
+
+/**
+ * The app's vault context pack for one conversation (Vault M5, CTO J1), the
+ * exact engine pack (`planContextPack` and `buildContextPack` from
+ * os-code/protocol). Built by `createAppVaultPack` (lib/vaultPackSource.ts).
+ * A driver calls `prepare` once per send, after `task-start`, then `render`
+ * for each seat that answers, emitting the event right after `turn-start`
+ * and placing the text as the LAST system part (J16).
+ */
+export interface AppVaultPack {
+  /** Gather the index, bodies and Current State for this send, within the
+   *  cold budget (`VAULT_PACK_COLD_MS`). Never throws; a failure leaves the
+   *  next render with Current State alone, or nothing. */
+  prepare(task: string, signal?: AbortSignal): Promise<void>;
+  /** Render for one seat, cached on `[mode, budget, class, leaves,
+   *  preparedStamp]`. `text` is absent for no pack; `event` is the
+   *  `context-pack` card, absent when it would repeat the last one. */
+  render(seat: PackSeat): { text?: string; event?: DriverEvent };
+}
+
+/** The trailing options every chat driver constructor takes (CTO J1). The
+ *  store passes none with Memory off or `settings.vaultContext === 'off'`. */
+export interface DriverVaultOptions {
+  vaultPack?: AppVaultPack;
 }
 
 /** Shared helper: a tiny fan-out emitter drivers can compose. */

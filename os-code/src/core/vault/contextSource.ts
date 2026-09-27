@@ -17,6 +17,7 @@
 // here so a test can stand them in.
 import { VAULT_PACK_MAX_TOKENS } from '../../harness/profile.js';
 import {
+  VAULT_PACK_COLD_MS,
   planContextPack as corePlan,
   type PackInput,
   type PreparedVaultContext,
@@ -31,9 +32,9 @@ import { engineVaultIndex, type EngineVaultIndex } from './engineIndex.js';
 import { LIST_CONCURRENCY, eachLimited } from './listNotes.js';
 import { readNote } from './noteFile.js';
 
-/** The most a task waits for a vault's saved index before it goes on with
- *  Current State alone (CTO I7). */
-export const VAULT_PACK_COLD_MS = 250;
+// The cold budget moved to the pure core (Vault M5, CTO J1) so the app waits
+// the same; re-exported here for existing importers.
+export { VAULT_PACK_COLD_MS } from '../../harness/vaultContext.js';
 
 /** Frontmatter pins a prepare hands on at most (the builder takes at most 3). */
 export const PREPARED_PINS_MAX = 8;

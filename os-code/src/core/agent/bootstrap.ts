@@ -130,6 +130,21 @@ export interface BootstrapOptions {
    *  The loop leaves it out with Memory off (the switch folded in above) or
    *  `vault.context: 'off'`, so a caller need not gate it. */
   vaultContext?: VaultContextSource;
+  /** This session's own vault root (Vault M5, CTO J8), replacing `vault`: a
+   *  path gives the vault tools and the pack on that root (the daemon passes
+   *  `vaultRootFor(auth)` at create and `vaultRootForOwner(ownerUserId)` at
+   *  rehydrate, so a member's agent works on its own root, never the
+   *  owner's); null gives no vault tools. Undefined keeps today's behaviour
+   *  (the `vault` flag over the machine's vault). Wired by stream B. */
+  vaultRoot?: string | null;
+  /** A handoff from the chat this session continues (CTO J12), prepended to
+   *  the first task's preamble only. At most `HANDOFF_MAX_BYTES`; longer is
+   *  refused by the caller. Wired by stream B. */
+  handoff?: string;
+  /** The project's own pins (`Project.vaultPins`, CTO J14), at most 8 note
+   *  paths, read first by the pack's prepare. Never a config key. Wired by
+   *  stream B. */
+  vaultPins?: string[];
 }
 
 export interface BootstrapResult {

@@ -56,8 +56,15 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   ui: 'project',
   // The vault folder and which notes are hidden or stay on this computer are
   // the person's own (a repo never names their private folders); the context
-  // pack may only be turned off from a project (Vault M4, CTO I3).
-  vault: { dir: 'machine', exclude: 'machine', localOnly: 'machine', context: 'off-only' },
+  // pack may only be turned off from a project (Vault M4, CTO I3), and so may
+  // the handoff (Vault M5, CTO J18).
+  vault: {
+    dir: 'machine',
+    exclude: 'machine',
+    localOnly: 'machine',
+    context: 'off-only',
+    handoff: 'off-only',
+  },
   ux: 'project',
   humanizer: 'project',
   chainOfThought: { enabled: 'off-only' },
@@ -158,6 +165,8 @@ function describe(path: string, value: unknown): string {
       return value === 'full'
         ? 'turns on the full Vault context, so more of your notes reach the model'
         : 'turns the Vault context back on';
+    case 'vault.handoff':
+      return 'turns the handoff back on, so a summary of earlier work reaches the model';
     case 'memory.enabled':
       return 'turns on project memory, so the agent saves notes into this repo without asking';
     case 'guardrails.maxDollars':

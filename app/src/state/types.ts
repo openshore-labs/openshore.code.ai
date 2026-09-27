@@ -267,6 +267,13 @@ export interface Project {
   harnessCurrent?: HarnessCurrentId | null;
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
+  /** Vault notes pinned to this project's context (Vault M5, CTO J14): note
+   *  paths in the personal vault, at most `PROJECT_VAULT_PINS_MAX`, set by
+   *  editors only (a local project, or `myLevel === 'edit'`). Device-local:
+   *  they name the person's own notes, so they never sync with a shared
+   *  project (orgProjects.ts syncs name, instructions and repoIds only) and
+   *  are never a config key. They ride the pack in both modes. */
+  vaultPins?: string[];
   /** Enterprise: per-teammate access grants, keyed by email, that decide who
    *  may read, write, or edit this project. Admin-managed. For a shared project
    *  these mirror the server roster (org_project_members); for a local project
@@ -290,6 +297,29 @@ export interface Project {
   myLevel?: ProjectPermission;
   createdAt: string;
 }
+
+/** The most notes one project may pin (CTO J14). */
+export const PROJECT_VAULT_PINS_MAX = 8;
+
+/** The app's vault context setting (Vault M5, CTO J4): `'auto'` follows the
+ *  per-class table, `'off'` gives no pack. `'full'` stays machine config for
+ *  eval and is never an app value. */
+export type AppVaultContextSetting = 'auto' | 'off';
+
+/** An unpaired phone's own privacy rules (CTO J3), with no UI until M7. They
+ *  may only narrow: the effective rules are the union of the source's rules
+ *  and these. Absent reads as the D5 defaults. */
+export interface VaultPrivacySetting {
+  exclude: string[];
+  localOnly: { paths: string[]; tags: string[] };
+}
+
+/** The D5 defaults: what stays on this computer when nothing else is known.
+ *  Fail closed: no rules loaded means these, never none. */
+export const VAULT_PRIVACY_DEFAULTS: Readonly<VaultPrivacySetting> = {
+  exclude: [],
+  localOnly: { paths: ['Private/**', 'Journal/**'], tags: ['private'] },
+};
 
 // A project permission, coarsest to finest. Each level includes the ones below
 // it (edit implies write implies read); admins always hold edit.

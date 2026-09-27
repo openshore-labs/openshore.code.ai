@@ -21,7 +21,14 @@ export interface ByomConnection {
   baseUrl: string;
   /** The model id to send in the request body. */
   model: string;
+  /** The window this endpoint serves, when the person knows it (Vault M5,
+   *  CTO J4): the pack is sized from it, else 8192. App-only, device local. */
+  contextTokens?: number;
 }
+
+/** The window a BYOM seat is assumed to serve when its connection does not
+ *  say (CTO J4). */
+export const BYOM_DEFAULT_CONTEXT_TOKENS = 8192;
 
 /** The secret-store key holding a BYOM connection's API key. */
 export function byomSecretKey(id: string): string {

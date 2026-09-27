@@ -20,9 +20,10 @@ import type { ConfigRead, VaultConfigName } from 'os-code/protocol';
 // organization tier), a real provider behind the seam but deliberately NOT in
 // PROVIDER_ROSTER: the team vault is reached by the Vault scope switcher, not by
 // moving the personal vault's bytes, so it never appears in the "where it lives"
-// sheet.
+// sheet. 'hub' is the paired computer's vault over the daemon's /vault routes
+// (Vault M5, CTO J9; lib/gitos/hub.ts), shown as "Your computer".
 export type StorageProviderId =
-  'local' | 'files' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org';
+  'local' | 'files' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org' | 'hub';
 
 /** One file inside a gitOS resource, addressed by a relative POSIX-style
  *  path (e.g. "notes/ideas/vault-design.md"). Paths map 1:1 onto a real
@@ -210,6 +211,16 @@ export const PROVIDER_ROSTER: Array<{
     // Electron file bridge is present, so ready stays false here.
     ready: false,
     pending: 'Open OpenShore on your computer to keep the vault as a folder.',
+  },
+  {
+    id: 'hub',
+    // The paired computer's one vault (Vault M5, CTO J9). Readiness is decided
+    // at runtime (probeReady('hub'): paired and answering), so ready stays
+    // false here. Not offered in the storage sheet until the provider lands
+    // (vaultOffersProvider in lib/vaultCopy.ts).
+    label: 'Your computer',
+    ready: false,
+    pending: 'Pair with your computer to keep one vault there.',
   },
   {
     id: 'icloud',

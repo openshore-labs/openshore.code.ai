@@ -38,6 +38,15 @@ export const AnthropicEndpointSchema = z.object({
   /** Default model when this endpoint serves the orchestrator or an escalation. */
   model: z.string().default('claude-sonnet-5'),
   label: z.string().optional(),
+  /**
+   * Anthropic prompt caching (Vault M5, CTO J17). 'auto' splits the system
+   * prompt at the vault pack (`ChatMessage.cacheAt`), marks the stable head
+   * with `cache_control`, and turns on automatic caching for the tool loop.
+   * 'off' (the reading while it is unset, like `numCtx`) sends the request
+   * byte-identical to before. Machine config, as the whole providers tree is.
+   * The default flips only on the eval record (J19).
+   */
+  promptCache: z.enum(['auto', 'off']).optional(),
 });
 
 export const ImageGenEndpointSchema = z.object({
@@ -248,6 +257,11 @@ export const VaultSchema = z.object({
   // (eval, or a person on their own machine); 'off' removes the pack. A
   // project may only turn it off (projectPolicy.ts).
   context: z.enum(['auto', 'full', 'off']).default('auto'),
+  // The handoff (Vault M5, CTO J11 to J13). 'auto' writes a short extractive
+  // handoff after a compaction and when a task completes, and a session's
+  // first task reads one at most seven days old; 'off' writes and reads
+  // none. Memory off stops both as well. A project may only turn it off.
+  handoff: z.enum(['auto', 'off']).default('auto'),
 });
 
 // ---------------------------------------------------------------------------

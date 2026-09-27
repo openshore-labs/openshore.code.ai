@@ -24,6 +24,8 @@ import {
   type OrgRole,
   type Project,
   type ProjectAccess,
+  type AppVaultContextSetting,
+  type VaultPrivacySetting,
 } from './types.js';
 import { tierForSeats, type AccountType } from '../lib/plans.js';
 import {
@@ -582,6 +584,18 @@ export interface AppSettings {
   /** When each paired hub last answered this device, keyed by base URL, so a
    *  chat banner can say "Last seen 2h ago" rather than nothing. Device local. */
   hubLastSeen?: Record<string, string>;
+  /** The vault context pack on app seats (Vault M5, CTO J4): 'auto' (the
+   *  reading while unset) follows the per-class table; 'off' gives no pack.
+   *  Device local. */
+  vaultContext?: AppVaultContextSetting;
+  /** An unpaired phone's own vault privacy rules (CTO J3): union-only over
+   *  the source's rules, D5 defaults while unset. No UI until M7. Device
+   *  local, never synced. */
+  vaultPrivacy?: VaultPrivacySetting;
+  /** Anthropic prompt caching on app seats (CTO J16, J17). Off by default
+   *  (undefined means off), no UI in M5; flips only on the J19 number.
+   *  Device local. */
+  promptCache?: boolean;
 }
 
 /** What a hub says this device's pairing credential may do. */

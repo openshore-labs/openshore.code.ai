@@ -42,6 +42,15 @@ export interface ChatMessage {
    * ignore it.
    */
   localOnly?: true;
+  /**
+   * Cache breakpoints for a system message (Vault M5, CTO J17): the character
+   * offsets in `content` where a stable prefix ends, recorded by
+   * `systemPrompt` at the start of the vault pack. The Anthropic provider
+   * splits `system` into text blocks there and marks the first when prompt
+   * caching is on (`providers.<id>.promptCache: 'auto'`). Additive: every
+   * other provider ignores it, and caching off sends the string unchanged.
+   */
+  cacheAt?: number[];
 }
 
 /** JSON Schema for a tool, produced from the zod definitions at the boundary. */
@@ -81,7 +90,16 @@ export type ChatEvent =
    *  ChatMessage.thinkingBlocks). Sent once, before done. */
   | { type: 'thinking-blocks'; blocks: unknown[] }
   | { type: 'tool-call'; call: ToolCallRequest }
-  | { type: 'usage'; promptTokens: number; completionTokens: number }
+  | {
+      type: 'usage';
+      promptTokens: number;
+      completionTokens: number;
+      /** Prompt tokens served from a provider's prompt cache (Vault M5, CTO
+       *  J17). Absent when the provider reports none. */
+      cacheReadTokens?: number;
+      /** Prompt tokens written to a provider's prompt cache this request. */
+      cacheWriteTokens?: number;
+    }
   | { type: 'done'; stopReason: 'end' | 'tool-calls' | 'length' | 'stop' | 'aborted' };
 
 export type CostTier = 'free' | 'metered';

@@ -84,6 +84,11 @@ export type AgentEvent =
       completionTokens: number;
       dollars: number;
       contextPercent: number;
+      /** Prompt tokens read from the provider's prompt cache this turn (Vault
+       *  M5, CTO J17). Additive: absent when the provider reports none. */
+      cacheReadTokens?: number;
+      /** Prompt tokens written to the provider's prompt cache this turn. */
+      cacheWriteTokens?: number;
     }
   | { type: 'model-switch'; model: string; providerKind: 'local' | 'cloud'; reason: string }
   | { type: 'task-done'; reason: StopReason; message?: string }
