@@ -77,6 +77,7 @@ const app = vi.hoisted(() => {
     vaultSave: async () => undefined,
     vaultDelete: async () => false,
     vaultReadAll: async () => Object.assign([], { failed: [] }),
+    vaultReadBody: async () => undefined as string | undefined,
     vaultMoveTo: async () => ({ ok: false, skipped: [] }),
     vaultError: undefined,
     vaultHeld: [],
@@ -1182,5 +1183,74 @@ describe('the team export row (M2 2.8)', () => {
     app.state.vaultScope = 'personal';
     await dom.render(<VaultRoom />);
     expect(dom.buttons()).not.toContain('Export as plain files');
+  });
+});
+
+describe('Linked mentions come from the index (M3 3.2)', () => {
+  let dom: TestDom;
+  const notes: Record<string, string> = {
+    'Plan.md': '# Plan\n\nThe plan.',
+    'Idea.md': 'Build on [[Plan]] next week.',
+    'Other.md': 'Nothing links from here.',
+    'Code.md': '```\n[[Plan]] in a fence is not a link\n```',
+  };
+  const listed = Object.entries(notes).map(([path, text]) => ({
+    path,
+    updatedAt: 'x',
+    size: text.length,
+    version: `v-${path}`,
+  }));
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultReadAll = async () => Object.assign([], { failed: [] });
+    app.state.vaultReadBody = async () => undefined;
+  });
+
+  it('names the notes that link here and reads only those for excerpts, never the whole vault', async () => {
+    const { vaultIndexFor, currentVaultIndex } = await import('../src/lib/vaultIndexHost.js');
+    const host = vaultIndexFor(
+      { providerId: 'local', resourceId: 'vault.personal' },
+      {
+        read: async (_r: string, path: string) => ({
+          path,
+          text: notes[path]!,
+          updatedAt: 'x',
+          version: `v-${path}`,
+        }),
+      },
+    );
+    await host.reconcile(listed);
+    let readAll = 0;
+    const bodies: string[] = [];
+    app.state.vaultReadAll = async () => {
+      readAll++;
+      return Object.assign([], { failed: [] });
+    };
+    app.state.vaultReadBody = async (path: string) => {
+      bodies.push(path);
+      return notes[path];
+    };
+    app.state.vaultFiles = listed;
+    app.state.vaultNote = { path: 'Plan.md', text: notes['Plan.md'], updatedAt: 'x' };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    await dom.settle();
+    expect(dom.text()).toContain('Linked mentions');
+    expect(dom.buttons().some((b) => b.startsWith('Idea') && b.includes('Build on'))).toBe(true);
+    // A link inside a code fence is not a mention.
+    expect(dom.buttons().some((b) => b.startsWith('Code'))).toBe(false);
+    expect(bodies).toEqual(['Idea.md']);
+    expect(readAll).toBe(0);
+    // Leaving the Vault closes its index.
+    await dom.unmount();
+    expect(currentVaultIndex()).toBeUndefined();
+    dom = await mountDom();
   });
 });

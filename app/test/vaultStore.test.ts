@@ -390,6 +390,8 @@ vi.mock('../src/lib/gitos/index.js', async () => {
 });
 
 const { useApp } = await import('../src/state/store.js');
+const { closeVaultIndex, currentVaultIndex, vaultIndexStatus } =
+  await import('../src/lib/vaultIndexHost.js');
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');
 
 // init() registers the store's own team-token getter (captured above).
@@ -2900,5 +2902,112 @@ describe('who last saved a note (M2 2.7)', () => {
     expect(vaultEditedByLine({ id: 'u1', label: 'me' }, at, 'u1', now)).toBeUndefined();
     expect(vaultEditedByLine(undefined, at, 'u1', now)).toBeUndefined();
     expect(vaultEditedByLine({ id: 'u2' }, 'r3', 'u1', now)).toBe(' · Edited by a teammate');
+  });
+});
+
+// The Vault index (M3 3.2, CTO H3 and H6): the store feeds it from every
+// write, remove, list, and open, and a sign-out that forgets team drafts
+// forgets the team index too. The CRLF wrap on the save path (H2) keeps an
+// all-CRLF note's bytes.
+describe('the Vault index (M3 3.2)', () => {
+  beforeEach(async () => {
+    reset();
+    await closeVaultIndex();
+  });
+  afterEach(async () => {
+    await closeVaultIndex();
+  });
+  // The index on screen, once the reconcile the last list started settles.
+  async function settledIndex() {
+    for (let i = 0; i < 100; i++) {
+      await tick();
+      const host = currentVaultIndex();
+      const state = vaultIndexStatus().state;
+      if (host && (state === 'ready' || state === 'partial')) return host;
+    }
+    throw new Error('the index never settled');
+  }
+
+  it('a save updates one index entry and reads no other note', async () => {
+    files.set('Plan.md', '# Plan');
+    files.set('Idea.md', 'Nothing yet.');
+    files.set('Other.md', 'Links to [[Plan]].');
+    await useApp.getState().vaultRefresh();
+    const host = await settledIndex();
+    expect(host.backlinks('Plan.md').map((b) => b.source)).toEqual(['Other.md']);
+    const plan = host.index.entry('Plan.md');
+    const other = host.index.entry('Other.md');
+    local.counts.reads = 0;
+    await useApp.getState().vaultSave('Idea.md', 'Build on [[Plan]].');
+    expect(local.counts.reads).toBe(0);
+    expect(host.index.entry('Plan.md')).toBe(plan);
+    expect(host.index.entry('Other.md')).toBe(other);
+    expect(host.backlinks('Plan.md').map((b) => b.source)).toEqual(['Idea.md', 'Other.md']);
+    // A delete leaves the index the same way, with no read either.
+    await useApp.getState().vaultDelete('Other.md');
+    expect(local.counts.reads).toBe(0);
+    expect(host.backlinks('Plan.md').map((b) => b.source)).toEqual(['Idea.md']);
+  });
+
+  it('opening a note reads no other note', async () => {
+    for (let i = 0; i < 20; i++) files.set(`n${i}.md`, `note ${i} links [[Plan]]`);
+    files.set('Plan.md', '# Plan');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    local.counts.reads = 0;
+    await useApp.getState().vaultOpen('Plan.md');
+    expect(useApp.getState().vaultNote?.path).toBe('Plan.md');
+    expect(local.counts.reads).toBe(1);
+  });
+
+  it('a list result reconciles: only the note that moved is read again', async () => {
+    files.set('a.md', 'one');
+    files.set('b.md', 'two');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    files.set('b.md', 'two, edited elsewhere with [[a]]');
+    local.counts.reads = 0;
+    await useApp.getState().vaultRefresh();
+    const host = await settledIndex();
+    expect(local.counts.reads).toBe(1);
+    expect(host.backlinks('a.md').map((b) => b.source)).toEqual(['b.md']);
+  });
+
+  it('a sign-out drops the team index', async () => {
+    teamScope();
+    team.set('Plan.md', { body: '# Plan', rev: 1 });
+    team.set('Idea.md', { body: 'See [[Plan]].', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    const host = await settledIndex();
+    expect(host.target).toEqual({ providerId: 'org', resourceId: ORG, owner: 'u1' });
+    expect(host.backlinks('Plan.md')).toHaveLength(1);
+    await useApp.getState().signOutAccount();
+    expect(currentVaultIndex()?.target.providerId).not.toBe('org');
+    expect(host.index.size).toBe(0);
+  });
+
+  it('a CRLF note opened and saved with no edit writes nothing; a body edit keeps CRLF', async () => {
+    const loaded = '---\r\ntitle: Plan\r\n---\r\n# Plan\r\nFirst line\r\n';
+    files.set('Plan.md', loaded);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('Plan.md');
+    local.counts.writes = [];
+    // The textarea hands the untouched text back with LF.
+    await useApp.getState().vaultSave('Plan.md', loaded.replace(/\r\n/g, '\n'));
+    expect(local.counts.writes).toEqual([]);
+    expect(files.get('Plan.md')).toBe(loaded);
+    // A body edit keeps every CRLF, the frontmatter's bytes included.
+    const edited = loaded.replace(/\r\n/g, '\n').replace('First line', 'First line, edited');
+    await useApp.getState().vaultSave('Plan.md', edited);
+    expect(files.get('Plan.md')).toBe(loaded.replace('First line', 'First line, edited'));
+    expect(files.get('Plan.md')!.startsWith('---\r\ntitle: Plan\r\n---\r\n')).toBe(true);
+  });
+
+  it('an LF note saves as typed', async () => {
+    files.set('Plan.md', '# Plan\nFirst\n');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('Plan.md');
+    await useApp.getState().vaultSave('Plan.md', '# Plan\nFirst, edited\n');
+    expect(files.get('Plan.md')).toBe('# Plan\nFirst, edited\n');
   });
 });

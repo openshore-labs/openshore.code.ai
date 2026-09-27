@@ -15,7 +15,6 @@ import { BackBar } from '../components/BackBar.js';
 import { ErrorBoundary } from '../components/ErrorBoundary.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import {
-  backlinksTo,
   isConflictCopy,
   noteFolder,
   noteTitle,
@@ -76,7 +75,6 @@ import {
   vaultHeldKeep,
   vaultHeldLine,
   vaultLead,
-  vaultMentionsOnDemand,
   vaultMissingFolderCard,
   vaultBringLine,
   vaultMoveLine,
@@ -98,6 +96,12 @@ import {
 import { copyText } from '../lib/clipboard.js';
 import { openPrivacySettings, openVaultInObsidian, revealVaultFolder } from '../lib/vaultFolder.js';
 import { folderNotesSince } from '../lib/vaultOffer.js';
+import {
+  closeVaultIndex,
+  currentVaultIndex,
+  useVaultIndexStatus,
+  vaultIndexLine,
+} from '../lib/vaultIndexHost.js';
 import type { VaultDirInfo, VaultPickResult, VaultRefineChoice } from '../lib/electronBridge.js';
 import type { StoredFile } from '../lib/gitos/providers.js';
 import { Sheet } from '../components/Sheet.js';
@@ -154,6 +158,7 @@ export function VaultScreen() {
     vaultSave,
     vaultDelete,
     vaultReadAll,
+    vaultReadBody,
     vaultMoveTo,
     vaultError,
     vaultHeld,
@@ -330,9 +335,6 @@ export function VaultScreen() {
   // A move's forked pairs, one at a time in the move-mode resolve sheet (1d).
   const [forks, setForks] = useState<ForkSteps | undefined>();
   const [forksOpen, setForksOpen] = useState(false);
-  // Linked mentions in a vault over VAULT_LARGE_NOTES notes run on request.
-  const [mentionsAsked, setMentionsAsked] = useState<string | undefined>();
-  const [mentionsBusy, setMentionsBusy] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   // Compare-and-swap (1.1): when the person last typed, whether the resolve
   // sheet is up, what a choice is doing, and whether the meta line carries
@@ -394,8 +396,13 @@ export function VaultScreen() {
 
   useEffect(() => {
     void vaultRefresh();
+    // Leaving the Vault closes its index; its last write is saved first.
+    return () => void closeVaultIndex();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The index's progress line, only once a build has run 1.5 s (M3 3.2).
+  const indexStatus = useVaultIndexStatus();
+  const indexLine = vaultIndexLine(indexStatus);
 
   // The desktop folder is shared with the agent, routines, and Obsidian, so
   // while this room is open main watches it (CTO F3) and every change it saw,
@@ -484,9 +491,8 @@ export function VaultScreen() {
 
   const paths = useMemo(() => vaultFiles.map((f) => f.path), [vaultFiles]);
 
-  // Load the draft and Linked mentions whenever a note opens. The last note's
-  // mentions clear first, so they never show under this one, and a vault with
-  // notes it could not read says so rather than looking complete (data-m2).
+  // Load the draft whenever a note opens. The last note's mentions clear
+  // first, so they never show under this one.
   useEffect(() => {
     if (!vaultNote) return;
     setDraft(vaultNote.text);
@@ -495,20 +501,29 @@ export function VaultScreen() {
     lastReload.current = vaultNote.reloaded;
     setBacklinks([]);
     setMentionsError(undefined);
-    setMentionsAsked(undefined);
-    const path = vaultNote.path;
-    // A vault this size reads every note only when the person asks (CX 1.4).
-    if (vaultFiles.length > VAULT_LARGE_NOTES) return;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultNote?.path]);
+  // Linked mentions come from the index (M3 3.2): it names the notes that
+  // link here, and only those are read (through the body cache) for their
+  // excerpts, so opening a note never reads the whole vault. They ask again
+  // when a build settles, and a vault with notes it could not read says so
+  // rather than looking complete (data-m2).
+  const mentionsFor = vaultNote?.path;
+  useEffect(() => {
+    const index = currentVaultIndex();
+    if (!mentionsFor || !index || indexStatus.state === 'building') return;
     let live = true;
-    vaultReadAll().then(
-      (notes) => {
+    index.linkedMentions(mentionsFor, vaultReadBody).then(
+      ({ mentions, failed, more }) => {
         if (!live) return;
-        setBacklinks(backlinksTo(path, notes));
-        const missed = notes.failed.filter((p) => p !== path).length;
+        setBacklinks(mentions);
+        const missed = failed.filter((p) => p !== mentionsFor).length;
         setMentionsError(
           missed
             ? `${missed} ${missed === 1 ? 'note' : 'notes'} could not be read, so this list may be missing some.`
-            : undefined,
+            : more > 0
+              ? `${more} more ${more === 1 ? 'note links' : 'notes link'} here than this list shows.`
+              : undefined,
         );
       },
       () => {
@@ -518,8 +533,7 @@ export function VaultScreen() {
     return () => {
       live = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultNote?.path]);
+  }, [mentionsFor, indexStatus.state, vaultReadBody]);
 
   // Obsidian saves as you type; so do we, debounced so the sealed store is
   // not hammered per keystroke (lib/vaultAutosave.ts). The pending draft can
@@ -950,25 +964,6 @@ export function VaultScreen() {
       })
     : undefined;
 
-  // Linked mentions for a note in a large vault, when the person asks.
-  const findMentions = async (path: string) => {
-    setMentionsBusy(true);
-    setMentionsError(undefined);
-    try {
-      const notes = await vaultReadAll();
-      setBacklinks(backlinksTo(path, notes));
-      const missed = notes.failed.filter((p) => p !== path).length;
-      setMentionsError(
-        missed
-          ? `${missed} ${missed === 1 ? 'note' : 'notes'} could not be read, so this list may be missing some.`
-          : undefined,
-      );
-    } catch {
-      setMentionsError('Linked mentions could not be read right now.');
-    }
-    setMentionsAsked(path);
-    setMentionsBusy(false);
-  };
   // Where a read-only Drive vault goes in one tap: plain files on the
   // computer, or this device on the phone.
   const driveExit: StorageProviderId = isDesktop() ? 'files' : 'local';
@@ -1356,30 +1351,15 @@ export function VaultScreen() {
                   : undefined
               }
             >
-              <VaultMarkdown text={draft} paths={paths} onOpenNote={followLink} />
+              <VaultMarkdown
+                text={draft}
+                paths={paths}
+                sourcePath={vaultNote.path}
+                onOpenNote={followLink}
+              />
             </div>
           )}
 
-          {!editing && vaultFiles.length > VAULT_LARGE_NOTES && mentionsAsked !== vaultNote.path ? (
-            <div className="card" style={{ marginTop: 18 }}>
-              <div className="card-row">
-                <h3 style={{ marginBottom: 0 }}>Linked mentions</h3>
-              </div>
-              <p className="hint" style={{ marginTop: 0 }}>
-                {vaultMentionsOnDemand(vaultFiles.length).hint}
-              </p>
-              <button
-                type="button"
-                className="btn ghost press-fb"
-                disabled={mentionsBusy}
-                onClick={() => void findMentions(vaultNote.path)}
-              >
-                {mentionsBusy
-                  ? vaultMentionsOnDemand(vaultFiles.length).busy
-                  : vaultMentionsOnDemand(vaultFiles.length).button}
-              </button>
-            </div>
-          ) : null}
           {!editing && (backlinks.length > 0 || mentionsError) ? (
             <div className="card" style={{ marginTop: 18 }}>
               <div className="card-row">
@@ -1747,6 +1727,11 @@ export function VaultScreen() {
           />
         ) : (
           <div className="vault-tree">
+            {indexLine ? (
+              <p className="hint" role="status" style={{ margin: '0 0 8px' }}>
+                {indexLine}
+              </p>
+            ) : null}
             {entries.map((e) =>
               e.kind === 'folder' ? (
                 <button

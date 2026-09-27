@@ -301,7 +301,13 @@ import {
   disconnectRepoOAuth,
   resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
-import { normalizeNotePath, noteFolder, noteTitle } from '../lib/vault.js';
+import { normalizeNotePath, noteFolder, noteTitle, restoreEol } from '../lib/vault.js';
+import {
+  currentVaultIndex,
+  dropVaultIndex,
+  vaultIndexFor,
+  type VaultIndexHost,
+} from '../lib/vaultIndexHost.js';
 import {
   versionOf,
   type RemoveResult,
@@ -1533,9 +1539,13 @@ interface AppState {
   /** Delete a note and refresh; closes it if it was open. Resolves true only
    *  when the delete really happened. */
   vaultDelete(path: string, at?: VaultTargetRef): Promise<boolean>;
-  /** Every note body, for backlink derivation, plus the paths that could not
-   *  be read (`failed`). */
+  /** Every note body, for export, plus the paths that could not be read
+   *  (`failed`). */
   vaultReadAll(): Promise<VaultReadAllResult>;
+  /** One note's text in the vault on screen, through the body cache (read
+   *  only when its listed version moved), for Linked mentions' excerpts.
+   *  Undefined when it is not there. */
+  vaultReadBody(path: string): Promise<string | undefined>;
   /** The vault on screen now, as a ref a scheduled save can carry. */
   vaultTargetRef(): VaultTargetRef | undefined;
   /** Why the vault on screen takes no writes (a Google Drive vault, D1), or
@@ -3319,6 +3329,9 @@ export const useApp = create<AppState>((set, get, api) => {
     } else {
       keptTeamOwner = undefined;
       await forgetTeamVaultDrafts();
+      // The team index goes with the drafts (M3 3.2): here and where it was kept.
+      const orgId = get().settings.account?.org?.serverId;
+      if (orgId && uid) await dropVaultIndex({ providerId: 'org', resourceId: orgId, owner: uid });
     }
     const s = get().settings;
     const patch: Partial<AppSettings> = {};
@@ -3480,6 +3493,25 @@ export const useApp = create<AppState>((set, get, api) => {
   // dot folders, so `.obsidian/` and attachments never show or copy (0.6).
   async function listVaultNotes(t: VaultTarget): Promise<StoredFileMeta[]> {
     return (await t.provider.list(t.resourceId)).filter((f) => isNotePath(f.path));
+  }
+  // The Vault index (M3 3.2, lib/vaultIndexHost.ts) for the vault on screen:
+  // opened when its list lands, fed by every write and remove, and asked only
+  // for the vault on screen, so a write to any other vault never touches it.
+  function openVaultIndex(t: VaultTarget): VaultIndexHost {
+    const { providerId, resourceId, owner } = t;
+    const target = owner ? { providerId, resourceId, owner } : { providerId, resourceId };
+    return vaultIndexFor(target, t.provider);
+  }
+  function vaultIndexOf(t: VaultTargetRef): VaultIndexHost | undefined {
+    const host = currentVaultIndex();
+    const now = vaultTarget();
+    if (!host || !now || !isActiveVault(t)) return undefined;
+    const { providerId, resourceId, owner } = host.target;
+    return providerId === now.providerId &&
+      resourceId === now.resourceId &&
+      (owner ?? '') === (now.owner ?? '')
+      ? host
+      : undefined;
   }
 
   // Durable draft rescue for the vault. When a provider write fails (offline
@@ -3758,6 +3790,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!t || t.providerId !== 'files' || get().vaultScope !== 'personal') return;
     const files = await listVaultNotes(t).catch(() => undefined);
     if (files && isActiveVault(t)) set({ vaultFiles: files });
+    if (files) void vaultIndexOf(t)?.reconcile(files);
   }
 
   // After main repointed the vault folder (a pick, or a choice after one):
@@ -4166,6 +4199,10 @@ export const useApp = create<AppState>((set, get, api) => {
       vaultBodyCache.delete(key);
     }
     if (!isActiveVault(t)) return;
+    // The index takes the text already in hand, so nothing is read (M3 3.2).
+    const index = vaultIndexOf(t);
+    if ('removed' in change) index?.applyRemove(change.removed);
+    else if (isNotePath(change.saved.path)) index?.applyWrite(change.saved);
     const files = get().vaultFiles;
     if ('removed' in change) {
       if (files.some((f) => f.path === change.removed)) {
@@ -4575,6 +4612,7 @@ export const useApp = create<AppState>((set, get, api) => {
         set({ vaultNote: undefined, vaultReturnFolder: noteFolder(path) });
         const listing = await listVaultNotes(target).catch(() => undefined);
         if (listing && isActiveVault(target)) set({ vaultFiles: listing });
+        if (listing) void vaultIndexOf(target)?.reconcile(listing);
         get().showToast(vaultGoneToast(noteTitle(path)));
         logEvent('vault_note_gone', { dirty: false });
         return 'checked';
@@ -4594,6 +4632,7 @@ export const useApp = create<AppState>((set, get, api) => {
     } catch {
       return 'failed';
     }
+    if (theirs) vaultIndexOf(target)?.noteRead(theirs);
     if (!theirs || get().vaultNote?.path !== path) return 'checked';
     if (pending) {
       // Still undecided: the sheet shows this newest version, and says so.
@@ -4877,6 +4916,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (isActiveVault(target) && !asking) {
       const listing = await listVaultNotes(target).catch(() => undefined);
       if (listing) set({ vaultFiles: listing });
+      if (listing) void vaultIndexOf(target)?.reconcile(listing);
     }
     get().showToast(vaultStaleDeleteToast('changed', title, reloaded));
   }
@@ -8006,6 +8046,8 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!isActiveVault(target)) return;
       set({ vaultFiles: files, vaultError: undefined, vaultListed: true });
+      // The index reads only notes whose version moved (M3 3.2).
+      void openVaultIndex(target).reconcile(files);
       // An empty default Local vault on the desktop has nothing to move, so
       // it simply points at the folder (CX 1.3 b).
       if (await repointEmptyLocal(target, files)) return;
@@ -8074,6 +8116,7 @@ export const useApp = create<AppState>((set, get, api) => {
         }
       }
       if (!isActiveVault(target)) return;
+      if (existing) vaultIndexOf(target)?.noteRead(existing);
       // Opening another note leaves this one: a choice still open on it keeps
       // both (CS 1c).
       if (get().vaultConflict && get().vaultConflict?.path !== openPath) {
@@ -8250,6 +8293,11 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       // The poll looks at the open note only; the tree refreshes on focus.
       if (reason === 'poll') return result;
+      // Named paths go to the index, which reads only what moved; a tree
+      // change reaches it through the relist below (M3 3.2).
+      if (reason === 'watch' && !tree && paths?.length) {
+        void vaultIndexOf(target)?.watched({ paths, tree: false }, () => listVaultNotes(target));
+      }
       const listed = new Set(get().vaultFiles.map((f) => f.path));
       if (reason === 'focus' || tree || paths?.some((p) => !listed.has(p))) scheduleRelist();
       return result;
@@ -8365,9 +8413,15 @@ export const useApp = create<AppState>((set, get, api) => {
       return folder;
     },
 
-    async vaultSave(path, text, at) {
+    async vaultSave(path, typed, at) {
       const target = vaultTargetFrom(at);
       if (!target) return;
+      // A textarea hands CRLF back as LF, so an all-CRLF note keeps its line
+      // endings (M3, CTO H2): the note as loaded, or as last saved.
+      const open = isActiveVault(target) ? get().vaultNote : undefined;
+      const loaded =
+        open?.path === path ? open.text : vaultBodyCache.get(vaultKey(target, path))?.text;
+      const text = loaded === undefined ? typed : restoreEol(loaded, typed);
       // While a choice about this note is open, nothing typed is written to
       // it: the text goes to the durable stash, stamped with the version it
       // was typed against (CX 1.1).
@@ -8389,6 +8443,17 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       const key = vaultKey(target, path);
+      // Untouched: the open note already holds this text, nothing for it is
+      // on its way, and nothing waits to retry, so there is nothing to write.
+      if (
+        open?.path === path &&
+        !open.fresh &&
+        text === open.text &&
+        !vaultSaveChains.has(key) &&
+        get().vaultError === undefined
+      ) {
+        return;
+      }
       // The version at call time, used only when the note has closed and no
       // earlier save for it says more.
       const called = vaultBaseOf(target, path);
@@ -8508,6 +8573,20 @@ export const useApp = create<AppState>((set, get, api) => {
         }
       }
       return Object.assign(notes, { failed });
+    },
+
+    async vaultReadBody(path) {
+      const target = vaultTarget();
+      if (!target) return undefined;
+      const key = vaultKey(target, path);
+      const listed = get().vaultFiles.find((f) => f.path === path);
+      const cached = vaultBodyCache.get(key);
+      if (cached && listed && cached.version === versionOf(listed)) return cached.text;
+      const note = await target.provider.read(target.resourceId, path);
+      if (!note) return undefined;
+      if (isActiveVault(target))
+        vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
+      return note.text;
     },
 
     async vaultAcquireLease() {
