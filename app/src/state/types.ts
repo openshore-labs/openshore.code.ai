@@ -4,6 +4,8 @@ import type {
   AgenticCurrentId,
   ApprovalRequest,
   HarnessCurrentId,
+  PackMode,
+  PackSource,
   PermissionMode,
 } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
@@ -33,6 +35,10 @@ export type ThreadItem =
       /** A scripted guide line that writes itself on its first showing
        *  (lib/introWalk.ts). A settled item never replays it. */
       paced?: 'greeting' | 'walk';
+      /** The reply drew on a note that stays on this computer (Vault M5, CTO
+       *  J10): it never rides a handoff, and a seat that leaves the network
+       *  gets the stub in its place. */
+      localOnly?: true;
     }
   // The model's reasoning, collapsed to "Thought for Ns" and expandable.
   | {
@@ -68,7 +74,14 @@ export type ThreadItem =
       detailKind?: 'diff' | 'output';
     }
   | { kind: 'status'; id: string; text: string }
-  | { kind: 'note'; id: string; text: string }
+  | {
+      kind: 'note';
+      id: string;
+      text: string;
+      /** A model switch's handoff (Vault M5, CTO J12), kept on the note so its
+       *  card can offer "Save to Vault", the person's own one-tap write. */
+      handoff?: NoteHandoff;
+    }
   // Project trust: this folder's own os-code.config.json asks for settings
   // that stay off until the person trusts the folder on that computer. One
   // decision, "Use them" or "Not now"; trusting applies from the next chat.
@@ -83,6 +96,19 @@ export type ThreadItem =
       error?: string;
     }
   | { kind: 'stopped'; id: string; message: string }
+  // What the Vault gave this task's seat (Vault M4, 4.4): the notes the pack
+  // used, the private notes it left out for a seat that leaves this network,
+  // and whether the index was still cold. Teal for a local seat, amber for a
+  // cloud one. One card per task, updated in place when the seat changes.
+  | {
+      kind: 'context-pack';
+      id: string;
+      seat: 'local' | 'cloud';
+      mode: PackMode;
+      sources: PackSource[];
+      withheld: number;
+      cold: boolean;
+    }
   // The plan-first flow's clarifying questions, as a tappable picker. Tapping an
   // option (or typing) sends the answer, which is folded back into the framing.
   | {
@@ -105,6 +131,18 @@ export type ThreadItem =
       durationMs?: number;
       truncated?: boolean;
     };
+
+/** The handoff a switch note carries (CTO J12). */
+export interface NoteHandoff {
+  /** The extractive handoff text, never thinking. */
+  text: string;
+  /** YYYY-MM-DD on this device when the switch happened. */
+  date: string;
+  /** The project the chat belongs to, for the note's name. */
+  project?: string;
+  /** Where "Save to Vault" put it, once saved. */
+  savedPath?: string;
+}
 
 export interface CitationItem {
   title: string;
@@ -252,6 +290,13 @@ export interface Project {
   harnessCurrent?: HarnessCurrentId | null;
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
+  /** Vault notes pinned to this project's context (Vault M5, CTO J14): note
+   *  paths in the personal vault, at most `PROJECT_VAULT_PINS_MAX`, set by
+   *  editors only (a local project, or `myLevel === 'edit'`). Device-local:
+   *  they name the person's own notes, so they never sync with a shared
+   *  project (orgProjects.ts syncs name, instructions and repoIds only) and
+   *  are never a config key. They ride the pack in both modes. */
+  vaultPins?: string[];
   /** Enterprise: per-teammate access grants, keyed by email, that decide who
    *  may read, write, or edit this project. Admin-managed. For a shared project
    *  these mirror the server roster (org_project_members); for a local project
@@ -275,6 +320,39 @@ export interface Project {
   myLevel?: ProjectPermission;
   createdAt: string;
 }
+
+/** The most notes one project may pin (CTO J14). */
+export const PROJECT_VAULT_PINS_MAX = 8;
+
+/** The app's vault context setting (Vault M5, CTO J4): `'auto'` follows the
+ *  per-class table, `'off'` gives no pack. `'full'` stays machine config for
+ *  eval and is never an app value. */
+export type AppVaultContextSetting = 'auto' | 'off';
+
+/** Room for notes on this device (Vault M7, CTO L13, L14; CX Y8): the app may
+ *  only LOWER the machine's `vault.packSize` (`vaultPackSize(machine, app)`).
+ *  Unset reads as the machine's size. Device local, never in the vault. */
+export type AppVaultPackSize = 'small' | 'normal' | 'large';
+
+/** The Handoff switch on this device (Vault M7, CTO L13, L14; CX Y7): only
+ *  ever `'off'`; unset leaves machine config and the project in charge
+ *  (`vaultHandoffOn`). Device local, never in the vault. */
+export type AppVaultHandoffSetting = 'off';
+
+/** An unpaired phone's own privacy rules (CTO J3), with no UI until M7. They
+ *  may only narrow: the effective rules are the union of the source's rules
+ *  and these. Absent reads as the D5 defaults. */
+export interface VaultPrivacySetting {
+  exclude: string[];
+  localOnly: { paths: string[]; tags: string[] };
+}
+
+/** The D5 defaults: what stays on this computer when nothing else is known.
+ *  Fail closed: no rules loaded means these, never none. */
+export const VAULT_PRIVACY_DEFAULTS: Readonly<VaultPrivacySetting> = {
+  exclude: [],
+  localOnly: { paths: ['Private/**', 'Journal/**'], tags: ['private'] },
+};
 
 // A project permission, coarsest to finest. Each level includes the ones below
 // it (edit implies write implies read); admins always hold edit.
@@ -484,32 +562,53 @@ function isProbablyPhone(): boolean {
 export interface SeedTurn {
   role: 'user' | 'assistant';
   text: string;
+  /** The turn drew on a local-only note (CTO J10), so a seat that leaves the
+   *  network gets the stub, never the text. Absent for most turns. */
+  localOnly?: true;
+}
+
+/** A seed turn with the index of the transcript item it came from, so a
+ *  switch can say which items a handoff covers (CTO J12). */
+export interface SeedEntry extends SeedTurn {
+  at: number;
 }
 
 export function seedFromTranscript(items: ThreadItem[]): SeedTurn[] {
-  const out: SeedTurn[] = [];
+  return seedEntries(items).map(({ at: _at, ...turn }) => turn);
+}
+
+export function seedEntries(items: ThreadItem[]): SeedEntry[] {
+  const out: SeedEntry[] = [];
   // A message the ethics layer withheld never reached a model; it (and the
   // refusal answering it) stays out, so a switch cannot deliver it after all.
   let withheld = false;
-  for (const it of items) {
+  items.forEach((it, at) => {
     if (it.kind === 'user') {
       withheld = Boolean(it.withheld);
-      if (!withheld) out.push({ role: 'user', text: it.text });
-      continue;
+      if (!withheld) out.push({ role: 'user', text: it.text, at });
+      return;
     }
-    if (withheld) continue;
-    if (it.kind === 'assistant' && it.text.trim()) out.push({ role: 'assistant', text: it.text });
+    if (withheld) return;
+    if (it.kind === 'assistant' && it.text.trim()) {
+      out.push({
+        role: 'assistant',
+        text: it.text,
+        at,
+        ...(it.localOnly ? { localOnly: true } : {}),
+      });
+    }
     // A plan card is the model's own proposal, and a clarify card its
     // questions: both are what the person's next message answers, so a new
     // model needs them to make sense of "go ahead" or a picked option.
-    else if (it.kind === 'plan' && it.text.trim()) out.push({ role: 'assistant', text: it.text });
-    else if (it.kind === 'clarify') out.push({ role: 'assistant', text: clarifyText(it) });
-  }
+    else if (it.kind === 'plan' && it.text.trim())
+      out.push({ role: 'assistant', text: it.text, at });
+    else if (it.kind === 'clarify') out.push({ role: 'assistant', text: clarifyText(it), at });
+  });
   return out;
 }
 
 /** A clarify card as the words the model asked, for a new model's history. */
-function clarifyText(item: Extract<ThreadItem, { kind: 'clarify' }>): string {
+export function clarifyText(item: Extract<ThreadItem, { kind: 'clarify' }>): string {
   const questions = item.questions.map((q, i) => {
     const options = q.options?.length ? ` (${q.options.join(' / ')})` : '';
     return `${i + 1}. ${q.question}${options}`;

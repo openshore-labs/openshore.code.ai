@@ -19,13 +19,15 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench:vault-index": "tsx scripts/bench-vault-index.ts"
   },
   "dependencies": {
     "@mozilla/readability": "0.6.0",
     "@octokit/rest": "22.0.1",
     "commander": "15.0.0",
     "ink": "5.2.1",
+    "js-yaml": "4.3.1",
     "linkedom": "0.18.13",
     "qrcode-terminal": "0.12.0",
     "react": "18.3.1",
@@ -37,6 +39,7 @@
     "node-pty": "1.1.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "4.0.9",
     "@types/node": "20.19.43",
     "@types/qrcode-terminal": "0.12.2",
     "@types/react": "18.3.31",

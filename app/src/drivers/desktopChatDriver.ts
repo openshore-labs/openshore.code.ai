@@ -9,9 +9,23 @@
 // model asks with a SEARCH: line, the phone runs the search on its own Settings
 // provider and sends the results back as the next turn. The desktop never
 // fetches anything for this chat.
-import { SearchLineFilter, type ApprovalAnswer } from 'os-code/protocol';
+//
+// The vault pack (Vault M5, CTO J6) is built on the computer, never here: the
+// body names the project (`vaultPack`) or says Memory is off (`memory: false`),
+// the daemon renders the pack over its own vault for the model it serves, and
+// streams the card before the first text. No note text ever leaves the phone
+// for this chat, and none comes back but the card. When the card says its pack
+// carried a local-only note (`localOnly`, the computer judged it), the reply
+// is marked local-only, so a later switch to a seat that leaves the network
+// gets `LOCAL_ONLY_STUB` in its place (I5).
+import {
+  SearchLineFilter,
+  type ApprovalAnswer,
+  type ChatContextPackEvent,
+  type ChatVaultFields,
+} from 'os-code/protocol';
 import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter, readChatContext } from './types.js';
+import { DriverEmitter, readChatContext, textFinal } from './types.js';
 import type { DaemonTarget } from './remoteDriver.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { searchForModel } from '../lib/localSearch.js';
@@ -26,6 +40,11 @@ export class DesktopChatDriver implements ChatDriver {
   private history: Msg[] = [];
   private abortController?: AbortController;
   private aborted = false;
+  /** What the last context-pack card said this send, so a search's second
+   *  pass does not show the same card twice. */
+  private packCardShown?: string;
+  /** This send's pack carried a local-only note (the card said so). */
+  private sendLocalOnly = false;
 
   constructor(
     private readonly target: DaemonTarget,
@@ -37,6 +56,9 @@ export class DesktopChatDriver implements ChatDriver {
     private readonly extraSystem?: ChatContext,
     /** Research (default off): search on the connected Perplexity key. */
     private readonly researchOn = false,
+    /** The /chat vault fields (CTO J6): the project the daemon builds the pack
+     *  for, or Memory off. None sends neither, so the daemon builds none. */
+    private readonly vault: ChatVaultFields = {},
   ) {
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
@@ -52,6 +74,8 @@ export class DesktopChatDriver implements ChatDriver {
   private async run(text: string): Promise<void> {
     this.aborted = false;
     this.abortController = new AbortController();
+    this.packCardShown = undefined;
+    this.sendLocalOnly = false;
     this.emitter.emit({ type: 'task-start', input: text });
     this.history.push({ role: 'user', content: text });
     await this.turn(1, true);
@@ -84,6 +108,9 @@ export class DesktopChatDriver implements ChatDriver {
           // streams the thinking as its own frames. A daemon that predates the
           // field ignores it and streams text only.
           chainOfThought: chainOfThoughtOn(),
+          // The daemon's pack (J6): the project it is built for, or Memory
+          // off. Never a note body. An older daemon ignores both.
+          ...vaultBodyFields(this.vault),
         }),
         signal: this.abortController?.signal,
       });
@@ -109,7 +136,7 @@ export class DesktopChatDriver implements ChatDriver {
           buffer = buffer.slice(idx + 2);
           const line = frame.split('\n').find((l) => l.startsWith('data:'));
           if (!line) continue;
-          let ev: { type?: string; delta?: string; message?: string };
+          let ev: { type?: string; delta?: string; message?: string } & Record<string, unknown>;
           try {
             ev = JSON.parse(line.slice(5).trim());
           } catch {
@@ -121,6 +148,14 @@ export class DesktopChatDriver implements ChatDriver {
             if (shown) this.emitter.emit({ type: 'text-delta', text: shown });
           } else if (ev.type === 'thinking' && ev.delta && chainOfThoughtOn()) {
             this.emitter.emit({ type: 'thinking-delta', text: ev.delta });
+          } else if (ev.type === 'context-pack') {
+            const card = readPackCard(ev);
+            if (card?.localOnly) this.sendLocalOnly = true;
+            const key = card && JSON.stringify([card.seat, card.sources, card.withheld]);
+            if (card && key !== this.packCardShown) {
+              this.packCardShown = key;
+              this.emitter.emit(card);
+            }
           } else if (ev.type === 'error') {
             this.emitter.emit({ type: 'task-done', reason: 'error', message: ev.message });
             return;
@@ -131,7 +166,7 @@ export class DesktopChatDriver implements ChatDriver {
       if (this.aborted) {
         const kept = query ? '' : answer;
         if (kept.trim()) this.history.push({ role: 'assistant', content: kept });
-        this.emitter.emit({ type: 'text-final', text: kept });
+        this.emitter.emit(textFinal(kept, this.sendLocalOnly && Boolean(kept)));
         this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
         return;
       }
@@ -147,7 +182,7 @@ export class DesktopChatDriver implements ChatDriver {
       }
       if (flush) this.emitter.emit({ type: 'text-delta', text: flush });
       this.history.push({ role: 'assistant', content: answer });
-      this.emitter.emit({ type: 'text-final', text: answer });
+      this.emitter.emit(textFinal(answer, this.sendLocalOnly));
       this.emitter.emit({ type: 'task-done', reason: 'complete' });
     } catch (err) {
       if (this.aborted) {
@@ -180,4 +215,53 @@ export class DesktopChatDriver implements ChatDriver {
     this.abortController?.abort();
     this.emitter.clear();
   }
+}
+
+/** The /chat body's vault fields, only those that are set. */
+export function vaultBodyFields(vault: ChatVaultFields): ChatVaultFields {
+  if (vault.memory === false) return { memory: false };
+  const pack = vault.vaultPack;
+  if (!pack) return {};
+  return {
+    vaultPack: {
+      ...(pack.cwd ? { cwd: pack.cwd } : {}),
+      ...(pack.projectName ? { projectName: pack.projectName } : {}),
+      ...(pack.packSize ? { packSize: pack.packSize } : {}),
+    },
+  };
+}
+
+const PACK_LAYERS: readonly string[] = ['pin', 'current-state', 'handoff', 'search', 'link', 'map'];
+
+/** A streamed context-pack line as the card event, or undefined when it is
+ *  not one (a malformed line is dropped, never shown half). */
+export function readPackCard(raw: Record<string, unknown>): ChatContextPackEvent | undefined {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const seat = raw.seat === 'local' || raw.seat === 'cloud' ? raw.seat : undefined;
+  const mode = raw.mode === 'current-state' || raw.mode === 'full' ? raw.mode : undefined;
+  const tokens = num(raw.tokens);
+  const budgetTokens = num(raw.budgetTokens);
+  const withheld = num(raw.withheld) ?? 0;
+  if (!seat || !mode || tokens === undefined || budgetTokens === undefined) return undefined;
+  const sources = Array.isArray(raw.sources)
+    ? raw.sources.filter(
+        (x): x is ChatContextPackEvent['sources'][number] =>
+          !!x &&
+          typeof x === 'object' &&
+          typeof (x as { path?: unknown }).path === 'string' &&
+          typeof (x as { title?: unknown }).title === 'string' &&
+          PACK_LAYERS.includes((x as { layer?: unknown }).layer as string),
+      )
+    : [];
+  return {
+    type: 'context-pack',
+    seat,
+    mode,
+    tokens,
+    budgetTokens,
+    sources,
+    withheld,
+    cold: raw.cold === true,
+    ...(raw.localOnly === true ? { localOnly: true as const } : {}),
+  };
 }

@@ -355,6 +355,31 @@ export async function storeSetJson(key: string, value: unknown): Promise<void> {
   await storeSet(key, JSON.stringify(value));
 }
 
+/** Seal a blob with the device key for a store of its own (Vault M3, CTO H3:
+ *  the iPhone's vault index, written to the Caches folder, which the sealed
+ *  key-value store is too small to hold). Null when the key cannot be used
+ *  right now (locked, or no WebCrypto): the caller then keeps the blob in
+ *  memory only, never writes it in the clear. */
+export async function sealBlob(text: string): Promise<string | null> {
+  const dek = await getDek();
+  if (!dek) return null;
+  return seal(dek, text);
+}
+
+/** Open a blob sealBlob wrote. Null when the key cannot be used, the blob is
+ *  not sealed (a plaintext file is never trusted as one), or it does not
+ *  open under this key. */
+export async function openBlob(blob: string): Promise<string | null> {
+  if (!isSealed(blob)) return null;
+  const dek = await getDek();
+  if (!dek) return null;
+  try {
+    return await open(dek, blob);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Secret storage. On iOS, secrets (API keys) go to the Keychain via the native
 // plugin, never the plist that plain Preferences use. Off iOS they fall back

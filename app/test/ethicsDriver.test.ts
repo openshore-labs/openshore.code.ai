@@ -321,3 +321,29 @@ describe('a turn that ends without a text-final', () => {
     ).toBe(true);
   });
 });
+
+describe('the local-only mark rides through the screen (Vault M5, I5)', () => {
+  it('a marked final stays marked; an unmarked one stays plain', async () => {
+    const { isLocalOnlyFinal, textFinal } = await import('../src/drivers/types.js');
+    const inner = new FakeDriver();
+    const guarded = guardDriver(inner);
+    const events = collect(guarded);
+    guarded.send('What does my note say about lunch?');
+    await settle();
+    inner.emit({ type: 'task-start', input: 'What does my note say about lunch?' });
+    inner.emit({ type: 'text-delta', text: 'Soup on Tuesday.' });
+    inner.emit(textFinal('Soup on Tuesday.', true));
+    inner.emit({ type: 'task-done', reason: 'complete' });
+    await settle();
+    const finals = events.filter((e) => e.type === 'text-final');
+    expect(finals).toHaveLength(1);
+    expect(isLocalOnlyFinal(finals[0]!)).toBe(true);
+
+    inner.emit({ type: 'task-start', input: 'And Wednesday?' });
+    inner.emit(textFinal('Pasta.', false));
+    inner.emit({ type: 'task-done', reason: 'complete' });
+    await settle();
+    const last = events.filter((e) => e.type === 'text-final').at(-1)!;
+    expect(isLocalOnlyFinal(last)).toBe(false);
+  });
+});

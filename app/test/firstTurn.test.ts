@@ -124,6 +124,15 @@ const HUB = { baseUrl: 'http://127.0.0.1:1', token: 'tok-1' };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const settle = () => new Promise((r) => setTimeout(r, 30));
 
+const PLACED_VAULT = {
+  id: 'vault.personal',
+  name: 'Vault',
+  kind: 'vault' as const,
+  providerId: 'local' as const,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  chosenAt: '2026-01-01T00:00:00.000Z',
+};
+
 function resetStore() {
   mem.clear();
   secrets.clear();
@@ -138,7 +147,14 @@ function resetStore() {
     hubRole: undefined,
     hubLink: undefined,
     resumingId: undefined,
-    settings: { onboarded: true, claudeModel: 'x', deviceModels: {} },
+    settings: {
+      onboarded: true,
+      claudeModel: 'x',
+      deviceModels: {},
+      // A vault the person placed, so pairing a hub here never repoints it
+      // (CTO J9, pinned in vaultStore.test.ts) with a toast of its own.
+      gitosResources: [PLACED_VAULT],
+    },
   });
 }
 

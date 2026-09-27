@@ -11,13 +11,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import {
   assertSafeBind,
   bearerFrom,
   hasRole,
   loadOrCreateToken,
   resolveAuth,
+  type AuthContext,
 } from '../core/security/daemonAuth.js';
 import { oscHome, loadConfig, loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
@@ -41,7 +42,14 @@ import { tailscaleIp } from '../connect/tailscale.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { effectiveMode } from '../core/agent/modes.js';
-import { LocalDriver, deleteSession, listSessions, sealSessionsAtRest } from './session.js';
+import {
+  LocalDriver,
+  deleteSession,
+  listSessions,
+  sealSessionsAtRest,
+  storedSessionProject,
+} from './session.js';
+import { clearHandoffs, deleteHandoff } from '../core/agent/handoffStore.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { HOME_SHELL_ID } from './homeShellId.js';
 import { PushNotifier, savePushConfig } from './push.js';
@@ -64,7 +72,7 @@ import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
-import { leavesThisNetwork, type ChatMessage } from '../providers/types.js';
+import { leavesThisNetwork, type ChatMessage, type Provider } from '../providers/types.js';
 import {
   ThinkTagSplitter,
   chainOfThoughtPrompt,
@@ -74,6 +82,23 @@ import {
 import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
+import {
+  machineVaultWire,
+  vaultPrivacyConfig,
+  vaultPrivacyHolder,
+} from '../core/agent/registry.js';
+import { currentStateReader } from '../core/vault/contextSource.js';
+import {
+  ensureVaultRootAt,
+  isMemberVaultRoot,
+  vaultRootFor,
+  vaultRootForOwner,
+} from '../core/vault/memberRoots.js';
+import { isVaultNotePath } from '../core/vault/folderFs.js';
+import { vaultPackSize } from '../harness/vault/settings.js';
+import { HANDOFF_MAX_BYTES } from '../harness/handoff.js';
+import { buildChatPack, parseVaultOverrides, vaultRoute } from './vaultRoutes.js';
+import type { VaultPrivacyWire } from './vaultWire.js';
 import { logger } from '../util/log.js';
 
 // The phone app runs in a WebView, so the daemon must speak CORS: a
@@ -85,8 +110,10 @@ import { logger } from '../util/log.js';
 // web page probing the port sees an opaque error, not a readable fingerprint.
 const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
-  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'access-control-allow-headers': 'authorization, content-type, if-none-match',
+  // The saved vault index answers with an ETag the phone sends back.
+  'access-control-expose-headers': 'etag',
   'access-control-max-age': '600',
 };
 
@@ -133,7 +160,26 @@ const DEFAULT_IDLE_EVICT_EVERY_MS = 60_000;
 
 // Why a member's session may not open (or be revived) where the vault is.
 const MEMBER_VAULT_REFUSAL =
-  "A member session cannot open in the vault or in a folder that holds it, since the vault holds the computer owner's own notes. Pick a project folder.";
+  "A member session cannot open in a vault folder or in a folder that holds one, since those hold people's own notes. Pick a project folder.";
+
+/** The most project pins a session create carries (Project.vaultPins). */
+const SESSION_VAULT_PINS_MAX = 8;
+
+/** The machine's own privacy keys, as the phone compiles them, and its
+ *  `vault.packSize` (Vault M8). Machine config only: projectPolicy never lets
+ *  a project file set these. */
+function machineVaultPrivacy(): VaultPrivacyWire {
+  return machineVaultWire(loadConfig().config);
+}
+
+/** A session create's project pins: note paths only, at most eight. */
+function parseVaultPins(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const pins = v
+    .filter((p): p is string => typeof p === 'string' && isVaultNotePath(p))
+    .slice(0, SESSION_VAULT_PINS_MAX);
+  return pins.length ? pins : undefined;
+}
 
 export interface DaemonOptions {
   config: OscConfig;
@@ -675,6 +721,45 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       return;
     }
+    // ---- Clear the stored handoffs (Vault M5, CTO J13). ----
+    // Part of the action that clears the chats: every "where you left off"
+    // summary on this machine goes. Admin only, since the store is keyed by a
+    // hash and holds every owner's; a member's go with each session they
+    // delete (DELETE /sessions/:id below).
+    if (req.method === 'DELETE' && url.pathname === '/handoffs') {
+      if (!hasRole(auth, 'admin')) {
+        sendJson(res, 403, { error: 'Only the owner of this computer can clear every handoff.' });
+        return;
+      }
+      clearHandoffs();
+      sendJson(res, 200, { cleared: true });
+      return;
+    }
+    // ---- The vault, scoped to the caller's own root (Vault M5, CTO J7). ----
+    // Not owner-only (D9): the owner and the legacy token reach the machine's
+    // vault, a member reaches their own root. The handler lives in
+    // vaultRoutes.ts; no route takes a root. M6 (CTO K13) adds rename,
+    // folders, Trash and attachments there; an attachment answers raw bytes
+    // with its own headers, written as they come.
+    if (parts[0] === 'vault') {
+      const answer = await vaultRoute({
+        method: req.method ?? 'GET',
+        parts: parts.slice(1),
+        url,
+        headers: req.headers,
+        root: vaultRootFor(auth),
+        readBody: (maxBytes?: number) => readJson(req, maxBytes),
+        privacy: machineVaultPrivacy,
+      });
+      if ('json' in answer) {
+        sendJson(res, answer.status, answer.json);
+      } else {
+        res.writeHead(answer.status, { ...answer.headers, ...CORS_HEADERS });
+        res.end(answer.raw);
+      }
+      return;
+    }
+
     // Free, read-only chat with the desktop's LOCAL models (the free tier the
     // C-suite approved). This path instantiates NONE of the acting machinery:
     // no AgentSession, no LocalDriver, no ToolRegistry, no command lane, no
@@ -721,29 +806,42 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // think in tags, and the splitter below keeps tags out of the answer.
       const cot = body.chainOfThought === true;
       const system = desktopChatSystem(body.context, body.search === true);
-      const messages: ChatMessage[] = [
-        {
-          role: 'system',
-          content:
-            cot && !reasonsNatively(model) ? `${system}\n\n${chainOfThoughtPrompt()}` : system,
-        },
-        ...rawMessages
-          .filter(
-            (m: unknown): m is { role: string; content: string } =>
-              Boolean(m) &&
-              typeof (m as { content?: unknown }).content === 'string' &&
-              ['user', 'assistant'].includes((m as { role?: unknown }).role as string),
-          )
-          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      ];
+      const turns = rawMessages
+        .filter(
+          (m: unknown): m is { role: string; content: string } =>
+            Boolean(m) &&
+            typeof (m as { content?: unknown }).content === 'string' &&
+            ['user', 'assistant'].includes((m as { role?: unknown }).role as string),
+        )
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+      const controller = new AbortController();
+      req.on('close', () => controller.abort());
+      // The vault context pack (Vault M5, CTO J6), built here over the
+      // caller's own root so the phone never ships note bodies to this
+      // computer and back. Only when the app asks (an old app sends no
+      // vaultPack) and Memory is on; the class's mode, the served window and
+      // `vault.context` decide the rest, as in a session.
+      const chatPack = await desktopChatPack(body, {
+        auth,
+        config: chatConfig,
+        model,
+        provider: orchestrator.provider,
+        turns,
+        signal: controller.signal,
+      });
+      let systemText =
+        cot && !reasonsNatively(model) ? `${system}\n\n${chainOfThoughtPrompt()}` : system;
+      // The pack is the last system part (CTO J16): volatile, so it trails.
+      if (chatPack.text) systemText = `${systemText}\n\n${chatPack.text}`;
+      const messages: ChatMessage[] = [{ role: 'system', content: systemText }, ...turns];
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
         connection: 'keep-alive',
         ...CORS_HEADERS,
       });
-      const controller = new AbortController();
-      req.on('close', () => controller.abort());
+      // The card line goes before the first text, like the engine's event.
+      if (chatPack.event) res.write(`data: ${JSON.stringify(chatPack.event)}\n\n`);
       try {
         const splitter = new ThinkTagSplitter();
         const send = (pieces: ThoughtPiece[]) => {
@@ -970,6 +1068,19 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         currents = Object.keys(rest).length ? rest : undefined;
       }
       const harnessCurrents = parseHarnessCurrentsHandle(body.harnessCurrents);
+      // A handoff from the chat this session continues (CTO J12), first task
+      // only, and the project's own pins (J14). Both additive: an old app
+      // sends neither. An oversized handoff is refused, never cut mid-line.
+      const handoff =
+        typeof body.handoff === 'string' && body.handoff.trim() ? body.handoff : undefined;
+      if (handoff && Buffer.byteLength(handoff, 'utf8') > HANDOFF_MAX_BYTES) {
+        sendJson(res, 400, { error: 'The handoff is too long to carry into a session.' });
+        return;
+      }
+      const vaultPins = parseVaultPins(body.vaultPins);
+      // The app's vault switches (Vault M7, CTO L13): off-only and one of the
+      // three sizes, anything else dropped; the engine keeps size lower-only.
+      const vaultOverrides = parseVaultOverrides(body.vaultOverrides);
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
         sendJson(res, 403, {
           error:
@@ -977,15 +1088,19 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         });
         return;
       }
-      // The vault is the machine owner's one folder. A member session opened
-      // in it, or in a folder that holds it (~/OSCode itself, by default),
-      // would read the owner's notes with readFile and grep, which never ask,
-      // even with the vault tools withheld below.
+      // A member session opened in a vault (the owner's, or the folder of
+      // member roots), or in a folder that holds one (~/OSCode itself, by
+      // default), would read those notes with readFile and grep, which never
+      // ask, whatever vault tools it gets.
       if (!hasRole(auth, 'admin') && overlapsVault(cwd)) {
         sendJson(res, 403, { error: MEMBER_VAULT_REFUSAL });
         return;
       }
+      // The caller's own vault (CTO J8): the owner's for an admin, the
+      // member's own root for a member, made on first use so its tools work.
+      const vaultRoot = vaultRootFor(auth);
       try {
+        if (isMemberVaultRoot(vaultRoot)) ensureVaultRootAt(vaultRoot);
         const { driver, warnings } = bootstrapSession({
           cwd,
           profile: 'remote-attached',
@@ -998,10 +1113,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           chainOfThought,
           currents,
           harnessCurrents,
-          // A member's agent gets no vault tools on a shared hub: the vault is
-          // the machine owner's one folder, holding the owner's notes and the
-          // admins' Crew results, until each member has a root of their own.
-          vault: hasRole(auth, 'admin'),
+          // Each agent works on its caller's own root (CTO J8): a member's
+          // own folder, never the owner's.
+          vaultRoot,
+          ...(handoff ? { handoff } : {}),
+          ...(vaultPins ? { vaultPins } : {}),
+          ...(vaultOverrides ? { vaultOverrides } : {}),
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);
@@ -1218,11 +1335,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // admin-only, so a member cannot reach a legacy or another user's session.
       const ownedBy = (owner: string | undefined): boolean =>
         hasRole(auth, 'admin') || owner === auth.userId;
-      // The vault is the machine owner's one folder, so only a session whose
-      // OWNER holds admin gets the vault tools. Decided by the owner, not the
-      // caller, so an admin touching a member's stored session never hands
-      // that member the vault on the rehydrate. No recorded owner means the
-      // session is admin-only already; the shared token is the machine owner.
+      // Whose vault a revived session works on is decided by its OWNER, not
+      // the caller, so an admin touching a member's stored session never hands
+      // that member the owner's vault on the rehydrate. No recorded owner
+      // means the session is admin-only already; the shared token is the
+      // machine owner.
       const ownerHoldsAdmin = (owner: string | undefined): boolean => {
         if (owner === undefined || owner === 'legacy') return true;
         if (owner === auth.userId) return hasRole(auth, 'admin');
@@ -1243,6 +1360,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           sendJson(res, 403, { error: `Session ${id} belongs to another user.` });
           return;
         }
+        // The handoff this session's project holds goes with the chat (CTO
+        // J13), read before the stored files are removed.
+        const owner = live ? live.owner : stored?.ownerUserId;
+        const cwd = live ? live.cwd : stored?.cwd;
+        const { projectName } = storedSessionProject(id);
+        if (cwd) deleteHandoff({ owner, cwd, projectName });
         if (live) {
           live.abort();
           forgetDriver(live);
@@ -1283,12 +1406,16 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // continues, and the project it was opened for (its name and standing
           // instructions, kept in info.json) comes back with it.
           try {
+            // The root is the session OWNER's, never the caller's (CTO J8).
+            const ownerAdmin = ownerHoldsAdmin(stored.ownerUserId);
+            const ownerRoot = vaultRootForOwner(stored.ownerUserId, ownerAdmin);
+            if (isMemberVaultRoot(ownerRoot)) ensureVaultRootAt(ownerRoot);
             const { driver: revived } = bootstrapSession({
               cwd: stored.cwd,
               profile: 'remote-attached',
               sessionId: id,
               terminalReader,
-              vault: ownerHoldsAdmin(stored.ownerUserId),
+              vaultRoot: ownerRoot,
             });
             trackDriver(revived);
             driver = revived;
@@ -1588,6 +1715,83 @@ function effectiveRemoteMode(requested: PermissionMode | undefined): {
   // One helper shared with the loop's setMode, so the daemon's answer and the
   // session's own downgrade never drift apart.
   return effectiveMode(profileFor('remote-attached'), requested);
+}
+
+/**
+ * The desktop chat's vault pack (Vault M5, CTO J6). Built only when the app
+ * sent `vaultPack` and not `memory: false`, with Memory and `vault.context` on
+ * in this machine's config. The notes come from the caller's own root; this
+ * project's Current State only from a `cwd` that passes the same checks a
+ * session create does (a member: an admin-provisioned workspace that holds no
+ * vault). Anything that fails leaves the chat without a pack, never without
+ * an answer.
+ */
+async function desktopChatPack(
+  body: Record<string, unknown>,
+  o: {
+    auth: AuthContext;
+    config: OscConfig;
+    model: string;
+    provider: Provider;
+    turns: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
+    signal: AbortSignal;
+  },
+): Promise<Awaited<ReturnType<typeof buildChatPack>>> {
+  const ask = body.vaultPack;
+  if (body.memory === false || !ask || typeof ask !== 'object' || Array.isArray(ask)) return {};
+  if (o.config.memory?.enabled === false || o.config.vault?.context === 'off') return {};
+  const { cwd: rawCwd, projectName: rawName } = ask as Record<string, unknown>;
+  const cwd = typeof rawCwd === 'string' && rawCwd ? rawCwd : undefined;
+  const projectName = typeof rawName === 'string' && rawName ? rawName : undefined;
+  const task = [...o.turns].reverse().find((t) => t.role === 'user')?.content ?? '';
+  let cwdOk = false;
+  if (cwd) {
+    try {
+      cwdOk = statSync(cwd).isDirectory();
+    } catch {
+      cwdOk = false;
+    }
+    if (cwdOk && !hasRole(o.auth, 'admin')) {
+      cwdOk = isAdminProvisionedWorkspace(cwd) && !overlapsVault(cwd);
+    }
+  }
+  const { packSize: askedSize } = ask as Record<string, unknown>;
+  try {
+    const caps = await o.provider.capabilities(o.model);
+    const root = vaultRootFor(o.auth);
+    // The machine's rules unioned with the vault's own file (Vault M7, CTO
+    // L4), the same holder a session's tools judge by, read fresh now.
+    const holder = vaultPrivacyHolder(vaultPrivacyConfig(o.config), root);
+    try {
+      await holder.refresh({ force: true });
+    } catch {
+      // The machine's rules alone; the file can only narrow them.
+    }
+    return await buildChatPack({
+      root,
+      privacy: holder,
+      settings: () => holder.settings(),
+      packSize: vaultPackSize(
+        o.config.vault?.packSize,
+        askedSize === 'small' || askedSize === 'normal' || askedSize === 'large'
+          ? askedSize
+          : undefined,
+      ),
+      ...(o.config.vault?.packMaxTokens !== undefined
+        ? { packMaxTokens: o.config.vault.packMaxTokens }
+        : {}),
+      ...(cwd && cwdOk ? { currentState: currentStateReader(cwd, projectName) } : {}),
+      task,
+      model: o.model,
+      kind: o.provider.kind,
+      caps,
+      setting: o.config.vault?.context ?? 'auto',
+      signal: o.signal,
+    });
+  } catch (err) {
+    log.warn('desktop chat went on without a vault pack', { err: String(err) });
+    return {};
+  }
 }
 
 // The workspace gates (admin-provisioned workspaces, outbox roots) live in

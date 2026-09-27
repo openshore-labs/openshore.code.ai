@@ -16,6 +16,7 @@
 // filesystem) does not enforce unique names within a folder, and a stale or
 // missing cache entry could otherwise fork one logical path into two file
 // ids (CTO must-fix, os-code/DECISIONS.md).
+import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-code/protocol';
 import { gdriveAccessToken } from './gdriveAuth.js';
 import {
   isNotePath,
@@ -539,4 +540,11 @@ export const gdriveProvider: StorageProvider = {
   },
   acquireLease,
   releaseLease,
+  // Drive lists and reads notes only in v1 and reads no config file, so every
+  // allowed name is absent by design.
+  async readConfig(_resourceId, name: VaultConfigName): Promise<ConfigRead> {
+    return isVaultConfigName(name)
+      ? { ok: false, reason: 'absent' }
+      : { ok: false, reason: 'refused' };
+  },
 };

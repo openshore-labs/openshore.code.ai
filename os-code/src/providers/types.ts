@@ -34,6 +34,23 @@ export interface ChatMessage {
    * the Anthropic provider; other providers ignore it.
    */
   thinkingBlocks?: unknown[];
+  /**
+   * Set on a tool message whose content came from a local-only vault note
+   * (Vault M4, CTO I5). The loop swaps its content for a one-line stub
+   * (`withholdLocalOnly` in harness/vault/privacy.ts) in what it sends on any
+   * turn whose seat leaves this network, never in the kept history. Providers
+   * ignore it.
+   */
+  localOnly?: true;
+  /**
+   * Cache breakpoints for a system message (Vault M5, CTO J17): the character
+   * offsets in `content` where a stable prefix ends, recorded by
+   * `systemPrompt` at the start of the vault pack. The Anthropic provider
+   * splits `system` into text blocks there and marks the first when prompt
+   * caching is on (`providers.<id>.promptCache: 'auto'`). Additive: every
+   * other provider ignores it, and caching off sends the string unchanged.
+   */
+  cacheAt?: number[];
 }
 
 /** JSON Schema for a tool, produced from the zod definitions at the boundary. */
@@ -73,7 +90,16 @@ export type ChatEvent =
    *  ChatMessage.thinkingBlocks). Sent once, before done. */
   | { type: 'thinking-blocks'; blocks: unknown[] }
   | { type: 'tool-call'; call: ToolCallRequest }
-  | { type: 'usage'; promptTokens: number; completionTokens: number }
+  | {
+      type: 'usage';
+      promptTokens: number;
+      completionTokens: number;
+      /** Prompt tokens served from a provider's prompt cache (Vault M5, CTO
+       *  J17). Absent when the provider reports none. */
+      cacheReadTokens?: number;
+      /** Prompt tokens written to a provider's prompt cache this request. */
+      cacheWriteTokens?: number;
+    }
   | { type: 'done'; stopReason: 'end' | 'tool-calls' | 'length' | 'stop' | 'aborted' };
 
 export type CostTier = 'free' | 'metered';
@@ -84,7 +110,15 @@ export interface ProviderCapabilities {
   supportsVision: boolean;
   /** Grammar / structured-output constrained decoding. */
   supportsGrammar: boolean;
+  /** The window this model is served. With a provider's `numCtx: 'auto'`
+   *  (Vault M4, CTO I1) it is the served window, the lower of the model's own
+   *  and the per-class ceiling; otherwise the model's own. */
   contextTokens: number;
+  /** The model's own window as the server reports it, set when
+   *  `contextTokens` holds a smaller served window. Class derivation reads
+   *  `nativeContextTokens ?? contextTokens`, so serving less never drops a
+   *  seat a class. */
+  nativeContextTokens?: number;
   costTier: CostTier;
   latencyTier: LatencyTier;
   /** Standard capability categories this model is strong in (see router/roles). */

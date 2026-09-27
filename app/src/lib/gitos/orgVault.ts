@@ -20,6 +20,7 @@
 // trivially and the server resolves concurrency. Team vault is online by
 // design; when there is no session it fails with a clear message rather than
 // pretending to hold bytes it cannot reach.
+import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-code/protocol';
 import { isConfigured, rpc, select } from '../supabase.js';
 import type {
   Lease,
@@ -422,6 +423,14 @@ export const orgVaultProvider: StorageProvider = {
 
   async releaseLease() {
     // Nothing held, nothing to release.
+  },
+
+  // The team vault keeps notes only; it holds no config files in v1, so every
+  // allowed name is absent by design.
+  async readConfig(_resourceId, name: VaultConfigName): Promise<ConfigRead> {
+    return isVaultConfigName(name)
+      ? { ok: false, reason: 'absent' }
+      : { ok: false, reason: 'refused' };
   },
 };
 

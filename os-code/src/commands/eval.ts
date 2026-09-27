@@ -6,19 +6,42 @@ import { ProviderRegistry } from '../providers/registry.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import { runEval } from '../eval/harness.js';
-import { runEvalV2, type DriveTask, type DriveTrace, type EvalV2Report } from '../eval/v2.js';
-import { EVAL_TASKS, verifyCommandFor } from '../eval/tasks.js';
+import {
+  defaultTasks,
+  runEvalV2,
+  variantSuffix,
+  vaultTraceFields,
+  type DriveTask,
+  type DriveTrace,
+  type EvalHandoffLayer,
+  type EvalNumCtx,
+  type EvalPromptCache,
+  type EvalV2Report,
+  type EvalVariant,
+  type EvalVaultPack,
+} from '../eval/v2.js';
+import { verifyCommandFor } from '../eval/tasks.js';
+import { buildHandoff, HANDOFF_MAX_TOKENS } from '../harness/handoff.js';
 import { classBlurb } from '../harness/profile.js';
 import { configureStreamIdle } from '../providers/streamIdle.js';
 import { resolveStack } from '../router/stack.js';
 import { Router } from '../router/router.js';
-import { buildToolRegistry, buildToolContext } from '../core/agent/registry.js';
+import {
+  buildToolRegistry,
+  buildToolContext,
+  lazyVaultPrivacy,
+  vaultPrivacyConfig,
+} from '../core/agent/registry.js';
 import { AgentSession } from '../core/agent/loop.js';
 import { PermissionEngine, type PermissionConfig } from '../core/permissions/index.js';
 import { Guardrails } from '../core/guardrails/index.js';
 import { profileFor } from '../core/security/profiles.js';
 import { UsageTracker } from '../auth/usage.js';
+import { createVaultContextSource, currentStateReader } from '../core/vault/contextSource.js';
+import { closeEngineVaultIndex, engineVaultIndex } from '../core/vault/engineIndex.js';
+import { deleteVaultIndexFile } from '../core/vault/indexFile.js';
 import type { AgentEvent, Approver } from '../core/agent/types.js';
+import type { VaultContextSource } from '../harness/vaultContext.js';
 import type { ToolRegistry } from '../core/tools/index.js';
 import type { OscConfig } from '../config/schema.js';
 import { confirm, header, okLine, out, warnLine } from './util.js';
@@ -34,6 +57,30 @@ export interface EvalOptions {
   /** Deep only: skip the cloud-spend confirmation for a frontier reference run
    *  (for a scripted run; the terminal still says what it costs). */
   yes?: boolean;
+  /** Deep only: run the vault tasks with the full context pack ('on') or none
+   *  ('off'), the with and without pair of Vault M4's founder gate (CTO I14). */
+  vaultPack?: string;
+  /** Deep only: send Ollama's `num_ctx` ('auto') or not ('off') (CTO I1). */
+  numCtx?: string;
+  /** Deep only: Anthropic prompt caching on or off for the run (CTO J17,
+   *  J19), so input tokens, cache reads and writes, and dollars per completed
+   *  task can be set side by side. */
+  promptCache?: string;
+  /** Deep only: run the handoff task with its handoff layer ('on') or with
+   *  that layer empty ('off') (CTO J13, J19). */
+  handoff?: string;
+}
+
+/** Parse a two-value flag; undefined when unset, an error string when bad. */
+function parseChoice<T extends string>(
+  flag: string,
+  value: string | undefined,
+  allowed: readonly T[],
+): T | undefined | { error: string } {
+  if (value === undefined) return undefined;
+  const v = value.trim().toLowerCase();
+  if ((allowed as readonly string[]).includes(v)) return v as T;
+  return { error: `${flag} takes ${allowed.join(' or ')}, not "${value}".` };
 }
 
 export async function evalCommand(options: EvalOptions): Promise<void> {
@@ -52,9 +99,36 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     return;
   }
 
+  const vaultPack = parseChoice<EvalVaultPack>('--vault-pack', options.vaultPack, ['on', 'off']);
+  const numCtx = parseChoice<EvalNumCtx>('--num-ctx', options.numCtx, ['auto', 'off']);
+  const promptCache = parseChoice<EvalPromptCache>('--prompt-cache', options.promptCache, [
+    'on',
+    'off',
+  ]);
+  const handoff = parseChoice<EvalHandoffLayer>('--handoff', options.handoff, ['on', 'off']);
+  for (const parsed of [vaultPack, numCtx, promptCache, handoff]) {
+    if (typeof parsed === 'object') {
+      warnLine(parsed.error);
+      process.exitCode = 1;
+      return;
+    }
+  }
+  if ((vaultPack || numCtx || promptCache || handoff) && !options.deep) {
+    warnLine(
+      '--vault-pack, --num-ctx, --prompt-cache and --handoff measure the agent loop, so they go with --deep.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   if (options.deep) {
     const attempts = Math.max(1, Math.floor(Number(options.attempts ?? 1)) || 1);
-    await runDeep(config, providers, providerId, model, attempts, options.yes === true);
+    const variant: EvalVariant = {};
+    if (typeof vaultPack === 'string') variant.vaultPack = vaultPack;
+    if (typeof numCtx === 'string') variant.numCtx = numCtx;
+    if (typeof promptCache === 'string') variant.promptCache = promptCache;
+    if (typeof handoff === 'string') variant.handoff = handoff;
+    await runDeep(config, providers, providerId, model, attempts, options.yes === true, variant);
     return;
   }
 
@@ -115,6 +189,7 @@ async function runDeep(
   model: string,
   attempts: number,
   assumeYes: boolean,
+  variant: EvalVariant = {},
 ): Promise<void> {
   header(`Deep eval of ${model} on ${providerId}`);
   out(t.muted('  Runs the real agent loop against fixture workspaces, scored by behavior.'));
@@ -125,11 +200,16 @@ async function runDeep(
       ),
     );
   }
+  const variantText = describeVariant(variant);
+  if (variantText) out(t.muted(`  Variant: ${variantText}.`));
 
   const provider = providers.get(providerId);
   let cloudApproved = false;
   if (provider.kind === 'cloud') {
-    const runs = EVAL_TASKS.length * attempts;
+    // A variant run runs its own suite (runEvalV2's default), so the spend
+    // line counts that one.
+    const tasks = defaultTasks(variant);
+    const runs = tasks.length * attempts;
     out();
     out(
       t.cloud(
@@ -164,27 +244,92 @@ async function runDeep(
     firstByteSeconds: config.resourceBudget.streamFirstByteSeconds,
   });
 
-  const stack = resolveStack(evalConfig, providers);
-  const router = new Router(evalConfig, providers, stack);
-  const tools = buildToolRegistry({
-    stackHasVision: false,
-    stackHasImageGen: false,
-    stackHasSpecialists: false,
-    memory: evalConfig.memory?.enabled !== false,
+  const drive = deepDrive({
+    config: evalConfig,
+    providers,
+    providerId,
+    cloudApproved: () => cloudApproved,
   });
+
+  try {
+    const report = await runEvalV2(drive, {
+      model,
+      provider: providerId,
+      attempts,
+      write: true,
+      ...variant,
+      onProgress: (m) => out(t.muted(`  ${m}`)),
+    });
+    renderV2(report, provider.kind);
+  } catch (err) {
+    warnLine(`The deep eval could not finish: ${(err as Error).message}`);
+    process.exitCode = 1;
+  }
+}
+
+export interface DeepDriveOptions {
+  /** The eval's config: the model under test in the orchestrator seat. */
+  config: OscConfig;
+  /** The registry for a run with no `numCtx` variant. */
+  providers: ProviderRegistry;
+  /** The provider under test, whose `numCtx` a variant sets. */
+  providerId: string;
+  cloudApproved: () => boolean;
+  /** A fresh registry over a config (the `numCtx` and `promptCache`
+   *  variants). Defaults to the engine's own; a test hands in one holding a
+   *  mock. */
+  makeProviders?: (config: OscConfig) => ProviderRegistry;
+  /** Builds a handoff task's handoff from its scripted chat. Defaults to the
+   *  harness's own `buildHandoff`, the code a real session end runs. */
+  buildHandoff?: typeof buildHandoff;
+}
+
+/**
+ * The deep eval's drive: one fresh session per task, wired the way the engine
+ * wires one (the real tools, a jail per workspace, the vault context source),
+ * with the variant applied (Vault M4, CTO I14):
+ * - the task's vault folder is the session's vault root, for the tools and
+ *   the pack alike; a run with a vault-pack variant and no task vault gets no
+ *   vault at all, so the person's own notes never enter a benchmark;
+ * - `vaultPack` 'on' sets `vault.context: 'full'` (the full pack on every
+ *   class), 'off' sets `'off'`; either way Memory stays on, so the two runs
+ *   differ by the pack alone;
+ * - `numCtx` sets `providers.<id>.numCtx` on a fresh registry, built once per
+ *   value so Ollama keeps one window for the whole run;
+ * - `promptCache` sets `providers.<id>.promptCache` ('on' is 'auto') on an
+ *   Anthropic endpoint, on a fresh registry the same way;
+ * - a task with a handoff (Vault M5, CTO J13) gets it built from its scripted
+ *   chat and placed in the pack's handoff layer; `handoff` 'off' leaves that
+ *   layer empty, and a `handoff` variant without `vaultPack` runs the pack in
+ *   full so the handoff layer can render at all. The person's own handoffs are
+ *   never read: the layer holds the task's handoff or nothing.
+ * The index of a task's vault is built before the run starts (a person's
+ * vault is indexed in the background long before a task), then closed and
+ * its saved file removed, since the folder is gone after the run.
+ */
+export function deepDrive(options: DeepDriveOptions): DriveTask {
+  const { config: evalConfig, providerId } = options;
+  const registries = new Map<string, ProviderRegistry>();
+  const makeProviders =
+    options.makeProviders ??
+    ((cfg: OscConfig) => new ProviderRegistry(cfg, getAnthropicKey, engineEthicsContext()));
   const profile = profileFor('local-interactive');
   const permConfig = {
-    ...config.permissions,
-    defaults: { ...config.permissions.defaults, write: 'allow' as const },
+    ...evalConfig.permissions,
+    defaults: { ...evalConfig.permissions.defaults, write: 'allow' as const },
   } as PermissionConfig;
 
-  const drive: DriveTask = async (cwd, prompt, task) => {
+  return async (cwd, prompt, task, context) => {
     // Verify in the loop: the task's own test runs after a change, the way a
     // project's tests would, and a failure goes back to the model for another
     // go (harness.verify.maxRetries). It is the harness feature under
     // measurement; the score still comes from the task's independent check.
     const verifyCommand = verifyCommandFor(task);
-    const driveConfig: OscConfig = verifyCommand
+    // A variant or a handoff task is hermetic about the vault: the task's
+    // own folder or none, so the person's own notes never enter a benchmark.
+    const hermetic =
+      context.vaultPack !== undefined || context.handoff !== undefined || !!task.handoff;
+    let driveConfig: OscConfig = verifyCommand
       ? {
           ...evalConfig,
           harness: {
@@ -193,7 +338,98 @@ async function runDeep(
           },
         }
       : evalConfig;
-    const toolContext = buildToolContext({ cwd, config: driveConfig, router, providers });
+    // The handoff layer is a full-mode layer, so a handoff run with no pack
+    // variant runs the pack in full; the two handoff runs then differ by the
+    // handoff alone.
+    const packContext = context.vaultPack ?? (context.handoff ? 'on' : undefined);
+    if (packContext) {
+      driveConfig = {
+        ...driveConfig,
+        vault: { ...driveConfig.vault, context: packContext === 'on' ? 'full' : 'off' },
+        memory: { ...driveConfig.memory, enabled: true },
+      };
+    }
+    let providers = options.providers;
+    if (context.numCtx || context.promptCache) {
+      const endpoint = driveConfig.providers[providerId];
+      if (context.numCtx && endpoint?.kind === 'openai-compatible') {
+        driveConfig = {
+          ...driveConfig,
+          providers: {
+            ...driveConfig.providers,
+            [providerId]: { ...endpoint, numCtx: context.numCtx },
+          },
+        };
+      }
+      if (context.promptCache && endpoint?.kind === 'anthropic') {
+        driveConfig = {
+          ...driveConfig,
+          providers: {
+            ...driveConfig.providers,
+            [providerId]: {
+              ...endpoint,
+              promptCache: context.promptCache === 'on' ? 'auto' : 'off',
+            },
+          },
+        };
+      }
+      const key = `${context.numCtx ?? '-'}/${context.promptCache ?? '-'}`;
+      let fresh = registries.get(key);
+      if (!fresh) {
+        fresh = makeProviders(driveConfig);
+        registries.set(key, fresh);
+      }
+      providers = fresh;
+    }
+    const handoffText =
+      task.handoff && context.handoff !== 'off'
+        ? (options.buildHandoff ?? buildHandoff)(task.handoff.turns, HANDOFF_MAX_TOKENS, {
+            from: task.handoff.from,
+            date: task.handoff.date,
+          }).text
+        : undefined;
+
+    const stack = resolveStack(driveConfig, providers);
+    const router = new Router(driveConfig, providers, stack);
+    const hasVault = context.vaultDir !== undefined || !hermetic;
+    const tools = buildToolRegistry({
+      stackHasVision: false,
+      stackHasImageGen: false,
+      stackHasSpecialists: false,
+      memory: driveConfig.memory?.enabled !== false,
+      vault: hasVault,
+    });
+    const toolContext = buildToolContext({
+      cwd,
+      config: driveConfig,
+      router,
+      providers,
+      vault: hasVault,
+    });
+    if (context.vaultDir) toolContext.vaultRoot = context.vaultDir;
+    const privacy = toolContext.vaultPrivacy ?? lazyVaultPrivacy(vaultPrivacyConfig(driveConfig));
+    if (context.vaultDir) {
+      toolContext.vaultPrivacy = privacy;
+      const handle = await engineVaultIndex(context.vaultDir);
+      await handle.whenReconciled(60_000);
+    }
+    const source = createVaultContextSource({
+      vaultRoot: toolContext.vaultRoot,
+      privacy,
+      currentState: currentStateReader(cwd, undefined),
+      lockdown: { egress: false, secrets: false },
+    });
+    // The handoff layer holds the task's handoff or nothing, whatever the
+    // source would read on its own, so a benchmark never sees the person's.
+    const vaultContext: VaultContextSource = {
+      async prepare(taskText, signal) {
+        const prepared = { ...(await source.prepare(taskText, signal)) };
+        delete prepared.handoff;
+        if (handoffText) prepared.handoff = handoffText;
+        return prepared;
+      },
+    };
+
     const events: AgentEvent[] = [];
     const agent = new AgentSession({
       config: driveConfig,
@@ -201,30 +437,37 @@ async function runDeep(
       tools,
       toolContext,
       permissions: new PermissionEngine(permConfig, profile),
-      guardrails: new Guardrails(config.guardrails),
+      guardrails: new Guardrails(driveConfig.guardrails),
       usage: new UsageTracker(),
       profile,
-      approver: evalApprover(() => cloudApproved),
+      approver: evalApprover(options.cloudApproved),
       onEvent: (e) => events.push(e),
       persistRule: () => false,
+      vaultContext,
     });
-    await agent.run(prompt);
-    return { finalText: lastFinalText(events), trace: traceFrom(events, tools) };
+    try {
+      await agent.run(prompt);
+    } finally {
+      if (context.vaultDir) {
+        await closeEngineVaultIndex(context.vaultDir);
+        await deleteVaultIndexFile(context.vaultDir).catch(() => false);
+      }
+    }
+    return {
+      finalText: lastFinalText(events),
+      trace: { ...traceFrom(events, tools), ...vaultTraceFields(events) },
+    };
   };
+}
 
-  try {
-    const report = await runEvalV2(drive, {
-      model,
-      provider: providerId,
-      attempts,
-      write: true,
-      onProgress: (m) => out(t.muted(`  ${m}`)),
-    });
-    renderV2(report, provider.kind);
-  } catch (err) {
-    warnLine(`The deep eval could not finish: ${(err as Error).message}`);
-    process.exitCode = 1;
-  }
+/** The variant in words, for the header and the report ('' for none). */
+export function describeVariant(variant: EvalVariant): string {
+  const parts: string[] = [];
+  if (variant.vaultPack) parts.push(`vault pack ${variant.vaultPack}`);
+  if (variant.numCtx) parts.push(`num_ctx ${variant.numCtx}`);
+  if (variant.promptCache) parts.push(`prompt cache ${variant.promptCache}`);
+  if (variant.handoff) parts.push(`handoff ${variant.handoff}`);
+  return parts.join(', ');
 }
 
 // A plain `node ...` invocation and nothing else: no chaining, no redirection
@@ -354,6 +597,7 @@ export function traceLine(trace: DriveTrace): string {
     wrote,
     verify,
     done,
+    costLine(trace),
   ]
     .filter(Boolean)
     .join('; ');
@@ -364,10 +608,29 @@ export function traceLine(trace: DriveTrace): string {
   return summary + failureLines.join('');
 }
 
+/** What a run cost, when the drive measured it (Vault M4, CTO I14): input
+ *  tokens sent, the prompt cache's reads and writes (Vault M5, CTO J19), the
+ *  pack's share and its notes, and wall time. '' when none. */
+export function costLine(trace: DriveTrace): string {
+  const parts: string[] = [];
+  if (trace.promptTokens !== undefined) parts.push(`${trace.promptTokens} input tokens`);
+  if (trace.cacheReadTokens !== undefined || trace.cacheWriteTokens !== undefined) {
+    parts.push(`cache read ${trace.cacheReadTokens ?? 0}, written ${trace.cacheWriteTokens ?? 0}`);
+  }
+  if (trace.packTokens !== undefined) {
+    const notes = trace.packNotes?.length ?? 0;
+    parts.push(`pack ${trace.packTokens} tokens, ${notes} note${notes === 1 ? '' : 's'}`);
+  }
+  if (trace.wallMs !== undefined) parts.push(`${(trace.wallMs / 1000).toFixed(1)}s`);
+  return parts.join(', ');
+}
+
 function renderV2(report: EvalV2Report, kind: 'local' | 'cloud'): void {
   const pct = (n: number) => `${(n * 100).toFixed(0).padStart(3)}%`;
   const many = report.attempts > 1;
+  const variantText = describeVariant(report.variant ?? {});
   out();
+  if (variantText) out(t.muted(`  Variant: ${variantText}.`));
   if (many)
     out(
       t.muted(
@@ -386,8 +649,11 @@ function renderV2(report: EvalV2Report, kind: 'local' | 'cloud'): void {
       : pct(score.score);
     out(`  ${glyph} ${score.task.padEnd(20)} ${cols}  ${t.muted(score.detail)}`);
     // On anything short of a clean pass, say what the loop actually did, so the
-    // number reads as a diagnosis and not a shrug.
-    if (score.best < 1 && score.trace) out(t.muted(`      ${traceLine(score.trace)}`));
+    // number reads as a diagnosis and not a shrug. A variant run says it for
+    // every task: its input tokens and wall time are half of what it measures.
+    if (score.trace && (score.best < 1 || variantText)) {
+      out(t.muted(`      ${traceLine(score.trace)}`));
+    }
   }
   out();
   const avg = (report.average * 100).toFixed(0);
@@ -426,5 +692,9 @@ function renderV2(report: EvalV2Report, kind: 'local' | 'cloud'): void {
       ),
     );
   }
-  out(t.muted('  Report saved under ~/.os-code/eval/ (v2-<model>.json).'));
+  out(
+    t.muted(
+      `  Report saved under ~/.os-code/eval/ (v2-<model>${variantSuffix(report.variant ?? {})}.json).`,
+    ),
+  );
 }

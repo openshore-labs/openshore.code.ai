@@ -172,7 +172,15 @@ describe('Local provider lists only notes (0.6)', () => {
     const r = 'vault.filter';
     await localProvider.write(r, 'Note.md', 'n');
     await localProvider.write(r, 'diagram.png', 'not a note');
-    await localProvider.write(r, '.obsidian/app.json', '{}');
+    // A dot path is refused on write (Vault M7, CTO L8), so a legacy body is
+    // planted straight into the store, as an older build would have left it.
+    await expect(localProvider.write(r, '.obsidian/app.json', '{}')).rejects.toThrow(
+      /not a note name/,
+    );
+    await platform.storeSetJson(`oscode.gitos.file.${r}..obsidian/app.json`, {
+      text: '{}',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    });
     expect(await listed(r)).toEqual(['Note.md']);
   });
 });
@@ -202,7 +210,11 @@ describe('a dot-typed note name never truncates the note (0.2, 0.6)', () => {
     const r = 'vault.dotlink';
     const path = await createTyped(r, 'Ideas/.env setup');
     await localProvider.write(r, path, 'PORT and the API key');
-    const resolved = resolveWikilink('.env setup', await listed(r));
+    // The link names the note by its path, as typed. A bare [[.env setup]]
+    // from the root no longer finds "Ideas/env setup.md": the core's cleaned
+    // name fallback is a whole path, not a basename anywhere (Vault M3 H4,
+    // step 5), so it lands only on the note that same name would create.
+    const resolved = resolveWikilink('Ideas/.env setup', await listed(r));
     expect(resolved).toBe(path);
     // A tap on a resolved link opens it; even the create path finds it.
     expect(await createTyped(r, 'Ideas/.env setup')).toBe(path);
@@ -214,7 +226,10 @@ describe('a dot-typed note name never truncates the note (0.2, 0.6)', () => {
     // lists, but a create or a draft replay that asks stat must still learn
     // that bytes live there.
     const r = 'vault.legacydot';
-    await localProvider.write(r, '.NET migration.md', 'old body');
+    await platform.storeSetJson(`oscode.gitos.file.${r}..NET migration.md`, {
+      text: 'old body',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    });
     expect(await listed(r)).toEqual([]);
     expect(await localProvider.stat(r, '.NET migration.md')).toMatchObject({
       path: '.NET migration.md',
@@ -386,5 +401,178 @@ describe('storeKeys', () => {
     expect(await platform.storeKeys('oscode.gitos.file.vault.keys.')).toEqual([
       'oscode.gitos.file.vault.keys.a.md',
     ]);
+  });
+});
+
+// Vault M6 (CTO K3, K6, R3): a rename is a key move in the chain that keeps
+// the body whole, `v` included; Trash is one sealed key per entry plus a list
+// doc, and a restore puts back the same version, beside a taken name as
+// "{title} (restored)". The cross-provider cases live in providerContract;
+// these pin what is Local's own.
+describe('Local provider rename and Trash (M6)', () => {
+  const versionOf = (r: { ok: boolean; file?: { version?: string } }) =>
+    r.ok ? r.file!.version! : '';
+
+  it('offers rename and Trash, and no folders, attachments or bytes of its own', () => {
+    for (const m of ['rename', 'trash', 'listTrash', 'restore', 'emptyTrash'] as const) {
+      expect(typeof localProvider[m], m).toBe('function');
+    }
+    for (const m of [
+      'listFolders',
+      'createFolder',
+      'renameFolder',
+      'listAttachments',
+      'readBytes',
+    ] as const) {
+      expect(localProvider[m], m).toBeUndefined();
+    }
+  });
+
+  it('a rename keeps the version token, and the old key is gone', async () => {
+    const r = 'vault.m6.rename';
+    const w = await localProvider.write(r, 'Plans.md', 'the plan', { ifAbsent: true });
+    const moved = await localProvider.rename!(r, 'Plans.md', 'Work/Plans 2.md', {
+      ifMatch: versionOf(w),
+    });
+    expect(moved).toMatchObject({ ok: true, file: { path: 'Work/Plans 2.md' } });
+    expect(moved.ok && moved.file.version).toBe(versionOf(w));
+    expect(await platform.storeGetJson(`oscode.gitos.file.${r}.Plans.md`)).toBeUndefined();
+    expect(await listed(r)).toEqual(['Work/Plans 2.md']);
+    // The version it kept is the one the next write accepts.
+    const next = await localProvider.write(r, 'Work/Plans 2.md', 'more', {
+      ifMatch: versionOf(w),
+    });
+    expect(next.ok).toBe(true);
+  });
+
+  it('a pre-M2 body (no v) renames with its updatedAt as the version', async () => {
+    const r = 'vault.m6.legacy';
+    await platform.storeSetJson(`oscode.gitos.file.${r}.Old.md`, {
+      text: 'old',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+    const moved = await localProvider.rename!(r, 'Old.md', 'New.md', {
+      ifMatch: '2026-08-01T00:00:00.000Z',
+    });
+    expect(moved).toMatchObject({
+      ok: true,
+      file: { path: 'New.md', version: '2026-08-01T00:00:00.000Z' },
+    });
+  });
+
+  it('a rename racing a write to the source never loses the new text', async () => {
+    const r = 'vault.m6.race';
+    const w = await localProvider.write(r, 'a.md', 'one', { ifAbsent: true });
+    const [write, move] = await Promise.all([
+      localProvider.write(r, 'a.md', 'two', { ifMatch: versionOf(w) }),
+      localProvider.rename!(r, 'a.md', 'b.md', { ifMatch: versionOf(w) }),
+    ]);
+    // The chain runs the write first, so the rename sees a moved version.
+    expect(write.ok).toBe(true);
+    expect(move).toMatchObject({ ok: false, conflict: 'changed', theirs: { text: 'two' } });
+    expect((await localProvider.read(r, 'a.md'))?.text).toBe('two');
+    expect(await localProvider.read(r, 'b.md')).toBeUndefined();
+  });
+
+  it('a trashed note is one sealed key with its path, text, updatedAt, v and trashedAt', async () => {
+    const r = 'vault.m6.key';
+    const w = await localProvider.write(r, 'Ideas/x.md', 'body', { ifAbsent: true });
+    const t = await localProvider.trash!(r, {
+      kind: 'note',
+      path: 'Ideas/x.md',
+      ifMatch: versionOf(w),
+    });
+    expect(t).toMatchObject({ ok: true, notes: 1, attachments: 0 });
+    const id = t.ok ? t.entry.id : '';
+    const doc = await platform.storeGetJson<Record<string, unknown>>(
+      `oscode.gitos.trash.${r}.${id}`,
+    );
+    expect(doc).toMatchObject({ kind: 'note', path: 'Ideas/x.md', text: 'body', v: versionOf(w) });
+    expect(typeof doc?.trashedAt).toBe('string');
+    expect(await listed(r)).toEqual([]);
+    const back = await localProvider.restore!(r, id);
+    expect(back).toMatchObject({ ok: true, renamed: false, file: { path: 'Ideas/x.md' } });
+    expect(back.ok && back.file.version).toBe(versionOf(w));
+  });
+
+  it('an orphaned trash key (cut off before the list) lists again', async () => {
+    const r = 'vault.m6.orphan';
+    await platform.storeSetJson(`oscode.gitos.trash.${r}.lost`, {
+      kind: 'note',
+      path: 'Lost.md',
+      text: 'still here',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      trashedAt: '2026-09-02T00:00:00.000Z',
+    });
+    expect(await localProvider.listTrash!(r)).toEqual([
+      {
+        id: 'lost',
+        path: 'Lost.md',
+        kind: 'note',
+        size: 'still here'.length,
+        trashedAt: '2026-09-02T00:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('a folder goes to Trash whole and comes back note by note', async () => {
+    const r = 'vault.m6.folder';
+    await localProvider.write(r, 'Work/a.md', 'a');
+    await localProvider.write(r, 'Work/Deep/b.md', 'b');
+    await localProvider.write(r, 'Workshop.md', 'not under Work');
+    const t = await localProvider.trash!(r, { kind: 'folder', path: 'Work' });
+    expect(t).toMatchObject({ ok: true, notes: 2, entry: { kind: 'folder', path: 'Work' } });
+    expect(await listed(r)).toEqual(['Workshop.md']);
+    // Someone made Work/a.md again meanwhile: that one comes back beside it.
+    await localProvider.write(r, 'Work/a.md', 'new a');
+    const back = await localProvider.restore!(r, t.ok ? t.entry.id : '');
+    expect(back).toMatchObject({ ok: true, renamed: true });
+    expect(await listed(r)).toEqual([
+      'Work/a (restored).md',
+      'Work/a.md',
+      'Work/Deep/b.md',
+      'Workshop.md',
+    ]);
+    expect((await localProvider.read(r, 'Work/a.md'))?.text).toBe('new a');
+    expect((await localProvider.read(r, 'Work/a (restored).md'))?.text).toBe('a');
+  });
+
+  it('an empty folder moves nothing and lists nothing', async () => {
+    const r = 'vault.m6.empty';
+    const t = await localProvider.trash!(r, { kind: 'folder', path: 'Nothing' });
+    expect(t).toMatchObject({ ok: true, notes: 0 });
+    expect(await localProvider.listTrash!(r)).toEqual([]);
+  });
+
+  it('refuses a folder path that is the root or a dot folder', async () => {
+    for (const path of ['', '.trash', 'a/.obsidian', '/abs']) {
+      await expect(localProvider.trash!('vault.m6.bad', { kind: 'folder', path })).rejects.toThrow(
+        /not a folder/,
+      );
+    }
+  });
+
+  it('Empty Trash removes the entries named, then all of them', async () => {
+    const r = 'vault.m6.emptytrash';
+    const ids: string[] = [];
+    for (const p of ['a.md', 'b.md', 'c.md']) {
+      const w = await localProvider.write(r, p, p, { ifAbsent: true });
+      const t = await localProvider.trash!(r, { kind: 'note', path: p, ifMatch: versionOf(w) });
+      ids.push(t.ok ? t.entry.id : '');
+    }
+    expect(await localProvider.emptyTrash!(r, [ids[0]!, 'nope'])).toEqual({ removed: 1 });
+    expect((await localProvider.listTrash!(r)).map((e) => e.path).sort()).toEqual(['b.md', 'c.md']);
+    expect(await platform.storeGetJson(`oscode.gitos.trash.${r}.${ids[0]}`)).toBeUndefined();
+    expect(await localProvider.emptyTrash!(r)).toEqual({ removed: 2 });
+    expect(await localProvider.listTrash!(r)).toEqual([]);
+    expect(await localProvider.restore!(r, ids[1]!)).toEqual({ ok: false, conflict: 'missing' });
+  });
+
+  it('a note gone since it was read answers changed, and nothing lists in Trash', async () => {
+    const r = 'vault.m6.gone';
+    expect(await localProvider.trash!(r, { kind: 'note', path: 'never.md', ifMatch: 'x' })).toEqual(
+      { ok: false, conflict: 'changed' },
+    );
+    expect(await localProvider.listTrash!(r)).toEqual([]);
   });
 });

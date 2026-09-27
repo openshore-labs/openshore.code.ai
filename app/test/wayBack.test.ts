@@ -105,7 +105,8 @@ describe('the way back', () => {
     const uses: Array<[string[], number]> = [
       [['screens', 'SettingsScreen.tsx'], 3], // account, log, search
       [['screens', 'StackScreen.tsx'], 1], // pick a model for a role
-      [['screens', 'VaultScreen.tsx'], 3], // note options, where the vault lives, a current's note
+      [['screens', 'VaultScreen.tsx'], 2], // where the vault lives, a current's note
+      [['components', 'vault', 'VaultNoteOptions.tsx'], 1], // note options (moved, Vault M6 wave 0)
       [['components', 'InfoSheet.tsx'], 1],
       [['components', 'ProfileStatus.tsx'], 1],
     ];

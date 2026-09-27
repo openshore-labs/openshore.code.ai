@@ -10,18 +10,31 @@
 /** How long the editor waits after the last keystroke before it saves. */
 export const VAULT_AUTOSAVE_MS = 600;
 
-export interface VaultAutosave {
+/** Text typed and waiting for the debounce, with the vault it goes to. */
+export interface VaultAutosavePending<T extends TargetLike = TargetLike> {
+  path: string;
+  text: string;
+  at: T | undefined;
+}
+
+export interface VaultAutosave<T extends TargetLike = TargetLike> {
   /** Save this text after the debounce, to the vault targeted right now. */
   schedule(path: string, text: string): void;
   /** Send the pending text now, to the vault it was typed into. */
   flush(): void;
   /** Drop the pending text without sending it. */
   cancel(): void;
+  /** Text is typed and waiting for the debounce (the save chip's Saving). */
+  isPending(): boolean;
+  /** Stop the timer and hand the pending text over, for a caller that saves
+   *  it itself and waits for the save (a Vault M6 operation flushing first,
+   *  so no stale timer can land after it). */
+  take(): VaultAutosavePending<T> | undefined;
 }
 
 /** A target is a vault on a storage, and for the team vault the account the
  *  text was typed under. */
-type TargetLike = { providerId: string; resourceId: string; owner?: string };
+export type TargetLike = { providerId: string; resourceId: string; owner?: string };
 
 const sameTarget = (a: TargetLike | undefined, b: TargetLike | undefined) =>
   a?.providerId === b?.providerId && a?.resourceId === b?.resourceId && a?.owner === b?.owner;
@@ -32,7 +45,7 @@ export function vaultAutosave<T extends TargetLike>(opts: {
   /** Write the text to that target (the store's vaultSave). */
   save: (path: string, text: string, at: T | undefined) => void;
   delayMs?: number;
-}): VaultAutosave {
+}): VaultAutosave<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: { path: string; text: string; at: T | undefined } | undefined;
   const stop = () => {
@@ -59,6 +72,15 @@ export function vaultAutosave<T extends TargetLike>(opts: {
     cancel() {
       stop();
       pending = undefined;
+    },
+    isPending() {
+      return pending !== undefined;
+    },
+    take() {
+      stop();
+      const p = pending;
+      pending = undefined;
+      return p;
     },
   };
 }

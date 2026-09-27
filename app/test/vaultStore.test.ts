@@ -130,7 +130,15 @@ function makeProvider(id: string, cas = false) {
   const hideFromList = new Set<string>();
   const fail = { list: false, read: false, write: false, stat: false, remove: false };
   const limits = { writesLeft: undefined as number | undefined };
+  // `editor.by` is who the storage says last saved every file (the team
+  // vault's editedBy, G6).
+  const editor = { by: undefined as { id: string; label?: string } | undefined };
+  // `stamp.fixed` gives every file one updatedAt, as two saves inside one
+  // millisecond would: only the version tells them apart (Vault M2 G1).
+  const stamp = { fixed: undefined as string | undefined };
   const counts = {
+    lists: 0,
+    leases: [] as Array<{ holder: string; ttlMs: number; label?: string }>,
     reads: 0,
     writes: [] as Array<{ path: string; guard?: WriteGuard }>,
     removes: [] as Array<{ path: string; guard?: { ifMatch: string } }>,
@@ -142,14 +150,15 @@ function makeProvider(id: string, cas = false) {
       ? { path, updatedAt: 'cloud', size: 10, evicted: true }
       : {
           path,
-          updatedAt: version(path),
+          updatedAt: stamp.fixed ?? version(path),
           size: files.get(path)!.length,
           ...(cas ? { version: version(path) } : {}),
+          ...(editor.by ? { editedBy: editor.by } : {}),
         };
   const file = (path: string): StoredFile => ({
     path,
     text: files.get(path)!,
-    updatedAt: version(path),
+    updatedAt: stamp.fixed ?? version(path),
     ...(cas ? { version: version(path) } : {}),
   });
   const provider = {
@@ -160,6 +169,7 @@ function makeProvider(id: string, cas = false) {
     ready: true,
     async list(): Promise<StoredFileMeta[]> {
       if (fail.list) throw new Error('offline');
+      counts.lists++;
       return [...new Set([...files.keys(), ...evicted])]
         .filter((p) => !hideFromList.has(p))
         .map(meta);
@@ -200,16 +210,21 @@ function makeProvider(id: string, cas = false) {
       files.delete(path);
       return { ok: true };
     },
-    async acquireLease(_r: string, holder: string) {
+    async acquireLease(_r: string, holder: string, ttlMs: number, label?: string) {
+      counts.leases.push({ holder, ttlMs, label });
       // A foreign holder keeps its lease; otherwise the caller takes it.
       if (leaseHolder !== 'me' && leaseHolder !== holder) {
-        return { holder: leaseHolder, expiresAt: new Date(Date.now() + 90_000).toISOString() };
+        return {
+          holder: leaseHolder,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+          ...(leaseLabel ? { label: leaseLabel } : {}),
+        };
       }
       leaseHolder = holder;
-      return { holder, expiresAt: new Date(Date.now() + 90_000).toISOString() };
+      return { holder, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
     },
-    async releaseLease() {
-      leaseHolder = 'me';
+    async releaseLease(_r: string, holder: string) {
+      if (leaseHolder === holder) leaseHolder = 'me';
     },
   };
   const reset = () => {
@@ -219,6 +234,10 @@ function makeProvider(id: string, cas = false) {
     hideFromList.clear();
     Object.assign(fail, { list: false, read: false, write: false, stat: false, remove: false });
     limits.writesLeft = undefined;
+    stamp.fixed = undefined;
+    editor.by = undefined;
+    counts.lists = 0;
+    counts.leases = [];
     counts.reads = 0;
     counts.writes = [];
     counts.removes = [];
@@ -231,6 +250,8 @@ function makeProvider(id: string, cas = false) {
     hideFromList,
     fail,
     limits,
+    stamp,
+    editor,
     counts,
     version,
     reset,
@@ -238,15 +259,25 @@ function makeProvider(id: string, cas = false) {
 }
 
 let leaseHolder = 'me';
+// The device kind a foreign lease says it is (Lease.label).
+let leaseLabel: string | undefined;
 // Whether this device holds a Google account for Drive.
 let driveConnected = true;
 const local = makeProvider('local');
 const folder = makeProvider('files', true);
 const drive = makeProvider('gdrive');
+// A compare-and-swap storage other than the folder (iCloud, once its native
+// half checks the guard), for the "every provider" cases (Vault M2).
+const cloud = makeProvider('icloud', true);
+// The paired computer's vault (Vault M5, CTO J9): compare-and-swap, like the
+// daemon's routes.
+const hub = makeProvider('hub', true);
 const byId: Record<string, ReturnType<typeof makeProvider>> = {
   local,
   files: folder,
   gdrive: drive,
+  icloud: cloud,
+  hub,
 };
 // The personal vault's default provider, under the names the older cases use.
 const files = local.files;
@@ -263,6 +294,8 @@ const teamNet = {
   fail: undefined as Error | undefined,
   beforePut: undefined as ((args: Record<string, unknown>) => Promise<void>) | undefined,
   puts: [] as Array<{ token: string; path: string; body: string; base: number }>,
+  // How many one-note reads (stat or read, a `path=eq.` select) were asked.
+  heads: 0,
 };
 let teamToken: string | undefined = 'tok';
 // The account the fake auth server hands out: refreshSession answers with
@@ -294,6 +327,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
     ...actual,
     isConfigured: () => true,
     select: async (table: string, _token: string, query: string) => {
+      if (table === 'org_vault_notes' && /path=eq\./.test(query)) teamNet.heads++;
       if (teamNet.fail) throw teamNet.fail;
       // An active member of ORG; no org to pull, no projects, no entitlement.
       if (table === 'org_members' && query.startsWith('select=role')) {
@@ -372,12 +406,12 @@ vi.mock('../src/lib/gitos/index.js', async () => {
       wiring.storeToken = token;
     },
     resetOrgVault: org.resetOrgVault,
-    orgVaultBaseRev: org.orgVaultBaseRev,
-    seedOrgVaultBaseRev: org.seedOrgVaultBaseRev,
   };
 });
 
 const { useApp } = await import('../src/state/store.js');
+const { closeVaultIndex, currentVaultIndex, vaultIndexStatus } =
+  await import('../src/lib/vaultIndexHost.js');
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');
 
 // init() registers the store's own team-token getter (captured above).
@@ -409,6 +443,7 @@ function reset() {
   teamNet.fail = undefined;
   teamNet.beforePut = undefined;
   teamNet.puts = [];
+  teamNet.heads = 0;
   teamToken = 'tok';
   auth.refresh = undefined;
   auth.nextUser = { id: 'u1', email: 'me@example.com' };
@@ -417,6 +452,7 @@ function reset() {
     () => true,
   );
   leaseHolder = 'me';
+  leaseLabel = undefined;
   driveConnected = true;
   desk.on = false;
   desk.info = undefined;
@@ -436,6 +472,8 @@ function reset() {
     vaultError: undefined,
     vaultHeld: [],
     vaultLeaseHeldByOther: undefined,
+    vaultLeaseOther: undefined,
+    vaultTeamExpired: undefined,
     vaultFolder: undefined,
     vaultListed: undefined,
     vaultMoving: undefined,
@@ -552,7 +590,13 @@ describe('vault data safety', () => {
     await useApp.getState().vaultRefresh();
     local.counts.reads = 0;
     await useApp.getState().vaultReadAll();
-    expect(local.counts.reads).toBe(2); // cold: both bodies read
+    // The creates primed the cache from their write results (Vault M2 2.1).
+    expect(local.counts.reads).toBe(0);
+    // Another writer changes one: only that one is read again.
+    files.set('b.md', 'written elsewhere');
+    local.counts.reads = 0;
+    await useApp.getState().vaultReadAll();
+    expect(local.counts.reads).toBe(1);
     local.counts.reads = 0;
     await useApp.getState().vaultReadAll();
     expect(local.counts.reads).toBe(0); // warm: nothing changed, no re-reads
@@ -574,11 +618,12 @@ describe('vault data safety', () => {
     expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
   });
 
-  it('does not lease the team vault (server resolves concurrency)', async () => {
+  it('the team vault is never read-only for a lease, and writes none', async () => {
     leaseHolder = 'other-device';
-    useApp.setState({ vaultScope: 'team' });
+    teamScope();
     await useApp.getState().vaultAcquireLease();
     expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
+    expect(teamNet.puts).toEqual([]);
   });
 
   it('drops a stashed draft when its note is deleted (no resurrection)', async () => {
@@ -1354,6 +1399,85 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
     expect(pending()).toEqual({});
   });
 
+  // Vault M2 2.6: an expiry with a team note open keeps the note.
+  async function expireOnTeamNote() {
+    teamScope();
+    useStoreToken();
+    team.set('plan.md', { body: 'the team plan', rev: 1 });
+    team.set('other.md', { body: 'another team note', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('plan.md');
+    const at = useApp.getState().vaultTargetRef();
+    useApp.setState({ authSession: session(auth.nextUser, -1000) });
+    auth.refresh = new SupabaseRequestError('invalid grant', 400);
+    await useApp.getState().refreshOrgRole();
+    auth.refresh = undefined;
+    return at;
+  }
+
+  it('an expired sign-in keeps the open team note, read-only, and nothing else of the team', async () => {
+    const at = await expireOnTeamNote();
+    const st = useApp.getState();
+    expect(st.authSession).toBeUndefined();
+    expect(st.vaultTeamExpired).toBe(true);
+    expect(st.vaultScope).toBe('team');
+    expect(st.vaultNote).toMatchObject({ path: 'plan.md', text: 'the team plan' });
+    expect(st.vaultFiles.map((f) => f.path)).toEqual(['plan.md']);
+    // A refresh (a focus return) lists nothing and blames no connection.
+    const puts = teamNet.puts.length;
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultError).toBeUndefined();
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['plan.md']);
+    // Text typed as it expired waits for the same person, sealed.
+    await useApp.getState().vaultSave('plan.md', 'typed as it expired', at);
+    expect(teamNet.puts.length).toBe(puts);
+    expect(pending()[`org::${ORG}::plan.md`]).toMatchObject({ text: 'typed as it expired' });
+  });
+
+  it('signing back in as the same person goes on with the kept note and sends its text', async () => {
+    const at = await expireOnTeamNote();
+    await useApp.getState().vaultSave('plan.md', 'typed as it expired', at);
+    await useApp.getState().signIn('me@example.com', 'pw');
+    await tick();
+    await tick();
+    const st = useApp.getState();
+    expect(st.vaultTeamExpired).toBeUndefined();
+    expect(st.vaultScope).toBe('team');
+    expect(st.vaultNote?.path).toBe('plan.md');
+    await useApp.getState().vaultRefresh();
+    expect(team.get('plan.md')?.body).toBe('typed as it expired');
+  });
+
+  it('another account signing in after an expiry never sees the kept team note', async () => {
+    await expireOnTeamNote();
+    auth.nextUser = { id: 'u2', email: 'b@example.com' };
+    await useApp.getState().signIn('b@example.com', 'pw');
+    const st = useApp.getState();
+    expect(st.vaultTeamExpired).toBeUndefined();
+    expect(st.vaultScope).toBe('personal');
+    expect(st.vaultNote).toBeUndefined();
+  });
+
+  it('leaving the kept team note goes back to the personal vault', async () => {
+    await expireOnTeamNote();
+    useApp.getState().vaultCloseNote();
+    const st = useApp.getState();
+    expect(st.vaultTeamExpired).toBeUndefined();
+    expect(st.vaultScope).toBe('personal');
+    expect(st.vaultFiles.some((f) => f.path === 'other.md')).toBe(false);
+  });
+
+  it('a sign-out never keeps the team note', async () => {
+    teamScope();
+    team.set('plan.md', { body: 'the team plan', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('plan.md');
+    await useApp.getState().signOutAccount();
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    expect(useApp.getState().vaultScope).toBe('personal');
+    expect(useApp.getState().vaultTeamExpired).toBeUndefined();
+  });
+
   it("another account signing in after an expiry drops the previous account's team text", async () => {
     await expireWithUnsentTeamText();
     auth.nextUser = { id: 'u2', email: 'b@example.com' };
@@ -1512,21 +1636,32 @@ describe('Sign out asks before it deletes unsent team text (T5)', () => {
     await card.click('Sign out');
     await card.settle();
     await card.click('Sign out and delete');
-    await card.settle();
-    expect(useApp.getState().authSession).toBeUndefined();
+    await signedOut(card);
     expect(pending()).toEqual({});
     // The card turns to Sign in, and the ask plays its exit, never a cut.
     expect(card.text()).toContain('Sign in');
     expect(card.container.querySelector('.confirm-card.closing')).not.toBeNull();
   });
 
+  // Sign out runs a chain with real asynchronous work in it, not only
+  // promise ticks: the team index's storage key is a SHA-256 digest
+  // (crypto.subtle, answered from the platform's thread pool), and the sealed
+  // store is read and written on the way. One macrotask (`card.settle()`) is
+  // usually enough and, on a loaded machine, sometimes not, which is how this
+  // row failed now and then. So it waits for the sign-out's own outcome, and
+  // then for the card to render it.
+  async function signedOut(card: import('./support/dom.js').TestDom): Promise<void> {
+    await vi.waitFor(() => expect(useApp.getState().authSession).toBeUndefined());
+    await card.settle();
+  }
+
   it('with nothing unsent, Sign out signs out without asking', async () => {
     teamScope();
     const card = await mountCard();
     await card.click('Sign out');
-    await card.settle();
+    await signedOut(card);
     expect(card.text()).not.toContain('Team text not sent yet');
-    expect(useApp.getState().authSession).toBeUndefined();
+    expect(card.text()).toContain('Sign in');
   });
 });
 
@@ -2282,5 +2417,1021 @@ describe("settling a move's forked pairs (1d)", () => {
       partial: true,
     });
     expect(folder.files.get(pair.from)).toBe('the one you moved');
+  });
+});
+
+describe('Vault M2 2.1 in the store', () => {
+  const F = folder.files;
+  async function onFolder(path = 'n.md', text = 'loaded') {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined, vaultReturnFolder: undefined });
+  });
+
+  it('a save patches the file list from the write result, never re-lists', async () => {
+    await onFolder();
+    folder.counts.lists = 0;
+    await useApp.getState().vaultSave('n.md', 'a longer body');
+    expect(folder.counts.lists).toBe(0);
+    const row = useApp.getState().vaultFiles.find((f) => f.path === 'n.md');
+    expect(row).toMatchObject({ version: folder.version('n.md'), size: 13 });
+    expect(row?.editedBy).toBeUndefined();
+  });
+
+  it('a create adds the note to the list in path order without a re-list', async () => {
+    await onFolder('m.md');
+    folder.counts.lists = 0;
+    await useApp.getState().vaultCreate('a note');
+    expect(folder.counts.lists).toBe(0);
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['a note.md', 'm.md']);
+  });
+
+  it('a delete takes the note off the list without a re-list', async () => {
+    await onFolder();
+    folder.counts.lists = 0;
+    expect(await useApp.getState().vaultDelete('n.md')).toBe(true);
+    expect(folder.counts.lists).toBe(0);
+    expect(useApp.getState().vaultFiles).toEqual([]);
+  });
+
+  it('the size in the patched list is bytes, not characters', async () => {
+    await onFolder();
+    await useApp.getState().vaultSave('n.md', 'café');
+    expect(useApp.getState().vaultFiles.find((f) => f.path === 'n.md')?.size).toBe(5);
+  });
+
+  it('two saves in one millisecond differ only by version, and the body cache sees it', async () => {
+    folder.stamp.fixed = '2026-09-27T10:00:00.000Z';
+    await onFolder('n.md', 'first');
+    F.set('other.md', 'links to [[n]]');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultReadAll();
+    // Another writer changes it inside the same millisecond.
+    F.set('other.md', 'rewritten, same stamp');
+    folder.counts.reads = 0;
+    const all = await useApp.getState().vaultReadAll();
+    expect(folder.counts.reads).toBe(1);
+    expect(all.find((n) => n.path === 'other.md')?.text).toBe('rewritten, same stamp');
+  });
+
+  it('opening a note still downloading asks for its bytes and opens nothing', async () => {
+    local.evicted.add('far.md');
+    await useApp.getState().vaultRefresh();
+    local.counts.reads = 0;
+    await useApp.getState().vaultOpen('far.md');
+    expect(local.counts.reads).toBe(1);
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    expect(useApp.getState().toast).toMatch(/Still downloading/);
+  });
+
+  it('a team stash with a rev becomes base = String(rev) once the team compares revs', async () => {
+    const org = wiring.org!.orgVaultProvider as { compareAndSwap?: true };
+    const had = org.compareAndSwap;
+    org.compareAndSwap = true;
+    try {
+      teamScope();
+      mem.set(
+        PENDING,
+        JSON.stringify({
+          [`org::${ORG}::plan.md`]: {
+            providerId: 'org',
+            resourceId: ORG,
+            owner: 'u1',
+            path: 'plan.md',
+            text: 'typed offline',
+            base: '2026-09-01T00:00:00.000Z',
+            rev: 7,
+            at: '2026-09-27T00:00:00.000Z',
+          },
+          [`org::${ORG}::old.md`]: {
+            providerId: 'org',
+            resourceId: ORG,
+            owner: 'u1',
+            path: 'old.md',
+            text: 'no rev on this one',
+            base: '2026-09-01T00:00:00.000Z',
+            at: '2026-09-27T00:00:00.000Z',
+          },
+        }),
+      );
+      // Any read of the stash converts it, once, and stores it converted.
+      await useApp.getState().unsentTeamTextCount();
+      const p = JSON.parse(mem.get(PENDING)!) as Record<string, Record<string, unknown>>;
+      expect(p[`org::${ORG}::plan.md`]).toMatchObject({ base: '7' });
+      expect(p[`org::${ORG}::plan.md`]).not.toHaveProperty('rev');
+      // No rev: the ISO base stays, which never equals a rev, so it keeps both.
+      expect(p[`org::${ORG}::old.md`]).toMatchObject({ base: '2026-09-01T00:00:00.000Z' });
+    } finally {
+      if (had) org.compareAndSwap = had;
+      else delete org.compareAndSwap;
+    }
+  });
+
+  it('before the team compares revs, a stash with a rev is left as it was', async () => {
+    const entry = {
+      providerId: 'org',
+      resourceId: ORG,
+      owner: 'u1',
+      path: 'plan.md',
+      text: 'typed offline',
+      base: '2026-09-01T00:00:00.000Z',
+      rev: 7,
+      at: '2026-09-27T00:00:00.000Z',
+    };
+    teamScope();
+    mem.set(PENDING, JSON.stringify({ [`org::${ORG}::plan.md`]: entry }));
+    expect(await useApp.getState().unsentTeamTextCount()).toBe(1);
+    expect(JSON.parse(mem.get(PENDING)!)[`org::${ORG}::plan.md`]).toEqual(entry);
+  });
+
+  it('the store keeps no team rev of its own', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/state/store.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/orgVaultBaseRev|seedOrgVaultBaseRev/);
+  });
+});
+
+describe('conflicts and the save status on every compare-and-swap storage (M2 2.2)', () => {
+  const C = cloud.files;
+  async function onCloud(path = 'n.md', text = 'loaded') {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('icloud') },
+    });
+    C.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined, vaultReturnFolder: undefined, vaultPending: [] });
+  });
+
+  it('a conflict result stops the write and raises the choice, on any such storage', async () => {
+    await onCloud();
+    C.set('n.md', 'written on the iPad');
+    await useApp.getState().vaultSave('n.md', 'typed here');
+    expect(C.get('n.md')).toBe('written on the iPad');
+    expect(useApp.getState().vaultConflict).toMatchObject({ path: 'n.md', kind: 'changed' });
+    // Typing on goes to the stash, never the note.
+    await useApp.getState().vaultSave('n.md', 'typed here, more');
+    expect(C.get('n.md')).toBe('written on the iPad');
+    expect(pending()['icloud::vault.personal::n.md']).toMatchObject({ text: 'typed here, more' });
+  });
+
+  it('a focus return re-checks the open note on any such storage', async () => {
+    await onCloud();
+    C.set('n.md', 'written on the iPad');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    expect(useApp.getState().vaultNote?.text).toBe('written on the iPad');
+    expect(useApp.getState().vaultNote?.reloadedFrom).toBe('elsewhere');
+  });
+
+  it('the pending refs follow the stash, and a Retry that lands empties them', async () => {
+    await onCloud();
+    cloud.fail.write = true;
+    await useApp.getState().vaultSave('n.md', 'typed offline');
+    expect(useApp.getState().vaultPending).toEqual([
+      { providerId: 'icloud', resourceId: 'vault.personal', path: 'n.md' },
+    ]);
+    expect(useApp.getState().vaultError).toBe('save');
+    cloud.fail.write = false;
+    await useApp.getState().vaultRefresh();
+    expect(C.get('n.md')).toBe('typed offline');
+    expect(useApp.getState().vaultPending).toEqual([]);
+  });
+
+  it('a replay that lands on the open note becomes its version, so the next save is not a conflict', async () => {
+    await onCloud();
+    cloud.fail.write = true;
+    await useApp.getState().vaultSave('n.md', 'typed offline');
+    cloud.fail.write = false;
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultNote).toMatchObject({
+      text: 'typed offline',
+      version: cloud.version('n.md'),
+    });
+    await useApp.getState().vaultSave('n.md', 'typed offline, then more');
+    expect(useApp.getState().vaultConflict).toBeUndefined();
+    expect(C.get('n.md')).toBe('typed offline, then more');
+  });
+
+  it('vaultSaving is true while a save is on its way', async () => {
+    await onCloud();
+    const seen: boolean[] = [];
+    const off = useApp.subscribe((s) => seen.push(Boolean(s.vaultSaving)));
+    await useApp.getState().vaultSave('n.md', 'saved');
+    off();
+    expect(seen).toContain(true);
+    expect(useApp.getState().vaultSaving).toBe(false);
+  });
+
+  it('the pending count leaves out the note whose choice is open, and other accounts', async () => {
+    const { vaultPendingCount } = await import('../src/lib/vault.js');
+    const t = { providerId: 'org', resourceId: ORG };
+    const list = [
+      { providerId: 'org', resourceId: ORG, owner: 'u1', path: 'a.md' },
+      { providerId: 'org', resourceId: ORG, owner: 'u2', path: 'b.md' },
+      { providerId: 'org', resourceId: ORG, owner: 'u1', path: 'c.md' },
+      { providerId: 'local', resourceId: 'vault.personal', path: 'd.md' },
+    ];
+    expect(vaultPendingCount(list, t, { uid: 'u1' })).toBe(2);
+    expect(vaultPendingCount(list, t, { uid: 'u1', conflictPath: 'c.md' })).toBe(1);
+    expect(vaultPendingCount(list, undefined)).toBe(0);
+  });
+});
+
+describe('the lease is advisory with compare-and-swap, enforced without it (M2 2.5)', () => {
+  const now = { t: Date.parse('2026-09-27T10:00:00Z') };
+  beforeEach(async () => {
+    reset();
+    // The store remembers the lease it holds across cases; let it go.
+    await useApp.getState().vaultReleaseLease();
+    for (const p of Object.values(byId)) p.counts.leases = [];
+    leaseHolder = 'me';
+    now.t = Date.parse('2026-09-27T10:00:00Z');
+    vi.spyOn(Date, 'now').mockImplementation(() => now.t);
+    useApp.setState({ vaultConflict: undefined, vaultLeaseOther: undefined });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  const on = (providerId: string) =>
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn(providerId) },
+    });
+
+  it('the one rule: enforced only without compare-and-swap, advisory only on iCloud', async () => {
+    const { vaultLeaseMode } = await import('../src/lib/vaultLease.js');
+    expect(vaultLeaseMode({ id: 'local', compareAndSwap: true }, true)).toBe('none');
+    expect(vaultLeaseMode({ id: 'files', compareAndSwap: true }, true)).toBe('none');
+    expect(vaultLeaseMode({ id: 'org', compareAndSwap: true }, true)).toBe('none');
+    expect(vaultLeaseMode({ id: 'icloud', compareAndSwap: true }, true)).toBe('advisory');
+    expect(vaultLeaseMode({ id: 'icloud' }, true)).toBe('enforced');
+    expect(vaultLeaseMode({ id: 'dropbox' }, true)).toBe('enforced');
+    expect(vaultLeaseMode({ id: 'gdrive' }, false)).toBe('none');
+  });
+
+  it('the label is the device kind, never a name', async () => {
+    const { vaultDeviceKind } = await import('../src/lib/vaultLease.js');
+    expect(vaultDeviceKind('ios', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)' })).toBe(
+      'iPhone',
+    );
+    expect(vaultDeviceKind('ios', { userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0)' })).toBe('iPad');
+    expect(
+      vaultDeviceKind('ios', { userAgent: 'Mozilla/5.0 (Macintosh)', maxTouchPoints: 5 }),
+    ).toBe('iPad');
+    expect(vaultDeviceKind('electron', { platform: 'MacIntel' })).toBe('Mac');
+    expect(vaultDeviceKind('electron', { platform: 'Win32' })).toBe('Windows computer');
+    expect(vaultDeviceKind('web', { userAgent: 'anything' })).toBeUndefined();
+  });
+
+  it('no lease is ever written on the folder or the team vault', async () => {
+    on('files');
+    folder.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    await useApp.getState().vaultAcquireLease();
+    await useApp.getState().vaultLeaseTouch();
+    await useApp.getState().vaultSave('n.md', 'typed');
+    expect(folder.counts.leases).toEqual([]);
+    teamScope();
+    await useApp.getState().vaultLeaseTouch();
+    expect(teamNet.puts).toEqual([]);
+  });
+
+  it('iCloud with compare-and-swap takes a lease only on typing, renewed at most every 60 s, TTL 150 s', async () => {
+    on('icloud');
+    cloud.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    // Only open: no lease.
+    expect(cloud.counts.leases).toEqual([]);
+    await useApp.getState().vaultLeaseTouch();
+    now.t += 30_000;
+    await useApp.getState().vaultLeaseTouch();
+    expect(cloud.counts.leases).toHaveLength(1);
+    expect(cloud.counts.leases[0]).toMatchObject({ holder: 'this-device', ttlMs: 150_000 });
+    now.t += 31_000;
+    await useApp.getState().vaultLeaseTouch();
+    expect(cloud.counts.leases).toHaveLength(2);
+  });
+
+  it('advisory: another device editing is one quiet line, and saves still land', async () => {
+    on('icloud');
+    cloud.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    leaseHolder = 'the-ipad';
+    leaseLabel = 'iPad';
+    await useApp.getState().vaultLeaseTouch();
+    expect(useApp.getState().vaultLeaseOther).toEqual({ mode: 'advisory', label: 'iPad' });
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
+    await useApp.getState().vaultSave('n.md', 'typed here too');
+    expect(cloud.files.get('n.md')).toBe('typed here too');
+    const { vaultLeaseAlsoOpen } = await import('../src/lib/vaultCopy.js');
+    expect(vaultLeaseAlsoOpen('iPad')).toBe('Also open on your iPad.');
+  });
+
+  it('enforced: create and delete are refused while another device holds the lease', async () => {
+    // The fake This device here has no compare-and-swap.
+    files.set('keep.md', 'kept');
+    await useApp.getState().vaultRefresh();
+    leaseHolder = 'other-device';
+    await useApp.getState().vaultCreate('new note');
+    expect(files.has('new note.md')).toBe(false);
+    expect(useApp.getState().toast).toMatch(/Take over editing/);
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(true);
+    expect(await useApp.getState().vaultDelete('keep.md')).toBe(false);
+    expect(files.get('keep.md')).toBe('kept');
+  });
+
+  it("enforced: a take over sends the displaced device's text to its stash, never the note", async () => {
+    files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    const base = local.version('n.md');
+    // This device types, and holds the lease.
+    await useApp.getState().vaultLeaseTouch();
+    expect(leaseHolder).toBe('this-device');
+    // Another device takes over editing.
+    leaseHolder = 'other-device';
+    leaseLabel = 'Mac';
+    now.t += 61_000;
+    await useApp.getState().vaultLeaseTouch();
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(true);
+    expect(useApp.getState().toast).toMatch(/Editing moved to your Mac/);
+    // The autosave that was waiting lands in the stash, with its base.
+    await useApp.getState().vaultSave('n.md', 'typed before the take over');
+    expect(files.get('n.md')).toBe('loaded');
+    expect(pending()['local::vault.personal::n.md']).toMatchObject({
+      text: 'typed before the take over',
+      base,
+    });
+    // Nothing replays into the note while the other device holds it.
+    await useApp.getState().vaultRefresh();
+    expect(files.get('n.md')).toBe('loaded');
+  });
+
+  it('enforced: Take over editing makes this device the holder', async () => {
+    files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    leaseHolder = 'other-device';
+    await useApp.getState().vaultLeaseTouch();
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(true);
+    await useApp.getState().vaultTakeOverLease();
+    expect(leaseHolder).toBe('this-device');
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
+    expect(useApp.getState().toast).toBe(
+      'Editing here now. The other device stops saving within a minute.',
+    );
+    await useApp.getState().vaultSave('n.md', 'mine now');
+    expect(files.get('n.md')).toBe('mine now');
+  });
+
+  it('the Vault screen holds no lease on a timer', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/screens/VaultScreen.tsx', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/setInterval\([^)]*Lease/);
+    expect(src).not.toMatch(/vaultAcquireLease/);
+  });
+});
+
+describe('team live refresh by polling (M2 2.7)', () => {
+  const org = () => wiring.org!.orgVaultProvider as { compareAndSwap?: true };
+  let had: true | undefined;
+  beforeEach(async () => {
+    reset();
+    useApp.setState({ vaultConflict: undefined });
+    // The poll looks only on a storage with compare-and-swap; the team
+    // client gains it with 0019 (stream D), so it is switched on here.
+    had = org().compareAndSwap;
+    org().compareAndSwap = true;
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    teamScope();
+    useApp.setState({ serverRole: 'member' } as never);
+    team.set('plan.md', { body: 'the team plan', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('plan.md');
+    teamNet.heads = 0;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    useApp.getState().vaultStopPoll();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    if (had) org().compareAndSwap = had;
+    else delete org().compareAndSwap;
+    delete (globalThis as { document?: unknown }).document;
+  });
+
+  it('the schedule: 30 s within 10%, backing off 30, 60, 120, 240, then 300 s', async () => {
+    const { vaultPollDelayMs } = await import('../src/lib/vaultPoll.js');
+    expect(vaultPollDelayMs(0, 0)).toBe(27_000);
+    expect(vaultPollDelayMs(0, 1)).toBe(33_000);
+    expect([0, 1, 2, 3, 4, 5, 9].map((n) => vaultPollDelayMs(n, 0.5))).toEqual([
+      30_000, 60_000, 120_000, 240_000, 300_000, 300_000, 300_000,
+    ]);
+  });
+
+  it("a teammate's save reloads a clean open note within one tick", async () => {
+    useApp.getState().vaultStartPoll();
+    team.set('plan.md', { body: 'the plan, edited by a teammate', rev: 2 });
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(useApp.getState().vaultNote?.text).toBe('the team plan');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(useApp.getState().vaultNote?.text).toBe('the plan, edited by a teammate');
+    expect(useApp.getState().vaultNote?.reloadedFrom).toBe('elsewhere');
+    expect(useApp.getState().toast).toBeUndefined();
+  });
+
+  it('a dirty draft raises the resolve sheet instead', async () => {
+    useApp.getState().vaultStartPoll();
+    useApp.getState().vaultNoteDraft('plan.md', 'the team plan, and mine');
+    team.set('plan.md', { body: 'the plan, edited by a teammate', rev: 2 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(useApp.getState().vaultConflict).toMatchObject({ path: 'plan.md', kind: 'changed' });
+  });
+
+  it('no tick while hidden', async () => {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { visibilityState: 'hidden' },
+    });
+    useApp.getState().vaultStartPoll();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(teamNet.heads).toBe(0);
+  });
+
+  it('errors back off to 300 s and stay there, and a success resets it', async () => {
+    teamNet.fail = new TypeError('Failed to fetch');
+    useApp.getState().vaultStartPoll();
+    const at = async (ms: number) => {
+      await vi.advanceTimersByTimeAsync(ms);
+      return teamNet.heads;
+    };
+    expect(await at(30_000)).toBe(1); // t = 30 s
+    expect(await at(59_000)).toBe(1);
+    expect(await at(1_000)).toBe(2); // t = 90 s
+    expect(await at(120_000)).toBe(3); // t = 210 s
+    expect(await at(240_000)).toBe(4); // t = 450 s
+    expect(await at(299_000)).toBe(4);
+    expect(await at(1_000)).toBe(5); // t = 750 s
+    expect(await at(300_000)).toBe(6); // t = 1050 s, still 300 s
+    teamNet.fail = undefined;
+    expect(await at(300_000)).toBe(7); // answers: back to 30 s
+    expect(await at(30_000)).toBe(8);
+  });
+
+  it('a scope change stops the poll', async () => {
+    useApp.getState().vaultStartPoll();
+    await useApp.getState().setVaultScope('personal');
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(teamNet.heads).toBe(0);
+  });
+
+  it('visible again checks at once', async () => {
+    useApp.getState().vaultStartPoll({ now: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(teamNet.heads).toBe(1);
+  });
+});
+
+describe('who last saved a note (M2 2.7)', () => {
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined });
+  });
+
+  it("comes from the storage, and the person's own save clears it", async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('icloud') },
+    });
+    cloud.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    cloud.editor.by = { id: 'u2', label: 'sam' };
+    cloud.files.set('n.md', 'written by sam');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    expect(useApp.getState().vaultNote?.editedBy).toEqual({ id: 'u2', label: 'sam' });
+    await useApp.getState().vaultSave('n.md', 'written by me');
+    expect(useApp.getState().vaultNote?.editedBy).toBeUndefined();
+  });
+
+  it('reads "Edited by sam, 2 min ago", a teammate when unnamed, and nothing for your own', async () => {
+    const { vaultEditedByLine } = await import('../src/lib/vaultCopy.js');
+    const now = Date.parse('2026-09-27T10:02:30Z');
+    const at = '2026-09-27T10:00:00Z';
+    expect(vaultEditedByLine({ id: 'u2', label: 'sam' }, at, 'u1', now)).toBe(
+      ' · Edited by sam, 2 min ago',
+    );
+    expect(vaultEditedByLine({ id: 'u2' }, at, 'u1', now)).toBe(
+      ' · Edited by a teammate, 2 min ago',
+    );
+    expect(vaultEditedByLine({ id: 'u1', label: 'me' }, at, 'u1', now)).toBeUndefined();
+    expect(vaultEditedByLine(undefined, at, 'u1', now)).toBeUndefined();
+    expect(vaultEditedByLine({ id: 'u2' }, 'r3', 'u1', now)).toBe(' · Edited by a teammate');
+  });
+});
+
+// The Vault index (M3 3.2, CTO H3 and H6): the store feeds it from every
+// write, remove, list, and open, and a sign-out that forgets team drafts
+// forgets the team index too. The CRLF wrap on the save path (H2) keeps an
+// all-CRLF note's bytes.
+describe('the Vault index (M3 3.2)', () => {
+  beforeEach(async () => {
+    reset();
+    await closeVaultIndex();
+  });
+  afterEach(async () => {
+    await closeVaultIndex();
+  });
+  // The index on screen, once the reconcile the last list started settles.
+  async function settledIndex() {
+    for (let i = 0; i < 100; i++) {
+      await tick();
+      const host = currentVaultIndex();
+      const state = vaultIndexStatus().state;
+      if (host && (state === 'ready' || state === 'partial')) return host;
+    }
+    throw new Error('the index never settled');
+  }
+
+  it('a save updates one index entry and reads no other note', async () => {
+    files.set('Plan.md', '# Plan');
+    files.set('Idea.md', 'Nothing yet.');
+    files.set('Other.md', 'Links to [[Plan]].');
+    await useApp.getState().vaultRefresh();
+    const host = await settledIndex();
+    expect(host.backlinks('Plan.md').map((b) => b.source)).toEqual(['Other.md']);
+    const plan = host.index.entry('Plan.md');
+    const other = host.index.entry('Other.md');
+    local.counts.reads = 0;
+    await useApp.getState().vaultSave('Idea.md', 'Build on [[Plan]].');
+    expect(local.counts.reads).toBe(0);
+    expect(host.index.entry('Plan.md')).toBe(plan);
+    expect(host.index.entry('Other.md')).toBe(other);
+    expect(host.backlinks('Plan.md').map((b) => b.source)).toEqual(['Idea.md', 'Other.md']);
+    // A delete leaves the index the same way, with no read either.
+    await useApp.getState().vaultDelete('Other.md');
+    expect(local.counts.reads).toBe(0);
+    expect(host.backlinks('Plan.md').map((b) => b.source)).toEqual(['Idea.md']);
+  });
+
+  it('opening a note reads no other note', async () => {
+    for (let i = 0; i < 20; i++) files.set(`n${i}.md`, `note ${i} links [[Plan]]`);
+    files.set('Plan.md', '# Plan');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    local.counts.reads = 0;
+    await useApp.getState().vaultOpen('Plan.md');
+    expect(useApp.getState().vaultNote?.path).toBe('Plan.md');
+    expect(local.counts.reads).toBe(1);
+  });
+
+  it('a list result reconciles: only the note that moved is read again', async () => {
+    files.set('a.md', 'one');
+    files.set('b.md', 'two');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    files.set('b.md', 'two, edited elsewhere with [[a]]');
+    local.counts.reads = 0;
+    await useApp.getState().vaultRefresh();
+    const host = await settledIndex();
+    expect(local.counts.reads).toBe(1);
+    expect(host.backlinks('a.md').map((b) => b.source)).toEqual(['b.md']);
+  });
+
+  it('a sign-out drops the team index', async () => {
+    teamScope();
+    team.set('Plan.md', { body: '# Plan', rev: 1 });
+    team.set('Idea.md', { body: 'See [[Plan]].', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    const host = await settledIndex();
+    expect(host.target).toEqual({ providerId: 'org', resourceId: ORG, owner: 'u1' });
+    expect(host.backlinks('Plan.md')).toHaveLength(1);
+    await useApp.getState().signOutAccount();
+    expect(currentVaultIndex()?.target.providerId).not.toBe('org');
+    expect(host.index.size).toBe(0);
+  });
+
+  it('a CRLF note opened and saved with no edit writes nothing; a body edit keeps CRLF', async () => {
+    const loaded = '---\r\ntitle: Plan\r\n---\r\n# Plan\r\nFirst line\r\n';
+    files.set('Plan.md', loaded);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('Plan.md');
+    local.counts.writes = [];
+    // The textarea hands the untouched text back with LF.
+    await useApp.getState().vaultSave('Plan.md', loaded.replace(/\r\n/g, '\n'));
+    expect(local.counts.writes).toEqual([]);
+    expect(files.get('Plan.md')).toBe(loaded);
+    // A body edit keeps every CRLF, the frontmatter's bytes included.
+    const edited = loaded.replace(/\r\n/g, '\n').replace('First line', 'First line, edited');
+    await useApp.getState().vaultSave('Plan.md', edited);
+    expect(files.get('Plan.md')).toBe(loaded.replace('First line', 'First line, edited'));
+    expect(files.get('Plan.md')!.startsWith('---\r\ntitle: Plan\r\n---\r\n')).toBe(true);
+  });
+
+  it('an LF note saves as typed', async () => {
+    files.set('Plan.md', '# Plan\nFirst\n');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('Plan.md');
+    await useApp.getState().vaultSave('Plan.md', '# Plan\nFirst, edited\n');
+    expect(files.get('Plan.md')).toBe('# Plan\nFirst, edited\n');
+  });
+});
+
+// Vault M5, CTO J9 (D2): what pairing does to the personal vault. An empty
+// vault on This device by default points at the computer with one toast; one
+// that holds notes (or text waiting to save) gets the one-time move card,
+// whose move writes every copy ifAbsent; a storage the person chose is never
+// repointed; unpairing returns the vault to where it was and moves nothing
+// back.
+describe('pairing and the vault on your computer', () => {
+  beforeEach(reset);
+  const box = { baseUrl: 'http://box.tail1.ts.net:4820', token: 't' };
+  const providerNow = () =>
+    useApp.getState().settings.gitosResources?.find((r) => r.id === 'vault.personal');
+
+  it('an empty Local vault repoints to the computer, and unpairing returns it', async () => {
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(providerNow()?.providerId).toBe('hub'));
+    expect(providerNow()?.chosenAt).toBeUndefined();
+    expect(useApp.getState().toast).toMatch(/lives on your computer/);
+    expect(useApp.getState().settings.vaultBeforeHub).toEqual({
+      providerId: 'local',
+      hub: box.baseUrl,
+    });
+    hub.files.set('Written on the computer.md', 'x');
+    await useApp.getState().removeHub(box.baseUrl);
+    await vi.waitFor(() => expect(providerNow()?.providerId).toBe('local'));
+    expect(useApp.getState().settings.vaultBeforeHub).toBeUndefined();
+    // Nothing moved back.
+    expect(local.files.size).toBe(0);
+    expect(hub.files.has('Written on the computer.md')).toBe(true);
+  });
+
+  it('a Local vault with notes gets the one-time move card, and its move never replaces', async () => {
+    files.set('Mine.md', 'my note');
+    files.set('Same.md', 'on both');
+    hub.files.set('Same.md', 'different on the computer');
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() =>
+      expect(useApp.getState().settings.vaultHubOffer).toEqual({
+        hub: box.baseUrl,
+        state: 'offered',
+      }),
+    );
+    expect(providerNow()?.providerId).toBe('local');
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultHubOfferShown()).toBe(true);
+    const r = await useApp.getState().vaultAcceptHubMove();
+    expect(r.ok).toBe(true);
+    expect(providerNow()?.providerId).toBe('hub');
+    expect(hub.files.get('Mine.md')).toBe('my note');
+    // The computer's own note kept its name; ours landed beside it.
+    expect(hub.files.get('Same.md')).toBe('different on the computer');
+    expect(r.forked).toHaveLength(1);
+    expect(hub.counts.writes.every((w) => w.guard && 'ifAbsent' in w.guard)).toBe(true);
+    expect(useApp.getState().settings.vaultHubOffer).toBeUndefined();
+    expect(useApp.getState().settings.vaultBeforeHub?.providerId).toBe('local');
+    // Unpairing returns to This device, and the notes there are as they were.
+    await useApp.getState().removeHub(box.baseUrl);
+    await vi.waitFor(() => expect(providerNow()?.providerId).toBe('local'));
+    expect(files.get('Mine.md')).toBe('my note');
+  });
+
+  it('the hub link follows the pairing, and a pairing change closes the warm index', async () => {
+    const { hubVaultLink } = await import('../src/lib/gitos/hub.js');
+    files.set('Mine.md', 'my note');
+    await useApp.getState().vaultRefresh();
+    await vi.waitFor(() => expect(currentVaultIndex()?.target.providerId).toBe('local'));
+    // Pairing: the link names this computer and this person on it, and the
+    // personal index that belonged to the old arrangement closes (CTO J1).
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    expect(hubVaultLink()?.target).toMatchObject({
+      providerId: 'hub',
+      resourceId: 'vault',
+      owner: expect.stringMatching(/^http:\/\/box\.tail1\.ts\.net:4820#[0-9a-f]{16}$/),
+    });
+    expect(currentVaultIndex()).toBeUndefined();
+    // Unpairing: no link, so the hub vault refuses in plain words.
+    await useApp.getState().removeHub(box.baseUrl);
+    expect(hubVaultLink()).toBeUndefined();
+  });
+
+  it('a declined card stays declined for that computer', async () => {
+    files.set('Mine.md', 'my note');
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(useApp.getState().settings.vaultHubOffer?.state).toBe('offered'));
+    await useApp.getState().vaultDeclineHubMove();
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
+    expect(useApp.getState().settings.vaultHubOffer?.state).toBe('declined');
+    expect(useApp.getState().vaultHubOfferShown()).toBe(false);
+  });
+
+  it('text waiting to save counts as notes: the card, never a quiet repoint', async () => {
+    mem.set(
+      PENDING,
+      JSON.stringify({
+        'local::vault.personal::Draft.md': {
+          providerId: 'local',
+          resourceId: 'vault.personal',
+          path: 'Draft.md',
+          text: 'typed offline',
+          at: 'x',
+        },
+      }),
+    );
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(useApp.getState().settings.vaultHubOffer?.state).toBe('offered'));
+    expect(providerNow()?.providerId ?? 'local').toBe('local');
+  });
+
+  it('a storage the person chose is never repointed, and a desktop keeps its own folder', async () => {
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        gitosResources: [{ ...personalOn('local')[0]!, chosenAt: '2026-09-01T00:00:00Z' }],
+      },
+    });
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
+    expect(providerNow()?.providerId).toBe('local');
+    expect(useApp.getState().settings.vaultHubOffer).toBeUndefined();
+    reset();
+    desk.on = true;
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
+    expect(providerNow()?.providerId ?? 'local').toBe('local');
+  });
+});
+
+// ---- Vault M6 (the wave 2 call sites; state/vaultOps.ts does the work) ------
+// The folder fake gains the M6 members a case needs: Trash under `.trash/`
+// in the same file map (so the provider lists it and the store must leave it
+// out), rename, and the rest, each removed again after the case.
+describe('Vault M6 operations through the store', () => {
+  const F = folder.files;
+  const p = folder.provider as unknown as Record<string, unknown>;
+  const added: string[] = [];
+  const give = (name: string, fn: unknown) => {
+    p[name] = fn;
+    added.push(name);
+  };
+  const metaAt = (path: string): StoredFileMeta => ({
+    path,
+    updatedAt: folder.version(path),
+    size: F.get(path)!.length,
+    version: folder.version(path),
+  });
+  function withTrash() {
+    give('trash', async (_r: string, t: { kind: string; path: string; ifMatch?: string }) => {
+      if (!F.has(t.path)) return { ok: false, conflict: 'changed' };
+      if (t.ifMatch !== folder.version(t.path)) {
+        return { ok: false, conflict: 'changed', theirs: { path: t.path, text: F.get(t.path) } };
+      }
+      F.set(`.trash/${t.path}`, F.get(t.path)!);
+      F.delete(t.path);
+      const entry = { id: `.trash/${t.path}`, path: t.path, kind: 'note', size: 1 };
+      return { ok: true, entry, notes: 1, attachments: 0 };
+    });
+    give('listTrash', async () =>
+      [...F.keys()]
+        .filter((k) => k.startsWith('.trash/'))
+        .map((k) => ({ id: k, path: k.slice(7), kind: 'note', size: F.get(k)!.length })),
+    );
+    give('restore', async (_r: string, id: string) => {
+      if (!F.has(id)) return { ok: false, conflict: 'missing' };
+      const path = id.slice(7);
+      F.set(path, F.get(id)!);
+      F.delete(id);
+      return { ok: true, file: metaAt(path), renamed: false };
+    });
+    give('emptyTrash', async () => {
+      const gone = [...F.keys()].filter((k) => k.startsWith('.trash/'));
+      for (const k of gone) F.delete(k);
+      return { removed: gone.length };
+    });
+  }
+  async function openOnFolder(path: string, text: string) {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({
+      vaultConflict: undefined,
+      vaultReturnFolder: undefined,
+      vaultTrash: undefined,
+    });
+  });
+  afterEach(() => {
+    for (const name of added.splice(0)) delete p[name];
+    useApp.getState().vaultBindAutosave(undefined);
+  });
+
+  it('delete then Undo restores the bytes, and .trash stays out of the tree', async () => {
+    withTrash();
+    const { vaultAutosave } = await import('../src/lib/vaultAutosave.js');
+    await openOnFolder('Ideas/x.md', 'the words');
+    expect(useApp.getState().vaultCapsNow().trash).toBe(true);
+    // Typed and still waiting for the debounce: the delete writes it first,
+    // and cancels the timer, so nothing lands after the note went to Trash.
+    const autosave = vaultAutosave({
+      target: () => useApp.getState().vaultTargetRef(),
+      save: (path, text, at) => void useApp.getState().vaultSave(path, text, at),
+      delayMs: 30,
+    });
+    useApp.getState().vaultBindAutosave(autosave);
+    autosave.schedule('Ideas/x.md', 'typed last');
+    const r = await useApp.getState().vaultDeleteNote('Ideas/x.md');
+    expect(r).toMatchObject({ ok: true, trashed: true });
+    await new Promise((res) => setTimeout(res, 60));
+    expect(F.has('Ideas/x.md')).toBe(false);
+    expect(F.get('.trash/Ideas/x.md')).toBe('typed last');
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    await vi.waitFor(() => expect(useApp.getState().vaultTrash).toHaveLength(1));
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual([]);
+    expect(currentVaultIndex()?.index.paths() ?? []).not.toContain('.trash/Ideas/x.md');
+
+    const back = await useApp.getState().vaultUndoDelete(r!.ok ? r!.undo! : (undefined as never));
+    expect(back).toMatchObject({ ok: true, path: 'Ideas/x.md', renamed: false });
+    expect(F.get('Ideas/x.md')).toBe('typed last');
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['Ideas/x.md']);
+    await vi.waitFor(() => expect(useApp.getState().vaultTrash).toEqual([]));
+  });
+
+  it('a rename re-keys pins, the stash, Recent and the open note, at the path the storage answered', async () => {
+    // The storage matches a parent to its spelling on disk: asked for
+    // work/Roadmap.md, it lands at Work/Roadmap.md (stream B).
+    give('rename', async (_r: string, from: string, to: string, guard: { ifMatch: string }) => {
+      if (!F.has(from)) return { ok: false, conflict: 'missing' };
+      if (folder.version(from) !== guard.ifMatch) return { ok: false, conflict: 'changed' };
+      const landed = to.replace(/^work\//, 'Work/');
+      if (F.has(landed)) return { ok: false, conflict: 'exists' };
+      F.set(landed, F.get(from)!);
+      F.delete(from);
+      return { ok: true, file: metaAt(landed) };
+    });
+    F.set('Work/Other.md', 'another');
+    F.set('Home.md', 'See [[Plan]].');
+    await openOnFolder('Plan.md', 'the plan, from [home](Home.md)');
+    const st = useApp.getState();
+    useApp.setState({
+      settings: {
+        ...st.settings,
+        projects: [{ id: 'p1', name: 'P', vaultPins: ['Plan.md', 'Home.md'] }],
+      } as never,
+    });
+    mem.set(
+      PENDING,
+      JSON.stringify({
+        'files::vault.personal::Plan.md': {
+          providerId: 'files',
+          resourceId: 'vault.personal',
+          path: 'Plan.md',
+          text: 'typed offline',
+          at: 'x',
+        },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        currentVaultIndex()
+          ?.index.backlinks('Plan.md')
+          .map((b) => b.source),
+      ).toEqual(['Home.md']),
+    );
+    // Opening it put it on this vault's Recent ring.
+    await vi.waitFor(() =>
+      expect(
+        useApp
+          .getState()
+          .vaultRecentRing()
+          .map((e) => e.path),
+      ).toEqual(['Plan.md']),
+    );
+
+    const preview = await useApp.getState().vaultPrepareMove('note', 'Plan.md', 'work/Roadmap.md');
+    expect(preview).toMatchObject({ links: 1, linkNotes: 1 });
+    const r = await useApp.getState().vaultApplyMove(preview!, true);
+    expect(r).toMatchObject({ ok: true, moved: [{ path: 'Work/Roadmap.md' }] });
+    expect(r!.ok && r!.rewrite).toMatchObject({ updated: 1, skipped: [], notUpdated: [] });
+
+    // The open note, the list and the index follow to where it landed.
+    const open = useApp.getState().vaultNote!;
+    expect(open.path).toBe('Work/Roadmap.md');
+    expect(open.version).toBe(folder.version('Work/Roadmap.md'));
+    const listed = useApp.getState().vaultFiles.map((f) => f.path);
+    expect(listed).toContain('Work/Roadmap.md');
+    expect(listed).not.toContain('Plan.md');
+    expect(listed).not.toContain('work/Roadmap.md');
+    expect(currentVaultIndex()?.index.has('Work/Roadmap.md')).toBe(true);
+    // Links follow; the moved note's own link still resolves, so it stays.
+    expect(F.get('Home.md')).toBe('See [[Roadmap]].');
+    expect(F.get('Work/Roadmap.md')).toBe('the plan, from [home](Home.md)');
+    expect(F.has('work/Roadmap.md')).toBe(false);
+    // Pins and the stash re-key.
+    expect(useApp.getState().settings.projects?.[0]?.vaultPins).toEqual([
+      'Work/Roadmap.md',
+      'Home.md',
+    ]);
+    expect(Object.keys(pending())).toEqual(['files::vault.personal::Work/Roadmap.md']);
+    await vi.waitFor(() =>
+      expect(
+        useApp
+          .getState()
+          .vaultRecentRing()
+          .map((e) => e.path),
+      ).toEqual(['Work/Roadmap.md']),
+    );
+    expect(pending()['files::vault.personal::Work/Roadmap.md']?.path).toBe('Work/Roadmap.md');
+  });
+
+  it('Today opens an existing note unchanged, and starts a missing one only while the name is free', async () => {
+    const { datePartsOf, formatVaultDate } = await import('os-code/protocol');
+    const named = formatVaultDate(datePartsOf(new Date()), 'YYYY-MM-DD');
+    const path = `${named.ok ? named.text : 'x'}.md`;
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, 'already written\r\n');
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultCapsNow().today).toBe(true);
+    const writes = folder.counts.writes.length;
+    expect(await useApp.getState().vaultToday()).toEqual({ kind: 'opened', path });
+    expect(folder.counts.writes.length).toBe(writes);
+    expect(F.get(path)).toBe('already written\r\n');
+    expect(useApp.getState().vaultNote).toMatchObject({ path, text: 'already written\r\n' });
+
+    // Not there yet: one create, guarded ifAbsent, opened in the editor.
+    useApp.getState().vaultCloseNote();
+    F.delete(path);
+    await useApp.getState().vaultRefresh();
+    const { VAULT_TODAY_STARTED } = await import('../src/lib/vaultCopy.js');
+    expect(await useApp.getState().vaultToday()).toEqual({
+      kind: 'created',
+      path,
+      line: VAULT_TODAY_STARTED,
+    });
+    expect(folder.counts.writes.at(-1)).toEqual({ path, guard: { ifAbsent: true } });
+    expect(F.get(path)).toBe('');
+    expect(useApp.getState().vaultNote).toMatchObject({ path, fresh: true });
+  });
+
+  it('a checkbox tick with frontmatter present writes the right line', async () => {
+    const text = ['---', 'tags: [a]', '---', '# Tasks', '', '- [ ] first', '- [ ] second', ''].join(
+      '\n',
+    );
+    await openOnFolder('t.md', text);
+    const base = folder.version('t.md');
+    // Line 6 of the whole note, frontmatter counted, is "- [ ] second".
+    expect(await useApp.getState().vaultToggleTask('t.md', 6, true)).toBe(true);
+    expect(F.get('t.md')).toBe(text.replace('- [ ] second', '- [x] second'));
+    expect(folder.counts.writes.at(-1)).toEqual({ path: 't.md', guard: { ifMatch: base } });
+    // The open note shows what landed, at its new version.
+    expect(useApp.getState().vaultNote?.text).toBe(F.get('t.md'));
+    expect(useApp.getState().vaultNote?.version).toBe(folder.version('t.md'));
+    // Changed somewhere else: nothing is written over it.
+    F.set('t.md', `${F.get('t.md')}more from elsewhere\n`);
+    const writes = folder.counts.writes.length;
+    expect(await useApp.getState().vaultToggleTask('t.md', 5, true)).toBe(false);
+    expect(folder.counts.writes.length).toBe(writes + 1);
+    expect(F.get('t.md')).toContain('- [ ] first');
+  });
+
+  it('without a real Trash a delete is for good, and Undo comes back beside a taken name', async () => {
+    await openOnFolder('x.md', 'first words');
+    expect(useApp.getState().vaultCapsNow().trash).toBe(false);
+    const r = await useApp.getState().vaultDeleteNote('x.md');
+    expect(r).toMatchObject({
+      ok: true,
+      trashed: false,
+      undo: { kind: 'bytes', text: 'first words' },
+    });
+    expect(F.has('x.md')).toBe(false);
+    // Someone else takes the name meanwhile: the Undo never overwrites it.
+    F.set('x.md', 'someone else');
+    const back = await useApp.getState().vaultUndoDelete(r!.ok ? r!.undo! : (undefined as never));
+    expect(back).toMatchObject({ ok: true, path: 'x (restored).md', renamed: true });
+    expect(F.get('x.md')).toBe('someone else');
+    expect(F.get('x (restored).md')).toBe('first words');
   });
 });

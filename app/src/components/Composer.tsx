@@ -11,6 +11,7 @@
 // repo files, "#" saves a line to the project's instructions, and a message
 // typed mid-run queues for the moment the agent is free. A long paste folds
 // into a chip so the field stays readable.
+import type { VaultVisibility } from 'os-code/protocol';
 import { isIntroPlaying } from '../lib/introWalk.js';
 import { skipReveals } from '../lib/streamSmoothing.js';
 import {
@@ -55,6 +56,54 @@ import { useExitPresence } from '../hooks/useExitPresence.js';
 import { CloseGlyph } from './SheetGlyphs.js';
 import { AttachTray, type AttachSource } from './AttachTray.js';
 import { Icon } from './Icon.js';
+import {
+  PRIVATE_NOTE_REFUSED,
+  VaultNotePicker,
+  noteRefused,
+  type PickerNote,
+} from './VaultNotePicker.js';
+import {
+  EXCERPT_DEVICE_TOKENS,
+  composerExcerpt,
+  composerExcerptBudget,
+  excerptCostLine,
+  type ComposerExcerpt,
+  type ExcerptNote,
+} from '../lib/vaultExcerpt.js';
+
+/**
+ * The vault, as the composer sees it (Vault M5, CTO J15, "take a note to a
+ * model"). Optional: without it `[[` is plain text and the composer is
+ * exactly what it was. The store builds it (the integrator wires it); the
+ * composer reads nothing about the vault on its own.
+ */
+export interface ComposerVault {
+  /** The notes `[[` may offer, each already judged by the privacy rules.
+   *  Hidden ones may be passed; they never list. */
+  notes: readonly PickerNote[];
+  /** The note's body (frontmatter and all), or null when it is gone. A
+   *  `visibility` judged on the body itself (its tags and marks, which a
+   *  listing may not know yet) can only tighten the listed one. */
+  read: (
+    path: string,
+  ) => Promise<{ text: string; updatedAt?: string; visibility?: VaultVisibility } | null>;
+  /** The chat's current seat: the window it is served, whether it runs on
+   *  this device (the 1024-token cap), and whether it leaves this network
+   *  (a private note is refused). */
+  seat: { servedTokens: number; device: boolean; leavesNetwork: boolean };
+  /** Seams for tests and for an early wiring; default to lib/vaultExcerpt. */
+  excerpt?: (note: ExcerptNote, budgetTokens: number) => ComposerExcerpt;
+  costLine?: (tokens: number, served: number) => string;
+  /** "Ask about this note": a new `seq` takes this note into the composer
+   *  through the same budget and privacy check as a `[[` pick. Never sent. */
+  take?: { seq: number; path: string };
+}
+
+/** The tighter of two privacy verdicts (hidden, then local-only, then open). */
+function stricterVisibility(a: VaultVisibility, b: VaultVisibility | undefined): VaultVisibility {
+  const rank: Record<VaultVisibility, number> = { open: 0, 'local-only': 1, hidden: 2 };
+  return b !== undefined && rank[b] > rank[a] ? b : a;
+}
 
 // The iOS keyboard dictation microphone, the same outline Claude uses.
 function MicIcon() {
@@ -136,6 +185,14 @@ interface PastedChunk {
   id: string;
   text: string;
   lines: number;
+  /** Set when the chunk is a note's excerpt taken from the vault. */
+  note?: { title: string; cost: string; localOnly: boolean };
+}
+
+/** The `[[` just typed before the caret, where it starts. */
+function noteOpenerAt(value: string, caret: number | null | undefined): number | null {
+  const at = typeof caret === 'number' ? caret : value.length;
+  return value.slice(0, at).endsWith('[[') ? at - 2 : null;
 }
 
 let chunkSeq = 0;
@@ -248,6 +305,7 @@ export function Composer({
   onOpenVoice,
   onCommand,
   hubRole,
+  vault,
 }: {
   busy: boolean;
   source?: ConversationSource;
@@ -281,6 +339,8 @@ export function Composer({
   /** What the paired hub lets this device do (P0-1). A member device never
    *  gets a shell, so terminal mode is not offered; absent on an old hub. */
   hubRole?: HubRole;
+  /** The vault behind `[[` (Vault M5, J15). Absent: `[[` is plain text. */
+  vault?: ComposerVault;
 }) {
   const { settings, showToast } = useApp();
   const runCommand = useApp((s) => s.runCommand);
@@ -525,6 +585,117 @@ export function Composer({
     });
   };
 
+  // Take a note to the model (Vault M5, J15): `[[` opens the note picker, and
+  // a pick (or "Ask about this note") folds a trimmed excerpt into a chip with
+  // its cost line. Privacy is judged at the pick and again after the read, on
+  // the seat as it is then, so a switch to a cloud model mid-read still
+  // refuses a private note. The latest props ride a ref for that second look.
+  const vaultRef = useRef(vault);
+  vaultRef.current = vault;
+  const [notePicker, setNotePicker] = useState(false);
+  const noteOpener = useRef<number | null>(null);
+  const takeNote = async (path: string) => {
+    const v = vaultRef.current;
+    if (!v) return;
+    const listed = v.notes.find((n) => n.path === path);
+    // Fail closed: a note the rules have not judged, or hid, never goes.
+    if (!listed || listed.visibility === 'hidden') {
+      showToast('That note is not one a model can read.');
+      return;
+    }
+    if (noteRefused(listed, v.seat.leavesNetwork)) {
+      showToast(PRIVATE_NOTE_REFUSED);
+      return;
+    }
+    let body: Awaited<ReturnType<ComposerVault['read']>> = null;
+    try {
+      body = await v.read(path);
+    } catch {
+      body = null;
+    }
+    if (!body) {
+      showToast(`Could not open ${listed.title}.`);
+      return;
+    }
+    // The body has the last word: a tag the listing did not know can hide
+    // the note or keep it on this computer, never open it up.
+    const visibility = stricterVisibility(listed.visibility, body.visibility);
+    if (visibility === 'hidden') {
+      showToast('That note is not one a model can read.');
+      return;
+    }
+    const now = vaultRef.current;
+    if (!now || noteRefused({ visibility }, now.seat.leavesNetwork)) {
+      showToast(PRIVATE_NOTE_REFUSED);
+      return;
+    }
+    const { servedTokens, device } = now.seat;
+    // An unknown window gets the device cap, the smallest budget there is.
+    const budget = composerExcerptBudget(servedTokens, device) || EXCERPT_DEVICE_TOKENS;
+    let excerpt: ComposerExcerpt;
+    let cost: string;
+    try {
+      excerpt = (now.excerpt ?? composerExcerpt)(
+        {
+          path,
+          title: listed.title,
+          text: body.text,
+          updatedAt: body.updatedAt ?? listed.updatedAt,
+        },
+        budget,
+      );
+      cost =
+        servedTokens > 0
+          ? (now.costLine ?? excerptCostLine)(excerpt.tokens, servedTokens)
+          : `About ${excerpt.tokens.toLocaleString('en-US')} tokens`;
+    } catch {
+      showToast(`Could not take ${listed.title} into the chat. Try again.`);
+      return;
+    }
+    // The budget is the promise to the seat; an excerpt over it never lands.
+    if (excerpt.tokens > budget || !excerpt.text) {
+      showToast(`${listed.title} would not fit this model. Try a shorter note.`);
+      return;
+    }
+    setPasted((prev) => [
+      ...prev,
+      {
+        id: `p${chunkSeq++}`,
+        text: excerpt.text,
+        lines: excerpt.text.split('\n').length,
+        note: {
+          title: listed.title,
+          cost: excerpt.trimmed ? `${cost}. Trimmed to fit.` : cost,
+          localOnly: visibility === 'local-only',
+        },
+      },
+    ]);
+  };
+  const pickNote = (note: PickerNote) => {
+    setNotePicker(false);
+    const start = noteOpener.current;
+    noteOpener.current = null;
+    if (start !== null) {
+      // The `[[` that opened the picker has done its job; the chip carries
+      // the note, and the caret goes back where the brackets were.
+      setValue((v) =>
+        v.slice(start, start + 2) === '[[' ? v.slice(0, start) + v.slice(start + 2) : v,
+      );
+      requestAnimationFrame(() => {
+        const el = areaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(start, start);
+      });
+    }
+    void takeNote(note.path);
+  };
+  useEffect(() => {
+    if (vault?.take) void takeNote(vault.take.path);
+    // Only a new seq takes a note; the path rides along with it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vault?.take?.seq]);
+
   // Stop takes send's place in the same spot the moment a turn starts, so a
   // quick second tap on send would stop the run it just began. Stop ignores
   // taps for a beat after a send.
@@ -568,6 +739,13 @@ export function Composer({
     // not left behind. The chips show what is pending.
     if (videoJobs.length) {
       showToast('Still reading the video. One moment.');
+      return;
+    }
+    // A private note taken in while the seat was local never rides a send to
+    // a seat that leaves the network (the model can change after the pick).
+    // With no vault to ask, fail closed.
+    if (pasted.some((p) => p.note?.localOnly) && (!vault || vault.seat.leavesNetwork)) {
+      showToast(PRIVATE_NOTE_REFUSED);
       return;
     }
     // Send-time guard (belt and suspenders to the + gate): never forward images
@@ -998,25 +1176,65 @@ export function Composer({
                 </button>
               </span>
             ))}
-            {pasted.map((p, i) => (
-              <span key={p.id} className={`composer-chip${leaving.has(p.id) ? ' closing' : ''}`}>
-                <span className="composer-chip-file" aria-hidden="true">
-                  {'📋'}
+            {pasted
+              .filter((p) => !p.note)
+              .map((p, i) => (
+                <span key={p.id} className={`composer-chip${leaving.has(p.id) ? ' closing' : ''}`}>
+                  <span className="composer-chip-file" aria-hidden="true">
+                    {'📋'}
+                  </span>
+                  <span className="composer-chip-name">
+                    Pasted text #{i + 1} · {p.lines} lines
+                  </span>
+                  <button
+                    className="composer-chip-x press-fb"
+                    aria-label={`Remove pasted text ${i + 1}`}
+                    onClick={() =>
+                      removeChip(p.id, () => setPasted((prev) => prev.filter((x) => x.id !== p.id)))
+                    }
+                  >
+                    <CloseGlyph size={12} />
+                  </button>
                 </span>
-                <span className="composer-chip-name">
-                  Pasted text #{i + 1} · {p.lines} lines
-                </span>
-                <button
-                  className="composer-chip-x press-fb"
-                  aria-label={`Remove pasted text ${i + 1}`}
-                  onClick={() =>
-                    removeChip(p.id, () => setPasted((prev) => prev.filter((x) => x.id !== p.id)))
-                  }
+              ))}
+            {pasted.map((p) =>
+              p.note ? (
+                <span
+                  key={p.id}
+                  className={`composer-chip composer-chip-note${leaving.has(p.id) ? ' closing' : ''}`}
+                  title={`${p.note.title}. ${p.note.cost}`}
+                  data-note-chip=""
                 >
-                  <CloseGlyph size={12} />
-                </button>
-              </span>
-            ))}
+                  <span className="composer-chip-file" aria-hidden="true">
+                    {'📝'}
+                  </span>
+                  <span className="composer-chip-name">{p.note.title}</span>
+                  <button
+                    className="composer-chip-x press-fb"
+                    aria-label={`Remove the note ${p.note.title}`}
+                    onClick={() =>
+                      removeChip(p.id, () => setPasted((prev) => prev.filter((x) => x.id !== p.id)))
+                    }
+                  >
+                    <CloseGlyph size={12} />
+                  </button>
+                </span>
+              ) : null,
+            )}
+            {pasted.map((p) =>
+              p.note && !leaving.has(p.id) ? (
+                // The cost line sits under the chips on a line of its own, so
+                // the chip's width never cuts the number the person needs.
+                <span
+                  key={`${p.id}-cost`}
+                  className="hint composer-note-cost"
+                  style={{ flexBasis: '100%' }}
+                  aria-live="polite"
+                >
+                  {p.note.title}: {p.note.cost}
+                </span>
+              ) : null,
+            )}
           </div>
         ) : null}
 
@@ -1043,6 +1261,15 @@ export function Composer({
             setValue(e.target.value);
             setHistIdx(null);
             setMention(agent ? mentionAt(e.target.value, e.target.selectionStart) : null);
+            // `[[` just typed opens the note picker (only when the field grew,
+            // so deleting back to a pair of brackets never springs it).
+            if (vault && !terminal && e.target.value.length > value.length) {
+              const at = noteOpenerAt(e.target.value, e.target.selectionStart);
+              if (at !== null) {
+                noteOpener.current = at;
+                setNotePicker(true);
+              }
+            }
           }}
           onSelect={(e) => {
             const el = e.currentTarget;
@@ -1183,6 +1410,18 @@ export function Composer({
       </div>
       {trayPresence.mounted ? (
         <AttachTray closing={trayPresence.closing} onPick={pickFrom} />
+      ) : null}
+      {vault ? (
+        <VaultNotePicker
+          open={notePicker}
+          notes={vault.notes}
+          leavesNetwork={vault.seat.leavesNetwork}
+          onPick={pickNote}
+          onClose={() => {
+            noteOpener.current = null;
+            setNotePicker(false);
+          }}
+        />
       ) : null}
     </div>
   );

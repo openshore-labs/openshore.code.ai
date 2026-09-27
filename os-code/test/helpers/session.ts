@@ -8,7 +8,7 @@ import { ProviderRegistry } from '../../src/providers/registry.js';
 import { resolveStack } from '../../src/router/stack.js';
 import { Router } from '../../src/router/router.js';
 import { buildToolRegistry } from '../../src/core/agent/registry.js';
-import { AgentSession } from '../../src/core/agent/loop.js';
+import { AgentSession, type AgentDeps } from '../../src/core/agent/loop.js';
 import { PermissionEngine, type PermissionConfig } from '../../src/core/permissions/index.js';
 import { Guardrails } from '../../src/core/guardrails/index.js';
 import { profileFor, type SecurityProfileName } from '../../src/core/security/profiles.js';
@@ -19,6 +19,7 @@ import type { ToolContext, ToolRegistry } from '../../src/core/tools/index.js';
 import type { AgentEvent, ApprovalAnswer, ApprovalRequest } from '../../src/core/agent/types.js';
 import type { MockProvider } from './mockProvider.js';
 import type { ConsentAssertion } from '../../src/core/ethics/classify.js';
+import type { VaultContextSource } from '../../src/harness/vaultContext.js';
 
 export interface TestSession {
   agent: AgentSession;
@@ -53,6 +54,16 @@ export interface TestSessionOptions {
   /** Run in this workspace instead of a fresh temp dir. Eval v2 prepares a
    *  fixture workspace and drives the loop inside it. */
   cwd?: string;
+  /** The vault context pack's source (Vault M4), for tests of the pack. */
+  vaultContext?: VaultContextSource;
+  /** The clock for the harness's dated Current State line. */
+  now?: () => Date;
+  /** A repository code map for the system prompt, as bootstrap builds one. */
+  codeMap?: string;
+  /** Where the loop's handoffs go (Vault M5, J13), and a builder standing in
+   *  for the pure core's. */
+  onHandoff?: AgentDeps['onHandoff'];
+  buildHandoff?: AgentDeps['buildHandoff'];
 }
 
 export function makeTestSession(
@@ -133,6 +144,11 @@ export function makeTestSession(
     usage,
     profile,
     projectSecrets: options.projectSecrets,
+    vaultContext: options.vaultContext,
+    now: options.now,
+    codeMap: options.codeMap,
+    onHandoff: options.onHandoff,
+    buildHandoff: options.buildHandoff,
     approver: async (request) => {
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };

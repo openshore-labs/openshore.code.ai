@@ -37,12 +37,18 @@ import { deviceFolderProvider, isDeviceFolderAvailable } from '../src/lib/gitos/
 import { isNotePath } from '../src/lib/gitos/providers.js';
 import { normalizeNotePath } from '../src/lib/vault.js';
 import {
+  createVaultFolder,
   isVaultNotePath,
   listVaultFolder,
+  listVaultFolders,
+  listVaultTrash,
   parseVaultGuard,
   parseVaultRemoveGuard,
   readVaultFile,
+  renameVaultFile,
+  restoreVaultTrash,
   statVaultFile,
+  trashVaultPath,
   writeVaultFile,
 } from '../electron/vaultFs.js';
 import {
@@ -54,7 +60,12 @@ import {
   type VaultDirEnv,
 } from '../electron/vaultDir.js';
 import { loadVaultDir, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
-import { vaultConflictCopyPath } from 'os-code/protocol';
+import {
+  cleanNotePath,
+  isConflictCopy,
+  isNotePath as coreIsNotePath,
+  vaultConflictCopyPath,
+} from 'os-code/protocol';
 import { RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
 import * as routineStore from 'os-code/dist/src/routines/store.js';
 
@@ -193,7 +204,7 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
 
   it('list and read give the same version for an untouched note', async () => {
     writeFileSync(join(root, 'a.md'), 'hello');
-    const [listed] = listVaultFolder(root);
+    const [listed] = await listVaultFolder(root);
     const read = await readVaultFile(root, 'a.md');
     const stat = await statVaultFile(root, 'a.md');
     expect(listed!.version).toMatch(/^\d+:\d+:\d+$/);
@@ -227,7 +238,7 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
     expect(after).not.toBe(before);
   });
 
-  it('a picked folder lists its notes and hides .obsidian/ and attachments', () => {
+  it('a picked folder lists its notes and hides .obsidian/ and attachments', async () => {
     mkdirSync(join(root, '.obsidian', 'plugins', 'x'), { recursive: true });
     writeFileSync(join(root, '.obsidian', 'plugins', 'x', 'data.json'), '{"key":"secret"}');
     writeFileSync(join(root, '.obsidian', 'Hidden.md'), 'no');
@@ -235,7 +246,7 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
     writeFileSync(join(root, 'ideas', 'b.md'), 'b');
     writeFileSync(join(root, 'a.md'), 'a');
     writeFileSync(join(root, 'pic.png'), 'png');
-    expect(listVaultFolder(root).map((f) => f.path)).toEqual(['a.md', 'ideas/b.md']);
+    expect((await listVaultFolder(root)).map((f) => f.path)).toEqual(['a.md', 'ideas/b.md']);
   });
 
   it('refuses a read, stat, or write of anything that is not a note', async () => {
@@ -288,20 +299,65 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
       '/etc/a.md',
     ]) {
       expect(isVaultNotePath(p)).toBe(isNotePath(p));
+      // Main's rule is the vault core's own (Vault M3, CTO H4), on every OS.
+      expect(isVaultNotePath(p, 'linux'), p).toBe(coreIsNotePath(p));
+      expect(isVaultNotePath(p, 'win32'), p).toBe(coreIsNotePath(p, { windows: true }));
+    }
+    // The walker moved into the engine (Vault M5, CTO J7); main re-exports it.
+    const shim = readFileSync(join(process.cwd(), 'electron', 'vaultFs.ts'), 'utf8');
+    expect(shim).toMatch(/export \* from 'os-code\/dist\/src\/core\/vault\/folderFs\.js'/);
+    const src = readFileSync(
+      join(process.cwd(), '..', 'os-code', 'src', 'core', 'vault', 'folderFs.ts'),
+      'utf8',
+    );
+    // M6 imports the new-name rule and the fold from the same module.
+    expect(src).toMatch(
+      /import \{[^}]*\bisNotePath\b[^}]*\} from '\.\.\/\.\.\/harness\/vault\/paths\.js'/,
+    );
+    expect(src).toMatch(/isNotePath\(path, \{ windows: platform === 'win32' \}\)/);
+  });
+
+  // On Windows the core also refuses what NTFS cannot hold, so a name another
+  // system wrote never lists as a note that then fails to open.
+  it('on Windows, reserved names and dot- or space-ended segments are not notes', () => {
+    for (const p of ['CON.md', 'x/aux.md', 'x./a.md', 'x /a.md', 'a?.md', 'a*.md', 'a<b.md']) {
+      expect(isVaultNotePath(p, 'win32'), p).toBe(false);
+      expect(isVaultNotePath(p, 'linux'), p).toBe(true);
     }
   });
 
-  // The keep-both name is one pure helper in the engine, imported by the
-  // store and by main's Bring; its typed-name rule is the app's own.
+  it('the list is an async walk that holds only paths the note rule accepts', async () => {
+    writeFileSync(join(root, 'a.md'), 'a');
+    writeFileSync(join(root, 'back\\slash.md'), 'b');
+    mkdirSync(join(root, 'deep', 'er'), { recursive: true });
+    for (let i = 0; i < 20; i++) writeFileSync(join(root, 'deep', `n${i}.md`), `${i}`);
+    writeFileSync(join(root, 'deep', 'er', 'z.md'), 'z');
+    const listing = listVaultFolder(root);
+    expect(listing).toBeInstanceOf(Promise);
+    const paths = (await listing).map((f) => f.path);
+    expect(paths).not.toContain('back\\slash.md');
+    expect(paths).toContain('a.md');
+    expect(paths).toContain('deep/er/z.md');
+    expect(paths).toHaveLength(22);
+    // The limit stops the walk at that many notes.
+    expect(await listVaultFolder(root, { limit: 5 })).toHaveLength(5);
+  });
+
+  // The keep-both name is one pure helper in the shared core, imported by the
+  // store and by main's Bring, and the app's typed-name rule is now that same
+  // core's (Vault M3 H4). The copy's base is cleaned before the suffix goes
+  // on, so " spaced " loses its trailing space rather than keeping it inside
+  // the name; the copy is always a clean note name and a conflict copy.
   it("the conflict name keeps the app's typed-name rule, and the store and main share it", () => {
     const when = new Date(2026, 8, 27, 14, 5);
     for (const p of ['a.md', 'x/Why #1?.md', 'Caf\u0065\u0301.md', ' spaced .md', 'q/[x].md']) {
-      const base = p.replace(/\.md$/i, '');
+      const base = cleanNotePath(p.replace(/\.md$/i, ''));
       for (const n of [1, 2]) {
         const stamp = `2026-09-27 1405${n > 1 ? ` ${n}` : ''}`;
-        expect(vaultConflictCopyPath(p, when, n)).toBe(
-          normalizeNotePath(`${base} (conflict ${stamp})`),
-        );
+        const copy = vaultConflictCopyPath(p, when, n);
+        expect(copy).toBe(normalizeNotePath(`${base} (conflict ${stamp})`));
+        expect(normalizeNotePath(copy)).toBe(copy);
+        expect(isConflictCopy(copy)).toBe(true);
       }
     }
     const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
@@ -333,6 +389,56 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
     writeFileSync(join(root, '.obsidian', 'plugins', 'x', 'data.md'), 'plugin data');
     await expect(readVaultFile(root, '.obsidian\\plugins\\x\\data.md')).rejects.toThrow(/blocked/);
     await expect(writeVaultFile(root, 'x\\a.md', 'x')).rejects.toThrow(/blocked/);
+  });
+});
+
+// Vault M6 (CTO K3, K6, K13) through main's own import (electron/vaultFs.ts
+// re-exports the engine's folderFs), so osc:vaultRename, osc:vaultTrash and
+// the rest run the code the daemon runs. The full matrix is
+// os-code/test/vaultFolderOps.test.ts.
+describe("main's M6 vault handlers on a real folder", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'osc-vaultfs-m6-'));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('renames guarded by the version, never over a taken name, and keeps the version', async () => {
+    writeFileSync(join(root, 'a.md'), 'mine');
+    writeFileSync(join(root, 'Taken.md'), 'theirs');
+    const v = (await statVaultFile(root, 'a.md'))!.version;
+    expect(await renameVaultFile(root, 'a.md', 'taken.md', { ifMatch: v })).toMatchObject({
+      ok: false,
+      conflict: 'exists',
+      theirs: { path: 'Taken.md', text: 'theirs' },
+    });
+    expect(await renameVaultFile(root, 'a.md', 'b.md', { ifMatch: 'stale' })).toMatchObject({
+      ok: false,
+      conflict: 'changed',
+    });
+    const r = await renameVaultFile(root, 'a.md', 'Notes/b.md', { ifMatch: v });
+    expect(r).toMatchObject({ ok: true, file: { path: 'Notes/b.md', version: v } });
+    expect(readFileSync(join(root, 'Notes', 'b.md'), 'utf8')).toBe('mine');
+    expect(readFileSync(join(root, 'Taken.md'), 'utf8')).toBe('theirs');
+  });
+
+  it('a note in Trash is out of the list and the tree, and Restore brings it back', async () => {
+    writeFileSync(join(root, 'Plan.md'), 'plan');
+    expect(await createVaultFolder(root, 'Empty')).toEqual({ ok: true });
+    const v = (await statVaultFile(root, 'Plan.md'))!.version;
+    const t = await trashVaultPath(root, { kind: 'note', path: 'Plan.md', ifMatch: v });
+    expect(t).toMatchObject({ ok: true, entry: { path: 'Plan.md', kind: 'note' } });
+    expect(await listVaultFolder(root)).toEqual([]);
+    expect(await listVaultFolders(root)).toEqual(['Empty']);
+    expect(existsSync(join(root, '.trash', 'Plan.md'))).toBe(true);
+    const [entry] = await listVaultTrash(root);
+    writeFileSync(join(root, 'Plan.md'), 'a new one');
+    const back = await restoreVaultTrash(root, entry!.id);
+    expect(back).toMatchObject({ ok: true, renamed: true, file: { path: 'Plan (restored).md' } });
+    expect(readFileSync(join(root, 'Plan (restored).md'), 'utf8')).toBe('plan');
+    expect(readFileSync(join(root, 'Plan.md'), 'utf8')).toBe('a new one');
   });
 });
 
@@ -380,7 +486,7 @@ describe('picking the vault folder (Vault M1 1.4)', () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  it('a picked temp folder lists its notes, hides .obsidian/, and saves its realpath', () => {
+  it('a picked temp folder lists its notes, hides .obsidian/, and saves its realpath', async () => {
     const brain = join(home, 'Brain');
     mkdirSync(join(brain, '.obsidian', 'plugins', 'x'), { recursive: true });
     writeFileSync(join(brain, '.obsidian', 'plugins', 'x', 'data.json'), '{"key":"secret"}');
@@ -396,7 +502,10 @@ describe('picking the vault folder (Vault M1 1.4)', () => {
     expect(r.info).toMatchObject({ dir: brain, exists: true, obsidian: 'vault', count: 2 });
     expect(r.survey).toMatchObject({ notes: 2, otherFiles: 1, obsidian: true, capped: false });
     // Main's list of the new root, as osc:vaultList runs it.
-    expect(listVaultFolder(loadVaultDir().dir).map((f) => f.path)).toEqual(['a.md', 'ideas/b.md']);
+    expect((await listVaultFolder(loadVaultDir().dir)).map((f) => f.path)).toEqual([
+      'a.md',
+      'ideas/b.md',
+    ]);
     expect(r.previous?.display).toBe(vaultDisplay(env.defaultVaultDir, home, 'linux'));
   });
 
@@ -502,15 +611,15 @@ describe('picking the vault folder (Vault M1 1.4)', () => {
     expect(work.ok && work.info.dir).toBe(join(parent, 'Work'));
   });
 
-  it('Go back repoints to the folder before, and nothing is copied', () => {
+  it('Go back repoints to the folder before, and nothing is copied', async () => {
     writeFileSync(join(env.defaultVaultDir, 'old.md'), 'old');
     const notes = join(home, 'Notes');
     mkdirSync(notes);
     chooser.pick(notes);
-    expect(listVaultFolder(loadVaultDir().dir)).toEqual([]);
+    expect(await listVaultFolder(loadVaultDir().dir)).toEqual([]);
     const back = chooser.refine({ to: 'previous' });
     expect(back.ok && back.info.dir).toBe(env.defaultVaultDir);
-    expect(listVaultFolder(notes)).toEqual([]);
+    expect(await listVaultFolder(notes)).toEqual([]);
   });
 
   // ---- Bring N notes from the previous folder (CTO ruling on Bring) -------
@@ -576,11 +685,9 @@ describe('picking the vault folder (Vault M1 1.4)', () => {
     expect(readFileSync(join(notes, 'b.md'), 'utf8')).toBe('the one already here');
     expect(readFileSync(join(notes, copy), 'utf8')).toBe('the one in the old folder');
     expect(readFileSync(join(notes, 'same.md'), 'utf8')).toBe('same text');
-    expect(
-      listVaultFolder(notes)
-        .map((f) => f.path)
-        .sort(),
-    ).toEqual([copy, 'b.md', 'Crew/Morning review/2026-09-01 06-00.md', 'same.md'].sort());
+    expect((await listVaultFolder(notes)).map((f) => f.path).sort()).toEqual(
+      [copy, 'b.md', 'Crew/Morning review/2026-09-01 06-00.md', 'same.md'].sort(),
+    );
     // Nothing but notes crossed, and the old folder is exactly as it was.
     expect(existsSync(join(notes, '.obsidian'))).toBe(false);
     expect(existsSync(join(notes, 'pic.png'))).toBe(false);

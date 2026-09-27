@@ -2,8 +2,8 @@
 // (web search, page fetch, catalog refresh, cloud APIs) passes through here.
 // Local endpoints (Ollama, LM Studio, a self-hosted SearXNG on the LAN or
 // tailnet) are always allowed: local-first traffic is the point of the product.
-import { isIP } from 'node:net';
 import { ownTailnetSuffix } from '../../connect/tailscale.js';
+import { hostIsLocal } from '../../harness/locality.js';
 
 export interface EgressConfig {
   /** Master switch for the web tools (search + fetch). Default on, always visible. */
@@ -28,28 +28,6 @@ export interface EgressDecision {
   reason: string;
 }
 
-const PRIVATE_V4 = [
-  /^10\./,
-  /^127\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
-];
-
-/**
- * Normalize a hostname for IP classification. WHATWG URL parsing keeps IPv6
- * literals bracketed (`[::1]`) and may carry a zone id (`fe80::1%eth0`), and
- * `isIP('[::1]')` is 0, so a bracketed loopback would otherwise never match the
- * IPv6 branch and be treated as a remote host (P2-8). Strip both.
- */
-function normalizeIpLiteral(host: string): string {
-  let h = host;
-  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
-  const zone = h.indexOf('%');
-  if (zone !== -1) h = h.slice(0, zone);
-  return h;
-}
-
 /**
  * True when a host is on this computer's own network: loopback, the LAN
  * (private ranges, link-local, mDNS), or the person's own tailnet (its
@@ -57,20 +35,14 @@ function normalizeIpLiteral(host: string): string {
  * suffix). Any other *.ts.net name is NOT local: Tailscale Funnel serves those
  * on the public internet, so a stranger's Funnel host would otherwise pass as
  * "local" and receive whatever local-only traffic goes to it.
+ *
+ * The rules live in the pure judge `hostIsLocal` (harness/locality.ts, Vault
+ * M5, CTO J2), shared with the app; this machine's own tailnet suffix is the
+ * one thing the engine adds, and it is asked for only for a *.ts.net host.
  */
 export function isLocalHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.$/, '');
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
-    return true;
-  }
-  if (host.endsWith('.ts.net')) {
-    const own = ownTailnetSuffix();
-    return Boolean(own) && host.endsWith(`.${own}`);
-  }
-  if (isIP(host) === 4) return PRIVATE_V4.some((re) => re.test(host));
-  const v6 = normalizeIpLiteral(host);
-  if (isIP(v6) === 6) return v6 === '::1' || v6.startsWith('fd') || v6.startsWith('fe80');
-  return false;
+  const tailnet = /\.ts\.net\.?$/i.test(hostname) ? ownTailnetSuffix() : null;
+  return hostIsLocal(hostname, { ownTailnetSuffix: tailnet });
 }
 
 function hostMatches(host: string, entry: string): boolean {

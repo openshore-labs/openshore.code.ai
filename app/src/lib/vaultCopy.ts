@@ -27,7 +27,7 @@ import { noteTitle } from './vault.js';
 
 /** The storage a vault can live on, as far as copy is concerned. `org` is the
  *  team vault. Dropbox and Proton are not wired, so they have no lines. */
-export type VaultCopyProvider = 'local' | 'files' | 'icloud' | 'gdrive' | 'org';
+export type VaultCopyProvider = 'local' | 'files' | 'icloud' | 'gdrive' | 'org' | 'hub';
 
 export const VAULT_COPY_PLATFORMS: readonly Platform[] = ['ios', 'electron', 'web'];
 export const VAULT_COPY_PROVIDERS: readonly VaultCopyProvider[] = [
@@ -36,6 +36,7 @@ export const VAULT_COPY_PROVIDERS: readonly VaultCopyProvider[] = [
   'icloud',
   'gdrive',
   'org',
+  'hub',
 ];
 
 export interface VaultCopy {
@@ -64,6 +65,9 @@ export interface VaultCopyOpts {
   /** This device is paired to a computer. Off the desktop, only then is
    *  there an agent whose vault the copy can point at. */
   paired?: boolean;
+  /** The paired computer's friendly name (`DaemonTarget.name`), for a
+   *  member's one line about a hub vault (Vault M5, CTO J8). */
+  hubName?: string;
 }
 
 /** A paired phone's line about the agent: its vault is the computer's folder. */
@@ -84,6 +88,7 @@ const STORAGE: Record<VaultCopyProvider, string> = {
   gdrive:
     'Your Google Drive. Held back for now while its sync is made safe, and files added outside OpenShore may not show up here.',
   org: 'Shared with your team and saved to your organization. It is not an Obsidian folder.',
+  hub: 'Your computer, while it is on. Plain .md files in the vault folder there.',
 };
 
 const OBSIDIAN: Partial<Record<VaultCopyProvider, string>> = {
@@ -107,6 +112,7 @@ export function vaultCopy(
   if (obsidian) copy.obsidian = obsidian;
   // The team vault is not in any agent's context yet, on any platform.
   if (provider === 'org') return copy;
+  if (provider === 'hub') return hubCopy(copy, desktop, opts);
   if (desktop && provider === 'files') {
     copy.agent = 'Your agent can read these notes and write here too, asking first.';
     copy.routines = 'Routines leave their notes here.';
@@ -122,12 +128,85 @@ export function vaultCopy(
   return copy;
 }
 
+// "Your computer" (Vault M5, CTO J8, J9): the paired computer's one vault,
+// reached over the hub. For the person who owns the computer it IS the
+// agent's folder, so the agent and routine lines hold there. A member on
+// someone else's computer gets one line naming whose computer holds their
+// notes and nothing more: a member's own approved shell can still read other
+// roots, so no line says who else can or cannot see them (0.13). The desktop
+// keeps its vault as This folder, so a hub vault there says only where it is.
+function hubCopy(copy: VaultCopy, desktop: boolean, opts: VaultCopyOpts): VaultCopy {
+  if (opts.hubMember) {
+    return { storage: `Your notes on ${opts.hubName?.trim() || 'the computer you paired'}.` };
+  }
+  if (desktop) return copy;
+  if (opts.paired) {
+    copy.agent = HUB_AGENT_LINE;
+    copy.routines = 'Routines leave their notes here.';
+  } else {
+    copy.agentPair = PHONE_PAIR_LINE;
+  }
+  return copy;
+}
+
+/** A paired phone's agent line for a vault on its own computer: the same
+ *  sentence This folder says on the desktop, since it is the same folder. */
+export const HUB_AGENT_LINE = 'Your agent can read these notes and write here too, asking first.';
+
+// ---- Your computer, out of reach (Vault M5, CTO J9) -------------------------
+
+/** The line while the paired computer does not answer: the list is the last
+ *  one seen, and an open note's changes wait with the version they were typed
+ *  against. */
+export const HUB_AWAY_LINE = 'Your computer is off. Changes wait here and save when it is back.';
+/** A create, rename, move, or delete tried while the computer is away. */
+export const HUB_AWAY_READ_ONLY =
+  'Your computer is off, so new notes, renames, and deletes wait until it is back.';
+/** A note that was never opened on this device, asked for while away. */
+export const HUB_AWAY_NOT_KEPT =
+  'Your computer is off, and this note was not kept on this device. Open it again when your computer is back.';
+/** The roster row's pending line, on a device with no computer paired. */
+export const HUB_PAIR_LINE = 'Pair with your computer to keep one vault there.';
+/** The computer answered but turned this device's pairing down. */
+export const HUB_PAIRING_REFUSED =
+  'Your computer turned down this device. Pair again from OpenShore on your computer.';
+/** A computer running an OpenShore from before the hub vault. */
+export const HUB_UPDATE_LINE =
+  'Your computer needs the latest OpenShore to keep your vault there. Update it, then try again.';
+/** A note over the wire's cap. */
+export function hubTooLargeLine(bytes: number): string {
+  const mb = (bytes / (1024 * 1024)).toFixed(1);
+  return `A note on your computer is limited to 4 MB, and this one is ${mb} MB.`;
+}
+/** The one toast when an empty Local vault moves to the paired computer on
+ *  pairing (D2). */
+export const HUB_REPOINT_TOAST = 'Your vault now lives on your computer, while it is on.';
+/** The one-time move card after pairing: its title and its two answers. The
+ *  body is `hubMoveOffer(n)`. */
+export const HUB_OFFER_COPY = {
+  title: 'Keep one vault on your computer',
+  move: 'Move my notes',
+  later: 'Keep them here',
+} as const;
+/** The toast after unpairing returned the vault to where it was. */
+export const HUB_UNPAIR_TOAST =
+  'Your vault is back on this device. Notes saved on your computer stay there.';
+/** The move card's line when a Local vault with notes could move there. */
+export function hubMoveOffer(n: number): string {
+  return n === 1
+    ? 'Keep your note on your computer, with your agent? It saves there while your computer is on.'
+    : `Keep your ${n.toLocaleString()} notes on your computer, with your agent? They save there while your computer is on.`;
+}
+
 /** Whether the storage sheet offers a provider on this platform at all. This
  *  folder exists only in OpenShore on a computer and iCloud Drive only on the
  *  iPhone, so neither shows as "Arriving" where it never arrives. */
 export function vaultOffersProvider(platform: Platform, provider: string): boolean {
   if (provider === 'files') return platform === 'electron';
   if (provider === 'icloud') return platform === 'ios';
+  // Your computer is reached from the phone; on the desktop the same folder
+  // is This folder.
+  if (provider === 'hub') return platform !== 'electron';
   return provider === 'local' || provider === 'gdrive';
 }
 
@@ -625,6 +704,98 @@ function copyOrigin(copy: string): string {
   return copy.replace(/ \(conflict \d{4}-\d{2}-\d{2} \d{4}( \d+)?\)(\.md)$/i, '$2');
 }
 
+// ---- Save status and conflict copies (2.2) -----------------------------------
+// A quiet chip in the note bar says where the text on screen stands: Saved,
+// Saving, or kept on this device to save later, with how many notes wait and
+// a way to try now. A conflict copy wears a badge in the tree, so the person
+// can find the text that landed beside a note.
+
+/** Where the open note's text stands. */
+export type VaultSaveStatus = 'saved' | 'saving' | 'offline';
+
+/** The save chip's words: the label, how many notes wait (offline only), and
+ *  the retry button's label (offline only). */
+export function vaultSaveChip(
+  status: VaultSaveStatus,
+  pending: number,
+): { label: string; count?: string; retry?: string } {
+  if (status === 'saved') return { label: 'Saved' };
+  if (status === 'saving') return { label: 'Saving' };
+  return {
+    label: 'Offline, kept on this device',
+    ...(pending > 0
+      ? { count: pending === 1 ? '1 note waiting' : `${pending} notes waiting` }
+      : {}),
+    retry: 'Try again',
+  };
+}
+
+/** A team note kept open after the sign-in expired (2.6): read-only, and
+ *  what to do to save again. */
+export const VAULT_TEAM_SIGN_IN_LINE = 'Sign in again to save to your team.';
+
+// ---- The lease (2.5) ----------------------------------------------------------
+// Advisory on a storage with compare-and-swap: one quiet line, never read-only.
+// Enforced only on a storage without it, and honest that the storage itself
+// does not stop two devices: OpenShore does, by keeping this one read-only.
+
+/** The quiet line while another of the person's devices is editing too. */
+export function vaultLeaseAlsoOpen(label: string | undefined): string {
+  return label ? `Also open on your ${label}.` : 'Also open on another of your devices.';
+}
+
+/** The enforced lease's standing line, its button, and its toasts. */
+export function vaultLeaseEnforced(label: string | undefined): {
+  line: string;
+  takeOver: string;
+  tookOver: string;
+  refused: string;
+  displaced: string;
+} {
+  const other = label ? `your ${label}` : 'another of your devices';
+  return {
+    line: `Being edited on ${other}. This storage cannot stop two devices saving over each other, so this one stays read-only until the other stops.`,
+    takeOver: 'Take over editing',
+    tookOver: 'Editing here now. The other device stops saving within a minute.',
+    refused: `Nothing changed, because ${other} is editing this vault. Take over editing to write here.`,
+    displaced: `Editing moved to ${other}. What you typed here is kept on this device, and it never replaces a newer version.`,
+  };
+}
+
+// ---- Who changed a team note (2.7) ---------------------------------------------
+// The team vault says who last saved a note. Nothing shows for the person's
+// own save; a teammate the vault cannot name is "a teammate", never a guess.
+
+/** The meta line's suffix: " · Edited by sam, 2 min ago", or undefined when
+ *  there is nothing to say (no editor known, or the person's own edit). */
+export function vaultEditedByLine(
+  editedBy: { id: string; label?: string } | undefined,
+  updatedAt: string | undefined,
+  uid: string | undefined,
+  now = Date.now(),
+): string | undefined {
+  if (!editedBy || (uid !== undefined && editedBy.id === uid)) return undefined;
+  const who = editedBy.label || 'a teammate';
+  const at = updatedAt ? Date.parse(updatedAt) : NaN;
+  if (!Number.isFinite(at) || at > now + 60_000) return ` · Edited by ${who}`;
+  const s = Math.max(0, Math.round((now - at) / 1000));
+  const hours = Math.floor(s / 3600);
+  const ago =
+    s < 60
+      ? 'just now'
+      : s < 3600
+        ? `${Math.floor(s / 60)} min ago`
+        : s < 86_400
+          ? `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
+          : `on ${new Date(at).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+  return ` · Edited by ${who}, ${ago}`;
+}
+
+/** The badge a conflict copy (lib/vault.ts isConflictCopy) wears in the tree. */
+export const VAULT_CONFLICT_BADGE = 'Conflict';
+/** What the badge means, for a screen reader. */
+export const VAULT_CONFLICT_BADGE_LABEL = 'A copy kept beside a note when two versions met';
+
 // ---- Resolve, move mode (1d) ------------------------------------------------
 // A move whose notes landed beside same-named notes with different text: one
 // sheet steps through the pairs. The sides are "the one you moved" and "the
@@ -1079,6 +1250,84 @@ export function vaultMissingFolderCard(display: string): {
 /** While a newly pointed folder is still listing: never the empty ramp. */
 export const VAULT_OPENING_LINE = 'Opening your vault.';
 
+/** What the context-pack card needs to know (Vault M4, 4.4). */
+export interface ContextPackCopyInput {
+  seat: 'local' | 'cloud';
+  sources: ReadonlyArray<{ layer: string; path: string; title: string }>;
+  withheld: number;
+  cold: boolean;
+}
+
+/** The context-pack card's lines. `notes` are the Vault notes to list;
+ *  this project's Current State is read from the repo, not the Vault, so it
+ *  is named in the headline and never counted as a Vault note. */
+export interface ContextPackCopy {
+  headline: string;
+  seat: string;
+  notes: Array<{ path: string; title: string }>;
+  withheld?: string;
+  cold?: string;
+  /** On a device that is not the computer: where the notes are. */
+  remote?: string;
+}
+
+const notesWord = (n: number) => `${n} ${n === 1 ? 'note' : 'notes'}`;
+
+/** The pack layers that carry a Vault note (the engine's PackLayer). */
+const PACK_NOTE_LAYERS: ReadonlySet<string> = new Set(['pin', 'search', 'link']);
+
+/** The context-pack card, in words that match the event exactly. Undefined
+ *  when the pack used nothing and held nothing back: no card then. `remote`
+ *  is true on any device that is not the computer running the session (a
+ *  phone driving it), where the notes cannot be opened yet. */
+export function contextPackCopy(
+  pack: ContextPackCopyInput,
+  opts: { remote: boolean },
+): ContextPackCopy | undefined {
+  const currentState = pack.sources.some((s) => s.layer === 'current-state');
+  // Only a real Vault note counts as one: a pin, a search hit, or a linked
+  // note, each with its path. The Vault map (folders and newest titles) and
+  // the handoff carry no path, and Current State is the repo's own file.
+  const notes: Array<{ path: string; title: string }> = [];
+  for (const s of pack.sources) {
+    if (!PACK_NOTE_LAYERS.has(s.layer) || !s.path) continue;
+    if (notes.some((n) => n.path === s.path)) continue;
+    notes.push({ path: s.path, title: s.title });
+  }
+  const map = pack.sources.some((s) => s.layer === 'map');
+  const withheld = Math.max(0, Math.floor(pack.withheld));
+  if (!currentState && !notes.length && !map && !withheld) return undefined;
+  const headline =
+    currentState && notes.length
+      ? `Used this project's Current State and ${notesWord(notes.length)} from your Vault`
+      : currentState
+        ? "Used this project's Current State"
+        : notes.length
+          ? `Used ${notesWord(notes.length)} from your Vault`
+          : map
+            ? 'Used an outline of your Vault, no notes'
+            : 'No notes from your Vault went to this model';
+  const where = opts.remote ? 'your computer' : 'this computer';
+  return {
+    headline,
+    seat: pack.seat === 'cloud' ? 'Sent to a cloud model' : 'Stayed with a local model',
+    notes,
+    ...(withheld
+      ? {
+          withheld: `${withheld} private ${withheld === 1 ? 'note' : 'notes'} stayed on ${where}.`,
+        }
+      : {}),
+    ...(pack.cold && currentState
+      ? { cold: 'Your Vault was still loading, so this turn has Current State only.' }
+      : {}),
+    ...(opts.remote && notes.length
+      ? {
+          remote: `${notes.length === 1 ? 'This note is' : 'These notes are'} on your computer. Open ${notes.length === 1 ? 'it' : 'them'} there for now.`,
+        }
+      : {}),
+  };
+}
+
 /** Linked mentions in a vault over VAULT_LARGE_NOTES notes, on request. */
 export function vaultMentionsOnDemand(n: number): { hint: string; button: string; busy: string } {
   return {
@@ -1087,3 +1336,1153 @@ export function vaultMentionsOnDemand(n: number): { hint: string; button: string
     busy: `Reading ${n} notes`,
   };
 }
+
+// ============================================================================
+// Vault M6 wave 0: one fenced section per build stream. A stream writes only
+// inside its own fence. Every string passes the RETIRED list, copy-glossary and
+// both em-dash guards (CX R1, R2).
+
+// ---- M6 stream C begin ----
+// Capabilities (K1): the line per provider and cap pair that says why an
+// action is not offered here. Covered for every pair by vaultCaps.test.ts
+// (kept apart from vaultCopy.test.ts so the wave 1 streams do not collide),
+// and swept by the RETIRED list, copy-glossary and both em-dash guards.
+
+/** The caps that can be missing for a reason a person should read. (The
+ *  eight in `VaultCaps` minus `renameNative`, which changes nothing a person
+ *  sees, plus `emptyTrash`.) */
+export type VaultCapLineName =
+  | 'rename'
+  | 'folders'
+  | 'trash'
+  | 'emptyTrash'
+  | 'attachments'
+  | 'taskWriteBack'
+  | 'linkRewrite'
+  | 'today'
+  // Vault M7 (CTO L7): the settings sheet; its lines are in the M7 stream E
+  // fence (`vaultSettingsCapLine`).
+  | 'settingsWrite';
+
+export const VAULT_CAP_LINE_NAMES: readonly VaultCapLineName[] = [
+  'rename',
+  'folders',
+  'trash',
+  'emptyTrash',
+  'attachments',
+  'taskWriteBack',
+  'linkRewrite',
+  'today',
+  'settingsWrite',
+];
+
+/** The M6 caps, whose lines are in the tables below. */
+type M6CapLineName = Exclude<VaultCapLineName, 'settingsWrite'>;
+
+const DRIVE_READ_ONLY = 'Google Drive vaults are read-only here';
+
+const CAP_LINES: Record<M6CapLineName, Partial<Record<VaultCopyProvider, string>>> = {
+  rename: {
+    icloud: 'Notes in iCloud Drive cannot be renamed here yet. The Files app can rename them.',
+    org: 'Team notes cannot be renamed here yet.',
+    gdrive: `${DRIVE_READ_ONLY}, so notes cannot be renamed.`,
+  },
+  folders: {
+    icloud: 'Folders in iCloud Drive cannot be made or renamed here yet. The Files app can.',
+    org: 'Team folders cannot be made or renamed here yet.',
+    gdrive: `${DRIVE_READ_ONLY}, so folders cannot change.`,
+  },
+  trash: {
+    icloud: 'iCloud Drive has no Trash here yet, so a delete is for good and asks twice.',
+    org: 'Team notes have no Trash here yet, so a delete is for good and asks twice.',
+    gdrive: `${DRIVE_READ_ONLY}, so notes cannot be deleted.`,
+  },
+  emptyTrash: {
+    org: "Team notes are kept in your organization's history.",
+  },
+  attachments: {
+    local: 'This device keeps notes only, so images and PDFs do not show here.',
+    icloud: 'Images and PDFs in iCloud Drive do not show here yet.',
+    org: 'Team vaults hold notes only, so images and PDFs do not show here.',
+    gdrive: 'Images and PDFs in Google Drive do not show here.',
+  },
+  taskWriteBack: {
+    icloud: 'To tick a box in an iCloud Drive note, edit the note.',
+    org: 'To tick a box in a team note, edit the note.',
+    gdrive: `${DRIVE_READ_ONLY}, so boxes cannot be ticked.`,
+  },
+  linkRewrite: {
+    icloud: 'Links are not updated in iCloud Drive yet.',
+    org: 'Links are not updated in team notes yet.',
+    gdrive: `${DRIVE_READ_ONLY}, so links cannot be updated.`,
+  },
+  today: {
+    icloud:
+      "Today's note is not offered for iCloud Drive yet, so a note already there is never written over.",
+    org: "Today's note is not offered for team vaults yet, so no one's note is written over.",
+    gdrive: `${DRIVE_READ_ONLY}, so today's note cannot be started.`,
+  },
+};
+
+const CAP_FALLBACK: Record<M6CapLineName, string> = {
+  rename: 'This storage cannot rename notes here yet.',
+  folders: 'This storage cannot make or rename folders here yet.',
+  trash: 'This storage has no Trash here, so a delete is for good and asks twice.',
+  emptyTrash: 'Trash here cannot be emptied from this app.',
+  attachments: 'Images and PDFs do not show from this storage yet.',
+  taskWriteBack: 'To tick a box here, edit the note.',
+  linkRewrite: 'Links to a renamed note are not updated on this storage.',
+  today: "Today's note is not offered for this storage yet.",
+};
+
+/** Why `cap` is not offered on `provider`. Total over every pair, so a held
+ *  branch that lights a cap needs no copy change; the room shows it only
+ *  where `vaultCaps(...)[cap]` is false for the storage itself (read-only
+ *  and away keep their own standing lines). */
+export function vaultCapLine(provider: VaultCopyProvider, cap: VaultCapLineName): string {
+  if (cap === 'settingsWrite') return vaultSettingsCapLine(provider);
+  return CAP_LINES[cap][provider] ?? CAP_FALLBACK[cap];
+}
+
+/** A desktop build whose main process does not answer an M6 call. */
+export const VAULT_CAP_UPDATE_LINE = 'Update OpenShore on this computer to do that here.';
+
+/** A folder moved into itself, refused before anything moves. */
+export const VAULT_FOLDER_INTO_ITSELF = 'A folder cannot move inside itself, so nothing changed.';
+
+/** A path that is not a folder the vault can act on (rooted, a dot folder,
+ *  or empty), refused before it reaches the storage. */
+export function vaultNotFolderLine(path: string): string {
+  return `"${path}" is not a folder the vault can change.`;
+}
+
+/** A path that is not an attachment the vault reads. */
+export function vaultNotAttachmentLine(path: string): string {
+  return `"${path}" is not an image or a PDF the vault can open.`;
+}
+
+// ---- M6 stream C end ----
+
+// ---- M6 stream E begin ----
+// Reader (6.5, 6.6): callout titles, embeds, images and PDFs (CX X12, X14).
+
+/** The reading view's lines: scroll-to, note embeds, images, PDFs. */
+export const vaultReaderCopy = {
+  /** `[[Note#Heading]]` or `[[Note#^id]]` opened, and the target is gone. */
+  anchorMissing: (heading: string, note: string): string =>
+    `No heading "${heading}" in "${note}", so it opened at the top.`,
+  /** The quiet header over a note embed; a tap opens the note. */
+  embedFrom: (title: string): string => `From "${title}"`,
+  /** A second level of embed, or one past the per-note cap. */
+  embedNested: (title: string): string => `"${title}" is embedded here. Open it to read it.`,
+  embedMissing: (title: string): string => `No note named "${title}" yet.`,
+  /** Visually hidden while an embed or an image reads. */
+  loading: (name: string): string => `Loading ${name}`,
+  imageMissing: (name: string): string => `Image not found: ${name}`,
+  imageDownloading: (name: string): string => `Downloading ${name}`,
+  imageAway: 'Your computer is off, so this image cannot load.',
+  imageTooLarge: (name: string): string => `${name} is too large to show here.`,
+  /** A PDF that would not open, and an image whose bytes are not an image. */
+  couldNotOpen: (name: string): string => `${name} could not be opened here.`,
+  pdfSub: 'PDF',
+  /** The phone, until a native preview lands (CTO K11). */
+  pdfElsewhere: 'Open it on your computer.',
+  fileMissing: (name: string): string => `File not found: ${name}`,
+  /** Other file types keep M3's line (CX X14). */
+  otherFile: 'Attachments do not open in the Vault yet.',
+} as const;
+
+// ---- M6 stream E end ----
+
+// ---- M6 stream F begin ----
+// Search (6.1): the search field, results, counts, index states, the switcher,
+// Recent (CX X1 to X4).
+
+/** The tree's search field (X1): the placeholder matches VaultNotePicker's. */
+export const VAULT_SEARCH_PLACEHOLDER = 'Search notes';
+export const VAULT_SEARCH_LABEL = 'Search your vault';
+/** Under the field while it is focused and empty. */
+export const VAULT_SEARCH_HINT = 'Try tag:, path:, file:, or "an exact phrase".';
+/** The two result groups (X2): titles are instant, text follows. */
+export const VAULT_SEARCH_TITLES = 'Titles';
+export const VAULT_SEARCH_IN_NOTES = 'In notes';
+/** Past the row cap. */
+export const VAULT_SEARCH_CAPPED = 'Showing the first 50. Add a word to narrow it.';
+/** While the index is still reading bodies, a no-match is not final. */
+export const VAULT_SEARCH_MORE_LOADING = 'More may appear as notes finish loading.';
+/** The index could not read bodies: titles still match. */
+export const VAULT_SEARCH_FAILED =
+  'Could not read note text for search, so only titles match. Try again.';
+export const VAULT_SEARCH_TRY_AGAIN = 'Try again';
+/** Your computer is off: the search runs over what this device last saw. */
+export const VAULT_SEARCH_AWAY = 'Your computer is off, so this searches the notes last seen here.';
+
+/** The count line under the field, `role="status"`. */
+export function vaultSearchCount(n: number): string {
+  return n === 1 ? '1 note' : `${n} notes`;
+}
+
+/** No row matched what was typed. */
+export function vaultSearchNoMatch(q: string): string {
+  return `No notes match "${q.trim()}".`;
+}
+
+/** The M3 index is still building: titles answer now, text follows. */
+export function vaultSearchIndexing(done: number, total: number): string {
+  return `Titles are ready. Reading note text, ${done} of ${total}.`;
+}
+
+/** A result row's folder as a muted sub-label: `Work / Plans`, nothing at the
+ *  root. */
+export function vaultSearchFolder(folder: string): string {
+  return folder ? folder.split('/').join(' / ') : '';
+}
+
+/** A row's spoken label (X2): `{title}, in {folder}. {excerpt}`. The marks
+ *  add nothing spoken. */
+export function vaultSearchRowLabel(title: string, folder: string, excerpt?: string): string {
+  const where = folder ? `${title}, in ${vaultSearchFolder(folder)}.` : `${title}.`;
+  return excerpt ? `${where} ${excerpt}` : where;
+}
+
+/** The quick switcher (X3), a desktop overlay. */
+export const VAULT_SWITCHER_TITLE = 'Open a note';
+export const VAULT_SWITCHER_PLACEHOLDER = 'Type a note name';
+export const VAULT_SWITCHER_TODAY = "Today's note";
+export const VAULT_RECENT_TITLE = 'Recent';
+
+/** The switcher's last row when no title matches exactly. */
+export function vaultSwitcherNew(q: string): string {
+  return `New note "${q.trim()}"`;
+}
+
+/** The sub-label on an agent-written Recent row (X4), shown ONLY where
+ *  `vaultCopy(platform, provider).agent` is defined: desktop This folder and a
+ *  paired phone on Your computer. Everywhere else the row is plain. */
+export function vaultRecentAgentLabel(copy: Pick<VaultCopy, 'agent'>): string | undefined {
+  return copy.agent ? 'From your agent' : undefined;
+}
+
+// ---- M6 stream F end ----
+
+// ---- M6 stream G begin ----
+// Rename (6.2), Trash (6.3) and checkbox write-back: rename and move, folders,
+// Update links and the partial report, delete, Undo, the Trash view, a refused
+// tick (CX X5 to X10, X13; CTO R1 to R3).
+
+/** How a folder reads in a line: "Work / Plans", or nothing at the root. */
+export function vaultFolderLabel(folder: string): string {
+  return folder.split('/').filter(Boolean).join(' / ');
+}
+
+/** "1 note" or "12 notes", and the same for links and other files. */
+function count(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** A note count with its attachments, the way every folder sheet states it
+ *  before it acts (CTO K5): "12 notes and 3 other files". */
+export function vaultNotesAndFiles(notes: number, files: number): string {
+  return files ? `${count(notes, 'note')} and ${count(files, 'other file')}` : count(notes, 'note');
+}
+
+// Rename or move (6.2, CX X5).
+export const VAULT_RENAME_ROW = 'Rename or move';
+export const VAULT_RENAME_TITLE = 'Rename or move';
+export const VAULT_RENAME_NAME = 'Name';
+export const VAULT_RENAME_FOLDER = 'Folder';
+export const VAULT_RENAME_ROOT = 'Top of the vault';
+export const VAULT_RENAME_HERE = 'Here now';
+export const VAULT_RENAME_SAVE = 'Rename';
+export const VAULT_RENAME_MOVE = 'Move here';
+export const VAULT_RENAME_BAD_CHARS = 'Note names cannot use [ ] # ^ | \\ : * ? " < or >.';
+
+/** The name is taken where it would go (X5). */
+export function vaultRenameTaken(name: string, folder: string): string {
+  const where = folder ? vaultFolderLabel(folder) : 'your vault';
+  return `"${name}" is already in ${where}. Pick another name.`;
+}
+
+/** The rename itself failed, so nothing changed (X5). */
+export function vaultRenameFailed(old: string): string {
+  return `Could not rename "${old}", so nothing changed. Try again in a moment.`;
+}
+
+/** The note changed somewhere else before the rename ran. */
+export function vaultRenameChanged(old: string): string {
+  return `"${old}" changed somewhere else, so it was not renamed. The newer version is open now.`;
+}
+
+/** The note is open with a choice waiting (R1: never renamed under it). */
+export const VAULT_RENAME_CHOICE_OPEN = 'Choose what to keep in this note first, then rename it.';
+
+// "Update links?" (X6).
+export interface VaultUpdateLinksCopy {
+  title: string;
+  sub: string;
+  primary: string;
+  quiet: string;
+  quietSub: string;
+}
+
+export function vaultUpdateLinksCopy(o: {
+  kind: 'note' | 'folder';
+  old: string;
+  next: string;
+  links: number;
+  notes: number;
+  /** Notes moving with a folder. */
+  moving?: number;
+}): VaultUpdateLinksCopy {
+  const links = count(o.links, 'link');
+  const inNotes = count(o.notes, 'note');
+  const sub =
+    o.kind === 'folder'
+      ? `${count(o.moving ?? 0, 'note')} move to "${o.next}", and ${links} in ${inNotes} point into it. Update them?`
+      : `${links} in ${inNotes} ${o.links === 1 ? 'points' : 'point'} to "${o.old}". Update ${o.links === 1 ? 'it' : 'them'} to "${o.next}"?`;
+  return {
+    title: 'Update links?',
+    sub,
+    primary: 'Update links',
+    quiet: 'Rename only',
+    quietSub: `Links to "${o.old}" will not open "${o.next}" until you change them.`,
+  };
+}
+
+/** While a long pass runs (over 20 notes). */
+export function vaultUpdatingLinks(i: number, m: number): string {
+  return `Updating links, ${i} of ${m}`;
+}
+
+/** A pass over this many notes shows its progress on the primary (X6). */
+export const VAULT_UPDATING_SHOWN_OVER = 20;
+
+/** The toast after a rename or move lands (X6, X7). A skipped note is named,
+ *  and a partial pass never reads as a plain success. */
+export function vaultRenameToast(o: {
+  old: string;
+  next: string;
+  /** Undefined for Rename only. */
+  rewrite?: {
+    updated: number;
+    total: number;
+    skipped: readonly string[];
+    notUpdated: readonly string[];
+    stopped: boolean;
+  };
+}): string {
+  const head = `Renamed to "${o.next}".`;
+  const r = o.rewrite;
+  if (!r) return head;
+  if (r.stopped && r.updated === 0) {
+    return `Renamed to "${o.next}", but its links could not be updated. Update the rest tries again.`;
+  }
+  const left = [...r.skipped, ...r.notUpdated];
+  if (!left.length) return `${head} ${count(r.updated, 'link')} updated.`;
+  if (left.length === 1 && !r.notUpdated.length) {
+    return `${head} "${left[0]}" changed while this ran, so its link still points to "${o.old}".`;
+  }
+  if (r.stopped) {
+    return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} could not be reached, so their links still point to "${o.old}".`;
+  }
+  return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} changed while this ran, so their links still point to "${o.old}".`;
+}
+
+/** The standing card on the renamed note, since toasts fade (X7). */
+export function vaultLinksLeftCard(old: string): { title: string; button: string } {
+  return { title: `Some links still point to "${old}"`, button: 'Update the rest' };
+}
+
+// Folders (X5, X8).
+export const VAULT_FOLDER_OPTIONS = 'Folder options';
+export const VAULT_FOLDER_RENAME = 'Rename folder';
+export const VAULT_FOLDER_MOVE = 'Move folder';
+export const VAULT_FOLDER_DELETE = 'Delete folder';
+export const VAULT_FOLDER_NEW = 'New folder';
+export const VAULT_FOLDER_NAME = 'Folder name';
+export const VAULT_FOLDER_CREATE = 'Create folder';
+export const VAULT_FOLDER_BAD_NAME = 'Folder names cannot use [ ] # ^ | \\ : * ? " < or >.';
+
+/** The folder options button's label (X18). */
+export function vaultFolderOptionsLabel(folder: string): string {
+  return `Options for ${vaultFolderLabel(folder)}`;
+}
+
+/** The folder name is taken. */
+export function vaultFolderTaken(name: string): string {
+  return `A folder named "${name}" is already here. Pick another name.`;
+}
+
+/** The armed second tap on Delete folder (X8). */
+export function vaultFolderDeleteArmed(notes: number, files: number): string {
+  return `Really move ${vaultNotesAndFiles(notes, files)} to Trash? Tap to confirm.`;
+}
+
+/** What a folder holds, said before anything acts on it (K5). */
+export function vaultFolderHolds(notes: number, files: number): string {
+  return `This folder holds ${vaultNotesAndFiles(notes, files)}.`;
+}
+
+// Delete (6.3, X8 with R2). One tap where Trash is real; two taps, worded as
+// permanent, everywhere else.
+export const VAULT_DELETE_ROW = 'Delete this note';
+
+/** The armed second tap where a delete is for good (R2). */
+export function vaultDeleteForGood(title?: string): string {
+  return title
+    ? `Really delete "${title}" for good? Tap to confirm.`
+    : 'Really delete this note for good? Tap to confirm.';
+}
+
+/** A trash move that did not happen (X8). */
+export function vaultTrashFailed(title: string): string {
+  return `Not deleted. Could not move "${title}" to Trash. Try again in a moment.`;
+}
+
+// Undo (X9).
+export const VAULT_UNDO = 'Undo';
+export const VAULT_UNDO_ALSO_IN_TRASH = 'Also in Trash.';
+/** A delete with no Trash behind it (K6, R2). */
+export const VAULT_DELETED = 'Deleted.';
+
+/** The Undo toast's text. */
+export function vaultUndoText(o: { trashed: boolean; folder: boolean; notes: number }): string {
+  if (!o.trashed) return VAULT_DELETED;
+  return o.folder ? `Moved ${count(o.notes, 'note')} to Trash.` : 'Moved to Trash.';
+}
+
+/** The Undo button's accessible label (X9). */
+export function vaultUndoLabel(title: string): string {
+  return `Undo, restore ${title}`;
+}
+
+/** Undo or Restore landed (X9, X10). `folder` names where it went back to;
+ *  `renamed` is the "(restored)" beside rule (R3). */
+export function vaultRestoredToast(o: {
+  title: string;
+  folder?: string;
+  renamed?: boolean;
+  /** The Trash view names the folder; Undo does not need to. */
+  sayFolder?: boolean;
+}): string {
+  const where = o.folder ? vaultFolderLabel(o.folder) : 'your vault';
+  if (o.renamed) {
+    return `"${o.title}" was already in ${where}, so the restored one is "${o.title} (restored)".`;
+  }
+  return o.sayFolder ? `Restored "${o.title}" to ${where}.` : `Restored "${o.title}".`;
+}
+
+/** Undo or Restore could not put it back. */
+export function vaultRestoreFailed(title: string): string {
+  return `Could not restore "${title}". It is still in Trash. Try again in a moment.`;
+}
+
+/** The courtesy Undo (no Trash) found the name taken twice. */
+export function vaultUndoFailed(title: string): string {
+  return `Could not bring back "${title}", since its name is taken. Try again in a moment.`;
+}
+
+// The Trash view (X10, R3).
+export const VAULT_TRASH = 'Trash';
+export const VAULT_TRASH_BACK = 'Vault';
+export const VAULT_TRASH_RESTORE = 'Restore';
+export const VAULT_TRASH_EMPTY = 'Empty Trash';
+export const VAULT_TRASH_IS_EMPTY = 'Trash is empty.';
+export const VAULT_TRASH_TEAM_LINE = "Team notes are kept in your organization's history.";
+
+/** The lead line, per kind of storage (X10; never "stay in the vault"). */
+export function vaultTrashLead(kind: 'folder' | 'local' | 'team'): string {
+  if (kind === 'folder') {
+    return 'Deleted notes wait here, in the .trash folder, until you empty it.';
+  }
+  if (kind === 'team') return 'Deleted team notes can be restored from here.';
+  return 'Deleted notes wait here until you empty Trash.';
+}
+
+/** When a note was deleted, in the `vaultResolveWhen` style: "today at 2:14
+ *  PM", else "Sep 27". Undefined when the storage does not say. */
+export function vaultTrashWhen(
+  trashedAt: string | undefined,
+  now = Date.now(),
+): string | undefined {
+  if (!trashedAt) return undefined;
+  const t = new Date(trashedAt);
+  if (Number.isNaN(t.getTime())) return undefined;
+  if (new Date(now).toDateString() === t.toDateString()) {
+    return `today at ${t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  return t.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+/** A Trash row's sub-label: "From Work / Plans · Deleted today at 2:14 PM",
+ *  plus " · by {name}" on a team row. */
+export function vaultTrashRowSub(o: { folder: string; when?: string; by?: string }): string {
+  const parts = [`From ${o.folder ? vaultFolderLabel(o.folder) : 'the top of the vault'}`];
+  if (o.when) parts.push(`Deleted ${o.when}`);
+  if (o.by) parts.push(`by ${o.by}`);
+  return parts.join(' · ');
+}
+
+/** The Restore button's accessible label. */
+export function vaultTrashRestoreLabel(title: string): string {
+  return `Restore ${title}`;
+}
+
+/** The armed second tap on Empty Trash (X10). */
+export function vaultTrashEmptyArmed(n: number): string {
+  return `Really delete ${count(n, 'note')} for good? Tap to confirm.`;
+}
+
+/** Empty Trash landed, whole or in part (X10). */
+export function vaultTrashEmptied(removed: number, asked: number): string {
+  if (removed >= asked) return `Trash emptied. ${count(removed, 'note')} deleted for good.`;
+  const stayed = asked - removed;
+  return `${count(removed, 'note')} deleted for good. ${stayed} could not be removed and ${stayed === 1 ? 'is' : 'are'} still in Trash.`;
+}
+
+/** Empty Trash did not run. */
+export const VAULT_TRASH_EMPTY_FAILED =
+  'Could not empty Trash, so nothing was deleted. Try again in a moment.';
+
+/** Trash could not be read. */
+export const VAULT_TRASH_LIST_FAILED = 'Could not open Trash. Try again in a moment.';
+
+// A refused tick (X13).
+export function vaultTickChanged(title: string): string {
+  return `"${title}" changed somewhere else, so that box was not ticked. The newer version is open now.`;
+}
+export const VAULT_TICK_FAILED = 'Could not save that tick. Try again.';
+
+// ---- M6 stream G end ----
+
+// ---- M6 stream H begin ----
+// Linking and context (6.7, 6.8) and Today (6.4): link suggestions and the
+// accessory bar, outline, outgoing and unlinked mentions, the backlinks
+// skeleton, Today's note (CX X11, X15 to X17).
+
+/** The link suggestions (CX X15). */
+export const VAULT_LINK_LIST_LABEL = 'Link a note';
+export function vaultLinkChipAria(title: string, folder: string): string {
+  return folder ? `${title}, in ${folder}` : title;
+}
+export function vaultLinkNew(q: string): string {
+  return `New: ${q}`;
+}
+export function vaultLinkNewAria(q: string): string {
+  return `Link to a new note named ${q}`;
+}
+export function vaultLinkHeading(heading: string): string {
+  return `# ${heading}`;
+}
+export function vaultLinkHeadingAria(heading: string): string {
+  return `Heading ${heading}`;
+}
+
+/** The phone's accessory bar above the keyboard (CX X15). */
+export const VAULT_ACCESSORY = {
+  label: 'Note tools',
+  link: 'Insert link',
+  tag: 'Insert tag',
+  task: 'Make this line a task',
+  hide: 'Hide keyboard',
+} as const;
+
+/** The outline sheet (CX X16). */
+export const VAULT_OUTLINE_TITLE = 'Outline';
+export function vaultOutlineRowAria(level: number, text: string): string {
+  return `Heading level ${level}, ${text}`;
+}
+
+/** The card under a note: three quiet sections (CX X16, X17). */
+export const VAULT_LINKED_MENTIONS = 'Linked mentions';
+export const VAULT_OUTGOING_LINKS = 'Links from this note';
+export const VAULT_UNLINKED_MENTIONS = 'Unlinked mentions';
+export const VAULT_BACKLINKS_LOADING = 'Finding linked mentions';
+export const VAULT_OUTGOING_MISSING = 'Not created yet. Tap to create it.';
+export const VAULT_FIND_UNLINKED = 'Find unlinked mentions';
+export const VAULT_LINK_BUTTON = 'Link';
+export function vaultUnlinkedBusy(n: number): string {
+  return `Reading ${n} ${n === 1 ? 'note' : 'notes'}`;
+}
+export function vaultUnlinkedNone(title: string): string {
+  return `No other note names "${title}" without linking it.`;
+}
+export function vaultLinkMentionAria(title: string, other: string): string {
+  return `Link "${title}" in ${other}`;
+}
+export function vaultLinkedIn(other: string): string {
+  return `Linked in "${other}".`;
+}
+export function vaultLinkMentionFailed(other: string): string {
+  return `Could not link it in "${other}", so nothing changed. Try again in a moment.`;
+}
+
+/** Today's note (CX X11). English names only, as the date tokens are (K7). */
+const TODAY_WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
+const TODAY_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+export const VAULT_TODAY_TITLE = "Today's note";
+export function vaultTodayAria(day: { weekday: number; month: number; day: number }): string {
+  const weekday = TODAY_WEEKDAYS[day.weekday] ?? '';
+  const month = TODAY_MONTHS[day.month - 1] ?? '';
+  return `Today's note, ${weekday}, ${month} ${day.day}`;
+}
+export const VAULT_TODAY_STARTED = "Started today's note.";
+export function vaultTodayStartedFrom(template: string): string {
+  return `Started today's note from ${noteTitle(template)}.`;
+}
+export function vaultTodayTemplateMissing(path: string): string {
+  return `Started today's note. The template ${path} was not found, so it is blank.`;
+}
+/** The daily notes format names a token this app cannot read, so no note
+ *  was made rather than one under a guessed name (K7). */
+export function vaultTodayFormatRefused(format: string, token: string): string {
+  return `Your daily notes format "${format}" uses "${token}", which OpenShore cannot read yet, so no note was made.`;
+}
+/** The day's name is not a note name (a format with a character notes
+ *  cannot use). */
+export function vaultTodayNameRefused(error: string): string {
+  return `Today's note could not be named, so no note was made. ${error}`;
+}
+
+// ---- M6 stream H end ----
+
+// ---- M6 wave 2 begin ----
+// The integrator's few lines (Vault M6 wave 2): what the room says where no
+// stream's fence had a line for it.
+
+/** A folder could not be made, for a reason other than its name. */
+export const VAULT_FOLDER_CREATE_FAILED = 'Could not make that folder. Try again in a moment.';
+
+/** A folder moved note by note (Local) stopped part way (K5): what moved is
+ *  said, never a plain success and never "nothing changed". */
+export function vaultFolderMovePartial(old: string, moved: number, total: number): string {
+  return `Moved ${moved} of ${total} ${total === 1 ? 'note' : 'notes'} from "${old}". The rest could not be moved, so they are still there. Try again in a moment.`;
+}
+/** Today's note could not be read or started, for a reason the storage did
+ *  not name. */
+export const VAULT_TODAY_FAILED = "Could not open today's note. Try again in a moment.";
+// ---- M6 wave 2 end ----
+
+// ============================================================================
+// Vault M7 wave 0: one fenced section per build stream. A stream writes only
+// inside its own fence. Every string passes the RETIRED list, M6_RETIRED,
+// M7_BANNED (no faster, better, remembers, always, and no "picks up where you
+// left off" until D12's handoff eval), copy-glossary and both em-dash guards
+// (CX R1, R2). Settings copy says "this vault", "beside your notes" or names
+// `.oscode/vault.json`, never "saved in your vault".
+
+// ---- M7 stream E begin ----
+// Providers (L7, L16): the line that says why this storage's settings cannot
+// change here (`vaultCaps().settingsWrite` false for the storage itself), per
+// provider, in the `vaultCapLine` style.
+
+const SETTINGS_CAP_LINES: Partial<Record<VaultCopyProvider, string>> = {
+  icloud: 'Vault settings in iCloud Drive cannot change here yet.',
+  org: 'Team vault settings cannot change here yet.',
+  gdrive: 'Google Drive vaults are read-only here, so vault settings cannot change.',
+};
+
+const SETTINGS_CAP_FALLBACK = 'Vault settings on this storage cannot change here yet.';
+
+/** Why the Vault settings sheet cannot save on `provider` (read through
+ *  `vaultCapLine(provider, 'settingsWrite')`). Read-only and away keep the
+ *  room's own standing lines. */
+export function vaultSettingsCapLine(provider: VaultCopyProvider): string {
+  return SETTINGS_CAP_LINES[provider] ?? SETTINGS_CAP_FALLBACK;
+}
+
+/** A settings write named something other than the vault's own file. Only
+ *  `.oscode/vault.json` is written here; Obsidian's files are read, never
+ *  written. */
+export const VAULT_SETTINGS_NAME_REFUSED =
+  "Only this vault's own settings file can change here, so nothing changed.";
+
+/** A settings file over the 256 KB cap. */
+export const VAULT_SETTINGS_TOO_LARGE = 'That settings file is over 256 KB, so nothing changed.';
+
+/** The storage would not write the settings file (`.oscode` is not a real
+ *  folder there, or the computer refused it). */
+export const VAULT_SETTINGS_WRITE_REFUSED =
+  'The vault folder would not take the settings file, so nothing changed.';
+
+/** Your computer took the settings file but its answer named no version, so
+ *  the next change could not be guarded. */
+export const HUB_SETTINGS_NO_VERSION =
+  'Your computer took the settings but did not say which version they are.';
+
+/** Local's write refuses a name under a dot folder (CTO L8): nothing lands
+ *  under `.oscode` or `.obsidian`, and a dot name is never a note here. */
+export function vaultDotPathLine(path: string): string {
+  return `"${path}" is not a note name the vault can use, so nothing changed.`;
+}
+
+// ---- M7 stream E end ----
+
+// ---- M7 stream F begin ----
+// The settings sheet and its switches (CX Y1 to Y10, Y13; CTO L1 to L4, L7,
+// L11 to L13, reconciliation 3 and 4): the title and seven section labels,
+// row labels and subs, "From Obsidian" and "From your computer's config",
+// the set-aside line around the schema's `plain` fragments, the save status
+// and conflict lines, the storage footers, Notes in chats (built from
+// PACK_BY_CLASS), Handoff, Room for notes and its amber spend line, the
+// Delete choice, excluded and local-only folders, Your agent writes in, the
+// Wayfinding rows and toasts, and the starter layout's notes and lines.
+
+/** The sheet's title, and the Wayfinding and Options rows that open it. */
+export const VAULT_SETTINGS_TITLE = 'Vault settings';
+
+/** The seven sections, in CX Y1's order (what people change most and what
+ *  models see first; where it lives last). */
+export const VAULT_SETTINGS_SECTIONS = Object.freeze({
+  notes: 'Notes',
+  models: 'Models and your notes',
+  device: 'On this device',
+  today: "Today's note",
+  links: 'Links and files',
+  editor: 'Editor',
+  where: 'Where it lives',
+} as const);
+
+/** Row labels, section by section (CX Y1, Y7 to Y10). */
+export const VAULT_SETTINGS_ROWS = Object.freeze({
+  newNotes: 'New notes go in',
+  openMode: 'Open notes in',
+  sort: 'Sort notes by',
+  delete: 'Delete',
+  exclude: 'Notes models never see',
+  localOnly: 'Notes that stay on this computer',
+  agentFolder: 'Your agent writes in',
+  context: 'Notes in chats',
+  packSize: 'Room for notes',
+  handoff: 'Handoff',
+  dailyFolder: 'Folder',
+  dateFormat: 'Date format',
+  template: 'Template',
+  templatesFolder: 'Templates folder',
+  linkStyle: 'New links use',
+  linkFormat: 'Link paths',
+  attachments: 'Attachments folder',
+  font: 'Font',
+  size: 'Text size',
+  where: 'Where it lives',
+} as const);
+
+/** Each choice a segmented row or a picker offers, by the schema's value. */
+export const VAULT_SETTINGS_CHOICES = Object.freeze({
+  newNotes: { root: 'Top of this vault', current: 'Same folder as the open note' },
+  openMode: { read: 'Reading', edit: 'Editing' },
+  sort: { name: 'Name', modified: 'Last edited', created: 'Created' },
+  delete: { trash: 'To Trash', permanent: 'For good' },
+  packSize: { small: 'Small', normal: 'Normal', large: 'Large' },
+  linkStyle: { wiki: 'Wikilinks', markdown: 'Markdown links' },
+  linkFormat: { shortest: 'Shortest', relative: 'Relative', absolute: 'From the top' },
+  font: { default: 'Default', serif: 'Serif', mono: 'Mono' },
+  size: { smaller: 'Smaller', default: 'Default', larger: 'Larger' },
+} as const);
+
+/** A field's name in the conflict line ("{Field} changed somewhere else"),
+ *  keyed like `VAULT_SETTINGS_FIELDS`. The four rows the sheet calls only
+ *  "Folder", "Template" and the like say which note they belong to here. */
+export const VAULT_SETTINGS_FIELD_LABELS = Object.freeze({
+  'newNotes.location': 'New notes go in',
+  'newNotes.folder': 'New notes go in',
+  'editor.openMode': 'Open notes in',
+  'tree.sort': 'Sort notes by',
+  delete: 'Delete',
+  exclude: 'Notes models never see',
+  'localOnly.paths': 'Notes that stay on this computer',
+  'localOnly.tags': 'Notes that stay on this computer',
+  'agent.folder': 'Your agent writes in',
+  'daily.folder': "Today's note folder",
+  'daily.format': 'Date format',
+  'daily.template': "Today's note template",
+  'templates.folder': 'Templates folder',
+  'templates.dateFormat': 'Templates date format',
+  'templates.timeFormat': 'Templates time format',
+  'links.style': 'New links use',
+  'links.format': 'Link paths',
+  'links.updateOnRename': 'Links on rename',
+  'attachments.folder': 'Attachments folder',
+  'editor.font': 'Font',
+  'editor.size': 'Text size',
+} as const);
+
+/** `Date format`'s live line under the field. */
+export function vaultSettingsTodayIs(formatted: string): string {
+  return `Today: ${formatted}`;
+}
+
+// Y1 footers, one per storage (Team is Y14's).
+/** A folder, iCloud or Your computer: the file travels with the notes. */
+export const VAULT_SETTINGS_FOOTER_FILE =
+  'These settings are kept in .oscode/vault.json, so they travel with your notes.';
+/** Local: the sealed store. */
+export const VAULT_SETTINGS_FOOTER_LOCAL =
+  'These settings are kept on this device with your notes.';
+
+// Y2: what Obsidian sets is read here and changed there.
+export const VAULT_SETTINGS_FROM_OBSIDIAN = 'From Obsidian';
+export const VAULT_SETTINGS_FROM_OBSIDIAN_MORE =
+  'Set in Obsidian. Change it there, and OpenShore follows.';
+/** A field Obsidian leaves unset, in a vault that has `.obsidian/`. */
+export const VAULT_SETTINGS_OBSIDIAN_OWN = 'Obsidian keeps its own setting for this.';
+export const VAULT_SETTINGS_OBSIDIAN_EXCLUDED = 'Excluded in Obsidian';
+export const VAULT_SETTINGS_OBSIDIAN_EXCLUDED_SUB =
+  'Left out of search and link suggestions here too.';
+
+// Y3: what the vault file cannot widen.
+export const VAULT_SETTINGS_FROM_MACHINE = "From your computer's config";
+export const VAULT_SETTINGS_BUILT_IN = "Built in. Only your computer's config can change these.";
+/** Section 3's own footer. */
+export const VAULT_SETTINGS_DEVICE_FOOTER =
+  'These stay on this device and never travel with your notes, so a shared folder cannot change them.';
+
+/** One quiet line per ask the file may not make, around the schema's
+ *  `plain` fragment (CTO L1). No warn color: a set-aside is the system
+ *  working. */
+export function vaultSettingsSetAside(plain: string): string {
+  return `This vault's settings file also asks to ${plain}. A settings file can only narrow what models see, so that part is set aside.`;
+}
+
+/** The tool card's reason for a write under `.oscode/` (CTO L8). */
+export const VAULT_SETTINGS_AGENT_DENY =
+  'Vault settings are yours to change, so a model cannot write under .oscode.';
+
+// Y5: saving on commit, and a conflict.
+export const VAULT_SETTINGS_SAVING = 'Saving';
+export const VAULT_SETTINGS_SAVED = 'Saved';
+/** Once, on the first change in a folder vault with no file yet. */
+export const VAULT_SETTINGS_FIRST_CHANGE =
+  'The first change adds a small .oscode folder beside your notes to keep these settings.';
+/** A different field changed elsewhere: this one was re-applied and saved. */
+export const VAULT_SETTINGS_MERGED =
+  'Saved. Some other settings changed somewhere else and show here now.';
+
+/** The same field changed elsewhere: nothing was written. */
+export function vaultSettingsSameField(field: string, value: string): string {
+  return `${field} changed somewhere else while this was open, so yours was not saved. It is ${value} now.`;
+}
+
+/** The one quiet button under a same-field conflict. */
+export function vaultSettingsUseYours(yours: string): string {
+  return `Use ${yours}`;
+}
+
+export const VAULT_SETTINGS_FAILED =
+  'Could not save that setting, so nothing changed. Try again in a moment.';
+export const VAULT_SETTINGS_UNREADABLE =
+  '.oscode/vault.json could not be read, so these show the defaults and cannot change here. Fix or delete that file to change them.';
+export const VAULT_SETTINGS_AWAY =
+  'Your computer is off, so these settings cannot change right now.';
+
+// Y6: the Delete choice.
+export const VAULT_SETTINGS_DELETE_FOR_GOOD = 'Deletes skip Trash and ask twice.';
+
+// Y7: Notes in chats and Handoff.
+/** The words the Notes in chats sub is built from, so the sub can never
+ *  outrun the eval: it names matching notes only when some class's pack
+ *  retrieves (`full` in PACK_BY_CLASS). Pass the core's table. */
+export function vaultNotesInChatsSub(byClass: Readonly<Record<string, string>>): string {
+  const modes = Object.values(byClass);
+  const all = modes.length > 0 && modes.every((m) => m === 'full');
+  const some = modes.some((m) => m === 'full');
+  const what = all
+    ? "Each chat starts with this project's Current State, any notes you pinned, and notes that match the task."
+    : some
+      ? "Each chat starts with this project's Current State and any notes you pinned, and on some models notes that match the task."
+      : "Each chat starts with this project's Current State and any notes you pinned.";
+  return `${what} A card shows what went. Off applies to new chats.`;
+}
+export const VAULT_HANDOFF_SUB =
+  'When you switch models in a chat, the next one starts with a short summary of the work so far. Off applies to new chats.';
+/** A project's config turns the row off: the switch shows off, disabled. */
+export const VAULT_SWITCH_PROJECT_OFF = "This project's settings turn this off.";
+/** Memory off: both rows disabled. */
+export const VAULT_SWITCH_MEMORY_OFF = 'Memory is off, so chats carry no notes.';
+/** Memory's own sub, now that it gates the vault too (CX Y7; the
+ *  integrator places it on the Memory row). */
+export const VAULT_MEMORY_SUB =
+  "The agent keeps notes on each coding project in that project's own repository, and chats can carry your vault. Off stops both, for new chats.";
+
+/** The Wayfinding toasts, in the Memory row's pattern. */
+export function vaultNotesInChatsToast(on: boolean): string {
+  return on ? 'Notes in chats on.' : 'Notes in chats off.';
+}
+export function vaultHandoffToast(on: boolean): string {
+  return on ? 'Handoff on.' : 'Handoff off.';
+}
+
+// Y8: Room for notes. No numbers and no speed or quality claim (D12).
+/** Adapted from CX's "so a smaller model always gets less": M7_BANNED bars
+ *  "always", and the sentence holds without it. */
+export const VAULT_PACK_SIZE_SUB =
+  "How much of each model's room your notes may take. It scales with the model, so a smaller model gets less.";
+/** Amber dot, only while a cloud seat is connected: a spend fact. */
+export const VAULT_PACK_SIZE_CLOUD = 'On a cloud model, Large sends more text on your account.';
+export const VAULT_PACK_SIZE_NEEDS_CONTEXT = 'Turn on Notes in chats to choose this.';
+export const VAULT_PACK_SIZE_MACHINE_ABOVE =
+  "Your computer's config gives notes more room than Large.";
+
+// Y9: excluded and local-only folders.
+export const VAULT_EXCLUDE_SUB = 'Models never see these, in any chat.';
+export const VAULT_LOCAL_ONLY_SUB =
+  'A local model may read these. Nothing here goes to a cloud model.';
+export const VAULT_ADD_FOLDER = 'Add a folder';
+export const VAULT_ADD_TAG = 'Add a tag';
+export function vaultRemoveEntry(entry: string): string {
+  return `Remove ${entry}`;
+}
+
+// Y10: Your agent writes in (only where `vaultCopy(...).agent` is defined).
+export const VAULT_AGENT_FOLDER_ANYWHERE = 'Anywhere in this vault';
+export const VAULT_AGENT_FOLDER_SUB = 'Your agent writes only here, and still asks first.';
+
+// Y13: the starter layout (the preview sheet's rows are stream G's).
+/** The ramp's second button, where the layout is offered. */
+export const VAULT_STARTER_OFFER = 'Start with a simple layout';
+/** The preview's one line on settings, shown only when the settings file
+ *  will be written. */
+export const VAULT_STARTER_SETTINGS_LINE =
+  "New notes go in Inbox, and today's note uses Templates/Daily.";
+export const VAULT_STARTER_ADDED = 'Added a simple layout.';
+export function vaultStarterPartial(added: number, total: number): string {
+  return `Added ${added} of ${total}. Try again to add the rest.`;
+}
+
+/** `Templates/Daily.md`: no `{{date}}` heading, since the file name is the
+ *  date. */
+export function vaultStarterDailyTemplate(): string {
+  return ['## Plan', '', '- [ ] ', '', '## Notes', ''].join('\n');
+}
+
+/** `Vault conventions.md`. It travels, so like the welcome note it names no
+ *  storage, no Obsidian and no agent. The Private and Journal line is here
+ *  only when the vault's own settings file landed with those globs (CTO
+ *  reconciliation 3): machine config can replace the D5 defaults, but it
+ *  cannot remove the vault file's union. */
+export function vaultStarterConventions(settingsLanded: boolean): string {
+  return [
+    '# Vault conventions',
+    '',
+    'New notes start in Inbox. Move them into a folder when they find a home.',
+    '',
+    "Today's note uses Templates/Daily. Edit that note to change what every new day starts with.",
+    '',
+    'Link notes with [[two square brackets]].',
+    ...(settingsLanded
+      ? ['', "This vault's settings keep anything in Private or Journal off cloud models."]
+      : []),
+    '',
+  ].join('\n');
+}
+
+// ---- M7 stream F end ----
+
+// ---- M7 stream G begin ----
+// Components (CX Y11, Y12, Y13, Y16): the provenance chip and its accessible
+// label, "About this note" and Mark as reviewed, the starter preview sheet's
+// rows, the editor sample line.
+
+/** Where the writing seat ran, in words: the chip is never color alone (R4). */
+export const VAULT_PROV_WHERE: Readonly<Record<'local' | 'cloud', string>> = {
+  local: 'Local',
+  cloud: 'Cloud',
+};
+
+/** What the provenance chip says (CX Y11). `edit` is a model's edit to a note
+ *  it did not create. Reviewed keeps the Local or Cloud word beside the model
+ *  (Y17: the chip always says it in words). */
+export function vaultProvChipText(p: {
+  model: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  reviewed?: boolean;
+}): string {
+  const where = VAULT_PROV_WHERE[p.where];
+  if (p.reviewed) return `${p.model} · ${where} · Reviewed`;
+  return `${p.edit ? 'Edited' : 'Written'} by ${p.model} · ${where}`;
+}
+
+/** The chip's accessible name (CX Y16). */
+export function vaultProvChipLabel(p: {
+  model: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  reviewed?: boolean;
+}): string {
+  const on = p.where === 'local' ? 'this computer' : 'a cloud model';
+  const verb = p.edit ? 'Edited' : 'Written';
+  return `${verb} by ${p.model}, on ${on}.${p.reviewed ? ' Reviewed.' : ''} Open details.`;
+}
+
+// "About this note" (CX Y12).
+export const VAULT_ABOUT_TITLE = 'About this note';
+export const VAULT_ABOUT_WRITTEN_BY = 'Written by';
+export const VAULT_ABOUT_EDITED_BY = 'Edited by';
+export const VAULT_ABOUT_RAN = 'Ran';
+export const VAULT_ABOUT_RAN_LOCAL = 'On this computer';
+/** The cloud row names the provider when the note carries one. */
+export function vaultAboutRanCloud(provider?: string): string {
+  return provider ? `On a cloud model, ${provider}` : 'On a cloud model';
+}
+export const VAULT_ABOUT_SIZE = 'Model size';
+export const VAULT_ABOUT_SIZES: Readonly<Record<'tiny' | 'small' | 'mid' | 'large', string>> = {
+  tiny: 'Tiny',
+  small: 'Small',
+  mid: 'Mid',
+  large: 'Large',
+};
+export const VAULT_ABOUT_HOW = 'How';
+export const VAULT_ABOUT_HOWS: Readonly<
+  Record<'agent' | 'agent-edit' | 'crew' | 'handoff', string>
+> = {
+  agent: 'In a chat, with your approval',
+  'agent-edit': 'In a chat, with your approval',
+  crew: 'By a Crew routine',
+  handoff: 'A handoff you saved',
+};
+export const VAULT_ABOUT_CREATED = 'Created';
+export const VAULT_ABOUT_REVIEWED = 'Reviewed';
+export const VAULT_ABOUT_NOT_YET = 'Not yet';
+export const VAULT_ABOUT_FOOT =
+  "This comes from the note's own properties, which anyone who can edit the note can change.";
+export const VAULT_MARK_REVIEWED = 'Mark as reviewed';
+export const VAULT_MARK_REVIEWED_SUB =
+  'Reviewed means you read it. It changes nothing a model sees.';
+export const VAULT_MARK_NOT_REVIEWED = 'Mark as not reviewed';
+export const VAULT_MARKED_REVIEWED = 'Marked as reviewed.';
+export const VAULT_MARKED_NOT_REVIEWED = 'Marked as not reviewed.';
+export function vaultMarkRefused(title: string): string {
+  return `"${title}" changed somewhere else, so it was not marked. The newer version is open now.`;
+}
+export function vaultMarkFailed(title: string): string {
+  return `Could not mark "${title}", so nothing changed. Try again in a moment.`;
+}
+
+// The starter layout's preview sheet (CX Y13). The notes it writes, the ramp
+// button and the toasts are stream F's.
+export const VAULT_STARTER_TITLE = 'A simple layout';
+export const VAULT_STARTER_SUB =
+  'These are added to your empty vault. Change or delete any of them later.';
+export const VAULT_STARTER_ROWS: ReadonlyArray<{
+  glyph: 'note' | 'folder' | 'template';
+  name: string;
+  line: string;
+}> = [
+  { glyph: 'note', name: 'Welcome to your Vault', line: 'A note on how links and folders work.' },
+  { glyph: 'folder', name: 'Inbox', line: 'A folder where new notes go.' },
+  { glyph: 'template', name: 'Templates/Daily', line: "A template for today's note." },
+  {
+    glyph: 'note',
+    name: 'Vault conventions',
+    line: 'A note that says how this vault is laid out. Pin it to a project so its chats start with it.',
+  },
+];
+// The settings line and the partial result are stream F's (one source per
+// string); the sheet imports them from F's section above.
+export const VAULT_STARTER_ADD = 'Add these';
+
+/** The Editor section's one sample line, drawn in the chosen font and size. */
+export const VAULT_EDITOR_SAMPLE = 'A line of your notes looks like this.';
+
+// ---- M7 stream G end ----
+
+// ---- M7 wave 2 begin ----
+// The integrator's few lines: what the room and Settings say where no
+// stream's fence had a line for it (the team read-only footer, Y4's rows).
+
+/** A list or a note field with nothing set. */
+export const VAULT_SETTINGS_NONE = 'None';
+/** The Add a tag field's hint. */
+export const VAULT_SETTINGS_TAG_PLACEHOLDER = 'Tag name';
+
+/** Obsidian's attachment folder form (`/`, `./`, `./sub`, a folder) in
+ *  words, for the Attachments folder row. */
+export function vaultAttachmentsValue(setting: string | undefined): string {
+  const v = (setting ?? '').trim();
+  if (!v || v === '/') return 'Top of this vault';
+  if (v === './' || v === '.') return 'Same folder as the note';
+  if (v.startsWith('./')) return `"${v.slice(2).replace(/\/+$/, '')}", beside the note`;
+  return v.replace(/^\/+|\/+$/g, '');
+}
+
+/** The starter layout found the vault no longer empty right before it
+ *  wrote (CTO L12), so nothing was added. */
+export const VAULT_STARTER_NOT_EMPTY =
+  'This vault has something in it now, so the layout was not added.';
+
+/** The team vault's footer (CX Y14): an admin reads who the settings reach,
+ *  a member reads who sets them. On main no one edits them here yet, so the
+ *  rows read-only with the storage's own line. */
+export function vaultSettingsTeamFooter(o: { admin: boolean; org?: string }): string {
+  if (!o.admin) return 'Your admins set these.';
+  return o.org ? `These apply to everyone in ${o.org}.` : 'These apply to everyone in your team.';
+}
+
+/** The approval card's line for the property change a model's write also
+ *  makes (CTO L9): the person approves the note's properties with its text.
+ *  In the chip's own words (CX Y11), so the card and the chip agree. */
+export function vaultProposalRecords(p: {
+  model?: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  clearsReview?: boolean;
+}): string {
+  const who = p.model
+    ? vaultProvChipText({ model: p.model, where: p.where, ...(p.edit ? { edit: true } : {}) })
+    : `${p.edit ? 'Edited' : 'Written'} · ${VAULT_PROV_WHERE[p.where]}`;
+  return `Also records in its properties: ${who}.${p.clearsReview ? ' Its review mark is cleared.' : ''}`;
+}
+
+// ---- M7 wave 2 end ----
+
+// ---- M8 begin ----
+// The ship gate's copy (Vault M8).
+
+/** 8.4 and D12: claims beyond "your models can read your notes" wait on the
+ *  number. False until the 4.8 context pack eval (a with-and-without number
+ *  per model class on the reference box) and the 5.4 handoff eval (the
+ *  handoff task passing on each class) are recorded in DECISIONS with the
+ *  founder's thresholds. While false, `vaultCopy.test.ts` refuses "faster",
+ *  "smarter", "remembers" and the rest of its claim list across this whole
+ *  file and the Vault's components. Flip it only with those results in hand,
+ *  and only for the claim and the class they cover. */
+export const VAULT_EVAL_CLAIMS_UNLOCKED = false;
+
+/** Room for notes on the computer's sessions (CX Y8, M8): the computer's own
+ *  `vault.packSize` is the most room an engine session there gives notes,
+ *  and this device's choice may only lower it. Shown under the row when the
+ *  size those sessions use differs from the one selected here; with the
+ *  computer's size unknown (it did not answer, or is older), the careful
+ *  line. Neutral, never amber: it is the system working. */
+export function vaultPackEngineLine(
+  where: 'this' | 'your',
+  size?: keyof typeof VAULT_SETTINGS_CHOICES.packSize,
+): string {
+  return size
+    ? `Sessions on ${where} computer use its own setting, ${VAULT_SETTINGS_CHOICES.packSize[size]}.`
+    : `Sessions on ${where} computer can use its own setting instead.`;
+}
+
+// ---- M8 end ----

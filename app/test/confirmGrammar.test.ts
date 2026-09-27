@@ -50,10 +50,17 @@ describe('destructive confirms', () => {
     expect(block.indexOf('btn ghost')).toBeLessThan(block.indexOf('btn danger'));
   });
 
-  it('the armed vault delete ends on btn danger', () => {
-    expect(read('../src/screens/VaultScreen.tsx')).toMatch(
-      /className=\{`btn press-fb \$\{confirmDelete \? 'danger' : 'quiet'\}`\}/,
-    );
+  it('the armed vault delete ends on btn danger, and arms only when it is for good', () => {
+    // The Options sheet moved out of VaultScreen (Vault M6 wave 0). Since M6
+    // (CTO R2, CX X8) a delete is one tap where Trash is real; only a
+    // permanent delete arms, and its armed row is the danger button worded
+    // "for good".
+    const src = read('../src/components/vault/VaultNoteOptions.tsx');
+    expect(src).toMatch(/const armed = confirmDelete && !trashReal;/);
+    expect(src).toMatch(/className=\{`btn press-fb \$\{armed \? 'danger' : 'quiet'\}`\}/);
+    expect(src).toMatch(/if \(!trashReal && !armed\) \{\s*onArmDelete\(\);/);
+    expect(src).toMatch(/armed \? vaultDeleteForGood\(title\) : VAULT_DELETE_ROW/);
+    expect(src).not.toMatch(/Really delete\? Tap to confirm\./);
   });
 
   it('every Sheet is announced as a modal dialog', () => {

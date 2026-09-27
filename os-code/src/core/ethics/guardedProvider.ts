@@ -245,8 +245,10 @@ export class EthicsBlocked extends Error {
   }
 }
 
+// atob and btoa are globals in every host this runs on (Node 22, the WebView),
+// so the conversion needs no Buffer and the file stays inside the harness
+// purity guard's graph (os-code/protocol reaches it).
 function base64ToBytes(base64: string): Uint8Array {
-  if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(base64, 'base64'));
   const binary = atob(base64);
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
@@ -254,8 +256,10 @@ function base64ToBytes(base64: string): Uint8Array {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
+  const CHUNK = 0x8000;
   let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
   return btoa(binary);
 }

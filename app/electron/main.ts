@@ -20,6 +20,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -36,23 +37,57 @@ import {
 import {
   defaultVaultDir,
   ensureVaultRoot,
+  loadConfig,
   loadVaultDir,
   oscHome,
   saveGlobalConfig,
 } from 'os-code/dist/src/config/load.js';
+import { machineVaultWire } from 'os-code/dist/src/core/agent/registry.js';
+import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
 import {
+  VAULT_INDEX_FILE_MAX_BYTES,
+  loadVaultIndexFile,
+  saveVaultIndexFile,
+} from 'os-code/dist/src/core/vault/indexFile.js';
+import { readVaultConfigFile } from 'os-code/dist/src/core/vault/configFile.js';
+import { isVaultConfigName } from 'os-code/dist/src/harness/vault/configDir.js';
+import {
+  parseConfigWriteGuard,
+  parseVaultOverrides,
+  putVaultSettingsFile,
+} from 'os-code/dist/src/daemon/vaultRoutes.js';
+import { HANDOFF_MAX_BYTES } from 'os-code/dist/src/harness/handoff.js';
+import { clearHandoffs } from 'os-code/dist/src/core/agent/handoffStore.js';
+import {
+  createVaultFolder,
+  emptyVaultTrash,
+  isVaultNotePath,
+  listVaultAttachments,
   listVaultFolder,
+  listVaultFolders,
+  listVaultTrash,
+  parseReadBytesOptions,
   parseVaultGuard,
   parseVaultRemoveGuard,
+  parseVaultRenameGuard,
+  parseVaultTrashIds,
+  parseVaultTrashTarget,
+  readVaultBytes,
   readVaultFile,
   removeVaultFile,
+  renameVaultFile,
+  renameVaultFolder,
+  restoreVaultTrash,
   statVaultFile,
+  trashVaultPath,
+  vaultAttachmentAbs,
   vaultNoteAbs,
   writeVaultFile,
 } from './vaultFs.js';
 import { VaultWatcher } from './vaultWatch.js';
 import { VaultDirChooser, realOr, vaultDirExists, type VaultDirEnv } from './vaultDir.js';
+import { exportTeamVault, parseTeamExport } from './vaultTeamExport.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
@@ -738,6 +773,26 @@ function deepLinkFromArgv(argv: string[]): string | undefined {
 // Keep in lockstep with src/lib/electronBridge.ts and electron/preload.cjs.
 // Every argument arrives as `unknown` and is validated before use.
 
+/** A handoff from the renderer: a string within the engine's cap. */
+function optHandoff(v: unknown): string | undefined {
+  const text = optStr(v, 'handoff');
+  if (text === undefined || !text.trim()) return undefined;
+  if (Buffer.byteLength(text, 'utf8') > HANDOFF_MAX_BYTES) {
+    throw new Error('blocked: the handoff is too long to carry into a session');
+  }
+  return text;
+}
+
+/** Project pins from the renderer: note paths only, at most eight. */
+function optVaultPins(v: unknown): string[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) throw new Error('blocked: vaultPins must be a list');
+  const pins = v
+    .filter((p): p is string => typeof p === 'string' && isVaultNotePath(p))
+    .slice(0, 8);
+  return pins.length ? pins : undefined;
+}
+
 function sessionOpts(v: unknown) {
   if (v === undefined || v === null) return undefined;
   const o = obj(v, 'opts');
@@ -769,6 +824,13 @@ function sessionOpts(v: unknown) {
     currents: parseCurrentsHandles(o.currents),
     // The Harness Current's handle (Jev), parsed the same way.
     harnessCurrents: parseHarnessCurrentsHandle(o.harnessCurrents),
+    // Vault M5 (CTO J12, J14): a handoff for the first task, capped, and the
+    // project's own pins, note paths only, at most eight.
+    handoff: optHandoff(o.handoff),
+    vaultPins: optVaultPins(o.vaultPins),
+    // Vault M7 (CTO L13): the app's vault switches, off-only and one of the
+    // three sizes; the daemon's parser, so a bad value is dropped the same way.
+    vaultOverrides: parseVaultOverrides(o.vaultOverrides),
   };
 }
 
@@ -958,12 +1020,113 @@ function vaultDir(): string {
 guarded('osc:vaultList', () => listVaultFolder(vaultDir()));
 guarded('osc:vaultStat', (p: unknown) => statVaultFile(vaultDir(), str(p, 'path')));
 guarded('osc:vaultRead', (p: unknown) => readVaultFile(vaultDir(), str(p, 'path')));
-guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) =>
-  writeVaultFile(vaultDir(), str(p, 'path'), str(t, 'text'), parseVaultGuard(g)),
-);
+// One cap for every writer of a note from outside the engine (Vault M5, CTO
+// J7): the renderer here and a paired phone on the daemon's PUT route.
+guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) => {
+  const text = str(t, 'text');
+  if (Buffer.byteLength(text, 'utf8') > VAULT_WIRE_NOTE_MAX_BYTES) {
+    throw new Error('blocked: that note is too large to save');
+  }
+  return writeVaultFile(vaultDir(), str(p, 'path'), text, parseVaultGuard(g));
+});
 guarded('osc:vaultRemove', (p: unknown, g: unknown) =>
   removeVaultFile(vaultDir(), str(p, 'path'), parseVaultRemoveGuard(g)),
 );
+
+// The folder vault's persisted index (Vault M3, CTO H3 "Persistence"). One
+// file per vault root under oscHome()/vault-index, named by a hash of the
+// root's real path, through the engine's indexFile module (0700 folder, 0600
+// file, temp then rename). The renderer passes only the blob, never a path
+// (CTO F7): main keys it by the vault root it reads itself on every call, so
+// a repoint loads and saves the new root's index. A blob over 32 MB is
+// refused before it is written; a file over the cap loads as null.
+guarded('osc:vaultIndexLoad', () => loadVaultIndexFile(vaultDir()));
+guarded('osc:vaultIndexSave', (blob: unknown) => {
+  const text = str(blob, 'blob');
+  // A string longer than the cap in UTF-16 units is over it in UTF-8 bytes
+  // too, so it is refused before any byte count.
+  if (text.length > VAULT_INDEX_FILE_MAX_BYTES) {
+    return { ok: false as const, reason: 'too-large' as const };
+  }
+  return saveVaultIndexFile(vaultDir(), text);
+});
+
+// The machine's own privacy rules for the vault (Vault M5, CTO J3): which
+// notes are hidden from every model and which stay on this computer. Read
+// from this machine's config on every call (projectPolicy never lets a
+// project file set these keys); the renderer compiles them with the core's
+// compileVaultPrivacy, so the app's pack and the engine's judge alike.
+// Clear the engine's stored handoffs (Vault M5, CTO J13): part of the action
+// that clears the chats, so no "where you left off" summary outlives them.
+guarded('osc:clearHandoffs', () => {
+  clearHandoffs();
+  return { cleared: true };
+});
+
+// The same answer carries the machine's `vault.packSize` (Vault M8), read
+// only: the settings sheet says when this computer's sessions give notes
+// less room than the device's choice. One builder with the daemon's route.
+guarded('osc:vaultPrivacy', () => machineVaultWire(loadConfig().config));
+
+// readConfig for the folder vault (Vault M3, CTO H5): the renderer sends a
+// logical name, never a path. Main's allow-list maps it to one file in the
+// vault's config folder (anything else is refused before the disk is
+// touched), and the engine's configFile resolves it through the Jail and
+// reads it only when lstat shows a regular file, never a symlink, capped at
+// 256 KB. Plugin folders and workspace files are never on the list.
+guarded('osc:vaultReadConfig', (name: unknown) => {
+  if (!isVaultConfigName(name)) return { ok: false as const, reason: 'refused' as const };
+  return readVaultConfigFile(vaultDir(), name);
+});
+
+// The settings sheet's one write (Vault M7, CTO L7): `.oscode/vault.json`
+// under the vault root main reads itself, never a path from the renderer.
+// The daemon's PUT runs the same putVaultSettingsFile: only `oscode/vault`
+// (every obsidian/* name refused), capped at 256 KB, text the parser can
+// read, exactly one guard (compare-and-swap), and `.oscode` and the file each
+// a real directory and a regular file, never a link. No agent path names it.
+guarded('osc:vaultWriteConfig', (name: unknown, text: unknown, guard: unknown) =>
+  putVaultSettingsFile(vaultDir(), name, str(text, 'text'), parseConfigWriteGuard(guard)),
+);
+
+// Vault M6 (CTO K3, K5, K6, K11, K13): rename, folders, Trash and
+// attachments on the folder, through the engine's folderFs (the same code the
+// daemon's routes run). The renderer names vault-relative paths only; every
+// one is checked by the note, folder or attachment rule and the Jail there,
+// and every guard like parseVaultGuard. A rename never replaces; Trash is
+// `<vault>/.trash/<original path>`; Empty is the one destructive act, and the
+// app asks first.
+guarded('osc:vaultRename', (from: unknown, to: unknown, g: unknown) =>
+  renameVaultFile(vaultDir(), str(from, 'from'), str(to, 'to'), parseVaultRenameGuard(g)),
+);
+guarded('osc:vaultFolders', () => listVaultFolders(vaultDir()));
+guarded('osc:vaultFolderCreate', (p: unknown) => createVaultFolder(vaultDir(), str(p, 'path')));
+guarded('osc:vaultFolderRename', (from: unknown, to: unknown) =>
+  renameVaultFolder(vaultDir(), str(from, 'from'), str(to, 'to')),
+);
+guarded('osc:vaultTrash', (t: unknown) => trashVaultPath(vaultDir(), parseVaultTrashTarget(t)));
+guarded('osc:vaultTrashList', () => listVaultTrash(vaultDir()));
+guarded('osc:vaultTrashRestore', (id: unknown) => restoreVaultTrash(vaultDir(), str(id, 'id')));
+guarded('osc:vaultTrashEmpty', (ids: unknown) =>
+  emptyVaultTrash(vaultDir(), parseVaultTrashIds(ids)),
+);
+guarded('osc:vaultAttachments', () => listVaultAttachments(vaultDir()));
+guarded('osc:vaultReadBytes', (p: unknown, o: unknown) =>
+  readVaultBytes(vaultDir(), str(p, 'path'), parseReadBytesOptions(o)),
+);
+// A PDF or an image opens in the system viewer: jailed, the attachment
+// extensions only (isAttachmentPath), a real file, never a link.
+guarded('osc:vaultOpenAttachment', async (p: unknown) => {
+  const abs = vaultAttachmentAbs(vaultDir(), str(p, 'path'));
+  let st;
+  try {
+    st = lstatSync(abs);
+  } catch {
+    return { ok: false };
+  }
+  if (!st.isFile()) return { ok: false };
+  return { ok: (await shell.openPath(abs)) === '' };
+});
 
 // The folder watcher (CTO F3), on while the Vault room is open. The open
 // note's path is checked like any other (a note, inside the folder) before
@@ -1045,6 +1208,23 @@ guarded('osc:vaultBringPrevious', () => vaultDirs.bringPrevious());
 guarded('osc:vaultReveal', async () => {
   const error = await shell.openPath(loadVaultDir().dir);
   return error ? { ok: false } : { ok: true };
+});
+// The team vault's export (Vault M2 2.8): the team notes the renderer read,
+// written as plain files under "Vault Team/<org>" beside the default vault
+// folder, so Obsidian can open the team vault on this computer. Main picks
+// the folder; the renderer sends only the org's name and the notes, which
+// vaultTeamExport.ts checks (a note path, jailed to the team folder). It never
+// writes into the personal vault folder.
+guarded('osc:vaultTeamExport', (org: unknown, notes: unknown, failed: unknown) => {
+  const parsed = parseTeamExport(notes, failed);
+  return exportTeamVault({
+    base: join(dirname(realOr(defaultVaultDir())), 'Vault Team'),
+    org: str(org, 'org'),
+    personal: loadVaultDir().dir,
+    home: homedir(),
+    notes: parsed.notes,
+    failed: parsed.failed,
+  });
 });
 guarded('osc:vaultOpenObsidian', async () => {
   await shell.openExternal(`obsidian://open?path=${encodeURIComponent(loadVaultDir().dir)}`);

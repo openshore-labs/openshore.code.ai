@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { unifiedDiff } from '../edit/diff.js';
 import type { ToolContext, ToolDef } from './index.js';
 import {
+  CURRENT_STATE_FILE,
   MEMORY_FILES,
   PROJECT_MEMORY_WRITE_TOOL,
   isMemoryFilePath,
@@ -127,3 +128,77 @@ export const projectMemoryWriteTool: ToolDef<typeof writeSchema> = {
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// The harness keeps Current State current for lean seats (Vault M4, 4.7, CTO
+// I12). After a change verifies on a small or tiny seat, the loop records one
+// dated line itself, so a 7B that never calls projectMemoryWrite still leaves
+// its project memory true. Called directly by the loop, never through
+// executeTool: it cannot mark the task as having written, rerun verify, or ask.
+
+/** Every line the harness writes ends with this, so the person can tell it
+ *  from their own and the harness can prune only its own. */
+export const HARNESS_LINE_MARK = '(noted by the harness)';
+
+/** The most harness lines Current State keeps; the oldest go first. Current
+ *  State is a summary, not a log. */
+export const HARNESS_LINES_KEPT = 5;
+
+const LANDED_HEADING = '## What last landed and launched';
+const LANDED_PLACEHOLDER = 'Nothing yet. The first change to land is recorded here.';
+
+const isHarnessLine = (line: string): boolean =>
+  line.trimStart().startsWith('- ') && line.trimEnd().endsWith(HARNESS_LINE_MARK);
+
+/**
+ * Current State with `line` put first under "What last landed and launched".
+ * Pure. Undefined when the section already holds that exact line (a repeat
+ * run writes nothing). The seed's placeholder sentence goes once a real line
+ * lands; past `HARNESS_LINES_KEPT` harness lines, the oldest (lowest) go. A
+ * note with no such section gets one at its end.
+ */
+export function withLandedLine(text: string, line: string): string | undefined {
+  const lines = text.split('\n');
+  const at = lines.findIndex((l) => l.trim().toLowerCase() === LANDED_HEADING.toLowerCase());
+  if (at === -1) {
+    const body = text.endsWith('\n') || !text ? text : `${text}\n`;
+    return `${body}${body ? '\n' : ''}${LANDED_HEADING}\n${line}\n`;
+  }
+  let end = lines.findIndex((l, i) => i > at && /^#{1,2} /.test(l));
+  if (end === -1) end = lines.length;
+  const section = lines.slice(at + 1, end);
+  if (section.some((l) => l.trim() === line.trim())) return undefined;
+  const kept = section.filter((l) => l.trim() !== LANDED_PLACEHOLDER);
+  kept.unshift(line);
+  let harness = kept.filter(isHarnessLine).length;
+  for (let i = kept.length - 1; i >= 0 && harness > HARNESS_LINES_KEPT; i--) {
+    if (isHarnessLine(kept[i]!)) {
+      kept.splice(i, 1);
+      harness -= 1;
+    }
+  }
+  return [...lines.slice(0, at + 1), ...kept, ...lines.slice(end)].join('\n');
+}
+
+/**
+ * Write one harness line into this project's Current State (seeding the five
+ * notes first, as the tool does, when the folder is new). Returns the
+ * repo-relative path and whether anything was written; false for a repeat.
+ */
+export function appendLandedLine(
+  ctx: ToolContext,
+  line: string,
+): { written: boolean; path: string } {
+  const segment = segmentOf(ctx);
+  const rel = targetPath(ctx, CURRENT_STATE_FILE);
+  const abs = ctx.jail.resolve(rel);
+  const before = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+  const after = withLandedLine(before, line);
+  if (after === undefined) return { written: false, path: rel };
+  ensureSeeded(ctx, segment);
+  // Seeding may have just created the note: apply the line to what is there.
+  const seeded = before ? after : withLandedLine(readFileSync(abs, 'utf8'), line);
+  if (seeded === undefined) return { written: false, path: rel };
+  writeFileSync(abs, seeded);
+  return { written: true, path: rel };
+}

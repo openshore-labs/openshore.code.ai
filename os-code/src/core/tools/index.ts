@@ -10,6 +10,7 @@ import type { ImageProvider } from '../../providers/types.js';
 import type { ToolSpec } from '../../providers/types.js';
 import type { DelegatedUsage, DelegateOptions } from '../../router/router.js';
 import type { CurrentsHandles } from '../../currents/model.js';
+import type { ProvSize, ResolvedVaultSettings, VaultPrivacy } from '../../harness/vault/types.js';
 
 export interface Citation {
   title: string;
@@ -25,6 +26,10 @@ export interface ToolOutput {
   citations?: Citation[];
   /** Unified diff for edits, shown in transcripts after approval. */
   diffText?: string;
+  /** The content came from a local-only vault note (Vault M4, CTO I5). The
+   *  loop carries it onto the tool message (`ChatMessage.localOnly`), so a
+   *  later turn on a seat that leaves this network sends a stub instead. */
+  localOnly?: true;
 }
 
 export interface ToolPreview {
@@ -111,6 +116,36 @@ export interface ToolContext {
    *  permission engine, so a listing can hide what a read there would refuse.
    *  Unset (a bare test context) denies nothing. */
   denies?: (toolName: string, path: string) => boolean;
+  /** Which vault notes are hidden and which stay on this computer (Vault M4,
+   *  CTO I4, I5), compiled once at bootstrap from the machine's vault config
+   *  (`compileVaultPrivacy`). Every vault tool consults it. Unset (a bare test
+   *  context) leaves every note open. */
+  vaultPrivacy?: VaultPrivacy;
+  /** Read the vault's own settings again (Vault M7, CTO L5, L6), so the sync
+   *  `vaultPrivacy` holds the union with the vault's file. Kept 2 s; `force`
+   *  reads now (a task start, a pack prepare). Every vault tool awaits it at
+   *  entry. Never throws: a read that fails keeps the last good settings.
+   *  Unset (a bare test context) reads nothing. */
+  vaultRefresh?: (options?: { force?: boolean }) => Promise<void>;
+  /** The vault's resolved settings as last refreshed (the agent folder, L2),
+   *  or undefined before the first refresh or with no vault. */
+  vaultSettings?: () => ResolvedVaultSettings | undefined;
+  /** The seat answering now, for the provenance lines on a note the agent
+   *  writes (Vault M7, CTO L9): its model, class and, for a cloud seat, the
+   *  provider. Where it runs is `seatLeavesNetwork`. Set by the loop each
+   *  turn; unset writes the lines it can without them. */
+  vaultSeat?: () => { model?: string; size?: ProvSize; provider?: string };
+  /** Whether the seat answering right now sends its requests off this network
+   *  (`leavesThisNetwork`, judged by address). Set by the loop each turn, so a
+   *  read of a local-only note says it stays on this computer, and search and
+   *  backlinks leave such notes out. Unset reads as a seat that leaves (the
+   *  safe reading); the loop always sets it. */
+  seatLeavesNetwork?: () => boolean;
+  /** The most characters one vault read returns for the seat answering now
+   *  (the class policy's `vaultReadCapChars`, CTO I11). Set by the loop each
+   *  turn, like `seatLeavesNetwork`; past it a read returns the note's outline
+   *  and asks for a section. Unset uses capContent's own cap. */
+  vaultReadCapChars?: () => number;
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {

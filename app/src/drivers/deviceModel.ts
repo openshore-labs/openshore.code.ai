@@ -6,6 +6,7 @@
 // every generate; a mismatch (another model, or the same model at another
 // context size) reloads, and a match is free.
 import { Llama } from '../lib/llamaPlugin.js';
+import { fitSeed } from 'os-code/protocol';
 
 interface Slot {
   id: string;
@@ -61,23 +62,16 @@ export function fitDeviceHistory<M extends { role: 'user' | 'assistant'; content
   replyTokens: number,
   contextTokens: number = DEVICE_CONTEXT_TOKENS,
 ): M[] {
-  if (messages.length === 0) return messages;
-  let budget =
-    contextTokens - replyTokens - estimateTokens(system) - estimateTokens(TRIMMED_HISTORY_OPENER);
-  let start = messages.length - 1;
-  budget -= estimateTokens(messages[start]!.content);
-  while (start > 0) {
-    const cost = estimateTokens(messages[start - 1]!.content);
-    if (cost > budget) break;
-    budget -= cost;
-    start -= 1;
-  }
-  // Nothing trimmed: the chat goes as it is, even when it opens on the guide's
-  // greeting, so the model is never told messages were dropped when none were.
-  if (start === 0) return messages;
-  const kept = messages.slice(start);
-  if (kept[0]!.role === 'user') return kept;
-  return [{ ...kept[0]!, role: 'user', content: TRIMMED_HISTORY_OPENER }, ...kept];
+  // One fitting rule for the device and a switch (CTO J11): the core's
+  // fitSeed, with the app's estimator and the trimmed-history opener.
+  return fitSeed({
+    system,
+    messages,
+    replyTokens,
+    contextTokens,
+    estimate: estimateTokens,
+    opener: TRIMMED_HISTORY_OPENER,
+  }).messages;
 }
 
 /** What a device reply that ended with no words says, instead of ending

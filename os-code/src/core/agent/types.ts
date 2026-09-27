@@ -4,6 +4,7 @@
 import type { ToolRisk } from '../permissions/index.js';
 import type { Citation, ToolOutput } from '../tools/index.js';
 import type { ParsedToolCall } from '../tools/parser.js';
+import type { PackMode, PackSource } from '../../harness/vaultContext.js';
 
 export interface ApprovalRequest {
   id: string;
@@ -83,6 +84,11 @@ export type AgentEvent =
       completionTokens: number;
       dollars: number;
       contextPercent: number;
+      /** Prompt tokens read from the provider's prompt cache this turn (Vault
+       *  M5, CTO J17). Additive: absent when the provider reports none. */
+      cacheReadTokens?: number;
+      /** Prompt tokens written to the provider's prompt cache this turn. */
+      cacheWriteTokens?: number;
     }
   | { type: 'model-switch'; model: string; providerKind: 'local' | 'cloud'; reason: string }
   | { type: 'task-done'; reason: StopReason; message?: string }
@@ -163,6 +169,26 @@ export type AgentEvent =
       job: 'gate' | 'classify' | 'judge';
       line: string;
       spend: boolean;
+    }
+  // The vault context pack this task's seat was given (Vault M4, CTO I10).
+  // Emitted at the task's first render and again only when the sources change
+  // (an escalation re-renders for the new seat). `seat` is 'cloud' when the
+  // seat's requests leave this network (amber), else 'local' (teal).
+  // `withheld` counts local-only notes left out for a leaving seat; `cold` is
+  // true when the index was not ready, so the pack is Current State only.
+  // `localOnly` (Vault M5) is set when the pack carries a note that stays on
+  // this computer (only ever on a 'local' seat), so a client marks the reply
+  // it grounds local-only (I5). Additive: an older client ignores it.
+  | {
+      type: 'context-pack';
+      seat: 'local' | 'cloud';
+      mode: PackMode;
+      tokens: number;
+      budgetTokens: number;
+      sources: PackSource[];
+      withheld: number;
+      cold: boolean;
+      localOnly?: true;
     };
 
 export type EventSink = (event: AgentEvent) => void;

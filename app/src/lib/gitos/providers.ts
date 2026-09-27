@@ -11,6 +11,16 @@
 // real and visible, but marked not ready until their OAuth wiring lands. They
 // are never faked.
 
+import type {
+  AttachmentMeta,
+  BytesRead,
+  ConfigRead,
+  ReadBytesOptions,
+  VaultConfigName,
+  VaultSettingsConfigName,
+  VaultTrashEntry,
+} from 'os-code/protocol';
+
 // 'files' is the on-disk folder provider (desktop only): plain .md files under
 // the agent's vault directory (~/OSCode/Vault), so the app and the agent share
 // one folder that Obsidian opens directly. It IS a roster entry (a real place
@@ -18,9 +28,10 @@
 // organization tier), a real provider behind the seam but deliberately NOT in
 // PROVIDER_ROSTER: the team vault is reached by the Vault scope switcher, not by
 // moving the personal vault's bytes, so it never appears in the "where it lives"
-// sheet.
+// sheet. 'hub' is the paired computer's vault over the daemon's /vault routes
+// (Vault M5, CTO J9; lib/gitos/hub.ts), shown as "Your computer".
 export type StorageProviderId =
-  'local' | 'files' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org';
+  'local' | 'files' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org' | 'hub';
 
 /** One file inside a gitOS resource, addressed by a relative POSIX-style
  *  path (e.g. "notes/ideas/vault-design.md"). Paths map 1:1 onto a real
@@ -103,10 +114,62 @@ export type RemoveGuard = { ifMatch: string };
 export type RemoveResult =
   { ok: true } | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
 
-/** A lease marks one writer per resource. Cloud folder syncs have no
- *  Git-aware locking, so the seam carries single-writer semantics from day
- *  one (CTO ruling): a holder id plus TTL, renewed by heartbeat. The Local
- *  provider grants trivially; cloud providers will contest for real. */
+// ---- Vault M6 seam results (CTO K2, K3, K5, K6, reconciled R1 to R3) ------
+// Every M6 member below is optional, and every conflict is a result, never a
+// throw. A write-shaped member (rename, trash, restore, empty) is lit by
+// `vaultCaps` (lib/vaultCaps.ts) only on a provider with `compareAndSwap`.
+
+/** A rename's precondition: the source's `versionOf`, as the open note or
+ *  the list last read it. */
+export type RenameGuard = { ifMatch: string };
+
+/** What a rename did (K3). It never replaces: 'exists' when `to` is taken
+ *  (judged by the folded path; theirs is what has it), 'missing' when the
+ *  source is gone, 'changed' when its version moved (theirs is what is
+ *  there), 'downloading' for a note not yet on this device. On success `file`
+ *  is the note at `to` with its version THERE, which the store adopts and
+ *  never assumes equals the old one. Parents of `to` are created. */
+export type RenameResult =
+  | { ok: true; file: StoredFileMeta }
+  | { ok: false; conflict: 'changed' | 'missing' | 'exists' | 'downloading'; theirs?: StoredFile };
+
+/** What creating a folder did. */
+export type CreateFolderResult = { ok: true } | { ok: false; conflict: 'exists' };
+
+/** What a folder rename did (K5): one directory rename, the destination
+ *  absent. `moved` names every note with its new version; `attachments`
+ *  counts the other files that went with them. */
+export type FolderMoveResult =
+  | { ok: true; moved: Array<{ from: string; to: string; version: string }>; attachments: number }
+  | { ok: false; conflict: 'exists' | 'missing' };
+
+/** One thing in Trash (K6), the shape the daemon wire shares. */
+export type TrashEntry = VaultTrashEntry;
+
+/** What goes to Trash: a note guarded by its version, or a folder as it is
+ *  (Trash is recoverable, so a folder move is unguarded). */
+export type TrashTarget =
+  { kind: 'note'; path: string; ifMatch: string } | { kind: 'folder'; path: string };
+
+/** What a trash did, with the counts the toast and the sheet say. */
+export type TrashResult =
+  | { ok: true; entry: TrashEntry; notes: number; attachments: number }
+  | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
+
+/** What a restore did. It never overwrites: a taken name lands beside it as
+ *  "{title} (restored)" (R3) and `renamed` says so; parents are made. */
+export type RestoreResult =
+  { ok: true; file: StoredFileMeta; renamed: boolean } | { ok: false; conflict: 'missing' };
+
+/** What Delete forever or Empty Trash removed. */
+export interface EmptyTrashResult {
+  removed: number;
+}
+
+/** A lease marks one writer per resource: a holder id plus TTL, taken while
+ *  the person types. On a storage with compare-and-swap it is advisory (the
+ *  "Also open on your iPad" line); only a storage without it has the lease
+ *  enforced (Vault M2, CTO G5; lib/vaultLease.ts). */
 export interface Lease {
   holder: string;
   expiresAt: string;
@@ -148,9 +211,62 @@ export interface StorageProvider {
    *  that nobody else wrote. */
   remove(resourceId: string, path: string, guard?: RemoveGuard): Promise<RemoveResult>;
   /** Take or renew the single-writer lease. Returns the current lease either
-   *  way; callers compare holder to know if they won. */
-  acquireLease(resourceId: string, holder: string, ttlMs: number): Promise<Lease>;
+   *  way; callers compare holder to know if they won. `label` is this
+   *  device's kind (Lease.label), kept with a lease the provider writes
+   *  (Vault M2, CTO G5); a provider that keeps no lease file ignores it. */
+  acquireLease(resourceId: string, holder: string, ttlMs: number, label?: string): Promise<Lease>;
   releaseLease(resourceId: string, holder: string): Promise<void>;
+  /** Read one of the vault's config files by its logical name (Vault M3, CTO
+   *  H5): Obsidian's app, daily-notes and templates settings, or the vault's
+   *  own `.oscode/vault.json`. No path crosses the seam; each provider maps a
+   *  name through its own allow-list, and anything else answers `refused`
+   *  (never a plugin folder, never `workspace*.json`). Optional, so a
+   *  provider that has not gained it yet answers `unsupported` through
+   *  readVaultConfig (lib/gitos/config.ts). Capped at 256 KB of UTF-8. */
+  readConfig?(resourceId: string, name: VaultConfigName): Promise<ConfigRead>;
+
+  // ---- Vault M6 (CTO K2). All optional, appended after readConfig so the
+  // held branches rebase with the least conflict; a held branch lights its
+  // row by adding members, never by a UI change. `providerContract` rows run
+  // for any provider that declares a member.
+
+  /** Rename or move one note, never replacing (K3). */
+  rename?(resourceId: string, from: string, to: string, guard: RenameGuard): Promise<RenameResult>;
+  /** The storage's real folders, empty ones too (desktop, hub). */
+  listFolders?(resourceId: string): Promise<string[]>;
+  /** Make a folder (mkdir) where the storage has real folders. */
+  createFolder?(resourceId: string, path: string): Promise<CreateFolderResult>;
+  /** Rename a folder in one move; the destination must be absent. */
+  renameFolder?(resourceId: string, from: string, to: string): Promise<FolderMoveResult>;
+  /** Move a note or a folder to Trash (K6). */
+  trash?(resourceId: string, target: TrashTarget): Promise<TrashResult>;
+  /** What is in Trash. */
+  listTrash?(resourceId: string): Promise<TrashEntry[]>;
+  /** Put one entry back where it came from, never overwriting. */
+  restore?(resourceId: string, id: string): Promise<RestoreResult>;
+  /** Delete entries for good, or all of Trash with no ids. */
+  emptyTrash?(resourceId: string, ids?: string[]): Promise<EmptyTrashResult>;
+  /** The vault's attachments (K11), from the same walk as the note list. */
+  listAttachments?(resourceId: string): Promise<AttachmentMeta[]>;
+  /** One attachment's bytes, capped at 20 MB (`VAULT_ATTACHMENT_MAX_BYTES`). */
+  readBytes?(resourceId: string, path: string, opts?: ReadBytesOptions): Promise<BytesRead>;
+
+  // ---- Vault M7 (CTO L7). Optional, after the K2 members. Lit in the sheet
+  // only through `vaultCaps().settingsWrite` (compare-and-swap, writable,
+  // not away). No agent path may name it (a grep test in each package).
+
+  /** Write the vault's own settings file (`.oscode/vault.json` on a folder,
+   *  the sealed key on Local), guarded: `ifMatch` replaces it only while its
+   *  version is still that one, `ifAbsent` creates it only while there is
+   *  none. `name` is only ever `oscode/vault`; every `obsidian/*` name is
+   *  refused on every host (Obsidian's config is read, never written). A
+   *  conflict is a result, never a throw. `file.version` is the new version. */
+  writeConfig?(
+    resourceId: string,
+    name: VaultSettingsConfigName,
+    text: string,
+    guard: WriteGuard,
+  ): Promise<WriteResult>;
 }
 
 /** A gitOS resource: metadata for one repo or vault. The bytes live behind
@@ -198,6 +314,16 @@ export const PROVIDER_ROSTER: Array<{
     // Electron file bridge is present, so ready stays false here.
     ready: false,
     pending: 'Open OpenShore on your computer to keep the vault as a folder.',
+  },
+  {
+    id: 'hub',
+    // The paired computer's one vault (Vault M5, CTO J9). Readiness is decided
+    // at runtime (probeReady('hub'): paired and answering), so ready stays
+    // false here. Not offered in the storage sheet until the provider lands
+    // (vaultOffersProvider in lib/vaultCopy.ts).
+    label: 'Your computer',
+    ready: false,
+    pending: 'Pair with your computer to keep one vault there.',
   },
   {
     id: 'icloud',

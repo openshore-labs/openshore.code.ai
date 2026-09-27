@@ -271,18 +271,26 @@ describe('POST /sessions/:id/trust (project trust)', () => {
 // The workspace predicates resolve BOTH sides through realpath, so a symlink
 // planted inside ~/OSCode that points outside it cannot pass as provisioned
 // (the P0-1 escape). HOME is pointed at the scratch dir so ~/OSCode is ours.
-// Interim isolation on a shared hub: the vault is the machine owner's one
-// folder, so a member's agent gets no vault tool at all until each member has
-// a root of their own. The owner's sessions keep theirs.
-describe('a member session gets no vault tools on a shared hub', () => {
+// Each caller works on its own vault root (Vault M5, CTO J8): the owner on the
+// machine's vault, a member on oscHome()/vaults/members/<hash>, so a member's
+// agent has the vault tools on its own folder and never the owner's.
+describe('a member session works on its own vault root on a shared hub', () => {
   const realHome = process.env.HOME;
   afterEach(() => {
     process.env.HOME = realHome;
   });
-  const VAULT_TOOLS = ['vaultRead', 'vaultList', 'vaultWrite'];
+  const VAULT_TOOLS = [
+    'vaultSearch',
+    'vaultRead',
+    'vaultBacklinks',
+    'vaultList',
+    'vaultLookup',
+    'vaultWrite',
+  ];
   const bootOf = (id: string) => booted.filter((b) => b.id === id).at(-1)!;
+  const membersDir = () => join(home, 'vaults', 'members');
 
-  it("a member's tool list has no vault tool, and the owner's is unchanged", async () => {
+  it("a member's tools point at their own root, never the owner's", async () => {
     process.env.HOME = home;
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
@@ -294,17 +302,22 @@ describe('a member session gets no vault tools on a shared hub', () => {
     expect(memberRes.status).toBe(201);
     const { id: memberId } = (await memberRes.json()) as { id: string };
 
+    const ownerVault = join(home, 'OSCode', 'Vault');
     const owner = bootOf(ownerId);
     expect(owner.tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
-    expect(owner.vaultRoot).toBe(join(home, 'OSCode', 'Vault'));
+    expect(owner.vaultRoot).toBe(ownerVault);
     const mine = bootOf(memberId);
-    expect(mine.tools.filter((name) => name.startsWith('vault'))).toEqual([]);
-    expect(mine.vaultRoot).toBeUndefined();
-    // Nothing else moves: the member keeps every other tool the owner has.
-    expect(mine.tools).toEqual(owner.tools.filter((name) => !VAULT_TOOLS.includes(name)));
+    expect(mine.tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
+    expect(mine.vaultRoot).toBeDefined();
+    expect(mine.vaultRoot).not.toBe(ownerVault);
+    expect(mine.vaultRoot!.startsWith(membersDir() + '/')).toBe(true);
+    // The root is made on first use, private to this user.
+    expect(existsSync(mine.vaultRoot!)).toBe(true);
+    // Nothing else moves: the member has exactly the owner's tool list.
+    expect([...mine.tools].sort()).toEqual([...owner.tools].sort());
   });
 
-  it('stays off when an admin reopens the member session after a restart', async () => {
+  it("a rehydrate uses the stored owner's root, not the caller's", async () => {
     process.env.HOME = home;
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
@@ -315,8 +328,11 @@ describe('a member session gets no vault tools on a shared hub', () => {
     const { id: ownerId } = (await (await createSessionAs(adminToken, provisioned)).json()) as {
       id: string;
     };
+    const memberRoot = bootOf(memberId).vaultRoot;
+    expect(memberRoot!.startsWith(membersDir() + '/')).toBe(true);
 
     // A restart drops every live driver; the next touch rehydrates from disk.
+    // The admin's touch revives the member's session on the MEMBER's root.
     daemon.close();
     daemon = await startOnFreePort();
     base = `http://127.0.0.1:${daemon.port}`;
@@ -326,8 +342,9 @@ describe('a member session gets no vault tools on a shared hub', () => {
     }
     // Booted twice: at create, then the rehydrate the admin's touch caused.
     expect(booted.filter((b) => b.id === memberId)).toHaveLength(2);
-    expect(bootOf(memberId).tools.filter((name) => name.startsWith('vault'))).toEqual([]);
-    expect(bootOf(memberId).vaultRoot).toBeUndefined();
+    expect(bootOf(memberId).vaultRoot).toBe(memberRoot);
+    expect(bootOf(memberId).tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
+    expect(bootOf(ownerId).vaultRoot).toBe(join(home, 'OSCode', 'Vault'));
     expect(bootOf(ownerId).tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
   });
 
@@ -401,6 +418,130 @@ describe('a member session gets no vault tools on a shared hub', () => {
     });
     expect(res.status).toBe(403);
     expect(booted.some((b) => b.id === id)).toBe(false);
+  });
+});
+
+// J8 end to end: the owner and two members on one hub. Each caller's vault
+// routes and each caller's agent session work on that caller's own root, and
+// no caller's listing, read, or session root ever names another's note.
+describe('three callers on one hub, each on their own vault root (J8)', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+
+  it("each vault route and each session sees only the caller's own root", async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    const ann = mintCredential({ role: 'member', label: 'Ann', userId: 'u_ann' });
+    const ben = mintCredential({ role: 'member', label: 'Ben', userId: 'u_ben' });
+    const callers = [
+      { name: 'Owner', token: adminToken },
+      { name: 'Ann', token: ann.token },
+      { name: 'Ben', token: ben.token },
+    ];
+
+    // Each writes one note of their own through the phone's route.
+    for (const c of callers) {
+      const put = await fetch(`${base}/vault/notes/${c.name}.md`, {
+        method: 'PUT',
+        headers: auth(c.token),
+        body: JSON.stringify({ text: `# ${c.name}\n\nsecret of ${c.name}`, ifAbsent: true }),
+      });
+      expect(put.status).toBe(200);
+    }
+
+    const roots = new Map<string, string>();
+    for (const c of callers) {
+      // The listing holds exactly the caller's own note.
+      const list = await fetch(`${base}/vault/notes`, { headers: auth(c.token) });
+      expect(list.status).toBe(200);
+      const { notes } = (await list.json()) as { notes: Array<{ path: string }> };
+      expect(notes.map((n) => n.path)).toEqual([`${c.name}.md`]);
+      // Every other caller's note is simply not there.
+      for (const other of callers.filter((o) => o !== c)) {
+        const read = await fetch(`${base}/vault/notes/${other.name}.md`, {
+          headers: auth(c.token),
+        });
+        expect(read.status).toBe(404);
+      }
+      const own = await fetch(`${base}/vault/notes/${c.name}.md`, { headers: auth(c.token) });
+      expect(((await own.json()) as { text: string }).text).toContain(`secret of ${c.name}`);
+
+      // The caller's agent session works on the same root the routes used.
+      const created = await createSessionAs(c.token, provisioned);
+      expect(created.status).toBe(201);
+      const { id } = (await created.json()) as { id: string };
+      const boot = booted.filter((b) => b.id === id).at(-1)!;
+      expect(boot.tools).toEqual(expect.arrayContaining(['vaultSearch', 'vaultRead']));
+      roots.set(c.name, boot.vaultRoot!);
+      expect(existsSync(join(boot.vaultRoot!, `${c.name}.md`))).toBe(true);
+      for (const other of callers.filter((o) => o !== c)) {
+        expect(existsSync(join(boot.vaultRoot!, `${other.name}.md`))).toBe(false);
+      }
+    }
+
+    // Three distinct roots: the owner's is the machine vault, each member's
+    // sits under the members folder, and none holds another.
+    expect(new Set(roots.values()).size).toBe(3);
+    expect(roots.get('Owner')).toBe(join(home, 'OSCode', 'Vault'));
+    for (const name of ['Ann', 'Ben']) {
+      const root = roots.get(name)!;
+      expect(root.startsWith(join(home, 'vaults', 'members') + '/')).toBe(true);
+      for (const other of roots.values()) {
+        if (other !== root) expect(other.startsWith(root + '/')).toBe(false);
+      }
+    }
+  });
+});
+
+// Handoffs are cleared with the chats (Vault M5, CTO J13): deleting a session
+// removes its project's handoff, and the owner can clear every one at once.
+describe('clearing the stored handoffs', () => {
+  it("DELETE /sessions/:id takes its handoff; DELETE /handoffs is the owner's alone", async () => {
+    const { handoffsDir, readHandoff, writeHandoff } =
+      await import('../src/core/agent/handoffStore.js');
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-handoff-cwd-'));
+    const created = await createSessionAs(adminToken, cwd);
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const record = { text: 'HANDOFF', at: new Date().toISOString(), model: 'm', turns: 4 };
+    // The scope the session's own agent writes under: its recorded owner and
+    // workspace (no project name was given).
+    const info = JSON.parse(readFileSync(join(home, 'sessions', id, 'info.json'), 'utf8')) as {
+      ownerUserId?: string;
+    };
+    const liveScope = { owner: info.ownerUserId, cwd };
+    expect(writeHandoff(liveScope, record)).toBe(true);
+    const other = mkdtempSync(join(tmpdir(), 'osc-handoff-other-'));
+    expect(writeHandoff({ cwd: other }, record)).toBe(true);
+
+    const del = await fetch(`${base}/sessions/${id}`, {
+      method: 'DELETE',
+      headers: auth(adminToken),
+    });
+    expect(del.status).toBe(200);
+    expect(readHandoff(liveScope)).toBeUndefined();
+    // Another project's handoff stays until the whole store is cleared.
+    expect(readHandoff({ cwd: other })?.text).toBe('HANDOFF');
+
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_clear' });
+    const refused = await fetch(`${base}/handoffs`, {
+      method: 'DELETE',
+      headers: auth(member.token),
+    });
+    expect(refused.status).toBe(403);
+    expect(existsSync(handoffsDir())).toBe(true);
+
+    const cleared = await fetch(`${base}/handoffs`, {
+      method: 'DELETE',
+      headers: auth(adminToken),
+    });
+    expect(cleared.status).toBe(200);
+    expect(existsSync(handoffsDir())).toBe(false);
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(other, { recursive: true, force: true });
   });
 });
 

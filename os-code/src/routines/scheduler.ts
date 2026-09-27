@@ -24,13 +24,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { writeNewNoteSync } from '../core/vault/noteFile.js';
+import { safeNoteName } from '../harness/vault/paths.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
-import {
-  ensureVaultRoot,
-  loadDaemonConfig,
-  loadVaultDir,
-  saveGlobalConfig,
-} from '../config/load.js';
+import { loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
+import { ensureVaultRootAt, vaultRootForOwner } from '../core/vault/memberRoots.js';
 import type { LocalDriver } from '../daemon/session.js';
 import { profileFor } from '../core/security/profiles.js';
 import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
@@ -49,6 +46,14 @@ import {
 } from './model.js';
 import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
 import * as store from './store.js';
+import { dailyNoteConfigOf, runNoteDayPath, runNoteFrontmatter } from './runNote.js';
+import type { RunNoteProvenance } from './runNote.js';
+import { readVaultConfigFile } from '../core/vault/configFile.js';
+import { resolvedAgentWritable } from '../core/vault/folderFs.js';
+import { vaultSettingsFor } from '../core/vault/settingsFile.js';
+import { dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
+import { deriveModelClass } from '../harness/profile.js';
+import { loadConfig } from '../config/load.js';
 
 const log = logger('routines');
 
@@ -73,6 +78,13 @@ export interface RoutineDriver {
 export interface OpenedSession {
   driver: RoutineDriver;
   warnings: string[];
+  /** The orchestrator's model name, for the run note's frontmatter. */
+  model?: string;
+  /** Where the orchestrator runs, judged by address, for the note's
+   *  `oscode-where` line (Vault M7, CTO L9). Left out when unknown. */
+  where?: 'local' | 'cloud';
+  /** The orchestrator's provider, for a cloud seat's `oscode-provider`. */
+  provider?: string;
 }
 
 /** A run refused before it started, for a reason the person can act on. The
@@ -97,8 +109,11 @@ export interface SchedulerDeps {
   approvalTimeoutMs?: number;
   /** Open the session a run lives in. Defaults to a real headless bootstrap. */
   openSession?: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
-  /** Where result notes go. Defaults to the configured vault dir. */
-  vaultRoot?: () => string;
+  /** Where a routine's result notes go, by the routine's owner (Vault M5,
+   *  CTO J8). Defaults to `vaultRootForOwner`: the machine's vault for an
+   *  admin, a member's own root for a member, so Crew notes land in the
+   *  routine owner's vault. */
+  vaultRoot?: (ownerUserId?: string) => string;
   /** The workspace gate. Defaults to the machine's allowed-roots predicate. */
   allowedWorkspace?: (cwd: string) => boolean;
   /** Scheduling only; a manual Run now never waits for the clock. */
@@ -109,6 +124,10 @@ export interface SchedulerDeps {
   /** Persist a folder as allowed for routines. Defaults to the global config's
    *  daemon.outboxAllowedRoots; a test hands in its own. */
   persistAllowedRoot?: (cwd: string) => void;
+  /** Whether a run note carries the provenance lines (`vault.provenance`,
+   *  machine config, Vault M7, CTO L9). Defaults to the config the run's
+   *  workspace loads (the key is machine-only, so a project cannot move it). */
+  provenance?: (routine: Routine) => boolean;
 }
 
 /** The framing every run receives as its standing instructions, ahead of the
@@ -120,14 +139,27 @@ export function routineInstructions(routine: Routine): string {
     routine.access === 'read-only'
       ? 'This routine is read-only: you can read files, search, and inspect the repository, but you cannot change anything. Do not try.'
       : 'This routine may edit files inside this workspace. Any shell command will ask for approval; if nobody answers within a few minutes the step is declined and you should carry on without it, or stop and say what is blocked.',
+    `Your earlier runs of this routine are notes in the vault under ${routineFolder(routine)}/ (newest last by name, each linking the one before it as "previous"); read the latest with vaultList and vaultRead when it helps you build on what was found before.`,
     `You have about ${routine.maxMinutes} minutes. Work efficiently. When you finish, end with a short plain-language report the person will read first thing: what you found or did, anything risky, and a checklist of what needs them. Lead with the one thing that matters most. The report is saved to their vault as this run's note on its own, so do not try to write a note yourself. Never use em dashes.`,
   ].join('\n');
+}
+
+/** The routine's notes folder, vault-relative: the vault's one new-name rule
+ *  (Vault M3, H4) applied to the routine's name. */
+function routineFolder(routine: Pick<Routine, 'name'>): string {
+  return `Crew/${safeNoteName(routine.name, 'Routine')}`;
 }
 
 interface ActiveRun {
   run: RoutineRun;
   routine: Routine;
   driver: RoutineDriver;
+  /** The orchestrator's model, when the session said. */
+  model?: string;
+  /** Where the orchestrator runs, when the session said. */
+  where?: 'local' | 'cloud';
+  /** The orchestrator's provider, when the session said. */
+  provider?: string;
   off: () => void;
   finalText: string;
   steps: string[];
@@ -136,6 +168,10 @@ interface ActiveRun {
   plan: string[];
   /** Why the scheduler itself ended the run (the wall-clock cap), if it did. */
   endNote?: string;
+  /** The day's note the run note links to (Vault M6, 6.4), once the vault's
+   *  daily-notes settings are read at the start. Left out when they are not
+   *  read yet or name a format the vault core does not support. */
+  dayPath?: string;
   approvalTimer?: ReturnType<typeof setTimeout>;
   wallTimer?: ReturnType<typeof setTimeout>;
   finished: boolean;
@@ -153,10 +189,11 @@ export class RoutineScheduler {
   private readonly graceMs: number;
   private readonly approvalTimeoutMs: number;
   private readonly openSession: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
-  private readonly vaultRoot: () => string;
+  private readonly vaultRoot: (ownerUserId?: string) => string;
   private readonly allowedWorkspace: (cwd: string) => boolean;
   private readonly lock: { acquire: () => SchedulerLock; release: () => void };
   private readonly persistAllowedRoot: (cwd: string) => void;
+  private readonly provenance: (routine: Routine) => boolean;
   /** The pid of the other process whose clock is live, when ours is not. */
   private clockHeldBy?: number;
   private timer?: ReturnType<typeof setInterval>;
@@ -173,13 +210,14 @@ export class RoutineScheduler {
     this.graceMs = deps.graceMs ?? DEFAULT_GRACE_MS;
     this.approvalTimeoutMs = deps.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
     this.openSession = deps.openSession ?? defaultOpenSession;
-    this.vaultRoot = deps.vaultRoot ?? defaultVaultRoot;
+    this.vaultRoot = deps.vaultRoot ?? ((owner) => vaultRootForOwner(owner));
     this.allowedWorkspace = deps.allowedWorkspace ?? ((cwd) => isOutboxAllowedPath(cwd));
     this.lock = deps.lock ?? {
       acquire: () => acquireSchedulerLock(),
       release: () => releaseSchedulerLock(),
     };
     this.persistAllowedRoot = deps.persistAllowedRoot ?? persistOutboxRoot;
+    this.provenance = deps.provenance ?? provenanceOn;
     // A run the previous process left open can never finish now; say so
     // rather than show "working" forever. The journal is still on disk.
     for (const run of store.listRuns(MAX_ORPHANS)) {
@@ -323,7 +361,8 @@ export class RoutineScheduler {
     // Where the note landed, then the same path in the folder the vault uses
     // now: a record from before the absolute path was kept, or a note whose
     // folder moved on (a pick, then Bring from the previous folder).
-    const tries = [run.noteAbsPath, join(this.vaultRoot(), run.notePath)];
+    const owner = store.getRoutine(run.routineId)?.ownerUserId;
+    const tries = [run.noteAbsPath, join(this.vaultRoot(owner), run.notePath)];
     for (const abs of tries) {
       if (!abs) continue;
       try {
@@ -451,7 +490,7 @@ export class RoutineScheduler {
       void this.pump();
       return;
     }
-    const { driver } = opened;
+    const { driver, model, where, provider } = opened;
     if (routine.ownerUserId) driver.setOwner?.(routine.ownerUserId);
     const run = store.appendRun({
       routineId: routine.id,
@@ -465,6 +504,9 @@ export class RoutineScheduler {
       run,
       routine,
       driver,
+      model,
+      ...(where ? { where } : {}),
+      ...(provider ? { provider } : {}),
       off: () => {},
       finalText: '',
       steps: [],
@@ -472,6 +514,7 @@ export class RoutineScheduler {
       finished: false,
     };
     this.active = active;
+    void this.loadDayPath(active);
     this.live.set(driver.id, driver);
     for (const hook of this.driverHooks) {
       try {
@@ -596,6 +639,62 @@ export class RoutineScheduler {
     void this.pump();
   }
 
+  /** Read the vault's daily-notes settings while the run works, so its note
+   *  can link to the day's note (Vault M6, 6.4, CTO K7). The note is never
+   *  created or appended to from here. */
+  private async loadDayPath(active: ActiveRun): Promise<void> {
+    const root = this.vaultRoot(active.routine.ownerUserId);
+    const started = new Date(active.run.startedAt);
+    try {
+      // Obsidian's daily-notes file present but unreadable: no link, since
+      // the resolver would fall back to the default format and guess a name
+      // that could fork the day's note (K7). Absent or readable goes on.
+      const obsidianDaily = await readVaultConfigFile(root, 'obsidian/daily-notes');
+      if (dailyNoteConfigOf(obsidianDaily) === undefined) {
+        active.dayPath = undefined;
+        return;
+      }
+      // The vault's resolved settings (Vault M7, CTO L5): Obsidian's daily
+      // notes where it sets them, else the vault's own file, else the default.
+      const settings = await vaultSettingsFor(root, { force: true });
+      const path = dailyNotePath(datePartsOf(started), settings.daily);
+      active.dayPath = path.ok ? path.path : undefined;
+      return;
+    } catch (err) {
+      log.warn('vault settings unavailable; reading the daily notes settings alone', {
+        err: String(err),
+      });
+    }
+    try {
+      const read = await readVaultConfigFile(root, 'obsidian/daily-notes');
+      active.dayPath = runNoteDayPath(started, read);
+    } catch (err) {
+      log.warn('could not read the daily notes settings', { err: String(err) });
+    }
+  }
+
+  /** What the run note's provenance lines carry (Vault M7, CTO L9), or
+   *  'off' when `vault.provenance` is off. `runNoteFrontmatter` merges them
+   *  byte for byte (L10) through the one `mergeProvenance`; a merge that
+   *  skips leaves the block as built, so the run is recorded either way. */
+  private provenanceFor(active: ActiveRun): RunNoteProvenance | 'off' {
+    let on = false;
+    try {
+      on = this.provenance(active.routine);
+    } catch {
+      on = false;
+    }
+    if (!on) return 'off';
+    const where = active.where;
+    return {
+      ...(where ? { where } : {}),
+      ...(where && active.model
+        ? { size: deriveModelClass({ model: active.model, kind: where }) }
+        : {}),
+      ...(where === 'cloud' && active.provider ? { provider: active.provider } : {}),
+    };
+  }
+
   private writeNote(
     active: ActiveRun,
     state: RoutineRun['state'],
@@ -604,13 +703,31 @@ export class RoutineScheduler {
   ): { rel: string; abs: string } {
     // The default folder is made on first use; a configured one that went
     // missing throws here, before anything is written.
-    const root = ensureVaultRoot(this.vaultRoot());
+    const root = ensureVaultRootAt(this.vaultRoot(active.routine.ownerUserId));
     const started = new Date(active.run.startedAt);
     const date = `${started.getFullYear()}-${two(started.getMonth() + 1)}-${two(started.getDate())}`;
     const hh = two(started.getHours());
     const mm = two(started.getMinutes());
     const minutes = Math.max(1, Math.round((Date.parse(finishedAt) - started.getTime()) / 60_000));
+    // The routine's previous run note (the newest earlier run that left one),
+    // linked by full path so the model and the person can walk back.
+    const previousPath = store
+      .listRuns(50, active.routine.id)
+      .find((r) => r.id !== active.run.id && r.notePath)?.notePath;
+    const folder = routineFolder(active.routine);
     const lines = [
+      runNoteFrontmatter({
+        routine: active.routine.name,
+        project: basename(active.routine.cwd),
+        model: active.model || 'unknown',
+        session: active.driver.id,
+        started: active.run.startedAt,
+        state,
+        folder: folder.slice('Crew/'.length),
+        previousPath,
+        ...(active.dayPath ? { dayPath: active.dayPath } : {}),
+        provenance: this.provenanceFor(active),
+      }),
       `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
       `Crew: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
@@ -633,12 +750,23 @@ export class RoutineScheduler {
     // note is published whole with link() and never replaces a name that is
     // taken (the ifAbsent path of the vault's one writeNote, in its
     // synchronous form, since a run's end is recorded in one tick).
-    const folder = join('Crew', safeName(active.routine.name));
+    // The routine's folder follows the vault's one new-name rule (Vault M3,
+    // H4): no character Obsidian's links or a file system refuse, no dot-led
+    // or dot-ended segment, no reserved name. Old runs keep the absolute path
+    // their record already holds, so nothing is moved.
+    const text = lines.join('\n');
     for (let n = 1; ; n++) {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
       const abs = join(root, rel);
-      if (writeNewNoteSync(abs, lines.join('\n')).ok) return { rel, abs };
+      // Never into a settings folder (Vault M7, CTO L8), judged on where the
+      // path resolves: a Crew folder linked into .oscode/ is refused.
+      if (!resolvedAgentWritable(root, abs)) {
+        throw new Error(
+          'The routine folder leads into a vault settings folder, so no note was written.',
+        );
+      }
+      if (writeNewNoteSync(abs, text).ok) return { rel, abs };
       if (n >= 100) throw new Error(`Every note name for ${date} ${hh}-${mm} is taken.`);
     }
   }
@@ -660,14 +788,6 @@ function two(n: number): string {
 
 function slotLabel(slot: Date): string {
   return `${two(slot.getHours())}:${two(slot.getMinutes())}`;
-}
-
-function safeName(name: string): string {
-  const cleaned = name
-    .replace(/[\\/:*?"<>|]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned || 'Routine';
 }
 
 function stateWord(state: RoutineRun['state']): string {
@@ -708,10 +828,6 @@ function readNoteFile(abs: string): string {
   return readFileSync(abs, 'utf8');
 }
 
-function defaultVaultRoot(): string {
-  return loadVaultDir().dir;
-}
-
 /** Remember a folder in the global config's daemon.outboxAllowedRoots, the
  *  same list the daemon's outbox routes honor. Arrays replace on merge, so
  *  the whole list is written back. */
@@ -740,13 +856,21 @@ export function defaultOpenSession(
     driver,
     warnings,
     orchestratorKind,
-  }: { driver: LocalDriver; warnings: string[]; orchestratorKind: 'local' | 'cloud' } = boot({
+    router,
+  }: {
+    driver: LocalDriver;
+    warnings: string[];
+    orchestratorKind: 'local' | 'cloud';
+    router?: { orchestrator(): { ref: { model: string; provider?: string } } };
+  } = boot({
     cwd: routine.cwd,
     profile: 'headless',
     instructions: routineInstructions(routine),
     projectName: routine.projectName,
     permissionMode,
     caps: routineCaps(routine),
+    // The run reads its earlier notes in its owner's vault (CTO J8).
+    vaultRoot: vaultRootForOwner(routine.ownerUserId),
   });
   if (orchestratorKind === 'cloud' && !profile.allowCloudAutoApprove) {
     try {
@@ -756,7 +880,32 @@ export function defaultOpenSession(
     }
     throw new RoutineRefused(ROUTINE_NEEDS_LOCAL_MODEL);
   }
-  return { driver, warnings };
+  let model: string | undefined;
+  let provider: string | undefined;
+  try {
+    const ref = router?.orchestrator().ref;
+    model = ref?.model;
+    provider = ref?.provider;
+  } catch {
+    // The note says "unknown" rather than fail the run over a label.
+  }
+  return {
+    driver,
+    warnings,
+    ...(model ? { model } : {}),
+    ...(provider ? { provider } : {}),
+    where: orchestratorKind,
+  };
+}
+
+/** `vault.provenance` from the config the run's workspace loads; the key is
+ *  machine-only, so this is the machine's value. On unless it says off. */
+function provenanceOn(routine: Routine): boolean {
+  try {
+    return loadConfig(routine.cwd).config.vault?.provenance !== 'off';
+  } catch {
+    return true;
+  }
 }
 
 // ---- the process singleton ---------------------------------------------------

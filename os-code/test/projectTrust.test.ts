@@ -525,3 +525,162 @@ describe('every config key is classified for project trust', () => {
     expect(missing).toEqual([]);
   });
 });
+
+// Vault M4, CTO I3: which notes are hidden or stay on this computer is the
+// person's own call, so a repo never names their private folders; the context
+// pack may be turned off from any folder and turned up only with trust.
+describe('a project file and the Vault', () => {
+  it('cannot unhide a note or send a private folder to a cloud seat', () => {
+    writeProject({
+      vault: { exclude: [], localOnly: { paths: [], tags: [] } },
+    });
+    const { config, warnings } = loadConfig(project);
+    expect(config.vault.exclude).toEqual([]);
+    expect(config.vault.localOnly).toEqual({
+      paths: ['Private/**', 'Journal/**'],
+      tags: ['private'],
+    });
+    expect(warnings.join('\n')).toMatch(/vault\.localOnly settings are machine config/);
+  });
+
+  it("keeps the person's own exclude list over a project's", () => {
+    writeGlobal({ vault: { exclude: ['Secret/**'] } });
+    writeProject({ vault: { exclude: ['Other/**'] } });
+    expect(loadConfig(project).config.vault.exclude).toEqual(['Secret/**']);
+  });
+
+  it("may turn the context pack off from an untrusted folder ('off')", () => {
+    writeProject({ vault: { context: 'off' } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.vault.context).toBe('off');
+    expect(projectTrust.waiting).toEqual([]);
+  });
+
+  it("its 'full' waits for trust, then applies", () => {
+    writeProject({ vault: { context: 'full' } });
+    const before = loadConfig(project);
+    expect(before.config.vault.context).toBe('auto');
+    expect(before.projectTrust.waiting).toEqual([
+      'turns on the full Vault context, so more of your notes reach the model',
+    ]);
+    trustProjectFolder(project);
+    expect(loadConfig(project).config.vault.context).toBe('full');
+  });
+
+  it("cannot turn the pack back on over the person's off", () => {
+    writeGlobal({ vault: { context: 'off' } });
+    writeProject({ vault: { context: 'auto' } });
+    expect(loadConfig(project).config.vault.context).toBe('off');
+  });
+
+  it('cannot change the window a model is served (providers.<id>.numCtx)', () => {
+    writeProject({
+      providers: {
+        ollama: { kind: 'openai-compatible', baseUrl: 'http://localhost:11434', numCtx: 'auto' },
+      },
+    });
+    expect(loadConfig(project).config.providers.ollama).not.toHaveProperty('numCtx');
+  });
+
+  // Vault M5, CTO J18: the handoff may be turned off from any folder and back
+  // on only with trust; prompt caching is the machine's own call.
+  it("may turn the handoff off from an untrusted folder ('off')", () => {
+    writeProject({ vault: { handoff: 'off' } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.vault.handoff).toBe('off');
+    expect(projectTrust.waiting).toEqual([]);
+  });
+
+  it("cannot turn the handoff back on over the person's off until trusted", () => {
+    writeGlobal({ vault: { handoff: 'off' } });
+    writeProject({ vault: { handoff: 'auto' } });
+    const before = loadConfig(project);
+    expect(before.config.vault.handoff).toBe('off');
+    expect(before.projectTrust.waiting).toEqual([
+      'turns the handoff back on, so a summary of earlier work reaches the model',
+    ]);
+    trustProjectFolder(project);
+    expect(loadConfig(project).config.vault.handoff).toBe('auto');
+  });
+
+  it('defaults the handoff to auto', () => {
+    expect(loadConfig(project).config.vault.handoff).toBe('auto');
+  });
+
+  // Vault M7, CTO L14: room for notes, its ceiling and provenance are machine
+  // config. A project file never sets them, trusted or not, and says so.
+  it('cannot give notes more room in each chat (vault.packSize), even trusted', () => {
+    writeProject({ vault: { packSize: 'large' } });
+    trustProjectFolder(project);
+    const { config, warnings } = loadConfig(project);
+    expect(config.vault.packSize).toBe('normal');
+    expect(warnings.join('\n')).toMatch(/vault\.packSize settings are machine config/);
+  });
+
+  it("keeps the person's own packSize over a project's", () => {
+    writeGlobal({ vault: { packSize: 'small' } });
+    writeProject({ vault: { packSize: 'large' } });
+    expect(loadConfig(project).config.vault.packSize).toBe('small');
+  });
+
+  it('cannot raise the pack ceiling (vault.packMaxTokens), even trusted', () => {
+    writeProject({ vault: { packMaxTokens: 32000 } });
+    trustProjectFolder(project);
+    const { config, warnings } = loadConfig(project);
+    expect(config.vault.packMaxTokens).toBe(4000);
+    expect(warnings.join('\n')).toMatch(/vault\.packMaxTokens settings are machine config/);
+  });
+
+  it('cannot lower the pack ceiling either (machine, not lower-only)', () => {
+    writeGlobal({ vault: { packMaxTokens: 8000 } });
+    writeProject({ vault: { packMaxTokens: 500 } });
+    expect(loadConfig(project).config.vault.packMaxTokens).toBe(8000);
+  });
+
+  it('cannot turn provenance off (vault.provenance), even trusted', () => {
+    writeProject({ vault: { provenance: 'off' } });
+    trustProjectFolder(project);
+    const { config, warnings } = loadConfig(project);
+    expect(config.vault.provenance).toBe('on');
+    expect(warnings.join('\n')).toMatch(/vault\.provenance settings are machine config/);
+  });
+
+  it('defaults room for notes to normal, the ceiling to 4000, provenance on', () => {
+    const { config } = loadConfig(project);
+    expect(config.vault.packSize).toBe('normal');
+    expect(config.vault.packMaxTokens).toBe(4000);
+    expect(config.vault.provenance).toBe('on');
+  });
+
+  it('holds the pack ceiling to 500 to 32000 in machine config', () => {
+    writeGlobal({ vault: { packMaxTokens: 64000 } });
+    expect(() => loadConfig(project)).toThrow(/vault\.packMaxTokens/);
+  });
+
+  it('cannot turn on prompt caching (providers.<id>.promptCache)', () => {
+    writeGlobal({ providers: { anthropic: { kind: 'anthropic' } } });
+    writeProject({
+      providers: { anthropic: { kind: 'anthropic', promptCache: 'auto' } },
+    });
+    trustProjectFolder(project);
+    const anthropic = loadConfig(project).config.providers.anthropic;
+    expect(anthropic).toBeDefined();
+    expect(anthropic).not.toHaveProperty('promptCache');
+  });
+
+  it("keeps the person's own promptCache (machine config)", () => {
+    writeGlobal({ providers: { anthropic: { kind: 'anthropic', promptCache: 'auto' } } });
+    writeProject({ providers: { anthropic: { kind: 'anthropic', promptCache: 'off' } } });
+    const anthropic = loadConfig(project).config.providers.anthropic;
+    expect(anthropic && 'promptCache' in anthropic ? anthropic.promptCache : undefined).toBe(
+      'auto',
+    );
+  });
+
+  it('may choose the merged vault tool for a class (it only shapes the menu)', () => {
+    writeProject({ harness: { profiles: { overrides: { small: { mergedVaultTool: false } } } } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.harness.profiles.overrides.small?.mergedVaultTool).toBe(false);
+    expect(projectTrust.waiting).toEqual([]);
+  });
+});

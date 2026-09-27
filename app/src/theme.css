@@ -1453,6 +1453,50 @@ textarea {
   animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
 }
 
+/* The save chip in the note bar (Vault M2 2.2): quiet muted text for Saved and
+   Saving, the warn color when the text is kept on this device to save later.
+   Re-keyed per status, so each change settles in on fade-rise. */
+.vault-save-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px 8px;
+  min-width: 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-save-chip.offline {
+  color: var(--warn);
+}
+.vault-save-count {
+  color: var(--ink-soft);
+}
+
+/* The lease (Vault M2 2.5). Enforced (a storage without compare-and-swap):
+   the warn line and Take over editing, stacked. Advisory: one quiet line that
+   settles in on fade-rise and never moves the editor below it. */
+.vault-lease-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+.vault-also-open {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+
+/* A conflict copy's badge in the tree: plum, the "needs you" color, at the
+   trailing edge of its row so the name reads first. */
+.vault-conflict-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--attention-soft);
+  color: var(--attention);
+}
+
 .vault-title {
   font-family: var(--font-display);
   font-weight: var(--weight-medium);
@@ -1519,6 +1563,73 @@ textarea {
   font-family: var(--font-mono);
   font-size: var(--text-3);
   line-height: 1.55;
+}
+
+/* A note's properties (its frontmatter, Vault M3 H2): a quiet strip above the
+   body, closed by default, opened on the shared grid-row reveal so it grows
+   and folds both ways. Read-only; nothing here writes YAML. */
+.vault-props {
+  margin: 0 0 12px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+.vault-props-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: var(--text-3);
+  color: var(--muted);
+  padding: 2px 0;
+  text-align: left;
+}
+.vault-props-chevron {
+  margin-left: auto;
+  font-size: var(--text-1);
+}
+.vault-props-list {
+  margin: 4px 0 2px;
+  display: grid;
+  gap: 4px;
+}
+.vault-props-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 30%) 1fr;
+  gap: 10px;
+  font-size: var(--text-3);
+  line-height: 1.5;
+}
+.vault-props-key {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.vault-props-value {
+  margin: 0;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.vault-props-subkey,
+.vault-props-empty {
+  color: var(--muted);
+}
+.vault-props-chip {
+  display: inline-block;
+  margin: 0 6px 4px 0;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-2);
+  line-height: 1.7;
+}
+.vault-props-raw {
+  margin: 4px 0 2px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  line-height: 1.55;
+  color: var(--ink-soft);
 }
 
 /* The "Not saved" list (0.4): text no vault took, one row per note, each
@@ -1625,6 +1736,1507 @@ textarea {
   font-size: var(--text-2);
   color: var(--muted);
 }
+
+/* Vault M6 wave 0: one fenced section per build stream. A stream writes only
+   inside its own fence, so the streams never touch the same lines. */
+
+/* ---- M6 stream E begin ----
+   Reader (6.5, 6.6): callouts in four families (never --local, --cloud or
+   --accent), ==highlight== marks, embeds, image skeletons and chips, PDF
+   chips, task lines (CTO K10, K11; CX X12 to X14). */
+
+/* Callouts: a rounded block, a 3px left rule, a tinted fill, a small glyph and
+   the title. Four families from the status tokens only; teal and amber mean
+   local and cloud here, so a callout never borrows them. */
+.vault-callout {
+  margin: 0 0 0.9em;
+  padding: 10px 12px;
+  border-left: 3px solid var(--ink-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+}
+.vault-callout--positive {
+  border-left-color: var(--ok);
+  background: var(--ok-soft);
+}
+.vault-callout--caution {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+.vault-callout--danger {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+.vault-callout-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-4);
+  line-height: 1.4;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.vault-callout--positive .vault-callout-title {
+  color: var(--ok);
+}
+.vault-callout--caution .vault-callout-title {
+  color: var(--warn);
+}
+.vault-callout--danger .vault-callout-title {
+  color: var(--danger);
+}
+.vault-callout-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vault-callout-glyph {
+  flex: none;
+  margin-top: 2px;
+}
+.vault-callout-toggle {
+  min-height: 44px;
+  margin: -10px 0;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.vault-callout-chevron {
+  flex: none;
+  margin-top: 3px;
+  transition: transform var(--dur-3) var(--ease-standard);
+}
+.vault-callout-toggle[aria-expanded='true'] .vault-callout-chevron {
+  transform: rotate(90deg);
+}
+.vault-callout-body {
+  margin-top: 6px;
+}
+.vault-callout-body > :last-child {
+  margin-bottom: 0;
+}
+/* A fold reopens by fading its body in; the layout change is not tweened. */
+.vault-callout-toggle + .vault-callout-body:not([hidden]) {
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+
+/* ==highlight==: a token tint that holds AA with the ink in both themes. */
+.vault-mark {
+  background: color-mix(in srgb, var(--warn) 24%, transparent);
+  color: var(--ink);
+  border-radius: var(--radius-xs);
+  padding: 0 2px;
+}
+
+/* A scroll-to target lands with a one-shot fade. */
+.vault-landed {
+  animation: vault-landed var(--dur-6) var(--ease-standard) backwards;
+  border-radius: var(--radius-xs);
+}
+.vault-landed:focus {
+  outline: none;
+}
+@keyframes vault-landed {
+  from {
+    background-color: var(--surface-hover);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+/* Task lines: the whole line is the hit target, at least 44px tall. Done
+   reads muted, never struck through, so VoiceOver's "checked" carries it. */
+.md li.vault-task-item {
+  list-style: none;
+  margin-left: -1.4em;
+  margin-bottom: 0;
+}
+.vault-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.vault-task-box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ink-soft);
+}
+.vault-task-box[aria-disabled='true'] {
+  opacity: 0.55;
+}
+.vault-task-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vault-task--done .vault-task-text {
+  color: var(--muted);
+}
+
+/* Note embeds: a quiet card, its header opens the note. */
+.vault-embed {
+  margin: 0 0 0.9em;
+  padding: 4px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+.vault-embed-head {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 0 8px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: var(--text-2);
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.vault-embed-body .vault-md {
+  margin-top: 0;
+}
+.vault-embed-body .vault-md > :last-child {
+  margin-bottom: 0;
+}
+.vault-embed-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+.vault-embed-skeleton-line,
+.vault-image-skeleton {
+  display: block;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 20%,
+    var(--surface-hover) 50%,
+    var(--surface) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer var(--loop-3) linear infinite;
+}
+.vault-embed-skeleton-line {
+  height: 12px;
+}
+.vault-embed-skeleton-line + .vault-embed-skeleton-line {
+  width: 62%;
+}
+
+/* Chips: a missing note, a nested embed, a PDF, a file, a remote image. */
+.vault-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--text-3);
+  line-height: 1.35;
+  text-align: left;
+  vertical-align: middle;
+}
+.vault-chip--button {
+  min-height: 44px;
+  cursor: pointer;
+}
+.md a.vault-chip--link {
+  color: var(--link);
+}
+.vault-chip--missing {
+  border-style: dashed;
+}
+.vault-chip-glyph {
+  flex: none;
+}
+.vault-chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vault-chip-name {
+  overflow-wrap: anywhere;
+}
+.vault-chip-sub {
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+
+/* Images: full column width, a 4:3 skeleton while the bytes read, then the
+   image fades in over it. Nothing tweens layout. */
+.vault-image-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0.4em 0 0.9em;
+}
+.vault-image-skeleton {
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+.vault-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  cursor: zoom-in;
+}
+.vault-image.loaded {
+  position: static;
+  opacity: 1;
+  animation: fade-in var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+.sheet.vault-image-sheet {
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vault-image-zoom {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  touch-action: pinch-zoom pan-x pan-y;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vault-image-zoom img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-embed-skeleton-line,
+  .vault-image-skeleton,
+  .vault-landed,
+  .vault-image.loaded,
+  .vault-callout-toggle + .vault-callout-body:not([hidden]) {
+    animation: none;
+  }
+}
+
+/* ---- M6 stream E end ---- */
+
+/* ---- M6 stream F begin ----
+   Search UI (6.1): the tree search field, result groups and rows, marks, the
+   switcher sheet, Recent (CTO K8, K9; CX X1 to X4). */
+
+.vault-search {
+  display: flex;
+  flex-direction: column;
+}
+/* The same field Chats uses (one search pattern in the app). */
+.vault-search-field {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 0 6px;
+  background: linear-gradient(var(--bg) 78%, transparent);
+}
+.vault-search-field input {
+  width: 100%;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--text-5);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.vault-search-field input::placeholder {
+  color: var(--muted);
+}
+.vault-search-count {
+  margin: 0 2px 4px;
+  color: var(--muted);
+  font-size: var(--text-2);
+}
+.vault-search-count:empty {
+  display: none;
+}
+/* The tree and the results share one stage and crossfade on it. The layer
+   on its way out lifts out of the flow so nothing reflows under the fade. */
+.vault-search-stage {
+  position: relative;
+}
+.vault-search-layer {
+  animation: vault-search-in var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-search-layer.closing {
+  position: absolute;
+  inset: 0 0 auto 0;
+  pointer-events: none;
+  animation: vault-search-out var(--dur-3) var(--ease-standard) forwards;
+}
+@keyframes vault-search-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes vault-search-out {
+  to {
+    opacity: 0;
+  }
+}
+.vault-search-hint,
+.vault-search-note {
+  margin: 2px 2px 10px;
+}
+.vault-search-note--failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.vault-search-note--failed .hint {
+  margin: 0;
+}
+.vault-search-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vault-search-group {
+  margin: 10px 2px 4px;
+  color: var(--muted);
+  font-size: var(--text-1);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* A row: the title, the folder or a sub-label, and up to two lines of
+   excerpt. Rows that arrive after the titles step in on the stagger. Titles
+   and excerpts wrap (Dynamic Type), never clip mid-word. */
+.vault-search-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--ink);
+  animation: vault-search-in var(--dur-3) var(--ease-standard) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.vault-search-row--active {
+  background: var(--surface-hover);
+}
+.vault-search-row-title {
+  font-size: var(--text-5);
+  overflow-wrap: anywhere;
+}
+.vault-search-row-sub {
+  color: var(--muted);
+  font-size: var(--text-2);
+}
+.vault-search-row-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: var(--text-3);
+}
+/* The match: a caution-family tint (never teal or amber, which mean local
+   and cloud here) under ink, so it holds contrast in both themes. */
+.vault-search-mark {
+  background: var(--warn-soft);
+  color: inherit;
+  border-radius: var(--radius-xs);
+  font-weight: var(--weight-semibold);
+}
+/* The switcher: a top sheet with one field and the rows. */
+.vault-switcher-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 16px;
+}
+.vault-switcher-list {
+  max-height: min(56vh, 520px);
+  overflow-y: auto;
+}
+
+/* ---- M6 stream F end ---- */
+
+/* ---- M6 stream G begin ----
+   Organize (6.2, 6.3): the rename sheet, the folder sheet, the Update links
+   sheet and the skipped-notes card, the Trash view, the Undo toast (CTO K3
+   to K6, R1 to R3; CX X5 to X10). */
+
+/* The rename sheet's steps (name and folder, the folder list, Update links?)
+   settle in on the crossfade clock as each replaces the last. The Folder row
+   reads as a row: label, value, chevron. Opacity and transform only. */
+.vault-rename-step {
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-rename-folder {
+  margin-bottom: 12px;
+}
+.vault-rename-label {
+  color: var(--muted);
+  font-size: var(--text-3);
+}
+.vault-rename-value {
+  margin-left: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vault-rename-here {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.vault-rename-problem {
+  color: var(--danger);
+  margin: 0 0 12px;
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-rename-new {
+  margin-top: 10px;
+}
+.vault-rename-sub {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+.vault-rename-quiet-sub {
+  margin: 0;
+  text-align: center;
+}
+
+/* The standing card on a renamed note while some links still point at the
+   old name (CX X7): the room's card shape, arriving on fade-rise. */
+.vault-links-left {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-links-left-title {
+  overflow-wrap: anywhere;
+}
+
+/* The folder sheet: its counts, stated before anything acts (K5), and the
+   New folder field. */
+.vault-folder-counts {
+  margin: 0 0 12px;
+}
+.vault-folder-new {
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+
+/* Trash (CX X10): an in-room page. Rows arrive one after another on the
+   stagger; titles and sub-labels wrap for Dynamic Type (X18). */
+.vault-trash-lead,
+.vault-trash-team {
+  margin: 0 0 10px;
+}
+.vault-trash-error {
+  color: var(--danger);
+}
+.vault-trash-empty {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-trash-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+.vault-trash-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--border);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.vault-trash-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.vault-trash-title {
+  overflow-wrap: anywhere;
+}
+.vault-trash-sub {
+  color: var(--muted);
+  font-size: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.vault-trash-restore {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px 14px;
+}
+.vault-trash-actions {
+  margin-top: 4px;
+}
+.vault-trash-entry {
+  margin-top: 6px;
+}
+.vault-trash-count {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* The Undo toast (CX X9): the app toast's pill with an action. The text may
+   ellipsize; the Undo button never does and is at least 44 px tall. It
+   arrives and leaves on the plain toast's own motion (.toast, .toast.closing). */
+.toast.vault-undo-toast {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 18px;
+  white-space: normal;
+  overflow: visible;
+}
+.vault-undo-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vault-undo-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--bg);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+/* ---- M6 stream G end ---- */
+
+/* ---- M6 stream H begin ----
+   Linking and context (6.7, 6.8, 6.4): the link listbox, the phone accessory
+   bar (moved by transform only), outgoing and unlinked mentions, the
+   backlinks skeleton, the outline sheet, the Today button (CTO K7, K14, K15;
+   CX X11, X15 to X17). */
+
+/* The link listbox. `chips` is the one-row strip the phone shows in the
+   accessory bar (the base .vault-link-suggest rule above); `list` is the
+   desktop's vertical list pinned under the editor. The row the keys are on
+   carries .is-active and aria-selected. */
+.vault-link-suggest--list {
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: visible;
+  overflow-y: auto;
+  max-height: 260px;
+  margin-top: 8px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+.vault-link-suggest--list .vault-link-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  white-space: normal;
+}
+.vault-link-suggest--chips .vault-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.vault-link-chip.is-active {
+  background: var(--surface);
+  border-color: var(--ink-soft);
+}
+.vault-link-suggest--list .vault-link-chip.is-active {
+  background: var(--surface);
+}
+.vault-link-label {
+  color: var(--ink);
+  font-size: var(--text-4);
+}
+.vault-link-new .vault-link-label {
+  color: var(--accent);
+}
+.vault-link-heading .vault-link-label {
+  color: var(--ink-soft);
+}
+.vault-link-sub {
+  color: var(--muted);
+  font-size: var(--text-2);
+}
+.vault-link-suggest--chips .vault-link-sub {
+  font-size: var(--text-1);
+}
+
+/* The phone's accessory bar: fixed to the bottom and lifted onto the
+   keyboard by a transform of --kb-inset, so it never reflows (rule 4). Off
+   the keyboard (or leaving) it slides down and fades. */
+.vault-accessory {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  transform: translateY(calc(-1 * var(--kb-inset, 0px)));
+  transition:
+    transform var(--dur-4) var(--ease-standard),
+    opacity var(--dur-3) var(--ease-standard);
+  animation: vault-accessory-in var(--dur-3) var(--ease-standard) backwards;
+}
+:root:not(.kb-open) .vault-accessory,
+.vault-accessory.closing {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+@keyframes vault-accessory-in {
+  from {
+    opacity: 0;
+  }
+}
+.vault-accessory .vault-link-suggest {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+.vault-accessory:has(.vault-link-suggest) .vault-accessory-tools {
+  display: none;
+}
+.vault-accessory-tools {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 4px;
+}
+.vault-accessory-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+.vault-accessory-glyph {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+.vault-accessory-hide {
+  margin-left: auto;
+  color: var(--ink-soft);
+}
+/* Room under the text for the bar, only while the keyboard is up. */
+.vault-accessory-spacer {
+  display: none;
+}
+:root.kb-open .vault-accessory-spacer {
+  display: block;
+  height: 56px;
+}
+
+/* The card under a note: Linked mentions, Links from this note, Unlinked
+   mentions, one quiet section each. Rows step in by --stagger. */
+.vault-context-section + .vault-context-section {
+  margin-top: 16px;
+}
+.vault-context-row {
+  animation: vault-context-in var(--dur-3) var(--ease-standard) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+@keyframes vault-context-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.vault-outgoing-missing .vault-mention-title {
+  color: var(--muted);
+  font-weight: var(--weight-regular);
+}
+.vault-unlinked-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vault-unlinked-open {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vault-unlinked-link {
+  flex: 0 0 auto;
+  min-height: 44px;
+  margin-top: 10px;
+}
+.vault-unlinked-find {
+  margin-top: 10px;
+}
+
+/* The Linked mentions skeleton: three rows on the house shimmer loop. */
+.vault-skel {
+  margin-top: 10px;
+}
+.vault-skel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 2px;
+  border-top: 1px solid var(--border);
+}
+.vault-skel-line {
+  display: block;
+  height: 10px;
+  width: 86%;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 20%,
+    var(--surface-hover) 50%,
+    var(--surface) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer var(--loop-3) linear infinite;
+}
+.vault-skel-title {
+  width: 42%;
+  height: 12px;
+}
+
+/* The outline sheet: headings indented by level, H4 and deeper with H3. */
+.vault-outline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+}
+.vault-outline-item {
+  animation: vault-context-in var(--dur-3) var(--ease-standard) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.vault-outline-row {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: var(--text-5);
+  text-align: left;
+}
+.vault-outline-depth-0 {
+  font-weight: var(--weight-semibold);
+}
+.vault-outline-depth-1 {
+  padding-left: 28px;
+}
+.vault-outline-depth-2 {
+  padding-left: 44px;
+  color: var(--ink-soft);
+}
+
+/* The Today button in the Vault header: the house 44px icon button. */
+.vault-today-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-skel-line,
+  .vault-context-row,
+  .vault-outline-item,
+  .vault-accessory {
+    animation: none;
+  }
+}
+
+/* ---- M6 stream H end ---- */
+
+/* ---- M6 stream W2 begin ----
+   Wave 2 integrator (6.9): the tree and note, and read and edit, crossfades
+   on --dur-3 and --ease-standard, and the house + button (CTO K18). */
+
+/* A folder's crumbs, with its own options button at the end (CX X5). */
+.vault-crumbs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.vault-crumbs-row .vault-crumbs {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.vault-folder-options {
+  flex: none;
+}
+
+/* The header's Today and New note buttons, side by side (CX X11). */
+.vault-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A #tag in reading view: a small tap that searches tag:x (CX X2). */
+.vault-tag {
+  display: inline;
+  padding: 0 5px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: inherit;
+  line-height: inherit;
+}
+button.vault-tag {
+  cursor: pointer;
+}
+
+/* The house + beside Today: 44 px like every icon button in the header. */
+.vault-new-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Tree and note, and read and edit, cross on the tokens (CTO K18, CX X17):
+   the view that arrives fades in while the one that left fades out as a
+   snapshot (useViewGhost, below), opacity only, never a hard cut. The Trash
+   page arrives the same way. */
+.vault-note,
+.vault-tree-view,
+.vault-trash {
+  animation: vault-view-in var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-editor-wrap,
+.vault-read:not(.vault-reloaded) {
+  animation: vault-view-in var(--dur-3) var(--ease-standard) backwards;
+}
+@keyframes vault-view-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The leaving view's snapshot (useViewGhost): lifted out of the flow over
+   the box the view held (the hook sets its offsets and size), clipped to what was on screen, inert, and fading out on the same clock the
+   arriving view fades in on. Whatever it inherited is stilled, so nothing in
+   it replays. Two classes, so it wins over the arrival rules above. */
+/* The room's scroller holds the snapshot, so it scrolls and clips with it. */
+.vault-screen {
+  position: relative;
+}
+.view-ghost.closing {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  animation: vault-view-out var(--dur-3) var(--ease-standard) forwards;
+}
+.view-ghost.closing * {
+  animation: none;
+  transition: none;
+}
+@keyframes vault-view-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Why an Options row is not offered on this storage (vaultCapLine). */
+.vault-options-note {
+  margin: -4px 0 10px;
+}
+
+/* Structural hooks the M6 components style their insides through. */
+.vault-context {
+  overflow-wrap: anywhere;
+}
+.vault-context-head {
+  margin-bottom: 2px;
+}
+.vault-search-results,
+.vault-switcher {
+  overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-note,
+  .vault-tree-view,
+  .vault-trash,
+  .vault-editor-wrap,
+  .vault-read,
+  .view-ghost.closing {
+    animation: none;
+  }
+}
+
+/* ---- M6 stream W2 end ---- */
+
+/* Vault M7 wave 0: one fenced section per build stream. A stream writes only
+   inside its own fence, so the streams never touch the same lines. */
+
+/* ---- M7 stream G begin ----
+   Customization surface (7.1 to 7.3): the --vault-font and --vault-size-step
+   tokens (a step on the platform base, never px, so Dynamic Type wins), the
+   Vault settings sheet's sections, segments and read-only rows, the Y2
+   expand line (a fade on --dur-3, no height tween), folder chips, the
+   provenance chip (teal --local, amber --cloud, outline once reviewed),
+   About this note, the starter preview sheet (CTO L15; CX Y1 to Y13). */
+
+/* The note's face and size (7.1, Editor). The room spreads
+   `vaultTypeAttrs(settings.editor)` on the note; Default sets no attribute,
+   so today's look holds with no file. `--vault-font` is the face; the size
+   is a step on the type scale (the editor) or on the inherited base (reading,
+   in em), never a pixel value, and `--vault-size-step` names the step taken
+   (-1, 0, 1) for anything that reads it. */
+[data-vault-font='serif'] {
+  --vault-font: var(--font-display);
+}
+[data-vault-font='mono'] {
+  --vault-font: var(--font-mono);
+}
+[data-vault-size='smaller'] {
+  --vault-size-step: -1;
+}
+[data-vault-size='larger'] {
+  --vault-size-step: 1;
+}
+.vault-editor {
+  font-family: var(--vault-font, var(--font-mono));
+}
+.vault-read {
+  font-family: var(--vault-font, var(--font));
+}
+[data-vault-size='smaller'] .vault-editor,
+.vault-settings-sample[data-vault-size='smaller'] {
+  font-size: var(--text-3);
+}
+[data-vault-size='larger'] .vault-editor,
+.vault-settings-sample[data-vault-size='larger'] {
+  font-size: var(--text-5);
+}
+[data-vault-size='smaller'] .vault-read {
+  font-size: 0.93em;
+}
+[data-vault-size='larger'] .vault-read {
+  font-size: 1.07em;
+}
+
+/* Vault settings (Y1): full height on the phone, a centered card on the
+   desktop. Height is fixed, never tweened. */
+.sheet.vault-settings {
+  max-height: calc(100dvh - var(--safe-top, 0px) - 12px);
+  min-height: calc(100dvh - var(--safe-top, 0px) - 12px);
+}
+@media (min-width: 900px) {
+  .sheet-scrim:has(> .sheet.vault-settings) {
+    align-items: center;
+  }
+  .sheet.vault-settings {
+    min-height: 0;
+    max-height: 86vh;
+    border-radius: var(--radius-lg);
+  }
+}
+/* The save status: one line under the title, held open so it never jumps,
+   each new state fading in on --dur-3 (Y5, R5). */
+.vault-settings-status {
+  min-height: 1.4em;
+  margin: -8px 0 10px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.vault-settings-status-text {
+  display: inline-block;
+  animation: vault-settings-fade var(--dur-3) var(--ease-standard) backwards;
+}
+@keyframes vault-settings-fade {
+  from {
+    opacity: 0;
+  }
+}
+.vault-settings-note {
+  margin: 0 0 12px;
+}
+.vault-settings-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-settings-conflict p {
+  margin: 0;
+}
+.vault-settings-section {
+  margin: 0 0 18px;
+}
+.vault-settings-head {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--text-5);
+  font-weight: var(--weight-medium);
+  color: var(--ink-soft);
+}
+.vault-settings-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.vault-settings-item + .vault-settings-item,
+.vault-settings-asides + .vault-settings-item {
+  border-top: 1px solid var(--border);
+}
+.vault-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  text-align: left;
+  color: var(--ink);
+}
+.vault-settings-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.vault-settings-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.vault-settings-label {
+  font-size: var(--text-4);
+}
+.vault-settings-sub {
+  font-size: var(--text-2);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.vault-settings-value {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-4);
+  color: var(--ink-soft);
+}
+/* Read-only rows (From Obsidian, a locked file): neutral, never a fault. */
+.vault-settings-locked .vault-settings-label {
+  color: var(--ink-soft);
+}
+/* Y2's one line: it appears with a fade, never a height tween. */
+.vault-settings-expand {
+  margin: 0;
+  padding: 0 14px 11px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+  animation: vault-settings-fade var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-settings-seg {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.vault-settings-seg[aria-disabled='true'] {
+  opacity: 0.45;
+}
+.vault-settings-asides {
+  padding: 11px 14px 0;
+}
+.vault-settings-aside {
+  margin: 0 0 10px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.vault-settings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vault-settings-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-settings-chip:not(:has(.vault-settings-chip-remove)) {
+  padding-right: 12px;
+}
+.vault-settings-chip-name {
+  overflow-wrap: anywhere;
+}
+.vault-settings-chip-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: -4px 0;
+  border-radius: 999px;
+  color: var(--ink-soft);
+}
+/* A drawn cross, never a typed one (SheetGlyphs' reason). */
+.vault-settings-chip-x {
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+.vault-settings-chip-x::before,
+.vault-settings-chip-x::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1.5px;
+  height: 100%;
+  background: currentColor;
+  border-radius: 999px;
+}
+.vault-settings-chip-x::before {
+  transform: translateX(-50%) rotate(45deg);
+}
+.vault-settings-chip-x::after {
+  transform: translateX(-50%) rotate(-45deg);
+}
+.vault-settings-fixed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vault-settings-caption {
+  margin: 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.vault-settings-adds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vault-settings-add {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-strong);
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-settings-input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  font-size: var(--text-4);
+  color: var(--ink);
+  transition: border-color var(--dur-2) var(--ease-standard);
+}
+.vault-settings-input:focus {
+  border-color: var(--accent);
+}
+/* Y8: the one amber line in M7's settings, a spend fact under Room for
+   notes, with its word doing the work beside the dot. */
+.vault-settings-spend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+/* M8: the computer's sessions use their own Room for notes. Neutral, no
+   dot: the system working, not a spend or a fault. */
+.vault-settings-engine {
+  margin: 0;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.vault-settings-spend-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--cloud);
+}
+.vault-settings-sample {
+  margin: 0;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  font-family: var(--vault-font, var(--font));
+  font-size: var(--text-4);
+  color: var(--ink);
+}
+.vault-settings-foot {
+  margin: 6px 2px 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+
+/* The provenance chip (Y11, R4): teal for a seat on this computer, amber for
+   a cloud seat, a fill until reviewed and an outline after. The word Local or
+   Cloud is always in the label beside the tint. */
+.vault-prov-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: var(--text-2);
+  font-weight: var(--weight-medium);
+}
+.vault-prov-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.vault-prov-chip.vault-prov-local {
+  background: var(--local-soft);
+  color: var(--local);
+}
+.vault-prov-chip.vault-prov-cloud {
+  background: var(--cloud-soft);
+  color: var(--cloud);
+}
+.vault-prov-chip.vault-prov-local.vault-prov-reviewed {
+  background: transparent;
+  border-color: var(--local);
+}
+.vault-prov-chip.vault-prov-cloud.vault-prov-reviewed {
+  background: transparent;
+  border-color: var(--cloud);
+}
+
+/* About this note (Y12). */
+.vault-about {
+  max-height: 86vh;
+}
+.vault-about-rows {
+  margin: 0 0 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.vault-about-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  font-size: var(--text-4);
+}
+.vault-about-row + .vault-about-row {
+  border-top: 1px solid var(--border);
+}
+.vault-about-row dt {
+  color: var(--ink-soft);
+}
+.vault-about-row dd {
+  margin: 0;
+  text-align: right;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.vault-about-row dd.vault-about-ran-local {
+  color: var(--local);
+}
+.vault-about-row dd.vault-about-ran-cloud {
+  color: var(--cloud);
+}
+.vault-about-foot {
+  margin: 0 0 14px;
+}
+.vault-about-line {
+  margin: 0 0 12px;
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-about-sub {
+  margin: 0;
+  text-align: center;
+}
+
+/* The starter layout's preview (Y13): everything it adds, shown first. */
+.vault-starter-sub {
+  margin: 0 0 12px;
+}
+.vault-starter-rows {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.vault-starter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.vault-starter-row + .vault-starter-row {
+  border-top: 1px solid var(--border);
+}
+.vault-starter-glyph {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ink-soft);
+}
+.vault-starter-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vault-starter-name {
+  font-size: var(--text-4);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+.vault-starter-line {
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.vault-starter-settings {
+  margin: 0 0 14px;
+}
+.vault-starter-partial {
+  margin: 0 0 12px;
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-starter {
+  max-height: 86vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-settings-status-text,
+  .vault-settings-expand {
+    animation: none;
+  }
+}
+
+/* ---- M7 stream G end ---- */
+
+/* ---- M7 stream W2 begin ----
+   Wave 2 integrator: the Y4 entry rows (note Options, the storage sheet's
+   end, the Settings mirror) and the chip's place on the note's meta line. */
+
+/* The settings sheet's folder and note list: one quiet row each. */
+.vault-settings-pick {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.vault-settings-pick-row {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  text-align: left;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.vault-settings-pick-row + .vault-settings-pick-row {
+  border-top: 1px solid var(--border);
+}
+
+/* The storage sheet's last row, Vault settings, set apart from the moves. */
+.vault-storage-settings {
+  margin-top: 12px;
+}
+
+/* The provenance chip sits on the note's meta line, after its words. */
+.vault-meta-chip {
+  display: inline-flex;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* The note's reading and editing surfaces take the vault's font and size
+   (vaultTypeAttrs); the wrapper itself adds no box. */
+.vault-type {
+  display: contents;
+}
+
+/* ---- M7 stream W2 end ---- */
 
 /* ------------------------------------------------------------------ chat */
 
@@ -8479,6 +10091,69 @@ textarea {
   box-shadow: 0 0 0 2px var(--accent);
 }
 
+/* Vault M4 (4.4): what the Vault gave this task's seat. The changed files
+   card's frame with a faint place wash: teal when the seat is local, amber
+   when it leaves this network. Arrives on msg-in like its neighbours;
+   opacity and transform only. */
+.context-pack-card {
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.context-pack-card.local {
+  background: var(--local-soft);
+  border-color: color-mix(in srgb, var(--local) 30%, transparent);
+}
+.context-pack-card.cloud {
+  background: var(--cloud-soft);
+  border-color: color-mix(in srgb, var(--cloud) 30%, transparent);
+}
+.context-pack-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding: 9px 12px;
+}
+.context-pack-title {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  min-width: 0;
+}
+.context-pack-seat {
+  font-size: var(--text-2);
+  white-space: nowrap;
+}
+.context-pack-card.local .context-pack-seat {
+  color: var(--local);
+}
+.context-pack-card.cloud .context-pack-seat {
+  color: var(--cloud);
+}
+.context-pack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+}
+.context-pack-note {
+  padding: 3px 12px;
+  font-size: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-pack-foot {
+  padding: 0 12px 9px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.context-pack-foot p {
+  margin: 2px 0 0;
+}
+
 .tool-state.running {
   display: inline-flex;
   align-items: center;
@@ -9134,6 +10809,15 @@ textarea {
 }
 .msg-note {
   white-space: pre-wrap;
+}
+/* A switch's handoff note: "Save to Vault" under the line (Vault M5, J12). */
+.msg-note-actions {
+  margin-top: 6px;
+  white-space: normal;
+}
+.msg-note-saved {
+  color: var(--muted);
+  animation: msg-in var(--dur-3) var(--ease-arrive) backwards;
 }
 .mode-hint {
   margin: 12px 4px 0;

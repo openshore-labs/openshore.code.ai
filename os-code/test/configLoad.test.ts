@@ -149,7 +149,7 @@ describe('the vault folder is machine config', () => {
       const loaded = loadConfig(project);
       expect(loaded.config.vault.dir).toBe('~/Obsidian');
       expect(loaded.config.ui.plain).toBe(true);
-      expect(loaded.warnings.join('\n')).toMatch(/vault settings are machine config/);
+      expect(loaded.warnings.join('\n')).toMatch(/vault\.dir settings are machine config/);
       expect(loadVaultDir()).toEqual({ dir: join(homedir(), 'Obsidian') });
     } finally {
       rmSync(project, { recursive: true, force: true });

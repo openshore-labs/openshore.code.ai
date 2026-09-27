@@ -59,6 +59,21 @@ export interface ModelClassPolicy {
    *  a second try (38% to 50%), so small and tiny get two; mid and large are
    *  unmeasured and stay at one until a number says otherwise. */
   bestOfAttempts: number;
+  /** Fraction of the SERVED context window the vault context pack may use,
+   *  capped for every class by `VAULT_PACK_MAX_TOKENS` (`packBudgetTokens` in
+   *  harness/vaultContext.ts). Placeholder until the 4.8 eval (CTO I2, I14).
+   *  Not a project override: a repo raising it would widen how much of the
+   *  person's notes reaches a seat. */
+  vaultPackFraction: number;
+  /** The most characters one vault read returns before it hands back the
+   *  note's outline and asks for a section. Placeholder until the 4.8 eval.
+   *  Not a project override, for the same reason. */
+  vaultReadCapChars: number;
+  /** Offer the one merged vault tool (vaultLookup) in place of the separate
+   *  vault reads, so a lean seat's short tool menu still reaches the vault.
+   *  Placeholder until the 4.8 eval. A project may override it (it only shapes
+   *  the menu). */
+  mergedVaultTool: boolean;
 }
 
 export interface ModelClassProfile extends ModelClassPolicy {
@@ -67,6 +82,9 @@ export interface ModelClassProfile extends ModelClassPolicy {
 
 // The per-class policy table. This is the heart of "make the smallest models as
 // capable as possible": the tighter the class, the more the harness does for it.
+// The three vault fields (vaultPackFraction, vaultReadCapChars,
+// mergedVaultTool) are PLACEHOLDERS (Vault M4, CTO I2) until the with-and-
+// without eval on the reference box sets them (I14, tenet 2).
 const POLICY: Record<ModelClass, ModelClassPolicy> = {
   tiny: {
     maxToolsShown: 6,
@@ -78,6 +96,9 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     compactAtContextFraction: 0.6,
     verifyRetries: 4,
     bestOfAttempts: 2,
+    vaultPackFraction: 0.08,
+    vaultReadCapChars: 6_000,
+    mergedVaultTool: true,
   },
   small: {
     maxToolsShown: 10,
@@ -89,6 +110,9 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     compactAtContextFraction: 0.65,
     verifyRetries: 4,
     bestOfAttempts: 2,
+    vaultPackFraction: 0.08,
+    vaultReadCapChars: 12_000,
+    mergedVaultTool: true,
   },
   mid: {
     maxToolsShown: Infinity,
@@ -100,6 +124,9 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     compactAtContextFraction: 0.7,
     verifyRetries: 2,
     bestOfAttempts: 1,
+    vaultPackFraction: 0.08,
+    vaultReadCapChars: 32_000,
+    mergedVaultTool: false,
   },
   large: {
     maxToolsShown: Infinity,
@@ -111,6 +138,9 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     compactAtContextFraction: 0.7,
     verifyRetries: 2,
     bestOfAttempts: 1,
+    vaultPackFraction: 0.04,
+    vaultReadCapChars: 64_000,
+    mergedVaultTool: false,
   },
 };
 
@@ -128,7 +158,7 @@ export interface DeriveInput {
   /** On-disk size in GB, a rough params proxy when `paramsB` is absent. */
   sizeGB?: number;
   /** The live capability probe, when available. */
-  caps?: Pick<ProviderCapabilities, 'contextTokens' | 'supportsGrammar'>;
+  caps?: Pick<ProviderCapabilities, 'contextTokens' | 'supportsGrammar' | 'nativeContextTokens'>;
   /** A prior `osc eval` average (0..1), used only to break a size-unknown tie. */
   evalScore?: number;
 }
@@ -172,7 +202,11 @@ export function deriveModelClass(input: DeriveInput): ModelClass {
   // large advertised context also suggests a bigger model. Otherwise stay
   // conservative at 'small', which applies the discipline without overreaching.
   if (input.evalScore !== undefined && input.evalScore >= 0.8) return 'mid';
-  if (input.caps && input.caps.contextTokens >= 100_000) return 'mid';
+  // The model's own window, not the served one: serving a smaller window
+  // (num_ctx, CTO I1) must never drop a seat a class.
+  if (input.caps && (input.caps.nativeContextTokens ?? input.caps.contextTokens) >= 100_000) {
+    return 'mid';
+  }
   return 'small';
 }
 
@@ -186,6 +220,43 @@ export function deriveProfile(
   const base = POLICY[modelClass];
   const over = overrides[modelClass] ?? {};
   return { modelClass, ...base, ...pruneUndefined(over) };
+}
+
+// ---------------------------------------------------------------------------
+// The served window (Vault M4, CTO I1, I2)
+
+/** Every class's vault context pack stops here, whatever its fraction of the
+ *  served window comes to. */
+export const VAULT_PACK_MAX_TOKENS = 4000;
+
+/** Upper bounds of the memory bands `NUM_CTX_CEILING` is indexed by, in GB
+ *  (under 12, under 24, under 48, then anything above). */
+export const NUM_CTX_RAM_BANDS_GB: readonly number[] = [12, 24, 48];
+
+/** The most context a local seat of each class is served on a computer in
+ *  each memory band (index into `NUM_CTX_RAM_BANDS_GB`, then one more for
+ *  anything above). PLACEHOLDERS until the eval records prefill cost and score
+ *  per class on the reference box (CTO I14). */
+export const NUM_CTX_CEILING: Readonly<Record<ModelClass, readonly number[]>> = {
+  tiny: [8192, 16384, 32768, 32768],
+  small: [8192, 16384, 32768, 32768],
+  mid: [4096, 8192, 16384, 32768],
+  large: [4096, 4096, 8192, 16384],
+};
+
+/** The per-class window ceiling for a computer with `ramGB` of memory (the
+ *  rounded `totalmem()`, the same number as `hardwareFacts().ramGB`). */
+export function numCtxCeiling(modelClass: ModelClass, ramGB: number): number {
+  let band = NUM_CTX_RAM_BANDS_GB.findIndex((limit) => ramGB < limit);
+  if (band === -1) band = NUM_CTX_RAM_BANDS_GB.length;
+  return NUM_CTX_CEILING[modelClass][band]!;
+}
+
+/** The window a model is actually served: the lower of its own (`native`,
+ *  from the server) and the class ceiling for this computer. Compaction, the
+ *  context meter and the vault pack all read this one number. */
+export function servedContextTokens(native: number, modelClass: ModelClass, ramGB: number): number {
+  return Math.min(native, numCtxCeiling(modelClass, ramGB));
 }
 
 /** The concrete decision for one turn: constrain decoding only when the class

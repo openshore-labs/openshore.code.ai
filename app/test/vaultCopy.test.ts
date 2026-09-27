@@ -76,6 +76,17 @@ import {
   vaultOnboard,
   vaultSheetLine,
   vaultWelcomeNote,
+  HUB_AGENT_LINE,
+  HUB_AWAY_LINE,
+  HUB_AWAY_NOT_KEPT,
+  HUB_AWAY_READ_ONLY,
+  HUB_PAIR_LINE,
+  HUB_PAIRING_REFUSED,
+  HUB_REPOINT_TOAST,
+  HUB_UPDATE_LINE,
+  hubMoveOffer,
+  hubTooLargeLine,
+  VAULT_EVAL_CLAIMS_UNLOCKED,
   type VaultCopyOpts,
   type VaultCopyProvider,
 } from '../src/lib/vaultCopy.js';
@@ -117,8 +128,12 @@ function rendered(p: Pair): string[] {
   ];
 }
 
-// The one pair where the agent's folder IS the vault on screen.
-const agentsFolder = (p: Pair) => p.on === 'electron' && p.id === 'files';
+// The pairs where the agent's folder IS the vault on screen: This folder on
+// the desktop, and Your computer on a phone paired to its own computer (the
+// hub serves the owner the same folder; Vault M5, CTO J9).
+const agentsFolder = (p: Pair) =>
+  (p.on === 'electron' && p.id === 'files') ||
+  (p.on !== 'electron' && p.id === 'hub' && p.device === 'paired');
 // Neutral headings that name the agent without claiming anything about it.
 const NEUTRAL_AGENT_TITLES = ['Where your agent keeps notes'];
 
@@ -138,11 +153,12 @@ const OBSIDIAN_SAID: Record<VaultCopyProvider, string[]> = {
   local: [],
   gdrive: [],
   org: ['It is not an Obsidian folder.'],
+  hub: [],
 };
 
 describe('the Vault copy map (0.19)', () => {
   it('covers every platform, storage, and device', () => {
-    expect(PAIRS).toHaveLength(3 * 5 * 3);
+    expect(PAIRS).toHaveLength(3 * 6 * 3);
     for (const p of PAIRS) {
       const c = vaultCopy(p.on, p.id, optsOf(p));
       expect(c.storage.length, nameOf(p)).toBeGreaterThan(10);
@@ -180,11 +196,13 @@ describe('the Vault copy map (0.19)', () => {
       if (p.on === 'electron') continue;
       const c = vaultCopy(p.on, p.id, optsOf(p));
       const where = nameOf(p);
-      const says = p.device === 'paired' && p.id !== 'org';
+      // Your computer, paired, says the agent line itself, not a pointer.
+      const says = p.device === 'paired' && p.id !== 'org' && p.id !== 'hub';
       expect(c.agentElsewhere, where).toBe(says ? PHONE_AGENT_LINE : undefined);
       // An unpaired phone or the web gets one pointer, in the empty-vault ramp
       // only: never in the lead or the storage sheet.
       const pairs = p.device === 'unpaired' && p.id !== 'org';
+      if (agentsFolder(p)) continue;
       expect(c.agentPair, where).toBe(pairs ? PHONE_PAIR_LINE : undefined);
       if (pairs) {
         expect(vaultLead(c), where).not.toMatch(/agent/i);
@@ -323,6 +341,70 @@ describe('the Vault copy map (0.19)', () => {
     const card = GUIDE_CARDS.find((c) => c.id === 'wayfinding');
     expect(card?.text).toMatch(/repository/);
     expect(card?.text).not.toMatch(/Memory keeps what it has learned in your Vault/);
+  });
+});
+
+// Your computer (Vault M5, CTO J8, J9): the paired computer's vault. Every
+// line says it holds only while the computer is on, a member is told whose
+// computer holds their notes and nothing more, and the desktop, where the
+// same folder is This folder, is never offered it.
+describe('Your computer (the hub vault)', () => {
+  const allHubLines = () => [
+    ...PAIRS.filter((p) => p.id === 'hub').flatMap(rendered),
+    HUB_AWAY_LINE,
+    HUB_AWAY_READ_ONLY,
+    HUB_AWAY_NOT_KEPT,
+    HUB_PAIR_LINE,
+    HUB_PAIRING_REFUSED,
+    HUB_REPOINT_TOAST,
+    HUB_UPDATE_LINE,
+    hubMoveOffer(1),
+    hubMoveOffer(12),
+    hubTooLargeLine(5 * 1024 * 1024),
+  ];
+
+  it('says "while it is on" wherever it says where the notes are', () => {
+    for (const on of ['ios', 'web'] as const) {
+      for (const opts of [{}, { paired: true }]) {
+        expect(vaultCopy(on, 'hub', opts).storage).toBe(
+          'Your computer, while it is on. Plain .md files in the vault folder there.',
+        );
+      }
+    }
+    expect(HUB_REPOINT_TOAST).toMatch(/while it is on/);
+    expect(hubMoveOffer(3)).toMatch(/while your computer is on/);
+  });
+
+  it('never promises the computer is always there', () => {
+    for (const line of allHubLines()) expect(line).not.toMatch(/always on|always available|24\/7/i);
+  });
+
+  it('the owner on a paired phone gets the agent line This folder says on the desktop', () => {
+    const c = vaultCopy('ios', 'hub', { paired: true });
+    expect(c.agent).toBe(HUB_AGENT_LINE);
+    expect(HUB_AGENT_LINE).toBe(vaultCopy('electron', 'files').agent);
+    expect(c.routines).toBe('Routines leave their notes here.');
+    expect(c.agentElsewhere).toBeUndefined();
+  });
+
+  it('a member reads one line naming the computer, and nothing more', () => {
+    const named = vaultCopy('ios', 'hub', { paired: true, hubMember: true, hubName: 'Studio Mac' });
+    expect(named).toEqual({ storage: 'Your notes on Studio Mac.' });
+    const unnamed = vaultCopy('ios', 'hub', { paired: true, hubMember: true });
+    expect(unnamed).toEqual({ storage: 'Your notes on the computer you paired.' });
+  });
+
+  it('is offered on the phone and never on the desktop, and says nothing of Obsidian', () => {
+    expect(vaultOffersProvider('ios', 'hub')).toBe(true);
+    expect(vaultOffersProvider('electron', 'hub')).toBe(false);
+    for (const line of allHubLines()) expect(line).not.toMatch(/Obsidian/);
+  });
+
+  it('the away line is the one the memo fixed, and the roster row agrees on pairing', () => {
+    expect(HUB_AWAY_LINE).toBe('Your computer is off. Changes wait here and save when it is back.');
+    const row = PROVIDER_ROSTER.find((p) => p.id === 'hub')!;
+    expect(row.label).toBe('Your computer');
+    expect(row.pending).toBe(HUB_PAIR_LINE);
   });
 });
 
@@ -550,6 +632,28 @@ describe('retired Vault claims', () => {
     expect(ROUTINE_NOTES_PLACE).toBe('the vault folder on your computer');
     const crew = readFileSync(join(SRC, 'screens/CrewCommandScreen.tsx'), 'utf8');
     expect(crew).toContain('ROUTINE_NOTES_PLACE');
+  });
+});
+
+// Vault M6 retired lines (CX X8, X14): with Trash real, a delete no longer
+// reads "Note deleted." and never asks the old two-tap question; a permanent
+// delete says "for good". The reader shows embeds, so "not supported" goes.
+const M6_RETIRED = [
+  /Note deleted\./,
+  /Really delete\? Tap to confirm\./,
+  /embed not supported yet/,
+];
+
+describe('retired Vault M6 lines', () => {
+  it('none survives anywhere in the app', () => {
+    const hits: string[] = [];
+    for (const file of walk(SRC)) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const re of M6_RETIRED) {
+        if (re.test(text)) hits.push(`${relative(ROOT, file)}: ${re}`);
+      }
+    }
+    expect(hits).toEqual([]);
   });
 });
 
@@ -967,5 +1071,184 @@ describe('the desktop move card and the folder picker (1.3, 1.4)', () => {
     expect(VAULT_GUIDE_PICKER_LINE).toBe(
       'On your computer, Use a folder… in Where it lives points the vault at any folder, an existing Obsidian vault included.',
     );
+  });
+});
+
+describe('the save chip and conflict badges (M2 2.2)', () => {
+  it('says Saved, Saving, or kept on this device with a count and Try again', async () => {
+    const { vaultSaveChip } = await import('../src/lib/vaultCopy.js');
+    expect(vaultSaveChip('saved', 0)).toEqual({ label: 'Saved' });
+    expect(vaultSaveChip('saving', 3)).toEqual({ label: 'Saving' });
+    expect(vaultSaveChip('offline', 1)).toEqual({
+      label: 'Offline, kept on this device',
+      count: '1 note waiting',
+      retry: 'Try again',
+    });
+    expect(vaultSaveChip('offline', 4).count).toBe('4 notes waiting');
+    // No count it cannot back up.
+    expect(vaultSaveChip('offline', 0)).not.toHaveProperty('count');
+  });
+
+  it('badges exactly the keep-both names the store and the server make', async () => {
+    const { isConflictCopy: isVaultConflictCopy } = await import('../src/lib/vault.js');
+    const { vaultConflictCopyPath } = await import('os-code/protocol');
+    const at = new Date('2026-09-27T14:05:00Z');
+    expect(isVaultConflictCopy(vaultConflictCopyPath('ideas/Plan.md', at))).toBe(true);
+    expect(isVaultConflictCopy(vaultConflictCopyPath('Plan.md', at, 3))).toBe(true);
+    expect(isVaultConflictCopy('Plan (conflict 2026-09-27 1405).md')).toBe(true);
+    expect(isVaultConflictCopy('Plan.md')).toBe(false);
+    expect(isVaultConflictCopy('Conflict resolution.md')).toBe(false);
+    expect(isVaultConflictCopy('Plan (conflict).md')).toBe(false);
+  });
+});
+
+// Vault M7 (CX R2, Y7, Y8, Y17; D12, tenet 2): nothing in the M7 copy claims a
+// speed, a quality, a memory, or "always", and the handoff never "picks up
+// where you left off" until its eval passes. Swept over every string literal
+// inside the M7 fences of vaultCopy.ts, so each stream's lines are covered the
+// moment they land.
+//
+// Vault M8 (8.4, D12): the claims wait on the number. EVAL_CLAIMS are the
+// words only a recorded eval may unlock (the 4.8 pack and 5.4 handoff
+// results, gated by VAULT_EVAL_CLAIMS_UNLOCKED in the copy map); NEVER holds
+// whatever the evals say ("always" is not a measurement). M7_BANNED is both.
+const EVAL_CLAIMS = [
+  /\b(faster|slower|quicker|cheaper|saves? (?:time|money)|better|smarter|remembers?|learns?)\b/i,
+  /picks? up where (?:you|it) left off/i,
+];
+const NEVER = [/\balways\b/i];
+const M7_BANNED = [...EVAL_CLAIMS, ...NEVER];
+/** What the sweeps refuse today: everything until the eval flag is set, then
+ *  only NEVER. */
+const BANNED_NOW = VAULT_EVAL_CLAIMS_UNLOCKED ? NEVER : M7_BANNED;
+
+function m7Sections(src: string): Array<{ name: string; body: string }> {
+  const out: Array<{ name: string; body: string }> = [];
+  const re = /\/\/ ---- (M7 [^\n]*?) begin ----\n([\s\S]*?)\/\/ ---- \1 end ----/g;
+  for (let m = re.exec(src); m; m = re.exec(src)) out.push({ name: m[1]!, body: m[2]! });
+  return out;
+}
+
+function stringLiterals(code: string): string[] {
+  const out: string[] = [];
+  const re = /'((?:\\.|[^'\\\n])*)'|"((?:\\.|[^"\\\n])*)"|`((?:\\.|[^`\\])*)`/g;
+  for (let m = re.exec(code); m; m = re.exec(code)) out.push(m[1] ?? m[2] ?? m[3] ?? '');
+  return out;
+}
+
+describe('Vault M7 copy (M7_BANNED)', () => {
+  const src = readFileSync(join(SRC, 'lib/vaultCopy.ts'), 'utf8');
+  const sections = m7Sections(src);
+
+  it('keeps one fence per stream, each opened and closed once', () => {
+    expect(sections.map((s) => s.name)).toEqual([
+      'M7 stream E',
+      'M7 stream F',
+      'M7 stream G',
+      'M7 wave 2',
+    ]);
+  });
+
+  it('no M7 string claims a speed, a quality, a memory, or always', () => {
+    const hits: string[] = [];
+    for (const { name, body } of sections) {
+      for (const s of stringLiterals(stripComments(body))) {
+        for (const re of BANNED_NOW) if (re.test(s)) hits.push(`${name}: ${s}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('the sweep can fail', () => {
+    const fake =
+      "// ---- M7 stream X begin ----\nconst A = 'Handoff picks up where you left off.';\n// ---- M7 stream X end ----";
+    const found = m7Sections(fake).flatMap((s) => stringLiterals(s.body));
+    expect(found.some((s) => M7_BANNED.some((re) => re.test(s)))).toBe(true);
+  });
+});
+
+// Vault M8 (8.4): the same refusal over the WHOLE copy map, every section and
+// not only the M7 fences, and over the literal strings of the Vault's own
+// screens and components (attributes, JSX text, and any literal a component
+// renders), so a claim cannot slip in beside the map either.
+const VAULT_UI_FILES = (): string[] => [
+  join(SRC, 'lib/vaultCopy.ts'),
+  join(SRC, 'lib/vaultSettingsSheetCopy.ts'),
+  join(SRC, 'screens/VaultScreen.tsx'),
+  ...walk(join(SRC, 'components/vault')),
+  ...readdirSync(join(SRC, 'components'))
+    .filter((f) => /^(?:Vault|ProjectVault)\w*\.tsx$/.test(f))
+    .map((f) => join(SRC, 'components', f)),
+];
+
+/** A literal a person could read: words (a space) or a capitalized word. A
+ *  lowercase single token (`'always'` as a setting's value, a class name) is
+ *  code, not copy. */
+const readable = (s: string) => /[A-Za-z]/.test(s) && (/\s/.test(s.trim()) || /^[A-Z]/.test(s));
+
+/** JSX text between tags, the copy a component writes inline. */
+function jsxText(code: string): string[] {
+  return [...code.matchAll(/>([^<>{}]*[A-Za-z][^<>{}]*)</g)].map((m) => m[1]!.trim());
+}
+
+function uiCopyOf(file: string): string[] {
+  const code = stripComments(readFileSync(file, 'utf8'));
+  return [...stringLiterals(code), ...jsxText(code)].filter(readable);
+}
+
+describe('Vault copy waits on the eval (M8 8.4, D12)', () => {
+  it('the flag lives in the copy map, off, naming the results it waits on', () => {
+    const src = readFileSync(join(SRC, 'lib/vaultCopy.ts'), 'utf8');
+    expect(src).toMatch(/^export const VAULT_EVAL_CLAIMS_UNLOCKED = (?:false|true);$/m);
+    const doc = src.slice(0, src.indexOf('export const VAULT_EVAL_CLAIMS_UNLOCKED'));
+    const comment = doc.slice(doc.lastIndexOf('/**'));
+    expect(comment).toMatch(/4\.8/);
+    expect(comment).toMatch(/5\.4/);
+    // Off today: no 4.8 or 5.4 result is recorded yet. Flipping it is a
+    // deliberate edit here too, made with the numbers in DECISIONS.
+    expect(VAULT_EVAL_CLAIMS_UNLOCKED).toBe(false);
+  });
+
+  it('sweeps the whole map and every Vault screen and component', () => {
+    const files = VAULT_UI_FILES().map((f) => relative(ROOT, f));
+    for (const f of [
+      'src/lib/vaultCopy.ts',
+      'src/screens/VaultScreen.tsx',
+      'src/components/vault/VaultSettingsSheet.tsx',
+      'src/components/vault/VaultTrashView.tsx',
+      'src/components/VaultMarkdown.tsx',
+      'src/components/ProjectVaultPins.tsx',
+    ]) {
+      expect(files).toContain(f);
+    }
+    // The map alone holds hundreds of lines; a reader that finds few has
+    // broken, and the sweep would pass on nothing.
+    expect(uiCopyOf(join(SRC, 'lib/vaultCopy.ts')).length).toBeGreaterThan(300);
+    expect(uiCopyOf(join(SRC, 'screens/VaultScreen.tsx')).length).toBeGreaterThan(20);
+  });
+
+  it('no Vault string claims a speed, a quality, a memory, or always, anywhere', () => {
+    const hits: string[] = [];
+    for (const file of VAULT_UI_FILES()) {
+      for (const s of uiCopyOf(file)) {
+        for (const re of BANNED_NOW) if (re.test(s)) hits.push(`${relative(ROOT, file)}: ${s}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('refuses "faster", "smarter" and "remembers" outside the M7 fences, and passes a code value', () => {
+    const outside = [
+      "export const X = 'Notes make each chat faster.';",
+      '<p className="hint">A smarter vault</p>',
+      'const y = `It remembers what you wrote.`;',
+    ].join('\n');
+    const found = [...stringLiterals(outside), ...jsxText(outside)].filter(readable);
+    for (const word of [/faster/, /smarter/, /remembers/]) {
+      expect(found.some((s) => word.test(s) && M7_BANNED.some((re) => re.test(s)))).toBe(true);
+    }
+    // A setting's value is not copy.
+    expect(readable('always')).toBe(false);
+    expect(readable('Always on')).toBe(true);
   });
 });

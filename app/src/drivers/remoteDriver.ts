@@ -9,7 +9,12 @@ import type {
   DriverEvent,
   HarnessCurrentsHandle,
   PermissionMode,
+  SessionCreateVaultFields,
+  VaultOverrides,
 } from 'os-code/protocol';
+import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
+import { isNotePath } from '../lib/gitos/providers.js';
+import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import type {
   ChatDriver,
   DriverEventSink,
@@ -20,7 +25,7 @@ import type {
   TerminalOpen,
   TerminalWrite,
 } from './types.js';
-import { HUB_NO_ANSWER } from './types.js';
+import { HUB_NO_ANSWER, PackLocalOnlyMarker } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 
 export { HUB_NO_ANSWER };
@@ -206,6 +211,22 @@ export async function redeemPairClaim(
   }
 }
 
+/** The longest prefix of `text` that fits `maxBytes` of UTF-8, cut on a
+ *  code point, never inside one. */
+export function capUtf8(text: string, maxBytes: number): string {
+  const enc = new TextEncoder();
+  if (enc.encode(text).length <= maxBytes) return text;
+  let bytes = 0;
+  let out = '';
+  for (const ch of text) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > maxBytes) break;
+    bytes += n;
+    out += ch;
+  }
+  return out;
+}
+
 export async function daemonCreateSession(
   target: DaemonTarget,
   cwd?: string,
@@ -227,8 +248,24 @@ export async function daemonCreateSession(
     currents?: CurrentsHandles;
     /** The Harness Current that is on (Jev), as its per-session handle. */
     harnessCurrents?: HarnessCurrentsHandle;
+    /** A model switch's handoff (Vault M5, CTO J12), prepended to the first
+     *  task's preamble only. Cut to `HANDOFF_MAX_BYTES` of UTF-8 before it
+     *  goes on the wire, so the daemon never refuses the create over it. */
+    handoff?: string;
+    /** The project's own pins (`Project.vaultPins`, CTO J14): note paths in
+     *  the person's vault, at most `PROJECT_VAULT_PINS_MAX`. Only paths that
+     *  name a note go on the wire. */
+    vaultPins?: string[];
+    /** The app's vault switches (Vault M7, CTO L13): off-only for context and
+     *  the handoff, lower-only for the pack size. The daemon parses each
+     *  value and drops anything else. */
+    vaultOverrides?: VaultOverrides;
   } = {},
 ): Promise<string> {
+  const handoff = opts.handoff ? capUtf8(opts.handoff, HANDOFF_MAX_BYTES) : '';
+  const vaultPins = (opts.vaultPins ?? [])
+    .filter((p) => typeof p === 'string' && isNotePath(p))
+    .slice(0, PROJECT_VAULT_PINS_MAX);
   const res = await fetch(`${target.baseUrl}/sessions`, {
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
@@ -242,12 +279,32 @@ export async function daemonCreateSession(
       ...(opts.memory === false ? { memory: false } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
       ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
-    }),
+      ...(handoff ? { handoff } : {}),
+      ...(vaultPins.length ? { vaultPins } : {}),
+      ...(opts.vaultOverrides && Object.keys(opts.vaultOverrides).length
+        ? { vaultOverrides: opts.vaultOverrides }
+        : {}),
+    } satisfies SessionCreateVaultFields & Record<string, unknown>),
     signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
   if (!res.ok || !body.id) throw new Error(body.error ?? `Your computer answered ${res.status}.`);
   return body.id;
+}
+
+/** Forget every handoff the computer keeps (Clear conversations, CTO J13).
+ *  Owner only on the hub; an older hub without the route answers 404, which
+ *  is nothing to clear. Resolves false when the computer did not do it. */
+export async function daemonClearHandoffs(target: DaemonTarget): Promise<boolean> {
+  try {
+    const res = await fetch(`${target.baseUrl}/handoffs`, {
+      method: 'DELETE',
+      headers: headers(target),
+    });
+    return res.ok || res.status === 404;
+  } catch {
+    return false;
+  }
 }
 
 export async function daemonListSessions(target: DaemonTarget): Promise<DaemonSessionInfo[]> {
@@ -390,6 +447,8 @@ export function parseSseFrame(frame: string): { seq: number; event: DriverEvent 
 export class RemoteDriver implements ChatDriver {
   readonly kind = 'desktop' as const;
   private sinks = new Set<DriverEventSink>();
+  /** Marks a reply grounded in a local-only pack note (I5). */
+  private packMarker = new PackLocalOnlyMarker();
   private lastSeq: number;
   private closed = false;
   private abortStream?: AbortController;
@@ -510,7 +569,9 @@ export class RemoteDriver implements ChatDriver {
             // so the next genuine outage steps up from the start again.
             backoffMs = 600;
             this.lastSeq = Math.max(this.lastSeq, parsed.seq);
-            for (const sink of [...this.sinks]) sink(parsed.event, parsed.seq);
+            // A pack that carried a local-only note marks the reply (I5).
+            const event = this.packMarker.mark(parsed.event);
+            for (const sink of [...this.sinks]) sink(event, parsed.seq);
           }
         }
       } catch {

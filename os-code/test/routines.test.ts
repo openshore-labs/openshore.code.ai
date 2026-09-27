@@ -47,6 +47,45 @@ import {
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as store from '../src/routines/store.js';
 import { bootstrapSession } from '../src/core/agent/bootstrap.js';
+import { readFrontmatter } from '../src/harness/vault/frontmatter.js';
+import { resolveWikilink } from '../src/harness/vault/resolve.js';
+import { crewTag, yamlString } from '../src/routines/runNote.js';
+
+// The date core is stream A2's (Vault M6); until it lands in this tree its
+// stub throws "not built", so a small stand-in (YYYY, MM, DD and separators
+// only) answers for it. Once the real module is here it answers instead.
+vi.mock('../src/harness/vault/dates.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/harness/vault/dates.js')>();
+  type Parts = ReturnType<typeof real.datePartsOf>;
+  const two = (n: number) => String(n).padStart(2, '0');
+  const partsOf = (d: Date) =>
+    ({ year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() }) as Parts;
+  const pathOf = (p: Parts, cfg: { folder: string; format: string }) => {
+    if (/[^YMD\-/ ]/.test(cfg.format.replace(/YYYY|MM|DD/g, ''))) {
+      return { ok: false as const, error: 'unsupported' };
+    }
+    const text = cfg.format
+      .replace('YYYY', String(p.year))
+      .replace('MM', two(p.month))
+      .replace('DD', two(p.day));
+    return { ok: true as const, path: `${cfg.folder ? `${cfg.folder}/` : ''}${text}.md` };
+  };
+  const orFake =
+    <A extends unknown[], R>(f: (...a: A) => R, fake: (...a: A) => R) =>
+    (...a: A): R => {
+      try {
+        return f(...a);
+      } catch (e) {
+        if (String(e).includes('not built')) return fake(...a);
+        throw e;
+      }
+    };
+  return {
+    ...real,
+    datePartsOf: orFake(real.datePartsOf, partsOf),
+    dailyNotePath: orFake(real.dailyNotePath, pathOf),
+  };
+});
 
 let home: string;
 let vault: string;
@@ -127,7 +166,7 @@ function makeScheduler(
   clock: { now: Date },
   opts: {
     approvalTimeoutMs?: number;
-    openSession?: () => { driver: FakeDriver; warnings: string[] };
+    openSession?: () => { driver: FakeDriver; warnings: string[]; model?: string };
     lock?: { acquire: () => { pid: number; startedAt: string }; release: () => void };
     allowed?: Set<string>;
     vaultRoot?: () => string;
@@ -311,9 +350,252 @@ describe('routine scheduler', () => {
       `${date} 06-00.md`,
     ]);
     const firstNote = readFileSync(join(vault, first), 'utf8');
-    expect(firstNote.split('\n')[0]).toBe(`# Morning review: ${date} at 06:00`);
+    expect(firstNote.split('\n').find((l) => l.startsWith('# '))).toBe(
+      `# Morning review: ${date} at 06:00`,
+    );
+    expect(firstNote.startsWith('---\n')).toBe(true);
     expect(firstNote).toContain('First run.');
     expect(readFileSync(join(vault, second), 'utf8')).toContain('Second run.');
+  });
+
+  // Vault M3 (H4): the routine's folder follows the vault's one new-name rule,
+  // so the note is one the app lists, opens, and can link to.
+  it("names the routine's folder by the vault's new-name rule", () => {
+    const cases: Array<[string, string]> = [
+      ['Q3: #auth [review]?', 'Q3 auth review'],
+      ['.hidden plan.', 'hidden plan'],
+      ['CON', 'CON_'],
+      ['???', 'Routine'],
+    ];
+    for (const [name, folder] of cases) {
+      const routine = store.createRoutine(input({ name }));
+      const clock = { now: at(0, 6, 0, 5) };
+      const { scheduler, opened } = makeScheduler(clock);
+      scheduler.runNow(routine.id);
+      opened[0]!.emit({ type: 'text-final', text: 'Done.' });
+      clock.now = at(0, 6, 1, 5);
+      opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+      const notePath = scheduler.get(routine.id)!.lastRun!.notePath!;
+      expect(notePath.split('/').slice(0, 2)).toEqual(['Crew', folder]);
+      expect(readFileSync(join(vault, notePath), 'utf8')).toContain('Done.');
+      scheduler.stop();
+    }
+  });
+
+  // Vault M4 (4.9, CTO I13): a run note carries frontmatter a later run can
+  // build on, parsed by the vault core, and links the routine's previous run.
+  describe('the run note frontmatter', () => {
+    function runOnce(
+      routineId: string,
+      clock: { now: Date },
+      opened: FakeDriver[],
+      scheduler: RoutineScheduler,
+      text: string,
+    ): string {
+      scheduler.runNow(routineId);
+      opened[opened.length - 1]!.emit({ type: 'text-final', text });
+      clock.now = new Date(clock.now.getTime() + 30_000);
+      opened[opened.length - 1]!.emit({ type: 'task-done', reason: 'complete' });
+      return scheduler.get(routineId)!.lastRun!.notePath!;
+    }
+
+    function withModel(model: string) {
+      const opened: FakeDriver[] = [];
+      return {
+        opened,
+        openSession: () => {
+          const driver = new FakeDriver();
+          opened.push(driver);
+          return { driver, warnings: [], model };
+        },
+      };
+    }
+
+    function prop(fm: ReturnType<typeof readFrontmatter>, key: string): unknown {
+      return fm.props.find((p) => p.key === key)?.value;
+    }
+
+    it('writes every field, parsed by the vault core, and the first run has no previous', () => {
+      const routine = store.createRoutine(input());
+      const clock = { now: at(0, 6, 0, 5) };
+      const fake = withModel('qwen2.5-coder:7b');
+      const { scheduler } = makeScheduler(clock, { openSession: fake.openSession });
+      const notePath = runOnce(routine.id, clock, fake.opened, scheduler, 'All quiet.');
+      const run = scheduler.get(routine.id)!.lastRun!;
+      const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+      expect(fm.state).toBe('ok');
+      expect(fm.keys).toEqual([
+        'type',
+        'routine',
+        'project',
+        'model',
+        'session',
+        'started',
+        'state',
+        'tags',
+        // Vault M7 (L9): the run note's provenance, through mergeProvenance.
+        'oscode-source',
+        'oscode-model',
+        'oscode-created',
+      ]);
+      expect(prop(fm, 'type')).toBe('crew-run');
+      expect(prop(fm, 'routine')).toBe('Morning review');
+      expect(prop(fm, 'project')).toBe(workspace.split(/[\\/]/).pop());
+      expect(prop(fm, 'model')).toBe('qwen2.5-coder:7b');
+      expect(prop(fm, 'session')).toBe(fake.opened[0]!.id);
+      expect(prop(fm, 'started')).toBe(run.startedAt);
+      expect(prop(fm, 'state')).toBe('done');
+      expect(fm.tags).toEqual(['crew', 'crew/Morning-review']);
+      expect(fm.links).toEqual([]);
+      scheduler.stop();
+    });
+
+    it('links the previous run by full path, and the core resolver finds it', () => {
+      const routine = store.createRoutine(input());
+      // Another routine's note at the very same minute must not be the target.
+      const other = store.createRoutine(input({ name: 'Evening review' }));
+      const clock = { now: at(0, 6, 0, 5) };
+      const { scheduler, opened } = makeScheduler(clock);
+      const first = runOnce(routine.id, clock, opened, scheduler, 'Run one.');
+      const otherPath = runOnce(other.id, clock, opened, scheduler, 'Other.');
+      const second = runOnce(routine.id, clock, opened, scheduler, 'Run two.');
+      const third = runOnce(routine.id, clock, opened, scheduler, 'Run three.');
+
+      const read = (p: string) => readFrontmatter(readFileSync(join(vault, p), 'utf8'));
+      const fm2 = read(second);
+      expect(prop(fm2, 'previous')).toBe(`[[${first.replace(/\.md$/, '')}]]`);
+      expect(fm2.links).toHaveLength(1);
+      expect(fm2.links[0]!.where).toBe('frontmatter');
+      const paths = [first, otherPath, second, third];
+      expect(resolveWikilink(fm2.links[0]!.target, paths, second)).toBe(first);
+      // Each run links the one right before it, never the first by default.
+      expect(resolveWikilink(read(third).links[0]!.target, paths, third)).toBe(second);
+      expect(read(otherPath).links).toEqual([]);
+      expect(prop(read(first), 'previous')).toBeUndefined();
+      scheduler.stop();
+    });
+
+    it('stays valid YAML for a routine or model name with quotes, colons, and a hash', () => {
+      const name = 'Q3: "auth" review # nightly: yes';
+      const routine = store.createRoutine(input({ name }));
+      const clock = { now: at(0, 6, 0, 5) };
+      const fake = withModel("it's: {weird} - [model]");
+      const { scheduler } = makeScheduler(clock, { openSession: fake.openSession });
+      const first = runOnce(routine.id, clock, fake.opened, scheduler, 'One.');
+      const second = runOnce(routine.id, clock, fake.opened, scheduler, 'Two.');
+      const fm = readFrontmatter(readFileSync(join(vault, second), 'utf8'));
+      expect(fm.state).toBe('ok');
+      expect(prop(fm, 'routine')).toBe(name);
+      expect(prop(fm, 'model')).toBe("it's: {weird} - [model]");
+      expect(fm.tags).toEqual(['crew', 'crew/Q3-auth-review-nightly-yes']);
+      expect(resolveWikilink(fm.links[0]!.target, [first, second], second)).toBe(first);
+      scheduler.stop();
+    });
+
+    it('says unknown when the session did not name its model', () => {
+      const routine = store.createRoutine(input());
+      const clock = { now: at(0, 6, 0, 5) };
+      const { scheduler, opened } = makeScheduler(clock);
+      const notePath = runOnce(routine.id, clock, opened, scheduler, 'Done.');
+      const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+      expect(prop(fm, 'model')).toBe('unknown');
+      scheduler.stop();
+    });
+
+    // Vault M6 (6.4, CTO K7): a run note links TO the day's note, from the
+    // vault's own daily-notes settings, and never creates or appends to it.
+    describe("the day's note link", () => {
+      async function runAndSettle(
+        routineId: string,
+        clock: { now: Date },
+        opened: FakeDriver[],
+        scheduler: RoutineScheduler,
+      ): Promise<string> {
+        scheduler.runNow(routineId);
+        // The settings are read while the run works.
+        await new Promise((r) => setTimeout(r, 100));
+        opened[opened.length - 1]!.emit({ type: 'text-final', text: 'Done.' });
+        clock.now = new Date(clock.now.getTime() + 30_000);
+        opened[opened.length - 1]!.emit({ type: 'task-done', reason: 'complete' });
+        return scheduler.get(routineId)!.lastRun!.notePath!;
+      }
+      const ymd = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+      it("links the day's note at Obsidian's defaults when the vault sets none", async () => {
+        const routine = store.createRoutine(input());
+        const clock = { now: at(0, 6, 0, 5) };
+        const { scheduler, opened } = makeScheduler(clock);
+        const notePath = await runAndSettle(routine.id, clock, opened, scheduler);
+        const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+        const day = ymd(at(0, 6, 0, 5));
+        expect(prop(fm, 'day')).toBe(`[[${day}]]`);
+        expect(fm.links.map((l) => l.target)).toContain(day);
+        // Linked only: the day's note is never made from here.
+        expect(existsSync(join(vault, `${day}.md`))).toBe(false);
+        scheduler.stop();
+      });
+
+      it('follows the folder and format in .obsidian/daily-notes.json', async () => {
+        mkdirSync(join(vault, '.obsidian'), { recursive: true });
+        writeFileSync(join(vault, '.obsidian', 'app.json'), '{}');
+        writeFileSync(
+          join(vault, '.obsidian', 'daily-notes.json'),
+          JSON.stringify({ folder: '/Journal/', format: 'YYYY/MM/DD', template: '' }),
+        );
+        const dayFile = join(vault, 'Journal', 'kept.md');
+        mkdirSync(join(vault, 'Journal'), { recursive: true });
+        writeFileSync(dayFile, 'the day, untouched');
+        const routine = store.createRoutine(input());
+        const clock = { now: at(0, 6, 0, 5) };
+        const { scheduler, opened } = makeScheduler(clock);
+        const notePath = await runAndSettle(routine.id, clock, opened, scheduler);
+        const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+        const d = at(0, 6, 0, 5);
+        const day = `Journal/${ymd(d).replace(/-/g, '/')}`;
+        expect(prop(fm, 'day')).toBe(`[[${day}]]`);
+        expect(existsSync(join(vault, `${day}.md`))).toBe(false);
+        expect(readFileSync(dayFile, 'utf8')).toBe('the day, untouched');
+        scheduler.stop();
+      });
+
+      it('writes no link for a format the core does not support, or settings it cannot read', async () => {
+        mkdirSync(join(vault, '.obsidian'), { recursive: true });
+        writeFileSync(join(vault, '.obsidian', 'app.json'), '{}');
+        const settings = join(vault, '.obsidian', 'daily-notes.json');
+        writeFileSync(settings, JSON.stringify({ format: 'YYYY-MM-DD L' }));
+        const routine = store.createRoutine(input());
+        const clock = { now: at(0, 6, 0, 5) };
+        const { scheduler, opened } = makeScheduler(clock);
+        const first = await runAndSettle(routine.id, clock, opened, scheduler);
+        expect(
+          prop(readFrontmatter(readFileSync(join(vault, first), 'utf8')), 'day'),
+        ).toBeUndefined();
+        writeFileSync(settings, '{ not json');
+        const second = await runAndSettle(routine.id, clock, opened, scheduler);
+        expect(
+          prop(readFrontmatter(readFileSync(join(vault, second), 'utf8')), 'day'),
+        ).toBeUndefined();
+        scheduler.stop();
+      });
+    });
+
+    it('escapes what YAML would misread, and keeps a tag Obsidian accepts', () => {
+      for (const value of ['a: b', '"q"', 'x\ny', '\u0085', '\u2028', '123', 'yes', '~']) {
+        const fm = readFrontmatter(`---\nv: ${yamlString(value)}\n---\n`);
+        expect(fm.state).toBe('ok');
+        expect(fm.props[0]!.value).toBe(value);
+      }
+      expect(crewTag('2026')).toBeUndefined();
+      expect(crewTag('Morning review')).toBe('crew/Morning-review');
+    });
+
+    it('points the model at the routine folder for its earlier runs', () => {
+      const routine = store.createRoutine(input({ name: 'Q3: #auth [review]?' }));
+      const text = routineInstructions(routine);
+      expect(text).toContain('Your earlier runs of this routine are notes in the vault under');
+      expect(text).toContain('Crew/Q3 auth review/');
+    });
   });
 
   it('records a slot the computer slept through as skipped, once, and never replays it', async () => {
@@ -539,6 +821,30 @@ describe('routine scheduler', () => {
     desk.driver.dispose();
     // And the run is told its report becomes the note on its own.
     expect(routineInstructions(routine)).toContain("saved to their vault as this run's note");
+  });
+
+  // Vault M5 (CTO J13): a Crew run neither writes nor reads a handoff, so a
+  // scripted run's summary never becomes the person's "where you left off" on
+  // the same project, whatever owner key it would carry.
+  it('a headless run writes and reads no handoff; a desk session does', () => {
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
+    );
+    const routine = store.createRoutine(input({ access: 'edit' }));
+    let onHandoff: unknown = 'unset';
+    const opened = defaultOpenSession(routine, 'default', (options) => {
+      const result = bootstrapSession({ ...options, persist: false });
+      onHandoff = (result.agent as unknown as { deps: { onHandoff?: unknown } }).deps.onHandoff;
+      return result;
+    });
+    (opened.driver as unknown as { dispose(): void }).dispose();
+    expect(onHandoff).toBeUndefined();
+    const desk = bootstrapSession({ cwd: workspace, profile: 'local-interactive', persist: false });
+    expect((desk.agent as unknown as { deps: { onHandoff?: unknown } }).deps.onHandoff).toBeTypeOf(
+      'function',
+    );
+    desk.driver.dispose();
   });
 
   it('never replaces a note already at the run note name, and leaves no temp file', () => {

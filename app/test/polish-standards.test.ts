@@ -286,6 +286,59 @@ describe('polish standards', () => {
     expect(offenders, offenders.join('\n  ')).toEqual([]);
   });
 
+  it('gives every Vault class name a rule in theme.css (CTO K18, 6.9)', () => {
+    // Every `vault-` class the room and its components put on an element has
+    // a rule, so a renamed rule or a class nobody styled fails CI. Only
+    // className values are read (an id such as vault-rename-name is not a
+    // class); a class built from a prefix (`vault-outline-depth-${n}`) needs
+    // a rule for that prefix.
+    const files = [
+      join(SRC, 'screens', 'VaultScreen.tsx'),
+      ...readdirSync(join(SRC, 'components', 'vault'))
+        .filter((n) => n.endsWith('.tsx'))
+        .map((n) => join(SRC, 'components', 'vault', n)),
+    ];
+    /** The source of every className value: "..." or a balanced {...}. */
+    const classValues = (src: string): string[] => {
+      const out: string[] = [];
+      for (const m of src.matchAll(/className=/g)) {
+        let i = m.index! + 'className='.length;
+        if (src[i] === '"') {
+          out.push(src.slice(i + 1, src.indexOf('"', i + 1)));
+          continue;
+        }
+        if (src[i] !== '{') continue;
+        let depth = 0;
+        const start = i;
+        for (; i < src.length; i++) {
+          if (src[i] === '{') depth++;
+          else if (src[i] === '}' && --depth === 0) break;
+        }
+        out.push(src.slice(start, i + 1));
+      }
+      return out;
+    };
+    const missing: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      const rel = relative(SRC, file);
+      for (const value of classValues(src)) {
+        for (const m of value.matchAll(/(?<![\w-])vault-[a-z0-9-]*/g)) {
+          const name = m[0];
+          const rule = name.endsWith('-')
+            ? THEME.includes(`.${name}`)
+            : new RegExp(`\\.${name}(?![a-z0-9-])`).test(THEME);
+          if (!rule) missing.push(`${rel}: .${name}`);
+        }
+      }
+    }
+    expect([...new Set(missing)], missing.join('\n  ')).toEqual([]);
+    // It reads what it should: the room's own classes are in the set.
+    const screen = classValues(readFileSync(files[0]!, 'utf8')).join(' ');
+    expect(screen).toMatch(/vault-note/);
+    expect(screen).toMatch(/vault-folder-options/);
+  });
+
   it('routes haptics through @capacitor/haptics, never navigator.vibrate', () => {
     const src = readFileSync(join(SRC, 'lib', 'haptics.ts'), 'utf8');
     expect(src.includes('@capacitor/haptics')).toBe(true);

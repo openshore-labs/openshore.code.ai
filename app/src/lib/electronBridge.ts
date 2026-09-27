@@ -3,7 +3,10 @@
 // touches Node directly. Keep this file in lockstep with electron/main.ts.
 import type {
   ApprovalAnswer,
+  AttachmentMeta,
+  BytesRead,
   Catalog,
+  ConfigRead,
   CurrentsHandles,
   CurrentsHostProbe,
   DriverEvent,
@@ -17,12 +20,28 @@ import type {
   RoutineView,
   StackHealth,
   StackHealthRange,
+  ReadBytesOptions,
+  ConfigWriteGuard,
+  ConfigWriteResult,
+  VaultConfigName,
+  VaultOverrides,
+  VaultPrivacyWire,
+  VaultSettingsConfigName,
 } from 'os-code/protocol';
 import type {
+  CreateFolderResult,
+  EmptyTrashResult,
+  FolderMoveResult,
   RemoveGuard,
   RemoveResult,
+  RenameGuard,
+  RenameResult,
+  RestoreResult,
   StoredFile,
   StoredFileMeta,
+  TrashEntry,
+  TrashResult,
+  TrashTarget,
   WriteGuard,
   WriteResult,
 } from './gitos/providers.js';
@@ -250,6 +269,15 @@ export interface OscodeBridge {
       /** The Harness Current the person turned on (Jev), as its per-session
        *  handle for the engine's verify judge. */
       harnessCurrents?: HarnessCurrentsHandle;
+      /** A handoff from the chat this session continues (Vault M5, CTO J12),
+       *  prepended to the first task only, at most `HANDOFF_MAX_BYTES`. */
+      handoff?: string;
+      /** The project's own pinned notes (`Project.vaultPins`, CTO J14), at
+       *  most 8 vault paths, read first by the pack. */
+      vaultPins?: string[];
+      /** The app's vault switches (Vault M7, CTO L13): off-only and
+       *  lower-only, into `BootstrapOptions.vaultOverrides`. */
+      vaultOverrides?: VaultOverrides;
     },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the
@@ -419,6 +447,27 @@ export interface OscodeBridge {
   /** Watch the vault folder while the Vault room is open: on with the open
    *  note's path (Linux watches that note's folder too), off when it leaves. */
   vaultWatch(on: boolean, openPath?: string): Promise<void>;
+  /** The vault folder's saved index blob (serializeIndex's output), or null
+   *  when there is none or it is over the cap (Vault M3, CTO H3). Main keys it
+   *  by the vault root it reads itself; no path crosses. */
+  vaultIndexLoad(): Promise<string | null>;
+  /** Save the index blob for the current vault root: temp file then rename,
+   *  0600. A blob over 32 MB is refused ('too-large') and nothing is written. */
+  vaultIndexSave(
+    blob: string,
+  ): Promise<{ ok: true; bytes: number } | { ok: false; reason: 'too-large' }>;
+  /** Read one allowed config file by its logical name (Vault M3, CTO H5):
+   *  main maps the name to a file in the vault's config folder, reads it only
+   *  as a regular file inside the folder, capped at 256 KB. An unknown name
+   *  answers 'refused'. */
+  vaultReadConfig(name: VaultConfigName): Promise<ConfigRead>;
+  /** This machine's own vault privacy rules (Vault M5, CTO J3): hidden globs
+   *  and the local-only paths and tags, from the machine config only, for
+   *  the core's compileVaultPrivacy. */
+  vaultPrivacy(): Promise<VaultPrivacyWire>;
+  /** Forget every handoff the engine on this computer keeps (Clear
+   *  conversations, CTO J13). Optional: an older desktop build has none. */
+  clearHandoffs?(): Promise<void>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
   /** Where the vault folder is, whether it is there, and whether Obsidian
@@ -436,8 +485,66 @@ export interface OscodeBridge {
   vaultReveal(): Promise<{ ok: boolean }>;
   /** Open the vault folder in Obsidian (obsidian://open, built in main). */
   vaultOpenObsidian(): Promise<void>;
+  /** Export the team vault's notes as plain files under "Vault Team/<org>"
+   *  beside the default vault folder (Vault M2 2.8); main picks the folder,
+   *  checks every path, and follows the export manifest rule. */
+  vaultTeamExport(
+    org: string,
+    notes: Array<{ path: string; text: string }>,
+    failed: string[],
+  ): Promise<{
+    written: number;
+    total: number;
+    removed: number;
+    unread: number;
+    kept: string[];
+    dir: string;
+    display: string;
+  }>;
   /** macOS: open Privacy & Security, Files and Folders. */
   openPrivacySettings(): Promise<void>;
+
+  // Vault M6 (CTO K13): one IPC each, validated in main like parseVaultGuard,
+  // every path through the note rule or isAttachmentPath and the Jail, and
+  // `.trash` reached only by the trash calls. Optional: a desktop build whose
+  // main does not answer them yet has none, and the provider checks before
+  // use. Keep in lockstep with electron/main.ts and preload.cjs (stream B).
+  /** osc:vaultRename. Never replaces (K3). */
+  vaultRename?(from: string, to: string, guard: RenameGuard): Promise<RenameResult>;
+  /** osc:vaultFolders. The real folders, empty ones too. */
+  vaultFolders?(): Promise<string[]>;
+  /** osc:vaultFolderCreate. */
+  vaultFolderCreate?(path: string): Promise<CreateFolderResult>;
+  /** osc:vaultFolderRename. One directory rename, the destination absent. */
+  vaultFolderRename?(from: string, to: string): Promise<FolderMoveResult>;
+  /** osc:vaultTrash. Into `<vault>/.trash/<original path>`. */
+  vaultTrash?(target: TrashTarget): Promise<TrashResult>;
+  /** osc:vaultTrashList. */
+  vaultTrashList?(): Promise<TrashEntry[]>;
+  /** osc:vaultTrashRestore. Never overwrites. */
+  vaultTrashRestore?(id: string): Promise<RestoreResult>;
+  /** osc:vaultTrashEmpty. The ids given, or all of Trash. */
+  vaultTrashEmpty?(ids?: string[]): Promise<EmptyTrashResult>;
+  /** osc:vaultAttachments. */
+  vaultAttachments?(): Promise<AttachmentMeta[]>;
+  /** osc:vaultReadBytes. Capped at 20 MB. */
+  vaultReadBytes?(path: string, opts?: ReadBytesOptions): Promise<BytesRead>;
+  /** osc:vaultOpenAttachment. Opens a PDF or an image in the system viewer
+   *  (jailed, pdf and image extensions only). */
+  vaultOpenAttachment?(path: string): Promise<{ ok: boolean }>;
+
+  // Vault M7 (CTO L7): the settings sheet's one write. Optional, like the M6
+  // calls; keep in lockstep with electron/main.ts and preload.cjs (stream D).
+  /** osc:vaultWriteConfig. Main writes `.oscode/vault.json` under the vault
+   *  root it holds (`writeVaultConfigFile`): `.oscode` made if missing and
+   *  lstat'd as a real directory, temp and rename through the Jail, never
+   *  following a link. Only `oscode/vault`; anything else is `refused`. The
+   *  person's own write, from the sheet only; no agent path names it. */
+  vaultWriteConfig?(
+    name: VaultSettingsConfigName,
+    text: string,
+    guard: ConfigWriteGuard,
+  ): Promise<ConfigWriteResult>;
 
   // Read-only access to a repo working tree, for the project-memory viewer. The
   // notes live in the repo under "OpenShore Project <name> MDs/"; these list a

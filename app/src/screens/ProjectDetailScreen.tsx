@@ -17,6 +17,7 @@ import { useApp, stackAdmin } from '../state/store.js';
 import type { Conversation, Project, ProjectAccess, ProjectPermission } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
 import { ProjectCurrents } from '../components/ProjectCurrents.js';
+import { ProjectVaultPins } from '../components/ProjectVaultPins.js';
 import { Sheet } from '../components/Sheet.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { PLATFORM_NAME, isGithubRepoId, isRemoteRepoId, repoLabel } from '../lib/chatRepos.js';
@@ -63,8 +64,9 @@ export function ProjectDetailScreen() {
   const myLevel = projectPermissionFor(project ?? {});
   const mayEdit = canEdit(myLevel);
   // The arrival step for the Repositories card: after the first two cards (0
-  // and 1) and, for editors, the two currents groups (2 and 3).
-  const reposStep = mayEdit ? 4 : 2;
+  // and 1) and, for editors, the two currents groups (2 and 3) and the
+  // pinned notes (4).
+  const reposStep = mayEdit ? 5 : 2;
   const mayWrite = canWrite(myLevel);
   // Who can change the roster: an editor on a shared project; a company admin on
   // a local draft (which ships when the project is shared).
@@ -350,6 +352,11 @@ export function ProjectDetailScreen() {
             different projects run different currents at once. Connecting one is
             device-local, reached from its row. Editors only. */}
         {mayEdit ? <ProjectCurrents projectId={project.id} index={2} /> : null}
+
+        {/* Vault notes pinned to this project's context (Vault M5): placed by
+            the person, so they ride every chat here. Device local. Editors
+            only, on the currents' pattern. */}
+        {mayEdit ? <ProjectVaultPins projectId={project.id} index={4} /> : null}
 
         {/* Context that rides into every chat: repositories and their files.
             Its step follows the two currents groups when they show, so every

@@ -24,6 +24,12 @@ import {
   type OrgRole,
   type Project,
   type ProjectAccess,
+  type AppVaultContextSetting,
+  type AppVaultHandoffSetting,
+  type AppVaultPackSize,
+  type VaultPrivacySetting,
+  PROJECT_VAULT_PINS_MAX,
+  VAULT_PRIVACY_DEFAULTS,
 } from './types.js';
 import { tierForSeats, type AccountType } from '../lib/plans.js';
 import {
@@ -55,11 +61,17 @@ import {
   snapshotThread,
   titleFrom,
 } from './transcript.js';
-import { HUB_NO_ANSWER, type ChatDriver, type HubLinkState } from '../drivers/types.js';
+import {
+  HUB_NO_ANSWER,
+  type AppVaultPack,
+  type ChatDriver,
+  type HubLinkState,
+} from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
 import {
   RemoteDriver,
   daemonApplyOutbox,
+  daemonClearHandoffs,
   daemonCreateSession,
   daemonHealth,
   daemonVerifyCommit,
@@ -136,6 +148,7 @@ import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeD
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
 import { chainOfThoughtOn, setChainOfThought } from '../lib/chainOfThought.js';
+import { setPromptCache } from '../lib/claudeCache.js';
 import {
   DEFAULT_PERMISSION_MODE,
   normalizePermissionMode,
@@ -154,7 +167,7 @@ import { hapticSuccess } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
-import { StackDriver } from '../drivers/stackDriver.js';
+import { StackDriver, type StackVaultTools } from '../drivers/stackDriver.js';
 import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
 import {
@@ -262,11 +275,85 @@ import {
   type HarnessCurrentsSettings,
 } from '../lib/harnessCurrents.js';
 import {
+  HANDOFF_MAX_BYTES,
+  HANDOFF_MIN_TURNS,
+  compileVaultPrivacy,
+  excerptAt,
+  resolveWikilink,
   normalizeHermesBaseUrl,
   normalizeJevBaseUrl,
   vaultConflictCopyPath,
+  foldPath,
+  listTasks,
+  mergeProvenance,
+  unionNarrowing,
+  type AttachmentMeta,
+  type BytesRead,
+  type ReadBytesOptions,
   type CurrentsHostProbe,
+  type ResolvedVaultSettings,
+  type VaultPrivacy,
+  type VaultSettingsPatch,
+  type VaultVisibility,
 } from 'os-code/protocol';
+import {
+  clearHandoffs,
+  desktopHandoffNote,
+  handoffNotePath,
+  handoffNoteText,
+  localDate,
+  planSwitchSeed,
+  readHandoff,
+  spokenTurns,
+  switchNoteText,
+  wholeHandoff,
+  writeHandoff,
+  type StoredHandoff,
+  type SwitchSeedPlan,
+} from './handoffs.js';
+import { packSeatFor, hubTailnetSuffix, type PackSeatContext } from '../lib/vaultSeat.js';
+import { clearCurrentStateCache, createAppVaultPack } from '../lib/vaultPackSource.js';
+import {
+  githubRepoReader,
+  localRepoReader,
+  primaryRepoSource,
+  type RepoReader,
+} from '../lib/projectMemoryRead.js';
+import { CURRENT_STATE_FILE, memoryFilePath, sanitizeFolderSegment } from '../lib/projectMemory.js';
+import {
+  appVaultPrivacy,
+  hubMachinePackSize,
+  hubPrivacyCache,
+  hubPrivacySource,
+  readMachinePackSize,
+} from '../lib/vaultPrivacy.js';
+import {
+  agentRecentNotes,
+  excerptForSeat,
+  noteFactsFromText,
+  pickerNotes,
+  pushAgentRecent,
+  type ComposerExcerptResult,
+  type ComposerSeat,
+  type VaultNoteFacts,
+  type VaultPickerNote,
+} from '../lib/vaultExcerpt.js';
+import { HUB_REPOINT_TOAST, HUB_UNPAIR_TOAST } from '../lib/vaultCopy.js';
+// The hub vault's link and pairing rule, from the module itself (not the
+// gitos barrel), so a test that fakes the storage roster still gets them.
+import {
+  hubPairPlan,
+  hubPersonKey,
+  hubUnpairTarget,
+  hubReach,
+  hubVaultLink,
+  setHubVaultLink,
+  type HubPairPlan,
+  type VaultBeforeHub,
+  type VaultHubOffer,
+} from '../lib/gitos/hub.js';
+import { DEVICE_CONTEXT_TOKENS } from '../drivers/deviceModel.js';
+import { canEdit, projectPermissionFor } from '../lib/projectAccess.js';
 import {
   createOrgProject,
   deleteOrgProject,
@@ -287,10 +374,9 @@ import {
   isGdriveConnected,
   setOrgVaultAuth,
   resetOrgVault,
-  orgVaultBaseRev,
-  seedOrgVaultBaseRev,
   isNotePath,
   type GitosResource,
+  type Lease,
   type StorageProvider,
   type StorageProviderId,
   type StoredFile,
@@ -302,14 +388,85 @@ import {
   disconnectRepoOAuth,
   resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
-import { normalizeNotePath, noteFolder, noteTitle } from '../lib/vault.js';
+import { normalizeNotePath, noteFolder, noteTitle, restoreEol } from '../lib/vault.js';
+import {
+  currentVaultIndex,
+  dropVaultIndex,
+  shutVaultIndex,
+  vaultIndexFor,
+  warmVaultIndex,
+  type VaultIndexHost,
+  type VaultIndexTarget,
+} from '../lib/vaultIndexHost.js';
 import {
   versionOf,
   type RemoveResult,
+  type TrashEntry,
   type WriteGuard,
   type WriteResult,
 } from '../lib/gitos/providers.js';
+import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
+import { clearVaultTodayCache, resolveVaultToday, vaultTodayLine } from '../lib/vaultToday.js';
 import {
+  cachedVaultSettings,
+  loadVaultSettings,
+  saveVaultSetting,
+  vaultNarrowingStamp,
+  vaultSettingsHint,
+  type VaultSettingSave,
+} from '../lib/vaultSettings.js';
+import { applyVaultStarter, vaultStarterOffered } from '../lib/vaultStarter.js';
+import {
+  appHandoffOn,
+  appPackSize,
+  appVaultOverrides,
+  type VaultEngineRoomSource,
+} from '../lib/vaultDevice.js';
+import {
+  dropVaultRecent,
+  pushVaultRecent,
+  renameVaultRecent,
+  type VaultRecentEntry,
+  type VaultSearchSource,
+} from '../lib/vaultSearch.js';
+import type { VaultAutosave } from '../lib/vaultAutosave.js';
+import {
+  applyMove as opsApplyMove,
+  createFolder as opsCreateFolder,
+  deleteFolder as opsDeleteFolder,
+  deleteNote as opsDeleteNote,
+  emptyTrash as opsEmptyTrash,
+  openToday as opsOpenToday,
+  toggleTask as opsToggleTask,
+  folderCounts as opsFolderCounts,
+  listTrash as opsListTrash,
+  prepareFolderMove as opsPrepareFolderMove,
+  prepareNoteMove as opsPrepareNoteMove,
+  restoreEntry as opsRestoreEntry,
+  undoDelete as opsUndoDelete,
+  updateTheRest as opsUpdateTheRest,
+  type VaultMovePreview,
+  type VaultMoveResult as VaultOpsMoveResult,
+  type VaultRewriteReport,
+  type VaultOpsDeps,
+  type VaultOpsOpenNote,
+  type VaultRestoreResult,
+  type VaultUndo,
+} from './vaultOps.js';
+import { vaultPollDelayMs } from '../lib/vaultPoll.js';
+import {
+  VAULT_LEASE_RENEW_MS,
+  VAULT_LEASE_TTL_MS,
+  vaultDeviceKind,
+  vaultLeaseMode,
+  type VaultLeaseMode,
+} from '../lib/vaultLease.js';
+import {
+  vaultLeaseEnforced,
+  HUB_AWAY_READ_ONLY,
+  VAULT_TODAY_FAILED,
+  VAULT_TICK_FAILED,
+  vaultTickChanged,
   VAULT_GONE_REASON,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
@@ -320,6 +477,9 @@ import {
   vaultReplayCopiesLine,
   vaultResolveToast,
   vaultStaleDeleteToast,
+  VAULT_MARKED_NOT_REVIEWED,
+  VAULT_MARKED_REVIEWED,
+  VAULT_STARTER_NOT_EMPTY,
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
@@ -568,6 +728,44 @@ export interface AppSettings {
   /** When each paired hub last answered this device, keyed by base URL, so a
    *  chat banner can say "Last seen 2h ago" rather than nothing. Device local. */
   hubLastSeen?: Record<string, string>;
+  /** The vault context pack on app seats (Vault M5, CTO J4): 'auto' (the
+   *  reading while unset) follows the per-class table; 'off' gives no pack.
+   *  Device local. */
+  vaultContext?: AppVaultContextSetting;
+  /** Room for notes on app seats and, through `vaultOverrides`, engine
+   *  sessions (Vault M7, CTO L13): lower-only under the machine's
+   *  `vault.packSize`. Unset reads as the machine's. Device local. Wave 0:
+   *  declared, not yet read (wave 2 wires it). */
+  vaultPackSize?: AppVaultPackSize;
+  /** The Handoff switch (Vault M7, CTO L13, reconciliation 4): `'off'` stops
+   *  handoff writes and reads for new chats; unset leaves the machine and the
+   *  project in charge. Device local. Wave 0: declared, not yet read. */
+  vaultHandoff?: AppVaultHandoffSetting;
+  /** An unpaired phone's own vault privacy rules (CTO J3): union-only over
+   *  the source's rules, D5 defaults while unset. No UI until M7. Device
+   *  local, never synced. */
+  vaultPrivacy?: VaultPrivacySetting;
+  /** Anthropic prompt caching on app seats (CTO J16, J17). Off by default
+   *  (undefined means off), no UI in M5; flips only on the J19 number.
+   *  Device local. */
+  promptCache?: boolean;
+  /** Where the personal vault was before pairing pointed it at the computer
+   *  (Vault M5, CTO J9), so unpairing returns it. Device local. */
+  vaultBeforeHub?: VaultBeforeHub;
+  /** The one-time "keep one vault on your computer" card (J9). Device local. */
+  vaultHubOffer?: VaultHubOffer;
+  /** Paths the agent's approved vault writes named on this device, newest
+   *  first, at most 20 (J15, "Recently from your agent"). Device local. */
+  vaultAgentWrites?: string[];
+  /** Empty folders made on a storage without real folders (Local, Vault M6
+   *  6.2, CTO K5), per vault (`providerId::resourceId`), kept until a note
+   *  lands in them. Device local, never project data (K17). */
+  vaultEmptyFolders?: Record<string, string[]>;
+  /** The notes this device opened or saved, newest first, 20 per vault
+   *  (`providerId::resourceId`), for Recent in search and the switcher
+   *  (Vault M6 6.1, CTO K9). Cleared on a repoint and with the chats.
+   *  Device local. */
+  vaultRecent?: Record<string, VaultRecentEntry[]>;
 }
 
 /** What a hub says this device's pairing credential may do. */
@@ -598,6 +796,22 @@ const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
 // storage sheet.
 const VAULT_RESOURCE_ID = 'vault.personal';
 
+/** What a driver build takes besides the chat and its seed. */
+interface BuildExtra {
+  /** A handoff for a desktop agent's first task (CTO J12). */
+  handoff?: string;
+}
+
+/** A handoff cut to the create-body cap (`HANDOFF_MAX_BYTES`, UTF-8), on a
+ *  character boundary. */
+function capHandoffBytes(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length <= HANDOFF_MAX_BYTES) return text;
+  return new TextDecoder('utf-8', { fatal: false })
+    .decode(bytes.slice(0, HANDOFF_MAX_BYTES))
+    .replace(/\uFFFD+$/, '');
+}
+
 /** Which storage provider holds the personal vault right now. */
 function vaultProviderId(settings: AppSettings): StorageProviderId {
   return settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID)?.providerId ?? 'local';
@@ -624,6 +838,14 @@ export interface VaultTargetRef {
  *  copies it and discards it, so leaving the note or backgrounding the app
  *  cannot lose it. Team text leaves with its account instead: a sign-out, or
  *  another account signing in. */
+/** One stashed note waiting to be saved (vaultPending), without its text. */
+export interface VaultPendingRef {
+  providerId: StorageProviderId;
+  resourceId: string;
+  owner?: string;
+  path: string;
+}
+
 export interface VaultHeldDraft {
   /** One per vault and path; a newer hold for the same note replaces it. */
   id: string;
@@ -660,8 +882,9 @@ export function vaultHeldFor(held: VaultHeldDraft[], userId: string | undefined)
 
 /** A vault note that changed somewhere else while this device had unsaved
  *  edits in it (Vault M1, 1.1), waiting for the person to choose what to keep.
- *  Only a provider that enforces compare-and-swap (the desktop folder, in M1)
- *  raises one. While it is set, typing goes to the durable stash, never the
+ *  Every provider that enforces compare-and-swap raises one (Vault M2 2.2):
+ *  the desktop folder, This device, and iCloud and the team vault once their
+ *  providers check the guard. While it is set, typing goes to the durable stash, never the
  *  note, and the stash replay leaves that note alone. */
 export interface VaultConflict {
   path: string;
@@ -688,6 +911,11 @@ export interface VaultConflict {
   /** The other version changed again while this was open. */
   again?: boolean;
 }
+
+/** What one re-check of the open note did: looked ('checked'), could not
+ *  reach the storage ('failed', which backs the poll off), or had nothing
+ *  to look at ('skipped'). */
+export type VaultRecheckResult = 'checked' | 'failed' | 'skipped';
 
 /** What one choice in the resolve sheet did. `ok` false with `failed` means
  *  the storage refused or did not answer, so nothing changed; without it, the
@@ -722,6 +950,23 @@ export interface VaultMoveResult {
 /** Every note body vaultReadAll could read, plus the paths it could not (a
  *  read that failed, or a note still downloading). Still an array, so a
  *  caller that only wants the bodies uses it as one. */
+/** A note or folder delete from the Vault room (Vault M6 6.3; CTO K6, R2):
+ *  moved to Trash where it is real, else deleted for good with the bytes
+ *  held in memory for a courtesy Undo (absent when they could not be read).
+ *  A refusal the store already said (a toast, the resolve path) is
+ *  `undefined`. */
+export type VaultDeleteOutcome =
+  | { ok: true; trashed: boolean; undo?: VaultUndo; notes: number; attachments: number }
+  | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
+
+/** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
+ *  note opens as it is, a new one opens in the editor with its line, and a
+ *  vault that cannot start one says why. */
+export type VaultTodayOutcome =
+  | { kind: 'opened'; path: string }
+  | { kind: 'created'; path: string; line?: string }
+  | { kind: 'refused'; line: string };
+
 export type VaultReadAllResult = Array<{ path: string; text: string }> & { failed: string[] };
 
 // D1 (0.18): Google Drive is held back for v1. Its conflict copy is undone by
@@ -888,10 +1133,12 @@ let reconcilingRepos = false;
 const repoContextStale = new Set<string>();
 // Note bodies keyed by `${providerId}::${resourceId}::${path}`, so backlink
 // derivation (vaultReadAll on every note open) re-reads only files whose
-// updatedAt moved. Self-invalidating: a mismatched updatedAt misses; a distinct
-// provider or resource (the personal vault before and after a move, or a
-// specific org vault) never collides.
-const vaultBodyCache = new Map<string, { updatedAt: string; text: string }>();
+// version (versionOf) moved. Keyed by version, not updatedAt: two saves in one
+// millisecond share an updatedAt and differ only by version (Vault M2 G1.6).
+// Self-invalidating: a mismatched version misses; a distinct provider or
+// resource (the personal vault before and after a move, or a specific org
+// vault) never collides.
+const vaultBodyCache = new Map<string, { version: string; text: string }>();
 
 export function driverFor(conversationId: string): ChatDriver | undefined {
   return drivers.get(conversationId);
@@ -1055,6 +1302,9 @@ interface AppState {
      *  the new text; `reloadedFrom` says which. */
     reloaded?: number;
     reloadedFrom?: 'elsewhere' | 'resolve';
+    /** Who last saved `text`, when the storage says (the team vault only,
+     *  StoredFileMeta.editedBy, CTO G6). Cleared by this device's own save. */
+    editedBy?: { id: string; label?: string };
   };
   /** A note that changed somewhere else under unsaved edits, waiting for the
    *  person's choice (the resolve sheet). At most one at a time. */
@@ -1084,15 +1334,45 @@ interface AppState {
    *  otherwise (`durable: false`). It holds team text of accounts not signed
    *  in now, so a screen shows vaultHeldVisible(), never this list. */
   vaultHeld: VaultHeldDraft[];
-  /** True when a live single-writer lease on the personal vault is held by
-   *  another device, so this one shows read-only. Cloud folder syncs (iCloud,
-   *  Drive) have no Git-aware locking, so the lease bounds the concurrent-edit
-   *  clobber window (the conflict-copy write is the durable backstop). */
+  /** Every note with text stashed on this device to save when its storage
+   *  answers, as refs (no text): the save chip's pending count (Vault M2
+   *  2.2). Kept in step with the stash by every edit of it. */
+  vaultPending: VaultPendingRef[];
+  /** A save is on its way to the storage right now (the chip's Saving). */
+  vaultSaving?: boolean;
+  /** True when the lease is enforced on the vault on screen (a storage
+   *  without compare-and-swap) and another device holds it live, so this one
+   *  shows read-only and writes nothing to a note (Vault M2 2.5, CTO G5). */
   vaultLeaseHeldByOther?: boolean;
+  /** Another device holds the lease on the vault on screen: 'advisory' (a
+   *  storage with compare-and-swap, the quiet "Also open on your iPad") or
+   *  'enforced' (read-only here, with Take over editing), and its device
+   *  kind when it said. Undefined when no other device was seen. */
+  vaultLeaseOther?: { mode: 'advisory' | 'enforced'; label?: string };
+  /** The team sign-in expired while a team note was open (Vault M2 2.6): the
+   *  note stays on screen, read-only, with "Sign in again to save to your
+   *  team", until the person leaves it or the same account signs back in.
+   *  Nothing else of the team vault shows meanwhile. */
+  vaultTeamExpired?: boolean;
   /** Which vault the Vault screen is showing: the personal one (on the chosen
    *  storage provider) or the shared team vault (org tier, Supabase-backed).
    *  Team is only reachable when signed in as an active member of an org. */
   vaultScope: 'personal' | 'team';
+  /** Trash of the vault on screen, where its storage has a real one (Vault
+   *  M6 6.3): the tree's last row shows while it holds something. Undefined
+   *  before the first listing and on a storage without Trash. */
+  vaultTrash?: TrashEntry[];
+  /** Folders of the vault on screen beyond the ones its notes imply: real
+   *  folders the storage lists (empty ones too) and the remembered empty
+   *  ones (Vault M6 6.2, K5). */
+  vaultFolders?: string[];
+  /** The vault on screen's resolved settings (Vault M7, CTO L3 to L6):
+   *  Obsidian's conventions, then `.oscode/vault.json`, then the defaults.
+   *  Undefined before the first read after a repoint. */
+  vaultSettings?: ResolvedVaultSettings;
+  /** A sheet another room asked the Vault room to open when it shows
+   *  (Settings' "Where it lives"). The room takes it once and clears it. */
+  vaultSheetRequest?: 'storage';
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** When true, a brand-new account was just created on a device that never
@@ -1171,6 +1451,10 @@ interface AppState {
       /** The first message, parked on the chat before the driver exists so
        *  the bubble is on screen at once and nothing waits on the hub. */
       firstMessage?: { text: string; attachments?: Attachment[] };
+      /** A handoff for a desktop agent's first task (Vault M5, CTO J12): a
+       *  chat carried to the computer's agent, which takes no message history,
+       *  starts from this summary. Capped at `HANDOFF_MAX_BYTES`. */
+      handoff?: string;
     },
   ): Promise<string>;
   /** Replace the repositories a chat works with (the header picker). */
@@ -1456,10 +1740,17 @@ interface AppState {
    *  a clean note, or ask about a dirty one. Runs in the note's save chain, so
    *  it never sees this device's own save half done. */
   vaultRecheck(opts: {
-    reason: 'watch' | 'focus';
+    reason: 'watch' | 'focus' | 'poll';
     paths?: string[];
     tree?: boolean;
-  }): Promise<void>;
+  }): Promise<VaultRecheckResult>;
+  /** Start the team vault's live refresh (Vault M2 2.7): the open note's
+   *  head every 30 s (jittered), backing off to 300 s on errors, only while
+   *  the team vault is on screen with a note open, the page is visible, and
+   *  the device is online. `now` checks once at once (becoming visible). */
+  vaultStartPoll(opts?: { now?: boolean }): void;
+  /** Stop it (the page is hidden, or the room left). */
+  vaultStopPoll(): void;
   /** The person's choice in the resolve sheet: 'both' (their text beside the
    *  note as a conflict copy, the note shows the other version), 'mine' (their
    *  text replaces it, or for a gone note is saved again), 'theirs' (the other
@@ -1484,9 +1775,13 @@ interface AppState {
   /** Delete a note and refresh; closes it if it was open. Resolves true only
    *  when the delete really happened. */
   vaultDelete(path: string, at?: VaultTargetRef): Promise<boolean>;
-  /** Every note body, for backlink derivation, plus the paths that could not
-   *  be read (`failed`). */
+  /** Every note body, for export, plus the paths that could not be read
+   *  (`failed`). */
   vaultReadAll(): Promise<VaultReadAllResult>;
+  /** One note's text in the vault on screen, through the body cache (read
+   *  only when its listed version moved), for Linked mentions' excerpts.
+   *  Undefined when it is not there. */
+  vaultReadBody(path: string): Promise<string | undefined>;
   /** The vault on screen now, as a ref a scheduled save can carry. */
   vaultTargetRef(): VaultTargetRef | undefined;
   /** Why the vault on screen takes no writes (a Google Drive vault, D1), or
@@ -1497,12 +1792,19 @@ interface AppState {
   /** The "Not saved" list the person signed in now may see: personal text,
    *  and team text typed under this same account (vaultHeldFor). */
   vaultHeldVisible(): VaultHeldDraft[];
-  /** Take or renew the personal vault's single-writer lease, and record whether
-   *  another device holds it live (which puts the screen read-only). No-op for
-   *  the team vault (the server resolves concurrency). */
+  /** Take or renew the lease on the vault on screen now, when its storage
+   *  keeps one (lib/vaultLease.ts), and record whether another device holds
+   *  it live. A storage that keeps none is left alone. */
   vaultAcquireLease(): Promise<void>;
-  /** Release the personal vault lease this device holds. */
+  /** A keystroke in the editor: take the lease on the first one after a
+   *  quiet spell, renew it at most every 60 s while typing continues (TTL
+   *  150 s). The only way a lease is held: never at mount, never on a timer. */
+  vaultLeaseTouch(): Promise<void>;
+  /** Release the lease this device holds (leaving the note or the Vault). */
   vaultReleaseLease(): Promise<void>;
+  /** Enforced lease only: make this device the holder, so the other stops
+   *  saving at its next renewal and keeps its text in its stash. */
+  vaultTakeOverLease(): Promise<void>;
   /** Move the personal vault to a different storage provider (e.g. iCloud):
    *  copy every note across, check the target holds them all, then repoint
    *  the resource. Refused (ok false, nothing repointed) when the target is
@@ -1543,6 +1845,188 @@ interface AppState {
     choice: 'mine' | 'theirs',
     shown: { there: StoredFile; moved: StoredFile },
   ): Promise<{ ok: boolean; changed?: boolean; partial?: boolean }>;
+  /** Whether the one-time "keep one vault on your computer" card shows now
+   *  (Vault M5, CTO J9): paired, the vault on This device by default, notes
+   *  in it, and not declined for this computer. */
+  vaultHubOfferShown(): boolean;
+  /** The card's move: the existing move to the computer (every copy
+   *  `ifAbsent`), remembering where the vault was so unpairing returns it. */
+  vaultAcceptHubMove(): Promise<VaultMoveResult>;
+  /** The card's quiet button: keep the notes on this device. */
+  vaultDeclineHubMove(): Promise<void>;
+  /** Run the J9 pairing rule now (the store runs it after a pairing and on
+   *  the Vault's first list); resolves to what it did. */
+  vaultAfterPairing(): Promise<HubPairPlan>;
+
+  // ---- Vault M5: pins, notes to a model, the switch handoff (CTO J12 to J15)
+
+  /** Pin notes to a project's context (J14): editors only (a local project,
+   *  or `myLevel === 'edit'`), at most `PROJECT_VAULT_PINS_MAX`, deduped.
+   *  Device local: never sent to the org server. False when refused. */
+  setProjectVaultPins(projectId: string, paths: string[]): Promise<boolean>;
+  /** "Pin to project context" from a note's options: the active project's
+   *  unless one is named. */
+  pinVaultNoteToProject(
+    path: string,
+    projectId?: string,
+  ): Promise<'pinned' | 'already' | 'full' | 'refused'>;
+  /** Take one pin off a project. */
+  unpinVaultNote(projectId: string, path: string): Promise<void>;
+  /** A note was renamed: every project's pin follows it (J14). */
+  vaultRenamePins(from: string, to: string): Promise<void>;
+  /** Whether the person may change this project's pins (an editor). */
+  canEditProjectPins(projectId: string): boolean;
+  /** Which of these pinned paths the personal vault still holds: 'missing'
+   *  shows "Pinned note not found"; 'unknown' when the vault cannot be read. */
+  vaultPinStatus(paths: string[]): Promise<Record<string, 'ok' | 'missing' | 'unknown'>>;
+  /** The personal vault's notes as the picker may show them (J15): hidden
+   *  notes never, local-only ones with the lock. Never the team vault. */
+  vaultPickerNotes(): Promise<VaultPickerNote[]>;
+  /** The seat the next send in this chat goes to, for an excerpt's budget
+   *  and the local-only refusal. Fails closed (leaves the network) when the
+   *  seat cannot be judged. */
+  composerSeat(conversationId?: string, fallback?: ConversationSource): ComposerSeat;
+  /** A note's excerpt for the composer, sized for the chat's seat, with its
+   *  cost line, or the refusal. Never sends anything. */
+  composerVaultExcerpt(path: string, conversationId?: string): Promise<ComposerExcerptResult>;
+  /** A note waiting to go into a chat's composer ("Ask about this note"),
+   *  never auto-sent. The composer takes it once (its `take`), through the
+   *  same budget and privacy check as a `[[` pick, and calls
+   *  `takeComposerInsert`. */
+  composerInsert?: { id: string; conversationId?: string; path: string };
+  takeComposerInsert(id: string): void;
+  /** A personal note's body for the composer's `[[` pick, with the verdict
+   *  its own text gives (J3); null when it is gone or cannot be read. */
+  composerVaultRead(
+    path: string,
+  ): Promise<{ text: string; updatedAt: string; visibility: VaultVisibility } | null>;
+  /** "Ask about this note": open the active project's chat (a new one when
+   *  none is open) with the excerpt in the composer. */
+  askAboutVaultNote(path: string): Promise<void>;
+  /** "Recently from your agent" (J15): the newest `crew` notes and the paths
+   *  the agent's approved vault writes named on this device. */
+  vaultAgentRecent(): Promise<VaultPickerNote[]>;
+  /** Remember a path an approved `vaultWrite` or `vaultPropose` wrote (the
+   *  device ring of 20). */
+  noteAgentVaultWrite(path: string): Promise<void>;
+  /** The context pack card's tap on a note title, when this device's vault
+   *  can open that note: an app chat's pack (read from this device's vault),
+   *  or an engine pack while this device's vault is the computer's (the hub,
+   *  or the desktop's own folder). Undefined keeps the titles plain. */
+  vaultPackOpener(conversationId: string): ((path: string) => void) | undefined;
+  // ---- Vault M6 (state/vaultOps.ts does the work; these are its call sites)
+  /** The Vault screen's autosave, bound while the room is mounted, so an
+   *  operation writes the pending text first and cancels its timer (a stale
+   *  save must never recreate a trashed note). */
+  vaultBindAutosave(handle: VaultAutosave<VaultTargetRef> | undefined): void;
+  /** What the Vault may offer on the storage on screen right now (CTO K1):
+   *  every M6 action's visibility follows this one answer. */
+  vaultCapsNow(opts?: { storageOnly?: boolean }): VaultCaps;
+  /** Delete a note: to Trash where it is real (one tap), else for good with
+   *  a courtesy Undo (R2). Closes it when it was open. */
+  vaultDeleteNote(path: string, at?: VaultTargetRef): Promise<VaultDeleteOutcome | undefined>;
+  /** Move a folder, whatever is in it, to Trash (only where Trash is real). */
+  vaultDeleteFolder(folder: string): Promise<VaultDeleteOutcome | undefined>;
+  /** Undo a delete, in the vault it was deleted from. */
+  vaultUndoDelete(undo: VaultUndo, at?: VaultTargetRef): Promise<VaultRestoreResult | undefined>;
+  /** Read Trash again (the Trash view and the tree's Trash row). */
+  vaultLoadTrash(): Promise<TrashEntry[] | undefined>;
+  /** Restore one Trash entry where it came from, never overwriting. */
+  vaultRestoreTrash(id: string): Promise<VaultRestoreResult>;
+  /** Empty Trash (not a team vault's, R3). */
+  vaultEmptyTrash(): Promise<
+    { ok: true; removed: number; asked: number } | { ok: false; reason: string }
+  >;
+  /** Plan a rename or move (6.2): the new path checked by the storage later,
+   *  the referring notes read, the links counted. Nothing is written. */
+  vaultPrepareMove(
+    kind: 'note' | 'folder',
+    from: string,
+    to: string,
+  ): Promise<VaultMovePreview | undefined>;
+  /** Run a planned rename or move, with the link pass when asked (R1). The
+   *  moved notes are adopted at the paths the storage answered with. */
+  vaultApplyMove(
+    preview: VaultMovePreview,
+    updateLinks: boolean,
+    onProgress?: (i: number, m: number) => void,
+  ): Promise<VaultOpsMoveResult | undefined>;
+  /** "Update the rest" on the standing card (CX X7). */
+  vaultUpdateRest(
+    preview: VaultMovePreview,
+    report: VaultRewriteReport,
+    onProgress?: (i: number, m: number) => void,
+  ): Promise<VaultRewriteReport | undefined>;
+  /** Make a folder (a real one, or a remembered empty one on Local). */
+  vaultCreateFolder(
+    path: string,
+  ): Promise<
+    | { ok: true; path: string }
+    | { ok: false; reason: 'bad-name' | 'exists' | 'storage' | 'unsupported' }
+  >;
+  /** What a folder holds, for the sheet's counts before it acts (K5). */
+  vaultFolderCounts(folder: string): Promise<{ notes: number; attachments: number }>;
+  /** What search reads for the vault on screen (6.1): the index's titles and
+   *  filtered BM25, and bodies through the body cache. Undefined until the
+   *  index opens. */
+  vaultSearchSource(): VaultSearchSource | undefined;
+  /** The notes this device opened or saved in the vault on screen. */
+  vaultRecentRing(): VaultRecentEntry[];
+  /** Today's note (6.4): lib/vaultToday resolves which note and what a new
+   *  one starts with; vaultOps.openToday writes it only while nothing has
+   *  the name (one Today implementation). */
+  vaultToday(): Promise<VaultTodayOutcome | undefined>;
+  /** A tick in reading view (6.6; CTO K11, CX X13): `line` is the task's
+   *  zero-based line in the whole note, frontmatter counted. Writes the box
+   *  back by compare-and-swap; false when it did not land (the box then shows
+   *  the file's truth, and a note that changed takes the resolve path). */
+  vaultToggleTask(path: string, line: number, checked: boolean): Promise<boolean>;
+  /** The person's own one-note edit (6.8, Link on an unlinked mention; CX
+   *  X16): the note read now, `edit` applied, and written back only while it
+   *  is still that version. False when it did not land or `edit` declined. */
+  vaultRewriteNote(path: string, edit: (text: string) => string | undefined): Promise<boolean>;
+  /** What images and PDFs read from on this storage (6.6): its attachments,
+   *  Obsidian's attachment folder, and the byte reader. Undefined where the
+   *  storage has none. */
+  vaultMediaNow(): Promise<
+    | {
+        scope: string;
+        attachments: AttachmentMeta[];
+        attachmentFolder?: string;
+        readBytes: (path: string, opts?: ReadBytesOptions) => Promise<BytesRead>;
+      }
+    | undefined
+  >;
+  /** The vault on screen's settings (Vault M7, CTO L5, L6), through the
+   *  loader's 60 second cache; `force` reads now (the room became visible,
+   *  a watcher hint). Undefined when no vault is reachable. */
+  vaultLoadSettings(opts?: { force?: boolean }): Promise<ResolvedVaultSettings | undefined>;
+  /** Where this device's engine sessions run and that computer's own Room
+   *  for notes (Vault M8), for the settings sheet's honest line: the
+   *  desktop's own machine config through the bridge, or a paired computer's
+   *  `GET /vault/privacy`. Undefined with no engine in reach (an unpaired
+   *  phone); `machine` undefined when the computer did not say. */
+  vaultEngineRoomSource(): Promise<VaultEngineRoomSource | undefined>;
+  /** The person's one changed field, written to `.oscode/vault.json` by
+   *  compare-and-swap (CTO L7, CX Y5). Only the settings sheet calls it. */
+  vaultSaveSetting(patch: VaultSettingsPatch): Promise<VaultSettingSave>;
+  /** Mark a note reviewed, or not (CX Y12): the person's own compare-and-
+   *  swap write of `oscode-reviewed` through `mergeProvenance`, every other
+   *  byte kept. `changed`: the note moved on and the newer version is open. */
+  vaultMarkReviewed(path: string, reviewed: boolean): Promise<'ok' | 'changed' | 'failed'>;
+  /** Whether the empty vault's ramp offers the starter layout (CTO L12). */
+  vaultStarterOffered(): Promise<boolean>;
+  /** Add the starter layout (CX Y13's "Add these"): emptiness re-checked,
+   *  every write `ifAbsent`. The whole layout toasts here. */
+  vaultApplyStarter(): Promise<{ added: number; total: number }>;
+  /** Ask the Vault room to open a sheet when it next shows, or clear it. */
+  vaultRequestSheet(sheet: 'storage' | undefined): void;
+  /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
+   *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
+  saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
+  /** A project's latest handoff at most seven days old (J13), for the pack's
+   *  handoff layer on a conversation's first send. Memory off reads none. */
+  projectHandoff(projectId: string): Promise<StoredHandoff | undefined>;
   /** Run the Google Drive OAuth connect flow. Never throws. */
   connectGdriveAccount(): Promise<{ ok: boolean; error?: string }>;
   /** Revoke and forget the connected Google account. */
@@ -1551,6 +2035,11 @@ interface AppState {
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
+  /** Clear conversations (Settings): every chat on this device, and every
+   *  handoff with them (J13), on this device, on this desktop's engine, and
+   *  on the paired computer when this device owns it (a member has none to
+   *  clear there). Journals on the computer stay. */
+  clearConversations(): Promise<void>;
   /** Send to the active chat. While the agent is busy the message queues and
    *  goes out the moment the current task ends, the way Claude Code takes a
    *  message typed mid-run. */
@@ -2758,8 +3247,12 @@ export const useApp = create<AppState>((set, get, api) => {
    * guardDriver, so no chat surface in the app can reach a model without
    * screening on the way in and on the way out. See drivers/guardedDriver.ts.
    */
-  async function buildDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
-    return guardDriver(await buildUnguardedDriver(conv, seed));
+  async function buildDriver(
+    conv: Conversation,
+    seed?: SeedTurn[],
+    extra?: BuildExtra,
+  ): Promise<ChatDriver> {
+    return guardDriver(await buildUnguardedDriver(conv, seed, extra));
   }
 
   /** The project's standing instructions and the chat's repo context, as one
@@ -2789,7 +3282,220 @@ export const useApp = create<AppState>((set, get, api) => {
         .join('\n\n') || undefined;
   }
 
-  async function buildUnguardedDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
+  // ---- The vault in a chat (Vault M5, CTO J1 to J10) -----------------------
+
+  /** One pack per conversation (J1), so a switch keeps its render cache and a
+   *  handoff is read on the conversation's first send only. */
+  const vaultPacks = new Map<string, AppVaultPack>();
+  /** Personal indexes a chat opened, reconciled once each so a chat that
+   *  never visits the Vault room still finds its notes. */
+  const packReconciled = new WeakSet<VaultIndexHost>();
+
+  /** Forget every chat's vault context: packs, cached Current State, and the
+   *  privacy answer (a sign-out, a pairing change). */
+  function forgetVaultContext(): void {
+    vaultPacks.clear();
+    clearCurrentStateCache();
+    privacyCache = undefined;
+  }
+
+  /** What `packSeatFor` reads besides the ref: this device's own tailnet
+   *  (from the paired hub) and the windows the app knows (J2, J4). */
+  function seatContext(): PackSeatContext {
+    const s = get().settings;
+    return {
+      ownTailnetSuffix: hubTailnetSuffix(s.daemon?.baseUrl),
+      cloudContextTokens: (provider, model) =>
+        providerInfo(provider)?.models.find((m) => m.id === model)?.contextTokens,
+      byomContextTokens: (id) => s.byomModels?.find((b) => b.id === id)?.contextTokens,
+    };
+  }
+
+  /** The personal vault's index for a chat's pack and tools, opened through
+   *  `vaultIndexFor` when none is warm. Never the team vault's (D15): while
+   *  the team index is on screen, a chat gets none, and it never switches one. */
+  function packIndex(): VaultIndexHost | undefined {
+    const t = personalVault();
+    if (!t) return undefined;
+    const now = currentVaultIndex();
+    if (now && now.target.providerId === 'org') return undefined;
+    const want = indexTargetOf(t);
+    const same = (h: VaultIndexHost | undefined) =>
+      Boolean(
+        h &&
+        h.target.providerId === want.providerId &&
+        h.target.resourceId === want.resourceId &&
+        (h.target.owner ?? '') === (want.owner ?? ''),
+      );
+    let host = warmVaultIndex();
+    if (!same(host) && !now) {
+      try {
+        host = openVaultIndex(t);
+      } catch {
+        return undefined;
+      }
+    }
+    if (!host || !same(host)) return undefined;
+    if (!packReconciled.has(host)) {
+      packReconciled.add(host);
+      const opened = host;
+      void listVaultNotes(t)
+        .then((files) => opened.reconcile(files))
+        .catch(() => {});
+    }
+    return host;
+  }
+
+  /** A note body from the personal vault, whatever scope is on screen. */
+  async function personalRead(path: string): Promise<StoredFile | undefined> {
+    const t = personalVault();
+    return t ? t.provider.read(t.resourceId, path) : undefined;
+  }
+
+  /** This project's Current State from its repo (J1): the working tree on a
+   *  desktop with the clone, else the primary GitHub repo. */
+  async function projectCurrentState(
+    projectId: string | undefined,
+  ): Promise<{ path: string; text: string } | undefined> {
+    const project = projectId
+      ? get().settings.projects?.find((p) => p.id === projectId)
+      : undefined;
+    if (!project?.name.trim()) return undefined;
+    const b = isDesktop() ? bridge() : undefined;
+    const source = primaryRepoSource(project.repoIds ?? [], { canReadLocal: Boolean(b) });
+    if (!source) return undefined;
+    let reader: RepoReader | undefined;
+    if (source.kind === 'local') {
+      reader = b ? localRepoReader(source.root, b) : undefined;
+    } else {
+      const token = await repoToken('github').catch(() => undefined);
+      reader = token ? githubRepoReader(source.owner, source.repo, token) : undefined;
+    }
+    if (!reader) return undefined;
+    const path = memoryFilePath(sanitizeFolderSegment(project.name), CURRENT_STATE_FILE);
+    const text = await reader.readFile(path);
+    return text === undefined ? undefined : { path, text };
+  }
+
+  /** Whether a chat carries the vault at all: the Memory switch (Wayfinding)
+   *  off means no vault in context, no pack and no vault tools. */
+  function vaultInChats(): boolean {
+    return memoryOverride(get().settings) !== false;
+  }
+
+  /** This conversation's pack (J1), or none with Memory off or
+   *  `settings.vaultContext === 'off'`. */
+  function conversationPack(conv: Conversation): AppVaultPack | undefined {
+    const settings = get().settings;
+    if (!vaultInChats() || settings.vaultContext === 'off') return undefined;
+    const kept = vaultPacks.get(conv.id);
+    if (kept) return kept;
+    // A handoff opens a conversation's first send only (J13), at most seven
+    // days old; a chat that already spoke has its own history. Read from the
+    // device store now, while the driver builds (synchronously, so a reopened
+    // chat is never parked on it); the first send finds it there.
+    let handoff: string | undefined;
+    // The device's Handoff switch (Vault M7, CTO L13): off asks for none.
+    if (
+      conv.projectId &&
+      spokenTurns(conv.thread.items) === 0 &&
+      appHandoffOn(settings, vaultInChats())
+    ) {
+      void get()
+        .projectHandoff(conv.projectId)
+        .then((h) => {
+          handoff = h?.text;
+        })
+        .catch(() => {});
+    }
+    const projectId = conv.projectId;
+    const pack = createAppVaultPack({
+      setting: settings.vaultContext ?? 'auto',
+      ...(projectId ? { projectKey: projectId } : {}),
+      index: packIndex,
+      read: async (path) => (await personalRead(path))?.text,
+      privacy: vaultPrivacyNow,
+      currentState: () => projectCurrentState(projectId),
+      projectPins: () =>
+        (projectId
+          ? get().settings.projects?.find((p) => p.id === projectId)?.vaultPins
+          : undefined) ?? [],
+      handoff: () => handoff,
+      // Room for notes and the Handoff switch (Vault M7, CTO L13), read at
+      // each send; the vault's own settings name what retrieval skips.
+      packSize: () => appPackSize(get().settings),
+      handoffSetting: () => get().settings.vaultHandoff,
+      settings: personalSettings,
+    });
+    vaultPacks.set(conv.id, pack);
+    return pack;
+  }
+
+  /** The personal vault as the Stack's tools see it (J10), or none with
+   *  Memory off. Reads are kept for a moment, so a search that judges each
+   *  hit and the read that follows it cost one trip. */
+  function stackVaultTools(): StackVaultTools | undefined {
+    if (!vaultInChats()) return undefined;
+    const reads = new Map<string, { at: number; file: Promise<StoredFile | undefined> }>();
+    const read = (path: string): Promise<StoredFile | undefined> => {
+      const hit = reads.get(path);
+      if (hit && Date.now() - hit.at < 30_000) return hit.file;
+      const file = personalRead(path);
+      reads.set(path, { at: Date.now(), file });
+      file.catch(() => reads.delete(path));
+      return file;
+    };
+    return {
+      privacy: vaultPrivacyNow,
+      async search(query) {
+        const host = packIndex();
+        if (!host) return [];
+        const hits = await host.search(query, 16);
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+        return Promise.all(
+          hits.map(async (h) => {
+            const text = (await read(h.path).catch(() => undefined))?.text ?? '';
+            const lower = text.toLowerCase();
+            const at = words.map((w) => lower.indexOf(w)).find((i) => i >= 0) ?? 0;
+            return { path: h.path, snippet: text ? excerptAt(text, at).text : '' };
+          }),
+        );
+      },
+      async read(path) {
+        const file = await read(path);
+        return file ? { text: file.text, version: versionOf(file) } : undefined;
+      },
+      async resolve(name) {
+        const host = packIndex();
+        return host ? resolveWikilink(name, host.index.paths()) : undefined;
+      },
+      async write(path, text, guard) {
+        const t = personalVault();
+        if (!t) throw new Error('Your Vault is not ready on this device yet.');
+        const readOnly = vaultReadOnlyReason(t.providerId);
+        if (readOnly) throw new Error(readOnly);
+        reads.delete(path);
+        const r = await putVaultNote(t, path, text, guard);
+        if (r.ok) packIndex()?.applyWrite(r.file);
+        return r;
+      },
+      teamVault: () => get().vaultScope === 'team',
+      // The vault's agent folder (Vault M7, CTO L2), at the offer and again
+      // at approve.
+      agentFolder: () => personalSettings()?.agent.folder,
+      onWritten: (paths) => {
+        void (async () => {
+          for (const p of paths) await get().noteAgentVaultWrite(p);
+        })();
+      },
+    };
+  }
+
+  async function buildUnguardedDriver(
+    conv: Conversation,
+    seed?: SeedTurn[],
+    extra?: BuildExtra,
+  ): Promise<ChatDriver> {
     const { settings } = get();
     switch (conv.source.kind) {
       case 'desktop': {
@@ -2880,6 +3586,21 @@ export const useApp = create<AppState>((set, get, api) => {
           codemagicTarget,
           currents,
           harnessCurrents,
+          // A chat carried to the computer's agent (Vault M5, CTO J12): the
+          // handoff opens its first task, since the agent takes no history.
+          // Conversation content, so it rides even with Memory off.
+          ...(extra?.handoff ? { handoff: capHandoffBytes(extra.handoff) } : {}),
+          // The project's own pinned notes (J14), read first by the engine's
+          // pack. The vault's, so they stay home with Memory off.
+          ...(project?.vaultPins?.length && memoryOverride(settings) !== false
+            ? { vaultPins: [...project.vaultPins] }
+            : {}),
+          // Notes in chats, Handoff and Room for notes (Vault M7, CTO L13):
+          // off-only and lower-only, taken at open, so a change applies to
+          // new chats.
+          ...(Object.keys(appVaultOverrides(settings)).length
+            ? { vaultOverrides: appVaultOverrides(settings) }
+            : {}),
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -2934,6 +3655,11 @@ export const useApp = create<AppState>((set, get, api) => {
             memory: sessionOpts.memory,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
+            // A switch's handoff (J12) and the project's pins (J14), both
+            // capped by the client before they go on the wire.
+            handoff: sessionOpts.handoff,
+            vaultPins: sessionOpts.vaultPins,
+            ...(sessionOpts.vaultOverrides ? { vaultOverrides: sessionOpts.vaultOverrides } : {}),
           });
           await bindSessionId(conv.id, sessionId, cwd);
         }
@@ -2958,15 +3684,37 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
+        // The computer builds this chat's pack itself (J6): the phone names
+        // the project and never ships note bodies there and back. Memory off
+        // says so; the pack setting off sends neither, so none is built.
+        const chatProject = conv.projectId
+          ? settings.projects?.find((p) => p.id === conv.projectId)
+          : undefined;
+        const chatCwd = firstWorkspace(
+          (conv.repoIds?.length ? conv.repoIds : chatProject?.repoIds) ?? [],
+        );
         return new DesktopChatDriver(
           settings.daemon,
           conv.source.model,
           seed,
           chatContext(conv),
           settings.perplexityResearch === true,
+          !vaultInChats()
+            ? { memory: false }
+            : settings.vaultContext === 'off'
+              ? {}
+              : {
+                  vaultPack: {
+                    ...(chatCwd ? { cwd: chatCwd } : {}),
+                    ...(chatProject?.name ? { projectName: chatProject.name } : {}),
+                    // Room for notes (L13): the computer lowers-only.
+                    ...(settings.vaultPackSize ? { packSize: settings.vaultPackSize } : {}),
+                  },
+                },
         );
       }
-      case 'device':
+      case 'device': {
+        const vaultPack = conversationPack(conv);
         return new OnDeviceDriver(
           conv.source.modelId,
           conv.source.modelName,
@@ -2974,7 +3722,9 @@ export const useApp = create<AppState>((set, get, api) => {
           settings.perplexityResearch === true,
           standingContext(conv),
           conv.id,
+          { vaultPack },
         );
+      }
       case 'cloud': {
         // Claude runs on the Anthropic SDK; every other connected provider runs
         // on the shared OpenAI-compatible chat driver, so a user can chat with
@@ -2990,6 +3740,7 @@ export const useApp = create<AppState>((set, get, api) => {
             seed,
             settings.anthropicWorkspaceId,
             chatContext(conv),
+            { vaultPack: conversationPack(conv) },
           );
         }
         const info = providerInfo(source.provider);
@@ -3007,6 +3758,7 @@ export const useApp = create<AppState>((set, get, api) => {
           seed,
           chatContext(conv),
           contextWindow,
+          { vaultPack: conversationPack(conv) },
         );
       }
       case 'stack': {
@@ -3049,6 +3801,9 @@ export const useApp = create<AppState>((set, get, api) => {
             // A play's engine step opens its own session on the paired
             // computer; the Memory switch rides there the same way.
             memory: memoryOverride(s.settings),
+            // So do Notes in chats, Handoff and Room for notes (CTO L13):
+            // off-only and lower-only, the same object a chat's session takes.
+            vaultOverrides: appVaultOverrides(s.settings),
             researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
@@ -3060,8 +3815,16 @@ export const useApp = create<AppState>((set, get, api) => {
             daemon: s.settings.daemon,
             repoCwd: firstWorkspace(conv.repoIds ?? []),
             conversationId: conv.id,
+            // Prompt caching on Claude, off by default (J16, J19).
+            promptCache: s.settings.promptCache === true,
           },
           seed,
+          {
+            vaultPack: conversationPack(conv),
+            // The seat a ref answers as (J2, J4): by address, never by label.
+            packSeat: (ref) => packSeatFor(ref, seatContext()),
+            vaultTools: stackVaultTools(),
+          },
         );
       }
       case 'mock':
@@ -3249,12 +4012,13 @@ export const useApp = create<AppState>((set, get, api) => {
     // never block sign-out itself.
     await disconnectGdrive().catch(() => {});
     // Sever the team vault too: drop its on-screen state and the provider's
-    // base-rev cache, and fall back to the personal scope, so a handed-off
+    // memory caches, and fall back to the personal scope, so a handed-off
     // device never shows the previous org's note titles or open note to the
     // next person who signs in. A sign-out also wipes the team's unsent text
     // (R-19). An expiry keeps it, sealed and hidden, for its own account.
     resetOrgVault();
     forgetTeamBodies();
+    stopVaultPoll();
     let kept = 0;
     if (expired && uid) {
       keptTeamOwner = uid;
@@ -3262,7 +4026,19 @@ export const useApp = create<AppState>((set, get, api) => {
     } else {
       keptTeamOwner = undefined;
       await forgetTeamVaultDrafts();
+      // The team index goes with the drafts (M3 3.2): here and where it was kept.
+      const orgId = get().settings.account?.org?.serverId;
+      if (orgId && uid) await dropVaultIndex({ providerId: 'org', resourceId: orgId, owner: uid });
     }
+    // Whatever index is still warm (the personal one a chat's pack reads)
+    // closes with the sign-in (Vault M5, CTO J1), its last write saved first,
+    // and the chats' packs, their Current State, and the notes kept from the
+    // computer go with it. The pairing itself is not the account's, so the
+    // hub link comes back fresh, holding nothing of the last person's.
+    await shutVaultIndex().catch(() => {});
+    forgetVaultSettings();
+    forgetVaultContext();
+    await syncHubLink(get().settings.daemon, { forget: true });
     const s = get().settings;
     const patch: Partial<AppSettings> = {};
     // Drop the org's shared projects from this device so the next person to
@@ -3277,6 +4053,11 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     if (s.declinedOrgIds?.length) patch.declinedOrgIds = undefined;
     if (Object.keys(patch).length) await get().saveSettings(patch);
+    // An expiry with a team note open keeps that note on screen, read-only,
+    // for the same person to sign back in to (Vault M2 2.6); the rest of the
+    // team vault's titles leave with the session. A sign-out never keeps it.
+    const open = get().vaultNote;
+    const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
     set({
       authSession: undefined,
       serverRole: undefined,
@@ -3285,9 +4066,17 @@ export const useApp = create<AppState>((set, get, api) => {
       passwordRecovery: undefined,
       authConfirm: undefined,
       orgJoin: undefined,
-      vaultScope: 'personal',
-      vaultFiles: [],
-      vaultNote: undefined,
+      ...(keepNote
+        ? {
+            vaultTeamExpired: true,
+            vaultFiles: get().vaultFiles.filter((f) => f.path === open!.path),
+          }
+        : {
+            vaultTeamExpired: undefined,
+            vaultScope: 'personal' as const,
+            vaultFiles: [],
+            vaultNote: undefined,
+          }),
     });
     return kept;
   }
@@ -3411,6 +4200,35 @@ export const useApp = create<AppState>((set, get, api) => {
   async function listVaultNotes(t: VaultTarget): Promise<StoredFileMeta[]> {
     return (await t.provider.list(t.resourceId)).filter((f) => isNotePath(f.path));
   }
+  // The Vault index (M3 3.2, lib/vaultIndexHost.ts) for the vault on screen:
+  // opened when its list lands, fed by every write and remove, and asked only
+  // for the vault on screen, so a write to any other vault never touches it.
+  // A hub vault's index is one per computer and per person on it
+  // (`hubIndexTarget`, the link's own target), so two hubs or two members
+  // never share one; every other vault is keyed by its own target.
+  function indexTargetOf(t: VaultTargetRef): VaultIndexTarget {
+    if (t.providerId === 'hub') {
+      const link = hubVaultLink();
+      if (link) return link.target;
+    }
+    const { providerId, resourceId, owner } = t;
+    return owner ? { providerId, resourceId, owner } : { providerId, resourceId };
+  }
+  function openVaultIndex(t: VaultTarget): VaultIndexHost {
+    return vaultIndexFor(indexTargetOf(t), t.provider);
+  }
+  function vaultIndexOf(t: VaultTargetRef): VaultIndexHost | undefined {
+    const host = currentVaultIndex();
+    const now = vaultTarget();
+    if (!host || !now || !isActiveVault(t)) return undefined;
+    const want = indexTargetOf(now);
+    const { providerId, resourceId, owner } = host.target;
+    return providerId === want.providerId &&
+      resourceId === want.resourceId &&
+      (owner ?? '') === (want.owner ?? '')
+      ? host
+      : undefined;
+  }
 
   // Durable draft rescue for the vault. When a provider write fails (offline
   // cloud vault, expired token), the typed text is stashed to the sealed local
@@ -3425,11 +4243,13 @@ export const useApp = create<AppState>((set, get, api) => {
   type VaultPendingEntry = VaultTargetRef & {
     path: string;
     text: string;
-    /** The provider's updatedAt of the version this text was typed against;
-     *  absent when the provider did not hold the note yet (a new note). */
+    /** The version (versionOf) this text was typed against; absent when the
+     *  provider did not hold the note yet (a new note). For the team vault
+     *  that is its rev as a string, once the team provider versions by rev. */
     base?: string;
-    /** Team vault only: the server rev of that same version, so a replay
-     *  after a relaunch still sends the honest base. */
+    /** Legacy, read only: the team server rev an entry stashed before Vault
+     *  M2 carried beside an ISO base. The loader turns it into the base once
+     *  the team provider compares revs (CTO G3); nothing writes it now. */
     rev?: number;
     /** When it was stashed, on this device's clock (ordering only). */
     at: string;
@@ -3452,12 +4272,26 @@ export const useApp = create<AppState>((set, get, api) => {
     const personal: VaultHeldDraft[] = [];
     const team: VaultHeldDraft[] = [];
     let dropped = false;
+    let converted = false;
     const st = get();
     const uid = st.authSession?.user.id;
+    // Once the team provider compares revs (compare-and-swap, CTO G3), a team
+    // entry stashed with a numeric rev is converted, once and for good, to
+    // base = String(rev), the version that provider reports. One without a
+    // rev keeps its ISO base, which never equals a rev, so its replay keeps
+    // both and loses nothing. Before then, the entry is left as it was.
+    const orgRevs = Boolean(providerFor('org')?.compareAndSwap);
     for (const [key, e] of Object.entries(raw)) {
       if (typeof e?.path !== 'string' || typeof e.text !== 'string') continue;
       if (typeof e.resourceId !== 'string') continue;
       if (e.providerId && (e.providerId !== 'org' || e.owner)) {
+        if (orgRevs && e.providerId === 'org' && 'rev' in e) {
+          const { rev, ...rest } = e;
+          const base = typeof rev === 'number' && e.base ? String(rev) : e.base;
+          p[key] = { ...(rest as VaultPendingEntry), ...(base ? { base } : {}) };
+          converted = true;
+          continue;
+        }
         p[key] = e as VaultPendingEntry;
         continue;
       }
@@ -3483,8 +4317,8 @@ export const useApp = create<AppState>((set, get, api) => {
       for (const h of team) {
         await holdVaultDraft(h, h.path, h.text, h.reason, { at: h.at, memoryOnly: true });
       }
-      await saveVaultPending(p);
     }
+    if (dropped || converted) await saveVaultPending(p);
     return p;
   }
   async function saveVaultPending(p: VaultPending): Promise<void> {
@@ -3500,6 +4334,13 @@ export const useApp = create<AppState>((set, get, api) => {
       const before = JSON.stringify(p);
       const out = edit(p);
       if (JSON.stringify(p) !== before) await saveVaultPending(p);
+      const refs = Object.values(p).map(({ providerId, resourceId, owner, path }) => ({
+        providerId,
+        resourceId,
+        ...(owner ? { owner } : {}),
+        path,
+      }));
+      if (JSON.stringify(refs) !== JSON.stringify(get().vaultPending)) set({ vaultPending: refs });
       return out;
     });
     vaultPendingChain = run.catch(() => {});
@@ -3633,12 +4474,11 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
-    rev: number | undefined,
   ): Promise<void> {
     if (t.owner && t.owner === keptTeamOwner) {
       try {
         await editVaultPending((p) => {
-          p[vaultKey(t, path)] = pendingEntry(t, path, text, base, rev);
+          p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
         });
         get().showToast(
           'Your sign-in expired, so this team vault text is kept on this device for when you sign in again.',
@@ -3666,6 +4506,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!t || t.providerId !== 'files' || get().vaultScope !== 'personal') return;
     const files = await listVaultNotes(t).catch(() => undefined);
     if (files && isActiveVault(t)) set({ vaultFiles: files });
+    if (files) void vaultIndexOf(t)?.reconcile(files);
   }
 
   // After main repointed the vault folder (a pick, or a choice after one):
@@ -3944,7 +4785,6 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
-    rev: number | undefined,
   ): VaultPendingEntry {
     const { providerId, resourceId } = t;
     const owner = providerId === 'org' ? t.owner : undefined;
@@ -3956,7 +4796,6 @@ export const useApp = create<AppState>((set, get, api) => {
       path,
       text,
       ...(base ? { base } : {}),
-      ...(base && rev !== undefined ? { rev } : {}),
       at: new Date().toISOString(),
       ...(folder ? { folder: folder.dir, folderDisplay: folder.display } : {}),
     };
@@ -3999,11 +4838,10 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
-    rev: number | undefined,
     err: unknown,
   ): Promise<void> {
     if (!speaksNow(t)) {
-      await keepUnsentTeamText(t, path, text, base, rev);
+      await keepUnsentTeamText(t, path, text, base);
       return;
     }
     const key = vaultKey(t, path);
@@ -4022,7 +4860,7 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     try {
       await editVaultPending((p) => {
-        p[key] = pendingEntry(t, path, text, base, rev);
+        p[key] = pendingEntry(t, path, text, base);
       });
     } catch {
       const reason = 'This device could not keep a copy to retry. Copy it somewhere safe.';
@@ -4046,13 +4884,531 @@ export const useApp = create<AppState>((set, get, api) => {
   // is required. A provider with compareAndSwap enforces it and answers a
   // conflict as a result; the others accept it and write (M2 adds their
   // check), so their M0 stat-before-write guards stay around the calls.
-  function putVaultNote(
-    t: { provider: StorageProvider; resourceId: string },
+  // A write to a vault the caller names (a providerId) patches the list and
+  // the body cache from its result (patchVaultFiles).
+  // ---- Vault M5: seats, privacy, pins, handoffs, the hub (CTO J9, J12 to J15)
+
+  /** The device store the handoffs live in (J13), sealed like the rest. */
+  const handoffStorage = {
+    get: (k: string) => storeGetJson<unknown>(k),
+    set: (k: string, v: unknown) => storeSetJson(k, v),
+    remove: (k: string) => storeDelete(k),
+  };
+
+  /** The personal vault, whatever scope is on screen (the team vault is
+   *  never in context, D15). */
+  function personalVault(): VaultTarget | undefined {
+    const providerId = vaultProviderId(get().settings);
+    const provider = providerFor(providerId);
+    return provider ? { provider, providerId, resourceId: VAULT_RESOURCE_ID } : undefined;
+  }
+
+  /** The personal vault's settings as last read (Vault M7), or undefined
+   *  before the first read. Sync, for the tools' agent folder and the
+   *  pack's skip list. */
+  function personalSettings(): ResolvedVaultSettings | undefined {
+    const t = personalVault();
+    return t ? cachedVaultSettings(foldersKey(t)) : undefined;
+  }
+
+  /** The personal vault's settings now, through the loader's cache. */
+  async function personalSettingsNow(): Promise<ResolvedVaultSettings | undefined> {
+    const t = personalVault();
+    if (!t) return undefined;
+    try {
+      return await loadVaultSettings(t.provider, t.resourceId, foldersKey(t));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The vault moved, was repointed or picked, the pairing changed or the
+   *  account signed out (CTO L6): every vault's settings are read again, and
+   *  the one on screen shows none until they are. */
+  function forgetVaultSettings(): void {
+    clearVaultTodayCache();
+    privacyCache = undefined;
+    if (get().vaultSettings) set({ vaultSettings: undefined });
+  }
+
+  /** The seat a source answers from, as the composer and a switch size it
+   *  (CTO J2, J4), judged by `packSeatFor` so the pill, the pack and the
+   *  excerpt never disagree. Fails closed: a seat that cannot be judged
+   *  leaves the network. A Stack is as private as its least private seat and
+   *  as roomy as its smallest, since any of them may answer. */
+  function composerSeatFor(
+    source: ConversationSource | undefined,
+    opts: { anchorOnly?: boolean } = {},
+  ): ComposerSeat {
+    const s = get().settings;
+    const closed: ComposerSeat = { servedTokens: 8192, device: false, leavesNetwork: true };
+    const device: ComposerSeat = {
+      servedTokens: DEVICE_CONTEXT_TOKENS,
+      device: true,
+      leavesNetwork: false,
+    };
+    const ctx = seatContext();
+    const judge = (ref: StackModelRef): ComposerSeat => {
+      try {
+        const seat = packSeatFor(ref, ctx);
+        if (!seat) return ref.kind === 'device' ? device : closed;
+        return {
+          servedTokens: seat.servedTokens,
+          device: ref.kind === 'device',
+          leavesNetwork: seat.leavesNetwork,
+        };
+      } catch {
+        return ref.kind === 'device' ? device : closed;
+      }
+    };
+    switch (source?.kind) {
+      case 'device':
+        return judge({ kind: 'device', modelId: source.modelId, modelName: source.modelName });
+      case 'cloud':
+        return judge({
+          kind: 'cloud',
+          provider: source.provider,
+          model: source.model,
+          label: source.model,
+        });
+      case 'desktop-chat':
+        // The daemon pins /chat to a local orchestrator (J2); its window is
+        // the computer's, which the app cannot see, so size it modestly.
+        return { servedTokens: 8192, device: false, leavesNetwork: false };
+      case 'stack': {
+        const profile = effectiveProfile(autoProfile(get().connectivity), s.profileOverride);
+        const stack = stackForProfile(s.stacks, profile);
+        // A switch seeds the history the reasoning anchor reads (a pocket
+        // specialist fits its own turns), so it sizes by the anchor alone.
+        const members = opts.anchorOnly ? [] : stack.active.map((a) => a.ref);
+        const refs = [stack.reasoning, ...members].filter((r): r is StackModelRef => Boolean(r));
+        if (!refs.length) return closed;
+        const seats = refs.map(judge);
+        return {
+          servedTokens: Math.min(...seats.map((x) => x.servedTokens)),
+          device: seats.every((x) => x.device),
+          leavesNetwork: seats.some((x) => x.leavesNetwork),
+        };
+      }
+      default:
+        // The computer's agent picks its own seat; the phone cannot judge it.
+        return closed;
+    }
+  }
+
+  /** Where this device's vault privacy rules come from (J3): the desktop's
+   *  own machine config through the bridge; on a paired phone the computer
+   *  (the hub link's `GET /vault/privacy`, its last answer kept sealed per
+   *  hub); on an unpaired phone the device setting alone. The device setting
+   *  only ever narrows. */
+  function privacyDeps(): Parameters<typeof appVaultPrivacy>[0] {
+    const st = get().settings;
+    const device = st.vaultPrivacy ? { device: st.vaultPrivacy } : {};
+    const b = isDesktop() ? bridge() : undefined;
+    if (b?.vaultPrivacy && !st.preferRemoteHub) {
+      return { bridge: { vaultPrivacy: () => b.vaultPrivacy() }, ...device };
+    }
+    const daemon = st.daemon;
+    if (daemon?.token) {
+      const link = hubVaultLink();
+      const hub =
+        link && link.target.owner?.startsWith(`${daemon.baseUrl.replace(/\/+$/, '')}#`)
+          ? { fetchPrivacy: () => link.fetchPrivacy() }
+          : hubPrivacySource({ baseUrl: daemon.baseUrl, token: daemon.token });
+      return { hub, cache: hubPrivacyCache(daemon.baseUrl), ...device };
+    }
+    return device;
+  }
+
+  /** The D5 defaults with the device's own narrowing: the rules when no
+   *  source answers (fail closed, never no rules). */
+  function fallbackPrivacy(): VaultPrivacy {
+    return compileVaultPrivacy(
+      {
+        exclude: [...VAULT_PRIVACY_DEFAULTS.exclude],
+        localOnly: {
+          paths: [...VAULT_PRIVACY_DEFAULTS.localOnly.paths],
+          tags: [...VAULT_PRIVACY_DEFAULTS.localOnly.tags],
+        },
+      },
+      // The vault's own file narrows too (L4): its last read, kept.
+      unionNarrowing(get().settings.vaultPrivacy, personalSettings()?.narrowing),
+    );
+  }
+
+  /** How long a privacy source may take before the kept or default rules
+   *  stand in, so a computer that does not answer never holds a send. */
+  const PRIVACY_WAIT_MS = 2000;
+
+  /** This device's vault privacy judge (J3), cached briefly. Fail closed:
+   *  while it loads, or when it cannot, the D5 defaults with the device's
+   *  own narrowing apply, never no rules. */
+  let privacyCache: { at: number; stamp: string; privacy: VaultPrivacy } | undefined;
+  async function vaultPrivacyNow(): Promise<VaultPrivacy> {
+    // The vault's own file's version is part of the key (CTO L6): a new
+    // narrowing compiles the rules again.
+    const stamp = vaultNarrowingStamp(personalSettings());
+    if (privacyCache && privacyCache.stamp === stamp && Date.now() - privacyCache.at < 60_000) {
+      return privacyCache.privacy;
+    }
+    let privacy: VaultPrivacy;
+    let settings: ResolvedVaultSettings | undefined;
+    try {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      privacy = await Promise.race([
+        (async () => {
+          settings = await personalSettingsNow();
+          return appVaultPrivacy({
+            ...privacyDeps(),
+            ...(settings ? { vault: settings.narrowing } : {}),
+          });
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('slow')), PRIVACY_WAIT_MS);
+        }),
+      ]).finally(() => clearTimeout(timer));
+    } catch {
+      return fallbackPrivacy();
+    }
+    privacyCache = { at: Date.now(), stamp: vaultNarrowingStamp(settings), privacy };
+    return privacy;
+  }
+
+  /** What is known about the personal vault's notes: the warm index when it
+   *  is the personal vault's, else a listing. Undefined when neither reads. */
+  async function personalNoteFacts(): Promise<VaultNoteFacts[] | undefined> {
+    const t = personalVault();
+    if (!t) return undefined;
+    const host = currentVaultIndex();
+    if (host && host.target.providerId === t.providerId && host.index.size > 0) {
+      return host.index.entries().map((e) => ({
+        path: e.path,
+        title: e.title,
+        updatedAt: e.updatedAt,
+        tags: e.tags,
+        ...(e.oscode ? { oscode: e.oscode } : {}),
+      }));
+    }
+    try {
+      return (await listVaultNotes(t)).map((f) => ({
+        path: f.path,
+        title: noteTitle(f.path),
+        updatedAt: f.updatedAt,
+      }));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Point every project's pins at a note's new path (a rename). */
+  async function rewriteVaultPins(from: string, to: string): Promise<void> {
+    const projects = get().settings.projects ?? [];
+    if (!projects.some((p) => p.vaultPins?.includes(from))) return;
+    await get().saveSettings({
+      projects: projects.map((p) =>
+        p.vaultPins?.includes(from)
+          ? { ...p, vaultPins: [...new Set(p.vaultPins.map((x) => (x === from ? to : x)))] }
+          : p,
+      ),
+    });
+  }
+
+  /** A chat of four or more turns that is left writes the project's handoff
+   *  (J13), once per state of the chat. Memory off writes none. */
+  const handoffWrittenAt = new Map<string, string>();
+  function writeLeftHandoff(id: string): void {
+    const conv = get().conversations[id];
+    if (!conv?.projectId || conv.thread.busy || conv.source.kind === 'mock') return;
+    if (memoryOverride(get().settings) === false) return;
+    if (handoffWrittenAt.get(id) === conv.updatedAt) return;
+    if (spokenTurns(conv.thread.items) < HANDOFF_MIN_TURNS) return;
+    const model = conv.thread.model?.name ?? sourceLabel(conv.source);
+    let text: string;
+    let turns: number;
+    try {
+      ({ text, turns } = wholeHandoff(conv.thread.items, { from: model, date: localDate() }));
+    } catch {
+      return;
+    }
+    handoffWrittenAt.set(id, conv.updatedAt);
+    void writeHandoff(handoffStorage, conv.projectId, {
+      text,
+      at: new Date().toISOString(),
+      model,
+      turns,
+      conversationId: id,
+    }).catch(() => {});
+  }
+  api.subscribe((state, prev) => {
+    if (prev.activeId && prev.activeId !== state.activeId) writeLeftHandoff(prev.activeId);
+  });
+
+  /** Whether any stashed or held text belongs to the vault on `providerId`. */
+  async function vaultTextWaiting(providerId: StorageProviderId): Promise<boolean> {
+    const mine = (e: { providerId: string; resourceId: string }) =>
+      e.providerId === providerId && e.resourceId === VAULT_RESOURCE_ID;
+    if (get().vaultHeld.some(mine)) return true;
+    return editVaultPending((p) => Object.values(p).some(mine)).catch(() => true);
+  }
+
+  /** The personal resource row with a new provider, keeping the rest. */
+  function withVaultProvider(
+    providerId: StorageProviderId,
+    chosenAt: string | undefined,
+  ): GitosResource[] {
+    const current = get().settings.gitosResources ?? [];
+    const row = (r: GitosResource): GitosResource => {
+      const { chosenAt: _old, ...rest } = r;
+      return { ...rest, providerId, ...(chosenAt ? { chosenAt } : {}) };
+    };
+    return current.some((r) => r.id === VAULT_RESOURCE_ID)
+      ? current.map((r) => (r.id === VAULT_RESOURCE_ID ? row(r) : r))
+      : [
+          ...current,
+          {
+            id: VAULT_RESOURCE_ID,
+            name: 'Vault',
+            kind: 'vault' as const,
+            providerId,
+            createdAt: new Date().toISOString(),
+            ...(chosenAt ? { chosenAt } : {}),
+          },
+        ];
+  }
+
+  /** The vault on screen now points somewhere else: its warm index, list and
+   *  open note belonged to the old home (J1 closes the index here, on a
+   *  storage change or a pairing change, never on leaving the room). */
+  async function afterVaultRepoint(): Promise<void> {
+    await shutVaultIndex().catch(() => {});
+    forgetVaultSettings();
+    if (get().vaultScope === 'personal') {
+      if (get().vaultNote) {
+        await leaveVaultConflict();
+        vaultLiveDraft = undefined;
+      }
+      set({ vaultNote: undefined, vaultListed: false, vaultFiles: [] });
+    }
+    set({ vaultTrash: undefined, vaultFolders: undefined });
+    // Recent belonged to the old home (K9).
+    const rings = get().settings.vaultRecent;
+    if (rings && Object.keys(rings).some((k) => k.endsWith(`::${VAULT_RESOURCE_ID}`))) {
+      const kept = Object.fromEntries(
+        Object.entries(rings).filter(([k]) => !k.endsWith(`::${VAULT_RESOURCE_ID}`)),
+      );
+      await get()
+        .saveSettings({ vaultRecent: Object.keys(kept).length ? kept : undefined })
+        .catch(() => {});
+    }
+  }
+
+  /** The J9 rule after a pairing (D2): an empty vault on This device by
+   *  default points at the computer with one toast; one with notes gets the
+   *  one-time move card; a storage the person chose is never repointed. The
+   *  phone's rule: a desktop keeps its own folder. */
+  async function hubPairingStep(): Promise<HubPairPlan> {
+    const s = get();
+    const hub = s.settings.daemon?.baseUrl;
+    if (!hub || isDesktop()) return 'stay';
+    const resource = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+    const hubReady = Boolean(providerFor('hub')) && (await probeReady('hub').catch(() => false));
+    // Not ready yet (the link lands a beat after the pairing): nothing moves
+    // now, and the link's arrival runs this again (syncHubLink).
+    if (!hubReady) {
+      pairingWaitsForLink = true;
+      return 'stay';
+    }
+    pairingWaitsForLink = false;
+    let notes: number | undefined;
+    if ((resource?.providerId ?? 'local') === 'local' && !resource?.chosenAt) {
+      const local = providerFor('local');
+      notes = local
+        ? await listVaultNotes({
+            provider: local,
+            providerId: 'local',
+            resourceId: VAULT_RESOURCE_ID,
+          })
+            .then((f) => f.length)
+            .catch(() => undefined)
+        : undefined;
+    }
+    const waiting = notes === 0 ? await vaultTextWaiting('local') : false;
+    const offer = s.settings.vaultHubOffer;
+    const plan = hubPairPlan(resource, notes, {
+      waiting,
+      declined: offer?.hub === hub && offer.state === 'declined',
+    });
+    if (plan === 'repoint') {
+      const before: VaultBeforeHub = {
+        providerId: resource?.providerId ?? 'local',
+        ...(resource?.chosenAt ? { chosenAt: resource.chosenAt } : {}),
+        hub,
+      };
+      await get().saveSettings({
+        gitosResources: withVaultProvider('hub', undefined),
+        vaultBeforeHub: before,
+        vaultHubOffer: undefined,
+      });
+      await afterVaultRepoint();
+      logEvent('vault_repointed_hub');
+      get().showToast(HUB_REPOINT_TOAST);
+      if (get().view === 'vault') void get().vaultRefresh();
+    } else if (plan === 'offer-move') {
+      if (offer?.hub !== hub || offer.state !== 'offered') {
+        await get().saveSettings({ vaultHubOffer: { hub, state: 'offered' } });
+      }
+    }
+    return plan;
+  }
+
+  /** Unpairing, or pairing another computer: a vault that points at a hub
+   *  that is no longer the paired one returns to where it was before, and
+   *  nothing moves back (J9). */
+  async function hubUnpairStep(): Promise<void> {
+    const s = get().settings;
+    const before = s.vaultBeforeHub;
+    const offer = s.vaultHubOffer;
+    const paired = s.daemon?.baseUrl;
+    if (offer && offer.hub !== paired) await get().saveSettings({ vaultHubOffer: undefined });
+    if (vaultProviderId(get().settings) !== 'hub') {
+      if (before && before.hub !== paired) await get().saveSettings({ vaultBeforeHub: undefined });
+      return;
+    }
+    if (before && before.hub === paired) return;
+    const row = get().settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+    const back = hubUnpairTarget(row, before?.providerId) ?? 'local';
+    await get().saveSettings({
+      gitosResources: withVaultProvider(back, before?.chosenAt),
+      vaultBeforeHub: undefined,
+    });
+    await afterVaultRepoint();
+    logEvent('vault_unpaired_hub');
+    get().showToast(HUB_UNPAIR_TOAST);
+    if (get().view === 'vault') void get().vaultRefresh();
+  }
+
+  /** The pairing the hub vault is linked to now (base URL and credential),
+   *  so a relink happens only when the pairing changes. */
+  let hubLinkKey: string | undefined;
+  /** A pairing found the hub vault not linked yet; the link's arrival runs
+   *  the pairing rule once (CTO J9). */
+  let pairingWaitsForLink = false;
+
+  /** Point the hub vault at the paired computer, or at none (CTO J9). Called
+   *  whenever `settings.daemon` changes, on load, and on sign-out. A pairing
+   *  change (another computer, another credential, or none) closes every
+   *  index, the warm one too (J1), and forgets what the old link kept on this
+   *  device. Resolves true when the link changed. */
+  async function syncHubLink(
+    daemon: DaemonTarget | undefined,
+    opts: { forget?: boolean; initial?: boolean } = {},
+  ): Promise<boolean> {
+    const key = daemon?.token ? `${daemon.baseUrl}\n${daemon.token}` : undefined;
+    if (key === hubLinkKey && !opts.forget) return false;
+    hubLinkKey = key;
+    const prev = hubVaultLink();
+    // The first link at launch changes nothing that is open; every later
+    // change (a pairing, another computer, an unpairing) does.
+    if (!opts.initial) {
+      await prev?.forget().catch(() => {});
+      await shutVaultIndex().catch(() => {});
+      forgetVaultSettings();
+      forgetVaultContext();
+    }
+    if (!daemon || !key) {
+      setHubVaultLink(undefined);
+      return true;
+    }
+    let hubUserId: string;
+    try {
+      hubUserId = await hubPersonKey(daemon.token);
+    } catch {
+      setHubVaultLink(undefined);
+      return true;
+    }
+    // A newer pairing landed while this one was hashed: it links itself.
+    if (hubLinkKey !== key) return false;
+    const baseUrl = daemon.baseUrl;
+    setHubVaultLink({
+      baseUrl,
+      hubUserId,
+      token: async () => {
+        const now = get().settings.daemon;
+        return now?.baseUrl === baseUrl ? now.token : undefined;
+      },
+    });
+    if (pairingWaitsForLink) {
+      pairingWaitsForLink = false;
+      void get().vaultAfterPairing();
+    }
+    return true;
+  }
+
+  /** Unpair first, then pair: one pass per hub change, never throwing. */
+  async function settleVaultForHub(): Promise<void> {
+    try {
+      await hubUnpairStep();
+      await hubPairingStep();
+    } catch {
+      // A vault that cannot be settled now stays where it is.
+    }
+  }
+
+  async function putVaultNote(
+    t: { provider: StorageProvider; resourceId: string; providerId?: StorageProviderId },
     path: string,
     text: string,
     guard: WriteGuard,
   ): Promise<WriteResult> {
-    return t.provider.write(t.resourceId, path, text, guard);
+    const r = await t.provider.write(t.resourceId, path, text, guard);
+    if (r.ok && t.providerId) {
+      patchVaultFiles({ providerId: t.providerId, resourceId: t.resourceId }, { saved: r.file });
+    }
+    return r;
+  }
+
+  // After a write or a remove, the file list of the vault on screen is
+  // patched from the result instead of re-listed (Vault M2 2.1): one round
+  // trip fewer on every save, and a list a slow provider has not caught up
+  // with never hides the note just written. The body cache takes the text
+  // under its new version. This device's own write names no editor (G6).
+  function patchVaultFiles(
+    t: VaultTargetRef,
+    change: { saved: StoredFile } | { removed: string },
+  ): void {
+    const key = vaultKey(t, 'saved' in change ? change.saved.path : change.removed);
+    if ('saved' in change) {
+      vaultBodyCache.set(key, { version: versionOf(change.saved), text: change.saved.text });
+    } else {
+      vaultBodyCache.delete(key);
+    }
+    if (!isActiveVault(t)) return;
+    // The index takes the text already in hand, so nothing is read (M3 3.2).
+    const index = vaultIndexOf(t);
+    if ('removed' in change) index?.applyRemove(change.removed);
+    else if (isNotePath(change.saved.path)) index?.applyWrite(change.saved);
+    const files = get().vaultFiles;
+    if ('removed' in change) {
+      if (files.some((f) => f.path === change.removed)) {
+        set({ vaultFiles: files.filter((f) => f.path !== change.removed) });
+      }
+      return;
+    }
+    const f = change.saved;
+    if (!isNotePath(f.path)) return;
+    const meta: StoredFileMeta = {
+      path: f.path,
+      updatedAt: f.updatedAt,
+      size: new TextEncoder().encode(f.text).length,
+      ...(f.version !== undefined ? { version: f.version } : {}),
+    };
+    const at = files.findIndex((x) => x.path === f.path);
+    set({
+      vaultFiles:
+        at === -1
+          ? [...files, meta].sort((a, b) => a.path.localeCompare(b.path))
+          : files.map((x, i) => (i === at ? meta : x)),
+    });
   }
   // The guard for text typed against a version: replace only that version,
   // or, when the storage never held the note, create it only while nothing
@@ -4067,6 +5423,267 @@ export const useApp = create<AppState>((set, get, api) => {
       r.conflict === 'downloading'
         ? 'Still downloading this note from your vault storage.'
         : 'The note changed while it was being saved.',
+    );
+  }
+
+  // ---- Vault M6: the operations' call sites (state/vaultOps.ts) ------------
+  // The store builds one VaultOpsDeps per operation, fixed to the vault the
+  // operation started on (the 0.7 rule), and vaultOps does the work. Every
+  // write goes through putVaultNote; every rename, restore or folder result
+  // is adopted by the path the storage answered with, never the one asked for
+  // (the desktop matches parents to their spelling on disk).
+
+  /** The Vault screen's autosave while the room is mounted. */
+  let vaultAutosaveHandle: VaultAutosave<VaultTargetRef> | undefined;
+
+  const refOf = (t: VaultTargetRef): VaultTargetRef =>
+    t.owner
+      ? { providerId: t.providerId, resourceId: t.resourceId, owner: t.owner }
+      : { providerId: t.providerId, resourceId: t.resourceId };
+
+  /** What the Vault may offer on a storage now (CTO K1). Read-only covers a
+   *  lease held elsewhere, Drive, an expired team sign-in, a move in flight
+   *  and a folder that is gone; Your computer's reach counts only for it. */
+  function capsOf(t: VaultTarget): VaultCaps {
+    const st = get();
+    const active = isActiveVault(t);
+    const readOnly =
+      Boolean(vaultReadOnlyReason(t.providerId)) ||
+      (active &&
+        (Boolean(st.vaultLeaseHeldByOther) ||
+          Boolean(st.vaultMoving) ||
+          (t.providerId === 'org' && Boolean(st.vaultTeamExpired)) ||
+          (t.providerId === 'files' && st.vaultFolder?.exists === false)));
+    // The vault's Delete choice (L11): For good turns Trash off here.
+    const settings = cachedVaultSettings(foldersKey(t));
+    return vaultCaps(
+      t.provider,
+      {
+        readOnly,
+        ...(t.providerId === 'hub' ? { reach: hubReach() } : {}),
+      },
+      settings ? { delete: settings.delete } : undefined,
+    );
+  }
+
+  /** A note's text in one vault, through the body cache. */
+  async function readBodyOf(t: VaultTarget, path: string): Promise<string | undefined> {
+    const key = vaultKey(t, path);
+    const listed = isActiveVault(t) ? get().vaultFiles.find((f) => f.path === path) : undefined;
+    const cached = vaultBodyCache.get(key);
+    if (cached && listed && cached.version === versionOf(listed)) return cached.text;
+    const note = await t.provider.read(t.resourceId, path);
+    if (!note) return undefined;
+    vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
+    return note.text;
+  }
+
+  /** Write the open note's pending text now and wait for it, with the
+   *  debounce timer cancelled, so nothing typed lands after the operation
+   *  (a stale save recreating a trashed note). */
+  async function flushOpenSave(t: VaultTargetRef): Promise<void> {
+    const pending = vaultAutosaveHandle?.take();
+    if (pending) await get().vaultSave(pending.path, pending.text, pending.at);
+    if (!isActiveVault(t)) return;
+    const open = get().vaultNote;
+    const chain = open ? vaultSaveChains.get(vaultKey(t, open.path)) : undefined;
+    if (chain) await chain;
+  }
+
+  /** The note on screen as an operation sees it. */
+  function openNoteOf(t: VaultTargetRef): VaultOpsOpenNote | undefined {
+    if (!isActiveVault(t)) return undefined;
+    const open = get().vaultNote;
+    if (!open) return undefined;
+    return {
+      path: open.path,
+      version: vaultBaseOf(t, open.path) ?? '',
+      dirty:
+        Boolean(vaultAutosaveHandle?.isPending()) || vaultSaveChains.has(vaultKey(t, open.path)),
+      choiceOpen: get().vaultConflict?.path === open.path,
+    };
+  }
+
+  /** A rename landed: the list, the body cache and the index move with it,
+   *  at the path and version the storage answered with. */
+  function patchVaultRename(t: VaultTargetRef, from: string, to: StoredFileMeta): void {
+    const oldKey = vaultKey(t, from);
+    const cached = vaultBodyCache.get(oldKey);
+    vaultBodyCache.delete(oldKey);
+    if (cached && to.version) {
+      vaultBodyCache.set(vaultKey(t, to.path), { version: to.version, text: cached.text });
+    }
+    if (!isActiveVault(t)) return;
+    vaultIndexOf(t)?.applyRename(from, to);
+    if (!isNotePath(to.path)) return;
+    const files = get().vaultFiles.filter((f) => f.path !== from && f.path !== to.path);
+    const meta: StoredFileMeta = {
+      path: to.path,
+      updatedAt: to.updatedAt,
+      size: to.size || (cached ? new TextEncoder().encode(cached.text).length : 0),
+      ...(to.version ? { version: to.version } : {}),
+    };
+    set({ vaultFiles: [...files, meta].sort((a, b) => a.path.localeCompare(b.path)) });
+  }
+
+  /** Everything this device keys by a note's path follows a rename: project
+   *  pins, the stash, and the open note (at the version the storage gave). */
+  async function rekeyVaultPath(t: VaultTargetRef, from: string, to: string): Promise<void> {
+    await rewriteVaultPins(from, to).catch(() => {});
+    await editVaultRecent(t, (ring) => renameVaultRecent(ring, from, to)).catch(() => {});
+    await editVaultPending((p) => {
+      const e = p[vaultKey(t, from)];
+      if (!e) return;
+      delete p[vaultKey(t, from)];
+      p[vaultKey(t, to)] = { ...e, path: to };
+    }).catch(() => {});
+    if (!isActiveVault(t)) return;
+    const open = get().vaultNote;
+    if (open?.path === from) {
+      const listed = get().vaultFiles.find((f) => f.path === to);
+      if (vaultLiveDraft?.path === from) vaultLiveDraft = { ...vaultLiveDraft, path: to };
+      set({
+        vaultNote: {
+          ...open,
+          path: to,
+          ...(listed?.version ? { version: listed.version } : {}),
+          ...(listed ? { updatedAt: listed.updatedAt } : {}),
+        },
+      });
+    }
+  }
+
+  /** The one VaultOpsDeps for an operation on vault `t`. */
+  function opsDeps(t: VaultTarget): VaultOpsDeps {
+    return {
+      target: refOf(t),
+      provider: t.provider,
+      index: () => vaultIndexOf(t),
+      putVaultNote: async (path, text, guard) => {
+        const r = await putVaultNote(t, path, text, guard);
+        // The open note written by an operation (a link rewrite, a tick)
+        // shows the text and version that landed.
+        if (r.ok && isActiveVault(t) && get().vaultNote?.path === r.file.path) {
+          reloadOpenNote(r.file, 'resolve');
+        }
+        return r;
+      },
+      readBody: (path) => readBodyOf(t, path),
+      patch: {
+        saved: (file) => patchVaultFiles(t, { saved: file }),
+        removed: (path) => patchVaultFiles(t, { removed: path }),
+        renamed: (from, to) => patchVaultRename(t, from, to),
+      },
+      rekey: (from, to) => rekeyVaultPath(t, from, to),
+      flushOpenSave: () => flushOpenSave(t),
+      openNote: () => openNoteOf(t),
+    };
+  }
+
+  /** A note this device deleted is gone from everything it keyed here: its
+   *  stash (so no replay resurrects it) and the editor. */
+  async function afterNoteGone(t: VaultTargetRef, path: string): Promise<void> {
+    await editVaultPending((p) => {
+      delete p[vaultKey(t, path)];
+    }).catch(() => {});
+    await editVaultRecent(t, (ring) => dropVaultRecent(ring, path)).catch(() => {});
+    if (!isActiveVault(t)) return;
+    if (get().vaultNote?.path === path) {
+      vaultLiveDraft = undefined;
+      set({ vaultNote: undefined, vaultReturnFolder: noteFolder(path) });
+    }
+  }
+
+  /** List the vault on screen again after an operation that moved more than
+   *  it could patch (a restored folder), and let the index reconcile. */
+  async function relistActive(t: VaultTarget): Promise<void> {
+    if (!isActiveVault(t)) return;
+    const listing = await listVaultNotes(t).catch(() => undefined);
+    if (!listing || !isActiveVault(t)) return;
+    set({ vaultFiles: listing });
+    void vaultIndexOf(t)?.reconcile(listing);
+  }
+
+  /** Trash of the vault on screen, for the tree's row (a storage with a real
+   *  Trash only). A failed read leaves the last one. */
+  async function refreshVaultTrash(t: VaultTarget): Promise<TrashEntry[] | undefined> {
+    if (!capsOf(t).trash) {
+      if (isActiveVault(t)) set({ vaultTrash: undefined });
+      return undefined;
+    }
+    const r = await opsListTrash(opsDeps(t));
+    if (!r.ok) return undefined;
+    if (isActiveVault(t)) set({ vaultTrash: r.entries });
+    return r.entries;
+  }
+
+  /** The key a vault's remembered empty folders sit under. */
+  const foldersKey = (t: VaultTargetRef) => `${t.providerId}::${t.resourceId}`;
+
+  /** Rewrite one vault's remembered empty folders. */
+  async function editEmptyFolders(
+    t: VaultTargetRef,
+    edit: (list: string[]) => string[],
+  ): Promise<void> {
+    const all = get().settings.vaultEmptyFolders ?? {};
+    const before = all[foldersKey(t)] ?? [];
+    const after = [...new Set(edit(before))].sort();
+    if (JSON.stringify(after) === JSON.stringify(before)) return;
+    const next = { ...all };
+    if (after.length) next[foldersKey(t)] = after;
+    else delete next[foldersKey(t)];
+    await get().saveSettings({ vaultEmptyFolders: next });
+  }
+
+  /** Folders beyond what the notes imply: the storage's real ones (empty
+   *  ones too) and this device's remembered ones, a remembered folder
+   *  forgotten once a note lands in it (K5). */
+  async function refreshVaultFolders(t: VaultTarget): Promise<void> {
+    let real: string[] = [];
+    if (t.provider.listFolders) {
+      real = await t.provider.listFolders(t.resourceId).catch(() => []);
+    }
+    const notes = isActiveVault(t) ? get().vaultFiles.map((f) => foldPath(f.path)) : [];
+    const holds = (folder: string) => notes.some((p) => p.startsWith(`${foldPath(folder)}/`));
+    await editEmptyFolders(t, (list) => list.filter((f) => !holds(f))).catch(() => {});
+    const kept = get().settings.vaultEmptyFolders?.[foldersKey(t)] ?? [];
+    if (isActiveVault(t)) set({ vaultFolders: [...new Set([...real, ...kept])].sort() });
+  }
+
+  /** A folder moved or went to Trash: its remembered empty folders follow. */
+  async function moveEmptyFolders(t: VaultTarget, from: string, to?: string): Promise<void> {
+    const f = foldPath(from);
+    await editEmptyFolders(t, (list) =>
+      list.flatMap((p) => {
+        const fp = foldPath(p);
+        if (fp !== f && !fp.startsWith(`${f}/`)) return [p];
+        return to === undefined ? [] : [`${to}${p.slice(from.length)}`];
+      }),
+    ).catch(() => {});
+  }
+
+  /** Edit one vault's Recent ring (6.1, K9). */
+  async function editVaultRecent(
+    t: VaultTargetRef,
+    edit: (ring: VaultRecentEntry[]) => VaultRecentEntry[],
+  ): Promise<void> {
+    const all = get().settings.vaultRecent ?? {};
+    const key = foldersKey(t);
+    const before = all[key] ?? [];
+    const after = edit(before);
+    if (JSON.stringify(after) === JSON.stringify(before)) return;
+    const next = { ...all };
+    if (after.length) next[key] = after;
+    else delete next[key];
+    await get().saveSettings({ vaultRecent: next });
+  }
+  /** A note opened or saved here goes to the top of Recent; a save of the
+   *  note already on top writes nothing. */
+  function noteVaultRecent(t: VaultTargetRef, path: string): void {
+    const ring = get().settings.vaultRecent?.[foldersKey(t)] ?? [];
+    if (ring[0]?.path === path) return;
+    void editVaultRecent(t, (r) => pushVaultRecent(r, path, new Date().toISOString())).catch(
+      () => {},
     );
   }
 
@@ -4110,26 +5727,26 @@ export const useApp = create<AppState>((set, get, api) => {
       // so it comes back under its name, still never over anything.
       if (!r.ok && r.conflict === 'missing')
         r = await putVaultNote(t, e.path, e.text, guardFor(undefined));
-      if (r.ok) return undefined;
+      if (r.ok) {
+        adoptReplayed(t, e, r.file);
+        return undefined;
+      }
       if (r.conflict === 'downloading') mustLand(r);
       current = r.theirs;
     } else {
       const now = await t.provider.stat(t.resourceId, e.path);
-      let unchanged = e.base !== undefined && now?.updatedAt === e.base && !now.evicted;
+      let unchanged = e.base !== undefined && now !== undefined && versionOf(now) === e.base;
+      if (now?.evicted) unchanged = false;
       if (unchanged && t.providerId === 'org') {
-        // The team server compares revs, not times. Send the rev this text was
-        // typed against: after a relaunch the provider has forgotten it, and
-        // base 0 would set the unchanged note aside as a conflict copy. A draft
-        // stashed without one reads the note first, which teaches the provider
-        // its rev, and still writes only if it is the same version.
-        if (e.rev !== undefined) seedOrgVaultBaseRev(t.resourceId, e.path, e.rev);
-        else {
-          current = await t.provider.read(t.resourceId, e.path);
-          unchanged = current?.updatedAt === e.base;
-        }
+        // A team vault from before compare-and-swap compares revs it learns
+        // from a read, and after a relaunch it has forgotten them, so read the
+        // note first (which teaches it the rev) and still write only while it
+        // is the same version. The store keeps no rev of its own (CTO G3).
+        current = await t.provider.read(t.resourceId, e.path);
+        unchanged = current !== undefined && versionOf(current) === e.base;
       }
       if (!now || unchanged) {
-        mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base)));
+        adoptReplayed(t, e, mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base))));
         return undefined;
       }
       current ??= now.evicted ? undefined : await t.provider.read(t.resourceId, e.path);
@@ -4142,12 +5759,34 @@ export const useApp = create<AppState>((set, get, api) => {
     return copy;
   }
 
+  // A replayed draft that landed on the note open now is what that note last
+  // saved as: the open note takes its text and version, so the next keystroke
+  // saves against it instead of meeting this device's own replay as a change
+  // from elsewhere (a Retry from the save chip replays while a note is open).
+  function adoptReplayed(t: VaultTargetRef, e: VaultPendingEntry, saved: StoredFile): void {
+    const open = get().vaultNote;
+    if (!isActiveVault(t) || open?.path !== e.path) return;
+    set({
+      vaultNote: {
+        ...open,
+        text: saved.text,
+        updatedAt: saved.updatedAt,
+        version: saved.version,
+        fresh: undefined,
+        editedBy: undefined,
+      },
+    });
+  }
+
   // Replay the drafts stashed against this provider and resource, and for the
   // team vault only those typed under the account signed in now. A refused
   // one is held instead (retrying cannot fix it), a read-only vault holds
   // them all, and anything still failing stays for the next attempt. Never
   // throws: a replay is always a side trip after a success.
   async function replayVaultPending(t: VaultTarget): Promise<void> {
+    // While another device holds the enforced lease, nothing replays into
+    // its notes; the stash waits for the lease to come back (CTO G5).
+    if (leaseBlocks(t)) return;
     const folderNow = t.providerId === 'files' ? get().vaultFolder?.dir : undefined;
     if (folderNow) await holdOtherFolderDrafts(folderNow, false);
     let mine: VaultPendingEntry[];
@@ -4206,10 +5845,6 @@ export const useApp = create<AppState>((set, get, api) => {
       }).catch(() => {});
     }
     if (copies.length) {
-      if (isActiveVault(t)) {
-        const files = await listVaultNotes(t).catch(() => undefined);
-        if (files) set({ vaultFiles: files });
-      }
       get().showToast(vaultReplayCopiesLine(copies));
       logEvent('vault_draft_kept_both', { count: copies.length });
     }
@@ -4225,6 +5860,84 @@ export const useApp = create<AppState>((set, get, api) => {
           : `${lead} kept under Not saved.`,
       );
     }
+  }
+
+  // The lease (Vault M2 2.5, CTO G5; lib/vaultLease.ts). Held only while the
+  // person types: taken on the first keystroke after a quiet spell, renewed
+  // at most every VAULT_LEASE_RENEW_MS, expiring VAULT_LEASE_TTL_MS after the
+  // last renewal, released on leaving the note or the Vault. Advisory on a
+  // storage with compare-and-swap (only iCloud keeps a lease file), enforced
+  // only on one without it.
+  let leaseHeld: { key: string; provider: StorageProvider; resourceId: string } | undefined;
+  let leaseTried: { key: string; at: number } | undefined;
+  // The other device's holder id while it holds an enforced lease, so Take
+  // over editing can release it through the seam.
+  let leaseOtherHolder: string | undefined;
+  const leaseKeyOf = (t: VaultTargetRef) => `${t.providerId}::${t.resourceId}`;
+  const deviceHolder = () => get().settings.deviceId ?? 'dev_unknown';
+  function leaseModeOf(t: VaultTarget): VaultLeaseMode {
+    // A vault that takes no writes keeps no lease (a Drive vault, D1; team
+    // text of an account not signed in now).
+    const writable = !vaultReadOnlyReason(t.providerId) && speaksNow(t);
+    return vaultLeaseMode(t.provider, writable);
+  }
+  // Take or renew the lease on a vault, and record what it says: 'mine',
+  // 'other' (another device holds it live), or 'none' (this storage keeps no
+  // lease, or it did not answer, which never blocks editing).
+  async function takeVaultLease(t: VaultTarget): Promise<'mine' | 'other' | 'none'> {
+    const mode = leaseModeOf(t);
+    const key = leaseKeyOf(t);
+    if (mode === 'none') {
+      if (isActiveVault(t)) set({ vaultLeaseHeldByOther: false, vaultLeaseOther: undefined });
+      return 'none';
+    }
+    leaseTried = { key, at: Date.now() };
+    const me = deviceHolder();
+    const label = vaultDeviceKind(platform(), typeof navigator === 'undefined' ? {} : navigator);
+    let lease: Lease;
+    try {
+      lease = await t.provider.acquireLease(t.resourceId, me, VAULT_LEASE_TTL_MS, label);
+    } catch {
+      return 'none';
+    }
+    if (!isActiveVault(t)) return 'none';
+    const other = lease.holder !== me && new Date(lease.expiresAt).getTime() > Date.now();
+    if (!other) {
+      leaseHeld = { key, provider: t.provider, resourceId: t.resourceId };
+      leaseOtherHolder = undefined;
+      set({ vaultLeaseHeldByOther: false, vaultLeaseOther: undefined });
+      return 'mine';
+    }
+    // Another device holds it. On an enforced lease this device was editing
+    // until now (it held the lease), so it was displaced: it writes nothing
+    // more to the note, and what it types waits in its stash.
+    const displaced = mode === 'enforced' && leaseHeld?.key === key;
+    if (leaseHeld?.key === key) leaseHeld = undefined;
+    leaseOtherHolder = mode === 'enforced' ? lease.holder : undefined;
+    set({
+      vaultLeaseHeldByOther: mode === 'enforced',
+      vaultLeaseOther: { mode, ...(lease.label ? { label: lease.label } : {}) },
+    });
+    if (displaced) {
+      get().showToast(vaultLeaseEnforced(lease.label).displaced);
+      logEvent('vault_lease_displaced');
+    }
+    return 'other';
+  }
+  // Whether the enforced lease keeps this vault from writing now: another
+  // device holds it, as last seen. Only the vault on screen is tracked.
+  function leaseBlocks(t: VaultTargetRef): boolean {
+    return isActiveVault(t) && Boolean(get().vaultLeaseHeldByOther);
+  }
+  // Before a create or a delete on an enforced lease, ask again (taking it
+  // when free, since this device is about to write): true when refused, with
+  // the toast already shown.
+  async function leaseRefuses(t: VaultTarget): Promise<boolean> {
+    if (leaseModeOf(t) !== 'enforced') return false;
+    if ((await takeVaultLease(t)) !== 'other') return false;
+    get().showToast(vaultLeaseEnforced(get().vaultLeaseOther?.label).refused);
+    logEvent('vault_lease_refused');
+    return true;
   }
 
   // The version of a note an edit is typed against: the open note's provider
@@ -4247,6 +5960,8 @@ export const useApp = create<AppState>((set, get, api) => {
   // resolves to the version the note is at when it is done, as far as this
   // device knows, for the next link when the note has closed meanwhile.
   const vaultSaveChains = new Map<string, Promise<string | undefined>>();
+  // How many vaultSave calls are running, for the save chip (vaultSaving).
+  let vaultSavesInFlight = 0;
 
   // Run one step as the next link of a note's save chain, so it never sees
   // this device's own save half done (a re-check, a resolve choice).
@@ -4286,7 +6001,11 @@ export const useApp = create<AppState>((set, get, api) => {
   // Replace the open note's text in place, keeping it open: a calm reload of
   // a clean note, or a resolve choice that shows the other version. The
   // editor takes the new text when `reloaded` moves.
-  function reloadOpenNote(file: StoredFile, from: 'elsewhere' | 'resolve'): void {
+  function reloadOpenNote(
+    file: StoredFile,
+    from: 'elsewhere' | 'resolve',
+    editedBy?: { id: string; label?: string },
+  ): void {
     const open = get().vaultNote;
     if (!open || open.path !== file.path) return;
     vaultLiveDraft = { path: file.path, text: file.text };
@@ -4296,6 +6015,7 @@ export const useApp = create<AppState>((set, get, api) => {
         text: file.text,
         updatedAt: file.updatedAt,
         version: file.version,
+        editedBy,
         fresh: undefined,
         loadedAt: Date.now(),
         reloaded: (open.reloaded ?? 0) + 1,
@@ -4310,15 +6030,15 @@ export const useApp = create<AppState>((set, get, api) => {
   // an identical rewrite) or what the person already typed; reload a clean
   // draft in place; ask about a dirty one. While a choice is open, a newer
   // other version updates it in place.
-  async function recheckOpenNote(target: VaultTarget, path: string): Promise<void> {
+  async function recheckOpenNote(target: VaultTarget, path: string): Promise<VaultRecheckResult> {
     const open = get().vaultNote;
-    if (!open || open.path !== path || !isActiveVault(target)) return;
+    if (!open || open.path !== path || !isActiveVault(target)) return 'skipped';
     const base = vaultBaseOf(target, path);
     let meta: StoredFileMeta | undefined;
     try {
       meta = await target.provider.stat(target.resourceId, path);
     } catch {
-      return; // Not answering now; the next event or focus looks again.
+      return 'failed'; // Not answering now; the next event, focus, or poll looks again.
     }
     const conflict = get().vaultConflict;
     const pending = conflict?.path === path ? conflict : undefined;
@@ -4327,38 +6047,42 @@ export const useApp = create<AppState>((set, get, api) => {
         if (pending.kind !== 'missing') {
           set({ vaultConflict: { ...pending, kind: 'missing', theirs: undefined, again: true } });
         }
-        return;
+        return 'checked';
       }
       // A note this storage never held (an offline create) is not gone.
-      if (!base) return;
+      if (!base) return 'checked';
       const draft = draftOf(path) ?? open.text;
       if (draft === open.text) {
         vaultLiveDraft = undefined;
         set({ vaultNote: undefined, vaultReturnFolder: noteFolder(path) });
         const listing = await listVaultNotes(target).catch(() => undefined);
         if (listing && isActiveVault(target)) set({ vaultFiles: listing });
+        if (listing) void vaultIndexOf(target)?.reconcile(listing);
         get().showToast(vaultGoneToast(noteTitle(path)));
         logEvent('vault_note_gone', { dirty: false });
-        return;
+        return 'checked';
       }
       raiseVaultConflict(target, path, 'missing', undefined, base);
       await stashConflictText(target, path, draft, base);
-      return;
+      return 'checked';
     }
     const seen = pending?.theirs ? versionOf(pending.theirs) : base;
-    if (seen && versionOf(meta) === seen) return;
-    if (meta.evicted) return;
+    if (seen && versionOf(meta) === seen) return 'checked';
+    if (meta.evicted) return 'checked';
+    // Who saved this version, when the storage says (the team vault, G6).
+    const editedBy = meta.editedBy;
     let theirs: StoredFile | undefined;
     try {
       theirs = await target.provider.read(target.resourceId, path);
     } catch {
-      return;
+      return 'failed';
     }
-    if (!theirs || get().vaultNote?.path !== path) return;
+    if (theirs) vaultIndexOf(target)?.noteRead(theirs);
+    if (!theirs || get().vaultNote?.path !== path) return 'checked';
     if (pending) {
       // Still undecided: the sheet shows this newest version, and says so.
       set({ vaultConflict: { ...pending, kind: 'changed', theirs, again: true } });
-      return;
+      return 'checked';
     }
     const now = get().vaultNote!;
     const draft = draftOf(path) ?? now.text;
@@ -4371,17 +6095,66 @@ export const useApp = create<AppState>((set, get, api) => {
           text: theirs.text,
           updatedAt: theirs.updatedAt,
           version: theirs.version,
+          editedBy,
         },
       });
-      return;
+      return 'checked';
     }
     if (draft === now.text) {
-      reloadOpenNote(theirs, 'elsewhere');
+      reloadOpenNote(theirs, 'elsewhere', editedBy);
       logEvent('vault_note_reloaded');
-      return;
+      return 'checked';
     }
     raiseVaultConflict(target, path, 'changed', theirs, base);
     await stashConflictText(target, path, draft, base);
+    return 'checked';
+  }
+
+  // The team vault's live refresh (Vault M2 2.7, CTO G6; lib/vaultPoll.ts):
+  // one timer, and only while the team vault is on screen with a note open,
+  // the page is visible, and the device is online. Hidden, there is no
+  // timer at all; the screen starts it again, checking at once, on return.
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let pollActive = false;
+  let pollFailures = 0;
+  // 'run' checks now; 'wait' (offline) waits a normal round and looks again
+  // without a request; 'stop' ends the poll until the screen starts it.
+  function pollGate(): 'run' | 'wait' | 'stop' {
+    const st = get();
+    if (st.vaultScope !== 'team' || !st.vaultNote || st.vaultTeamExpired) return 'stop';
+    if (!st.teamVaultAvailable()) return 'stop';
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return 'stop';
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'wait';
+    return 'run';
+  }
+  function schedulePoll(delayMs: number): void {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(() => void pollTick(), delayMs);
+  }
+  function stopVaultPoll(): void {
+    pollActive = false;
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = undefined;
+  }
+  async function pollTick(): Promise<void> {
+    pollTimer = undefined;
+    const gate = pollGate();
+    if (gate === 'stop') {
+      stopVaultPoll();
+      return;
+    }
+    let result: VaultRecheckResult = 'skipped';
+    if (gate === 'run') {
+      try {
+        result = await get().vaultRecheck({ reason: 'poll' });
+      } catch {
+        result = 'failed';
+      }
+    }
+    // Back off on errors, 30 s up to 300 s; reset on a check that answered.
+    if (result === 'failed') pollFailures++;
+    else if (result === 'checked') pollFailures = 0;
+    if (pollActive && !pollTimer) schedulePoll(vaultPollDelayMs(pollFailures));
   }
 
   // Re-list the tree, coalesced, when the watcher saw a change it cannot
@@ -4420,7 +6193,7 @@ export const useApp = create<AppState>((set, get, api) => {
       copy = await writeConflictCopy(target, c.path, text, new Date(c.foundAt), c.copyPath);
     } catch (err) {
       // The stash still holds the text; the replay makes the same copy later.
-      await rescueVaultDraft(target, c.path, text, c.baseVersion, undefined, err);
+      await rescueVaultDraft(target, c.path, text, c.baseVersion, err);
       return;
     }
     if (!copy) {
@@ -4430,10 +6203,6 @@ export const useApp = create<AppState>((set, get, api) => {
       return;
     }
     await dropStash(c.target, c.path);
-    if (isActiveVault(target)) {
-      const listing = await listVaultNotes(target).catch(() => undefined);
-      if (listing) set({ vaultFiles: listing });
-    }
     get().showToast(vaultLeaveToast('edit', { title, copyTitle: noteTitle(copy) }));
   }
 
@@ -4451,11 +6220,9 @@ export const useApp = create<AppState>((set, get, api) => {
       get().showToast(`${readOnly} ${heldLine(landed)}`);
       return base;
     }
-    // The team server's rev for that same version, kept with a stash.
-    const rev = target.providerId === 'org' ? orgVaultBaseRev(target.resourceId, path) : undefined;
     // Team text is sent only under the account that typed it.
     if (!speaksNow(target)) {
-      await keepUnsentTeamText(target, path, text, base, rev);
+      await keepUnsentTeamText(target, path, text, base);
       return base;
     }
     let result: WriteResult;
@@ -4474,7 +6241,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!result.ok && result.conflict === 'downloading') mustLand(result);
     } catch (err) {
-      await rescueVaultDraft(target, path, text, base, rev, err);
+      await rescueVaultDraft(target, path, text, base, err);
       return base;
     }
     if (!result.ok) return settleSaveConflict(target, path, text, base, result);
@@ -4487,16 +6254,10 @@ export const useApp = create<AppState>((set, get, api) => {
     await editVaultPending((p) => {
       delete p[key];
     }).catch(() => {});
-    // Keep the body cache current so the next backlink pass does not re-read
-    // the note we just wrote.
-    vaultBodyCache.set(vaultKey(target, saved.path), {
-      updatedAt: saved.updatedAt,
-      text: saved.text,
-    });
+    // The list and the body cache were patched from the write's result
+    // (putVaultNote), so nothing is re-listed here.
     if (isActiveVault(target)) {
-      const listing = await listVaultNotes(target).catch(() => undefined);
       set({
-        vaultFiles: listing ?? get().vaultFiles,
         vaultNote:
           get().vaultNote?.path === path
             ? {
@@ -4506,6 +6267,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 updatedAt: saved.updatedAt,
                 version: saved.version,
                 fresh: undefined,
+                editedBy: undefined,
               }
             : get().vaultNote,
         vaultError: undefined,
@@ -4527,7 +6289,7 @@ export const useApp = create<AppState>((set, get, api) => {
     base: string | undefined,
   ): Promise<void> {
     await editVaultPending((p) => {
-      p[vaultKey(t, path)] = pendingEntry(t, path, text, base, undefined);
+      p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
     }).catch(() => {});
   }
   async function dropStash(t: VaultTargetRef, path: string): Promise<void> {
@@ -4599,6 +6361,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (isActiveVault(target) && !asking) {
       const listing = await listVaultNotes(target).catch(() => undefined);
       if (listing) set({ vaultFiles: listing });
+      if (listing) void vaultIndexOf(target)?.reconcile(listing);
     }
     get().showToast(vaultStaleDeleteToast('changed', title, reloaded));
   }
@@ -4655,10 +6418,6 @@ export const useApp = create<AppState>((set, get, api) => {
       get().showToast(`Not saved. ${heldLine(kept)}`);
       return versionOf(theirs);
     }
-    if (isActiveVault(target)) {
-      const listing = await listVaultNotes(target).catch(() => undefined);
-      if (listing) set({ vaultFiles: listing });
-    }
     get().showToast(vaultReplayCopiesLine([copy]));
     logEvent('vault_draft_kept_both', { count: 1 });
     return versionOf(theirs);
@@ -4711,13 +6470,30 @@ export const useApp = create<AppState>((set, get, api) => {
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
     // A fresh session always starts on the personal vault, with no team-vault
-    // state or base-rev cache carried over from a prior account on this device.
+    // state or provider cache carried over from a prior account on this device.
     // Unsent team text stays only for the account that typed it.
     resetOrgVault();
     forgetTeamBodies();
+    // The same person signing back in after an expiry that kept a team note
+    // open goes on with that note, now able to save (Vault M2 2.6).
+    const resume =
+      Boolean(get().vaultTeamExpired) &&
+      keptTeamOwner === session.user.id &&
+      get().vaultScope === 'team' &&
+      Boolean(get().vaultNote);
     keptTeamOwner = undefined;
     await settleTeamVaultDrafts(session.user.id);
-    set({ authSession: session, vaultScope: 'personal', vaultFiles: [], vaultNote: undefined });
+    if (resume) {
+      set({ authSession: session, vaultTeamExpired: undefined });
+    } else {
+      set({
+        authSession: session,
+        vaultScope: 'personal',
+        vaultFiles: [],
+        vaultNote: undefined,
+        vaultTeamExpired: undefined,
+      });
+    }
     const account = get().settings.account;
     if (account && session.user.email && account.selfEmail !== session.user.email) {
       await get().saveSettings({ account: { ...account, selfEmail: session.user.email } });
@@ -4731,6 +6507,9 @@ export const useApp = create<AppState>((set, get, api) => {
     await get().refreshOrgRole();
     void get().refreshEntitlement();
     void get().syncOrgProjects();
+    // Back on the team note: list the team vault again and replay what was
+    // kept for this account while it was signed out.
+    if (resume && get().vaultScope === 'team') void get().vaultRefresh();
     logEvent('auth_sign_in');
   }
 
@@ -4754,6 +6533,7 @@ export const useApp = create<AppState>((set, get, api) => {
     searchKeyConfigured: false,
     vaultFiles: [],
     vaultHeld: [],
+    vaultPending: [],
     vaultScope: 'personal',
     connectedRepoPlatforms: {},
     authConfigured: authConfigured(),
@@ -4996,6 +6776,10 @@ export const useApp = create<AppState>((set, get, api) => {
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       // And Chain of Thought (off on a fresh device).
       setChainOfThought(settings.chainOfThought === true);
+      // And prompt caching (off until the eval says otherwise, CTO J19).
+      setPromptCache(settings.promptCache === true);
+      // The hub vault links to the paired computer before anything lists it.
+      await syncHubLink(settings.daemon, { initial: true }).catch(() => false);
 
       // A stored session is a local, encrypted-at-rest read (no network round
       // trip), so it is cheap to check before deciding the first view: a
@@ -5544,6 +7328,7 @@ export const useApp = create<AppState>((set, get, api) => {
         const driver = await buildDriver(
           built,
           seedItems.length ? seedFromTranscript(seedItems) : undefined,
+          opts?.handoff ? { handoff: opts.handoff } : undefined,
         );
         attachDriver(id, driver);
       } catch (err) {
@@ -5566,6 +7351,42 @@ export const useApp = create<AppState>((set, get, api) => {
         source.kind === 'cloud' ||
         source.kind === 'device' ||
         source.kind === 'desktop-chat';
+      // The computer's agent takes no message history (CTO J12): a chat
+      // carried to it opens a new agent chat whose first task starts from the
+      // handoff, and a note there says what came along.
+      if (
+        source.kind === 'desktop' &&
+        activeId &&
+        conv &&
+        conv.source.kind !== 'desktop' &&
+        seedFromTranscript(conv.thread.items).length > 0
+      ) {
+        if (conv.thread.busy) {
+          get().showToast('Let the current reply finish, then switch.');
+          return;
+        }
+        let handoff: { text: string; turns: number } | undefined;
+        try {
+          handoff = wholeHandoff(conv.thread.items, {
+            from: conv.thread.model?.name ?? sourceLabel(conv.source),
+            date: localDate(),
+          });
+        } catch {
+          handoff = undefined;
+        }
+        const label = sourceLabel(source);
+        const note: ThreadItem = {
+          kind: 'note',
+          id: newId(),
+          text: handoff ? desktopHandoffNote(label, handoff.turns) : `Now using ${label}.`,
+        };
+        await get().newConversation(source, {
+          seedItems: [note],
+          repoIds: conv.repoIds,
+          ...(handoff ? { handoff: handoff.text } : {}),
+        });
+        return;
+      }
       if (!activeId || !conv || conv.thread.items.length === 0 || !seedable) {
         await get().newConversation(source);
         return;
@@ -5586,9 +7407,26 @@ export const useApp = create<AppState>((set, get, api) => {
       const lastUserAt = conv.thread.items.map((i) => i.kind).lastIndexOf('user');
       const resendItem =
         opts?.resend && lastUserAt >= 0 ? conv.thread.items[lastUserAt] : undefined;
-      const seed = seedFromTranscript(
-        resendItem ? conv.thread.items.slice(0, lastUserAt) : conv.thread.items,
-      );
+      const carried = resendItem ? conv.thread.items.slice(0, lastUserAt) : conv.thread.items;
+      // The handoff (CTO J12): the whole chat when it fits the new seat's
+      // window, else a summary of what drops plus the newest turns that fit.
+      // Conversation content, so it rides even with Memory off. A core that
+      // cannot build one leaves the switch as it was: the whole transcript.
+      const date = localDate();
+      const from = conv.thread.model?.name ?? sourceLabel(conv.source);
+      let plan: SwitchSeedPlan | undefined;
+      try {
+        plan = planSwitchSeed({
+          items: carried,
+          servedTokens: composerSeatFor(source, { anchorOnly: true }).servedTokens,
+          system: standingContext(conv),
+          from,
+          date,
+        });
+      } catch {
+        plan = undefined;
+      }
+      const seed = plan?.seed ?? seedFromTranscript(carried);
       // The spoken turns on screen when the switch began, so anything the walk
       // writes while the driver builds can be handed over after (below).
       const turnsAtStart = seedFromTranscript(conv.thread.items).length;
@@ -5641,17 +7479,53 @@ export const useApp = create<AppState>((set, get, api) => {
       // network brain, and when earlier images will not carry over. No request
       // fires until the next send, so these notes land before anything leaves.
       const crossedToNetwork = conv.source.kind === 'device' && source.kind !== 'device';
-      let text = `Now using ${sourceLabel(source)}.`;
+      let text = switchNoteText(sourceLabel(source), plan);
       if (crossedToNetwork) {
         text += " Your next message sends this chat's history to it for context.";
       }
       if (conv.hadVisionInput) {
         text += ' Images from earlier in this chat are not carried across the switch.';
       }
+      // The note carries a handoff for "Save to Vault": the seed's, or one of
+      // the whole chat. It is also the project's latest in the device store,
+      // read the next day (J13), unless Memory is off.
+      const project = conv.projectId
+        ? get().settings.projects?.find((p) => p.id === conv.projectId)
+        : undefined;
+      let kept = plan?.handoff;
+      if (!kept && plan) {
+        try {
+          kept = wholeHandoff(carried, { from, date });
+        } catch {
+          kept = undefined;
+        }
+      }
+      if (kept && conv.projectId && memoryOverride(get().settings) !== false) {
+        void writeHandoff(handoffStorage, conv.projectId, {
+          text: kept.text,
+          at: new Date().toISOString(),
+          model: from,
+          turns: kept.turns,
+          conversationId: activeId,
+        }).catch(() => {});
+      }
       set((s) => {
         const c = s.conversations[activeId];
         if (!c) return s;
-        const note: ThreadItem = { kind: 'note', id: newId(), text };
+        const note: ThreadItem = {
+          kind: 'note',
+          id: newId(),
+          text,
+          ...(kept
+            ? {
+                handoff: {
+                  text: kept.text,
+                  date,
+                  ...(project?.name ? { project: project.name } : {}),
+                },
+              }
+            : {}),
+        };
         return {
           conversations: {
             ...s.conversations,
@@ -6197,6 +8071,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // Wipe the project's sealed tokens and secrets so nothing lingers in the
       // device store after the project is gone.
       await writeProjectSecrets(id, '');
+      // And its handoff (CTO J13): nothing of the project lingers here.
+      await clearHandoffs(handoffStorage, { projectId: id }).catch(() => {});
       // Chats that lived in the project stay, but drop their now-dead link. Mark
       // them `unfiled` so the init orphan-migration does not re-adopt them into
       // another project on the next launch (P2-13).
@@ -7622,7 +9498,16 @@ export const useApp = create<AppState>((set, get, api) => {
       // Leaving the note with a choice open keeps both (CS 1c).
       await leaveVaultConflict();
       vaultLiveDraft = undefined;
-      set({ vaultScope: scope, vaultNote: undefined, vaultFiles: [], vaultListed: false });
+      stopVaultPoll();
+      set({
+        vaultScope: scope,
+        vaultNote: undefined,
+        vaultFiles: [],
+        vaultListed: false,
+        vaultTeamExpired: undefined,
+        vaultTrash: undefined,
+        vaultFolders: undefined,
+      });
       logEvent('vault_scope', { scope });
       await get().vaultRefresh();
     },
@@ -7649,6 +9534,10 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultRefresh() {
+      // A team note kept open after an expiry is all that shows of the team
+      // vault until the person signs back in or leaves it: nothing is listed,
+      // since the storage would only refuse (Vault M2 2.6).
+      if (get().vaultTeamExpired && get().vaultScope === 'team') return;
       // The personal vault is one gitOS resource, auto-registered on first
       // open, on the Local provider. The team vault is server-side and needs no
       // local resource row. More vaults and providers arrive through the same
@@ -7700,6 +9589,14 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!isActiveVault(target)) return;
       set({ vaultFiles: files, vaultError: undefined, vaultListed: true });
+      // The index reads only notes whose version moved (M3 3.2).
+      void openVaultIndex(target).reconcile(files);
+      // Empty folders and the Trash row (Vault M6), each only where the
+      // storage has them.
+      void refreshVaultFolders(target);
+      // The vault's settings (Vault M7, CTO L5), through the 60 s cache.
+      void get().vaultLoadSettings();
+      void refreshVaultTrash(target);
       // An empty default Local vault on the desktop has nothing to move, so
       // it simply points at the folder (CX 1.3 b).
       if (await repointEmptyLocal(target, files)) return;
@@ -7735,6 +9632,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // placeholder) is still a note. Never open an empty editor over it,
       // which a keystroke would then save back as empty over the cloud copy.
       if (listed?.evicted) {
+        // Ask for the bytes, so the download is on its way when the person
+        // taps again: a read of an evicted note starts it and answers at once
+        // (CTO G2). Its answer is not awaited and opens nothing here.
+        void target.provider.read(target.resourceId, openPath).catch(() => undefined);
         downloading();
         return;
       }
@@ -7764,6 +9665,7 @@ export const useApp = create<AppState>((set, get, api) => {
         }
       }
       if (!isActiveVault(target)) return;
+      if (existing) vaultIndexOf(target)?.noteRead(existing);
       // Opening another note leaves this one: a choice still open on it keeps
       // both (CS 1c).
       if (get().vaultConflict && get().vaultConflict?.path !== openPath) {
@@ -7774,9 +9676,15 @@ export const useApp = create<AppState>((set, get, api) => {
         vaultNote: {
           ...(existing ?? { path: openPath, text: '', updatedAt: '' }),
           loadedAt: Date.now(),
+          // Who saved it last, when the list said and it is still that
+          // version (the team vault, G6).
+          ...(listed?.editedBy && existing && versionOf(listed) === versionOf(existing)
+            ? { editedBy: listed.editedBy }
+            : {}),
         },
       });
       logEvent('vault_note_open', { fresh: !existing });
+      if (existing) noteVaultRecent(target, openPath);
     },
 
     async vaultCreate(path, content = '', at) {
@@ -7792,10 +9700,11 @@ export const useApp = create<AppState>((set, get, api) => {
       // A team create goes out only under the account it was asked for.
       const seeded = content.length > 0;
       if (!speaksNow(target)) {
-        if (seeded) await keepUnsentTeamText(target, normalized, content, undefined, undefined);
+        if (seeded) await keepUnsentTeamText(target, normalized, content, undefined);
         else get().showToast('Sign in to your team to use the team vault.');
         return;
       }
+      if (await leaseRefuses(target)) return;
       const active = isActiveVault(target);
       // An existing note (evicted from this device or not, UI-2) opens; it is
       // never overwritten with an empty body.
@@ -7842,10 +9751,8 @@ export const useApp = create<AppState>((set, get, api) => {
           const saved = mustLand(result);
           logEvent('vault_note_create');
           if (!isActiveVault(target)) return;
-          const listing = await listVaultNotes(target).catch(() => undefined);
           vaultLiveDraft = undefined;
           set({
-            vaultFiles: listing ?? get().vaultFiles,
             vaultNote: {
               path: normalized,
               text: saved.text,
@@ -7876,13 +9783,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // replay that finds a note already there keeps both, never overwrites.
       try {
         await editVaultPending((p) => {
-          p[vaultKey(target, normalized)] = pendingEntry(
-            target,
-            normalized,
-            content,
-            undefined,
-            undefined,
-          );
+          p[vaultKey(target, normalized)] = pendingEntry(target, normalized, content, undefined);
         });
       } catch {
         if (seeded) {
@@ -7904,6 +9805,17 @@ export const useApp = create<AppState>((set, get, api) => {
       void leaveVaultConflict();
       vaultLiveDraft = undefined;
       set({ vaultNote: undefined });
+      // Leaving a team note kept after an expiry leaves the team vault too:
+      // there is nothing of it to show until the person signs back in.
+      if (get().vaultTeamExpired) {
+        set({
+          vaultTeamExpired: undefined,
+          vaultScope: 'personal',
+          vaultFiles: [],
+          vaultListed: false,
+        });
+        void get().vaultRefresh();
+      }
     },
 
     vaultNoteDraft(path, text) {
@@ -7912,19 +9824,51 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async vaultRecheck({ reason, paths, tree }) {
       const target = vaultTarget();
-      if (!target) return;
+      if (!target) return 'skipped';
       const open = get().vaultNote;
-      // Only a guarded provider can see and settle a change under the
-      // editor (the desktop folder, in M1); the others keep M0's behavior.
+      let result: VaultRecheckResult = 'skipped';
+      // Every provider with compare-and-swap can see and settle a change
+      // under the editor, and only those; the others keep M0's behavior.
       if (
         open &&
         target.provider.compareAndSwap &&
-        (reason === 'focus' || tree || paths?.includes(open.path))
+        (reason === 'focus' || reason === 'poll' || tree || paths?.includes(open.path))
       ) {
-        await inSaveChain(target, open.path, () => recheckOpenNote(target, open.path));
+        // A poll never runs while a save for the note is still settling; it
+        // looks again on the next tick (CTO G6).
+        if (reason === 'poll' && vaultSaveChains.has(vaultKey(target, open.path))) {
+          return 'skipped';
+        }
+        result = await inSaveChain(target, open.path, () => recheckOpenNote(target, open.path));
+      }
+      // The poll looks at the open note only; the tree refreshes on focus.
+      if (reason === 'poll') return result;
+      // Named paths go to the index, which reads only what moved; a tree
+      // change reaches it through the relist below (M3 3.2).
+      if (reason === 'watch' && !tree && paths?.length) {
+        void vaultIndexOf(target)?.watched({ paths, tree: false }, () => listVaultNotes(target));
+      }
+      // A change under `.oscode/` or the Obsidian config folder reads the
+      // vault's settings again (CTO L6).
+      if (reason === 'watch' && paths?.length && vaultSettingsHint(foldersKey(target), paths)) {
+        void get().vaultLoadSettings({ force: true });
       }
       const listed = new Set(get().vaultFiles.map((f) => f.path));
       if (reason === 'focus' || tree || paths?.some((p) => !listed.has(p))) scheduleRelist();
+      return result;
+    },
+
+    vaultStartPoll(opts) {
+      if (pollGate() === 'stop') {
+        stopVaultPoll();
+        return;
+      }
+      pollActive = true;
+      schedulePoll(opts?.now ? 0 : vaultPollDelayMs(pollFailures));
+    },
+
+    vaultStopPoll() {
+      stopVaultPoll();
     },
 
     async vaultResolve(choice, draft) {
@@ -7964,8 +9908,6 @@ export const useApp = create<AppState>((set, get, api) => {
               set({ vaultError: 'held' });
             }
             reloadOpenNote(c.theirs, 'resolve');
-            const listing = await listVaultNotes(target).catch(() => undefined);
-            if (listing) set({ vaultFiles: listing });
             return done(
               copy
                 ? vaultResolveToast('both', { title, copyTitle: noteTitle(copy) })
@@ -7998,11 +9940,10 @@ export const useApp = create<AppState>((set, get, api) => {
                   text: saved.text,
                   updatedAt: saved.updatedAt,
                   version: saved.version,
+                  editedBy: undefined,
                 },
               });
             }
-            const listing = await listVaultNotes(target).catch(() => undefined);
-            if (listing) set({ vaultFiles: listing });
             return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }));
           }
           return { ok: false };
@@ -8027,9 +9968,15 @@ export const useApp = create<AppState>((set, get, api) => {
       return folder;
     },
 
-    async vaultSave(path, text, at) {
+    async vaultSave(path, typed, at) {
       const target = vaultTargetFrom(at);
       if (!target) return;
+      // A textarea hands CRLF back as LF, so an all-CRLF note keeps its line
+      // endings (M3, CTO H2): the note as loaded, or as last saved.
+      const open = isActiveVault(target) ? get().vaultNote : undefined;
+      const loaded =
+        open?.path === path ? open.text : vaultBodyCache.get(vaultKey(target, path))?.text;
+      const text = loaded === undefined ? typed : restoreEol(loaded, typed);
       // While a choice about this note is open, nothing typed is written to
       // it: the text goes to the durable stash, stamped with the version it
       // was typed against (CX 1.1).
@@ -8043,7 +9990,25 @@ export const useApp = create<AppState>((set, get, api) => {
         await stashConflictText(target, path, text, c.baseVersion);
         return;
       }
+      // Another device holds the enforced lease: nothing is written to the
+      // note. The text waits in the stash with the version it was typed
+      // against, and its replay keeps both if the note moved on (CTO G5).
+      if (leaseBlocks(target)) {
+        await stashConflictText(target, path, text, vaultBaseOf(target, path));
+        return;
+      }
       const key = vaultKey(target, path);
+      // Untouched: the open note already holds this text, nothing for it is
+      // on its way, and nothing waits to retry, so there is nothing to write.
+      if (
+        open?.path === path &&
+        !open.fresh &&
+        text === open.text &&
+        !vaultSaveChains.has(key) &&
+        get().vaultError === undefined
+      ) {
+        return;
+      }
       // The version at call time, used only when the note has closed and no
       // earlier save for it says more.
       const called = vaultBaseOf(target, path);
@@ -8054,10 +10019,16 @@ export const useApp = create<AppState>((set, get, api) => {
       })();
       const link = run.catch(() => undefined);
       vaultSaveChains.set(key, link);
+      // The chip says Saving while any save is on its way (2.2).
+      vaultSavesInFlight++;
+      if (!get().vaultSaving) set({ vaultSaving: true });
       try {
         await run;
+        noteVaultRecent(target, path);
       } finally {
         if (vaultSaveChains.get(key) === link) vaultSaveChains.delete(key);
+        vaultSavesInFlight--;
+        if (vaultSavesInFlight === 0) set({ vaultSaving: false });
       }
     },
 
@@ -8069,6 +10040,7 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(readOnly);
         return false;
       }
+      if (await leaseRefuses(target)) return false;
       // Guarded with the version the open note was loaded or saved at, so a
       // delete never removes a version this device has not seen (Vault M2
       // wave 0). A provider that does not check the guard yet removes anyway.
@@ -8109,16 +10081,14 @@ export const useApp = create<AppState>((set, get, api) => {
         return false;
       }
       const key = vaultKey(target, path);
-      vaultBodyCache.delete(key);
+      patchVaultFiles(target, { removed: path });
       // Drop any stashed draft for a note the user just deleted, so it cannot
       // resurrect on the next replay.
       await editVaultPending((p) => {
         delete p[key];
       }).catch(() => {});
       if (isActiveVault(target)) {
-        const listing = await listVaultNotes(target).catch(() => undefined);
         set({
-          vaultFiles: listing ?? get().vaultFiles.filter((f) => f.path !== path),
           vaultNote: get().vaultNote?.path === path ? undefined : get().vaultNote,
           vaultError: undefined,
         });
@@ -8137,12 +10107,12 @@ export const useApp = create<AppState>((set, get, api) => {
       // re-run this on every note open, so without a cache a 300-note Drive
       // vault was 300+ serial reads per open (R-8). The cache key carries the
       // provider and resource, and the read is skipped when the file's
-      // updatedAt matches. One unreadable file is reported in `failed` and
+      // version (versionOf) matches. One unreadable file is reported in `failed` and
       // never costs the rest (data-16).
       for (const f of files) {
         const key = vaultKey(target, f.path);
         const cached = vaultBodyCache.get(key);
-        if (cached && cached.updatedAt === f.updatedAt) {
+        if (cached && cached.version === versionOf(f)) {
           notes.push({ path: f.path, text: cached.text });
           continue;
         }
@@ -8152,7 +10122,7 @@ export const useApp = create<AppState>((set, get, api) => {
             failed.push(f.path);
             continue;
           }
-          vaultBodyCache.set(key, { updatedAt: note.updatedAt, text: note.text });
+          vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
           notes.push({ path: note.path, text: note.text });
         } catch {
           failed.push(f.path);
@@ -8161,50 +10131,567 @@ export const useApp = create<AppState>((set, get, api) => {
       return Object.assign(notes, { failed });
     },
 
-    async vaultAcquireLease() {
-      // Only the personal vault leases; the team vault's server resolves
-      // concurrency, so acquiring there is unnecessary.
-      if (get().vaultScope !== 'personal') {
-        set({ vaultLeaseHeldByOther: false });
-        return;
-      }
+    async vaultReadBody(path) {
       const target = vaultTarget();
-      if (!target) return;
-      // A read-only vault takes no writes, its lease file included.
-      if (vaultReadOnlyReason(target.providerId)) {
-        set({ vaultLeaseHeldByOther: false });
-        return;
+      if (!target) return undefined;
+      const key = vaultKey(target, path);
+      const listed = get().vaultFiles.find((f) => f.path === path);
+      const cached = vaultBodyCache.get(key);
+      if (cached && listed && cached.version === versionOf(listed)) return cached.text;
+      const note = await target.provider.read(target.resourceId, path);
+      if (!note) return undefined;
+      if (isActiveVault(target))
+        vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
+      return note.text;
+    },
+
+    vaultBindAutosave(handle) {
+      vaultAutosaveHandle = handle;
+    },
+
+    vaultCapsNow(opts) {
+      const t = vaultTarget();
+      if (!t) return vaultCaps({} as StorageProvider, { readOnly: true });
+      // The storage alone, for the lines that say why it lacks an action
+      // (read-only and away keep their own standing lines).
+      return opts?.storageOnly ? vaultCaps(t.provider, { readOnly: false }) : capsOf(t);
+    },
+
+    async vaultDeleteNote(path, at) {
+      const t = vaultTargetFrom(at);
+      if (!t) return undefined;
+      const readOnly = vaultReadOnlyReason(t.providerId);
+      if (readOnly) {
+        get().showToast(readOnly);
+        return undefined;
       }
-      const deviceId = get().settings.deviceId ?? 'dev_unknown';
+      if (await leaseRefuses(t)) return undefined;
+      if (!capsOf(t).trash) {
+        // No real Trash here: the delete is for good (two taps on screen),
+        // and the bytes are kept in memory for a courtesy Undo (R2). The
+        // pending text is written first, so the Undo brings back what was
+        // last typed; M2's guarded delete does the rest.
+        await flushOpenSave(t).catch(() => {});
+        const text = await readBodyOf(t, path).catch(() => undefined);
+        if (!(await get().vaultDelete(path, at))) return undefined;
+        return {
+          ok: true,
+          trashed: false,
+          ...(text !== undefined ? { undo: { kind: 'bytes' as const, path, text } } : {}),
+          notes: 1,
+          attachments: 0,
+        };
+      }
+      const base = vaultBaseOf(t, path);
+      const r = await opsDeleteNote(opsDeps(t), path);
+      if (!r.ok) {
+        // The note moved on, or is gone, or is still downloading: M2's stale
+        // delete path says so and reloads it; nothing went to Trash.
+        if (r.reason === 'changed' || r.reason === 'downloading') {
+          await settleStaleDelete(
+            t,
+            path,
+            { ok: false, conflict: r.reason, theirs: r.theirs },
+            base,
+          );
+          return undefined;
+        }
+        return { ok: false, reason: r.reason };
+      }
+      await afterNoteGone(t, path);
+      logEvent('vault_note_trash');
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultDeleteFolder(folder) {
+      const t = vaultTarget();
+      if (!t) return undefined;
+      if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
+      if (await leaseRefuses(t)) return undefined;
+      const r = await opsDeleteFolder(opsDeps(t), folder);
+      if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
+      const open = get().vaultNote;
+      if (open && open.path.startsWith(`${folder}/`)) await afterNoteGone(t, open.path);
+      await moveEmptyFolders(t, folder);
+      await refreshVaultFolders(t);
+      logEvent('vault_folder_trash');
+      await relistActive(t);
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultUndoDelete(undo, at) {
+      const t = vaultTargetFrom(at);
+      if (!t) return undefined;
+      const r = await opsUndoDelete(opsDeps(t), undo);
+      if (r.ok && undo.kind === 'trash' && undo.folder) await relistActive(t);
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultLoadTrash() {
+      const t = vaultTarget();
+      return t ? refreshVaultTrash(t) : undefined;
+    },
+
+    async vaultRestoreTrash(id) {
+      const t = vaultTarget();
+      if (!t) return { ok: false, reason: 'unsupported' };
+      const entry = get().vaultTrash?.find((e) => e.id === id);
+      const r = await opsRestoreEntry(opsDeps(t), id);
+      if (r.ok && entry?.kind === 'folder') await relistActive(t);
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultEmptyTrash() {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).emptyTrash) return { ok: false, reason: 'unsupported' };
+      const r = await opsEmptyTrash(opsDeps(t));
+      await refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultPrepareMove(kind, from, to) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).rename) return undefined;
+      const r =
+        kind === 'note'
+          ? await opsPrepareNoteMove(opsDeps(t), from, to)
+          : await opsPrepareFolderMove(opsDeps(t), from, to);
+      return r.ok ? r.preview : undefined;
+    },
+
+    async vaultApplyMove(preview, updateLinks, onProgress) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).rename) return undefined;
+      if (await leaseRefuses(t)) return undefined;
+      const r = await opsApplyMove(opsDeps(t), preview, {
+        updateLinks: updateLinks && capsOf(t).linkRewrite,
+        ...(onProgress ? { onProgress } : {}),
+      });
+      if (preview.kind === 'folder' && (r.ok || r.reason === 'partial')) {
+        // The folder's remembered empty folders follow it, and the list is
+        // read again for the spelling the storage gave every moved path.
+        if (r.ok) await moveEmptyFolders(t, preview.from, preview.to);
+        await relistActive(t);
+        await refreshVaultFolders(t);
+      }
+      if (!r.ok && r.reason === 'changed' && get().vaultNote?.path === preview.from) {
+        // Changed somewhere else before the rename ran: the open note takes
+        // the M1 path (a clean one reloads, a dirty one asks).
+        await inSaveChain(t, preview.from, () => recheckOpenNote(t, preview.from));
+      }
+      if (r.ok) logEvent('vault_rename', { kind: preview.kind, links: preview.links > 0 });
+      return r;
+    },
+
+    async vaultUpdateRest(preview, report, onProgress) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).linkRewrite) return undefined;
+      return opsUpdateTheRest(opsDeps(t), preview, report, onProgress);
+    },
+
+    async vaultCreateFolder(path) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).folders) return { ok: false, reason: 'unsupported' };
+      const clean = path.trim().replace(/^\/+|\/+$/g, '');
+      const known = [...(get().vaultFolders ?? [])];
+      if (known.some((f) => foldPath(f) === foldPath(clean)))
+        return { ok: false, reason: 'exists' };
+      const r = await opsCreateFolder(opsDeps(t), clean);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      if (r.remembered) await editEmptyFolders(t, (list) => [...list, clean]).catch(() => {});
+      await refreshVaultFolders(t);
+      return { ok: true, path: clean };
+    },
+
+    vaultSearchSource() {
+      const t = vaultTarget();
+      const host = t ? vaultIndexOf(t) : undefined;
+      if (!t || !host) return undefined;
+      return {
+        titleMatches: (q, limit) => host.index.titleMatches(q, limit),
+        // The host's search rebuilds any term vectors kept in memory only
+        // first; the filter clauses ride along (A1 dedupes them in q).
+        search: (q, opts) => host.search(q, opts),
+        note: (path) => {
+          const e = host.index.entry(path);
+          return e ? { title: e.title, updatedAt: e.updatedAt } : undefined;
+        },
+        readBody: (path) => readBodyOf(t, path),
+      };
+    },
+
+    async vaultToday() {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).today) return undefined;
+      const plan = await resolveVaultToday({
+        provider: t.provider,
+        resourceId: t.resourceId,
+        paths: get().vaultFiles.map((f) => f.path),
+        readBody: (path) => readBodyOf(t, path),
+        cacheKey: foldersKey(t),
+      }).catch(() => undefined);
+      if (!plan) return { kind: 'refused', line: VAULT_TODAY_FAILED };
+      if (!plan.ok) return { kind: 'refused', line: vaultTodayLine(plan)! };
+      // Already there: it opens as it is, with nothing written (K7).
+      if (plan.exists) {
+        await get().vaultOpen(plan.path);
+        return { kind: 'opened', path: plan.path };
+      }
+      // A start is a write: read-only or away says so in the room's words.
+      const caps = capsOf(t);
+      if (!caps.taskWriteBack) {
+        const why =
+          vaultReadOnlyReason(t.providerId) ??
+          (t.providerId === 'hub' && hubReach() === 'away' ? HUB_AWAY_READ_ONLY : undefined) ??
+          (get().vaultLeaseHeldByOther
+            ? vaultLeaseEnforced(get().vaultLeaseOther?.label).line
+            : undefined) ??
+          VAULT_TODAY_FAILED;
+        return { kind: 'refused', line: why };
+      }
+      if (await leaseRefuses(t)) return undefined;
+      const r = await opsOpenToday(opsDeps(t), { path: plan.path, text: plan.text });
+      if (!r.ok) {
+        return {
+          kind: 'refused',
+          line:
+            r.reason === 'downloading'
+              ? 'Still downloading this note from your vault storage. Try again shortly.'
+              : VAULT_TODAY_FAILED,
+        };
+      }
+      if (!r.created) {
+        // Another device made it a moment ago: open what is there, silently.
+        await get().vaultOpen(r.path);
+        return { kind: 'opened', path: r.path };
+      }
+      if (!isActiveVault(t)) return undefined;
+      vaultLiveDraft = undefined;
+      set({
+        vaultNote: {
+          path: r.file.path,
+          text: r.file.text,
+          updatedAt: r.file.updatedAt,
+          version: r.file.version,
+          fresh: true,
+          loadedAt: Date.now(),
+        },
+        vaultError: undefined,
+      });
+      noteVaultRecent(t, r.file.path);
+      logEvent('vault_today', { template: Boolean(plan.template?.found) });
+      const line = vaultTodayLine(plan);
+      return { kind: 'created', path: r.file.path, ...(line ? { line } : {}) };
+    },
+
+    async vaultToggleTask(path, line, checked) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).taskWriteBack) return false;
+      if (await leaseRefuses(t)) return false;
+      const title = noteTitle(path);
+      // The tick acts on what the person last typed, saved first.
+      await flushOpenSave(t).catch(() => {});
+      const text = await readBodyOf(t, path).catch(() => undefined);
+      if (text === undefined) {
+        get().showToast(VAULT_TICK_FAILED);
+        return false;
+      }
+      // The reader counts lines in the whole note, frontmatter included,
+      // the same basis as the core's listTasks.
+      const task = listTasks(text).find((x) => x.line === line);
+      if (!task || task.custom) return false;
+      if (task.checked === checked) return true;
+      const r = await opsToggleTask(opsDeps(t), path, task.at, task.status);
+      if (r.ok) return true;
+      if (r.reason === 'changed' || r.reason === 'missing') {
+        // Changed somewhere else: the open note takes M1's path (a clean
+        // one reloads the newer version, which the box then shows).
+        if (isActiveVault(t) && get().vaultNote?.path === path) {
+          await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);
+        }
+        get().showToast(vaultTickChanged(title));
+        return false;
+      }
+      get().showToast(VAULT_TICK_FAILED);
+      return false;
+    },
+
+    async vaultRewriteNote(path, edit) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).linkRewrite) return false;
+      if (await leaseRefuses(t)) return false;
+      await flushOpenSave(t).catch(() => {});
+      const open = openNoteOf(t);
+      // Never under the person: a note open here with a choice waiting.
+      if (open?.path === path && open.choiceOpen) return false;
       try {
-        const lease = await target.provider.acquireLease(target.resourceId, deviceId, 90_000);
-        const heldByOther =
-          lease.holder !== deviceId && new Date(lease.expiresAt).getTime() > Date.now();
-        set({ vaultLeaseHeldByOther: heldByOther });
+        const file = await t.provider.read(t.resourceId, path);
+        if (!file) return false;
+        const next = edit(file.text);
+        if (next === undefined || next === file.text) return false;
+        const r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
+        return r.ok;
       } catch {
-        // A lease read/write failure must not block editing; leave state as is.
+        return false;
       }
     },
 
-    async vaultReleaseLease() {
-      if (get().vaultScope !== 'personal') return;
-      const target = vaultTarget();
-      const deviceId = get().settings.deviceId ?? 'dev_unknown';
-      if (target && !vaultReadOnlyReason(target.providerId)) {
+    async vaultMediaNow() {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).attachments) return undefined;
+      // The attachments folder is the vault's resolved setting (Vault M7,
+      // CTO L2): Obsidian's where it sets one, else `.oscode/vault.json`.
+      const [attachments, settings] = await Promise.all([
+        t.provider.listAttachments!(t.resourceId).catch(() => [] as AttachmentMeta[]),
+        loadVaultSettings(t.provider, t.resourceId, foldersKey(t)).catch(() => undefined),
+      ]);
+      const attachmentFolder = settings?.attachments.folder;
+      const provider = t.provider;
+      const resourceId = t.resourceId;
+      return {
+        scope: `${t.providerId}:${t.resourceId}`,
+        attachments,
+        ...(attachmentFolder ? { attachmentFolder } : {}),
+        readBytes: (path, opts) => provider.readBytes!(resourceId, path, opts),
+      };
+    },
+
+    async vaultEngineRoomSource() {
+      // The same order as the privacy source (privacyDeps): the desktop's
+      // own engine unless it runs sessions on a remote hub, then the paired
+      // computer, else no engine at all.
+      const st = get().settings;
+      const b = isDesktop() ? bridge() : undefined;
+      if (b?.vaultPrivacy && !st.preferRemoteHub) {
         try {
-          await target.provider.releaseLease(target.resourceId, deviceId);
+          const machine = readMachinePackSize(await b.vaultPrivacy());
+          return { where: 'this' as const, ...(machine ? { machine } : {}) };
+        } catch {
+          return { where: 'this' as const };
+        }
+      }
+      const daemon = st.daemon;
+      if (!daemon?.token) return undefined;
+      const machine = await hubMachinePackSize({ baseUrl: daemon.baseUrl, token: daemon.token });
+      return { where: 'your' as const, ...(machine ? { machine } : {}) };
+    },
+
+    async vaultLoadSettings(opts) {
+      const t = vaultTarget();
+      if (!t) return undefined;
+      let settings: ResolvedVaultSettings;
+      try {
+        settings = await loadVaultSettings(
+          t.provider,
+          t.resourceId,
+          foldersKey(t),
+          opts?.force ? { force: true } : {},
+        );
+      } catch {
+        return undefined;
+      }
+      // A late read never paints another vault's settings.
+      if (isActiveVault(t) && get().vaultSettings !== settings) set({ vaultSettings: settings });
+      return settings;
+    },
+
+    async vaultSaveSetting(patch) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).settingsWrite || typeof t.provider.writeConfig !== 'function') {
+        return { kind: 'read-only' };
+      }
+      let r: VaultSettingSave;
+      try {
+        r = await saveVaultSetting(
+          { provider: t.provider, resourceId: t.resourceId, key: foldersKey(t) },
+          patch,
+        );
+      } catch {
+        r = { kind: 'failed' };
+      }
+      if ((r.kind === 'saved' || r.kind === 'same-field') && isActiveVault(t)) {
+        set({ vaultSettings: r.settings });
+      }
+      // A new narrowing compiles the privacy rules again on the next read.
+      if (r.kind === 'saved') {
+        privacyCache = undefined;
+        logEvent('vault_setting_saved', { merged: r.merged });
+      }
+      if (r.kind === 'unreadable' || r.kind === 'failed') {
+        void get().vaultLoadSettings({ force: true });
+      }
+      return r;
+    },
+
+    async vaultMarkReviewed(path, reviewed) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).taskWriteBack) return 'failed';
+      if (await leaseRefuses(t)) return 'failed';
+      // What the person last typed is saved first, so the mark lands on it.
+      await flushOpenSave(t).catch(() => {});
+      let file: StoredFile | undefined;
+      try {
+        file = await t.provider.read(t.resourceId, path);
+      } catch {
+        return 'failed';
+      }
+      if (!file) return 'failed';
+      // The person's own write (CX Y12): one line, every other byte kept.
+      let next: string;
+      try {
+        const merged = mergeProvenance(file.text, {
+          'oscode-reviewed': reviewed ? new Date().toISOString() : null,
+        });
+        if (!('text' in merged)) return 'failed';
+        next = merged.text;
+      } catch {
+        return 'failed';
+      }
+      const done = (): 'ok' => {
+        get().showToast(reviewed ? VAULT_MARKED_REVIEWED : VAULT_MARKED_NOT_REVIEWED);
+        logEvent('vault_mark_reviewed', { reviewed });
+        return 'ok';
+      };
+      if (next === file.text) return done();
+      let r: WriteResult;
+      try {
+        r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
+      } catch {
+        return 'failed';
+      }
+      if (r.ok) return done();
+      if (r.conflict === 'changed' || r.conflict === 'missing') {
+        // The note moved on somewhere else: the newer version opens here.
+        if (isActiveVault(t) && get().vaultNote?.path === path) {
+          await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);
+        }
+        return 'changed';
+      }
+      return 'failed';
+    },
+
+    async vaultStarterOffered() {
+      const t = vaultTarget();
+      if (!t || get().vaultScope !== 'personal') return false;
+      try {
+        return await vaultStarterOffered({
+          personal: true,
+          caps: capsOf(t),
+          provider: t.provider,
+          resourceId: t.resourceId,
+          obsidianFolder: t.providerId === 'files' && get().vaultFolder?.obsidian === 'vault',
+        });
+      } catch {
+        return false;
+      }
+    },
+
+    async vaultApplyStarter() {
+      const t = vaultTarget();
+      if (!t || get().vaultScope !== 'personal') return { added: 0, total: 0 };
+      if (await leaseRefuses(t)) return { added: 0, total: 0 };
+      const r = await applyVaultStarter({
+        personal: true,
+        caps: capsOf(t),
+        provider: t.provider,
+        resourceId: t.resourceId,
+        obsidianFolder: t.providerId === 'files' && get().vaultFolder?.obsidian === 'vault',
+      }).catch(() => undefined);
+      if (!r || !r.ok) {
+        get().showToast(VAULT_STARTER_NOT_EMPTY);
+        return { added: 0, total: 0 };
+      }
+      // The new notes and the settings file show at once.
+      clearVaultTodayCache(foldersKey(t));
+      await get().vaultRefresh();
+      void get().vaultLoadSettings({ force: true });
+      // The whole layout toasts here; a partial result says so in the sheet.
+      if (r.added === r.total) get().showToast(r.line);
+      logEvent('vault_starter', { added: r.added, total: r.total });
+      return { added: r.added, total: r.total };
+    },
+
+    vaultRequestSheet(sheet) {
+      set({ vaultSheetRequest: sheet });
+    },
+
+    vaultRecentRing() {
+      const t = vaultTarget();
+      return t ? (get().settings.vaultRecent?.[foldersKey(t)] ?? []) : [];
+    },
+
+    async vaultFolderCounts(folder) {
+      const t = vaultTarget();
+      if (!t) return { notes: 0, attachments: 0 };
+      return opsFolderCounts(opsDeps(t), folder);
+    },
+
+    async vaultAcquireLease() {
+      const t = vaultTarget();
+      if (t) await takeVaultLease(t);
+    },
+
+    async vaultLeaseTouch() {
+      const t = vaultTarget();
+      if (!t || leaseModeOf(t) === 'none') return;
+      const key = leaseKeyOf(t);
+      // Renewed at most every VAULT_LEASE_RENEW_MS while typing continues,
+      // and asked again no sooner while another device holds it.
+      if (leaseTried?.key === key && Date.now() - leaseTried.at < VAULT_LEASE_RENEW_MS) return;
+      await takeVaultLease(t);
+    },
+
+    async vaultReleaseLease() {
+      const held = leaseHeld;
+      leaseHeld = undefined;
+      leaseTried = undefined;
+      if (held) {
+        try {
+          await held.provider.releaseLease(held.resourceId, deviceHolder());
         } catch {
           // Best-effort; the lease's TTL reclaims it regardless.
         }
       }
-      set({ vaultLeaseHeldByOther: false });
+      set({ vaultLeaseHeldByOther: false, vaultLeaseOther: undefined });
+    },
+
+    async vaultTakeOverLease() {
+      const t = vaultTarget();
+      if (!t || leaseModeOf(t) !== 'enforced') return;
+      const other = leaseOtherHolder;
+      if (other) {
+        try {
+          await t.provider.releaseLease(t.resourceId, other);
+        } catch {
+          // The acquire below says whether it worked.
+        }
+      }
+      const won = await takeVaultLease(t);
+      const label = get().vaultLeaseOther?.label;
+      get().showToast(
+        won === 'mine'
+          ? vaultLeaseEnforced(undefined).tookOver
+          : 'Could not take over editing right now. Try again in a moment.',
+      );
+      logEvent('vault_lease_take_over', { ok: won === 'mine', labelled: Boolean(label) });
     },
 
     async vaultMoveTo(providerId) {
       // The room holds still while notes move (CX 1.3): nothing that writes.
       set({ vaultMoving: true });
       try {
-        return await moveVaultInner(providerId);
+        const result = await moveVaultInner(providerId);
+        // The vault lives somewhere else now: the warm index belonged to the
+        // old home (Vault M5, CTO J1 closes it on a storage move).
+        if (result.ok) {
+          await shutVaultIndex().catch(() => {});
+          forgetVaultSettings();
+        }
+        return result;
       } finally {
         set({ vaultMoving: false });
       }
@@ -8342,6 +10829,305 @@ export const useApp = create<AppState>((set, get, api) => {
       return { ok: true };
     },
 
+    vaultHubOfferShown() {
+      const s = get();
+      const hub = s.settings.daemon?.baseUrl;
+      if (!hub || isDesktop() || s.vaultScope !== 'personal' || s.vaultMoving) return false;
+      const offer = s.settings.vaultHubOffer;
+      if (offer?.hub !== hub || offer.state !== 'offered') return false;
+      const row = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+      if ((row?.providerId ?? 'local') !== 'local' || row?.chosenAt) return false;
+      return Boolean(s.vaultListed) && s.vaultError !== 'load' && s.vaultFiles.length > 0;
+    },
+
+    async vaultAcceptHubMove() {
+      const s = get();
+      const hub = s.settings.daemon?.baseUrl;
+      const row = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+      const before: VaultBeforeHub | undefined = hub
+        ? {
+            providerId: row?.providerId ?? 'local',
+            ...(row?.chosenAt ? { chosenAt: row.chosenAt } : {}),
+            hub,
+          }
+        : undefined;
+      const result = await get().vaultMoveTo('hub');
+      if (result.ok) {
+        await get().saveSettings({ vaultHubOffer: undefined, vaultBeforeHub: before });
+        await shutVaultIndex().catch(() => {});
+        forgetVaultSettings();
+        logEvent('vault_hub_offer', { action: 'move', forked: result.forked.length });
+        if (get().view === 'vault') void get().vaultRefresh();
+      }
+      return result;
+    },
+
+    async vaultDeclineHubMove() {
+      const hub = get().settings.daemon?.baseUrl;
+      if (!hub) return;
+      await get().saveSettings({ vaultHubOffer: { hub, state: 'declined' } });
+      logEvent('vault_hub_offer', { action: 'not_now' });
+    },
+
+    vaultAfterPairing() {
+      return hubPairingStep().catch(() => 'stay' as const);
+    },
+
+    canEditProjectPins(projectId) {
+      const project = get().settings.projects?.find((p) => p.id === projectId);
+      return Boolean(project) && canEdit(projectPermissionFor(project!));
+    },
+
+    async setProjectVaultPins(projectId, paths) {
+      if (!get().canEditProjectPins(projectId)) return false;
+      const clean = [
+        ...new Set(paths.map((p) => normalizeNotePath(p)).filter((p): p is string => Boolean(p))),
+      ].slice(0, PROJECT_VAULT_PINS_MAX);
+      // Local only, always: pins name the person's own notes, so they never
+      // ride updateProject's server write (orgProjects.ts syncs name,
+      // instructions and repoIds), whatever the project's sharing.
+      await patchProjectLocal(projectId, { vaultPins: clean.length ? clean : undefined });
+      logEvent('project_vault_pins', { count: clean.length });
+      return true;
+    },
+
+    async pinVaultNoteToProject(path, projectId) {
+      const s = get().settings;
+      const id = projectId ?? s.activeProjectId ?? s.projects?.[0]?.id;
+      const project = id ? s.projects?.find((p) => p.id === id) : undefined;
+      if (!project || !get().canEditProjectPins(project.id)) return 'refused';
+      const note = normalizeNotePath(path);
+      if (!note) return 'refused';
+      const pins = project.vaultPins ?? [];
+      if (pins.includes(note)) return 'already';
+      if (pins.length >= PROJECT_VAULT_PINS_MAX) return 'full';
+      const ok = await get().setProjectVaultPins(project.id, [...pins, note]);
+      return ok ? 'pinned' : 'refused';
+    },
+
+    async unpinVaultNote(projectId, path) {
+      const project = get().settings.projects?.find((p) => p.id === projectId);
+      if (!project?.vaultPins?.includes(path)) return;
+      await get().setProjectVaultPins(
+        projectId,
+        project.vaultPins.filter((p) => p !== path),
+      );
+    },
+
+    async vaultRenamePins(from, to) {
+      const a = normalizeNotePath(from);
+      const b = normalizeNotePath(to);
+      if (a && b) await rewriteVaultPins(a, b);
+    },
+
+    async vaultPinStatus(paths) {
+      const out: Record<string, 'ok' | 'missing' | 'unknown'> = {};
+      const t = personalVault();
+      await Promise.all(
+        paths.map(async (p) => {
+          if (!t) {
+            out[p] = 'unknown';
+            return;
+          }
+          try {
+            out[p] = (await t.provider.stat(t.resourceId, p)) ? 'ok' : 'missing';
+          } catch {
+            out[p] = 'unknown';
+          }
+        }),
+      );
+      return out;
+    },
+
+    async vaultPickerNotes() {
+      const facts = await personalNoteFacts();
+      if (!facts) return [];
+      return pickerNotes(facts, await vaultPrivacyNow());
+    },
+
+    composerSeat(conversationId, fallback) {
+      const id = conversationId ?? get().activeId;
+      return composerSeatFor((id ? get().conversations[id]?.source : undefined) ?? fallback);
+    },
+
+    async composerVaultExcerpt(path, conversationId) {
+      const t = personalVault();
+      if (!t) return { ok: false, reason: 'Your Vault is not ready on this device yet.' };
+      let file: StoredFile | undefined;
+      try {
+        file = await t.provider.read(t.resourceId, path);
+      } catch {
+        return { ok: false, reason: 'That note could not be read right now.' };
+      }
+      if (!file) return { ok: false, reason: 'That note is not in your Vault any more.' };
+      // Judged on the note's own text (its tags and marks), so a note the
+      // index has not read yet is never taken for open.
+      const visibility = (await vaultPrivacyNow()).visibility(
+        noteFactsFromText(path, file.text, file.updatedAt),
+      );
+      if (visibility === 'hidden') {
+        return { ok: false, reason: 'This note is kept out of every model.' };
+      }
+      return excerptForSeat(
+        {
+          path,
+          title: noteTitle(path),
+          text: file.text,
+          updatedAt: file.updatedAt,
+          localOnly: visibility === 'local-only',
+        },
+        get().composerSeat(conversationId),
+      );
+    },
+
+    async composerVaultRead(path) {
+      let file: StoredFile | undefined;
+      try {
+        file = await personalRead(path);
+      } catch {
+        return null;
+      }
+      if (!file) return null;
+      const visibility = (await vaultPrivacyNow()).visibility(
+        noteFactsFromText(path, file.text, file.updatedAt),
+      );
+      return { text: file.text, updatedAt: file.updatedAt, visibility };
+    },
+
+    takeComposerInsert(id) {
+      if (get().composerInsert?.id === id) set({ composerInsert: undefined });
+    },
+
+    async askAboutVaultNote(path) {
+      const s = get();
+      const projectId = s.settings.activeProjectId ?? s.settings.projects?.[0]?.id;
+      const open = s.activeId ? s.conversations[s.activeId] : undefined;
+      // The chat open now when it is the active project's; otherwise a new
+      // chat there, whose composer takes the excerpt.
+      const conversationId =
+        open && (!projectId || open.projectId === projectId) ? open.id : undefined;
+      const result = await get().composerVaultExcerpt(path, conversationId);
+      if (!result.ok) {
+        get().showToast(result.reason);
+        return;
+      }
+      if (conversationId) get().openConversation(conversationId);
+      else get().startNewChat();
+      set({
+        view: 'chat',
+        composerInsert: {
+          id: newId(),
+          ...(conversationId ? { conversationId } : {}),
+          path,
+        },
+      });
+      logEvent('vault_ask_about_note', { trimmed: result.excerpt.trimmed });
+    },
+
+    async vaultAgentRecent() {
+      const facts = await personalNoteFacts();
+      if (!facts) return [];
+      return agentRecentNotes(
+        facts,
+        get().settings.vaultAgentWrites ?? [],
+        await vaultPrivacyNow(),
+      );
+    },
+
+    async noteAgentVaultWrite(path) {
+      const note = normalizeNotePath(path);
+      if (!note) return;
+      const ring = get().settings.vaultAgentWrites ?? [];
+      await get().saveSettings({ vaultAgentWrites: pushAgentRecent(ring, note) });
+    },
+
+    vaultPackOpener(conversationId) {
+      const conv = get().conversations[conversationId];
+      const t = personalVault();
+      if (!conv || !t) return undefined;
+      // An app chat's pack reads this device's own vault. An engine pack reads
+      // the computer's vault root: this device opens it only when its vault
+      // is that same vault (the hub, or the desktop's own folder).
+      const engine = conv.source.kind === 'desktop' || conv.source.kind === 'desktop-chat';
+      const same =
+        !engine ||
+        t.providerId === 'hub' ||
+        (isDesktop() && t.providerId === 'files' && !get().settings.preferRemoteHub);
+      if (!same) return undefined;
+      return (path: string) => {
+        void (async () => {
+          if (get().vaultScope !== 'personal') await get().setVaultScope('personal');
+          get().setView('vault');
+          await get().vaultOpen(path);
+        })();
+      };
+    },
+
+    async saveHandoffToVault(conversationId, itemId) {
+      const conv = get().conversations[conversationId];
+      const item = conv?.thread.items.find((i) => i.id === itemId);
+      if (!item || item.kind !== 'note' || !item.handoff) return undefined;
+      if (item.handoff.savedPath) return item.handoff.savedPath;
+      const t = personalVault();
+      if (!t) {
+        get().showToast('Your Vault is not ready on this device yet.');
+        return undefined;
+      }
+      const readOnly = vaultReadOnlyReason(t.providerId);
+      if (readOnly) {
+        get().showToast(readOnly);
+        return undefined;
+      }
+      const handoff = item.handoff;
+      const text = handoffNoteText(handoff);
+      for (let attempt = 1; attempt <= 50; attempt++) {
+        const path = handoffNotePath(handoff.date, handoff.project, attempt);
+        let saved: StoredFile | undefined;
+        try {
+          // A storage that does not enforce the guard is asked first, so a
+          // note already there is never replaced.
+          if (!t.provider.compareAndSwap && (await t.provider.stat(t.resourceId, path))) continue;
+          const r = await putVaultNote(t, path, text, { ifAbsent: true });
+          if (!r.ok) {
+            if (r.conflict === 'exists') continue;
+            throw new Error(r.conflict);
+          }
+          saved = r.file;
+        } catch {
+          get().showToast('Could not save to your Vault right now. Try again in a moment.');
+          return undefined;
+        }
+        set((s) => {
+          const c = s.conversations[conversationId];
+          if (!c) return s;
+          const items = c.thread.items.map((i) =>
+            i.id === itemId && i.kind === 'note' && i.handoff
+              ? { ...i, handoff: { ...i.handoff, savedPath: saved!.path } }
+              : i,
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [conversationId]: { ...c, thread: { ...c.thread, items } },
+            },
+          };
+        });
+        void persistConversations(get());
+        get().showToast(`Saved as ${saved.path}.`);
+        logEvent('vault_handoff_saved');
+        return saved.path;
+      }
+      get().showToast(
+        'Could not find a free name in Handoffs. Rename an older handoff note first.',
+      );
+      return undefined;
+    },
+
+    async projectHandoff(projectId) {
+      if (memoryOverride(get().settings) === false) return undefined;
+      return readHandoff(handoffStorage, projectId);
+    },
+
     async connectGdriveAccount() {
       const result = await connectGdrive();
       logEvent(result.ok ? 'gdrive_connected' : 'gdrive_connect_failed');
@@ -8403,6 +11189,29 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       });
       void persistConversations(get());
+      // A handoff this chat wrote goes with it (CTO J13).
+      handoffWrittenAt.delete(id);
+      void clearHandoffs(handoffStorage, { conversationId: id }).catch(() => {});
+    },
+
+    async clearConversations() {
+      for (const id of [...get().order]) get().deleteConversation(id);
+      // Recent is cleared with the chats (CX X4).
+      if (get().settings.vaultRecent) {
+        await get()
+          .saveSettings({ vaultRecent: undefined })
+          .catch(() => {});
+      }
+      await clearHandoffs(handoffStorage, { all: true }).catch(() => {});
+      const s = get();
+      const b = isDesktop() ? bridge() : undefined;
+      if (b?.clearHandoffs) await b.clearHandoffs().catch(() => {});
+      if (s.settings.daemon && s.hubRole !== 'member') {
+        await Promise.resolve()
+          .then(() => daemonClearHandoffs(s.settings.daemon!))
+          .catch(() => false);
+      }
+      logEvent('conversations_cleared');
     },
 
     send(text, attachments) {
@@ -9056,7 +11865,11 @@ export const useApp = create<AppState>((set, get, api) => {
       const hubRoles = { ...(get().settings.hubRoles ?? {}) };
       if (role) hubRoles[target.baseUrl] = role;
       else delete hubRoles[target.baseUrl];
+      const hubBefore = get().settings.daemon?.baseUrl;
       await get().saveSettings({ daemon: merged, daemons: [...others, merged], hubRoles });
+      // A pairing (or a pairing to another computer) settles where the
+      // personal vault lives (CTO J9). Never blocks the pairing itself.
+      if (hubBefore !== merged.baseUrl) void settleVaultForHub();
     },
 
     async setHubRole(baseUrl, role) {
@@ -9068,7 +11881,9 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async selectHub(baseUrl) {
       const hub = hubList(get().settings).find((d) => d.baseUrl === baseUrl);
+      const hubBefore = get().settings.daemon?.baseUrl;
       if (hub) await get().saveSettings({ daemon: hub });
+      if (hub && hubBefore !== hub.baseUrl) void settleVaultForHub();
     },
 
     async removeHub(baseUrl) {
@@ -9080,6 +11895,8 @@ export const useApp = create<AppState>((set, get, api) => {
       await get().saveSettings({ daemons, daemon, hubRoles });
       // The credential leaves with the hub.
       await secretDelete(hubSecretKey(baseUrl));
+      // The vault returns from the computer it pointed at (CTO J9).
+      if (s.daemon?.baseUrl === baseUrl) void settleVaultForHub();
     },
 
     async renameHub(baseUrl, name) {
@@ -9116,6 +11933,11 @@ export const useApp = create<AppState>((set, get, api) => {
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       setChainOfThought(settings.chainOfThought === true);
+      setPromptCache(settings.promptCache === true);
+      // New privacy rules apply to the next read, not a minute later.
+      if ('vaultPrivacy' in patch) privacyCache = undefined;
+      // A pairing change relinks the hub vault before anything settles it.
+      if ('daemon' in patch) await syncHubLink(settings.daemon).catch(() => false);
       await persistSettings(settings);
     },
 

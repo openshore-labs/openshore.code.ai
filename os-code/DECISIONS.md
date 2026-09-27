@@ -2198,3 +2198,533 @@ execution contract. Newest at the bottom.
   sheet) and toasts "Not deleted", and a metadata-only change still deletes.
   A move's take-back and a fork's settle remove only the version they wrote or
   read. `nativePlugins.test.ts` covers every plugin, not only iCloud.
+- **Vault M2 wave 2 item 2.1, store (2026-09-27):** every provider write
+  patches the list and the body cache from its own result inside
+  `putVaultNote` (only for a caller that names its vault, so a move's copies
+  never touch the list on screen); the body cache is keyed by `versionOf`; the
+  store keeps no team rev at all, and a replay against a team vault without
+  compare-and-swap reads the note first (which teaches that provider its rev)
+  instead of seeding one; the one-time stash conversion to `base = String(rev)`
+  runs only once the team provider reports `compareAndSwap`, so today's
+  provider keeps its old entries as they were.
+- **Vault M2 wave 2 item 2.2 (2026-09-27):** the save chip sits in the note
+  bar and reads Saved, Saving (typed text waiting for the debounce, or a save
+  on its way), or "Offline, kept on this device" with "N notes waiting" and
+  Try again (the house word, per the copy glossary, where the plan said
+  Retry); its count is every stash entry of the vault on screen except the
+  note whose choice is open, and Try again is the room's refresh, which
+  replays the stash; a replay that lands on the open note becomes that note's
+  version, so a Try again never meets its own write as a conflict; the tree
+  badges conflict copies with the existing `isConflictCopy`; every return to
+  the window re-checks the open note on any compare-and-swap storage, and the
+  separate refresh on becoming visible is folded into that re-check's relist;
+  the team RPC's `conflict_path` toast is superseded by G3 (the resolve
+  sheet instead).
+- **Vault M2 wave 2 item 2.6 (2026-09-27):** an expiry with a team note open
+  keeps team scope and that one note (the list is cut to it, so no other team
+  title stays on screen), read-only, with "Sign in again to save to your
+  team."; the room lists nothing meanwhile; leaving the note returns to the
+  personal vault; the same account signing back in goes on with the note and
+  replays what was kept for it, and any other account, or a sign-out, drops
+  it as before.
+- **Vault M2 2.5, plan 8.2 (2026-09-27):** The single-writer lease is advisory
+  on every provider with compare-and-swap; it is enforced only on one without
+  it, and v1 has none that can be written.
+- **Vault M2 wave 2 item 2.5 build calls (2026-09-27):** the rule lives in a
+  pure `lib/vaultLease.ts` (`leaseEnforced = writable && !compareAndSwap`, and
+  with compare-and-swap only `icloud` keeps an advisory lease, keyed by
+  provider id since no seam flag names "a storage one person's devices share");
+  the seam's `acquireLease` gains an optional `label` so the device kind can
+  reach the lease file; the lease is taken on a keystroke and renewed at most
+  every 60 s (TTL 150 s), and released when the note, the scope, or the room
+  changes, with no mount heartbeat; the advisory line shows once this device
+  types (no peek, since reading the lease file without writing it is not in
+  the seam); on an enforced lease a create or delete asks for the lease first
+  and is refused while another device holds it, a save stashes with its base,
+  the stash does not replay into that vault meanwhile, and Take over editing
+  releases the other holder through the seam before acquiring; today's team
+  vault (no compare-and-swap until its client lands) falls under the enforced
+  rule but its lease grants trivially and writes nothing.
+- **Vault M2 wave 2 item 2.7 (2026-09-27):** the poll's timer lives in the
+  store (`vaultStartPoll`, `vaultStopPoll`, one timer, stopped on a scope
+  change and on any end of the session) and the screen only starts it with a
+  team note open, stops it when hidden, and starts it checking at once when
+  visible or back online; "available" is the store's `teamVaultAvailable()`,
+  the same predicate `isOrgVaultAvailable()` defers to; offline waits a
+  normal round without a request; `vaultRecheck` now answers
+  checked/failed/skipped so the poll can back off, a poll skips a tick while
+  a save for the note is settling, and a poll never re-lists the tree; the
+  open note carries `editedBy` from the list at open and from the re-check's
+  `stat`, cleared by this device's own save, shown as " · Edited by sam,
+  2 min ago" on the meta line (the time from the note's `updatedAt`).
+- **Vault M2 wave 2 item 2.8 (2026-09-27):** the team vault exports to
+  "Vault Team/<org>" on both platforms: on the iPhone under Files beside
+  "Vault", with a manifest key of its own per org and folder; on the desktop
+  through `osc:vaultTeamExport` into `Vault Team/<org>` beside the default
+  personal vault folder (`~/OSCode/Vault Team/<org>`), main choosing the
+  folder and checking every path, with the same manifest rule kept in the
+  folder's `.oscode/export.json`, and a refusal if that folder is, holds, or
+  lies in the personal vault. The org's name becomes one plain folder name
+  by one rule held in the app and in main, tested for parity. The row is an
+  "Export as plain files" link in the team vault's lead line, shown on the
+  iPhone and the desktop once the team vault holds a note; the personal
+  export and its row are unchanged.
+- **CTO, Vault M3 H1 to H6 (2026-09-27):** the rulings the M3 streams build
+  to, recorded once here.
+  - **3.0 (plan change):** the purity guard could not be green on the tree as
+    it stood, since `harness/verify.ts` imported `node:child_process`.
+    `runVerify` moved to `core/agent/verifyRun.ts`; `harness/verify.ts` keeps
+    the types and `verifyRetryPrompt`. `test/harnessPurity.test.ts` walks
+    every `src/harness/**` file plus `src/protocol.ts` through relative
+    imports and fails on a Node built-in, a package outside {zod, js-yaml},
+    `require(`, `__dirname`, `Buffer`, or `process.env`; type-only imports are
+    erased at build, so they are not followed. The walk also caught `Buffer`
+    in `core/ethics/guardedProvider.ts` (reached from protocol), now plain
+    `atob`/`btoa`.
+  - **H1:** a hand-rolled scanner in the core (`harness/vault/scan.ts`), not
+    remark: speed on the reference box, no wikilink grammar in remark, weight,
+    and exact offsets. Indented code is not skipped and `---` setext
+    underlines are ignored, both documented divergences.
+  - **H2 (plan change):** frontmatter parses with `js-yaml` 4.3.1 (exact pin,
+    `CORE_SCHEMA`, read-only; nothing serializes YAML). No
+    `remark-frontmatter`: the renderer shows `text.slice(fm.end)`, so the core
+    and the renderer never disagree on where frontmatter ends.
+  - **H3 (plan change):** the index persists outside the sealed store, which
+    cannot hold a multi-MB blob: `oscHome()/vault-index/<key>.json` on the
+    desktop folder provider, a device-key-sealed file in `Directory.Cache` on
+    the iPhone, memory only for other desktop providers. Reconcile compares
+    `versionOf` only.
+  - **H4:** one shared core surface in `harness/vault/` (paths, scan,
+    frontmatter, resolve, rewrite, excerpt, types) through `os-code/protocol`,
+    one new-name rule for engine and app, and a pinned five-step resolution
+    order; `scheduler.ts safeName` becomes `safeNoteName` with no folder
+    migration.
+  - **H5:** `readConfig` is an optional provider member over logical names
+    only (`VaultConfigName`), answering `ConfigRead`, capped at 256 KB; plugin
+    folders and `workspace*.json` are never readable.
+  - **H6:** wave 0 (this: the guard, `harness/vault/types.ts`, js-yaml), then
+    wave 1 streams A to D split by file ownership, then wave 2 with one owner
+    of `store.ts` and `VaultScreen.tsx`.
+- **Vault M3 wave 1 stream C, engine and main (2026-09-27):** the routine
+  scheduler names a routine's folder with the core's
+  `safeNoteName(name, 'Routine')` in place of its own `safeName`, so the
+  folder follows the vault's one new-name rule (no `# ^ [ ]` either, no
+  dot-led or dot-ended segment, reserved names made safe, 255 bytes at most).
+  A routine named "Q3: #auth [review]?" now writes under "Crew/Q3 auth
+  review/". There is no folder migration: old runs keep the absolute note
+  path their record holds (M1 Bring ruling), so when the new rule cleans a
+  name differently, new runs land in the new folder and older notes stay
+  where they are. `vaultWrite` checks
+  only NEW notes with `checkNewNoteName` and refuses with the clean name; an
+  existing exact path always updates, and a new name that folds (`foldPath`)
+  onto an existing note is refused naming that note, never redirected, so a
+  permission rule on the typed path cannot be stepped around. `vaultRead`
+  names a fold twin the same way and never reads it in the typed path's
+  place. Main's `listVaultFolder` is an async walk (same order, same limit,
+  8 lstats at a time per folder) and lists only paths the note rule accepts,
+  so on Windows a name NTFS cannot open never lists.
+- **Vault M3 wave 2, the store and the Vault screen (2026-09-27):** H1 to H6
+  are done on this branch; the store gained call sites only. The index is fed
+  only for the vault on screen (a move's writes to another vault never touch
+  it). A watcher hint that names paths goes to `host.watched`; a tree change
+  reaches the index through the relist it already scheduled, so one change
+  never runs two reconciles. A save whose CRLF-restored text equals the open
+  note's text, with no save for it in flight and no standing save error,
+  writes nothing, so opening and leaving an all-CRLF note never rewrites it.
+  Linked mentions read excerpts through a new `vaultReadBody` (the body
+  cache) and say when more than 50 notes link in. A folder pick does not
+  close the index yet: `afterVaultPick` is the held native branch's ground,
+  and until it closes the index there, the next list's reconcile drops and
+  re-reads what the new folder does not share.
+- **Vault M4, context layer I (2026-09-27):** the CTO's rulings I1 to I16
+  are built as written, in waves (0 contracts, 1 seven parallel streams, 2
+  one integrator). I1: `providers.<id>.numCtx: 'auto' | 'off'` in the
+  provider, so the engine, `/chat`, routines and eval send the same served
+  window; Ollama only; the class from name and size only; memoized per
+  model. I2: `vaultPackFraction`, `vaultReadCapChars`, `mergedVaultTool` on
+  the class policy (placeholders), only `mergedVaultTool` a project may
+  override; `VAULT_PACK_MAX_TOKENS` 4000. I3: `vault.exclude` and
+  `vault.localOnly` machine, `vault.context` off-only (a project's `'off'`
+  applies anywhere, its `'full'` waits for trust). I4: one judge,
+  `harness/vault/privacy.ts`, hand-rolled glob on the folded path, a pin
+  never lifts a restriction, local judged by address. I5: tools enforce it;
+  a local-only tool result is marked and a leaving turn sends a stub. I6:
+  the pure two-phase pack builder. I7: one engine index per root, a 250 ms
+  cold budget. I8: the pack rendered per turn for the answering seat. I9:
+  `PACK_BY_CLASS` is Current State only for every class, mid and large too,
+  until the eval. I10: the additive `context-pack` event and card. I11:
+  tools that search first, one merged read for merged classes. I12: the
+  harness's dated Current State line. I13: Crew notes with frontmatter.
+  I14: the eval fixture and variants in the sandbox, no number claimed.
+  I15, I16: the stream split and what waits for M5 and M7. Deviations worth
+  knowing: `numCtx` has no schema default (unset reads as off, so a config
+  file never gains a key it did not have); privacy lives in
+  `harness/vault/privacy.ts`, not `vaultContext.ts`, so tools use it without
+  the pack; the pack sits after the code map and before the text protocol,
+  not after the memory block (KV reuse for the multi-KB standards); the card
+  re-fires when an escalation changes the seat, and counts only real vault
+  notes (pins, search hits, links), never the map, the handoff, or Current
+  State; the loop's vault menu and the small-seat priority are the
+  registry's `seatOffersVaultTool` and `withVaultLookupPriority`, one
+  implementation; bootstrap builds the engine source whenever a caller
+  passes none, so the CLI, the daemon, routines and the desktop all carry
+  Current State, a session with no vault root included; a reply seeded from
+  the journal after a local-only read comes back marked, so a daemon
+  restart keeps the note off a leaving seat (the tool results themselves
+  are not seeded), and live history holds the same rule: once a task has
+  read a local-only note, every assistant turn it records is marked too,
+  since a reply may quote the note; the deep eval builds each task's vault index before the
+  run (a person's vault is indexed long before a task), closes it and
+  removes its saved file after, and a variant run with no task vault gets no
+  vault, so the person's notes never enter a benchmark. Founder gate, open:
+  `osc eval --deep` with `--vault-pack on` and `off`, and `--num-ctx auto`
+  and `off`, per class on the reference box (tiny and small local, large by
+  an approved reference run), with the numbers recorded here and in
+  PROGRESS before any class flips to the full pack or `numCtx` defaults to
+  auto (tenet 2).
+- **Vault M5, context layer II (2026-09-27):** the CTO's rulings J1 to J21
+  are built as written, in waves (0 contracts and stubs, 1 nine parallel
+  streams A to I, 2 two integrators: the engine in `os-code/**` and
+  `app/electron/**`, the app in `app/src/**`). J1: one pack core in the app,
+  `createAppVaultPack` over `planContextPack` and `buildContextPack` from
+  protocol, prepared once per send inside `VAULT_PACK_COLD_MS` (250),
+  rendered per seat with the loop's render key and card dedupe, no project
+  secrets ever. J2: one Node-free judge, `harness/locality.ts hostIsLocal`,
+  that `egress.ts isLocalHost` delegates to and the app's `packSeatFor` and
+  `byomReach` call with the paired hub's tailnet suffix. J3: app privacy
+  from the desktop bridge, the paired hub's `GET /vault/privacy` (cached
+  sealed), or D5 defaults; the device setting only narrows, and no rules
+  loaded means D5, never none. J4: class by `deriveModelClass`, windows per
+  seat kind (device 4096, BYOM `contextTokens` else 8192). J5, J6: every app
+  driver emits the card after `turn-start` and places the pack last; desktop
+  chat builds its pack on the daemon (`/chat` `vaultPack`, `memory: false`).
+  J7: the daemon's `/vault` routes (notes, config, privacy, index with an
+  ETag), every path through the Jail and the note rule, every write a
+  compare-and-swap. J8: `vaultRootFor(auth)` and `vaultRootForOwner`: the
+  owner on the machine vault, each member on
+  `oscHome()/vaults/members/<sha256 16 hex>` (0700); sessions get
+  `BootstrapOptions.vaultRoot` at create and the stored OWNER's root at
+  rehydrate, and the old `BootstrapOptions.vault` flag is gone. J9: the
+  `hub` provider "Your computer" with a sealed stash, read-only out of
+  reach, and the D2 repoint rules. J10: `vaultTool.ts` on cloud and BYOM
+  single turns, writes batched into one always-ask card. J11: pure
+  extractive `buildHandoff` and `fitSeed`. J12: the switch seeds with
+  `fitSeed`, a handoff only when turns drop; the desktop agent takes
+  `BootstrapOptions.handoff` (16 KB) on its first task. J13: the engine
+  writes the latest handoff per owner, real cwd and project after a
+  compaction, each completed task and dispose (`core/agent/handoffStore.ts`,
+  redacted and sealed), the app per project; both cleared with the chats;
+  read on a first send at most 7 days old as a full-mode layer. J14:
+  `Project.vaultPins` (at most 8, editors, device-local), in both pack
+  modes. J15: the `[[` picker, "Ask about this note", "Pin to project
+  context", "Recently from your agent". J16: the app's stable-then-volatile
+  prefix and `claudeCache.ts`. J17: `providers.<id>.promptCache` on the
+  engine's Anthropic provider, split at `ChatMessage.cacheAt`; the loop
+  forwards `cacheReadTokens` and `cacheWriteTokens` onto the `usage` event.
+  J18: `vault.handoff` off-only, `promptCache` machine. J19 to J21: the gates
+  below, no held native branch needed, the stream split. Deviations worth
+  knowing: E reads only bodies some seat can render (a hidden note is never
+  read, and no index means no read, so the team vault never enters a pack);
+  C refuses an unguarded `DELETE` (it must carry `ifMatch`), and makes a
+  member root on first use, not at pairing; A gives `HandoffTurn` a
+  `localOnly` flag (such a turn is left out) and `hostIsLocal` ignores an
+  own-tailnet suffix that is not a real tailnet, so a bare `ts.net` cannot
+  make every Funnel host local; D's handoff eval task runs on an empty vault,
+  so only the handoff can carry its decision, and the person's own handoffs
+  are never read; B drops a handoff over the cap whole with a warning, never
+  cut mid-line; H's switch to the desktop opens a new agent chat whose
+  session create carries the handoff, rather than reseeding the open chat;
+  the BYOM locality change: `byomReach` now judges by `hostIsLocal`, so
+  another tailnet's `*.ts.net`, `0.0.0.0`, `169.254/16`, `fc00::/8` (only
+  `fd*` stays local) and IPv4-mapped IPv6 spellings read cloud (amber) where
+  they read local before. Engine integrator calls: a Crew (headless) run
+  neither writes nor reads a handoff, the safer of the two options, since a
+  scripted run's summary must never become the person's "where you left
+  off"; clearing is `DELETE /handoffs` (the owner of the computer only, since
+  the store is keyed by a hash and holds every owner's) and the desktop IPC
+  `osc:clearHandoffs`, and `DELETE /sessions/:id` also removes that session's
+  handoff; the engine's cache-token dollars are not yet priced (cache reads and
+  writes ride the event and the eval's trace; the dollar rail still prices
+  `input_tokens` only, which with the cache on undercounts, so `promptCache`
+  stays off until J19). Founder gates, open (J19): on the reference box per
+  class, the open M4 runs, `vault-continue-handoff` with and without the
+  handoff layer, and `--prompt-cache on|off` on an approved large reference
+  run (input tokens, cache reads and writes, dollars per completed task),
+  recorded here and in PROGRESS before `PACK_BY_CLASS`, `numCtx`, the
+  handoff layer or `promptCache` flip; and the device checks in the plan's
+  8.1 list for M5.
+  App integrator calls: a reply after a local-only read is marked by an
+  additive `localOnly` on `text-final` (`textFinal`, `isLocalOnlyFinal`),
+  carried onto the assistant item and the seed, so a leaving seat gets
+  `LOCAL_ONLY_STUB` and a handoff drops the turn. Memory off withholds the
+  pack and the Stack's vault tools and sends `/chat` `memory: false`;
+  `vaultContext: 'off'` drops only the pack. One index lifetime rule:
+  `closeVaultIndex` is leaving the Vault room (personal parked warm, team
+  closed), `shutVaultIndex` is a storage move, a sign-out or a pairing change.
+  One pairing rule, `hubPairPlan` ('repoint' | 'offer-move' | 'stay'). Privacy
+  source order: the desktop bridge, then the paired hub, then the device
+  setting, each within 2 s, else D5 unioned with the device setting (fail
+  closed), cached 60 s. The composer keeps stream I's `ComposerVault` shape
+  and takes the stricter of the listed and the note's own visibility.
+  `clearConversations()` clears every chat and every handoff store (local,
+  the desktop bridge, the hub's `DELETE /handoffs` unless a member). The
+  flaky `vaultStore` sign-out row was real async work (`crypto.subtle`, the
+  sealed store) outlasting one `setTimeout(0)`; it now waits on the outcome.
+  Pre-ship fixes: (1) a Stack play tracks local-only taint per step output
+  (its pack carried a local-only note, or a tainted output reached its local
+  seat whole), and every step, replan and synthesis prompt for a leaving seat
+  gets `LOCAL_ONLY_STUB` in a tainted output's place (`resultsForSeat`); a
+  step run on the paired computer's engine is tainted too when its session
+  read a local-only note (a `tool-end` or reply carrying the mark, which
+  `PackLocalOnlyMarker` now also takes from a local-only `tool-end`);
+  (2) `ContextPack.localOnly` and the `context-pack` event's additive
+  `localOnly` say a local seat's pack carried a local-only note (judged in
+  `buildContextPack`, which the app's pack now reads too), and the desktop
+  chat, remote and Electron drivers mark the reply's `text-final` after such
+  a card until the next `task-start`; (3) with prompt caching off, the Stack
+  and the Claude driver send `system` as one plain string byte-identical to
+  before M5 (the pre-M5 piece order too, on every Stack seat), the pack
+  appended last; blocks, the stable-to-volatile order and `cache_control`
+  only with caching on.
+- **Vault M6, Obsidian day one (2026-09-27):** the CTO's rulings K1 to K19
+  are built in waves (0 contracts, stubs and mechanical moves; 1 streams A1,
+  A2, B to H; 2 one app integrator). In brief: K1 one pure `vaultCaps`
+  lights every M6 action by capability, never by provider id, and every
+  write-shaped cap needs `compareAndSwap`; K2 the seam's optional members
+  (`rename`, folders, Trash, attachments, `readBytes`); K3 rename by
+  compare-and-swap that never replaces (`exists`, `missing`, `changed`,
+  `downloading`), with a create-if-absent then remove fallback only on a
+  compare-and-swap storage; K4 a pure link-rewrite plan (`move.ts`) and a
+  host apply in `vaultOps.ts`; K5 folders as derived paths plus
+  `listFolders`, Local's empty folders remembered on the device; K6 Trash
+  per provider (`.trash/<path>` on a folder, sealed keys on Local); K7 a
+  pure Today core with moment tokens, refusing an unknown token by name;
+  K8 the search grammar (`tag:`, `path:`, `file:`, phrases, `-`); K9 the
+  switcher and Recent; K10 remark plugins, sanitized, no `id` from note
+  text; K11 embeds one level deep, checkbox write-back, attachments and
+  refcounted blob URLs; K12 `0020_org_vault_move.sql`; K13 the engine,
+  main and daemon routes; K14 linking by keyboard with the accessory bar;
+  K15 outgoing links, unlinked mentions, the outline; K16 the 5,000-note
+  budgets; K17 no new `OscConfig` key; K18 motion and honest copy; K19 what
+  waits for the held branches. Reconciled with CX, final: a rewrite
+  conflict skips that note and the pass continues (a re-read and re-plan
+  once, a standing card with "Update the rest"; only a storage-level failure
+  stops it); one-tap delete only where Trash is real, and any permanent
+  delete keeps two taps worded "for good" with a courtesy in-memory Undo;
+  team Trash is Restore only, no Empty; a restore beside a taken name is
+  "{title} (restored)" on every provider. The CX memo's key calls: search
+  lives in the tree on every platform and the phone gets no switcher (its
+  field is one, over K9); titles first, then text, with `<mark>`; Recent
+  merges the agent's notes, labelled only where the agent is real; rename is
+  one sheet with Name and Folder; "Update links?" only when links point in;
+  a partial pass names the notes it skipped; Undo is a 6 s toast that pauses
+  under a hand and says "Also in Trash."; Trash is the last row at the root,
+  shown only when it holds something; Today sits beside the house +, opens
+  an existing note with no write and no toast; callouts use four token
+  families, never teal or amber; the only haptics are a commit when a
+  destructive or multi-note change lands and a tick on a checkbox. Stream
+  deviations: B keeps accents distinct while it folds case and Unicode
+  normalization (a filesystem's truth and 0019's `lower(path)`; K3 had said
+  accent-insensitive), and Local, the hub and the rename sheet use the same
+  `foldPath`; unlinked mentions carry a guarded Link button (CX X16) though
+  K15 said read-only, the person's own compare-and-swap write, refused while
+  a choice is open on that note; K14's insert tries `execCommand('insertText')`
+  first and falls back to `setRangeText` with an `input` event, unverified on
+  a device; a rename adopts the path the storage returned, never the one
+  asked (B re-cases parents to the disk's spelling); 0020 lives on the held
+  team branch, and that branch's `listTrash` lists a tombstone only when its
+  newest revision of any reason is `deleted` (a moved-away path's newest is
+  `renamed`). The app integrator's calls: the store binds the screen's
+  autosave (`vaultBindAutosave`, `take()`) so a stale save never recreates a
+  trashed note; a permanent delete stays M2's guarded `vaultDelete` plus the
+  bytes for the courtesy Undo, a Trash-real one goes through
+  `vaultOps.deleteNote`; an operation's write to the open note reloads it in
+  place; the rewrite pass writes a moved note at its landed path; one fold
+  rule for a taken name (`foldPath`, pinned for every provider in
+  `providerContract`); remembered empty folders (`vaultEmptyFolders`) and
+  Recent (`vaultRecent`) are device settings keyed `providerId::resourceId`,
+  Recent cleared on a repoint and with the chats; search uses the host's
+  `search(q, opts)` memoized on list, index state and scope; Today's
+  refusals say the storage's own line; a `#tag` in reading view is a small
+  button that searches `tag:x`; blob URLs are revoked with `shutVaultIndex`,
+  on leaving the room and on iOS backgrounding, the reader re-keyed on
+  return; the outline scroll finds `[data-heading-index]` outside embeds;
+  Options says why a row is missing where the storage itself lacks it
+  (`vaultCapLine`); the class-name guard reads `className` values only; new
+  strings sit in an "M6 wave 2" section of `vaultCopy.ts`; folder options
+  show in a folder view only. The tree to note and read to edit swaps began
+  as arrival fades and are now true crossfades: `hooks/useViewGhost.ts`
+  clones the leaving view's root in React's commit (typed text copied, ids
+  dropped) into an inert, aria-hidden snapshot inside the room's scroller
+  that fades out on `--dur-3` and `--ease-standard` while the arriving view
+  fades in; a re-key of the same view leaves none, and reduced motion (or a
+  host with no `matchMedia`) leaves none. `vaultViewGhost.test.tsx` fails a
+  Vault view root rendered without its ghost binding. The Trash page still
+  only arrives with a fade, since it replaces the whole screen.
+- **Vault M7, the customization surface (2026-09-27):** the CTO's rulings L1
+  to L20, built in waves (0 contracts; 1 streams A to G, H on the held team
+  branch; 2 one app integrator). In brief: L1 one pure settings core
+  (`harness/vault/settings.ts`, Node-free, through `os-code/protocol`) with
+  the tolerant Obsidian readers moved into it; L2 the in-vault file
+  `.oscode/vault.json` (new notes, daily, templates, attachments, links,
+  editor, tree sort, delete, agent folder, exclude and local-only), each
+  field with a runtime consumer pinned by a table test; L3 plan change: a
+  convention Obsidian sets wins and its row reads "From Obsidian", then the
+  in-vault field, then the default; L4 the file only narrows (an allow-list
+  parse, widening keys set aside with a plain line, the lists union only),
+  and the honest limit: it binds every model and the agent, not a person who
+  can edit the folder, so the durable floor is machine config and the device
+  setting; L5 who reads it per host (`vaultSettingsFor`, a refreshed privacy
+  holder per root); L6 caching (2 s engine memo, 60 s app map keyed
+  `providerId::resourceId`); L7 the sheet writes the file through a seam
+  `writeConfig`, compare-and-swap, the agent never may; L8 a hard deny under
+  `.oscode/` on every write path; L9 plan change: provenance as flat
+  top-level `oscode-*` keys (`source`, `model`, `where`, `size`, `provider`,
+  `created`, `reviewed`), `oscode:` stays the privacy marks, and the merge
+  runs before the approval so the person approves exact bytes; L10 the pure
+  textual merge, byte for byte, skipping rather than making bad frontmatter
+  worse; L11 `delete: permanent` turns Trash caps off; L12 the starter
+  layout, empty personal vaults only, opt-in, every write `ifAbsent`; L13
+  reach switches stay out of the vault (`vaultContextOn`, `vaultHandoffOn`,
+  `vaultPackSize`, the app may only lower, riding
+  `BootstrapOptions.vaultOverrides`); L14 new keys classified (`vault.packSize`,
+  `vault.packMaxTokens`, `vault.provenance` machine; the device settings);
+  L15 one sheet, seven sections, three Wayfinding rows after Memory; L16
+  Local on its sealed key, the team vault read-only defaults on main; L17
+  team settings and entitlement on the held branch; L18 no-config parity;
+  L19 purity; L20 this entry. Three holes closed on the way: a symlinked
+  note pointing into `.oscode/` (the resolved path is checked, not only the
+  typed one), `writeFile` and `editFile` reaching `.oscode/` under an
+  always-allow grant (refused for the machine vault and every member root,
+  whatever the grant), and a nested `oscode:` provenance map that would have
+  made a duplicate key and dropped every privacy mark (hence flat keys).
+  `runShell` is not covered: it stays under its ask rule and nothing claims
+  otherwise. Reconciled with CX: flat `oscode-*` keys; Memory's sub says it
+  gates the vault too, and "Off applies to new chats" is the floor (an
+  engine session takes its options at open); the line "This vault's
+  settings keep anything in Private or Journal off cloud models" shows only
+  when the starter's settings file actually landed (a machine
+  `vault.localOnly` replaces the D5 default, so without the file the line
+  would not be true); Handoff is an off-only override that takes effect at
+  the next model switch on app seats and for engine sessions opened after,
+  and off means no handoff at all (the passed switch text is dropped too).
+  Entitlement (CFO + CTO; founder sets the date): 2026-09-27: Team vault
+  writes for an org with no entitlement row are open until
+  no_entitlement_vault_until() (null in the beta); when pay gates return,
+  one migration sets it at least 30 days out as the notice; a lapsed paid row
+  is read-only with export regardless. The SQL is on the held team branch as
+  `0021_org_vault_settings.sql` (after 0019 and 0020): `org_vault_settings`
+  (conventions only, `delete_role`, a `context_folder` column with no row
+  until v1.1), admin-only compare-and-swap `org_vault_settings_put`,
+  `org_vault_entitled`; every write RPC raises `OV402` when not entitled,
+  `OV403` refuses a member's delete when only admins may, and a move is not
+  gated by the delete role (a rename keeps the note and its history). The
+  integrator's key calls: run note provenance has one owner
+  (`runNoteFrontmatter`), and an unreadable `daily-notes.json` writes no day
+  link; K16 timings are best of five while counts stay exact; one override
+  rule (A's three helpers); vaultWrite's description stays static (a
+  per-session description would break the prompt cache prefix for no
+  measured gain); the settings writer is a direct import, proven end to end
+  through the daemon and the desktop bridge; a retrieval skip for the
+  templates folder and Obsidian's plain ignore filters (not privacy, and no
+  copy says so); the settings live in the store keyed like Today's cache;
+  room for notes on an app seat is the device's choice, lower-only against
+  the machine elsewhere; the project lock line is not shown (the app cannot
+  read a project's config; the engine still enforces its off); links write
+  markdown or wikilinks by the vault's style and format only when the
+  resolver reaches exactly that note; Mark as reviewed is the person's
+  compare-and-swap write. Approval honesty, fixed after integration: an
+  addition to an existing note had its provenance merged at write time
+  while the card showed only the added text. Now the app computes the exact
+  final text before the card (the note as the model read it, the addition,
+  the property change), the card names the change ("Also records in its
+  properties: Edited by {model} · Local."), and the write lands exactly
+  those bytes by compare-and-swap on the version read, refusing a changed
+  note instead of merging; the engine's approval basis carries the hash of
+  the exact bytes its diff showed, and execute writes those bytes or nothing
+  (a seat that changed under the card is refused). Tests:
+  `os-code/test/vaultApprovedBytes.test.ts`, `app/test/vaultTool.test.ts`.
+- **Vault M8, the ship gate (2026-09-27, plan 8.2):** the standing record
+  of what Vault v1 settled, gathered in one place; each ruling's own entry
+  above stays the detail. (1) **The base revision lives in the editor.** The
+  version a save is typed against is carried by the open note and by its
+  stash entry, never by a provider or a device clock; a provider answers a
+  guarded write with `ok`, `changed` (with theirs), `missing`, `exists`, or
+  `downloading`, and never overwrites on a mismatch (M1 F4, M2 G3, 2.1). On
+  `main` the team provider still remembers the revs it read (0.9 stopped
+  `list()` and `stat()` from moving them) until `vault-m2-team` lands its
+  client on 0019's `org_vault_write` and `org_vault_remove`. (2) **The lease,
+  revised (2.5, supersedes the CTO's "single-writer lease from day one").**
+  `leaseEnforced = writable && !compareAndSwap`: on a compare-and-swap
+  storage the lease is advisory ("also open on X"), and only iCloud writes a
+  lease file, taken on a keystroke, renewed at most every 60 s, TTL 150 s;
+  a storage without compare-and-swap enforces it (create and delete refused,
+  Take over editing). (3) **The trash convention (6.3, K6).** A delete goes
+  to `.trash/<path>` on a folder and on Your computer (the folder Obsidian
+  uses, already hidden by the 0.6 note rule), to sealed trash keys on Local,
+  and on the team vault to its tombstones and revisions (Restore only, no
+  Empty; held branch). Delete is one tap only where Trash is real; any
+  permanent delete takes two taps worded "for good" with an in-memory
+  courtesy Undo; a restore beside a taken name lands as "{title} (restored)";
+  `delete: permanent` in `.oscode/vault.json` turns Trash off. (4) **The pack
+  budgets are placeholders until 4.8.** `PACK_BY_CLASS` is Current State only
+  for every class; `vaultPackFraction` 0.08 (tiny, small, mid) and 0.04
+  (large) of the served window, capped at `VAULT_PACK_MAX_TOKENS` 4000;
+  `vaultReadCapChars` 6,000, 12,000, 32,000, 64,000 by class; the merged
+  `vaultLookup` for tiny and small; a 250 ms cold budget; pins at most 3 in
+  half the budget; the composer excerpt min(2,000, 25% of the window), 1,024
+  on a device seat; a device seat's 4,096 window gives 327 tokens; the
+  handoff to the desktop agent at most 16 KB; `numCtx`, the handoff layer,
+  and `promptCache` off. Each changes only in its own commit citing the
+  reference box numbers recorded here. (5) **The team vault's permission
+  model.** Reads are RLS-scoped to active members (a removed member reads 0
+  notes and 0 revisions); writes only through SECURITY DEFINER RPCs
+  (`org_vault_write`, `org_vault_remove`, `org_vault_move`, with the legacy
+  put and delete kept for builds in the field); revisions are append-only
+  and no member writes them directly; bodies cap at 1 MB; paths are unique
+  on `lower(path)`; tombstones and revisions purge past a window. On the held
+  0021: `delete_role` (admins or members) set by an admin through a
+  compare-and-swap `org_vault_settings_put`, `OV403` for a member's delete
+  under admins-only, a move never gated by the delete role, `OV402` on every
+  write when not entitled, a lapsed org reading and exporting everything, and
+  an org with no entitlement row writing until `no_entitlement_vault_until()`
+  (null in the beta). The team vault is for people only in v1: no pack, no
+  vault tool, no agent line (D15); project pins stay device-local and never
+  sync. (6) **Founder decisions still open:** push 0019, then 0020, then
+  0021 to production, after the case-duplicate preflight, and confirm the
+  purge cron; merge `vault-m2-team`, `vault-m2-icloud`, and `vault-m2-native`
+  (in that dependency order: icloud before native); the date in
+  `no_entitlement_vault_until()` when pay gates return (at least 30 days
+  out); one recorded `xcodebuild test` run of the Swift tests on the Mac that
+  builds the iOS app; the reference box evals (M4 `--vault-pack` and
+  `--num-ctx`, M5 `--handoff` and `--prompt-cache`, M6's K16 timings), with
+  the thresholds D12 leaves to the founder; the device checklist
+  (`docs/vault-v1-device-checklist.md`); and the CFO's seat-ceiling dissent
+  (2026-09-05 entry: the Micro band for an org with no entitlement row),
+  which the founder decides beside pricing, a Board gate. The must-fix map is
+  `docs/vault-v1-test-map.md` (101 findings: 96 covered on `main`, 2 on the
+  held team branch, 2 device-only, 1 missing, orgvault-19).
+
+- **Vault M8 code pass (2026-09-27, plan 8.4 and the M6 and M7 follow-ups):**
+  (1) the copy gate covers the whole vault copy map and the Vault's UI
+  strings: `VAULT_EVAL_CLAIMS_UNLOCKED = false` in `vaultCopy.ts` waits on
+  the 4.8 pack and 5.4 handoff results, and until then `vaultCopy.test.ts`
+  refuses faster, slower, cheaper, better, smarter, remembers, learns, and
+  "picks up where you left off"; "always" stays refused after the flag,
+  since it is not a measurement. (2) The computer's own Room for notes rides
+  read only on the privacy answer both hosts already give
+  (`VaultPrivacyWire.packSize`, one `machineVaultWire` helper); the sheet
+  says "Sessions on this computer use its own setting, Normal." whenever
+  those sessions use another size, and "can use its own setting instead."
+  when the computer does not answer; `packMaxTokens` is not sent (nothing
+  reads it). (3) Play-step engine sessions carry the device's
+  `vaultOverrides`. (4) The Trash page renders inside the room's screen, so
+  it crossfades in and out on the view ghost, under the M6 guard. (5)
+  orgvault-19: `os-code/test/vaultClaims.test.ts` keeps the team vault's
+  "never lost" claim out of source, docs, and migration comments;
+  `0010_org_vault.sql` is exempt by name because an applied migration is
+  never edited, and 0019's revisions supersede its header. (6) Not built:
+  the "This project's settings turn this off." line, because an honest one
+  needs the active project's config read on demand (a session's report goes
+  stale, and a project can span several repos); the engine still enforces
+  a project's off.

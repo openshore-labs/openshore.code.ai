@@ -31,6 +31,18 @@ afterEach(() => {
 });
 
 describe('vaultAutosave', () => {
+  it('is pending from the first keystroke until the save goes out (the chip says Saving)', () => {
+    const { autosave } = harness(personal);
+    expect(autosave.isPending()).toBe(false);
+    autosave.schedule('a.md', 'd');
+    expect(autosave.isPending()).toBe(true);
+    vi.advanceTimersByTime(VAULT_AUTOSAVE_MS);
+    expect(autosave.isPending()).toBe(false);
+    autosave.schedule('a.md', 'dr');
+    autosave.cancel();
+    expect(autosave.isPending()).toBe(false);
+  });
+
   it('waits out the debounce, then saves the latest text once', () => {
     const { autosave, saves } = harness(personal);
     autosave.schedule('a.md', 'd');

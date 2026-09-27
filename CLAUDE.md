@@ -23,14 +23,62 @@ condition (each checkbox checked off in `os-code/PROGRESS.md`) is now met.
   2026-08-25, commits `b8e1658` (framing/seam), `ac74f77` (iCloud Drive),
   `3b28146` (Google Drive, OAuth PKCE). Code in `app/src/lib/gitos/`.
 - **Vault** (native Obsidian-style markdown knowledge base, on the gitOS seam):
-  BUILT 2026-08-25, commit `b8e1658`. Code in `app/src/lib/vault.ts` and
-  `app/src/screens/VaultScreen.tsx`.
+  first BUILT 2026-08-25, commit `b8e1658`; rebuilt as Vault v1 (below).
 
-Do NOT re-surface these as unbuilt or re-scope them from scratch. Vault's
-ORGANIZATION tier (the real multi-writer backend) also shipped: code in
-`app/src/lib/gitos/orgVault.ts`, migration `supabase/migrations/0010_org_vault.sql`.
-The original build prompts are kept in `os-code/docs/parked-ideas.md` as
-historical reference only.
+Do NOT re-surface these as unbuilt or re-scope them from scratch. The original
+build prompts are kept in `os-code/docs/parked-ideas.md` as historical
+reference only.
+
+## Vault v1: M0 to M7 BUILT, the M8 ship gate open (2026-09-27)
+
+The plan is `docs/vault-v1-plan.md` (D1 to D15 ruled by the founder); the
+review behind it is `docs/vault-v1-review-findings.md`; each milestone's calls
+are in `os-code/DECISIONS.md`. Vault is one local-first plain-markdown vault on
+the gitOS seam that the person, every model seat, Crew routines, and Obsidian
+share: on the desktop the folder (`~/OSCode/Vault` or one the person picks,
+an Obsidian vault included), on a paired phone "Your computer" while it is on.
+Before each turn the harness gives the seat a small cited pack sized to its
+served window, and a switch hands over what the next seat cannot fit. Code:
+the pure core in `os-code/src/harness/vault/` plus `harness/vaultContext.ts`
+and `harness/handoff.ts` (Node-free, through `os-code/protocol`); the engine's
+tools in `os-code/src/core/tools/vault.ts` and `vaultFind.ts`, its index in
+`core/vault/`, the daemon's routes in `daemon/vaultRoutes.ts`; the app's seam
+and providers in `app/src/lib/gitos/` (folder, Local, iCloud, hub, team), the
+store's vault work in `app/src/state/store.ts` and `state/vaultOps.ts`, the
+room in `app/src/screens/VaultScreen.tsx`, every claim in `lib/vaultCopy.ts`.
+
+Standing rules, each pinned by tests:
+
+- **Nothing is overwritten silently.** The folder, Local, and Your computer
+  write by compare-and-swap (`ifMatch`, `ifAbsent`; a conflict is a result,
+  never a throw), and each passes `app/test/providerContract.test.ts`; iCloud
+  and the team client gain it with their held branches, and until then a
+  storage without it keeps the single-writer lease enforced (and the team
+  vault its server-side base-rev compare with a conflict copy). The base
+  version lives in the open editor and the stash. A conflict opens the
+  resolve sheet (Keep both first).
+- **Copy says only what is true**, per platform and storage, through
+  `vaultCopy.ts` (`app/test/vaultCopy.test.ts`); no "faster", "smarter", or
+  "remembers" until the reference box eval says so (tenet 2).
+- **Files are the source of truth**; the index is a rebuildable cache outside
+  the vault. Agent writes stay always-ask, and the person approves the exact
+  bytes (provenance included). `.oscode/vault.json` travels with the vault and
+  can only narrow reach; the agent never writes under `.oscode/`.
+- **Privacy is judged by address**: notes the privacy rules mark local-only
+  (by default `Private/`, `Journal/`, `#private`, and `oscode: local-only`;
+  machine config can change the defaults, a vault's own file can only add)
+  never reach a seat that leaves this network (D5).
+- **Google Drive is held out of v1** (D1), and the team vault stays out of
+  model context until v1.1 (D15).
+
+Held branches, not on `main`: `vault-m2-team` (the team client on
+compare-and-swap, 0020, 0021), `vault-m2-icloud`, and `vault-m2-native` (the
+iPhone opening an Obsidian vault in place). Founder gates (PROGRESS, What
+remains): pushing 0019, 0020, 0021 in order; the entitlement date; the
+reference box evals for M4 to M6 before any pack default flips; an
+`xcodebuild test` run; and the device checklist in
+`docs/vault-v1-device-checklist.md`. Every must-fix finding maps to a test in
+`docs/vault-v1-test-map.md`.
 
 ## Crew routines (the botOS brief) are BUILT (2026-09-05)
 

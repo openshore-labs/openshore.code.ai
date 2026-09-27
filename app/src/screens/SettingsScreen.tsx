@@ -3,7 +3,7 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone } from '../lib/platform.js';
@@ -44,12 +44,25 @@ import { InfoSheet } from '../components/InfoSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
-import { WAYFINDING, WAYFINDING_IDS, wayfindingOn } from '../lib/currents.js';
+import { WAYFINDING, WAYFINDING_IDS, memoryOverride, wayfindingOn } from '../lib/currents.js';
+import { PROVIDER_ROSTER } from '../lib/gitos/providers.js';
+import { vaultDevicePatch, vaultDeviceView } from '../lib/vaultDevice.js';
+import {
+  VAULT_HANDOFF_SUB,
+  VAULT_MEMORY_SUB,
+  VAULT_SETTINGS_ROWS,
+  VAULT_SETTINGS_TITLE,
+  VAULT_SWITCH_MEMORY_OFF,
+  vaultHandoffToast,
+  vaultNotesInChatsSub,
+  vaultNotesInChatsToast,
+} from '../lib/vaultCopy.js';
+import { VaultSettingsHost } from '../components/vault/VaultSettingsHost.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
 import type { SearchBackend } from '../lib/webSearch.js';
-import { TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
+import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -233,9 +246,8 @@ type SheetName = 'account' | 'log' | 'search' | 'clear';
 
 export function SettingsScreen() {
   const {
-    order,
+    clearConversations,
     settings,
-    deleteConversation,
     showToast,
     saveSettings,
     setView,
@@ -257,7 +269,18 @@ export function SettingsScreen() {
     setWayfinding,
     setPerplexityResearch,
     connectedProviders,
+    vaultScope,
+    setVaultScope,
+    vaultRequestSheet,
   } = useApp();
+  // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
+  const [vaultSettingsOpen, setVaultSettingsOpen] = useState(false);
+  const memoryOn = memoryOverride(settings) !== false;
+  const vaultDevice = vaultDeviceView(settings, { memoryOn, cloudSeat: false });
+  const vaultProviderId =
+    (settings.gitosResources ?? []).find((r) => r.id === 'vault.personal')?.providerId ?? 'local';
+  const vaultStorageName =
+    PROVIDER_ROSTER.find((r) => r.id === vaultProviderId)?.label ?? vaultProviderId;
   const editMode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
   const { configured, signedIn, email } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
@@ -979,22 +1002,75 @@ export function SettingsScreen() {
         {/* Wayfinding: how the agent finds its way. On by default. */}
         <SettingsGroup title="Wayfinding" index={group++}>
           {WAYFINDING_IDS.map((id) => (
-            <SettingsRow
-              key={id}
-              label={WAYFINDING[id].label}
-              sub={WAYFINDING[id].sub}
-              subWrap
-              trailing={
-                <Switch
-                  checked={wayfindingOn(settings, id)}
-                  label={WAYFINDING[id].label}
-                  onChange={(next) => {
-                    void setWayfinding(id, next);
-                    showToast(`${WAYFINDING[id].label} ${next ? 'on' : 'off'}.`);
-                  }}
-                />
-              }
-            />
+            <Fragment key={id}>
+              <SettingsRow
+                label={WAYFINDING[id].label}
+                // Memory now says what it gates: the vault in chats too.
+                sub={id === 'memory' ? VAULT_MEMORY_SUB : WAYFINDING[id].sub}
+                subWrap
+                trailing={
+                  <Switch
+                    checked={wayfindingOn(settings, id)}
+                    label={WAYFINDING[id].label}
+                    onChange={(next) => {
+                      void setWayfinding(id, next);
+                      showToast(`${WAYFINDING[id].label} ${next ? 'on' : 'off'}.`);
+                    }}
+                  />
+                }
+              />
+              {/* Directly after Memory (Vault M7, CX Y4, Y7): the vault's two
+                  device switches and its settings. Rows of this group, never
+                  a group or a room of their own. */}
+              {id === 'memory' ? (
+                <>
+                  <SettingsRow
+                    label={VAULT_SETTINGS_ROWS.context}
+                    sub={memoryOn ? vaultNotesInChatsSub(PACK_BY_CLASS) : VAULT_SWITCH_MEMORY_OFF}
+                    subWrap
+                    trailing={
+                      <Switch
+                        checked={vaultDevice.context.on}
+                        disabled={!memoryOn}
+                        label={VAULT_SETTINGS_ROWS.context}
+                        onChange={(next) => {
+                          void saveSettings(vaultDevicePatch({ context: next }));
+                          showToast(vaultNotesInChatsToast(next));
+                        }}
+                      />
+                    }
+                  />
+                  <SettingsRow
+                    label={VAULT_SETTINGS_ROWS.handoff}
+                    sub={memoryOn ? VAULT_HANDOFF_SUB : VAULT_SWITCH_MEMORY_OFF}
+                    subWrap
+                    trailing={
+                      <Switch
+                        checked={vaultDevice.handoff.on}
+                        disabled={!memoryOn}
+                        label={VAULT_SETTINGS_ROWS.handoff}
+                        onChange={(next) => {
+                          void saveSettings(vaultDevicePatch({ handoff: next }));
+                          showToast(vaultHandoffToast(next));
+                        }}
+                      />
+                    }
+                  />
+                  <SettingsRow
+                    label={VAULT_SETTINGS_TITLE}
+                    value={vaultStorageName}
+                    onClick={() => {
+                      // The personal vault only (the team vault is never in
+                      // context, D15).
+                      void (async () => {
+                        if (vaultScope === 'team') await setVaultScope('personal');
+                        setVaultSettingsOpen(true);
+                      })();
+                    }}
+                  />
+                </>
+              ) : null}
+            </Fragment>
           ))}
           {/* Research (Perplexity): a sibling of Browser, but OFF by default and
               gated on a connected Perplexity key, since it spends that key on
@@ -1155,7 +1231,7 @@ export function SettingsScreen() {
           <button
             className="btn danger"
             onClick={() => {
-              for (const id of [...order]) deleteConversation(id);
+              void clearConversations();
               close();
               showToast('Conversations cleared.');
             }}
@@ -1175,6 +1251,16 @@ export function SettingsScreen() {
           void listVoices().then((voices) =>
             setVoiceName(voices.find((v) => v.id === id)?.name ?? ''),
           );
+        }}
+      />
+      {/* The same Vault settings sheet as the Vault room's (CX Y4). "Where it
+          lives" goes to the Vault room and opens its storage sheet there. */}
+      <VaultSettingsHost
+        open={vaultSettingsOpen}
+        setOpen={setVaultSettingsOpen}
+        onOpenStorage={() => {
+          vaultRequestSheet('storage');
+          setView('vault');
         }}
       />
     </div>

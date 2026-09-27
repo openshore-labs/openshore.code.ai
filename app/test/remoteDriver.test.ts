@@ -4,6 +4,7 @@ import {
   AWAY_AFTER_MS,
   HUB_NO_ANSWER,
   RemoteDriver,
+  capUtf8,
   daemonApplyOutbox,
   daemonCloneRepo,
   daemonCreateSession,
@@ -16,7 +17,9 @@ import {
 } from '../src/drivers/remoteDriver.js';
 import { emptyThread } from '../src/state/types.js';
 import { reduceEvents } from '../src/state/transcript.js';
-import type { DriverEvent } from 'os-code/protocol';
+import { HANDOFF_MAX_BYTES, LOCAL_ONLY_STUB, type DriverEvent } from 'os-code/protocol';
+import { isLocalOnlyFinal, seedText } from '../src/drivers/types.js';
+import { seedFromTranscript } from '../src/state/types.js';
 
 /** A Response whose body streams the given SSE text once, then closes. */
 function sseResponse(text: string, status = 200): Response {
@@ -185,6 +188,55 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     expect((done[0]!.event as { message?: string }).message).toMatch(/no longer exists/);
     const thread = reduceEvents(emptyThread(), events);
     expect(thread.busy).toBe(false);
+  });
+});
+
+describe('RemoteDriver marks a reply grounded in a local-only pack note (I5)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('marks text-final after a localOnly card until the next task, and a cloud seed gets the stub', async () => {
+    const frames = [
+      { type: 'task-start', input: 'what is the launch word?' },
+      {
+        type: 'context-pack',
+        seat: 'local',
+        mode: 'current-state',
+        tokens: 20,
+        budgetTokens: 327,
+        sources: [{ layer: 'pin', path: 'Private/Plan.md', title: 'Plan', project: true }],
+        withheld: 0,
+        cold: false,
+        localOnly: true,
+      },
+      { type: 'text-final', text: 'The launch word is marmot.' },
+      { type: 'task-done', reason: 'complete' },
+      { type: 'task-start', input: 'and the weather?' },
+      { type: 'text-final', text: 'Sunny.' },
+      { type: 'task-done', reason: 'complete' },
+    ];
+    const sse = frames.map((f, i) => `id: ${i + 1}\ndata: ${JSON.stringify(f)}\n\n`).join('');
+    let streams = 0;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      if (!String(url).includes('/events')) {
+        return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+      }
+      streams++;
+      return streams === 1 ? sseResponse(sse) : sseResponse(':ka\n\n');
+    }) as unknown as typeof fetch;
+    const events: Array<{ event: DriverEvent; seq: number }> = [];
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    driver.subscribe((event, seq) => events.push({ event, seq }));
+    await vi.waitFor(() =>
+      expect(events.filter((e) => e.event.type === 'task-done')).toHaveLength(2),
+    );
+    driver.dispose();
+    const finals = events.filter((e) => e.event.type === 'text-final').map((e) => e.event);
+    expect(finals.map(isLocalOnlyFinal)).toEqual([true, false]);
+    const seed = seedFromTranscript(reduceEvents(emptyThread(), events).items);
+    const reply = seed.find((t) => t.text.includes('marmot'))!;
+    expect(seedText(reply, true)).toBe(LOCAL_ONLY_STUB);
   });
 });
 
@@ -428,6 +480,62 @@ describe('RemoteDriver terminal (Phase 2)', () => {
     const ok = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
     expect(await ok.terminalStdin('tm1', 'y')).toEqual({ ok: true });
     ok.dispose();
+  });
+});
+
+// Vault M5 (CTO J12, J14): the create body carries a switch's handoff, cut
+// to the wire's cap, and the project's pins, notes only, at most eight.
+describe('daemonCreateSession carries the handoff and the project pins', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+  function capture(): () => Record<string, unknown> | undefined {
+    let sent: Record<string, unknown> | undefined;
+    globalThis.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      sent = init?.body ? JSON.parse(init.body as string) : undefined;
+      return { ok: true, status: 200, json: async () => ({ id: 's1' }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    return () => sent;
+  }
+
+  it('sends the handoff whole when it fits, and cut on a code point when it does not', async () => {
+    const sent = capture();
+    await daemonCreateSession({ baseUrl: 'http://desktop', token: 't' }, '/repo', {
+      handoff: 'HANDOFF from Claude, 2026-09-27, covering 14 earlier turns.',
+    });
+    expect(sent()?.handoff).toBe('HANDOFF from Claude, 2026-09-27, covering 14 earlier turns.');
+    const long = 'é'.repeat(HANDOFF_MAX_BYTES);
+    await daemonCreateSession({ baseUrl: 'http://desktop', token: 't' }, '/repo', {
+      handoff: long,
+    });
+    const cut = sent()?.handoff as string;
+    expect(new TextEncoder().encode(cut).length).toBeLessThanOrEqual(HANDOFF_MAX_BYTES);
+    expect(cut).toBe('é'.repeat(HANDOFF_MAX_BYTES / 2));
+    expect(capUtf8('abc', 2)).toBe('ab');
+  });
+
+  it('sends only note paths as pins, at most eight, and neither field when empty', async () => {
+    const sent = capture();
+    const pins = [
+      'Plan.md',
+      '.obsidian/app.json',
+      'Img.png',
+      ...Array.from({ length: 10 }, (_, i) => `n${i}.md`),
+    ];
+    await daemonCreateSession({ baseUrl: 'http://desktop', token: 't' }, '/repo', {
+      vaultPins: pins,
+    });
+    expect(sent()?.vaultPins).toEqual([
+      'Plan.md',
+      ...Array.from({ length: 7 }, (_, i) => `n${i}.md`),
+    ]);
+    await daemonCreateSession({ baseUrl: 'http://desktop', token: 't' }, '/repo', {
+      handoff: '',
+      vaultPins: [],
+    });
+    expect(sent()).not.toHaveProperty('handoff');
+    expect(sent()).not.toHaveProperty('vaultPins');
   });
 });
 

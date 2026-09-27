@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigSchema } from '../src/config/schema.js';
+import { loadVaultDir } from '../src/config/load.js';
 import { bootstrapSession, type BootstrapOptions } from '../src/core/agent/bootstrap.js';
 import { memoryEnabled } from '../src/core/agent/projectMemory.js';
 import { memoryEnabled as memoryEnabledForApps } from '../src/protocol.js';
@@ -48,8 +49,8 @@ function boot(options: Partial<BootstrapOptions> = {}) {
     ...options,
   });
   const prompt = (
-    result.agent as unknown as { systemPrompt(mode: 'native' | 'text'): string }
-  ).systemPrompt('text');
+    result.agent as unknown as { systemPrompt(mode: 'native' | 'text'): { content: string } }
+  ).systemPrompt('text').content;
   return { tools: result.tools.names(), prompt, enabled: result.config.memory.enabled };
 }
 
@@ -156,5 +157,82 @@ describe('memory off removes the tool and the prompt block', () => {
     expect(on.system).toContain(BLOCK);
     expect(on.session.approvals).toEqual([]);
     expect(existsSync(join(project, 'OpenShore Project Atlas MDs', 'Current State.md'))).toBe(true);
+  });
+});
+
+// Vault M4 (4.4, CTO I8, F6): the context pack rides the same switch. The
+// loop-level cases (the prompt, the card) are in loopVaultContext.test.ts;
+// here the real bootstrap threads a source through and the switch closes it.
+describe('memory off removes the vault context pack', () => {
+  const source = {
+    prepare: async () => {
+      throw new Error('not reached in this test');
+    },
+  };
+  const packOn = (options: Partial<BootstrapOptions>) =>
+    (bootSession({ vaultContext: source, ...options }).agent as unknown as { packEnabled: boolean })
+      .packEnabled;
+
+  function bootSession(options: Partial<BootstrapOptions>) {
+    return bootstrapSession({
+      cwd: project,
+      profile: 'local-interactive',
+      persist: false,
+      projectName: 'Atlas',
+      ...options,
+    });
+  }
+
+  it('memory on, a source given: the pack is on', () => {
+    expect(packOn({ config: configWith({}) })).toBe(true);
+  });
+
+  it('no source given: bootstrap builds the engine source, even with no vault', () => {
+    // Every host (CLI, daemon, routines, desktop) opens through bootstrap, so
+    // each gets Current State; a session without a vault root still does.
+    expect(packOn({ config: configWith({}), vaultContext: undefined })).toBe(true);
+    expect(packOn({ config: configWith({}), vaultContext: undefined, vaultRoot: null })).toBe(true);
+    expect(packOn({ config: configWith({}), vaultContext: undefined, memory: false })).toBe(false);
+  });
+
+  it("the app's override off, config off, and vault.context off each remove it", () => {
+    expect(packOn({ config: configWith({}), memory: false })).toBe(false);
+    expect(packOn({ config: configWith({ memory: { enabled: false } }) })).toBe(false);
+    expect(packOn({ config: configWith({ vault: { context: 'off' } }) })).toBe(false);
+  });
+});
+
+// Vault M5 (CTO J8): a session works on the caller's own vault root. A path
+// gives the tools and the pack on that root, null gives no vault tools, and
+// unset keeps the machine's vault. The legacy boolean flag is gone.
+describe("the session's own vault root", () => {
+  function bootRoot(options: Partial<BootstrapOptions>) {
+    const result = bootstrapSession({
+      cwd: project,
+      profile: 'local-interactive',
+      persist: false,
+      projectName: 'Atlas',
+      config: configWith({}),
+      ...options,
+    });
+    return { tools: result.tools.names(), root: result.toolContext.vaultRoot };
+  }
+
+  it('a path puts the tools and the root on it', () => {
+    const mine = join(home, 'vaults', 'members', 'abc');
+    const { tools, root } = bootRoot({ vaultRoot: mine });
+    expect(root).toBe(mine);
+    expect(tools).toContain('vaultSearch');
+    expect(tools).toContain('vaultRead');
+  });
+
+  it('null gives no vault tools and no root', () => {
+    const { tools, root } = bootRoot({ vaultRoot: null });
+    expect(root).toBeUndefined();
+    expect(tools.filter((n) => n.startsWith('vault'))).toEqual([]);
+  });
+
+  it("unset keeps the machine's vault", () => {
+    expect(bootRoot({}).root).toBe(loadVaultDir().dir);
   });
 });

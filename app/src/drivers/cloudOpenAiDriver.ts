@@ -8,9 +8,21 @@
 // desktop shell these providers send no CORS headers, so the request goes
 // through the native shim, which cannot stream: there we ask for the whole
 // answer and emit it once, the same split stackDriver's cloud path uses.
-import { ThinkTagSplitter, type ApprovalAnswer, type ThoughtPiece } from 'os-code/protocol';
-import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter, readChatContext } from './types.js';
+import {
+  ThinkTagSplitter,
+  type ApprovalAnswer,
+  type DriverEvent,
+  type ThoughtPiece,
+} from 'os-code/protocol';
+import type {
+  AppVaultPack,
+  ChatContext,
+  ChatDriver,
+  DriverEventSink,
+  DriverVaultOptions,
+} from './types.js';
+import { packSeatFor } from '../lib/vaultSeat.js';
+import { DriverEmitter, readChatContext, seedText } from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { chainOfThoughtLine, chainOfThoughtOn, reasoningOf } from '../lib/chainOfThought.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
@@ -95,6 +107,13 @@ export class CloudOpenAiDriver implements ChatDriver {
   private history: OaiMessage[] = [];
   private aborted = false;
   private controller?: AbortController;
+  /** The send in flight, so Stop also reaches a pack still preparing. */
+  private sendController?: AbortController;
+  private readonly vaultPack?: AppVaultPack;
+  private readonly contextWindow: number;
+  /** The window the provider's catalog lists for this model, if any: the
+   *  pack sizes itself from it, else 128k (CTO J4). */
+  private readonly listedWindow?: number;
 
   constructor(
     private readonly baseUrl: string,
@@ -106,10 +125,17 @@ export class CloudOpenAiDriver implements ChatDriver {
     /** Extra system context for this chat (the repositories it works with,
      *  the guided setup's step), read on every reply. */
     private readonly extraSystem?: ChatContext,
-    private readonly contextWindow: number = DEFAULT_CONTEXT_WINDOW,
+    contextWindow?: number,
+    /** The conversation's vault pack (CTO J1); none with Memory off. */
+    opts: DriverVaultOptions = {},
   ) {
+    this.listedWindow = contextWindow;
+    this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+    this.vaultPack = opts.vaultPack;
     // A mid-chat switch seeds the prior turns so this model continues the thread.
-    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+    // A turn that drew on a local-only note reaches this cloud seat as the
+    // stub, never the text (I5).
+    if (seed) this.history = seed.map((t) => ({ role: t.role, content: seedText(t, true) }));
   }
 
   subscribe(sink: DriverEventSink): () => void {
@@ -135,7 +161,11 @@ export class CloudOpenAiDriver implements ChatDriver {
 
   private async run(text: string, attachments?: Attachment[]): Promise<void> {
     this.aborted = false;
+    const send = new AbortController();
+    this.sendController = send;
     this.emitter.emit({ type: 'task-start', input: text });
+    // The pack gathers once per send, beside the turn's own setup.
+    const preparing = this.vaultPack?.prepare(text, send.signal);
     this.emitter.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
     this.history.push({ role: 'user', content: this.userContent(text, attachments) });
     // Chain of Thought, read once per turn. The splitter takes <think> text out
@@ -155,14 +185,25 @@ export class CloudOpenAiDriver implements ChatDriver {
     const thought = (r: string | undefined) => {
       if (cot && r) this.emitter.emit({ type: 'thinking-delta', text: r });
     };
+    await preparing;
+    if (this.aborted) {
+      this.emitter.emit({ type: 'text-final', text: '' });
+      this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
+      return;
+    }
+    const pack = this.vaultPackFor();
+    if (pack.event) this.emitter.emit(pack.event);
     const messages: OaiMessage[] = [
       {
         role: 'system',
+        // Stable to volatile (CTO J16): the base prompt and the chat's own
+        // context first, then the per-send lines, the vault pack last.
         content: [
           SYSTEM_PROMPT,
+          readChatContext(this.extraSystem),
           effortDirective(),
           chainOfThoughtLine(this.model, cot),
-          readChatContext(this.extraSystem),
+          pack.text,
         ]
           .filter(Boolean)
           .join('\n'),
@@ -272,6 +313,17 @@ export class CloudOpenAiDriver implements ChatDriver {
     }
   }
 
+  /** This send's pack, rendered for this seat: a cloud provider on the
+   *  person's key, served its listed window. */
+  private vaultPackFor(): { text?: string; event?: DriverEvent } {
+    if (!this.vaultPack) return {};
+    const seat = packSeatFor(
+      { kind: 'cloud', provider: this.providerLabel, model: this.model, label: this.model },
+      { ownTailnetSuffix: null, cloudContextTokens: () => this.listedWindow },
+    );
+    return seat ? this.vaultPack.render(seat) : {};
+  }
+
   /** Emit the sources of a search-grounded answer (Sonar). No-op when there
    *  are none, so a non-Sonar provider never emits an empty citations event. */
   private emitCitations(citations: Array<{ title: string; url: string; snippet: string }>): void {
@@ -307,6 +359,7 @@ export class CloudOpenAiDriver implements ChatDriver {
 
   abort(): void {
     this.aborted = true;
+    this.sendController?.abort();
     this.controller?.abort();
   }
 
@@ -320,6 +373,7 @@ export class CloudOpenAiDriver implements ChatDriver {
 
   dispose(): void {
     this.aborted = true;
+    this.sendController?.abort();
     this.controller?.abort();
     this.emitter.clear();
   }

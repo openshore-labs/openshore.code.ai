@@ -25,8 +25,11 @@ import type {
   ApprovalRequest,
   FetchLike,
   HarnessCurrentsHandle,
+  ProvenanceFields,
+  VaultPrivacy,
 } from 'os-code/protocol';
 import {
+  LOCAL_ONLY_STUB,
   uxStandardPrompt,
   humanizerStandardPrompt,
   JevAdvisor,
@@ -35,6 +38,9 @@ import {
   SearchLineFilter,
   ThinkTagSplitter,
   splitThinkTags,
+  mergeProvenance,
+  readFrontmatter,
+  readProvenance,
   type ThoughtPiece,
 } from 'os-code/protocol';
 import {
@@ -73,6 +79,7 @@ import {
   claudeRequestThinking,
   reasoningOf,
 } from '../lib/chainOfThought.js';
+import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
@@ -93,6 +100,7 @@ import {
   type StepResult,
 } from '../lib/play.js';
 import { effortDirective } from '../lib/effort.js';
+import { vaultProposalRecords } from '../lib/vaultCopy.js';
 import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
@@ -110,10 +118,28 @@ import {
   type StackModelRef,
 } from '../lib/stack.js';
 import type { CrewAgent } from '../state/types.js';
-import type { ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter } from './types.js';
+import type { WriteGuard, WriteResult } from '../lib/gitos/providers.js';
+import {
+  VAULT_PROPOSALS_MAX,
+  isAppVaultToolName,
+  parseVaultToolArgs,
+  runVaultTool,
+  vaultAnthropicTool,
+  vaultApproveRefusal,
+  vaultArgsHelp,
+  vaultOpenAiTool,
+  vaultPolicyFor,
+  vaultToolInputFrom,
+  vaultToolSlice,
+  type AppVaultToolName,
+  type VaultProposal,
+  type VaultToolContext,
+  type VaultToolInput,
+} from '../lib/vaultTool.js';
+import type { ChatDriver, DriverEventSink, DriverVaultOptions, PackSeat } from './types.js';
+import { DriverEmitter, isLocalOnlyFinal, textFinal } from './types.js';
 import { RemoteDriver, daemonCreateSession, type DaemonTarget } from './remoteDriver.js';
-import type { DriverEvent } from 'os-code/protocol';
+import type { DriverEvent, VaultOverrides } from 'os-code/protocol';
 
 /** Extra context a chat carries into the router: its project and its crew. */
 export interface StackContext {
@@ -130,6 +156,12 @@ export interface StackContext {
    *  memory off. Undefined leaves the project's config in charge. App-side
    *  chats keep no project memory, so nothing else here reads it. */
   memory?: false;
+  /** The device's vault switches (Vault M7, CTO L13): Notes in chats and
+   *  Handoff off, and Room for notes, off-only and lower-only
+   *  (`appVaultOverrides`). A play's engine step carries them the way a chat's
+   *  session does; empty or undefined leaves the computer's config in charge.
+   *  App-side seats read the device settings directly, not this. */
+  vaultOverrides?: VaultOverrides;
   /** Codemagic Access is on (and Codemagic is connected), so the model may drive
    *  App Launch builds. Offers the codemagic tool on the Anthropic path, where
    *  native tool use runs the trigger/status/logs loop on-device. Off leaves the
@@ -157,7 +189,52 @@ export interface StackContext {
    *  (the classifier), in one cloud call. Absent leaves routing exactly as it
    *  was. Scoped to a paid seat, so a free local turn never spends on Jev. */
   harnessCurrents?: HarnessCurrentsHandle;
+  /** Prompt caching on Claude (`settings.promptCache`, default off, CTO J16,
+   *  J17): on, the stable head of the system prompt goes as its own block
+   *  marked for caching and the request asks for automatic caching of the
+   *  growing history. Off sends the same blocks with no marker. Unset reads
+   *  the live setting (`promptCacheOn`). */
+  promptCache?: boolean;
 }
+
+/** The app vault seam the Stack's vault tools read and write through (Vault
+ *  M5, CTO J10). The personal vault only: the store passes `teamVault` true
+ *  while the team vault is the one on screen, and no tool is offered then. */
+export interface StackVaultTools {
+  /** The compiled privacy rules (`appVaultPrivacy`). A rejection offers no
+   *  vault answer at all (fail closed). */
+  privacy: () => Promise<VaultPrivacy>;
+  search: VaultToolContext['search'];
+  read: VaultToolContext['read'];
+  resolve?: VaultToolContext['resolve'];
+  /** One guarded write through the vault seam, made only after the person
+   *  approves the end-of-send card. */
+  write: (path: string, text: string, guard: WriteGuard) => Promise<WriteResult>;
+  /** True while the team vault is the target (D15: never in context). */
+  teamVault?: () => boolean;
+  /** The paths an approved card wrote, for "Recently from your agent". */
+  onWritten?: (paths: string[]) => void;
+  /** The personal vault's `agent.folder` (Vault M7, CTO L2), read at each
+   *  offer and again at approve; undefined is anywhere in the vault. */
+  agentFolder?: () => string | undefined;
+  /** Whether a note a model writes carries its provenance lines (CTO L9).
+   *  Absent is on. */
+  provenance?: () => boolean;
+}
+
+/** The Stack driver's trailing options (CTO J1, J5, J10). */
+export interface StackDriverOptions extends DriverVaultOptions {
+  /** The seat a ref answers as (`packSeatFor(ref, ctx)`), or null for no pack
+   *  and no vault tools. Absent: no seat is known, so no pack, no vault tools,
+   *  and every network seat is treated as leaving this network. */
+  packSeat?: (ref: StackModelRef) => PackSeat | null;
+  /** The vault tools' seam; absent offers none. */
+  vaultTools?: StackVaultTools;
+}
+
+/** A seed turn, carrying the local-only mark (CTO I5) when the transcript
+ *  kept it. */
+export type StackSeedTurn = SeedTurn & { localOnly?: true };
 
 /** The extra request headers a bench model carries. An Agentic Current's model
  *  (id `current-<id>`) sends one session id per conversation, which the Hermes
@@ -187,6 +264,9 @@ export function engineStepSessionOpts(
     projectName: context.projectName,
     instructions: context.projectInstructions,
     ...(context.memory === false ? { memory: false } : {}),
+    ...(context.vaultOverrides && Object.keys(context.vaultOverrides).length
+      ? { vaultOverrides: { ...context.vaultOverrides } }
+      : {}),
   };
 }
 
@@ -232,7 +312,93 @@ export function classifyTask(text: string): StackCategory | 'reasoning' {
   return 'reasoning';
 }
 
-type Msg = { role: 'user' | 'assistant'; content: string };
+/** One history entry. `localOnly` marks a reply written after a local-only
+ *  vault read (CTO I5, mirroring the engine's `ChatMessage.localOnly`): a
+ *  later turn on a seat that leaves this network gets `LOCAL_ONLY_STUB` in
+ *  its place, while a local seat still sees it. */
+type Msg = { role: 'user' | 'assistant'; content: string; localOnly?: true };
+
+/** The history as a seat receives it: a leaving seat gets the stub for every
+ *  local-only entry. The kept history is never changed. */
+export function historyForSeat<M extends { content: string; localOnly?: true }>(
+  history: readonly M[],
+  leaves: boolean,
+): M[] {
+  return leaves
+    ? history.map((m) => (m.localOnly ? { ...m, content: LOCAL_ONLY_STUB } : m))
+    : history.slice();
+}
+
+/** One play step's output, marked when it was written after a local-only
+ *  read (I5): its seat's pack carried a local-only note, or a marked earlier
+ *  output reached that seat whole. */
+type PlayStepResult = StepResult & { localOnly?: true };
+
+/** The step outputs as a seat sees them: a marked output is
+ *  `LOCAL_ONLY_STUB` on a seat that leaves this network, whole on one that
+ *  does not (the same rule as `historyForSeat`). */
+export function resultsForSeat<R extends StepResult & { localOnly?: true }>(
+  results: readonly R[],
+  leaves: boolean,
+): R[] {
+  return leaves
+    ? results.map((r) => (r.localOnly ? { ...r, text: LOCAL_ONLY_STUB } : r))
+    : results.slice();
+}
+
+/** A system prompt in two parts (CTO J16): the stable head (static, then per
+ *  chat) and the volatile tail (per task), so the head can be cached. With
+ *  prompt caching off, every seat gets `legacy` instead: the same pieces in
+ *  the order the app sent before M5, byte for byte, the pack appended last. */
+interface SystemParts {
+  stable: string;
+  tail: string[];
+  legacy: string;
+}
+
+/** The system prompt as one string: stable to volatile with caching on, the
+ *  pre-M5 prompt with it off (off is byte-identical to before M5). */
+function joinSystem(parts: SystemParts, cache: boolean): string {
+  return cache ? [parts.stable, ...parts.tail].filter(Boolean).join('\n\n') : parts.legacy;
+}
+
+/** A proposal's first lines, for the approval card. */
+function proposalPreview(text: string, max = 600): string {
+  const t = text.trim();
+  return t.length > max ? `${t.slice(0, max)}\n[and ${t.length - max} more characters]` : t;
+}
+
+/** An appended note's text: the note, one blank line, the addition. */
+function appendedText(current: string, addition: string): string {
+  const head = current.replace(/\s+$/, '');
+  const body = addition.replace(/^\s+/, '').replace(/\s*$/, '\n');
+  return head ? `${head}\n\n${body}` : body;
+}
+
+/** The seat's provenance lines for a note a model writes (Vault M7, CTO L9):
+ *  its model, where it ran (judged by address, the pack seat's
+ *  `leavesNetwork`), its class and, off this network, its provider. */
+export function seatProvenance(ref: StackModelRef, seat: PackSeat): ProvenanceFields {
+  const model = ref.kind === 'device' ? ref.modelName : ref.model;
+  const provider = ref.kind === 'cloud' ? ref.provider : ref.kind === 'byom' ? ref.label : '';
+  return {
+    ...(model ? { 'oscode-model': model } : {}),
+    'oscode-where': seat.leavesNetwork ? 'cloud' : 'local',
+    'oscode-size': seat.modelClass,
+    'oscode-provider': seat.leavesNetwork && provider ? provider : null,
+  };
+}
+
+/** `text` with provenance merged byte for byte (L10), or `text` as it is
+ *  when the merge skips (invalid or large frontmatter, a failed verify). */
+export function withProvenance(text: string, fields: ProvenanceFields): string {
+  try {
+    const merged = mergeProvenance(text, fields);
+    return 'text' in merged ? merged.text : text;
+  } catch {
+    return text;
+  }
+}
 
 /** Build the OpenAI-compatible content array for a user turn that carries
  *  images. Video frames are labeled and led by a context header, the same
@@ -272,13 +438,30 @@ export const IMAGE_NOT_SENT =
 // A routed specialist could not run this turn (no key, load failure, HTTP
 // error). Distinct from a generic failure so run() can degrade to the Reasoning
 // anchor instead of dead-ending the turn, the way the engine's router does.
-class RouteUnavailable extends Error {}
+class RouteUnavailable extends Error {
+  constructor(
+    message: string,
+    /** The HTTP status when a server answered with one. */
+    readonly status?: number,
+  ) {
+    super(message);
+  }
+}
 
 /** The error a stopped step unwinds with; run() reads its name as a calm end. */
 function abortError(): Error {
   const err = new Error('Stopped.');
   err.name = 'AbortError';
   return err;
+}
+
+/** A seat's identity for the tools-refused memo. */
+function seatKey(ref: StackModelRef): string {
+  return ref.kind === 'byom'
+    ? `byom:${ref.id}:${ref.model}`
+    : ref.kind === 'cloud'
+      ? `cloud:${ref.provider}:${ref.model}`
+      : `device:${ref.modelId}`;
 }
 
 function locationOf(ref: StackModelRef): 'home' | 'cloud' | 'device' {
@@ -309,6 +492,8 @@ export class StackDriver implements ChatDriver {
   // task-done or on abort, so a stop never leaves the play awaiting a turn that
   // will not report back.
   private engineTurnText = '';
+  /** The engine's turn read a local-only note (I5). */
+  private engineTurnLocalOnly = false;
   private engineTurnSettle?: () => void;
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
@@ -338,15 +523,38 @@ export class StackDriver implements ChatDriver {
   // A card this driver put in front of the person (an image bound for a model
   // not placed for Image reading), waiting on their tap.
   private pendingAsk?: { id: string; settle: (approved: boolean) => void };
+  // The vault pack for this send (CTO J1, J5): prepared once after task-start,
+  // rendered for each seat that answers once the seat is known. `turnPack` is
+  // the rendered text for the single-turn seat in flight.
+  private packPrepared: Promise<void> = Promise.resolve();
+  private turnPack?: { ref: StackModelRef; text?: string };
+  // Effort, read once per send so a flip mid-reply cannot move the prompt.
+  private sendEffort = effortDirective();
+  // CTO I5: this send read a local-only note, so its reply is marked.
+  private sendLocalOnly = false;
+  // The vault writes this send proposed, shown on one card at its end (D4),
+  // and the privacy rules, loaded once per send.
+  private proposals: VaultProposal[] = [];
+  private sendPrivacy?: Promise<VaultPrivacy | undefined>;
+  // Seats whose server refused a request with tools on it (an Ollama model
+  // with no tool template answers 400): they get the plain path afterwards.
+  private noToolSeats = new Set<string>();
 
   constructor(
     private readonly stack: AppStack,
     private readonly profile: ProfileId,
     private readonly context: StackContext = {},
-    seed?: SeedTurn[],
+    seed?: StackSeedTurn[],
+    private readonly opts: StackDriverOptions = {},
   ) {
     // A mid-chat switch seeds the prior turns so the stack continues the thread.
-    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+    if (seed) {
+      this.history = seed.map((t) => ({
+        role: t.role,
+        content: t.text,
+        ...(t.localOnly ? { localOnly: true as const } : {}),
+      }));
+    }
     const jevFetch: FetchLike = (url, init) =>
       nativeFetch(url, {
         method: init.method as 'GET' | 'POST',
@@ -501,8 +709,27 @@ export class StackDriver implements ChatDriver {
 
   /** `search` is set only on a local model's own answer turn: true when the
    *  web is in reach (it may ask with a SEARCH: line), false when it is not.
-   *  Unset (a play step, a cloud seat), the prompt says nothing about it. */
-  private systemFor(ref: StackModelRef, placement?: Placement, search?: boolean): string {
+   *  Unset (a play step, a cloud seat), the prompt says nothing about it.
+   *  `pack` is the vault pack rendered for this seat, placed last. */
+  private systemFor(
+    ref: StackModelRef,
+    placement?: Placement,
+    search?: boolean,
+    pack?: string,
+  ): string {
+    return joinSystem(this.systemParts(ref, placement, search, pack), this.promptCache());
+  }
+
+  /** The system prompt, stable to volatile (CTO J16): the base or guide, the
+   *  search note, the UX standard, the humanizer and the Codemagic note (all
+   *  static), then the project, crew and persona (per chat), and last the
+   *  effort directive, the walk line and the vault pack (per task). */
+  private systemParts(
+    ref: StackModelRef,
+    placement?: Placement,
+    search?: boolean,
+    pack?: string,
+  ): SystemParts {
     const guideSystem =
       ref.kind === 'device' && isHarborMini(ref.modelId)
         ? (this.guidePrompt ??
@@ -512,51 +739,411 @@ export class StackDriver implements ChatDriver {
           : undefined;
     // Harbor's persona carries its own search line, and Harbor Lite's guide
     // harness searches for it; every other local model reads the rule here.
-    const parts = [guideSystem ?? BASE_SYSTEM];
+    const stable = [guideSystem ?? BASE_SYSTEM];
     if (!guideSystem && search !== undefined) {
-      parts.push(search ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE);
+      stable.push(search ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE);
     }
-    // Reasoning effort: a specialist's own effort when it was placed with one
-    // (the Vision position sets this), otherwise the live composer choice.
-    parts.push(effortDirective(placement?.effort));
-    // Project context: name + standing instructions, injected into every turn.
-    const proj = this.context.projectInstructions?.trim();
-    if (this.context.projectName || proj) {
-      const head = this.context.projectName
-        ? `You are working in the project "${this.context.projectName}".`
-        : '';
-      parts.push([head, proj].filter(Boolean).join('\n'));
-    }
-    // Mid-walk, whatever seat answers still needs to know where setup stands
-    // (Harbor Lite already reads it inside its own prompt).
-    if (!(ref.kind === 'device' && isHarborMini(ref.modelId))) {
-      const walk = guidedSetupLine(this.context.conversationId);
-      if (walk) parts.push(walk);
-    }
-    const crewNote = this.crewGuidance();
-    if (crewNote) parts.push(crewNote);
-    if (placement?.persona && placement.persona.trim()) {
-      parts.push(`Persona for this specialist: ${placement.persona.trim()}`);
-    }
+    // The pre-M5 order (caching off): the head, the effort line, the project,
+    // the walk, the crew and the persona, then the standards and the notes.
+    const legacyHead = stable.slice();
+    const standards: string[] = [];
     // Premium UX out of the box for whatever writes code in this chat: the
     // coding specialist, and a cloud or BYOM reasoning anchor. On-device
     // pocket models skip it to protect their small context (the engine's
     // agent on the desktop always carries it).
     const buildsCode = placement?.category === 'coding' || (!placement && ref.kind !== 'device');
-    if (buildsCode) parts.push(uxStandardPrompt());
+    if (buildsCode) standards.push(uxStandardPrompt());
     // Humanize Writing out of the box: any written output (not just code) reads
     // plain, specific, and honest, avoiding AI writing tells, unless the person
     // turned the setting off (humanizerStandard.ts, config in Settings).
-    if (humanizerApplies(ref, this.context.humanize)) parts.push(humanizerStandardPrompt());
+    if (humanizerApplies(ref, this.context.humanize)) standards.push(humanizerStandardPrompt());
     // Codemagic Access is on: tell the model it can drive App Launch builds. The
     // tool is offered on every network model (Anthropic native tool use, and
     // OpenAI-compatible + BYOM function calling), so the note earns its place on
     // any non-device model. On-device pocket models are too small for reliable
     // tool use and stay guidance only.
     if (this.context.codemagicAccess && ref.kind !== 'device') {
-      parts.push(codemagicSystemNote());
+      standards.push(codemagicSystemNote());
     }
-    return parts.join('\n\n');
+    stable.push(...standards);
+    // Project context: name + standing instructions, injected into every turn.
+    const proj = this.context.projectInstructions?.trim();
+    let project: string | undefined;
+    if (this.context.projectName || proj) {
+      const head = this.context.projectName
+        ? `You are working in the project "${this.context.projectName}".`
+        : '';
+      project = [head, proj].filter(Boolean).join('\n');
+      stable.push(project);
+    }
+    const perChat: string[] = [];
+    const crewNote = this.crewGuidance();
+    if (crewNote) perChat.push(crewNote);
+    if (placement?.persona && placement.persona.trim()) {
+      perChat.push(`Persona for this specialist: ${placement.persona.trim()}`);
+    }
+    stable.push(...perChat);
+    // The volatile tail. Reasoning effort: a specialist's own effort when it
+    // was placed with one (the Vision position sets this), otherwise the
+    // composer choice, read once for this send.
+    const effort = placement?.effort ? effortDirective(placement.effort) : this.sendEffort;
+    const tail = [effort];
+    // Mid-walk, whatever seat answers still needs to know where setup stands
+    // (Harbor Lite already reads it inside its own prompt).
+    let walk: string | undefined;
+    if (!(ref.kind === 'device' && isHarborMini(ref.modelId))) {
+      walk = guidedSetupLine(this.context.conversationId);
+      if (walk) tail.push(walk);
+    }
+    if (pack) tail.push(pack);
+    const legacy = [
+      ...legacyHead,
+      effort,
+      ...(project !== undefined ? [project] : []),
+      ...(walk ? [walk] : []),
+      ...perChat,
+      ...standards,
+      ...(pack ? [pack] : []),
+    ].join('\n\n');
+    return { stable: stable.filter(Boolean).join('\n\n'), tail: tail.filter(Boolean), legacy };
+  }
+
+  /** The pack rendered for the single-turn seat in flight, when `ref` is it. */
+  private turnPackFor(ref: StackModelRef): string | undefined {
+    return this.turnPack?.ref === ref ? this.turnPack.text : undefined;
+  }
+
+  // ---- vault seat, pack and privacy (CTO J1, J2, J5, I5) ------------------
+
+  /** The seat `ref` answers as, or null: an Agentic Current bench ref never
+   *  gets one (no pack, no vault tools), and a seat the store cannot judge
+   *  gets none either. */
+  private seatFor(ref: StackModelRef): PackSeat | null {
+    if (ref.kind === 'byom' && isCurrentBenchId(ref.id)) return null;
+    if (!this.opts.packSeat) return null;
+    try {
+      return this.opts.packSeat(ref);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Whether `ref`'s requests leave this network. A device seat is this
+   *  phone; any other seat that cannot be judged reads as leaving, the safe
+   *  reading. */
+  private leaves(ref: StackModelRef): boolean {
+    if (ref.kind === 'device') return false;
+    return this.seatFor(ref)?.leavesNetwork ?? true;
+  }
+
+  /** The history as `ref` receives it (CTO I5). */
+  private historyFor(ref: StackModelRef): Msg[] {
+    return historyForSeat(this.history, this.leaves(ref));
+  }
+
+  /** Render this send's pack for the seat that answers, emitting its card.
+   *  Never throws: a pack that cannot render leaves the seat without one. */
+  private async packFor(ref: StackModelRef): Promise<string | undefined> {
+    return (await this.packRender(ref)).text;
+  }
+
+  /** `packFor`, also saying whether the text carries a local-only note, so a
+   *  play step's output can be tainted by it (I5). */
+  private async packRender(ref: StackModelRef): Promise<{ text?: string; localOnly: boolean }> {
+    const pack = this.opts.vaultPack;
+    if (!pack) return { localOnly: false };
+    const seat = this.seatFor(ref);
+    if (!seat) return { localOnly: false };
+    await this.packPrepared;
+    if (this.aborted) return { localOnly: false };
+    let rendered: ReturnType<typeof pack.render>;
+    try {
+      rendered = pack.render(seat);
+    } catch {
+      return { localOnly: false };
+    }
+    if (rendered.event) this.emit(rendered.event);
+    const text = rendered.text?.trim() || undefined;
+    // A local seat's pack that carried a local-only note marks the reply,
+    // the same as a local-only tool read (I5).
+    const localOnly = Boolean(text && rendered.localOnly);
+    if (localOnly) this.sendLocalOnly = true;
+    return { text, localOnly };
+  }
+
+  /** The vault tools `ref` is offered on the single-turn path (CTO J10). */
+  private vaultSliceFor(ref: StackModelRef): AppVaultToolName[] {
+    if (!this.opts.vaultTools || ref.kind === 'device') return [];
+    const seat = this.seatFor(ref);
+    if (!seat) return [];
+    let teamVault = false;
+    try {
+      teamVault = this.opts.vaultTools.teamVault?.() === true;
+    } catch {
+      teamVault = true;
+    }
+    return vaultToolSlice({
+      kind: ref.kind,
+      mergedVaultTool: vaultPolicyFor(seat.modelClass).mergedVaultTool,
+      currentBench: ref.kind === 'byom' && isCurrentBenchId(ref.id),
+      playStep: false,
+      teamVault,
+    });
+  }
+
+  /** The tools a single turn on `ref` carries: Codemagic when its access is
+   *  on, and the vault slice unless this seat's server refused tools. */
+  private toolsFor(ref: StackModelRef): { codemagic: boolean; vault: AppVaultToolName[] } {
+    const codemagic = this.context.codemagicAccess === true && ref.kind !== 'device';
+    const vault = this.noToolSeats.has(seatKey(ref)) ? [] : this.vaultSliceFor(ref);
+    return { codemagic, vault };
+  }
+
+  /** The runner's context for `ref`, or undefined when the vault cannot be
+   *  judged (no seat, or no privacy rules: fail closed). */
+  private async vaultContextFor(ref: StackModelRef): Promise<VaultToolContext | undefined> {
+    const tools = this.opts.vaultTools;
+    const seat = this.seatFor(ref);
+    if (!tools || !seat) return undefined;
+    this.sendPrivacy ??= tools.privacy().catch(() => undefined);
+    const privacy = await this.sendPrivacy;
+    if (!privacy) return undefined;
+    return {
+      seat,
+      privacy,
+      search: tools.search,
+      read: tools.read,
+      ...(tools.resolve ? { resolve: tools.resolve } : {}),
+      readCapChars: vaultPolicyFor(seat.modelClass).readCapChars,
+      propose: (p) => this.queueProposal(this.stampProposal(tools, ref, seat, p)),
+      ...(this.agentFolder(tools) ? { agentFolder: this.agentFolder(tools)! } : {}),
+    };
+  }
+
+  /** The vault's agent folder now, or undefined (anywhere). */
+  private agentFolder(tools: StackVaultTools | undefined): string | undefined {
+    try {
+      return tools?.agentFolder?.() || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The provenance a proposal carries (Vault M7, CTO L9, L10), merged NOW,
+   *  before the card, so the person approves the exact bytes that land: a
+   *  new note's text carries its lines; an addition's final text (the note as
+   *  the model read it, the addition, and the property change) is computed
+   *  here and written only while the note is still that version. The card
+   *  names the property change in words (`records`). An addition to a note
+   *  the model could not see has no known base, so it carries no lines and
+   *  the card shows exactly what it adds. */
+  private stampProposal(
+    tools: StackVaultTools,
+    ref: StackModelRef,
+    seat: PackSeat,
+    p: VaultProposal,
+  ): VaultProposal {
+    let on = true;
+    try {
+      on = tools.provenance?.() ?? true;
+    } catch {
+      on = true;
+    }
+    const fields = seatProvenance(ref, seat);
+    const where = fields['oscode-where'] === 'cloud' ? 'cloud' : 'local';
+    const model = fields['oscode-model'] ?? undefined;
+    if (p.mode === 'create') {
+      if (!on) return p;
+      const text = withProvenance(p.text, {
+        'oscode-source': 'agent',
+        ...fields,
+        'oscode-created': new Date().toISOString(),
+      });
+      return {
+        ...p,
+        text,
+        ...(text !== p.text ? { records: vaultProposalRecords({ model, where }) } : {}),
+      };
+    }
+    if (p.baseText === undefined || p.baseVersion === undefined) return p;
+    const plain = appendedText(p.baseText, p.text);
+    if (!on) return { ...p, final: plain };
+    // A model's addition to a note it did not create reads "Edited by"
+    // (L9), and a review mark no longer holds for the new text.
+    let prior: { source?: string; reviewed?: string } = {};
+    try {
+      prior = readProvenance(readFrontmatter(p.baseText));
+    } catch {
+      prior = {};
+    }
+    const edit = prior.source !== 'agent';
+    const final = withProvenance(plain, {
+      'oscode-source': edit ? 'agent-edit' : 'agent',
+      ...fields,
+      'oscode-reviewed': null,
+    });
+    return {
+      ...p,
+      final,
+      ...(final !== plain
+        ? {
+            records: vaultProposalRecords({
+              model,
+              where,
+              edit,
+              clearsReview: prior.reviewed !== undefined,
+            }),
+          }
+        : {}),
+    };
+  }
+
+  /** Queue a write for the end-of-send card; a later proposal for the same
+   *  note replaces the earlier one. */
+  private queueProposal(p: VaultProposal): void {
+    const at = this.proposals.findIndex((q) => q.path === p.path);
+    if (at >= 0) {
+      this.proposals[at] = p;
+      return;
+    }
+    if (this.proposals.length >= VAULT_PROPOSALS_MAX) {
+      throw new Error(
+        `this reply already proposes ${VAULT_PROPOSALS_MAX} notes, the most one reply can`,
+      );
+    }
+    this.proposals.push(p);
+  }
+
+  /** Run one vault tool call for `ref` and return the observation. */
+  private async runVaultToolCall(
+    ref: StackModelRef,
+    name: string,
+    call: VaultToolInput | null,
+  ): Promise<string> {
+    if (!call) return vaultArgsHelp(name);
+    const i = call.input as { query?: string; path?: string };
+    this.emit({
+      type: 'status',
+      message:
+        call.name === 'vaultPropose'
+          ? `Proposing a note for your vault: ${call.input.path}.`
+          : i.query
+            ? `Searching your vault for "${i.query}".`
+            : `Reading ${i.path} from your vault.`,
+    });
+    const ctx = await this.vaultContextFor(ref);
+    if (!ctx) return 'The vault is not available in this chat right now.';
+    const result = await runVaultTool(call, ctx);
+    if (result.localOnly) this.sendLocalOnly = true;
+    return result.content;
+  }
+
+  /** The end of a send that proposed vault writes: one card lists every
+   *  queued write (D4, always ask). Approve writes each through the seam
+   *  with its guard; decline, or a stop, writes nothing. */
+  private async settleProposals(): Promise<void> {
+    const queued = this.proposals;
+    this.proposals = [];
+    const tools = this.opts.vaultTools;
+    if (!queued.length || !tools || this.aborted) return;
+    const n = queued.length;
+    const approved = await this.askFirst({
+      kind: 'tool',
+      toolName: 'vaultPropose',
+      risk: 'write',
+      alwaysAsk: true,
+      summary:
+        n === 1
+          ? `${queued[0]!.mode === 'create' ? 'Save' : 'Add to'} ${queued[0]!.path} in your vault?`
+          : `Save ${n} notes to your vault?`,
+      detail: [
+        ...queued.map(
+          (p) =>
+            `${p.mode === 'create' ? 'New note' : 'Add to'} ${p.path}\n${proposalPreview(p.text)}${p.records ? `\n${p.records}` : ''}`,
+        ),
+        'Nothing is written until you approve.',
+      ].join('\n\n'),
+    });
+    if (!approved) {
+      if (!this.aborted)
+        this.emit({
+          type: 'status',
+          message: 'Nothing was written. The proposed notes were dropped.',
+        });
+      return;
+    }
+    const saved: string[] = [];
+    const notSaved: string[] = [];
+    const refused: string[] = [];
+    for (const p of queued) {
+      // Checked again right before the write (CTO L8): the settings folder,
+      // and the vault's agent folder as it is now.
+      const refusal = vaultApproveRefusal(p, { agentFolder: this.agentFolder(tools) });
+      if (refusal) {
+        refused.push(refusal);
+        continue;
+      }
+      const ok = await this.writeProposal(tools, p).catch(() => false);
+      (ok ? saved : notSaved).push(p.path);
+    }
+    for (const line of refused) this.emit({ type: 'status', message: line });
+    if (saved.length) {
+      this.emit({
+        type: 'status',
+        message:
+          saved.length === 1
+            ? `Wrote ${saved[0]}.`
+            : `Wrote ${saved.length} notes: ${saved.join(', ')}.`,
+      });
+      try {
+        tools.onWritten?.(saved);
+      } catch {
+        // a listener's failure never undoes a write
+      }
+    }
+    if (notSaved.length) {
+      this.emit({
+        type: 'status',
+        message: `Not written, because the note changed or already exists: ${notSaved.join(', ')}.`,
+      });
+    }
+  }
+
+  /** One approved write: create only while the name is free; an addition
+   *  writes the exact text the card was built from, and only while the note
+   *  is still the version the model read (compare and swap: a changed note
+   *  is refused, never merged). */
+  private async writeProposal(tools: StackVaultTools, p: VaultProposal): Promise<boolean> {
+    if (p.mode === 'create') {
+      return (await tools.write(p.path, p.text, { ifAbsent: true })).ok;
+    }
+    if (p.final !== undefined && p.baseVersion !== undefined) {
+      return (await tools.write(p.path, p.final, { ifMatch: p.baseVersion })).ok;
+    }
+    const cur = await tools.read(p.path);
+    if (!cur || (p.baseVersion !== undefined && cur.version !== p.baseVersion)) return false;
+    return (await tools.write(p.path, appendedText(cur.text, p.text), { ifMatch: cur.version })).ok;
+  }
+
+  /** Claude's `system` for these parts (CTO J16): the one app builder,
+   *  `claudeSystem`, so the Stack and the Claude driver send the same shape. */
+  private claudeSystem(
+    parts: SystemParts,
+    extraTail: string[] = [],
+  ): string | Anthropic.TextBlockParam[] {
+    if (!this.promptCache()) return [parts.legacy, ...extraTail].join('\n');
+    return claudeSystem(parts.stable, [...parts.tail, ...extraTail], true);
+  }
+
+  /** Prompt caching for this request: the store's value for this chat, else
+   *  the live setting. Off by default (no claim without the eval). */
+  private promptCache(): boolean {
+    return this.context.promptCache ?? promptCacheOn();
+  }
+
+  /** Top-level automatic caching for the growing history, with caching on. */
+  private claudeCacheParam(): { cache_control?: Anthropic.CacheControlEphemeral } {
+    return claudeHistoryCache(this.promptCache());
   }
 
   /** Describe the crew this chat can draw on. "auto" members may be consulted
@@ -592,8 +1179,19 @@ export class StackDriver implements ChatDriver {
     this.searchedThisTurn = false;
     this.cot = chainOfThoughtOn();
     this.guidePrompt = undefined;
+    this.sendEffort = effortDirective();
+    this.sendLocalOnly = false;
+    this.proposals = [];
+    this.sendPrivacy = undefined;
+    this.turnPack = undefined;
     this.history.push({ role: 'user', content: text });
     this.emit({ type: 'task-start', input: text });
+    // The vault pack for this send, gathered while routing runs (CTO J5); it
+    // is rendered for each seat once that seat is known.
+    const pack = this.opts.vaultPack;
+    this.packPrepared = pack
+      ? pack.prepare(text, this.abortController.signal).catch(() => undefined)
+      : Promise.resolve();
 
     // Continue a pending clarification: fold the reply into the original ask and
     // re-frame, rather than answering the reply on its own.
@@ -671,6 +1269,9 @@ export class StackDriver implements ChatDriver {
       model: refName(target.ref),
       providerKind: target.ref.kind === 'device' ? 'local' : 'cloud',
     });
+    // Rendered only now, after routing and any Jev steer, so the pack fits
+    // the seat that actually answers (CTO J5).
+    this.turnPack = { ref: target.ref, text: await this.packFor(target.ref) };
     if (images.length) {
       this.emit({
         type: 'status',
@@ -717,6 +1318,8 @@ export class StackDriver implements ChatDriver {
           model: refName(reasoning),
           providerKind: reasoning.kind === 'device' ? 'local' : 'cloud',
         });
+        // The anchor is a different seat: its own pack, sized for it.
+        this.turnPack = { ref: reasoning, text: await this.packFor(reasoning) };
         this.answer = '';
         try {
           await this.runRef(reasoning, undefined, []);
@@ -857,7 +1460,7 @@ export class StackDriver implements ChatDriver {
       planText = await this.completeOnce(
         reasoning,
         undefined,
-        planPrompt(text, this.stack, contextNote, this.conversationDigest()),
+        planPrompt(text, this.stack, contextNote, this.conversationDigest(this.leaves(reasoning))),
       );
     } catch {
       return false;
@@ -893,7 +1496,11 @@ export class StackDriver implements ChatDriver {
   private async executePlay(initial: Play, userText: string): Promise<void> {
     const reasoning = this.stack.reasoning ?? harborRef();
     let play = initial;
-    const results: StepResult[] = [];
+    // Each step's output, tainted (`localOnly`) when it was written on a seat
+    // that read a local-only note: its pack carried one, or a tainted earlier
+    // output reached it whole. A prompt for a seat that leaves this network
+    // gets `LOCAL_ONLY_STUB` in a tainted output's place (I5, as history).
+    const results: PlayStepResult[] = [];
     const done = new Set<string>();
     const status = new Map<string, 'pending' | 'in_progress' | 'completed'>();
     const showTodos = () =>
@@ -930,6 +1537,7 @@ export class StackDriver implements ChatDriver {
           placement = undefined;
         }
         let out = '';
+        let tainted = false;
         try {
           // A repo/tool step runs on the paired computer's engine when docked
           // (real tools, real approvals). When that is not available it returns
@@ -937,13 +1545,36 @@ export class StackDriver implements ChatDriver {
           const onEngine = step.needsTools
             ? await this.runToolStepOnEngine(step, play, results)
             : null;
-          out =
-            onEngine ??
-            (await this.completeOnce(ref, placement, this.stepPrompt(step, play, results)));
+          if (onEngine !== null) {
+            out = onEngine;
+            // The engine is on the person's own computer: it read tainted
+            // earlier outputs whole, and it may have read a local-only note
+            // itself (its tool-end or pack card said so), so its text is
+            // tainted in either case (I5).
+            tainted = this.engineTurnLocalOnly || results.some((r) => r.localOnly === true);
+            if (this.engineTurnLocalOnly) this.sendLocalOnly = true;
+          } else {
+            const pack = await this.packRender(ref);
+            // A seat that stays here reads tainted earlier outputs whole, so
+            // what it writes is tainted too.
+            tainted =
+              pack.localOnly || (!this.leaves(ref) && results.some((r) => r.localOnly === true));
+            out = await this.completeOnce(
+              ref,
+              placement,
+              this.stepPrompt(step, play, results, ref),
+              { pack: pack.text },
+            );
+          }
         } catch (err) {
           out = `(this step could not run: ${err instanceof Error ? err.message : String(err)})`;
         }
-        results.push({ id: step.id, title: step.title, text: out });
+        results.push({
+          id: step.id,
+          title: step.title,
+          text: out,
+          ...(tainted ? { localOnly: true as const } : {}),
+        });
         done.add(step.id);
         status.set(step.id, 'completed');
         showTodos();
@@ -959,7 +1590,11 @@ export class StackDriver implements ChatDriver {
         replans++;
         try {
           const revised = parseReplan(
-            await this.completeOnce(reasoning, undefined, replanPrompt(play, results)),
+            await this.completeOnce(
+              reasoning,
+              undefined,
+              replanPrompt(play, resultsForSeat(results, this.leaves(reasoning))),
+            ),
           );
           if (revised && revised.length) {
             play = mergeReplan(play, done, revised);
@@ -974,7 +1609,9 @@ export class StackDriver implements ChatDriver {
     // Final synthesis, streamed as the answer.
     this.answer = '';
     try {
+      const pack = await this.packFor(reasoning);
       await this.completeOnce(reasoning, undefined, this.synthesisPrompt(userText, play, results), {
+        pack,
         onDelta: (d) => {
           if (this.aborted) return;
           this.answer += d;
@@ -994,8 +1631,9 @@ export class StackDriver implements ChatDriver {
    *  from another model lives only here. Bounded, so a long chat never crowds
    *  out the step itself. The live message (the last entry) is left out; each
    *  prompt carries it on its own. */
-  private conversationDigest(maxChars = 6000): string | undefined {
-    const earlier = this.history.slice(0, -1);
+  private conversationDigest(leaves: boolean, maxChars = 6000): string | undefined {
+    // A seat that leaves this network reads the stub for a local-only reply.
+    const earlier = historyForSeat(this.history.slice(0, -1), leaves);
     const lines: string[] = [];
     let used = 0;
     for (let i = earlier.length - 1; i >= 0; i--) {
@@ -1010,11 +1648,19 @@ export class StackDriver implements ChatDriver {
 
   /** The prompt for one step: the goal, this step's brief, and the prior steps'
    *  results as context so a handoff carries the work forward. */
-  private stepPrompt(step: PlayStep, play: Play, results: StepResult[]): string {
-    const priorLines = results.length
-      ? ['Work done so far by the team:', ...results.map((r) => `- ${r.title}: ${r.text}`), '']
+  private stepPrompt(
+    step: PlayStep,
+    play: Play,
+    results: PlayStepResult[],
+    ref?: StackModelRef,
+  ): string {
+    // No ref is the paired computer's engine, whose model may be a cloud one.
+    const leaves = ref ? this.leaves(ref) : true;
+    const prior = resultsForSeat(results, leaves);
+    const priorLines = prior.length
+      ? ['Work done so far by the team:', ...prior.map((r) => `- ${r.title}: ${r.text}`), '']
       : [];
-    const conversation = this.conversationDigest();
+    const conversation = this.conversationDigest(leaves);
     return [
       conversation ? `The conversation so far, for context:\n${conversation}\n` : '',
       `Overall goal: ${play.summary}`,
@@ -1031,15 +1677,17 @@ export class StackDriver implements ChatDriver {
   }
 
   /** The final synthesis: compose the answer to the user from the team's work. */
-  private synthesisPrompt(userText: string, play: Play, results: StepResult[]): string {
-    const conversation = this.conversationDigest();
+  private synthesisPrompt(userText: string, play: Play, results: PlayStepResult[]): string {
+    const leaves = this.leaves(this.stack.reasoning ?? harborRef());
+    const conversation = this.conversationDigest(leaves);
+    const work = resultsForSeat(results, leaves);
     return [
       "Compose the final answer to the user, using the team's work below. Do not mention the internal steps or handoffs; just give the finished result.",
       ...(conversation ? [`The conversation so far, for context:\n${conversation}`] : []),
       `User request: ${userText}`,
       `Goal: ${play.summary}`,
       'Team work:',
-      ...results.map((r) => `- ${r.title}: ${r.text}`),
+      ...work.map((r) => `- ${r.title}: ${r.text}`),
     ].join('\n');
   }
 
@@ -1055,7 +1703,7 @@ export class StackDriver implements ChatDriver {
   private async runToolStepOnEngine(
     step: PlayStep,
     play: Play,
-    results: StepResult[],
+    results: PlayStepResult[],
   ): Promise<string | null> {
     // The engine lives on your home system (the hub), which is reachable only
     // in the docked profile. Offshore and offline never reach for it, so a tool
@@ -1097,6 +1745,7 @@ export class StackDriver implements ChatDriver {
     switch (event.type) {
       case 'text-final':
         this.engineTurnText = event.text;
+        if (isLocalOnlyFinal(event)) this.engineTurnLocalOnly = true;
         break;
       case 'task-done':
         if (!this.engineTurnText && event.reason === 'error') {
@@ -1104,8 +1753,11 @@ export class StackDriver implements ChatDriver {
         }
         this.engineTurnSettle?.();
         break;
-      case 'tool-start':
       case 'tool-end':
+        if (event.result.localOnly === true) this.engineTurnLocalOnly = true;
+        this.emit(event);
+        break;
+      case 'tool-start':
       case 'tool-denied':
       case 'approval-request':
       case 'approval-resolved':
@@ -1125,6 +1777,7 @@ export class StackDriver implements ChatDriver {
    *  turn also settles on abort (see abort()), so a stopped play never hangs. */
   private runEngineTurn(driver: RemoteDriver, prompt: string): Promise<string> {
     this.engineTurnText = '';
+    this.engineTurnLocalOnly = false;
     return new Promise<string>((resolve) => {
       this.engineTurnSettle = () => {
         this.engineTurnSettle = undefined;
@@ -1141,9 +1794,10 @@ export class StackDriver implements ChatDriver {
     ref: StackModelRef,
     placement: Placement | undefined,
     prompt: string,
-    opts?: { images?: Attachment[]; onDelta?: (delta: string) => void },
+    opts?: { images?: Attachment[]; onDelta?: (delta: string) => void; pack?: string },
   ): Promise<string> {
-    const system = this.systemFor(ref, placement);
+    const parts = this.systemParts(ref, placement, undefined, opts?.pack);
+    const system = joinSystem(parts, this.promptCache());
     if (ref.kind === 'device') {
       throw new RouteUnavailable('A local model cannot run this step.');
     }
@@ -1163,7 +1817,12 @@ export class StackDriver implements ChatDriver {
         ? buildVisionContent(prompt, opts.images).content
         : prompt;
       const stream = client.messages.stream(
-        { model: ref.model, max_tokens: 4096, system, messages: [{ role: 'user', content }] },
+        {
+          model: ref.model,
+          max_tokens: 4096,
+          system: this.claudeSystem(parts),
+          messages: [{ role: 'user', content }],
+        },
         { signal: this.abortController?.signal },
       );
       let out = '';
@@ -1268,8 +1927,14 @@ export class StackDriver implements ChatDriver {
 
   private finish(reason: 'complete' | 'aborted' | 'error', message?: string): void {
     const text = this.answer.trim();
-    if (text) this.history.push({ role: 'assistant', content: text });
-    this.emit({ type: 'text-final', text });
+    if (text) {
+      this.history.push({
+        role: 'assistant',
+        content: text,
+        ...(this.sendLocalOnly ? { localOnly: true as const } : {}),
+      });
+    }
+    this.emit(textFinal(text, this.sendLocalOnly));
     this.emit({ type: 'task-done', reason, message });
   }
 
@@ -1368,13 +2033,17 @@ export class StackDriver implements ChatDriver {
     // reply cannot carry a thought); any other pocket model thinks in tags,
     // with room for the thought beside the answer.
     this.thinkSplitter = new ThinkTagSplitter();
-    const base = this.systemFor(ref, placement, online);
+    const base = this.systemFor(ref, placement, online, this.turnPackFor(ref));
     const system = guide ? base : this.withThinking(base, ref.modelId);
     const maxTokens = guide ? 512 : this.cot ? 2048 : 1024;
     const res = await Llama.generate({
       requestId,
       system,
-      messages: fitDeviceHistory(system, this.history, maxTokens),
+      messages: fitDeviceHistory(
+        system,
+        this.history.map((m) => ({ role: m.role, content: m.content })),
+        maxTokens,
+      ),
       maxTokens,
       temperature: 0.6,
     });
@@ -1452,26 +2121,30 @@ export class StackDriver implements ChatDriver {
     if (!key) {
       throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
     }
-    const system = this.systemFor(ref, placement);
+    const parts = this.systemParts(ref, placement, undefined, this.turnPackFor(ref));
+    const system = joinSystem(parts, this.promptCache());
+    // An image turn takes the plain vision path (it needs no tools); otherwise
+    // a turn with tools on it (Codemagic Access, or the vault slice) runs the
+    // tool-use loop, and one with none keeps the original single-turn path.
+    const tools = images.length ? { codemagic: false, vault: [] } : this.toolsFor(ref);
+    const withTools = tools.codemagic || tools.vault.length > 0;
     if (ref.provider === 'anthropic') {
-      // An image turn takes the plain vision path (it needs no build tools);
-      // otherwise Codemagic Access on runs the tool-use loop so the model can
-      // drive builds, and off keeps the original single-turn path.
-      if (images.length) await this.runAnthropic(key, ref.model, system, images);
-      else if (this.context.codemagicAccess)
-        await this.runAnthropicWithTools(key, ref.model, system);
-      else await this.runAnthropic(key, ref.model, system, []);
+      if (withTools) await this.runAnthropicWithTools(key, ref, parts, tools);
+      else await this.runAnthropic(key, ref, parts, images);
     } else {
       const base = providerInfo(ref.provider)?.openaiBaseUrl;
       if (!base) {
         throw new RouteUnavailable(`No endpoint configured for ${ref.provider}.`);
       }
-      if (images.length) {
-        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system, images);
-      } else if (this.context.codemagicAccess) {
-        await this.runOpenAiCompatibleWithTools(ref.provider, base, key, ref.model, system);
+      if (withTools) {
+        await this.runOpenAiCompatibleWithTools(ref.provider, base, key, ref.model, system, {
+          ref,
+          tools,
+        });
       } else {
-        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system, []);
+        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system, images, {
+          ref,
+        });
       }
     }
   }
@@ -1490,54 +2163,52 @@ export class StackDriver implements ChatDriver {
       !images.length && !this.context.codemagicAccess && !isCurrentBenchId(ref.id)
         ? this.webReachable()
         : undefined;
-    const system = this.systemFor(ref, placement, search);
-    const extra = benchExtraHeaders(ref.id, this.context.conversationId);
-    // An image turn takes the plain vision path; otherwise Codemagic Access on
-    // runs the tool-use loop, off keeps the original single-turn path.
-    if (images.length) {
-      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, images, extra);
-    } else if (this.context.codemagicAccess) {
-      await this.runOpenAiCompatibleWithTools(
-        ref.label,
-        ref.baseUrl,
-        key,
-        ref.model,
-        system,
-        extra,
-      );
+    const system = this.systemFor(ref, placement, search, this.turnPackFor(ref));
+    const extraHeaders = benchExtraHeaders(ref.id, this.context.conversationId);
+    // An image turn takes the plain vision path; otherwise a turn with tools
+    // on it runs the tool-use loop, and one with none the single-turn path.
+    const tools = images.length ? { codemagic: false, vault: [] } : this.toolsFor(ref);
+    if (tools.codemagic || tools.vault.length > 0) {
+      await this.runOpenAiCompatibleWithTools(ref.label, ref.baseUrl, key, ref.model, system, {
+        ref,
+        tools,
+        extraHeaders,
+        searchable: search === true,
+      });
     } else {
-      await this.runOpenAiCompatible(
-        ref.label,
-        ref.baseUrl,
-        key,
-        ref.model,
-        system,
-        [],
-        extra,
-        search === true,
-      );
+      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, images, {
+        ref,
+        extraHeaders,
+        searchable: search === true,
+      });
     }
   }
 
-  private async runAnthropic(
-    key: string,
-    model: string,
-    system: string,
-    images: Attachment[] = [],
-  ): Promise<void> {
+  /** A Claude client on the person's own key (and workspace, when set). */
+  private async claudeClient(key: string): Promise<Anthropic> {
     const ws = (
       await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
     )?.anthropicWorkspaceId?.trim();
-    const client = new Anthropic({
+    return new Anthropic({
       apiKey: key,
       dangerouslyAllowBrowser: true,
       fetch: streamingFetch,
       ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
     });
+  }
+
+  private async runAnthropic(
+    key: string,
+    ref: Extract<StackModelRef, { kind: 'cloud' }>,
+    parts: SystemParts,
+    images: Attachment[] = [],
+  ): Promise<void> {
+    const model = ref.model;
+    const client = await this.claudeClient(key);
     const messages: Anthropic.MessageParam[] = opensOnUser(
-      this.history.map((m) => ({ role: m.role, content: m.content })),
+      this.historyFor(ref).map((m) => ({ role: m.role, content: m.content })),
     );
-    let sys = system;
+    const extraTail: string[] = [];
     if (images.length && messages.length) {
       // Fold the images into the current (last) user turn as image blocks, with
       // frame labels and a context header when they came from a video. History
@@ -1545,12 +2216,18 @@ export class StackDriver implements ChatDriver {
       const last = messages[messages.length - 1]!;
       const built = buildVisionContent(String(last.content ?? ''), images);
       last.content = built.content;
-      if (hasVideoFrames(images)) sys = `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}`;
+      if (hasVideoFrames(images)) extraTail.push(VIDEO_FRAMES_SYSTEM_NOTE);
     }
     // Chain of Thought on: Claude thinks through its own API, and the summary
     // streams into the thinking block above the answer.
     const stream = client.messages.stream(
-      { model, ...claudeRequestThinking(model, 2048, this.cot), system: sys, messages },
+      {
+        model,
+        ...claudeRequestThinking(model, 2048, this.cot),
+        system: this.claudeSystem(parts, extraTail),
+        ...this.claudeCacheParam(),
+        messages,
+      },
       { signal: this.abortController?.signal },
     );
     if (this.cot) stream.on('thinking', (delta) => this.emitThought(delta));
@@ -1571,25 +2248,34 @@ export class StackDriver implements ChatDriver {
     this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
-  // The Codemagic tool-use loop (Anthropic). Same streaming as runAnthropic, but
-  // the model is offered the codemagic tool and each tool_use is executed
-  // on-device (token in the Keychain, never sent to the model), the observation
-  // fed back, and the loop continues until the model answers with no tool call.
-  // Bounded so a build loop cannot run away. Used only when Codemagic Access is
-  // on; otherwise runAnthropic keeps the original single-turn path.
-  private async runAnthropicWithTools(key: string, model: string, system: string): Promise<void> {
-    const ws = (
-      await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
-    )?.anthropicWorkspaceId?.trim();
-    const client = new Anthropic({
-      apiKey: key,
-      dangerouslyAllowBrowser: true,
-      fetch: streamingFetch,
-      ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
-    });
+  // The tool-use loop (Anthropic). Same streaming as runAnthropic, but the
+  // model is offered the turn's tools: Codemagic (when its access is on) and
+  // the vault slice (CTO J10). Each tool_use runs on-device (the Codemagic
+  // token in the Keychain, never sent to the model; a vault read judged by
+  // the privacy rules), the observation is fed back, and the loop continues
+  // until the model answers with no tool call. Bounded so a loop cannot run
+  // away. A vault write is only queued; one card at the end asks for all.
+  private async runAnthropicWithTools(
+    key: string,
+    ref: Extract<StackModelRef, { kind: 'cloud' }>,
+    parts: SystemParts,
+    tools: { codemagic: boolean; vault: AppVaultToolName[] },
+  ): Promise<void> {
+    const model = ref.model;
+    const client = await this.claudeClient(key);
     const messages: Anthropic.MessageParam[] = opensOnUser(
-      this.history.map((m) => ({ role: m.role, content: m.content })),
+      this.historyFor(ref).map((m) => ({ role: m.role, content: m.content })),
     );
+    const offered: Anthropic.Tool[] = [
+      ...(tools.codemagic ? [codemagicToolSpec as unknown as Anthropic.Tool] : []),
+      ...tools.vault.map(
+        (n) =>
+          vaultAnthropicTool(
+            n,
+            this.agentFolder(this.opts.vaultTools),
+          ) as unknown as Anthropic.Tool,
+      ),
+    ];
     const MAX_ROUNDS = 16;
     for (let round = 0; round < MAX_ROUNDS; round++) {
       if (this.aborted) {
@@ -1600,9 +2286,10 @@ export class StackDriver implements ChatDriver {
         {
           model,
           ...claudeRequestThinking(model, 2048, this.cot),
-          system,
+          system: this.claudeSystem(parts),
+          ...this.claudeCacheParam(),
           messages,
-          tools: [codemagicToolSpec as unknown as Anthropic.Tool],
+          tools: offered,
         },
         { signal: this.abortController?.signal },
       );
@@ -1636,6 +2323,7 @@ export class StackDriver implements ChatDriver {
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       );
       if (!toolUses.length) {
+        await this.settleProposals();
         this.finish(this.aborted ? 'aborted' : 'complete');
         return;
       }
@@ -1644,10 +2332,9 @@ export class StackDriver implements ChatDriver {
       messages.push({ role: 'assistant', content: final.content });
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const tu of toolUses) {
-        const observation = await this.runCodemagicToolCall(
-          tu.name,
-          tu.input as CodemagicToolInput,
-        );
+        const observation = await this.runToolCall(ref, tools, tu.name, {
+          parsed: tu.input as Record<string, unknown>,
+        });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: observation });
       }
       messages.push({ role: 'user', content: results });
@@ -1656,9 +2343,36 @@ export class StackDriver implements ChatDriver {
     // the chat does not hang, and let the person pick up from here.
     this.emit({
       type: 'status',
-      message: 'Paused the build loop after several rounds. Send a message to continue.',
+      message: 'Paused the tool loop after several rounds. Send a message to continue.',
     });
+    await this.settleProposals();
     this.finish(this.aborted ? 'aborted' : 'complete');
+  }
+
+  /** Dispatch one tool call to the tool it names, when that tool was offered. */
+  private async runToolCall(
+    ref: StackModelRef,
+    tools: { codemagic: boolean; vault: AppVaultToolName[] },
+    name: string,
+    args: { parsed?: Record<string, unknown>; raw?: string },
+  ): Promise<string> {
+    if (isAppVaultToolName(name) && tools.vault.includes(name)) {
+      const call =
+        args.raw !== undefined
+          ? parseVaultToolArgs(name, args.raw)
+          : vaultToolInputFrom(name, args.parsed);
+      return this.runVaultToolCall(ref, name, call);
+    }
+    if (tools.codemagic && name === CODEMAGIC_TOOL_NAME) {
+      const input =
+        args.raw !== undefined
+          ? parseCodemagicArgs(args.raw)
+          : (args.parsed as unknown as CodemagicToolInput);
+      return input
+        ? this.runCodemagicToolCall(name, input)
+        : 'Those tool arguments could not be parsed. Call the codemagic tool with JSON like {"action":"trigger"} or {"action":"status","buildId":"..."}.';
+    }
+    return `Unknown tool ${name}.`;
   }
 
   // The shared OpenAI-compatible path, driven by an explicit base URL and an
@@ -1671,11 +2385,15 @@ export class StackDriver implements ChatDriver {
     model: string,
     system: string,
     images: Attachment[] = [],
-    extraHeaders: Record<string, string> = {},
-    /** A local model's turn that may ask for a web search (a SEARCH: line). */
-    searchable = false,
+    o: {
+      ref: StackModelRef;
+      extraHeaders?: Record<string, string>;
+      /** A local model's turn that may ask for a web search (a SEARCH: line). */
+      searchable?: boolean;
+    },
   ): Promise<void> {
-    const filter = new SearchLineFilter(searchable && !this.searchedThisTurn);
+    const extraHeaders = o.extraHeaders ?? {};
+    const filter = new SearchLineFilter(o.searchable === true && !this.searchedThisTurn);
     const splitter = new ThinkTagSplitter();
     const text = (delta: string) => {
       this.answer += delta;
@@ -1688,7 +2406,10 @@ export class StackDriver implements ChatDriver {
       const { query, flush } = filter.end();
       if (query && !this.aborted) {
         await this.answerWithSearch(query, label, 'cloud', () =>
-          this.runOpenAiCompatible(label, base, key, model, system, images, extraHeaders),
+          this.runOpenAiCompatible(label, base, key, model, system, images, {
+            ref: o.ref,
+            extraHeaders,
+          }),
         );
         return;
       }
@@ -1700,7 +2421,7 @@ export class StackDriver implements ChatDriver {
     const sys = this.withThinking(withVideo, model);
     const messages: Array<{ role: string; content: unknown }> = [
       { role: 'system', content: sys },
-      ...this.history.map((m) => ({ role: m.role, content: m.content as unknown })),
+      ...this.historyFor(o.ref).map((m) => ({ role: m.role, content: m.content as unknown })),
     ];
     if (images.length && messages.length > 1) {
       // Fold the images into the current (last) user turn as image_url parts,
@@ -1724,7 +2445,7 @@ export class StackDriver implements ChatDriver {
         body: JSON.stringify({ model, stream: false, messages }),
       });
       if (!res.ok) {
-        throw new RouteUnavailable(`${label} answered ${res.status}.`);
+        throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
       }
       if (!this.aborted) {
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -1744,7 +2465,7 @@ export class StackDriver implements ChatDriver {
       signal: this.abortController?.signal,
     });
     if (!res.ok || !res.body) {
-      throw new RouteUnavailable(`${label} answered ${res.status}.`);
+      throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -1784,21 +2505,29 @@ export class StackDriver implements ChatDriver {
     return runCodemagicTool(input);
   }
 
-  // The Codemagic tool-use loop for every OpenAI-compatible backend: the built-in
-  // cloud providers AND a bring-your-own-model endpoint, which both speak
-  // function calling. Same request shape as runOpenAiCompatible (native shim on
-  // device/desktop, true SSE on the web), plus the codemagic tool; each tool call
-  // runs on-device (token in the Keychain, never sent to the model) and the
-  // observation is fed back until the model answers with no tool call. Bounded so
-  // a build loop cannot run away. Used only when Codemagic Access is on.
+  // The tool-use loop for every OpenAI-compatible backend: the built-in cloud
+  // providers AND a bring-your-own-model endpoint, which both speak function
+  // calling. Same request shape as runOpenAiCompatible (native shim on
+  // device/desktop, true SSE on the web), plus the turn's tools (Codemagic when
+  // its access is on, and the vault slice); each tool call runs on-device and
+  // the observation is fed back until the model answers with no tool call.
+  // Bounded so a loop cannot run away. A server that refuses tools on the first
+  // round of a vault-only turn (a local model with no tool template) gets the
+  // plain path instead, and this seat stays on it for the rest of the chat.
   private async runOpenAiCompatibleWithTools(
     label: string,
     base: string,
     key: string | undefined,
     model: string,
     system: string,
-    extraHeaders: Record<string, string> = {},
+    o: {
+      ref: StackModelRef;
+      tools: { codemagic: boolean; vault: AppVaultToolName[] };
+      extraHeaders?: Record<string, string>;
+      searchable?: boolean;
+    },
   ): Promise<void> {
+    const extraHeaders = o.extraHeaders ?? {};
     const authHeaders: Record<string, string> = {
       'content-type': 'application/json',
       ...extraHeaders,
@@ -1806,8 +2535,18 @@ export class StackDriver implements ChatDriver {
     if (key) authHeaders.authorization = `Bearer ${key}`;
     const messages: Array<Record<string, unknown>> = [
       { role: 'system', content: this.withThinking(system, model) },
-      ...this.history.map((m) => ({ role: m.role, content: m.content })),
+      ...this.historyFor(o.ref).map((m) => ({ role: m.role, content: m.content })),
     ];
+    const offered = [
+      ...(o.tools.codemagic ? [codemagicOpenAiTool] : []),
+      ...o.tools.vault.map((n) => vaultOpenAiTool(n, this.agentFolder(this.opts.vaultTools))),
+    ];
+    // Your own model may still ask for one web search with a SEARCH: line.
+    const filter = new SearchLineFilter(o.searchable === true && !this.searchedThisTurn);
+    const out = (delta: string) => {
+      const shown = filter.push(delta);
+      if (shown) this.emit({ type: 'text-delta', text: shown });
+    };
     const nativeShim = platform() === 'ios' || platform() === 'electron';
     const MAX_ROUNDS = 16;
     for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -1815,36 +2554,69 @@ export class StackDriver implements ChatDriver {
         this.finish('aborted');
         return;
       }
-      const { toolCalls, assistantMessage } = await this.oneOpenAiToolRound(
-        label,
-        base,
-        authHeaders,
-        model,
-        messages,
-        nativeShim,
-        round,
-      );
+      let roundOut: { toolCalls: ToolCallAccum[]; assistantMessage: Record<string, unknown> };
+      try {
+        roundOut = await this.oneOpenAiToolRound(
+          label,
+          base,
+          authHeaders,
+          model,
+          messages,
+          nativeShim,
+          round,
+          offered,
+          out,
+        );
+      } catch (err) {
+        const refused =
+          round === 0 &&
+          !o.tools.codemagic &&
+          !this.aborted &&
+          err instanceof RouteUnavailable &&
+          (err.status === 400 || err.status === 404 || err.status === 422);
+        if (!refused) throw err;
+        this.noToolSeats.add(seatKey(o.ref));
+        await this.runOpenAiCompatible(label, base, key, model, system, [], {
+          ref: o.ref,
+          extraHeaders,
+          searchable: o.searchable,
+        });
+        return;
+      }
+      const { toolCalls, assistantMessage } = roundOut;
       if (this.aborted) {
         this.finish('aborted');
         return;
       }
       if (!toolCalls.length) {
-        this.finish('complete');
+        const { query, flush } = filter.end();
+        if (query) {
+          await this.answerWithSearch(query, label, 'cloud', () =>
+            this.runOpenAiCompatibleWithTools(label, base, key, model, system, {
+              ...o,
+              searchable: false,
+            }),
+          );
+          return;
+        }
+        if (flush) this.emit({ type: 'text-delta', text: flush });
+        await this.settleProposals();
+        this.finish(this.aborted ? 'aborted' : 'complete');
         return;
       }
       messages.push(assistantMessage);
       for (const tc of toolCalls) {
-        const input = parseCodemagicArgs(tc.args);
-        const observation = input
-          ? await this.runCodemagicToolCall(tc.name, input)
-          : 'Those tool arguments could not be parsed. Call the codemagic tool with JSON like {"action":"trigger"} or {"action":"status","buildId":"..."}.';
+        const observation = await this.runToolCall(o.ref, o.tools, tc.name, { raw: tc.args });
         messages.push({ role: 'tool', tool_call_id: tc.id, content: observation });
       }
     }
+    const { flush } = filter.end();
+    if (flush) this.emit({ type: 'text-delta', text: flush });
     this.emit({
       type: 'status',
-      message: 'Paused the build loop after several rounds. Send a message to continue.',
+      message: 'Paused the tool loop after several rounds. Send a message to continue.',
     });
+    await this.settleProposals();
     this.finish(this.aborted ? 'aborted' : 'complete');
   }
 
@@ -1860,6 +2632,8 @@ export class StackDriver implements ChatDriver {
     messages: Array<Record<string, unknown>>,
     nativeShim: boolean,
     round: number,
+    offered: unknown[],
+    out: (delta: string) => void,
   ): Promise<{ toolCalls: ToolCallAccum[]; assistantMessage: Record<string, unknown> }> {
     let started = false;
     const splitter = new ThinkTagSplitter();
@@ -1867,17 +2641,17 @@ export class StackDriver implements ChatDriver {
       if (this.aborted || !delta) return;
       if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) {
         this.answer += '\n\n';
-        this.emit({ type: 'text-delta', text: '\n\n' });
+        out('\n\n');
       }
       started = true;
       this.answer += delta;
-      this.emit({ type: 'text-delta', text: delta });
+      out(delta);
     };
     const body = JSON.stringify({
       model,
       stream: !nativeShim,
       messages,
-      tools: [codemagicOpenAiTool],
+      tools: offered,
     });
 
     if (nativeShim) {
@@ -1886,7 +2660,7 @@ export class StackDriver implements ChatDriver {
         headers: authHeaders,
         body,
       });
-      if (!res.ok) throw new RouteUnavailable(`${label} answered ${res.status}.`);
+      if (!res.ok) throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
       const data = (await res.json()) as {
         choices?: Array<{
           message?: {
@@ -1918,7 +2692,9 @@ export class StackDriver implements ChatDriver {
       body,
       signal: this.abortController?.signal,
     });
-    if (!res.ok || !res.body) throw new RouteUnavailable(`${label} answered ${res.status}.`);
+    if (!res.ok || !res.body) {
+      throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     const acc = new Map<number, ToolCallAccum>();

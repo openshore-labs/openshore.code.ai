@@ -5,6 +5,7 @@
 import type { DriverEvent } from 'os-code/protocol';
 import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from './types.js';
 import { providerInfo } from '../lib/providers.js';
+import { isLocalOnlyFinal } from '../drivers/types.js';
 
 /** The go-ahead the app sends when a plan is approved. The reducer reads it
  *  back on replay: a task that starts with this line means the plan before
@@ -161,6 +162,9 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // cleaned tool-call JSON out of it).
       const settled = settleThinking(next);
       const idx = currentStreaming(settled);
+      // The reply followed a local-only read (I5): the bubble keeps the mark,
+      // so a switch seeds the stub to a leaving seat and a handoff drops it.
+      const mark = isLocalOnlyFinal(event) ? { localOnly: true as const } : {};
       if (idx === -1) {
         return event.text
           ? push(settled, {
@@ -168,13 +172,14 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
               text: event.text,
               streaming: false,
               model: settled.model?.name,
+              ...mark,
             })
           : settled;
       }
       const items = [...settled.items];
       const bubble = items[idx] as Extract<ThreadItem, { kind: 'assistant' }>;
       if (event.text) {
-        items[idx] = { ...bubble, text: event.text, streaming: false };
+        items[idx] = { ...bubble, text: event.text, streaming: false, ...mark };
       } else {
         items.splice(idx, 1);
       }
@@ -349,6 +354,33 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // note carrying the honest line; a client may style it as spend when
       // `spend` is true. A dedicated card is a fast follow.
       return push(next, { kind: 'note', text: event.line });
+
+    case 'context-pack': {
+      // The Vault context this task's seat was given. The engine sends it at
+      // the task's first render and again only when the sources change (an
+      // escalation to another seat), so the task keeps one card: a repeat
+      // within the same task updates it in place.
+      const card = {
+        kind: 'context-pack' as const,
+        seat: event.seat,
+        mode: event.mode,
+        sources: event.sources.map((s) => ({ layer: s.layer, path: s.path, title: s.title })),
+        withheld: event.withheld,
+        cold: event.cold,
+      };
+      for (let i = next.items.length - 1; i >= 0; i--) {
+        const item = next.items[i]!;
+        if (item.kind === 'user') break;
+        if (item.kind === 'context-pack') {
+          const items = [...next.items];
+          items[i] = { ...card, id: item.id };
+          return { ...next, items };
+        }
+      }
+      // An empty pack (nothing used, nothing held back) has nothing to say.
+      if (!card.sources.length && !card.withheld) return next;
+      return push(settleAll(next), card);
+    }
 
     case 'clarify':
       return push(next, {

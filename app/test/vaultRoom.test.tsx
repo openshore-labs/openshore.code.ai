@@ -35,6 +35,10 @@ const app = vi.hoisted(() => {
   const created: string[] = [];
   const opened: string[] = [];
   const drive = { readOnly: undefined as string | undefined, connected: true, configured: true };
+  // What the editor asked of the lease: keystrokes, and Take over editing.
+  const leases = { touches: 0, takeOvers: 0 };
+  // The team poll's start and stop calls, in order.
+  const polls: string[] = [];
   // What the folder controls answer: a pick's result, whether the move card
   // is offered, and the two texts of each forked pair.
   const folderIo = {
@@ -73,6 +77,7 @@ const app = vi.hoisted(() => {
     vaultSave: async () => undefined,
     vaultDelete: async () => false,
     vaultReadAll: async () => Object.assign([], { failed: [] }),
+    vaultReadBody: async () => undefined as string | undefined,
     vaultMoveTo: async () => ({ ok: false, skipped: [] }),
     vaultError: undefined,
     vaultHeld: [],
@@ -81,7 +86,14 @@ const app = vi.hoisted(() => {
     vaultDiscardHeld: async () => {},
     vaultAcquireLease: async () => {},
     vaultReleaseLease: async () => {},
-    vaultLeaseHeldByOther: undefined,
+    vaultLeaseTouch: async () => {
+      leases.touches++;
+    },
+    vaultTakeOverLease: async () => {
+      leases.takeOvers++;
+    },
+    vaultLeaseHeldByOther: undefined as boolean | undefined,
+    vaultLeaseOther: undefined as { mode: 'advisory' | 'enforced'; label?: string } | undefined,
     connectGdriveAccount: async () => ({ ok: false }),
     disconnectGdriveAccount: async () => {},
     authSession: undefined,
@@ -94,7 +106,13 @@ const app = vi.hoisted(() => {
     repoSyncConflicts: undefined,
     vaultConflict: undefined,
     vaultReturnFolder: undefined,
-    vaultRecheck: async () => {},
+    vaultRecheck: async () => 'skipped',
+    vaultStartPoll: (opts?: { now?: boolean }) => {
+      polls.push(opts?.now ? 'start-now' : 'start');
+    },
+    vaultStopPoll: () => {
+      polls.push('stop');
+    },
     vaultResolve: async () => ({ ok: true }),
     vaultDeferConflict: (deferred: boolean) => {
       if (state.vaultConflict) state.vaultConflict = { ...state.vaultConflict, deferred };
@@ -123,8 +141,57 @@ const app = vi.hoisted(() => {
     },
     vaultDesktopChatOpen: () => false,
     vaultBringPrevious: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
+    // Vault M5: a note to a model, pins, the hub card, what the agent wrote.
+    askAboutVaultNote: async () => {},
+    pinVaultNoteToProject: async () => 'pinned' as const,
+    canEditProjectPins: () => true,
+    vaultHubOfferShown: () => false,
+    vaultAcceptHubMove: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
+    vaultDeclineHubMove: async () => {},
+    vaultAgentRecent: async () => [],
+    // Vault M6: the operations' call sites and what the storage may do.
+    vaultBindAutosave: () => {},
+    vaultCapsNow: () => ({
+      rename: false,
+      renameNative: false,
+      folders: false,
+      trash: false,
+      emptyTrash: false,
+      attachments: false,
+      taskWriteBack: false,
+      linkRewrite: false,
+      today: false,
+    }),
+    vaultDeleteNote: async () => undefined,
+    vaultUndoDelete: async () => undefined,
+    vaultTrash: undefined,
+    vaultLoadTrash: async () => [],
+    vaultRestoreTrash: async () => ({ ok: false, reason: 'unsupported' }),
+    vaultEmptyTrash: async () => ({ ok: false, reason: 'unsupported' }),
+    vaultDeleteFolder: async () => undefined,
+    vaultPrepareMove: async () => undefined,
+    vaultApplyMove: async () => undefined,
+    vaultUpdateRest: async () => undefined,
+    vaultCreateFolder: async () => ({ ok: false, reason: 'unsupported' }),
+    vaultFolderCounts: async () => ({ notes: 0, attachments: 0 }),
+    vaultFolders: undefined,
+    vaultSearchSource: () => undefined,
+    vaultRecentRing: () => [],
+    vaultToday: async () => undefined,
+    vaultToggleTask: async () => false,
+    vaultMediaNow: async () => undefined,
+    vaultRewriteNote: async () => false,
+    // Vault M7 wave 2: the settings, provenance and starter actions.
+    vaultSettings: undefined,
+    vaultLoadSettings: async () => undefined,
+    vaultSaveSetting: async () => ({ kind: 'read-only' }),
+    vaultMarkReviewed: async () => 'ok',
+    vaultStarterOffered: async () => false,
+    vaultApplyStarter: async () => ({ added: 0, total: 0 }),
+    vaultSheetRequest: undefined,
+    vaultRequestSheet: () => {},
   };
-  return { state, listeners, views, toasts, created, opened, drive, folderIo };
+  return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });
 vi.mock('../src/state/store.js', async () => {
   const { useSyncExternalStore } = await import('react');
@@ -137,6 +204,7 @@ vi.mock('../src/state/store.js', async () => {
       useSyncExternalStore(subscribe, () => (select ? select(app.state) : app.state)),
     agenticView: () => ({}),
     vaultHeldFor: () => [],
+    isOrgAdmin: () => true,
   };
 });
 // Whether this device reaches the Google account behind a Drive vault.
@@ -875,5 +943,369 @@ describe('the desktop folder rows in Where it lives (1.4)', () => {
     ]);
     app.state.vaultBringPrevious = async () => ({ ok: true, moved: [], skipped: [], forked: [] });
     app.folderIo.pairs = {};
+  });
+});
+
+// Vault M2 2.2: where the text stands, and conflict copies in the tree.
+describe('the save chip and conflict badges (M2 2.2)', () => {
+  let dom: TestDom;
+  const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
+  let refreshed = 0;
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    refreshed = 0;
+    app.state.vaultRefresh = async () => {
+      refreshed++;
+    };
+    app.state.vaultNote = { path: 'Plan.md', text: 'loaded', updatedAt: 'v1', fresh: true };
+    app.state.vaultConflict = undefined;
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'v1', size: 6 }];
+    app.state.vaultPending = [];
+    app.state.vaultSaving = false;
+    app.state.vaultError = undefined;
+    Object.assign(app.drive, { readOnly: undefined, connected: true, configured: true });
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultNote = undefined;
+    app.state.vaultPending = [];
+    app.state.vaultSaving = false;
+    app.state.vaultError = undefined;
+    app.state.vaultRefresh = async () => {};
+  });
+  const chip = () => dom.container.querySelector('.vault-save-chip');
+
+  it('says Saved, then Saving while typed text waits', async () => {
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Saved');
+    await dom.type(EDITOR, 'loaded, and more');
+    expect(chip()?.textContent).toBe('Saving');
+  });
+
+  it('says the text is kept on this device, how many notes wait, and retries', async () => {
+    app.state.vaultPending = [
+      { providerId: 'local', resourceId: 'vault.personal', path: 'Plan.md' },
+      { providerId: 'local', resourceId: 'vault.personal', path: 'Other.md' },
+      { providerId: 'files', resourceId: 'vault.personal', path: 'Elsewhere.md' },
+    ];
+    await dom.render(<VaultRoom />);
+    expect(chip()?.getAttribute('role')).toBe('status');
+    expect(chip()?.textContent).toContain('Offline, kept on this device');
+    expect(chip()?.textContent).toContain('2 notes waiting');
+    const before = refreshed;
+    await dom.click('Try again');
+    expect(refreshed).toBe(before + 1);
+  });
+
+  it('is left out while a choice about the note is open', async () => {
+    app.state.vaultConflict = {
+      path: 'Plan.md',
+      target: { providerId: 'local', resourceId: 'vault.personal' },
+      kind: 'changed',
+      base: 'loaded',
+      copyPath: 'Plan (conflict 2026-09-27 1405).md',
+      foundAt: 0,
+      deferred: true,
+    };
+    await dom.render(<VaultRoom />);
+    expect(chip()).toBeNull();
+    app.state.vaultConflict = undefined;
+  });
+
+  it('a conflict copy wears a badge in the tree, and a plain note does not', async () => {
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [
+      { path: 'Plan.md', updatedAt: 'v1', size: 6 },
+      { path: 'Plan (conflict 2026-09-27 1405).md', updatedAt: 'v1', size: 6 },
+    ];
+    await dom.render(<VaultRoom />);
+    const badges = dom.container.querySelectorAll('.vault-conflict-badge');
+    expect(badges).toHaveLength(1);
+    expect(badges[0]!.closest('button')!.textContent).toContain('Plan (conflict 2026-09-27 1405)');
+  });
+});
+
+// Vault M2 2.6: an expired team sign-in keeps the note, read-only.
+describe('a team note kept after the sign-in expired (M2 2.6)', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.state.vaultScope = 'team';
+    app.state.vaultTeamExpired = true;
+    app.state.vaultNote = { path: 'Plan.md', text: 'the team plan', updatedAt: '1' };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: '1', size: 13 }];
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.vaultTeamExpired = undefined;
+    app.state.vaultNote = undefined;
+  });
+
+  it('stays open, read-only, and says how to save again', async () => {
+    let switched = 0;
+    app.state.setVaultScope = async () => {
+      switched++;
+    };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('the team plan');
+    expect(dom.text()).toContain('Sign in again to save to your team.');
+    expect(dom.container.querySelector('[aria-label="Edit"]')).toBeNull();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.container.querySelector('.vault-save-chip')).toBeNull();
+    // The team vault is not available, and the note is still not thrown away.
+    expect(switched).toBe(0);
+    app.state.setVaultScope = async () => {};
+  });
+});
+
+// Vault M2 2.5: the lease is a quiet line where the storage checks every
+// write, and read-only with Take over editing only where it cannot.
+describe('the lease on the Vault screen (M2 2.5)', () => {
+  let dom: TestDom;
+  const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.leases.touches = 0;
+    app.leases.takeOvers = 0;
+    app.state.vaultNote = { path: 'Plan.md', text: 'loaded', updatedAt: 'v1', fresh: true };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'v1', size: 6 }];
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultNote = undefined;
+    app.state.vaultLeaseHeldByOther = undefined;
+    app.state.vaultLeaseOther = undefined;
+  });
+
+  it('a keystroke asks for the lease; opening the note does not', async () => {
+    await dom.render(<VaultRoom />);
+    expect(app.leases.touches).toBe(0);
+    await dom.type(EDITOR, 'loaded, and more');
+    expect(app.leases.touches).toBeGreaterThan(0);
+  });
+
+  it('advisory: one quiet line, and the editor stays', async () => {
+    app.state.vaultLeaseOther = { mode: 'advisory', label: 'iPad' };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Also open on your iPad.');
+    expect(dom.container.querySelector('textarea')).not.toBeNull();
+    expect(dom.buttons()).not.toContain('Take over editing');
+  });
+
+  it('enforced: read-only, the controls that write are left out, and Take over editing works', async () => {
+    app.state.vaultLeaseHeldByOther = true;
+    app.state.vaultLeaseOther = { mode: 'enforced', label: 'Mac' };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Being edited on your Mac.');
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.container.querySelector('[aria-label="Edit"]')).toBeNull();
+    expect(dom.container.querySelector('[aria-label="Options"]')).toBeNull();
+    await dom.click('Take over editing');
+    expect(app.leases.takeOvers).toBe(1);
+  });
+
+  it('enforced in the list: New note is left out, and the line says why', async () => {
+    app.state.vaultNote = undefined;
+    app.state.vaultLeaseHeldByOther = true;
+    app.state.vaultLeaseOther = { mode: 'enforced' };
+    await dom.render(<VaultRoom />);
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    expect(dom.text()).toContain('Being edited on another of your devices.');
+  });
+});
+
+// Vault M2 2.7: the screen only starts and stops the store's poll.
+describe('the team poll and who last saved (M2 2.7)', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.polls.length = 0;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.authSession = { user: { id: 'u1' } };
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.authSession = undefined;
+    app.state.vaultNote = undefined;
+  });
+
+  it('starts with a team note open, and stops when the room goes', async () => {
+    app.state.vaultNote = { path: 'Plan.md', text: 'the team plan', updatedAt: 'x' };
+    await dom.render(<VaultRoom />);
+    expect(app.polls).toContain('start');
+    await dom.unmount();
+    expect(app.polls.at(-1)).toBe('stop');
+    dom = await mountDom();
+  });
+
+  it('never starts in the list', async () => {
+    await dom.render(<VaultRoom />);
+    expect(app.polls).not.toContain('start');
+  });
+
+  it("names a teammate's save on the meta line, and not the person's own", async () => {
+    const at = new Date(Date.now() - 2 * 60_000 - 5_000).toISOString();
+    app.state.vaultNote = {
+      path: 'Plan.md',
+      text: 'the team plan',
+      updatedAt: at,
+      editedBy: { id: 'u2', label: 'sam' },
+    } as typeof app.state.vaultNote;
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Edited by sam, 2 min ago');
+    await dom.unmount();
+    dom = await mountDom();
+    app.state.vaultNote = {
+      path: 'Plan.md',
+      text: 'the team plan',
+      updatedAt: at,
+      editedBy: { id: 'u1', label: 'me' },
+    } as typeof app.state.vaultNote;
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).not.toContain('Edited by');
+  });
+});
+
+// Vault M2 2.8: the team vault exports to its own folder.
+describe('the team export row (M2 2.8)', () => {
+  let dom: TestDom;
+  const calls: unknown[][] = [];
+  beforeEach(async () => {
+    calls.length = 0;
+    app.toasts.length = 0;
+    onDesk.on = true;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.settings = { account: { org: { name: 'Acme', serverId: 'org-1' } } };
+    app.state.vaultFiles = [{ path: 'plan.md', updatedAt: '1', size: 4 }];
+    app.state.vaultReadAll = async () =>
+      Object.assign([{ path: 'plan.md', text: 'plan' }], { failed: [] as string[] });
+    dom = await mountDom();
+    (window as unknown as { oscode: unknown }).oscode = {
+      platform: 'electron',
+      vaultTeamExport: async (...args: unknown[]) => {
+        calls.push(args);
+        return {
+          written: 1,
+          total: 1,
+          removed: 0,
+          unread: 0,
+          kept: [],
+          dir: '/x',
+          display: '~/OSCode/Vault Team/Acme',
+        };
+      },
+    };
+  });
+  afterEach(async () => {
+    delete (window as unknown as { oscode?: unknown }).oscode;
+    await dom.unmount();
+    onDesk.on = false;
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.settings = {};
+    app.state.vaultFiles = [];
+    app.state.vaultReadAll = async () => Object.assign([], { failed: [] });
+  });
+
+  it('exports the team notes to their own folder and says where', async () => {
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(calls).toEqual([['Acme', [{ path: 'plan.md', text: 'plan' }], []]]);
+    expect(app.toasts.at(-1)).toContain('~/OSCode/Vault Team/Acme');
+    expect(app.toasts.at(-1)).toContain('Obsidian can open it as a vault.');
+  });
+
+  it('is not offered in the personal vault on the desktop', async () => {
+    app.state.vaultScope = 'personal';
+    await dom.render(<VaultRoom />);
+    expect(dom.buttons()).not.toContain('Export as plain files');
+  });
+});
+
+describe('Linked mentions come from the index (M3 3.2)', () => {
+  let dom: TestDom;
+  const notes: Record<string, string> = {
+    'Plan.md': '# Plan\n\nThe plan.',
+    'Idea.md': 'Build on [[Plan]] next week.',
+    'Other.md': 'Nothing links from here.',
+    'Code.md': '```\n[[Plan]] in a fence is not a link\n```',
+  };
+  const listed = Object.entries(notes).map(([path, text]) => ({
+    path,
+    updatedAt: 'x',
+    size: text.length,
+    version: `v-${path}`,
+  }));
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultReadAll = async () => Object.assign([], { failed: [] });
+    app.state.vaultReadBody = async () => undefined;
+  });
+
+  it('names the notes that link here and reads only those for excerpts, never the whole vault', async () => {
+    const { vaultIndexFor, currentVaultIndex } = await import('../src/lib/vaultIndexHost.js');
+    const host = vaultIndexFor(
+      { providerId: 'local', resourceId: 'vault.personal' },
+      {
+        read: async (_r: string, path: string) => ({
+          path,
+          text: notes[path]!,
+          updatedAt: 'x',
+          version: `v-${path}`,
+        }),
+      },
+    );
+    await host.reconcile(listed);
+    let readAll = 0;
+    const bodies: string[] = [];
+    app.state.vaultReadAll = async () => {
+      readAll++;
+      return Object.assign([], { failed: [] });
+    };
+    app.state.vaultReadBody = async (path: string) => {
+      bodies.push(path);
+      return notes[path];
+    };
+    app.state.vaultFiles = listed;
+    app.state.vaultNote = { path: 'Plan.md', text: notes['Plan.md'], updatedAt: 'x' };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    await dom.settle();
+    expect(dom.text()).toContain('Linked mentions');
+    expect(dom.buttons().some((b) => b.startsWith('Idea') && b.includes('Build on'))).toBe(true);
+    // A link inside a code fence is not a mention.
+    expect(dom.buttons().some((b) => b.startsWith('Code'))).toBe(false);
+    expect(bodies).toEqual(['Idea.md']);
+    expect(readAll).toBe(0);
+    // Leaving the Vault keeps the personal index warm for a chat's pack
+    // (Vault M5, CTO J1); the store closes it on a move, a sign-out, or a
+    // pairing change.
+    await dom.unmount();
+    expect(currentVaultIndex()).toBeDefined();
+    const { closeVaultIndex } = await import('../src/lib/vaultIndexHost.js');
+    await closeVaultIndex();
+    expect(currentVaultIndex()).toBeUndefined();
+    dom = await mountDom();
   });
 });

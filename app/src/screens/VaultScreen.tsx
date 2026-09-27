@@ -3,7 +3,15 @@
 // edit/read toggle, and Linked mentions, all rendered in OS Code's own paper
 // and ink rather than anyone else's dark theme. Design: the studio's "Paper
 // Study" direction.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import {
   agenticView,
   useApp,
@@ -11,16 +19,19 @@ import {
   type VaultHeldDraft,
   type VaultTargetRef,
 } from '../state/store.js';
+import type { VaultMovePreview, VaultRewriteReport, VaultUndo } from '../state/vaultOps.js';
 import { BackBar } from '../components/BackBar.js';
 import { ErrorBoundary } from '../components/ErrorBoundary.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import {
-  backlinksTo,
+  allFolders,
+  isConflictCopy,
   noteFolder,
   noteTitle,
   nonNoteExtension,
   normalizeNotePath,
   treeAt,
+  vaultPendingCount,
   wikilinkContext,
 } from '../lib/vault.js';
 import {
@@ -33,7 +44,13 @@ import {
   type GitosResource,
   type StorageProviderId,
 } from '../lib/gitos/index.js';
-import { exportVaultToFiles, vaultExportLine, vaultWayOut } from '../lib/vaultExport.js';
+import {
+  exportTeamVaultToFiles,
+  exportVaultToFiles,
+  vaultExportLine,
+  vaultTeamExportable,
+  vaultWayOut,
+} from '../lib/vaultExport.js';
 import { VAULT_AUTOSAVE_MS, vaultAutosave } from '../lib/vaultAutosave.js';
 import {
   DRIVE_RECONNECT_FAILED_LINE,
@@ -48,7 +65,15 @@ import {
   VAULT_PRIVACY_BUTTON,
   VAULT_SAME_FOLDER_LINE,
   VAULT_UPDATED_SUFFIX,
+  VAULT_TEAM_SIGN_IN_LINE,
+  VAULT_CONFLICT_BADGE,
+  vaultEditedByLine,
+  vaultLeaseAlsoOpen,
+  vaultLeaseEnforced,
+  VAULT_CONFLICT_BADGE_LABEL,
+  VAULT_DELETED,
   copyProviderOf,
+  vaultCapLine,
   vaultCloudLine,
   vaultConflictCard,
   vaultCopy,
@@ -62,7 +87,6 @@ import {
   vaultHeldKeep,
   vaultHeldLine,
   vaultLead,
-  vaultMentionsOnDemand,
   vaultMissingFolderCard,
   vaultBringLine,
   vaultMoveLine,
@@ -73,15 +97,51 @@ import {
   vaultPickResultCopy,
   vaultPickerRow,
   vaultRevealLabel,
+  vaultSaveChip,
   vaultSheetLine,
   vaultWarningLine,
   vaultWelcomeNote,
+  vaultRestoreFailed,
+  vaultRestoredToast,
+  vaultTrashEmptied,
+  vaultTrashFailed,
+  vaultUndoFailed,
+  vaultUndoText,
+  VAULT_TRASH_EMPTY_FAILED,
+  VAULT_TRASH_LIST_FAILED,
+  VAULT_FOLDER_BAD_NAME,
+  VAULT_FOLDER_CREATE_FAILED,
+  VAULT_RENAME_CHOICE_OPEN,
+  vaultFolderMovePartial,
+  vaultFolderLabel,
+  vaultFolderOptionsLabel,
+  vaultFolderTaken,
+  vaultRenameChanged,
+  vaultRenameFailed,
+  vaultRenameTaken,
+  vaultRenameToast,
+  vaultRecentAgentLabel,
+  vaultTodayAria,
+  vaultReaderCopy,
+  vaultLinkedIn,
+  vaultLinkMentionFailed,
+  VAULT_TODAY_TITLE,
   type VaultDriveLink,
   type VaultOnboard,
+  type VaultSaveStatus,
+  HUB_AWAY_LINE,
+  HUB_OFFER_COPY,
+  hubMoveOffer,
 } from '../lib/vaultCopy.js';
 import { copyText } from '../lib/clipboard.js';
 import { openPrivacySettings, openVaultInObsidian, revealVaultFolder } from '../lib/vaultFolder.js';
 import { folderNotesSince } from '../lib/vaultOffer.js';
+import {
+  closeVaultIndex,
+  currentVaultIndex,
+  useVaultIndexStatus,
+  vaultIndexLine,
+} from '../lib/vaultIndexHost.js';
 import type { VaultDirInfo, VaultPickResult, VaultRefineChoice } from '../lib/electronBridge.js';
 import type { StoredFile } from '../lib/gitos/providers.js';
 import { Sheet } from '../components/Sheet.js';
@@ -90,11 +150,59 @@ import { hapticApproval, hapticCommit } from '../lib/haptics.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
-import { isDesktop, openExternal, platform } from '../lib/platform.js';
+import { isDesktop, isPhone, openExternal, platform } from '../lib/platform.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
+import { useViewGhost } from '../hooks/useViewGhost.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
-import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
+import {
+  VAULT_SETTINGS_DEFAULTS,
+  type ResolvedVaultSettings,
+  readFrontmatter,
+  readProvenance,
+  datePartsOf,
+  buildPathIndex,
+  isAttachmentPath,
+  linkTextFor,
+  scanNote,
+  type WikilinkContext,
+  type HermesNote,
+  type HermesNoteMeta,
+} from 'os-code/protocol';
+import { vaultBlobs } from '../lib/vaultBlobs.js';
+import { openDeviceAttachment } from '../lib/gitos/deviceFolder.js';
+import type { VaultMedia } from '../components/vault/VaultAttachment.js';
 import { Icon } from '../components/Icon.js';
+import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
+import {
+  VaultBacklinks,
+  findUnlinkedRows,
+  linkMentionText,
+  outgoingLinks,
+  type VaultUnlinkedRow,
+  type VaultUnlinkedState,
+} from '../components/vault/VaultBacklinks.js';
+import { VaultOutlineSheet, outlineOffered } from '../components/vault/VaultOutlineSheet.js';
+import { prefersReducedMotion } from '../lib/motion.js';
+import { VaultLinkSuggest } from '../components/vault/VaultLinkSuggest.js';
+import { VaultAccessoryBar } from '../components/vault/VaultAccessoryBar.js';
+import { VaultNoteOptions } from '../components/vault/VaultNoteOptions.js';
+import { VaultTrashRow, VaultTrashView } from '../components/vault/VaultTrashView.js';
+import { VaultFolderSheet } from '../components/vault/VaultFolderSheet.js';
+import { VaultSearch } from '../components/vault/VaultSearch.js';
+import { VaultSwitcher, useVaultSwitcherShortcut } from '../components/vault/VaultSwitcher.js';
+import { vaultRecentRows, vaultSearchIndexState } from '../lib/vaultSearch.js';
+import type { VaultPickerNote } from '../lib/vaultExcerpt.js';
+import { VaultLinksLeftCard, VaultRenameSheet } from '../components/vault/VaultRenameSheet.js';
+import { VaultSettingsHost } from '../components/vault/VaultSettingsHost.js';
+import { vaultTypeAttrs } from '../components/vault/VaultSettingsSheet.js';
+import { VaultProvenanceChip } from '../components/vault/VaultProvenanceChip.js';
+import { VaultAboutNote } from '../components/vault/VaultAboutNote.js';
+import { VaultStarterSheet } from '../components/vault/VaultStarterSheet.js';
+import { vaultTreeSortOffered } from '../lib/vault.js';
+import { VAULT_SETTINGS_TITLE, VAULT_STARTER_OFFER } from '../lib/vaultCopy.js';
+import { VaultUndoToast, type VaultUndoToastItem } from '../components/vault/VaultUndoToast.js';
+import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
+import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -126,6 +234,13 @@ async function probeDriveLink(): Promise<VaultDriveLink> {
 
 export function VaultScreen() {
   const {
+    vaultSettings,
+    vaultLoadSettings,
+    vaultMarkReviewed,
+    vaultStarterOffered,
+    vaultApplyStarter,
+    vaultSheetRequest,
+    vaultRequestSheet,
     vaultFiles,
     vaultNote,
     vaultScope,
@@ -136,17 +251,22 @@ export function VaultScreen() {
     vaultCreate,
     vaultCloseNote,
     vaultSave,
-    vaultDelete,
     vaultReadAll,
+    vaultReadBody,
     vaultMoveTo,
     vaultError,
     vaultHeld,
+    vaultPending,
+    vaultSaving,
+    vaultTeamExpired,
     vaultTargetRef,
     vaultReadOnly,
     vaultDiscardHeld,
-    vaultAcquireLease,
     vaultReleaseLease,
+    vaultLeaseTouch,
+    vaultTakeOverLease,
     vaultLeaseHeldByOther,
+    vaultLeaseOther,
     connectGdriveAccount,
     disconnectGdriveAccount,
     authSession,
@@ -157,6 +277,8 @@ export function VaultScreen() {
     repoSyncConflicts,
     vaultConflict,
     vaultRecheck,
+    vaultStartPoll,
+    vaultStopPoll,
     vaultResolve,
     vaultDeferConflict,
     vaultLeaveConflict,
@@ -175,6 +297,34 @@ export function VaultScreen() {
     vaultSettleFork,
     vaultDesktopChatOpen,
     vaultBringPrevious,
+    askAboutVaultNote,
+    pinVaultNoteToProject,
+    canEditProjectPins,
+    vaultHubOfferShown,
+    vaultAcceptHubMove,
+    vaultDeclineHubMove,
+    vaultAgentRecent,
+    vaultBindAutosave,
+    vaultCapsNow,
+    vaultDeleteNote,
+    vaultUndoDelete,
+    vaultTrash,
+    vaultLoadTrash,
+    vaultRestoreTrash,
+    vaultEmptyTrash,
+    vaultDeleteFolder,
+    vaultPrepareMove,
+    vaultApplyMove,
+    vaultUpdateRest,
+    vaultCreateFolder,
+    vaultFolderCounts,
+    vaultFolders,
+    vaultSearchSource,
+    vaultRecentRing,
+    vaultToday,
+    vaultToggleTask,
+    vaultMediaNow,
+    vaultRewriteNote,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -184,7 +334,11 @@ export function VaultScreen() {
   // has no agent to point at, and a member's sessions have no vault (0.13).
   const on = platform();
   const hubMember = hubRole === 'member';
-  const copyOpts = { hubMember, paired: Boolean(settings.daemon) };
+  const copyOpts = {
+    hubMember,
+    hubName: settings.daemon?.name,
+    paired: Boolean(settings.daemon),
+  };
   // The held text this account may see: every personal entry, and team text
   // only under the account that typed it (R-19). Raw vaultHeld also holds
   // other accounts' team text, so nothing here renders it.
@@ -226,8 +380,29 @@ export function VaultScreen() {
     if (note) setCurrentNote(note);
     else showToast('That note could not be read right now.');
   };
-  // Another device holds the vault's write lease: show the note read-only.
+  // Another device holds the enforced lease (a storage without
+  // compare-and-swap): the room writes nothing and says why, with Take over
+  // editing (2.5). On a storage with compare-and-swap the lease is only the
+  // quiet "Also open on your iPad" line.
   const readOnly = Boolean(vaultLeaseHeldByOther);
+  const leaseCopy = vaultLeaseEnforced(vaultLeaseOther?.label);
+  const alsoOpen =
+    vaultLeaseOther?.mode === 'advisory' ? vaultLeaseAlsoOpen(vaultLeaseOther.label) : undefined;
+  const takeOver = () => {
+    hapticCommit();
+    void vaultTakeOverLease();
+  };
+  const renderLeaseLine = () =>
+    readOnly ? (
+      <div className="vault-lease-line" role="status">
+        <p className="hint" style={{ margin: 0, color: 'var(--warn)' }}>
+          {leaseCopy.line}
+        </p>
+        <button type="button" className="btn ghost press-fb" onClick={takeOver}>
+          {leaseCopy.takeOver}
+        </button>
+      </div>
+    ) : null;
   // A personal vault on Google Drive is read-only in v1 (0.18): the reason
   // shows as a card with a one-tap way off, and the controls that edit,
   // create, and delete are left out, not dimmed.
@@ -243,8 +418,47 @@ export function VaultScreen() {
   const folderGone = personalOnFolder && vaultFolder?.exists === false;
   // A move is running: the room holds still, so nothing typed can miss the
   // copy (CX 1.3).
-  const locked = readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone;
+  // The team sign-in expired with a team note open: the note stays, read-only,
+  // until the person signs back in or leaves it (2.6).
+  const teamExpired = team && Boolean(vaultTeamExpired);
+  // The personal vault is on the paired computer and it did not answer (CTO
+  // J9): the list is the last one seen, an open note still saves (its change
+  // waits here), and the tree holds still, so New note and Delete leave.
+  const reach = useSyncExternalStore(subscribeHubReach, hubReach, hubReach);
+  const personalOnHub =
+    !team &&
+    (settings.gitosResources as GitosResource[] | undefined)?.find(
+      (r) => r.id === VAULT_RESOURCE_ID,
+    )?.providerId === 'hub';
+  const hubAway = personalOnHub && reach === 'away';
+  const locked =
+    readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone || teamExpired;
+  // What this storage may do now (CTO K1): every M6 action's visibility
+  // follows this one answer.
+  const caps = vaultCapsNow();
+  // What the storage itself lacks, said once in Options (CTO K1): rename, and
+  // a Trash, where a delete is then for good.
+  const storageCaps = vaultCapsNow({ storageOnly: true });
+  const capKey = team
+    ? 'org'
+    : copyProviderOf(
+        ((settings.gitosResources as GitosResource[] | undefined)?.find(
+          (r) => r.id === VAULT_RESOURCE_ID,
+        )?.providerId ?? 'local') as StorageProviderId,
+      );
+  const capNotes = capKey
+    ? (['rename', 'trash'] as const)
+        .filter((cap) => !storageCaps[cap])
+        .map((cap) => vaultCapLine(capKey, cap))
+    : [];
   const teamAvailable = teamVaultAvailable();
+  // The project a note's "Pin to project context" pins to: the active one.
+  const pinProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  const pinProjectName = settings.projects?.find((p) => p.id === pinProjectId)?.name;
+  // The one-time "keep one vault on your computer" card after pairing (J9).
+  const [hubMoving, setHubMoving] = useState(false);
+  const [hubFailed, setHubFailed] = useState(false);
+  const hubOfferShown = !team && vaultHubOfferShown();
 
   const [folder, setFolder] = useState('');
   const [editing, setEditing] = useState(false);
@@ -252,9 +466,26 @@ export function VaultScreen() {
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [storageOpen, setStorageOpen] = useState(false);
+  // Vault M7: the settings sheet, "About this note", and the starter layout.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [starterOpen, setStarterOpen] = useState(false);
+  const [starterOffered, setStarterOffered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
+  // Linked mentions are being read: three skeleton rows (CX X17).
+  const [mentionsLoading, setMentionsLoading] = useState(true);
+  // Unlinked mentions, on request only (CTO K15), and the rows whose Link is
+  // writing (CX X16).
+  const [unlinked, setUnlinked] = useState<VaultUnlinkedState>({ status: 'idle' });
+  const [linking, setLinking] = useState<ReadonlySet<string>>(new Set());
+  // The outline sheet (CX X16), and where the reader sits for its scroll.
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const readerRef = useRef<HTMLDivElement | null>(null);
+  // The note on screen now, for a late answer that must not land on another.
+  const vaultNoteRef = useRef<string | undefined>(undefined);
+  vaultNoteRef.current = vaultNote?.path;
   // Why Linked mentions may be incomplete, or undefined when every note read.
   const [mentionsError, setMentionsError] = useState<string | undefined>();
   const [ready, setReady] = useState<Partial<Record<StorageProviderId, boolean>>>({});
@@ -282,10 +513,64 @@ export function VaultScreen() {
   // A move's forked pairs, one at a time in the move-mode resolve sheet (1d).
   const [forks, setForks] = useState<ForkSteps | undefined>();
   const [forksOpen, setForksOpen] = useState(false);
-  // Linked mentions in a vault over VAULT_LARGE_NOTES notes run on request.
-  const [mentionsAsked, setMentionsAsked] = useState<string | undefined>();
-  const [mentionsBusy, setMentionsBusy] = useState(false);
+  // The Undo toast after a delete (CX X9): one at a time, each with the vault
+  // it was deleted from, so an Undo never lands in another one.
+  const [undoItem, setUndoItem] = useState<VaultUndoToastItem | undefined>();
+  const undoFor = useRef(new Map<string, { undo: VaultUndo; at?: VaultTargetRef }>());
+  // The Trash view, a page inside the room (CX X10).
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashError, setTrashError] = useState<string | undefined>();
+  // Rename or move (6.2, CX X5 to X7): what the sheet moves, whether it is
+  // up, the folder options sheet and its counts, and the standing card on a
+  // renamed note whose links were not all updated.
+  const [renaming, setRenaming] = useState<
+    { kind: 'note' | 'folder'; from: string; startAt?: 'name' | 'folders' } | undefined
+  >();
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
+  const [folderCounts, setFolderCounts] = useState<
+    { notes: number; attachments: number } | undefined
+  >();
+  // Search in the tree and the switcher (6.1; CX X1 to X4). The query lives
+  // here, so a tapped #tag can fill in tag:x.
+  const [searchQ, setSearchQ] = useState('');
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [agentNotes, setAgentNotes] = useState<VaultPickerNote[]>([]);
+  // A note Today just started opens in the editor with the caret at the end
+  // (CX X11).
+  const caretToEnd = useRef(false);
+  // A link's #Heading or #^block to land on once its note shows (CX X12),
+  // tied to that note so another note's reader never tries it.
+  const [pendingAnchor, setPendingAnchor] = useState<
+    { path: string; subpath: string; key: number } | undefined
+  >();
+  // What images and PDFs read from on this storage (6.6), and a count that
+  // re-mounts the reader after iOS took the blob URLs back (K11).
+  const [mediaBase, setMediaBase] = useState<Omit<VaultMedia, 'away' | 'openAttachment'>>();
+  const [blobEpoch, setBlobEpoch] = useState(0);
+  const [linksLeft, setLinksLeft] = useState<
+    | {
+        path: string;
+        old: string;
+        preview: VaultMovePreview;
+        report: VaultRewriteReport;
+        busy?: boolean;
+      }
+    | undefined
+  >();
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  // Tree and note, and read and edit, are true crossfades (CTO K18, CX X17):
+  // the leaving view's snapshot fades out on the tokens while the arriving
+  // view fades in, inert and aria-hidden until it is gone (useViewGhost).
+  const pageGhost = useViewGhost(vaultNote ? 'note' : trashOpen ? 'trash' : 'tree');
+  const modeGhost = useViewGhost(editing && !locked ? 'edit' : 'read');
+  const bindReader = useCallback(
+    (node: HTMLDivElement | null) => {
+      readerRef.current = node;
+      modeGhost('read')(node);
+    },
+    [modeGhost],
+  );
   // Compare-and-swap (1.1): when the person last typed, whether the resolve
   // sheet is up, what a choice is doing, and whether the meta line carries
   // the quiet "Updated from elsewhere" after a calm reload.
@@ -295,19 +580,30 @@ export function VaultScreen() {
   const [resolveFailed, setResolveFailed] = useState(false);
   const [updatedShown, setUpdatedShown] = useState(false);
   const lastReload = useRef<number | undefined>(undefined);
-  // Live [[wikilink]] autocomplete. When the caret sits inside an unclosed
-  // "[[ ...", linkQuery is what has been typed since the brackets and linkStart
-  // is the index of the "[[", so a pick replaces exactly that span.
-  const [linkQuery, setLinkQuery] = useState<string | null>(null);
-  const [linkStart, setLinkStart] = useState(0);
+  // Live [[wikilink]] suggestions (6.7; CTO K14, CX X15): the open link
+  // under the caret, or null. A pick replaces through an existing `]]` or
+  // `|` (wikilinkReplaceRange) and inserts through the native undo stack.
+  const [linkCtx, setLinkCtx] = useState<WikilinkContext | null>(null);
 
-  // Recompute the autocomplete context from the editor value and caret.
+  // Recompute the link context from the editor value and caret.
   const refreshLinkContext = useCallback((value: string, caret: number) => {
     const ctx = wikilinkContext(value, caret);
-    if (!ctx) return setLinkQuery(null);
-    setLinkStart(ctx.start);
-    setLinkQuery(ctx.query);
+    setLinkCtx((now) =>
+      !ctx
+        ? null
+        : now && now.start === ctx.start && now.end === ctx.end && now.query === ctx.query
+          ? now
+          : ctx,
+    );
   }, []);
+  // `[[Note#` offers that note's headings, from the index (no read).
+  const headingsOf = useCallback(
+    (path: string) =>
+      currentVaultIndex()
+        ?.index.entry(path)
+        ?.headings.map((h) => h.text) ?? [],
+    [],
+  );
 
   const currentProviderId: StorageProviderId =
     (settings.gitosResources as GitosResource[] | undefined)?.find(
@@ -321,6 +617,45 @@ export function VaultScreen() {
   const personalKey = copyProviderOf(currentProviderId) ?? 'local';
   const personalCopy = vaultCopy(on, personalKey, copyOpts);
   const labelOf = (id: StorageProviderId) => PROVIDER_ROSTER.find((r) => r.id === id)?.label ?? id;
+
+  // The vault's settings (Vault M7, CTO L3 to L6): read fresh when the room
+  // shows and when the vault on screen changes. A team vault on main reads
+  // the defaults (L16).
+  useEffect(() => {
+    void vaultLoadSettings({ force: true });
+  }, [vaultLoadSettings, currentProviderId, vaultScope]);
+  const vs = (!team && vaultSettings) || VAULT_SETTINGS_DEFAULTS;
+  // The open note's provenance (CTO L9), from the text as loaded or saved.
+  const noteText = vaultNote?.text;
+  const noteProvenance = useMemo(() => {
+    if (noteText === undefined) return undefined;
+    try {
+      return readProvenance(readFrontmatter(noteText));
+    } catch {
+      return undefined;
+    }
+  }, [noteText]);
+  // The starter layout is offered only on an empty personal vault (L12).
+  useEffect(() => {
+    if (team || !vaultListed || vaultFiles.length > 0) {
+      setStarterOffered(false);
+      return;
+    }
+    let live = true;
+    void vaultStarterOffered().then((ok) => {
+      if (live) setStarterOffered(ok);
+    });
+    return () => {
+      live = false;
+    };
+  }, [
+    team,
+    vaultListed,
+    vaultFiles.length,
+    vaultFolders?.length,
+    currentProviderId,
+    vaultStarterOffered,
+  ]);
 
   // Probe live readiness when the storage sheet opens, so iCloud shows as
   // usable only on a device that can actually reach it.
@@ -346,8 +681,32 @@ export function VaultScreen() {
 
   useEffect(() => {
     void vaultRefresh();
+    // Leaving the Vault keeps the personal index warm, so a chat's pack finds
+    // it (Vault M5, CTO J1); the store closes it on a storage move, a
+    // sign-out, or a pairing change. The team vault is never in context, so
+    // its index closes here, its last write saved first.
+    return () => {
+      if (currentVaultIndex()?.target.providerId === 'org') void closeVaultIndex();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The index's progress line, only once a build has run 1.5 s (M3 3.2).
+  const indexStatus = useVaultIndexStatus();
+  const indexLine = vaultIndexLine(indexStatus);
+  // What search reads: the index open for the vault on screen, asked again
+  // when the list, the index or the vault changes (never per render, so a
+  // body search in flight is not restarted by an unrelated update).
+  const searchSource = useMemo(
+    () => vaultSearchSource(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vaultSearchSource, vaultFiles, indexStatus.state, vaultScope],
+  );
+  // A build that could read no note's text: search says only titles match.
+  const indexFailed = Boolean(
+    indexStatus.progress &&
+    indexStatus.progress.total > 0 &&
+    indexStatus.progress.failed >= indexStatus.progress.total,
+  );
 
   // The desktop folder is shared with the agent, routines, and Obsidian, so
   // while this room is open main watches it (CTO F3) and every change it saw,
@@ -360,6 +719,37 @@ export function VaultScreen() {
       if (change.rootGone) void vaultLoadFolder();
       void vaultRecheck({ reason: 'watch', paths: change.paths, tree: change.tree });
     });
+    return () => {
+      off();
+      watchDeviceFolder(false);
+    };
+  }, [onFolder, vaultRecheck, vaultLoadFolder]);
+  // The team vault's live refresh (2.7): while a team note is open and the
+  // page is visible, the store checks its head every 30 s. Hidden, there is
+  // no timer; visible again (or back online), it checks at once.
+  useEffect(() => {
+    if (!team || !vaultNote?.path) {
+      vaultStopPoll();
+      return;
+    }
+    vaultStartPoll();
+    const onVisible = () => {
+      if (document.visibilityState === 'hidden') vaultStopPoll();
+      else vaultStartPoll({ now: true });
+    };
+    const onOnline = () => vaultStartPoll({ now: true });
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
+      vaultStopPoll();
+    };
+  }, [team, vaultNote?.path, vaultStartPoll, vaultStopPoll]);
+  // Every return to the window re-checks the open note, on every storage
+  // that can see a change under the editor (compare-and-swap; the store
+  // decides), and re-lists the tree (Vault M2 2.2).
+  useEffect(() => {
     const onFocus = () => void vaultRecheck({ reason: 'focus' });
     const onVisible = () => {
       if (document.visibilityState === 'visible') onFocus();
@@ -367,12 +757,10 @@ export function VaultScreen() {
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      off();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
-      watchDeviceFolder(false);
     };
-  }, [onFolder, vaultRecheck, vaultLoadFolder]);
+  }, [vaultRecheck]);
   useEffect(() => {
     if (onFolder) watchDeviceFolder(true, vaultNote?.path);
   }, [onFolder, vaultNote?.path]);
@@ -399,57 +787,106 @@ export function VaultScreen() {
     };
   }, [driveReadOnly]);
 
-  // Hold the single-writer lease while the vault is open, renewed on a
-  // heartbeat (TTL is 90s, renew at 40s), and released on the way out. If
-  // another device holds it live, the screen goes read-only.
-  useEffect(() => {
-    void vaultAcquireLease();
-    const beat = setInterval(() => void vaultAcquireLease(), 40_000);
-    return () => {
-      clearInterval(beat);
-      void vaultReleaseLease();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultScope]);
+  // The lease is held only while the person types (2.5): the editor takes it
+  // on a keystroke (vaultLeaseTouch), and leaving the note, the vault, or the
+  // room lets it go. Nothing holds it at mount or on a timer, so a note that
+  // is only open never syncs a lease file.
+  useEffect(() => () => void vaultReleaseLease(), [vaultNote?.path, vaultScope, vaultReleaseLease]);
 
   const paths = useMemo(() => vaultFiles.map((f) => f.path), [vaultFiles]);
 
-  // Load the draft and Linked mentions whenever a note opens. The last note's
-  // mentions clear first, so they never show under this one, and a vault with
-  // notes it could not read says so rather than looking complete (data-m2).
+  // Recent (X4): what this device opened, merged with the agent's notes,
+  // newest first. The agent's label shows only where the agent is this
+  // vault's (the copy map says).
+  useEffect(() => {
+    if (team) {
+      setAgentNotes([]);
+      return;
+    }
+    let live = true;
+    void vaultAgentRecent()
+      .then((n) => {
+        if (live) setAgentNotes(n);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [team, vaultFiles.length, vaultAgentRecent]);
+  const listedPaths = useMemo(() => new Set(paths), [paths]);
+  const recentRows = vaultRecentRows(vaultRecentRing(), agentNotes, (p) =>
+    listedPaths.has(p) ? { title: searchSource?.note(p)?.title } : undefined,
+  );
+  const agentLabel = vaultRecentAgentLabel(team ? vaultCopy(on, 'org') : personalCopy);
+
+  // Load the draft whenever a note opens. The last note's mentions clear
+  // first, so they never show under this one.
   useEffect(() => {
     if (!vaultNote) return;
     setDraft(vaultNote.text);
-    setEditing(vaultNote.fresh === true);
+    // A fresh note edits; otherwise the vault's "Open notes in" (Vault M7,
+    // `editor.openMode`, Reading unless it says Editing).
+    setEditing(vaultNote.fresh === true || vs.editor.openMode === 'edit');
     setUpdatedShown(false);
     lastReload.current = vaultNote.reloaded;
     setBacklinks([]);
     setMentionsError(undefined);
-    setMentionsAsked(undefined);
-    const path = vaultNote.path;
-    // A vault this size reads every note only when the person asks (CX 1.4).
-    if (vaultFiles.length > VAULT_LARGE_NOTES) return;
+    setMentionsLoading(true);
+    setUnlinked({ status: 'idle' });
+    setLinking(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultNote?.path]);
+  // Today's new note: the caret goes to the end, where the day's writing
+  // starts.
+  useEffect(() => {
+    if (!editing || !caretToEnd.current) return;
+    caretToEnd.current = false;
+    requestAnimationFrame(() => {
+      const el = editorRef.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.setSelectionRange?.(el.value.length, el.value.length);
+    });
+  }, [editing, vaultNote?.path]);
+  // Linked mentions come from the index (M3 3.2): it names the notes that
+  // link here, and only those are read (through the body cache) for their
+  // excerpts, so opening a note never reads the whole vault. They ask again
+  // when a build settles, and a vault with notes it could not read says so
+  // rather than looking complete (data-m2).
+  const mentionsFor = vaultNote?.path;
+  useEffect(() => {
+    const index = currentVaultIndex();
+    if (!mentionsFor) return;
+    if (!index) {
+      setMentionsLoading(false);
+      return;
+    }
+    if (indexStatus.state === 'building') return;
     let live = true;
-    vaultReadAll().then(
-      (notes) => {
+    index.linkedMentions(mentionsFor, vaultReadBody).then(
+      ({ mentions, failed, more }) => {
         if (!live) return;
-        setBacklinks(backlinksTo(path, notes));
-        const missed = notes.failed.filter((p) => p !== path).length;
+        setBacklinks(mentions);
+        setMentionsLoading(false);
+        const missed = failed.filter((p) => p !== mentionsFor).length;
         setMentionsError(
           missed
             ? `${missed} ${missed === 1 ? 'note' : 'notes'} could not be read, so this list may be missing some.`
-            : undefined,
+            : more > 0
+              ? `${more} more ${more === 1 ? 'note links' : 'notes link'} here than this list shows.`
+              : undefined,
         );
       },
       () => {
-        if (live) setMentionsError('Linked mentions could not be read right now.');
+        if (!live) return;
+        setMentionsLoading(false);
+        setMentionsError('Linked mentions could not be read right now.');
       },
     );
     return () => {
       live = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultNote?.path]);
+  }, [mentionsFor, indexStatus.state, vaultReadBody]);
 
   // Obsidian saves as you type; so do we, debounced so the sealed store is
   // not hammered per keystroke (lib/vaultAutosave.ts). The pending draft can
@@ -468,6 +905,12 @@ export function VaultScreen() {
     [vaultSave, vaultTargetRef],
   );
   const scheduleSave = autosave.schedule;
+  // An M6 operation flushes this first, and its timer with it (a stale save
+  // must never recreate a trashed note).
+  useEffect(() => {
+    vaultBindAutosave(autosave);
+    return () => vaultBindAutosave(undefined);
+  }, [autosave, vaultBindAutosave]);
 
   // The store replaced the open note's text in place (a calm reload of a
   // clean note, or a resolve choice that shows the other version): the editor
@@ -556,6 +999,34 @@ export function VaultScreen() {
 
   // Write the pending draft now, to the vault it was typed into.
   const flushSave = autosave.flush;
+  // Another room asked for the storage sheet (Settings' "Where it lives"):
+  // it lives in the tree, so an open note is saved and closed first.
+  useEffect(() => {
+    if (vaultSheetRequest !== 'storage') return;
+    vaultRequestSheet(undefined);
+    if (vaultNote) {
+      flushSave();
+      vaultCloseNote();
+    }
+    setStorageOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultSheetRequest]);
+  // Vault settings (Vault M7, CX Y4): one host for Options and the storage
+  // sheet's end. "Where it lives" opens the storage sheet, which lives in
+  // the tree, so an open note is saved and closed first.
+  const settingsHost = (
+    <VaultSettingsHost
+      open={settingsOpen}
+      setOpen={setSettingsOpen}
+      onOpenStorage={() => {
+        if (vaultNote) {
+          flushSave();
+          vaultCloseNote();
+        }
+        setStorageOpen(true);
+      }}
+    />
+  );
   // Switch vaults only once the pending draft is on its way to its own.
   const switchScope = useCallback(
     (scope: 'personal' | 'team') => {
@@ -566,26 +1037,32 @@ export function VaultScreen() {
   );
   // If the team vault stops being available while it is open (sign-out), drop
   // back to the personal vault so the screen never shows an empty dead end.
+  // A team note kept open after an expiry stays until the person leaves it
+  // (the store then goes back to the personal vault itself).
   useEffect(() => {
-    if (team && !teamAvailable) switchScope('personal');
-  }, [team, teamAvailable, switchScope]);
-  // Drop the pending draft without writing it (used when deleting the note it
-  // belongs to, so a stale timer cannot recreate what was just deleted).
-  const cancelSave = autosave.cancel;
+    if (team && !teamAvailable && !vaultTeamExpired) switchScope('personal');
+  }, [team, teamAvailable, vaultTeamExpired, switchScope]);
   // Flush on background (iOS may suspend or jetsam the app) and on unmount.
-  // On return to foreground, refresh so edits synced from another device (or
-  // the desktop agent) show up without a manual reopen.
+  // The return to the foreground is the focus re-check above, which also
+  // re-lists, so edits synced from another device (or the desktop agent)
+  // show up without a manual reopen.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flushSave();
-      else void vaultRefresh();
     };
     document.addEventListener('visibilitychange', onVisibility);
     let remove: (() => void) | undefined;
     void import('@capacitor/app')
       .then(({ App }) =>
         App.addListener('appStateChange', ({ isActive }) => {
-          if (!isActive) flushSave();
+          if (isActive) {
+            // Back from the background: the reader asks for its images again.
+            setBlobEpoch((n) => n + 1);
+            return;
+          }
+          flushSave();
+          // iOS may reclaim the page: no image bytes stay behind (K11).
+          vaultBlobs.revokeAll();
         }),
       )
       .then((handle) => {
@@ -599,7 +1076,39 @@ export function VaultScreen() {
       remove?.();
       flushSave();
     };
-  }, [flushSave, vaultRefresh]);
+  }, [flushSave]);
+  // Leaving the room takes every image's blob URL with it (K11).
+  useEffect(() => () => vaultBlobs.revokeAll(), []);
+
+  // Attachments of the vault on screen, read again when the vault or its
+  // list changes (a new image lands with a note).
+  useEffect(() => {
+    let live = true;
+    void vaultMediaNow()
+      .then((m) => {
+        if (live) setMediaBase(m);
+      })
+      .catch(() => {
+        if (live) setMediaBase(undefined);
+      });
+    return () => {
+      live = false;
+    };
+  }, [vaultMediaNow, currentProviderId, vaultScope, vaultFiles.length, caps.attachments]);
+  const media = useMemo<VaultMedia | undefined>(
+    () =>
+      mediaBase
+        ? {
+            ...mediaBase,
+            away: hubAway,
+            // The desktop opens a PDF in the system viewer (osc:vaultOpenAttachment).
+            ...(!team && currentProviderId === 'files' && isDesktop()
+              ? { openAttachment: openDeviceAttachment }
+              : {}),
+          }
+        : undefined,
+    [mediaBase, hubAway, team, currentProviderId],
+  );
 
   const openNote = (path: string) => {
     // Persist any in-flight edit to the current note before switching away.
@@ -607,6 +1116,58 @@ export function VaultScreen() {
     flushSave();
     void vaultOpen(path);
   };
+
+  // Today's note (6.4; CTO K7, CX X11): an existing one opens unchanged and
+  // says nothing; a new one opens in the editor, caret at the end, with its
+  // line; a vault that cannot start one says why.
+  const openToday = async () => {
+    flushSave();
+    const r = await vaultToday();
+    if (!r) return;
+    if (r.kind === 'refused') {
+      showToast(r.line);
+      return;
+    }
+    if (r.kind === 'created') {
+      caretToEnd.current = true;
+      if (r.line) showToast(r.line);
+    }
+  };
+  const todayButton = caps.today ? (
+    <button
+      type="button"
+      className="icon-btn vault-today-btn press-fb"
+      aria-label={vaultTodayAria(datePartsOf(new Date()))}
+      title={VAULT_TODAY_TITLE}
+      onClick={() => void openToday()}
+    >
+      <Icon size={20}>
+        <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+        <path d="M3.5 10h17M8 3v4M16 3v4" />
+      </Icon>
+    </button>
+  ) : null;
+
+  // The quick switcher (6.1; CTO K9, CX X3): Cmd or Ctrl+O while the room is
+  // shown. Titles only; Today first and Recent while the field is empty.
+  useVaultSwitcherShortcut(true, () => setSwitcherOpen(true));
+  const switcher = (
+    <VaultSwitcher
+      open={switcherOpen}
+      onClose={() => setSwitcherOpen(false)}
+      source={searchSource}
+      recent={recentRows}
+      agentLabel={agentLabel}
+      onPick={openNote}
+      {...(caps.today ? { onToday: () => void openToday() } : {})}
+      onCreate={(name) => {
+        const path = normalizeNotePath(name);
+        if (!path || locked || hubAway) return;
+        flushSave();
+        void vaultCreate(path);
+      }}
+    />
+  );
 
   // One choice in the resolve sheet. The sheet stays up, every row waiting,
   // until the store says it landed; a failure keeps it open and says so.
@@ -630,7 +1191,8 @@ export function VaultScreen() {
     // The typed name must make a note on its own, so a name the rule empties
     // ("...") never falls back to the folder's own name.
     const own = normalizeNotePath(newName);
-    const path = own && normalizeNotePath(folder ? `${folder}/${newName}` : newName);
+    const base = newNoteBase(vs, folder);
+    const path = own && normalizeNotePath(base ? `${base}/${newName}` : newName);
     if (!path) {
       // "report.pdf" names a file type, so it can never become a note; say so
       // rather than asking for a name the person already gave.
@@ -664,18 +1226,339 @@ export function VaultScreen() {
   // A tapped link: a note opens, a dashed one is created. An attachment
   // ([[diagram.png]]) is not a note and does not open here yet, so it says so
   // rather than doing nothing.
-  const followLink = (p: string, isNew: boolean) => {
+  const followLink = (p: string, isNew: boolean, subpath?: string) => {
     if (nonNoteExtension(p)) {
       const name = p.slice(p.lastIndexOf('/') + 1);
-      showToast(`"${name}" is an attachment. Attachments do not open in the Vault yet.`);
+      // An image or a PDF opens in the system viewer on the desktop's own
+      // folder; elsewhere it says so. Other files keep M3's line (CX X14).
+      if (isAttachmentPath(p)) {
+        if (media?.openAttachment) {
+          void media.openAttachment(p).then((r) => {
+            if (!r.ok) showToast(vaultReaderCopy.couldNotOpen(name));
+          });
+        } else {
+          showToast(vaultReaderCopy.couldNotOpen(name));
+        }
+        return;
+      }
+      showToast(`"${name}" is an attachment. ${vaultReaderCopy.otherFile}`);
       return;
     }
+    if (subpath) setPendingAnchor({ path: p, subpath, key: Date.now() });
     if (isNew) {
       flushSave();
       // Leaving the note: a choice still open on it keeps both.
       void vaultLeaveConflict();
       void vaultCreate(p);
-    } else openNote(p);
+    } else if (p !== vaultNote?.path) openNote(p);
+  };
+  // ---- outgoing, unlinked, outline (6.8; CTO K15; CX X16) -----------------
+  // The note's links out, from the index (no read).
+  const outgoing = useMemo(() => {
+    const path = vaultNote?.path;
+    const host = currentVaultIndex();
+    return path && host ? outgoingLinks(host.index.outlinks(path), path) : [];
+    // The index answers again when a build settles or the list moves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultNote?.path, indexStatus.state, vaultFiles]);
+  // Unlinked mentions, on request: candidates from search, at most 50 notes
+  // read through the body cache.
+  const findUnlinked = () => {
+    const path = vaultNote?.path;
+    const host = currentVaultIndex();
+    if (!path || !host) return;
+    setUnlinked({ status: 'busy', reading: 0 });
+    void findUnlinkedRows({
+      path,
+      aliases: host.index.entry(path)?.aliases ?? [],
+      search: (q) => host.search(q, 50),
+      readBody: vaultReadBody,
+      onReading: (n) => setUnlinked({ status: 'busy', reading: n }),
+    }).then(
+      (rows) => {
+        if (vaultNoteRef.current === path) setUnlinked({ status: 'done', rows });
+      },
+      () => {
+        if (vaultNoteRef.current === path) {
+          setUnlinked({
+            status: 'done',
+            rows: [],
+            error: 'Unlinked mentions could not be read right now.',
+          });
+        }
+      },
+    );
+  };
+  // Link one mention: the person's own write, compare-and-swap (CX X16).
+  const linkMention = (row: VaultUnlinkedRow) => {
+    const path = vaultNote?.path;
+    if (!path) return;
+    const other = noteTitle(row.path);
+    setLinking((now) => new Set([...now, row.path]));
+    const target = linkTextFor(path, row.path, buildPathIndex(paths)) ?? noteTitle(path);
+    void vaultRewriteNote(row.path, (text) => linkMentionText(text, row.mention, target)).then(
+      (ok) => {
+        setLinking((now) => new Set([...now].filter((p) => p !== row.path)));
+        showToast(ok ? vaultLinkedIn(other) : vaultLinkMentionFailed(other));
+        if (ok) {
+          setUnlinked((u) =>
+            u.status === 'done' ? { ...u, rows: u.rows.filter((r) => r.path !== row.path) } : u,
+          );
+        }
+      },
+    );
+  };
+  // An outline pick lands on its heading in reading view, by the reader's
+  // data-heading-index (never an id built from note text).
+  const scrollToHeading = (i: number) => {
+    const land = () => {
+      const root = readerRef.current;
+      if (!root) return;
+      const el = [...root.querySelectorAll<HTMLElement>('[data-heading-index]')].find(
+        (h) => h.closest('.vault-embed') === null && h.dataset.headingIndex === String(i),
+      );
+      if (!el) return;
+      el.scrollIntoView?.({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+      el.focus?.({ preventScroll: true });
+    };
+    if (editing) {
+      flushSave();
+      setEditing(false);
+      requestAnimationFrame(() => requestAnimationFrame(land));
+    } else land();
+  };
+
+  // A tapped #tag searches tag:x in the tree (CX X2).
+  const searchTag = (tag: string) => {
+    flushSave();
+    setSearchQ(`tag:${tag}`);
+    setFolder('');
+    vaultCloseNote();
+  };
+
+  // ---- delete, Undo and Trash (6.3; CTO K6, R2; CX X8 to X10) -------------
+  const offerUndo = (
+    undo: VaultUndo,
+    at: VaultTargetRef | undefined,
+    title: string,
+    o: { trashed: boolean; folder: boolean; notes: number },
+  ) => {
+    const id = `${Date.now()}:${undo.path}`;
+    undoFor.current.set(id, { undo, ...(at ? { at } : {}) });
+    setUndoItem({ id, text: vaultUndoText(o), title, trashed: o.trashed });
+  };
+  const runUndo = (item: VaultUndoToastItem) => {
+    const entry = undoFor.current.get(item.id);
+    if (!entry) return;
+    void vaultUndoDelete(entry.undo, entry.at).then((r) => {
+      if (!r) return;
+      if (r.ok) {
+        showToast(
+          vaultRestoredToast({
+            title: item.title,
+            folder: noteFolder(r.path),
+            renamed: r.renamed,
+          }),
+        );
+        return;
+      }
+      showToast(
+        entry.undo.kind === 'bytes' ? vaultUndoFailed(item.title) : vaultRestoreFailed(item.title),
+      );
+    });
+  };
+  const undoDone = useCallback((item: VaultUndoToastItem) => {
+    undoFor.current.delete(item.id);
+    setUndoItem((now) => (now?.id === item.id ? undefined : now));
+  }, []);
+  const undoToast = <VaultUndoToast item={undoItem} onUndo={runUndo} onDone={undoDone} />;
+
+  // One note: one tap where Trash is real, else the Options sheet's second
+  // tap (R2). The toast shows only once the delete landed (ui-12).
+  const deleteNote = (path: string) => {
+    const at = vaultTargetRef();
+    const title = noteTitle(path);
+    setMenuOpen(false);
+    setConfirmDelete(false);
+    void vaultDeleteNote(path, at).then((r) => {
+      if (!r) return;
+      if (!r.ok) {
+        showToast(vaultTrashFailed(title));
+        return;
+      }
+      if (!r.undo) {
+        hapticCommit();
+        showToast(VAULT_DELETED);
+        return;
+      }
+      offerUndo(r.undo, at, title, { trashed: r.trashed, folder: false, notes: 1 });
+    });
+  };
+
+  const openTrash = () => {
+    flushSave();
+    setTrashError(undefined);
+    setTrashOpen(true);
+    void vaultLoadTrash().then((entries) => {
+      if (!entries) setTrashError(VAULT_TRASH_LIST_FAILED);
+    });
+  };
+  const trashKind: 'folder' | 'local' | 'team' = team
+    ? 'team'
+    : currentProviderId === 'files' || currentProviderId === 'hub'
+      ? 'folder'
+      : 'local';
+
+  // ---- rename, move and folders (6.2; CTO K3 to K5, R1; CX X5 to X8) ------
+  // Every folder there is to move into: each note's parents, the storage's
+  // own empty folders and the ones remembered here.
+  const folderPaths = useMemo(
+    () => allFolders(vaultFiles, vaultFolders ?? []),
+    [vaultFiles, vaultFolders],
+  );
+  const lastSegment = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+  const openRename = (kind: 'note' | 'folder', from: string, startAt?: 'name' | 'folders') => {
+    setRenaming({ kind, from, ...(startAt ? { startAt } : {}) });
+    setRenameOpen(true);
+  };
+  // The notes a pass left pointing at the old name, never the ones that were
+  // gone (they lost nothing).
+  const notesLeft = (report: VaultRewriteReport) => [
+    ...report.skipped.filter((x) => x.reason !== 'missing').map((x) => x.path),
+    ...report.notUpdated,
+  ];
+  const rewriteLine = (old: string, next: string, report: VaultRewriteReport) =>
+    vaultRenameToast({
+      old,
+      next,
+      rewrite: {
+        updated: report.updated,
+        total: report.total,
+        skipped: report.skipped.filter((x) => x.reason !== 'missing').map((x) => noteTitle(x.path)),
+        notUpdated: report.notUpdated.map((x) => noteTitle(x)),
+        stopped: report.stopped,
+      },
+    });
+  const applyRename = async (
+    preview: VaultMovePreview,
+    updateLinks: boolean,
+    onProgress: (i: number, m: number) => void,
+  ) => {
+    const note = preview.kind === 'note';
+    const old = note ? noteTitle(preview.from) : lastSegment(preview.from);
+    const next = note ? noteTitle(preview.to) : lastSegment(preview.to);
+    const r = await vaultApplyMove(preview, updateLinks, onProgress);
+    setRenameOpen(false);
+    if (!r) return;
+    if (!r.ok) {
+      showToast(
+        r.reason === 'choice-open'
+          ? VAULT_RENAME_CHOICE_OPEN
+          : r.reason === 'changed'
+            ? vaultRenameChanged(old)
+            : r.reason === 'exists'
+              ? vaultRenameTaken(next, noteFolder(preview.to))
+              : r.reason === 'partial'
+                ? vaultFolderMovePartial(old, r.moved?.length ?? 0, preview.notes)
+                : vaultRenameFailed(old),
+      );
+      if (r.reason === 'partial') setFolder('');
+      return;
+    }
+    const report = r.rewrite;
+    showToast(report ? rewriteLine(old, next, report) : vaultRenameToast({ old, next }));
+    if (report && report.updated > 0) hapticCommit();
+    // Adopt what the storage answered: it may have matched a parent to its
+    // spelling on disk (work/x.md landed as Work/x.md).
+    const landed = r.moved[0]?.path;
+    if (note) {
+      const left = report ? notesLeft(report) : [];
+      setLinksLeft(
+        report && left.length ? { path: landed ?? preview.to, old, preview, report } : undefined,
+      );
+      return;
+    }
+    const depth = preview.to.split('/').length;
+    const moved = landed ? landed.split('/').slice(0, depth).join('/') : preview.to;
+    if (folder === preview.from || folder.startsWith(`${preview.from}/`)) {
+      setFolder(moved + folder.slice(preview.from.length));
+    }
+  };
+  const updateRest = async () => {
+    if (!linksLeft || linksLeft.busy) return;
+    const card = linksLeft;
+    setLinksLeft({ ...card, busy: true });
+    const report = await vaultUpdateRest(card.preview, card.report);
+    if (!report) {
+      setLinksLeft({ ...card, busy: false });
+      return;
+    }
+    showToast(rewriteLine(card.old, noteTitle(card.path), report));
+    if (report.updated > 0) hapticCommit();
+    setLinksLeft(notesLeft(report).length ? { ...card, report, busy: false } : undefined);
+  };
+  const renameSheet = renaming ? (
+    <VaultRenameSheet
+      open={renameOpen}
+      kind={renaming.kind}
+      from={renaming.from}
+      folders={folderPaths}
+      known={paths}
+      {...(renaming.startAt ? { startAt: renaming.startAt } : {})}
+      prepare={(to) => vaultPrepareMove(renaming.kind, renaming.from, to)}
+      apply={applyRename}
+      updateOnRename={vs.links.updateOnRename}
+      onClose={() => setRenameOpen(false)}
+    />
+  ) : null;
+
+  // A folder's own options: counted before anything acts (K5).
+  const openFolderMenu = () => {
+    setFolderCounts(undefined);
+    setFolderMenuOpen(true);
+    void vaultFolderCounts(folder).then(setFolderCounts);
+  };
+  // Sheets never stack: the folder sheet leaves before the rename sheet rises.
+  const afterFolderMenu = (run: () => void) => {
+    setFolderMenuOpen(false);
+    setTimeout(run, sheetExitMs());
+  };
+  const createFolderIn = async (name: string): Promise<string | undefined> => {
+    const r = await vaultCreateFolder(folder ? `${folder}/${name}` : name);
+    if (r.ok) {
+      setFolderMenuOpen(false);
+      setFolder(r.path);
+      return undefined;
+    }
+    return r.reason === 'bad-name'
+      ? VAULT_FOLDER_BAD_NAME
+      : r.reason === 'exists'
+        ? vaultFolderTaken(name)
+        : VAULT_FOLDER_CREATE_FAILED;
+  };
+  // The second tap on Delete folder: to Trash with whatever is in it, then
+  // back to the folder above, with Undo.
+  const deleteFolderHere = () => {
+    const target = folder;
+    const at = vaultTargetRef();
+    const name = lastSegment(target);
+    setFolderMenuOpen(false);
+    void vaultDeleteFolder(target).then((r) => {
+      if (!r) return;
+      if (!r.ok) {
+        showToast(vaultTrashFailed(name));
+        return;
+      }
+      setFolder(target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '');
+      if (r.undo && r.notes + r.attachments > 0) {
+        offerUndo(r.undo, at, vaultFolderLabel(target), {
+          trashed: true,
+          folder: true,
+          notes: r.notes,
+        });
+      }
+    });
   };
 
   // Move the personal vault, and say plainly what happened: where it is now,
@@ -878,25 +1761,6 @@ export function VaultScreen() {
       })
     : undefined;
 
-  // Linked mentions for a note in a large vault, when the person asks.
-  const findMentions = async (path: string) => {
-    setMentionsBusy(true);
-    setMentionsError(undefined);
-    try {
-      const notes = await vaultReadAll();
-      setBacklinks(backlinksTo(path, notes));
-      const missed = notes.failed.filter((p) => p !== path).length;
-      setMentionsError(
-        missed
-          ? `${missed} ${missed === 1 ? 'note' : 'notes'} could not be read, so this list may be missing some.`
-          : undefined,
-      );
-    } catch {
-      setMentionsError('Linked mentions could not be read right now.');
-    }
-    setMentionsAsked(path);
-    setMentionsBusy(false);
-  };
   // Where a read-only Drive vault goes in one tap: plain files on the
   // computer, or this device on the phone.
   const driveExit: StorageProviderId = isDesktop() ? 'files' : 'local';
@@ -937,6 +1801,36 @@ export function VaultScreen() {
       showToast(result ? vaultExportLine(result) : 'Export works in OpenShore on the iPhone.');
     } catch {
       showToast('Could not export your vault. Check device storage and try again.');
+    }
+  };
+
+  // Export the team vault to its own folder (2.8): Files on the iPhone, a
+  // folder beside the vault on the computer that Obsidian opens. Never the
+  // personal export.
+  const [exportingTeam, setExportingTeam] = useState(false);
+  const teamOrg = settings.account?.org;
+  const exportTeam = async () => {
+    if (exportingTeam || !teamOrg?.serverId) return;
+    setExportingTeam(true);
+    try {
+      const notes = await vaultReadAll();
+      if (!notes.length && !notes.failed.length) {
+        showToast('Nothing to export yet. Write a note first.');
+        return;
+      }
+      const result = await exportTeamVaultToFiles(notes, notes.failed, {
+        id: teamOrg.serverId,
+        name: teamOrg.name,
+      });
+      showToast(
+        result
+          ? vaultExportLine(result, { where: result.where, folder: result.folder })
+          : 'The team vault exports in OpenShore on the iPhone and on your computer.',
+      );
+    } catch {
+      showToast('Could not export the team vault. Check storage on this device and try again.');
+    } finally {
+      setExportingTeam(false);
     }
   };
 
@@ -1027,7 +1921,10 @@ export function VaultScreen() {
   const driveExplains =
     Boolean(driveReadOnly) && (driveLink === 'disconnected' || driveLink === 'unconfigured');
 
-  const entries = treeAt(folder, vaultFiles);
+  // The vault's "Sort notes by" (Vault M7, `tree.sort`); Created only where
+  // the listing carries a creation time, never faked.
+  const sortBy = vaultTreeSortOffered(vaultFiles).includes(vs.tree.sort) ? vs.tree.sort : 'name';
+  const entries = treeAt(folder, vaultFiles, vaultFolders ?? [], sortBy);
   const crumbs = folder ? folder.split('/') : [];
 
   // ---- note view ----------------------------------------------------------
@@ -1035,47 +1932,37 @@ export function VaultScreen() {
     const title = noteTitle(vaultNote.path);
     const parent = noteFolder(vaultNote.path);
     const words = draft.trim() ? draft.trim().split(/\s+/).length : 0;
+    // The outline is the draft's own headings (CX X16), first in Options
+    // when there are two or more.
+    // Scanned only while Options or the outline is up, never per keystroke.
+    const outlineHeadings = menuOpen || outlineOpen ? scanNote(draft).headings : [];
+    // Who last saved this team note (2.7): nobody for the person's own save.
+    const editedLine = team
+      ? vaultEditedByLine(vaultNote.editedBy, vaultNote.updatedAt, uid)
+      : undefined;
+    // Who wrote the note and where it ran (Vault M7, CX Y11), from its own
+    // properties as last loaded; nothing shows unless it says both.
+    const provenance = noteProvenance;
 
-    // Autocomplete candidates for the open "[[": notes whose title or path
-    // matches, best-prefix first. A non-matching, non-empty query also offers
-    // to link a brand new note of that name (created on first open, like a tap
-    // on a dashed link).
-    const q = (linkQuery ?? '').trim().toLowerCase();
-    const linkMatches =
-      linkQuery === null
-        ? []
-        : paths
-            .filter((p) => p !== vaultNote.path)
-            .map((p) => ({ p, t: noteTitle(p) }))
-            .filter(({ p, t }) => !q || t.toLowerCase().includes(q) || p.toLowerCase().includes(q))
-            .sort((a, b) => {
-              const ap = a.t.toLowerCase().startsWith(q) ? 0 : 1;
-              const bp = b.t.toLowerCase().startsWith(q) ? 0 : 1;
-              return ap - bp || a.t.length - b.t.length;
-            })
-            .slice(0, 6);
-    const canCreate =
-      linkQuery !== null && q.length > 0 && !paths.some((p) => noteTitle(p).toLowerCase() === q);
-
-    const insertWikilink = (targetName: string) => {
-      const el = editorRef.current;
-      const caret = el?.selectionStart ?? draft.length;
-      const before = draft.slice(0, linkStart);
-      const after = draft.slice(caret);
-      const inserted = `[[${targetName}]]`;
-      const next = before + inserted + after;
-      setDraft(next);
-      vaultNoteDraft(vaultNote.path, next);
-      lastInputAt.current = Date.now();
-      setUpdatedShown(false);
-      scheduleSave(vaultNote.path, next);
-      setLinkQuery(null);
-      const pos = before.length + inserted.length;
-      requestAnimationFrame(() => {
-        el?.focus();
-        el?.setSelectionRange(pos, pos);
-      });
-    };
+    // One suggestion list: under the editor on the desktop, as chips inside
+    // the accessory bar on the phone (CX X15). A pick inserts into the
+    // editor, whose own onChange then saves it.
+    const phone = isPhone();
+    const suggest = (layout: 'list' | 'chips') => (
+      <VaultLinkSuggest
+        paths={paths}
+        sourcePath={vaultNote.path}
+        context={linkCtx}
+        editor={editorRef}
+        headingsOf={headingsOf}
+        onDismiss={() => setLinkCtx(null)}
+        layout={layout}
+        // The vault's link style everywhere; the path format on the desktop
+        // only (CX Y1: the phone has no Link paths row).
+        linkStyle={vs.links.style}
+        linkFormat={phone ? 'shortest' : vs.links.format}
+      />
+    );
 
     // The way back to the tree, in the top bar (the iOS grammar) and as the
     // "All notes" crumb beneath it; both save first.
@@ -1084,21 +1971,43 @@ export function VaultScreen() {
       setFolder(parent);
       vaultCloseNote();
     };
+    // Where the text on screen stands (2.2): kept on this device while any
+    // note of this vault waits to be saved, Saving while typed text waits for
+    // the debounce or a save is on its way, else Saved. Left out while the
+    // note takes no writes, and while a choice is open (its card says it).
+    const pendingHere = vaultPendingCount(vaultPending ?? [], here, {
+      conflictPath: conflictHere?.path,
+      uid,
+    });
+    const saveStatus: VaultSaveStatus =
+      pendingHere > 0 || vaultError === 'save'
+        ? 'offline'
+        : vaultSaving || autosave.isPending()
+          ? 'saving'
+          : 'saved';
     return (
-      <div className="screen">
+      <div className="screen vault-screen">
         <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
-        <div className="screen-inner vault-note">
+        <div key="note" ref={pageGhost('note')} className="screen-inner vault-note">
           <div className="vault-note-bar">
             <button className="linklike" onClick={backToNotes}>
               All notes
             </button>
             <div style={{ flex: 1 }} />
+            {!locked && !conflictHere ? (
+              <SaveChip
+                status={saveStatus}
+                pending={pendingHere}
+                onRetry={() => void vaultRefresh()}
+              />
+            ) : null}
             {/* A read-only note leaves out the controls that write, instead of
                 dimming them: the card (or the lease line) says why. */}
             {!locked ? (
               <button
-                className="icon-btn"
+                className="icon-btn press-fb"
                 aria-label={editing ? 'Read' : 'Edit'}
+                title={editing ? 'Read' : 'Edit'}
                 aria-pressed={editing}
                 onClick={() => setEditing((e) => !e)}
               >
@@ -1116,8 +2025,13 @@ export function VaultScreen() {
             ) : null}
             {/* Its sheet holds nothing but Delete, which a Drive vault refuses,
                 and it is left out while a choice about this note is open. */}
-            {!driveReadOnly && !conflictHere ? (
-              <button className="icon-btn" aria-label="Options" onClick={() => setMenuOpen(true)}>
+            {!driveReadOnly && !conflictHere && !readOnly && !teamExpired ? (
+              <button
+                className="icon-btn press-fb"
+                aria-label="Options"
+                title="Options"
+                onClick={() => setMenuOpen(true)}
+              >
                 {'⋯'}
               </button>
             ) : null}
@@ -1127,17 +2041,30 @@ export function VaultScreen() {
           <p className="hint" style={{ marginTop: 2 }}>
             {(parent || 'Vault') + ' · ' + words + (words === 1 ? ' word' : ' words')}
             {updatedShown ? <span className="vault-updated">{VAULT_UPDATED_SUFFIX}</span> : null}
+            {editedLine ? (
+              <span key={vaultNote.version ?? vaultNote.updatedAt} className="vault-updated">
+                {editedLine}
+              </span>
+            ) : null}
+            <span className="vault-meta-chip">
+              <VaultProvenanceChip provenance={provenance} onOpen={() => setAboutOpen(true)} />
+            </span>
           </p>
 
-          {readOnly ? (
-            <p className="hint" style={{ marginTop: 8, color: 'var(--warn)' }}>
-              This vault is open on another device. Read-only here until it closes there, so your
-              edits do not collide.
+          {renderLeaseLine()}
+          {alsoOpen && !readOnly ? (
+            <p className="hint vault-also-open" role="status" style={{ marginTop: 2 }}>
+              {alsoOpen}
             </p>
           ) : null}
           {vaultMoving ? (
             <p className="hint" role="status" style={{ marginTop: 8 }}>
               {vaultMovingLine(vaultFolder?.display ?? labelOf('files'))}
+            </p>
+          ) : null}
+          {teamExpired ? (
+            <p className="hint" role="status" style={{ marginTop: 8, color: 'var(--warn)' }}>
+              {VAULT_TEAM_SIGN_IN_LINE}
             </p>
           ) : null}
           {renderDriveCard(true)}
@@ -1149,122 +2076,104 @@ export function VaultScreen() {
           />
           <NotSaved held={heldHere} discard={(id) => void vaultDiscardHeld(id)} />
 
-          {editing && !locked ? (
-            <div className="vault-editor-wrap">
-              <textarea
-                ref={editorRef}
-                className="vault-editor"
-                autoFocus
-                value={draft}
-                placeholder="Write. Plain markdown, and [[wikilinks]] to connect notes."
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  vaultNoteDraft(vaultNote.path, e.target.value);
-                  lastInputAt.current = Date.now();
-                  setUpdatedShown(false);
-                  scheduleSave(vaultNote.path, e.target.value);
-                  refreshLinkContext(
-                    e.target.value,
-                    e.target.selectionStart ?? e.target.value.length,
-                  );
-                }}
-                onKeyUp={(e) =>
-                  refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
-                }
-                onSelect={(e) =>
-                  refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
-                }
-                onBlur={() => setLinkQuery(null)}
-              />
-              {linkQuery !== null && (linkMatches.length > 0 || canCreate) ? (
-                <div className="vault-link-suggest" role="listbox" aria-label="Link a note">
-                  {linkMatches.map(({ p, t }) => (
-                    <button
-                      key={p}
-                      className="vault-link-chip"
-                      // onMouseDown, not onClick, so the pick lands before the
-                      // textarea's blur clears the autocomplete context.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        insertWikilink(t);
-                      }}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                  {canCreate ? (
-                    <button
-                      className="vault-link-chip vault-link-new"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        insertWikilink((linkQuery ?? '').trim());
-                      }}
-                    >
-                      New: {(linkQuery ?? '').trim()}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            // A calm reload settles the page in (opacity only); re-keyed so
-            // each reload plays it once.
-            <div
-              key={vaultNote.reloaded ?? 0}
-              className={
-                vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
-                  ? 'vault-reloaded'
-                  : undefined
-              }
-            >
-              <VaultMarkdown text={draft} paths={paths} onOpenNote={followLink} />
-            </div>
-          )}
-
-          {!editing && vaultFiles.length > VAULT_LARGE_NOTES && mentionsAsked !== vaultNote.path ? (
-            <div className="card" style={{ marginTop: 18 }}>
-              <div className="card-row">
-                <h3 style={{ marginBottom: 0 }}>Linked mentions</h3>
+          {/* The vault's font and text size (Vault M7, Editor) on both
+              surfaces; Default sets nothing, so today's look holds. */}
+          <div className="vault-type" {...vaultTypeAttrs(vs.editor)}>
+            {editing && !locked ? (
+              <div ref={modeGhost('edit')} className="vault-editor-wrap">
+                <textarea
+                  ref={editorRef}
+                  className="vault-editor"
+                  autoFocus
+                  value={draft}
+                  placeholder="Write. Plain markdown, and [[wikilinks]] to connect notes."
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    vaultNoteDraft(vaultNote.path, e.target.value);
+                    void vaultLeaseTouch();
+                    lastInputAt.current = Date.now();
+                    setUpdatedShown(false);
+                    scheduleSave(vaultNote.path, e.target.value);
+                    refreshLinkContext(
+                      e.target.value,
+                      e.target.selectionStart ?? e.target.value.length,
+                    );
+                  }}
+                  onKeyUp={(e) =>
+                    refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+                  }
+                  onSelect={(e) =>
+                    refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+                  }
+                  onBlur={() => setLinkCtx(null)}
+                />
+                {phone ? null : suggest('list')}
               </div>
-              <p className="hint" style={{ marginTop: 0 }}>
-                {vaultMentionsOnDemand(vaultFiles.length).hint}
-              </p>
-              <button
-                type="button"
-                className="btn ghost press-fb"
-                disabled={mentionsBusy}
-                onClick={() => void findMentions(vaultNote.path)}
+            ) : null}
+            {/* The phone's bar on the keyboard, lifted by transform only: the
+              link suggestions live inside it there (CX X15). */}
+            <VaultAccessoryBar
+              shown={editing && !locked && phone}
+              editor={editorRef}
+              onCaret={refreshLinkContext}
+              suggest={suggest('chips')}
+              linkStyle={vs.links.style}
+            />
+            {editing && !locked ? null : (
+              // A calm reload settles the page in (opacity only); re-keyed so
+              // each reload plays it once.
+              <div
+                ref={bindReader}
+                key={`${vaultNote.reloaded ?? 0}:${blobEpoch}`}
+                className={
+                  vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
+                    ? 'vault-read vault-reloaded'
+                    : 'vault-read'
+                }
               >
-                {mentionsBusy
-                  ? vaultMentionsOnDemand(vaultFiles.length).busy
-                  : vaultMentionsOnDemand(vaultFiles.length).button}
-              </button>
-            </div>
-          ) : null}
-          {!editing && (backlinks.length > 0 || mentionsError) ? (
-            <div className="card" style={{ marginTop: 18 }}>
-              <div className="card-row">
-                <h3 style={{ marginBottom: 0 }}>Linked mentions</h3>
-                {backlinks.length > 0 ? (
-                  <span className="pill local">{backlinks.length}</span>
-                ) : null}
+                <VaultMarkdown
+                  text={draft}
+                  paths={paths}
+                  sourcePath={vaultNote.path}
+                  onOpenNote={followLink}
+                  {...(pendingAnchor && pendingAnchor.path === vaultNote.path
+                    ? { anchor: { subpath: pendingAnchor.subpath, key: pendingAnchor.key } }
+                    : {})}
+                  onNotice={showToast}
+                  readEmbed={vaultReadBody}
+                  {...(media ? { media } : {})}
+                  onToggleTask={(line, checked) => vaultToggleTask(vaultNote.path, line, checked)}
+                  tasksReadOnly={!caps.taskWriteBack || locked}
+                  onTag={searchTag}
+                />
               </div>
-              {mentionsError ? (
-                <p
-                  className="hint"
-                  role="status"
-                  style={{ margin: '6px 0 0', color: 'var(--warn)' }}
-                >
-                  {mentionsError}
-                </p>
-              ) : null}
-              {backlinks.map((b) => (
-                <button key={b.path} className="vault-mention" onClick={() => openNote(b.path)}>
-                  <span className="vault-mention-title">{noteTitle(b.path)}</span>
-                  <span className="vault-mention-excerpt">{b.excerpt}</span>
-                </button>
-              ))}
-            </div>
+            )}
+          </div>
+
+          {linksLeft && linksLeft.path === vaultNote.path ? (
+            <VaultLinksLeftCard
+              old={linksLeft.old}
+              notes={notesLeft(linksLeft.report)}
+              busy={linksLeft.busy}
+              onOpen={openNote}
+              onUpdateRest={() => void updateRest()}
+            />
+          ) : null}
+
+          {!editing ? (
+            <VaultBacklinks
+              mentions={backlinks}
+              error={mentionsError}
+              onOpen={openNote}
+              loading={mentionsLoading}
+              outgoing={outgoing}
+              onCreate={(name) => followLink(name, true)}
+              title={title}
+              unlinked={unlinked}
+              onFindUnlinked={findUnlinked}
+              {...(caps.linkRewrite ? { onLink: linkMention } : {})}
+              linking={linking}
+            />
           ) : null}
         </div>
 
@@ -1282,64 +2191,122 @@ export function VaultScreen() {
           onClose={deferResolve}
         />
 
-        <Sheet
+        <VaultNoteOptions
           open={menuOpen}
+          title={title}
+          trashReal={caps.trash}
+          confirmDelete={confirmDelete}
+          canAsk={!team}
+          canPin={Boolean(!team && pinProjectId && canEditProjectPins(pinProjectId))}
+          canOutline={outlineOffered(outlineHeadings)}
+          onOutline={() => {
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            setTimeout(() => setOutlineOpen(true), sheetExitMs());
+          }}
+          notes={capNotes}
+          canRename={caps.rename}
+          onRename={() => {
+            const path = vaultNote.path;
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            flushSave();
+            setTimeout(() => openRename('note', path), sheetExitMs());
+          }}
+          deleteDisabled={Boolean(driveReadOnly) || hubAway}
           onClose={() => {
             setMenuOpen(false);
             setConfirmDelete(false);
           }}
-        >
-          {menuOpen ? (
-            <>
-              <SheetHead
-                title="Options"
-                onClose={() => {
-                  setMenuOpen(false);
-                  setConfirmDelete(false);
-                }}
-              />
-              <div className="sheet-actions">
-                <button
-                  className={`btn press-fb ${confirmDelete ? 'danger' : 'quiet'}`}
-                  // Unreachable (Options is left out on a Drive vault), kept
-                  // as a safety.
-                  disabled={Boolean(driveReadOnly)}
-                  onClick={() => {
-                    // Two taps to delete: a single tap is too easy to hit by
-                    // accident, and a local or iCloud delete is unrecoverable.
-                    if (!confirmDelete) {
-                      setConfirmDelete(true);
-                      return;
-                    }
-                    const path = vaultNote.path;
-                    const at = vaultTargetRef();
-                    // Drop any pending debounced save first, or its stale timer
-                    // would recreate the note we are deleting.
-                    cancelSave();
-                    setMenuOpen(false);
-                    setConfirmDelete(false);
-                    // Only a delete that happened says so; a failed one shows
-                    // the store's own line and the note stays (orgvault-m1).
-                    void vaultDelete(path, at).then((deleted) => {
-                      if (deleted) showToast('Note deleted.');
-                    });
-                  }}
-                >
-                  {confirmDelete ? 'Really delete? Tap to confirm.' : 'Delete this note'}
-                </button>
-                <button
-                  className="btn quiet press-fb"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setConfirmDelete(false);
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          ) : null}
-        </Sheet>
+          onAsk={() => {
+            const path = vaultNote.path;
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            void askAboutVaultNote(path);
+          }}
+          onPin={() => {
+            if (!pinProjectId) return;
+            const path = vaultNote.path;
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            void pinVaultNoteToProject(path, pinProjectId).then((r) =>
+              showToast(pinToast(r, pinProjectName)),
+            );
+          }}
+          onSettings={() => {
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            setTimeout(() => setSettingsOpen(true), sheetExitMs());
+          }}
+          onArmDelete={() => setConfirmDelete(true)}
+          // The store flushes the pending save and cancels its timer first,
+          // so a stale save can never recreate the note; only a delete that
+          // landed says so (orgvault-m1).
+          onDelete={() => deleteNote(vaultNote.path)}
+        />
+        <VaultOutlineSheet
+          open={outlineOpen}
+          headings={outlineHeadings}
+          onClose={() => setOutlineOpen(false)}
+          onPick={(_h, i) => scrollToHeading(i)}
+        />
+        <VaultAboutNote
+          open={aboutOpen}
+          title={title}
+          provenance={provenance}
+          canMark={caps.taskWriteBack && !locked}
+          onClose={() => setAboutOpen(false)}
+          onMark={(reviewed) => vaultMarkReviewed(vaultNote.path, reviewed)}
+        />
+        {settingsHost}
+        {renameSheet}
+        {switcher}
+        {undoToast}
+      </div>
+    );
+  }
+
+  // ---- Trash (6.3, CX X10): a page inside the room -------------------------
+  // The page sits in the room's own screen, beside the tree's place, so the
+  // swap each way leaves a fading snapshot (pageGhost), never a cut.
+  if (trashOpen) {
+    return (
+      <div className="screen vault-screen">
+        <VaultTrashView
+          rootRef={pageGhost('trash')}
+          kind={trashKind}
+          entries={vaultTrash}
+          error={trashError}
+          onBack={() => setTrashOpen(false)}
+          onRestore={async (entry) => {
+            const title =
+              entry.kind === 'folder'
+                ? (entry.path.split('/').pop() ?? entry.path)
+                : noteTitle(entry.path);
+            const r = await vaultRestoreTrash(entry.id);
+            showToast(
+              r.ok
+                ? vaultRestoredToast({
+                    title,
+                    folder: noteFolder(r.path),
+                    renamed: r.renamed,
+                    sayFolder: true,
+                  })
+                : vaultRestoreFailed(title),
+            );
+          }}
+          onEmpty={async () => {
+            const r = await vaultEmptyTrash();
+            if (!r.ok) {
+              showToast(VAULT_TRASH_EMPTY_FAILED);
+              return;
+            }
+            hapticCommit();
+            showToast(vaultTrashEmptied(r.removed, r.asked));
+          }}
+        />
+        {switcher}
+        {undoToast}
       </div>
     );
   }
@@ -1360,26 +2327,29 @@ export function VaultScreen() {
     closePick();
   };
   return (
-    <div className="screen">
+    <div className="screen vault-screen">
       <BackBar title="Vault" />
-      <div className="screen-inner">
+      <div key="tree" ref={pageGhost('tree')} className="screen-inner vault-tree-view">
         <div className="stack-head">
           <h1>Vault</h1>
-          {/* A read-only Drive vault leaves New note out; its card says why.
-              So does a moving vault, and a folder that is not there. */}
-          {!driveReadOnly && !vaultMoving && !folderGone ? (
-            <button
-              type="button"
-              className="icon-btn press-fb"
-              aria-label="New note"
-              title="New note"
-              onClick={() => setNewOpen(true)}
-            >
-              <Icon size={20}>
-                <path d="M12 5v14M5 12h14" />
-              </Icon>
-            </button>
-          ) : null}
+          <div className="vault-head-actions">
+            {!vaultMoving && !folderGone ? todayButton : null}
+            {/* A read-only Drive vault leaves New note out; its card says why.
+                So does a moving vault, and a folder that is not there. */}
+            {!driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway ? (
+              <button
+                type="button"
+                className="icon-btn vault-new-btn press-fb"
+                aria-label="New note"
+                title="New note"
+                onClick={() => setNewOpen(true)}
+              >
+                <Icon size={20}>
+                  <path d="M12 5v14M5 12h14" />
+                </Icon>
+              </button>
+            ) : null}
+          </div>
         </div>
         {teamAvailable ? (
           <div
@@ -1391,7 +2361,7 @@ export function VaultScreen() {
             <button
               role="tab"
               aria-selected={!team}
-              className={`seg${!team ? ' active' : ''}`}
+              className={`seg press-fb${!team ? ' active' : ''}`}
               onClick={() => switchScope('personal')}
             >
               Personal
@@ -1399,7 +2369,7 @@ export function VaultScreen() {
             <button
               role="tab"
               aria-selected={team}
-              className={`seg${team ? ' active' : ''}`}
+              className={`seg press-fb${team ? ' active' : ''}`}
               onClick={() => switchScope('team')}
             >
               Team
@@ -1408,6 +2378,19 @@ export function VaultScreen() {
         ) : null}
         <p className="lead">
           {team ? vaultCopy(on, 'org').storage : vaultLead(personalCopy, { offerShown })}
+          {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="linklike press-fb"
+                disabled={exportingTeam}
+                onClick={() => void exportTeam()}
+              >
+                {exportingTeam ? 'Exporting…' : 'Export as plain files'}
+              </button>
+            </>
+          ) : null}
           {!team ? (
             <>
               {' '}
@@ -1419,6 +2402,7 @@ export function VaultScreen() {
         </p>
 
         {renderError('tree')}
+        {renderLeaseLine()}
         {/* At every folder level, like Not saved, so wherever a control is
             left out the reason is on screen. */}
         {renderDriveCard(false)}
@@ -1441,6 +2425,29 @@ export function VaultScreen() {
           onDecline={() => void vaultDeclineFolderMove()}
           onOtherFolder={() => void runPick('card')}
         />
+        {hubAway ? (
+          <p className="hint" role="status" style={{ margin: '0 0 10px', color: 'var(--warn)' }}>
+            {HUB_AWAY_LINE}
+          </p>
+        ) : null}
+        <HubMoveCard
+          shown={hubOfferShown && !folder}
+          count={vaultFiles.length}
+          busy={hubMoving || Boolean(vaultMoving)}
+          failed={hubFailed}
+          onMove={() => {
+            hapticCommit();
+            setHubMoving(true);
+            setHubFailed(false);
+            void vaultAcceptHubMove()
+              .then((r) => {
+                setHubFailed(!r.ok);
+                if (r.ok) showToast('Your notes are on your computer now.');
+              })
+              .finally(() => setHubMoving(false));
+          }}
+          onDecline={() => void vaultDeclineHubMove()}
+        />
         <VaultMissingCard
           shown={Boolean(folderGone)}
           title={missingCard.title}
@@ -1452,6 +2459,14 @@ export function VaultScreen() {
           }}
           onChoose={() => void runPick('card')}
         />
+
+        {!team && !folder ? (
+          <VaultAgentRecent
+            load={vaultAgentRecent}
+            onOpen={(path) => void vaultOpen(path)}
+            refreshKey={vaultFiles.length}
+          />
+        ) : null}
 
         {!team && !folder && (settings.projects?.length ?? 0) > 0 ? (
           <div className="card" style={{ marginBottom: 14 }}>
@@ -1536,22 +2551,35 @@ export function VaultScreen() {
         ) : null}
 
         {crumbs.length ? (
-          <p className="hint vault-crumbs">
-            <button className="linklike" onClick={() => setFolder('')}>
-              Vault
-            </button>
-            {crumbs.map((c, i) => (
-              <span key={i}>
-                {' / '}
-                <button
-                  className="linklike"
-                  onClick={() => setFolder(crumbs.slice(0, i + 1).join('/'))}
-                >
-                  {c}
-                </button>
-              </span>
-            ))}
-          </p>
+          <div className="vault-crumbs-row">
+            <p className="hint vault-crumbs">
+              <button className="linklike" onClick={() => setFolder('')}>
+                Vault
+              </button>
+              {crumbs.map((c, i) => (
+                <span key={i}>
+                  {' / '}
+                  <button
+                    className="linklike"
+                    onClick={() => setFolder(crumbs.slice(0, i + 1).join('/'))}
+                  >
+                    {c}
+                  </button>
+                </span>
+              ))}
+            </p>
+            {caps.rename || caps.folders || caps.trash ? (
+              <button
+                type="button"
+                className="icon-btn press-fb vault-folder-options"
+                aria-label={vaultFolderOptionsLabel(folder)}
+                title={vaultFolderOptionsLabel(folder)}
+                onClick={openFolderMenu}
+              >
+                {'⋯'}
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {vaultFiles.length === 0 && (driveExplains || folderGone) ? null : vaultFiles.length ===
@@ -1591,30 +2619,62 @@ export function VaultScreen() {
             readOnly={Boolean(driveReadOnly)}
             onWrite={() => setNewOpen(true)}
             onWelcome={() => void addStarterNote()}
+            // An empty personal vault with folders and no Obsidian config
+            // offers the simple layout instead (Vault M7, CX Y13).
+            {...(starterOffered ? { onStarter: () => setStarterOpen(true) } : {})}
           />
         ) : (
-          <div className="vault-tree">
-            {entries.map((e) =>
-              e.kind === 'folder' ? (
-                <button
-                  key={e.path}
-                  className="conv-item vault-row press-fb press-fb--row"
-                  onClick={() => setFolder(e.path)}
-                >
-                  <span className="vault-row-chevron" aria-hidden="true" />
-                  {e.name}
-                </button>
-              ) : (
-                <button
-                  key={e.path}
-                  className="conv-item vault-row press-fb press-fb--row"
-                  onClick={() => openNote(e.path)}
-                >
-                  {e.name}
-                </button>
-              ),
-            )}
-          </div>
+          <VaultSearch
+            query={searchQ}
+            onQuery={setSearchQ}
+            source={searchSource}
+            index={vaultSearchIndexState(indexStatus, indexFailed)}
+            away={hubAway}
+            onRetryIndex={() => void vaultRefresh()}
+            recent={recentRows}
+            agentLabel={agentLabel}
+            onOpen={openNote}
+            desktop={isDesktop()}
+          >
+            <div className="vault-tree">
+              {indexLine ? (
+                <p className="hint" role="status" style={{ margin: '0 0 8px' }}>
+                  {indexLine}
+                </p>
+              ) : null}
+              {entries.map((e) =>
+                e.kind === 'folder' ? (
+                  <button
+                    key={e.path}
+                    className="conv-item vault-row press-fb press-fb--row"
+                    onClick={() => setFolder(e.path)}
+                  >
+                    <span className="vault-row-chevron" aria-hidden="true" />
+                    {e.name}
+                  </button>
+                ) : (
+                  <button
+                    key={e.path}
+                    className="conv-item vault-row press-fb press-fb--row"
+                    onClick={() => openNote(e.path)}
+                  >
+                    {e.name}
+                    {isConflictCopy(e.path) ? (
+                      <span className="pill vault-conflict-badge">
+                        {VAULT_CONFLICT_BADGE}
+                        <span className="visually-hidden">. {VAULT_CONFLICT_BADGE_LABEL}</span>
+                      </span>
+                    ) : null}
+                  </button>
+                ),
+              )}
+              {/* Trash is the last row at the root, only while it holds
+                something (CX X10). */}
+              {!folder && caps.trash ? (
+                <VaultTrashRow count={vaultTrash?.length ?? 0} onOpen={openTrash} />
+              ) : null}
+            </div>
+          </VaultSearch>
         )}
       </div>
 
@@ -1641,6 +2701,22 @@ export function VaultScreen() {
         onChoose={(choice) => void chooseFork(choice)}
         onClose={closeForks}
       />
+      <VaultFolderSheet
+        open={folderMenuOpen}
+        folder={folder}
+        counts={folderCounts}
+        canRename={caps.rename}
+        canCreate={caps.folders}
+        canTrash={caps.trash}
+        onClose={() => setFolderMenuOpen(false)}
+        onRename={() => afterFolderMenu(() => openRename('folder', folder))}
+        onMove={() => afterFolderMenu(() => openRename('folder', folder, 'folders'))}
+        onCreate={createFolderIn}
+        onDelete={deleteFolderHere}
+      />
+      {renameSheet}
+      {switcher}
+      {undoToast}
 
       <Sheet open={Boolean(newOpen)} onClose={() => setNewOpen(false)}>
         {newOpen ? (
@@ -1830,11 +2906,63 @@ export function VaultScreen() {
                   Export as plain files
                 </button>
               ) : null}
+              {/* Vault settings at the end (Vault M7, CX Y4), so a vault with
+                  no notes yet can reach them; they open once this sheet has
+                  left. */}
+              <button
+                type="button"
+                className="conv-item vault-row vault-storage-settings press-fb press-fb--row"
+                onClick={() => {
+                  closeStorage();
+                  setTimeout(() => setSettingsOpen(true), sheetExitMs());
+                }}
+              >
+                <span className="vault-rename-label">{VAULT_SETTINGS_TITLE}</span>
+                <span className="vault-row-chevron" aria-hidden="true" />
+              </button>
             </div>
           </>
         ) : null}
       </Sheet>
+      {settingsHost}
+      <VaultStarterSheet
+        open={starterOpen}
+        writesSettings={caps.settingsWrite}
+        onClose={() => setStarterOpen(false)}
+        onAdd={vaultApplyStarter}
+      />
     </div>
+  );
+}
+
+// The save chip (2.2): Saved, Saving, or kept on this device with how many
+// notes wait and a Try again. Re-keyed on the status, so each change settles in
+// on fade-rise rather than cutting. Only the offline state is announced: a
+// Saving and Saved on every pause would talk over the person typing.
+function SaveChip({
+  status,
+  pending,
+  onRetry,
+}: {
+  status: VaultSaveStatus;
+  pending: number;
+  onRetry: () => void;
+}) {
+  const chip = vaultSaveChip(status, pending);
+  return (
+    <span
+      key={status}
+      className={`vault-save-chip ${status}`}
+      {...(status === 'offline' ? { role: 'status' } : {})}
+    >
+      {chip.label}
+      {chip.count ? <span className="vault-save-count">{chip.count}</span> : null}
+      {chip.retry ? (
+        <button type="button" className="linklike press-fb" onClick={onRetry}>
+          {chip.retry}
+        </button>
+      ) : null}
+    </span>
   );
 }
 
@@ -1953,12 +3081,16 @@ function VaultRamp({
   readOnly,
   onWrite,
   onWelcome,
+  onStarter,
 }: {
   onboard: VaultOnboard;
   /** A read-only vault: the ways in that write are left out, not dimmed. */
   readOnly: boolean;
   onWrite: () => void;
   onWelcome: () => void;
+  /** The starter layout is offered (CTO L12): the second way in opens its
+   *  preview instead of adding the welcome note. */
+  onStarter?: () => void;
 }) {
   const glyphs = { doc: DocGlyph, agent: AgentGlyph, link: LinkGlyph };
   return (
@@ -1974,9 +3106,15 @@ function VaultRamp({
               <button className="btn primary" onClick={onWrite}>
                 Write your first note
               </button>
-              <button className="btn ghost" onClick={onWelcome}>
-                Add a welcome note
-              </button>
+              {onStarter ? (
+                <button className="btn ghost" onClick={onStarter}>
+                  {VAULT_STARTER_OFFER}
+                </button>
+              ) : (
+                <button className="btn ghost" onClick={onWelcome}>
+                  Add a welcome note
+                </button>
+              )}
             </div>
           ) : null}
         </div>
@@ -2002,6 +3140,22 @@ function VaultRamp({
   );
 }
 
+/** The folder a new note goes in (Vault M7, `newNotes.location` and
+ *  `newNotes.folder`): with no setting anywhere, the folder on screen, as
+ *  before M7; else the top of the vault, the folder on screen, or the
+ *  vault's chosen folder. */
+function newNoteBase(s: ResolvedVaultSettings, here: string): string {
+  if (s.source['newNotes.location'] === 'default') return here;
+  switch (s.newNotes.location) {
+    case 'root':
+      return '';
+    case 'current':
+      return here;
+    case 'folder':
+      return s.newNotes.folder ?? here;
+  }
+}
+
 /** Whether any segment of a typed note name starts with a dot, which the
  *  typed-name rule strips (Obsidian and the vault hide dot names). */
 function startsWithDot(typed: string): boolean {
@@ -2009,6 +3163,74 @@ function startsWithDot(typed: string): boolean {
     .replace(/\\/g, '/')
     .split('/')
     .some((segment) => segment.trim().startsWith('.'));
+}
+
+/** The toast after "Pin to project context". */
+function pinToast(
+  r: 'pinned' | 'already' | 'full' | 'refused',
+  project: string | undefined,
+): string {
+  const name = project ?? 'this project';
+  switch (r) {
+    case 'pinned':
+      return `Pinned to ${name}. Its chats start with this note.`;
+    case 'already':
+      return `Already pinned to ${name}.`;
+    case 'full':
+      return `${name} has ${PROJECT_VAULT_PINS_MAX} pinned notes. Unpin one in the project first.`;
+    case 'refused':
+      return 'Only an editor of this project can pin notes to it.';
+  }
+}
+
+// The one-time card after pairing (Vault M5, CTO J9): the notes are on this
+// device, and one tap moves them to the computer with the existing move
+// (nothing there is replaced). It folds out like the desktop move card.
+function HubMoveCard({
+  shown,
+  count,
+  busy,
+  failed,
+  onMove,
+  onDecline,
+}: {
+  shown: boolean;
+  /** How many notes would move, for the card's line. */
+  count: number;
+  busy: boolean;
+  failed: boolean;
+  onMove: () => void;
+  onDecline: () => void;
+}) {
+  const presence = useExitPresence(shown, driveCardExitMs());
+  if (!presence.mounted) return null;
+  const off = busy || presence.closing;
+  return (
+    <div
+      className={`card vault-move-card${presence.closing ? ' closing' : ''}`}
+      style={{ margin: '0 0 14px' }}
+    >
+      <h3 style={{ marginBottom: 4 }}>{HUB_OFFER_COPY.title}</h3>
+      <p className="sub" style={{ marginTop: 0 }}>
+        {hubMoveOffer(count)}
+      </p>
+      {failed ? (
+        <p className="hint" style={{ margin: '6px 0 0', color: 'var(--warn)' }}>
+          Nothing moved. Your computer did not take every note, so your Vault stays here.
+        </p>
+      ) : null}
+      <div className="vault-move-actions">
+        <button type="button" className="btn primary press-fb" disabled={off} onClick={onMove}>
+          {busy ? 'Moving your notes' : HUB_OFFER_COPY.move}
+        </button>
+        {!busy ? (
+          <button type="button" className="btn quiet press-fb" disabled={off} onClick={onDecline}>
+            {HUB_OFFER_COPY.later}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /** How long the Drive card takes to fold out: its exit (--dur-4) plus a

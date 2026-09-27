@@ -13,7 +13,43 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { oscHome } from '../config/load.js';
-import { EVAL_TASKS, EVAL_CHECK_FILE, type EvalTask } from './tasks.js';
+import type { AgentEvent } from '../core/agent/types.js';
+import {
+  EVAL_TASKS,
+  EVAL_VAULT_TASKS,
+  EVAL_HANDOFF_TASKS,
+  EVAL_CHECK_FILE,
+  type EvalTask,
+} from './tasks.js';
+
+/** The with-pack and without-pack variant (Vault M4, 4.8, CTO I14). 'on' asks
+ *  the drive to run the context pack in full (`vault.context: 'full'`), 'off'
+ *  to run with none (`vault.context: 'off'`). */
+export type EvalVaultPack = 'on' | 'off';
+
+/** The served-window variant (CTO I1): 'auto' sends Ollama's `num_ctx`, 'off'
+ *  sends none. */
+export type EvalNumCtx = 'auto' | 'off';
+
+/** The prompt cache variant (Vault M5, CTO J17 and J19): 'on' sets the
+ *  provider's `promptCache: 'auto'`, 'off' sets `'off'`. Only an Anthropic
+ *  endpoint reads it; any other provider runs unchanged. */
+export type EvalPromptCache = 'on' | 'off';
+
+/** The handoff variant (Vault M5, CTO J13 and J19): 'on' runs the pack in
+ *  full with the task's handoff in its handoff layer, 'off' runs the same pack
+ *  with that layer empty, so the two runs differ by the handoff alone. */
+export type EvalHandoffLayer = 'on' | 'off';
+
+/** The variant a run was made under, recorded on the report and on every
+ *  trace so a with and a without number can never be mixed up. Absent keys
+ *  mean the drive's own default. */
+export interface EvalVariant {
+  vaultPack?: EvalVaultPack;
+  numCtx?: EvalNumCtx;
+  promptCache?: EvalPromptCache;
+  handoff?: EvalHandoffLayer;
+}
 
 /** What the loop did on one run, so a zero is a diagnosis and not just a
  *  verdict: how many turns, which tools it reached for and whether any write
@@ -40,6 +76,41 @@ export interface DriveTrace {
    *  this run (1 when it never had to start over). Distinct from the eval's
    *  `--attempts`, which are whole separate runs. */
   attempts?: number;
+  /** Every input token the run sent, summed over its model requests (the
+   *  loop's `usage` events). The prefill cost the reference box pays. On an
+   *  Anthropic seat this is the uncached rest (`input_tokens`): tokens read
+   *  from or written to the prompt cache are counted in the two fields
+   *  below, never here, so the three add up to what the prompt carried. */
+  promptTokens?: number;
+  /** Input tokens served from the provider's prompt cache, summed over the
+   *  run's `usage` events (Anthropic's `cache_read_input_tokens`). Absent
+   *  when no event carried the field, so "no cache" and "cache read 0"
+   *  stay apart. */
+  cacheReadTokens?: number;
+  /** Input tokens written to the provider's prompt cache, summed the same
+   *  way (Anthropic's `cache_creation_input_tokens`). */
+  cacheWriteTokens?: number;
+  /** Tokens the context pack took, summed over its `context-pack` events.
+   *  0 when the pack ran and was empty; absent when no pack event came. */
+  packTokens?: number;
+  /** The vault notes the pack used, by path, deduplicated, in first-use order
+   *  (pins, search hits and links; never the map, handoff or Current State). */
+  packNotes?: string[];
+  /** Wall-clock milliseconds for the drive, measured by the runner. */
+  wallMs?: number;
+  /** The variant this run was made under. */
+  variant?: EvalVariant;
+}
+
+/** Where a task's fixture landed and which variant to run it under, handed to
+ *  the drive so it can point the loop at the vault and set the pack and the
+ *  served window. `vaultDir` is set only for a task that carries a vault. */
+export interface DriveContext {
+  vaultDir?: string;
+  vaultPack?: EvalVaultPack;
+  numCtx?: EvalNumCtx;
+  promptCache?: EvalPromptCache;
+  handoff?: EvalHandoffLayer;
 }
 
 /** A drive may return just the final text, or the text plus a trace of what
@@ -57,6 +128,7 @@ export type DriveTask = (
   cwd: string,
   prompt: string,
   task: EvalTask,
+  context: DriveContext,
 ) => Promise<string | DriveOutcome>;
 
 export interface EvalV2TaskScore {
@@ -90,10 +162,24 @@ export interface EvalV2Report {
    *  by tests would buy on this model, measured, not believed. */
   bestAverage: number;
   byCategory: Record<string, number>;
+  /** The variant the whole run was made under. */
+  variant: EvalVariant;
 }
 
 export interface EvalV2Options {
+  /** The tasks to run. Defaults to the handoff task when `handoff` is set
+   *  and `vaultPack` is not, to the vault tasks when `vaultPack` is set (those
+   *  flags are what the with and without runs measure), otherwise to the
+   *  code tasks, so the code average stays comparable run to run. */
   tasks?: EvalTask[];
+  /** Run with the context pack ('on') or without it ('off'). */
+  vaultPack?: EvalVaultPack;
+  /** Run with the served window set ('auto') or unset ('off'). */
+  numCtx?: EvalNumCtx;
+  /** Run with the provider's prompt cache on or off. */
+  promptCache?: EvalPromptCache;
+  /** Run the handoff task with its handoff layer ('on') or without ('off'). */
+  handoff?: EvalHandoffLayer;
   model?: string;
   provider?: string;
   /** Independent tries per task (default 1). Each try gets a fresh fixture
@@ -110,21 +196,44 @@ interface AttemptOutcome {
   trace?: DriveTrace;
 }
 
-async function runAttempt(drive: DriveTask, task: EvalTask): Promise<AttemptOutcome> {
-  const cwd = mkdtempSync(join(tmpdir(), `osc-evalv2-${task.id}-`));
+function writeTree(root: string, files: Record<string, string>): void {
+  mkdirSync(root, { recursive: true });
+  for (const [rel, content] of Object.entries(files)) {
+    const abs = join(root, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  }
+}
+
+/** The eval's own vault folder for one attempt: a sibling of the workspace,
+ *  never inside it, so the agent reaches the notes through the vault tools
+ *  and the pack, not by reading the workspace. */
+export const EVAL_VAULT_DIR = 'vault';
+/** The workspace folder for one attempt, beside the vault. */
+export const EVAL_WORKSPACE_DIR = 'workspace';
+
+async function runAttempt(
+  drive: DriveTask,
+  task: EvalTask,
+  variant: EvalVariant,
+): Promise<AttemptOutcome> {
+  const root = mkdtempSync(join(tmpdir(), `osc-evalv2-${task.id}-`));
+  const cwd = join(root, EVAL_WORKSPACE_DIR);
   try {
-    for (const [rel, content] of Object.entries(task.files)) {
-      const abs = join(cwd, rel);
-      mkdirSync(dirname(abs), { recursive: true });
-      writeFileSync(abs, content);
+    writeTree(cwd, task.files);
+    let vaultDir: string | undefined;
+    if (task.vault) {
+      vaultDir = join(root, EVAL_VAULT_DIR);
+      writeTree(vaultDir, task.vault);
     }
     // The task's own test sits in the workspace like a project's test file
     // would, so the harness can run it after a change (verify in the loop).
     if (task.verifyScript) writeFileSync(join(cwd, EVAL_CHECK_FILE), task.verifyScript);
     let finalText = '';
     let trace: DriveTrace | undefined;
+    const started = Date.now();
     try {
-      const outcome = await drive(cwd, task.prompt, task);
+      const outcome = await drive(cwd, task.prompt, task, { vaultDir, ...variant });
       if (typeof outcome === 'string') {
         finalText = outcome;
       } else {
@@ -134,10 +243,15 @@ async function runAttempt(drive: DriveTask, task: EvalTask): Promise<AttemptOutc
     } catch (err) {
       return { score: 0, detail: `the run failed: ${(err as Error).message}` };
     }
+    const wallMs = Date.now() - started;
+    if (trace) {
+      trace = { ...trace, wallMs: trace.wallMs ?? wallMs };
+      if (hasVariant(variant)) trace.variant = { ...variant };
+    }
     const result = await task.check({ cwd, finalText });
     return { score: result.score, detail: result.detail, trace };
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 }
 
@@ -145,7 +259,12 @@ export async function runEvalV2(
   drive: DriveTask,
   options: EvalV2Options = {},
 ): Promise<EvalV2Report> {
-  const tasks = options.tasks ?? EVAL_TASKS;
+  const variant: EvalVariant = {};
+  if (options.vaultPack) variant.vaultPack = options.vaultPack;
+  if (options.numCtx) variant.numCtx = options.numCtx;
+  if (options.promptCache) variant.promptCache = options.promptCache;
+  if (options.handoff) variant.handoff = options.handoff;
+  const tasks = options.tasks ?? defaultTasks(variant);
   const attempts = Math.max(1, Math.floor(options.attempts ?? 1));
   const scores: EvalV2TaskScore[] = [];
 
@@ -157,7 +276,7 @@ export async function runEvalV2(
           ? `Running ${task.title} (try ${i + 1} of ${attempts})...`
           : `Running ${task.title}...`,
       );
-      outcomes.push(await runAttempt(drive, task));
+      outcomes.push(await runAttempt(drive, task, variant));
     }
     const attemptScores = outcomes.map((o) => o.score);
     const bestOutcome = outcomes.reduce((a, b) => (b.score > a.score ? b : a));
@@ -186,18 +305,102 @@ export async function runEvalV2(
     average,
     bestAverage,
     byCategory,
+    variant,
   };
 
   if (options.write && options.model) {
     const dir = join(oscHome(), 'eval');
     mkdirSync(dir, { recursive: true });
     writeFileSync(
-      join(dir, `v2-${options.model.replace(/[^A-Za-z0-9._-]/g, '_')}.json`),
+      join(
+        dir,
+        `v2-${options.model.replace(/[^A-Za-z0-9._-]/g, '_')}${variantSuffix(variant)}.json`,
+      ),
       JSON.stringify(report, null, 2),
     );
   }
 
   return report;
+}
+
+/** The suite a variant measures when no tasks are named: the handoff task
+ *  for a handoff run, the vault suite for a vault-pack run, the code suite
+ *  otherwise (a prompt cache or served-window run measures the code suite). */
+export function defaultTasks(variant: EvalVariant): EvalTask[] {
+  if (variant.vaultPack) return EVAL_VAULT_TASKS;
+  if (variant.handoff) return EVAL_HANDOFF_TASKS;
+  return EVAL_TASKS;
+}
+
+function hasVariant(variant: EvalVariant): boolean {
+  return (
+    variant.vaultPack !== undefined ||
+    variant.numCtx !== undefined ||
+    variant.promptCache !== undefined ||
+    variant.handoff !== undefined
+  );
+}
+
+/** A with run and a without run write separate report files, so the second
+ *  never overwrites the first. Empty for a run with no variant, so the plain
+ *  report keeps its old name. */
+export function variantSuffix(variant: EvalVariant): string {
+  let out = '';
+  if (variant.vaultPack) out += `-pack-${variant.vaultPack}`;
+  if (variant.numCtx) out += `-numctx-${variant.numCtx}`;
+  if (variant.promptCache) out += `-cache-${variant.promptCache}`;
+  if (variant.handoff) out += `-handoff-${variant.handoff}`;
+  return out;
+}
+
+/** The pack layers that name a vault note. */
+const VAULT_NOTE_LAYERS: ReadonlySet<string> = new Set(['pin', 'search', 'link']);
+
+/** The trace fields `vaultTraceFields` reads. */
+export type VaultTraceFields = Pick<
+  DriveTrace,
+  'promptTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'packTokens' | 'packNotes'
+>;
+
+/** The vault trace fields read off a run's events, for a drive to merge into
+ *  its trace: every input token sent (summed over `usage` events), the prompt
+ *  cache's reads and writes (summed over the `usage` events that carry them),
+ *  the pack's tokens (summed over `context-pack` events) and the notes it
+ *  used. Pure, so the CLI and the tests read the events the same way. */
+export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceFields {
+  let promptTokens = 0;
+  let sawUsage = false;
+  let cacheRead: number | undefined;
+  let cacheWrite: number | undefined;
+  let packTokens = 0;
+  let sawPack = false;
+  const notes: string[] = [];
+  for (const e of events) {
+    if (e.type === 'usage') {
+      sawUsage = true;
+      promptTokens += e.promptTokens;
+      if (e.cacheReadTokens !== undefined) cacheRead = (cacheRead ?? 0) + e.cacheReadTokens;
+      if (e.cacheWriteTokens !== undefined) cacheWrite = (cacheWrite ?? 0) + e.cacheWriteTokens;
+    } else if (e.type === 'context-pack') {
+      sawPack = true;
+      packTokens += e.tokens;
+      for (const source of e.sources) {
+        // Vault notes only: the map and the handoff carry no path, and Current
+        // State is the project's own file in the repo, not a vault note.
+        if (!VAULT_NOTE_LAYERS.has(source.layer) || !source.path) continue;
+        if (!notes.includes(source.path)) notes.push(source.path);
+      }
+    }
+  }
+  const out: VaultTraceFields = {};
+  if (sawUsage) out.promptTokens = promptTokens;
+  if (cacheRead !== undefined) out.cacheReadTokens = cacheRead;
+  if (cacheWrite !== undefined) out.cacheWriteTokens = cacheWrite;
+  if (sawPack) {
+    out.packTokens = packTokens;
+    out.packNotes = notes;
+  }
+  return out;
 }
 
 function mean(list: number[]): number {

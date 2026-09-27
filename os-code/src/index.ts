@@ -59,6 +59,7 @@ export {
   type DriveTrace,
 } from './eval/v2.js';
 export { EVAL_TASKS, type EvalTask } from './eval/tasks.js';
-export { runVerify, type VerifyResult, type VerifyConfig } from './harness/verify.js';
+export { runVerify } from './core/agent/verifyRun.js';
+export type { VerifyResult, VerifyConfig } from './harness/verify.js';
 export { CONNECTORS } from './server/connectorMap.js';
 export { TOKENS, banner } from './brand/theme.js';

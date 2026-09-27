@@ -3,7 +3,11 @@
 // endpoint is stateless.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DesktopChatDriver } from '../src/drivers/desktopChatDriver.js';
+import { LOCAL_ONLY_STUB } from 'os-code/protocol';
 import type { DriverEvent } from 'os-code/protocol';
+import { isLocalOnlyFinal, seedText } from '../src/drivers/types.js';
+import { reduceEvents } from '../src/state/transcript.js';
+import { emptyThread, seedFromTranscript } from '../src/state/types.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -75,5 +79,62 @@ describe('DesktopChatDriver', () => {
     const done = events.find((e) => e.type === 'task-done');
     expect(done && (done as any).reason).toBe('error');
     expect(done && (done as any).message).toBe('no local model');
+  });
+
+  /** A context-pack line as the daemon streams it, marked or not. */
+  const packLine = (localOnly: boolean) =>
+    JSON.stringify({
+      type: 'context-pack',
+      seat: 'local',
+      mode: 'current-state',
+      tokens: 20,
+      budgetTokens: 327,
+      sources: [{ layer: 'pin', path: 'Private/Plan.md', title: 'Plan', project: true }],
+      withheld: 0,
+      cold: false,
+      ...(localOnly ? { localOnly: true } : {}),
+    });
+
+  it('marks the reply local-only when the pack line says so, and a cloud seed gets the stub', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      sseResponse([
+        packLine(true),
+        JSON.stringify({ type: 'text', delta: 'The launch word is marmot.' }),
+        JSON.stringify({ type: 'done' }),
+      ]),
+    ) as unknown as typeof fetch;
+    const driver = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' });
+    const events = collect(driver);
+    driver.send('what is the launch word?');
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
+    const final = events.find((e) => e.type === 'text-final')!;
+    expect(isLocalOnlyFinal(final)).toBe(true);
+    // The card still renders, and the transcript carries the mark.
+    expect(events.some((e) => e.type === 'context-pack')).toBe(true);
+    const thread = reduceEvents(
+      emptyThread(),
+      events.map((event) => ({ event })),
+    );
+    const seed = seedFromTranscript(thread.items);
+    const reply = seed.find((t) => t.role === 'assistant')!;
+    expect(reply.localOnly).toBe(true);
+    // A switch to a seat that leaves this network sends the stub, never the text.
+    expect(seedText(reply, true)).toBe(LOCAL_ONLY_STUB);
+    expect(seedText(reply, false)).toBe('The launch word is marmot.');
+  });
+
+  it('leaves the reply unmarked when the pack line does not say local-only', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      sseResponse([
+        packLine(false),
+        JSON.stringify({ type: 'text', delta: 'Hello.' }),
+        JSON.stringify({ type: 'done' }),
+      ]),
+    ) as unknown as typeof fetch;
+    const driver = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' });
+    const events = collect(driver);
+    driver.send('hi');
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
+    expect(isLocalOnlyFinal(events.find((e) => e.type === 'text-final')!)).toBe(false);
   });
 });
