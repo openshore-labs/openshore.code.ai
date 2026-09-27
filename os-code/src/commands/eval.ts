@@ -7,17 +7,21 @@ import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import { runEval } from '../eval/harness.js';
 import {
+  defaultTasks,
   runEvalV2,
   variantSuffix,
   vaultTraceFields,
   type DriveTask,
   type DriveTrace,
+  type EvalHandoffLayer,
   type EvalNumCtx,
+  type EvalPromptCache,
   type EvalV2Report,
   type EvalVariant,
   type EvalVaultPack,
 } from '../eval/v2.js';
-import { EVAL_TASKS, EVAL_VAULT_TASKS, verifyCommandFor } from '../eval/tasks.js';
+import { verifyCommandFor } from '../eval/tasks.js';
+import { buildHandoff, HANDOFF_MAX_TOKENS } from '../harness/handoff.js';
 import { classBlurb } from '../harness/profile.js';
 import { configureStreamIdle } from '../providers/streamIdle.js';
 import { resolveStack } from '../router/stack.js';
@@ -37,6 +41,7 @@ import { createVaultContextSource, currentStateReader } from '../core/vault/cont
 import { closeEngineVaultIndex, engineVaultIndex } from '../core/vault/engineIndex.js';
 import { deleteVaultIndexFile } from '../core/vault/indexFile.js';
 import type { AgentEvent, Approver } from '../core/agent/types.js';
+import type { VaultContextSource } from '../harness/vaultContext.js';
 import type { ToolRegistry } from '../core/tools/index.js';
 import type { OscConfig } from '../config/schema.js';
 import { confirm, header, okLine, out, warnLine } from './util.js';
@@ -57,6 +62,13 @@ export interface EvalOptions {
   vaultPack?: string;
   /** Deep only: send Ollama's `num_ctx` ('auto') or not ('off') (CTO I1). */
   numCtx?: string;
+  /** Deep only: Anthropic prompt caching on or off for the run (CTO J17,
+   *  J19), so input tokens, cache reads and writes, and dollars per completed
+   *  task can be set side by side. */
+  promptCache?: string;
+  /** Deep only: run the handoff task with its handoff layer ('on') or with
+   *  that layer empty ('off') (CTO J13, J19). */
+  handoff?: string;
 }
 
 /** Parse a two-value flag; undefined when unset, an error string when bad. */
@@ -89,15 +101,22 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
 
   const vaultPack = parseChoice<EvalVaultPack>('--vault-pack', options.vaultPack, ['on', 'off']);
   const numCtx = parseChoice<EvalNumCtx>('--num-ctx', options.numCtx, ['auto', 'off']);
-  for (const parsed of [vaultPack, numCtx]) {
+  const promptCache = parseChoice<EvalPromptCache>('--prompt-cache', options.promptCache, [
+    'on',
+    'off',
+  ]);
+  const handoff = parseChoice<EvalHandoffLayer>('--handoff', options.handoff, ['on', 'off']);
+  for (const parsed of [vaultPack, numCtx, promptCache, handoff]) {
     if (typeof parsed === 'object') {
       warnLine(parsed.error);
       process.exitCode = 1;
       return;
     }
   }
-  if ((vaultPack || numCtx) && !options.deep) {
-    warnLine('--vault-pack and --num-ctx measure the agent loop, so they go with --deep.');
+  if ((vaultPack || numCtx || promptCache || handoff) && !options.deep) {
+    warnLine(
+      '--vault-pack, --num-ctx, --prompt-cache and --handoff measure the agent loop, so they go with --deep.',
+    );
     process.exitCode = 1;
     return;
   }
@@ -107,6 +126,8 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     const variant: EvalVariant = {};
     if (typeof vaultPack === 'string') variant.vaultPack = vaultPack;
     if (typeof numCtx === 'string') variant.numCtx = numCtx;
+    if (typeof promptCache === 'string') variant.promptCache = promptCache;
+    if (typeof handoff === 'string') variant.handoff = handoff;
     await runDeep(config, providers, providerId, model, attempts, options.yes === true, variant);
     return;
   }
@@ -185,9 +206,9 @@ async function runDeep(
   const provider = providers.get(providerId);
   let cloudApproved = false;
   if (provider.kind === 'cloud') {
-    // A vault-pack run runs the vault tasks (runEvalV2's default), so the
-    // spend line counts those.
-    const tasks = variant.vaultPack ? EVAL_VAULT_TASKS : EVAL_TASKS;
+    // A variant run runs its own suite (runEvalV2's default), so the spend
+    // line counts that one.
+    const tasks = defaultTasks(variant);
     const runs = tasks.length * attempts;
     out();
     out(
@@ -254,9 +275,13 @@ export interface DeepDriveOptions {
   /** The provider under test, whose `numCtx` a variant sets. */
   providerId: string;
   cloudApproved: () => boolean;
-  /** A fresh registry over a config (the `numCtx` variant). Defaults to the
-   *  engine's own; a test hands in one holding a mock. */
+  /** A fresh registry over a config (the `numCtx` and `promptCache`
+   *  variants). Defaults to the engine's own; a test hands in one holding a
+   *  mock. */
   makeProviders?: (config: OscConfig) => ProviderRegistry;
+  /** Builds a handoff task's handoff from its scripted chat. Defaults to the
+   *  harness's own `buildHandoff`, the code a real session end runs. */
+  buildHandoff?: typeof buildHandoff;
 }
 
 /**
@@ -270,7 +295,14 @@ export interface DeepDriveOptions {
  *   class), 'off' sets `'off'`; either way Memory stays on, so the two runs
  *   differ by the pack alone;
  * - `numCtx` sets `providers.<id>.numCtx` on a fresh registry, built once per
- *   value so Ollama keeps one window for the whole run.
+ *   value so Ollama keeps one window for the whole run;
+ * - `promptCache` sets `providers.<id>.promptCache` ('on' is 'auto') on an
+ *   Anthropic endpoint, on a fresh registry the same way;
+ * - a task with a handoff (Vault M5, CTO J13) gets it built from its scripted
+ *   chat and placed in the pack's handoff layer; `handoff` 'off' leaves that
+ *   layer empty, and a `handoff` variant without `vaultPack` runs the pack in
+ *   full so the handoff layer can render at all. The person's own handoffs are
+ *   never read: the layer holds the task's handoff or nothing.
  * The index of a task's vault is built before the run starts (a person's
  * vault is indexed in the background long before a task), then closed and
  * its saved file removed, since the folder is gone after the run.
@@ -293,6 +325,10 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
     // go (harness.verify.maxRetries). It is the harness feature under
     // measurement; the score still comes from the task's independent check.
     const verifyCommand = verifyCommandFor(task);
+    // A variant or a handoff task is hermetic about the vault: the task's
+    // own folder or none, so the person's own notes never enter a benchmark.
+    const hermetic =
+      context.vaultPack !== undefined || context.handoff !== undefined || !!task.handoff;
     let driveConfig: OscConfig = verifyCommand
       ? {
           ...evalConfig,
@@ -302,17 +338,21 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
           },
         }
       : evalConfig;
-    if (context.vaultPack) {
+    // The handoff layer is a full-mode layer, so a handoff run with no pack
+    // variant runs the pack in full; the two handoff runs then differ by the
+    // handoff alone.
+    const packContext = context.vaultPack ?? (context.handoff ? 'on' : undefined);
+    if (packContext) {
       driveConfig = {
         ...driveConfig,
-        vault: { ...driveConfig.vault, context: context.vaultPack === 'on' ? 'full' : 'off' },
+        vault: { ...driveConfig.vault, context: packContext === 'on' ? 'full' : 'off' },
         memory: { ...driveConfig.memory, enabled: true },
       };
     }
     let providers = options.providers;
-    if (context.numCtx) {
+    if (context.numCtx || context.promptCache) {
       const endpoint = driveConfig.providers[providerId];
-      if (endpoint?.kind === 'openai-compatible') {
+      if (context.numCtx && endpoint?.kind === 'openai-compatible') {
         driveConfig = {
           ...driveConfig,
           providers: {
@@ -321,18 +361,37 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
           },
         };
       }
-      let fresh = registries.get(context.numCtx);
+      if (context.promptCache && endpoint?.kind === 'anthropic') {
+        driveConfig = {
+          ...driveConfig,
+          providers: {
+            ...driveConfig.providers,
+            [providerId]: {
+              ...endpoint,
+              promptCache: context.promptCache === 'on' ? 'auto' : 'off',
+            },
+          },
+        };
+      }
+      const key = `${context.numCtx ?? '-'}/${context.promptCache ?? '-'}`;
+      let fresh = registries.get(key);
       if (!fresh) {
         fresh = makeProviders(driveConfig);
-        registries.set(context.numCtx, fresh);
+        registries.set(key, fresh);
       }
       providers = fresh;
     }
+    const handoffText =
+      task.handoff && context.handoff !== 'off'
+        ? (options.buildHandoff ?? buildHandoff)(task.handoff.turns, HANDOFF_MAX_TOKENS, {
+            from: task.handoff.from,
+            date: task.handoff.date,
+          }).text
+        : undefined;
 
     const stack = resolveStack(driveConfig, providers);
     const router = new Router(driveConfig, providers, stack);
-    // A variant run is hermetic about the vault: the task's own folder or none.
-    const hasVault = context.vaultDir !== undefined || !context.vaultPack;
+    const hasVault = context.vaultDir !== undefined || !hermetic;
     const tools = buildToolRegistry({
       stackHasVision: false,
       stackHasImageGen: false,
@@ -354,12 +413,22 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
       const handle = await engineVaultIndex(context.vaultDir);
       await handle.whenReconciled(60_000);
     }
-    const vaultContext = createVaultContextSource({
+    const source = createVaultContextSource({
       vaultRoot: toolContext.vaultRoot,
       privacy,
       currentState: currentStateReader(cwd, undefined),
       lockdown: { egress: false, secrets: false },
     });
+    // The handoff layer holds the task's handoff or nothing, whatever the
+    // source would read on its own, so a benchmark never sees the person's.
+    const vaultContext: VaultContextSource = {
+      async prepare(taskText, signal) {
+        const prepared = { ...(await source.prepare(taskText, signal)) };
+        delete prepared.handoff;
+        if (handoffText) prepared.handoff = handoffText;
+        return prepared;
+      },
+    };
 
     const events: AgentEvent[] = [];
     const agent = new AgentSession({
@@ -396,6 +465,8 @@ export function describeVariant(variant: EvalVariant): string {
   const parts: string[] = [];
   if (variant.vaultPack) parts.push(`vault pack ${variant.vaultPack}`);
   if (variant.numCtx) parts.push(`num_ctx ${variant.numCtx}`);
+  if (variant.promptCache) parts.push(`prompt cache ${variant.promptCache}`);
+  if (variant.handoff) parts.push(`handoff ${variant.handoff}`);
   return parts.join(', ');
 }
 
@@ -538,10 +609,14 @@ export function traceLine(trace: DriveTrace): string {
 }
 
 /** What a run cost, when the drive measured it (Vault M4, CTO I14): input
- *  tokens sent, the pack's share and its notes, and wall time. '' when none. */
+ *  tokens sent, the prompt cache's reads and writes (Vault M5, CTO J19), the
+ *  pack's share and its notes, and wall time. '' when none. */
 export function costLine(trace: DriveTrace): string {
   const parts: string[] = [];
   if (trace.promptTokens !== undefined) parts.push(`${trace.promptTokens} input tokens`);
+  if (trace.cacheReadTokens !== undefined || trace.cacheWriteTokens !== undefined) {
+    parts.push(`cache read ${trace.cacheReadTokens ?? 0}, written ${trace.cacheWriteTokens ?? 0}`);
+  }
   if (trace.packTokens !== undefined) {
     const notes = trace.packNotes?.length ?? 0;
     parts.push(`pack ${trace.packTokens} tokens, ${notes} note${notes === 1 ? '' : 's'}`);

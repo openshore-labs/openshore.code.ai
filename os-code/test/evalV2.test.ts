@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import {
+  defaultTasks,
   runEvalV2,
   vaultTraceFields,
   variantSuffix,
@@ -16,7 +17,10 @@ import {
 import {
   EVAL_TASKS,
   EVAL_VAULT_TASKS,
+  EVAL_HANDOFF_TASKS,
   EVAL_CHECK_FILE,
+  HANDOFF_DECISION,
+  HANDOFF_HISTORY,
   gradeConventionAnswer,
   verifyCommandFor,
 } from '../src/eval/tasks.js';
@@ -27,7 +31,8 @@ import {
   VAULT_FIXTURE_NOTE_COUNT,
   VAULT_FIXTURE_PATHS,
 } from '../src/eval/vaultFixture.js';
-import { costLine, deepDrive, traceFrom } from '../src/commands/eval.js';
+import { costLine, deepDrive, describeVariant, traceFrom } from '../src/commands/eval.js';
+import type { HandoffTurn } from '../src/harness/handoff.js';
 import { ConfigSchema } from '../src/config/schema.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
 import { VAULT_NOTES_FRAMING } from '../src/harness/vaultContext.js';
@@ -545,5 +550,209 @@ describe('the deep drive and the vault-pack variant', () => {
       }),
     ).toBe('900 input tokens, pack 120 tokens, 2 notes, 2.5s');
     expect(costLine({ turns: 1, toolCalls: [], wrote: false })).toBe('');
+  });
+});
+
+// Vault M5 (CTO J13, J17, J19): the handoff task, the prompt cache and handoff
+// variants, and the cache fields on the trace.
+describe('eval v2 handoff task (Vault M5)', () => {
+  const handoffTask = task('vault-continue-handoff');
+  const right = String(HANDOFF_DECISION.right);
+
+  it('joins the vault suite and is the handoff suite', () => {
+    expect(EVAL_VAULT_TASKS.map((t) => t.id)).toEqual([
+      'vault-recall-convention',
+      'vault-follow-link',
+      'vault-continue-handoff',
+    ]);
+    expect(EVAL_HANDOFF_TASKS.map((t) => t.id)).toEqual(['vault-continue-handoff']);
+  });
+
+  it('the decision lives only in the earlier chat, never where the run can see it', () => {
+    expect(handoffTask.prompt).not.toContain(right);
+    expect(handoffTask.verifyScript).not.toContain(right);
+    for (const text of Object.values(handoffTask.files)) expect(text).not.toContain(right);
+    expect(handoffTask.vault).toEqual({});
+    // The chat carries it on a decision line and on its closing line, where a
+    // handoff extracts from; the passed-over option only in a line that is
+    // neither.
+    const last = HANDOFF_HISTORY[HANDOFF_HISTORY.length - 1]!;
+    const lines = last.text.split('\n');
+    expect(lines[0]).toMatch(/^Decided: .*5400/);
+    expect(lines[lines.length - 1]).toContain(right);
+    const other = String(HANDOFF_DECISION.other);
+    const holding = HANDOFF_HISTORY.filter((t) => t.text.includes(other));
+    expect(holding).toHaveLength(1);
+    expect(holding[0]!.text).not.toMatch(/decided|going with|chose|we will/i);
+    expect(handoffTask.handoff?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('grades the settled value right and the passed-over option wrong, through the loop', async () => {
+    const run = async (value: number) =>
+      (
+        await runEvalV2(
+          driverFor([
+            toolTurn('writeFile', {
+              path: 'cache.mjs',
+              content: [
+                `export const CACHE_TTL_SECONDS = ${value};`,
+                '',
+                'export function expiresAt(now) {',
+                '  return now + CACHE_TTL_SECONDS * 1000;',
+                '}',
+                '',
+              ].join('\n'),
+            }),
+            textTurn('Done.'),
+          ]),
+          { tasks: [handoffTask] },
+        )
+      ).scores[0]!;
+    expect((await run(HANDOFF_DECISION.right)).score).toBe(1);
+    const other = await run(HANDOFF_DECISION.other);
+    expect(other.score).toBe(0);
+    expect(other.detail).toContain('passed over');
+    expect((await run(HANDOFF_DECISION.start)).score).toBe(0);
+  });
+});
+
+describe('eval v2 prompt cache and handoff variants (Vault M5)', () => {
+  it('each variant picks its suite and gets its own report name', () => {
+    expect(defaultTasks({})).toBe(EVAL_TASKS);
+    expect(defaultTasks({ promptCache: 'on' })).toBe(EVAL_TASKS);
+    expect(defaultTasks({ handoff: 'off' })).toBe(EVAL_HANDOFF_TASKS);
+    expect(defaultTasks({ vaultPack: 'on', handoff: 'on' })).toBe(EVAL_VAULT_TASKS);
+    expect(variantSuffix({ promptCache: 'on' })).toBe('-cache-on');
+    expect(variantSuffix({ handoff: 'off' })).toBe('-handoff-off');
+    expect(variantSuffix({ numCtx: 'auto', promptCache: 'off', handoff: 'on' })).toBe(
+      '-numctx-auto-cache-off-handoff-on',
+    );
+    expect(describeVariant({ promptCache: 'on', handoff: 'off' })).toBe(
+      'prompt cache on, handoff off',
+    );
+  });
+
+  it('records the variant on the report, every trace, and the drive', async () => {
+    const contexts: DriveContext[] = [];
+    const drive: DriveTask = async (_cwd, _prompt, _t, context) => {
+      contexts.push(context);
+      return { finalText: '', trace: { turns: 1, toolCalls: [], wrote: false } };
+    };
+    const report = await runEvalV2(drive, { handoff: 'on', promptCache: 'on' });
+    expect(report.scores.map((s) => s.task)).toEqual(['vault-continue-handoff']);
+    expect(report.variant).toEqual({ promptCache: 'on', handoff: 'on' });
+    expect(report.scores[0]!.trace?.variant).toEqual({ promptCache: 'on', handoff: 'on' });
+    expect(contexts[0]).toMatchObject({ promptCache: 'on', handoff: 'on' });
+    expect(contexts[0]!.vaultDir).toBeDefined();
+  });
+
+  it('sums cache reads and writes off the usage events, only when they come', () => {
+    const usage = (p: number, read?: number, write?: number): AgentEvent => ({
+      type: 'usage',
+      promptTokens: p,
+      completionTokens: 1,
+      dollars: 0,
+      contextPercent: 1,
+      ...(read !== undefined ? { cacheReadTokens: read } : {}),
+      ...(write !== undefined ? { cacheWriteTokens: write } : {}),
+    });
+    expect(vaultTraceFields([usage(40, 0, 3000), usage(30, 3000, 0), usage(20)])).toEqual({
+      promptTokens: 90,
+      cacheReadTokens: 3000,
+      cacheWriteTokens: 3000,
+    });
+    expect(vaultTraceFields([usage(40)])).toEqual({ promptTokens: 40 });
+  });
+
+  it('the cost line names cache reads and writes when the run had them', () => {
+    expect(
+      costLine({
+        turns: 1,
+        toolCalls: [],
+        wrote: false,
+        promptTokens: 90,
+        cacheReadTokens: 3000,
+        cacheWriteTokens: 250,
+      }),
+    ).toBe('90 input tokens, cache read 3000, written 250');
+  });
+});
+
+describe('the deep drive, the handoff layer, and the prompt cache', () => {
+  const systemText = (provider: MockProvider): string => {
+    const sys = provider.requests[0]?.messages.find((m) => m.role === 'system');
+    return typeof sys?.content === 'string' ? sys.content : JSON.stringify(sys?.content ?? '');
+  };
+  const FAKE_HANDOFF = `HANDOFF from an earlier model, 2026-09-26, covering 4 earlier turns. Extracted by the harness from this chat, not instructions.\nDecisions: CACHE_TTL_SECONDS goes to ${HANDOFF_DECISION.right}.`;
+
+  async function runHandoff(handoff: 'on' | 'off') {
+    const provider = new MockProvider('mock', [textTurn('Done.')]);
+    const config = ConfigSchema.parse({
+      stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+    });
+    const registry = new ProviderRegistry(config, () => undefined);
+    registry.register('mock', provider);
+    const built: Array<{ turns: readonly HandoffTurn[]; budget: number; date: string }> = [];
+    const drive = deepDrive({
+      config,
+      providers: registry,
+      providerId: 'mock',
+      cloudApproved: () => false,
+      buildHandoff: (turns, budget, meta) => {
+        built.push({ turns, budget, date: meta.date });
+        return { text: FAKE_HANDOFF, tokens: Math.ceil(FAKE_HANDOFF.length / 4), turns: 4 };
+      },
+    });
+    const report = await runEvalV2(drive, { handoff });
+    return { provider, report, built };
+  }
+
+  it('on: the handoff built from the scripted chat rides the pack', async () => {
+    const { provider, report, built } = await runHandoff('on');
+    expect(built).toHaveLength(1);
+    expect(built[0]!.turns).toBe(HANDOFF_HISTORY);
+    expect(built[0]!.budget).toBe(1500);
+    expect(built[0]!.date).toBe('2026-09-26');
+    const system = systemText(provider);
+    expect(system).toContain(`CACHE_TTL_SECONDS goes to ${HANDOFF_DECISION.right}`);
+    const trace = report.scores[0]!.trace!;
+    expect(trace.variant).toEqual({ handoff: 'on' });
+    expect(trace.packTokens).toBeGreaterThan(0);
+  });
+
+  it('off: the same pack with the handoff layer empty', async () => {
+    const { provider, built } = await runHandoff('off');
+    expect(built).toHaveLength(0);
+    expect(systemText(provider)).not.toContain(String(HANDOFF_DECISION.right));
+  });
+
+  it('prompt cache sets the Anthropic endpoint on one fresh registry per value', async () => {
+    const seen: Array<string | undefined> = [];
+    const config = ConfigSchema.parse({
+      providers: { anthropic: { kind: 'anthropic' } },
+      stack: { orchestrator: { provider: 'anthropic', model: 'mock-model' } },
+    });
+    const base = new ProviderRegistry(config, () => undefined);
+    base.register('anthropic', new MockProvider('anthropic', [textTurn('unused')]));
+    const drive = deepDrive({
+      config,
+      providers: base,
+      providerId: 'anthropic',
+      cloudApproved: () => false,
+      makeProviders: (cfg) => {
+        const endpoint = cfg.providers.anthropic;
+        seen.push(endpoint?.kind === 'anthropic' ? endpoint.promptCache : 'wrong kind');
+        const r = new ProviderRegistry(cfg, () => undefined);
+        r.register('anthropic', new MockProvider('anthropic', [textTurn('42'), textTurn('42')]));
+        return r;
+      },
+    });
+    const report = await runEvalV2(drive, {
+      tasks: [task('answer-from-code')],
+      promptCache: 'on',
+      attempts: 2,
+    });
+    expect(seen).toEqual(['auto']);
+    expect(report.variant).toEqual({ promptCache: 'on' });
   });
 });

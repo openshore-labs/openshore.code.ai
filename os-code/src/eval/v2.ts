@@ -14,7 +14,13 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { oscHome } from '../config/load.js';
 import type { AgentEvent } from '../core/agent/types.js';
-import { EVAL_TASKS, EVAL_VAULT_TASKS, EVAL_CHECK_FILE, type EvalTask } from './tasks.js';
+import {
+  EVAL_TASKS,
+  EVAL_VAULT_TASKS,
+  EVAL_HANDOFF_TASKS,
+  EVAL_CHECK_FILE,
+  type EvalTask,
+} from './tasks.js';
 
 /** The with-pack and without-pack variant (Vault M4, 4.8, CTO I14). 'on' asks
  *  the drive to run the context pack in full (`vault.context: 'full'`), 'off'
@@ -25,12 +31,24 @@ export type EvalVaultPack = 'on' | 'off';
  *  sends none. */
 export type EvalNumCtx = 'auto' | 'off';
 
+/** The prompt cache variant (Vault M5, CTO J17 and J19): 'on' sets the
+ *  provider's `promptCache: 'auto'`, 'off' sets `'off'`. Only an Anthropic
+ *  endpoint reads it; any other provider runs unchanged. */
+export type EvalPromptCache = 'on' | 'off';
+
+/** The handoff variant (Vault M5, CTO J13 and J19): 'on' runs the pack in
+ *  full with the task's handoff in its handoff layer, 'off' runs the same pack
+ *  with that layer empty, so the two runs differ by the handoff alone. */
+export type EvalHandoffLayer = 'on' | 'off';
+
 /** The variant a run was made under, recorded on the report and on every
  *  trace so a with and a without number can never be mixed up. Absent keys
  *  mean the drive's own default. */
 export interface EvalVariant {
   vaultPack?: EvalVaultPack;
   numCtx?: EvalNumCtx;
+  promptCache?: EvalPromptCache;
+  handoff?: EvalHandoffLayer;
 }
 
 /** What the loop did on one run, so a zero is a diagnosis and not just a
@@ -59,8 +77,19 @@ export interface DriveTrace {
    *  `--attempts`, which are whole separate runs. */
   attempts?: number;
   /** Every input token the run sent, summed over its model requests (the
-   *  loop's `usage` events). The prefill cost the reference box pays. */
+   *  loop's `usage` events). The prefill cost the reference box pays. On an
+   *  Anthropic seat this is the uncached rest (`input_tokens`): tokens read
+   *  from or written to the prompt cache are counted in the two fields
+   *  below, never here, so the three add up to what the prompt carried. */
   promptTokens?: number;
+  /** Input tokens served from the provider's prompt cache, summed over the
+   *  run's `usage` events (Anthropic's `cache_read_input_tokens`). Absent
+   *  when no event carried the field, so "no cache" and "cache read 0"
+   *  stay apart. */
+  cacheReadTokens?: number;
+  /** Input tokens written to the provider's prompt cache, summed the same
+   *  way (Anthropic's `cache_creation_input_tokens`). */
+  cacheWriteTokens?: number;
   /** Tokens the context pack took, summed over its `context-pack` events.
    *  0 when the pack ran and was empty; absent when no pack event came. */
   packTokens?: number;
@@ -80,6 +109,8 @@ export interface DriveContext {
   vaultDir?: string;
   vaultPack?: EvalVaultPack;
   numCtx?: EvalNumCtx;
+  promptCache?: EvalPromptCache;
+  handoff?: EvalHandoffLayer;
 }
 
 /** A drive may return just the final text, or the text plus a trace of what
@@ -136,14 +167,19 @@ export interface EvalV2Report {
 }
 
 export interface EvalV2Options {
-  /** The tasks to run. Defaults to the vault tasks when `vaultPack` is set
-   *  (that flag is what the with and without runs measure), otherwise to the
+  /** The tasks to run. Defaults to the handoff task when `handoff` is set
+   *  and `vaultPack` is not, to the vault tasks when `vaultPack` is set (those
+   *  flags are what the with and without runs measure), otherwise to the
    *  code tasks, so the code average stays comparable run to run. */
   tasks?: EvalTask[];
   /** Run with the context pack ('on') or without it ('off'). */
   vaultPack?: EvalVaultPack;
   /** Run with the served window set ('auto') or unset ('off'). */
   numCtx?: EvalNumCtx;
+  /** Run with the provider's prompt cache on or off. */
+  promptCache?: EvalPromptCache;
+  /** Run the handoff task with its handoff layer ('on') or without ('off'). */
+  handoff?: EvalHandoffLayer;
   model?: string;
   provider?: string;
   /** Independent tries per task (default 1). Each try gets a fresh fixture
@@ -226,7 +262,9 @@ export async function runEvalV2(
   const variant: EvalVariant = {};
   if (options.vaultPack) variant.vaultPack = options.vaultPack;
   if (options.numCtx) variant.numCtx = options.numCtx;
-  const tasks = options.tasks ?? (options.vaultPack ? EVAL_VAULT_TASKS : EVAL_TASKS);
+  if (options.promptCache) variant.promptCache = options.promptCache;
+  if (options.handoff) variant.handoff = options.handoff;
+  const tasks = options.tasks ?? defaultTasks(variant);
   const attempts = Math.max(1, Math.floor(options.attempts ?? 1));
   const scores: EvalV2TaskScore[] = [];
 
@@ -285,8 +323,22 @@ export async function runEvalV2(
   return report;
 }
 
+/** The suite a variant measures when no tasks are named: the handoff task
+ *  for a handoff run, the vault suite for a vault-pack run, the code suite
+ *  otherwise (a prompt cache or served-window run measures the code suite). */
+export function defaultTasks(variant: EvalVariant): EvalTask[] {
+  if (variant.vaultPack) return EVAL_VAULT_TASKS;
+  if (variant.handoff) return EVAL_HANDOFF_TASKS;
+  return EVAL_TASKS;
+}
+
 function hasVariant(variant: EvalVariant): boolean {
-  return variant.vaultPack !== undefined || variant.numCtx !== undefined;
+  return (
+    variant.vaultPack !== undefined ||
+    variant.numCtx !== undefined ||
+    variant.promptCache !== undefined ||
+    variant.handoff !== undefined
+  );
 }
 
 /** A with run and a without run write separate report files, so the second
@@ -296,21 +348,30 @@ export function variantSuffix(variant: EvalVariant): string {
   let out = '';
   if (variant.vaultPack) out += `-pack-${variant.vaultPack}`;
   if (variant.numCtx) out += `-numctx-${variant.numCtx}`;
+  if (variant.promptCache) out += `-cache-${variant.promptCache}`;
+  if (variant.handoff) out += `-handoff-${variant.handoff}`;
   return out;
 }
 
 /** The pack layers that name a vault note. */
 const VAULT_NOTE_LAYERS: ReadonlySet<string> = new Set(['pin', 'search', 'link']);
 
+/** The trace fields `vaultTraceFields` reads. */
+export type VaultTraceFields = Pick<
+  DriveTrace,
+  'promptTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'packTokens' | 'packNotes'
+>;
+
 /** The vault trace fields read off a run's events, for a drive to merge into
- *  its trace: every input token sent (summed over `usage` events), the pack's
- *  tokens (summed over `context-pack` events) and the notes it used. Pure, so
- *  the CLI and the tests read the events the same way. */
-export function vaultTraceFields(
-  events: readonly AgentEvent[],
-): Pick<DriveTrace, 'promptTokens' | 'packTokens' | 'packNotes'> {
+ *  its trace: every input token sent (summed over `usage` events), the prompt
+ *  cache's reads and writes (summed over the `usage` events that carry them),
+ *  the pack's tokens (summed over `context-pack` events) and the notes it
+ *  used. Pure, so the CLI and the tests read the events the same way. */
+export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceFields {
   let promptTokens = 0;
   let sawUsage = false;
+  let cacheRead: number | undefined;
+  let cacheWrite: number | undefined;
   let packTokens = 0;
   let sawPack = false;
   const notes: string[] = [];
@@ -318,6 +379,8 @@ export function vaultTraceFields(
     if (e.type === 'usage') {
       sawUsage = true;
       promptTokens += e.promptTokens;
+      if (e.cacheReadTokens !== undefined) cacheRead = (cacheRead ?? 0) + e.cacheReadTokens;
+      if (e.cacheWriteTokens !== undefined) cacheWrite = (cacheWrite ?? 0) + e.cacheWriteTokens;
     } else if (e.type === 'context-pack') {
       sawPack = true;
       packTokens += e.tokens;
@@ -329,8 +392,10 @@ export function vaultTraceFields(
       }
     }
   }
-  const out: Pick<DriveTrace, 'promptTokens' | 'packTokens' | 'packNotes'> = {};
+  const out: VaultTraceFields = {};
   if (sawUsage) out.promptTokens = promptTokens;
+  if (cacheRead !== undefined) out.cacheReadTokens = cacheRead;
+  if (cacheWrite !== undefined) out.cacheWriteTokens = cacheWrite;
   if (sawPack) {
     out.packTokens = packTokens;
     out.packNotes = notes;
